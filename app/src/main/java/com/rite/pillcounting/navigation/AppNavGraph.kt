@@ -115,10 +115,7 @@ fun AppNavGraph(
 
         composable(route = Screen.Profile.route) {
             ProfileScreen(
-                navController = navController,
-                onBackClick = {
-                    navController.popBackStack()
-                }
+                navController = navController
             )
         }
     }

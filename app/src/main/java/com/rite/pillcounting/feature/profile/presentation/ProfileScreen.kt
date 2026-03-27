@@ -2,6 +2,7 @@ package com.rite.pillcounting.feature.profile.presentation
 
 import Screen
 import android.content.res.Configuration
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -31,6 +32,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -47,6 +49,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FloatingLabelTextField
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileField
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
@@ -58,7 +61,6 @@ import com.rite.pillcounting.ui.theme.AppTheme
 fun ProfileScreen(
     navController: NavController,
     viewModel: ProfileViewModel = hiltViewModel(),
-    onBackClick: () -> Unit = {},
     fromRoute: String? = navController.previousBackStackEntry?.destination?.route
 ) {
     val configuration = LocalConfiguration.current
@@ -75,7 +77,7 @@ fun ProfileScreen(
     // Determine navigation type
     val cameFromDashboard =
         fromRoute?.contains(Screen.Dashboard.route, ignoreCase = true) == true
-
+    val context = LocalContext.current
     // Back handling for system back press
     BackHandler {
         if (cameFromDashboard) {
@@ -153,72 +155,77 @@ fun ProfileScreen(
             }
 
             // -------------------- STATE FEEDBACK --------------------
-                when (updateUiState) {
-                    is ProfileUpdateUiState.Loading -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(bottom = 16.dp)
-                        ) {
-                            LoadingIndicator()
-                        }
+            when (updateUiState) {
+                is ProfileUpdateUiState.Loading -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = 16.dp)
+                    ) {
+                        LoadingIndicator()
                     }
-
-                    is ProfileUpdateUiState.Success -> {
-                        LaunchedEffect(updateUiState) {
-                            navController.navigate(Screen.Dashboard.route) {
-                                popUpTo(Screen.Dashboard.route) { inclusive = true }
-                                launchSingleTop = true
-                            }
-                            viewModel.resetUpdateState()
-                        }
-                    }
-
-
-                    is ProfileUpdateUiState.Error -> {
-                        Text(
-                            text = (updateUiState as ProfileUpdateUiState.Error).message,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .padding(start = 16.dp)
-                        )
-                    }
-
-                    else -> {}
                 }
 
-                when (deleteUiState) {
-                    is ProfileDeleteUiState.Loading -> {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(bottom = 16.dp)
-                        ) {
-                            LoadingIndicator()
+                is ProfileUpdateUiState.Success -> {
+                    showToast(
+                        context = context,
+                        message = stringResource(R.string.profile_updated_successfully),
+                        duration = Toast.LENGTH_SHORT
+                    )
+                    LaunchedEffect(updateUiState) {
+                        navController.navigate(Screen.Menu.route) {
+                            popUpTo(Screen.Menu.route) { inclusive = true }
+                            launchSingleTop = true
                         }
+                        viewModel.resetUpdateState()
                     }
-
-                    is ProfileDeleteUiState.Success -> {
-                        LaunchedEffect(Unit) {
-                            navController.navigate(AUTH_GRAPH_ROUTE) {
-                                popUpTo(0) { inclusive = true }
-                            }
-                        }
-                    }
-
-                    is ProfileDeleteUiState.Error -> {
-                        Text(
-                            text = (deleteUiState as ProfileDeleteUiState.Error).message,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier
-                                .align(Alignment.CenterHorizontally)
-                                .padding(start = 16.dp)
-                        )
-                    }
-
-                    else -> {}
                 }
+
+
+                is ProfileUpdateUiState.Error -> {
+                    Text(
+                        text = (updateUiState as ProfileUpdateUiState.Error).message,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(start = 16.dp)
+                    )
+                }
+
+                else -> {}
+            }
+
+            when (deleteUiState) {
+                is ProfileDeleteUiState.Loading -> {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = 16.dp)
+                    ) {
+                        LoadingIndicator()
+                    }
+                }
+
+                is ProfileDeleteUiState.Success -> {
+                    LaunchedEffect(Unit) {
+                        navController.navigate(AUTH_GRAPH_ROUTE) {
+                            popUpTo(0) { inclusive = true }
+                        }
+                    }
+                }
+
+                is ProfileDeleteUiState.Error -> {
+                    Text(
+                        text = (deleteUiState as ProfileDeleteUiState.Error).message,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier
+                            .align(Alignment.CenterHorizontally)
+                            .padding(start = 16.dp)
+                    )
+                }
+
+                else -> {}
+            }
 
             Spacer(Modifier.weight(1f))
 
@@ -237,7 +244,13 @@ fun ProfileScreen(
                 )
                 HollowButton(
                     text = stringResource(R.string.skip_alt),
-                    onClick = { onBackClick() },
+                    onClick = {
+                        navController.navigate(Screen.Menu.route) {
+                            popUpTo(Screen.Menu.route) { inclusive = true }
+                            launchSingleTop = true
+                        }
+                        viewModel.resetUpdateState()
+                    },
                     color = MaterialTheme.colorScheme.primary,
                     modifier = if (isLandscape) Modifier else Modifier.weight(1f)
                 )
