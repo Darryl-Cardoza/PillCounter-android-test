@@ -3,6 +3,7 @@ package com.rite.pillcounting.core.models
 import com.rite.pillcounting.R
 
 enum class StepState {
+    RX_LABEL,
     SCAN,
     CONTAINER_INITIATE,
     TARGET_VERIFICATION,
@@ -19,6 +20,7 @@ fun StepState.icon(): Int {
         StepState.TARGET_REVERIFICATION -> R.drawable.pills_recount
         StepState.VIAL -> R.drawable.vial_capture
         StepState.CONTAINER_PENDING -> R.drawable.count_pills_container
+        StepState.RX_LABEL -> TODO()
     }
 }
 
@@ -30,5 +32,7 @@ fun StepState.titleRes(): Int {
         StepState.TARGET_REVERIFICATION -> R.string.recount_prescribed_quantity
         StepState.VIAL -> R.string.capture_photo_of_counted_pills_vial
         StepState.CONTAINER_PENDING -> R.string.count_pills_from_the_container
+        StepState.RX_LABEL -> R.string.scan_rx_label
+
     }
 }

@@ -104,7 +104,6 @@ class CountsViewModel @Inject constructor(
         }
     }
 
-
     private fun toggleSelectAllRegularTxn() {
         _regularUiState.update { state ->
             val allItems = state.regularCounts
@@ -116,8 +115,6 @@ class CountsViewModel @Inject constructor(
         }
     }
 
-
-
     private fun toggleSelectAllFixedTxn() {
         _fixedUiState.update { state ->
             val allItems = state.fixedCounts
@@ -128,7 +125,6 @@ class CountsViewModel @Inject constructor(
             )
         }
     }
-
 
     private fun forceCompleteTransaction(item: CountItem) {
         viewModelScope.launch {
@@ -154,7 +150,7 @@ class CountsViewModel @Inject constructor(
     private fun resumeTransaction(countType: CountType, item: CountItem) {
         viewModelScope.launch {
             preferenceHelper.saveTxnId(item.id)
-            if (item.isComingFromHL7 && !item.isNdcVerified) {
+            if (!item.isNdcVerified) {
                 _navigationEvent.send(
                     NavigationEvent.NavigateToScanBarcode(
                         countType = countType

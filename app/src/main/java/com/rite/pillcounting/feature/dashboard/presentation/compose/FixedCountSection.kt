@@ -33,6 +33,7 @@ import com.rite.pillcounting.core.utils.common.navigateSafely
 import com.rite.pillcounting.core.utils.compose.bounceClick
 import com.rite.pillcounting.core.utils.constants.Dimens.extraLarge
 import com.rite.pillcounting.core.utils.constants.Dimens.small
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.ui.theme.AppTheme
 
@@ -148,5 +149,5 @@ fun FixedCountSection(
 }
 
 fun navigateToBarcodeScanFixedCount(navController: NavController) {
-    navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString()))
+    navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),ScanType.RX_LABEL))
 }

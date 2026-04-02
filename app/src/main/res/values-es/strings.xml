@@ -194,5 +194,10 @@
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
 
+    <!--    label scanned -->
+    <string name="proceed">PROCEED</string>
+    <string name="scan_rx_label">Scan Rx Label</string>
+    <string name="scan_correct_label">Scan Correct Label</string>
+
 
 </resources>

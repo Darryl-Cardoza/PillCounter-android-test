@@ -114,7 +114,9 @@ fun PillScanningScreen(
         TargetPillsCountDialog(
             onDismiss = {
                 viewModel.setTargetCountDialogShown(false)
-                navController.popBackStack()
+                navController.navigate(Screen.Dashboard.route) {
+                    popUpTo(Screen.Dashboard.route) { inclusive = true }
+                }
             },
             onOkay = { count ->
                 viewModel.updateTargetCount(count)

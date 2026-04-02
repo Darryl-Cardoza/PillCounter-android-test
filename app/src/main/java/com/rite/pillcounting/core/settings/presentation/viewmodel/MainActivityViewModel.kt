@@ -309,6 +309,7 @@ class MainActivityViewModel @Inject constructor(
         val dto = setting.data?.hl7Config
         val nsdDiscoverType = dto?.pmsHostName ?: ""
         val nsdBroadCastType = dto?.pillCounterHostName ?: ""
+        preferenceHelper.saveBarcodeRegex(dto?.barcodeFormat ?: "")
         _uiState.update {
             it.copy(
                 nsdBroadcastType = nsdBroadCastType,

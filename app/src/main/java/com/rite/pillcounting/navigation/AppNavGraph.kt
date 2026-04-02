@@ -8,6 +8,7 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.navDeepLink
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.barcodeScan.presentation.ScanBarCodeScreen
 import com.rite.pillcounting.feature.countResume.presentation.FixedCountResumeScreen
 import com.rite.pillcounting.feature.countResume.presentation.RegularCountResumeScreen
@@ -52,7 +53,15 @@ fun AppNavGraph(
             )
         ) { backStackEntry ->
             val scanType = backStackEntry.arguments?.getString(Screen.ScanBarcode.ARG_TYPE) ?: ""
-            ScanBarCodeScreen(navController, scanType)
+            val txnScanType = runCatching {
+                ScanType.valueOf(
+                    backStackEntry.arguments?.getString(Screen.ScanBarcode.TXN_SCAN_TYPE).orEmpty()
+                )
+            }.getOrElse {
+                ScanType.BARCODE
+            }
+
+            ScanBarCodeScreen(navController, scanType, txnScanType)
         }
 
         composable(

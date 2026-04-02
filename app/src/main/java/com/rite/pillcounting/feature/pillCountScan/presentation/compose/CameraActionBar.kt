@@ -19,6 +19,8 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -27,14 +29,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.PillScanningViewModel
 
 @Composable
 fun CameraActionBar(
     onRedo: () -> Unit,
     onCapture: () -> Unit,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    viewModel: PillScanningViewModel
 ) {
-
     val configuration = LocalConfiguration.current
     val isLandscape =
         configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -49,7 +52,7 @@ fun CameraActionBar(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            ActionButtons(onRedo, onCapture, onDone)
+            ActionButtons(onRedo, onCapture, onDone,viewModel)
 
         }
 
@@ -63,7 +66,7 @@ fun CameraActionBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
 
-            ActionButtons(onRedo, onCapture, onDone)
+            ActionButtons(onRedo, onCapture, onDone,viewModel)
 
         }
     }
@@ -73,9 +76,10 @@ fun CameraActionBar(
 private fun ActionButtons(
     onRedo: () -> Unit,
     onCapture: () -> Unit,
-    onDone: () -> Unit
+    onDone: () -> Unit,
+    viewModel: PillScanningViewModel
 ) {
-
+    val capturedBitmap    by viewModel.capturedBitmap.collectAsState()
     // REDO
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -101,7 +105,11 @@ private fun ActionButtons(
         modifier = Modifier
             .size(72.dp)
             .background(Color.Cyan, CircleShape)
-            .clickable { onCapture() },
+            .clickable(
+                enabled = capturedBitmap == null
+            ) {
+                onCapture()
+            },
         contentAlignment = Alignment.Center
     ) {
         Icon(

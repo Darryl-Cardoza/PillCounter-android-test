@@ -187,7 +187,8 @@ fun CountModePortrait(
 
             onDone = {
                 viewModel.saveCaptureImage()
-            }
+            },
+            viewModel=viewModel
         )
     }
 }

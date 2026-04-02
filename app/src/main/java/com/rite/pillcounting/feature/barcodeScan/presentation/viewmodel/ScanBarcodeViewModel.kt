@@ -2,7 +2,6 @@ package com.rite.pillcounting.feature.barcodeScan.presentation.viewmodel
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
@@ -21,6 +20,7 @@ import com.rite.pillcounting.feature.barcodeScan.domain.data.ScanBarcodeEvent
 import com.rite.pillcounting.feature.barcodeScan.domain.model.DrugInfo
 import com.rite.pillcounting.feature.barcodeScan.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.feature.barcodeScan.domain.model.ScanBarcodeUiState
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.barcodeScan.presentation.analyzer.BarcodeAnalyzer
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.channels.Channel
@@ -30,6 +30,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import parseScanData
 import javax.inject.Inject
 
 /**
@@ -86,6 +87,13 @@ class ScanBarcodeViewModel @Inject constructor(
 
     val isSoundEnabled: StateFlow<Boolean> = _isSoundOverride.asStateFlow()
 
+    private val _txnScanType = MutableStateFlow(ScanType.RX_LABEL)
+    val txnScanType: StateFlow<ScanType> = _txnScanType
+
+    fun setScanType(type: ScanType) {
+        _txnScanType.value = type
+    }
+
     init {
         val scanType = savedStateHandle.get<String>(ARG_TYPE) ?: ""
         _uiState.update { it.copy(scanType = scanType) }
@@ -101,16 +109,24 @@ class ScanBarcodeViewModel @Inject constructor(
     fun onEvent(event: ScanBarcodeEvent) {
         logger.d("Received event: ${event::class.java.simpleName}")
         when (event) {
-            is ScanBarcodeEvent.BarcodeScanned -> processBarcode(
+            /*is ScanBarcodeEvent.BarcodeScanned -> processBarcode(
+                gtin14 = event.gtin14,
+                imagePath = event.imagePath,
+                expiry = event.expiry,
+                lotNo = event.lotNo
+            )*/
+
+            is ScanBarcodeEvent.ScannerError -> handleScannerError(event.exception)
+            is ScanBarcodeEvent.StartCount -> handleStartCount()
+            ScanBarcodeEvent.RedoScan -> handleRedoScan()
+            is ScanBarcodeEvent.ScanBarcode -> handleScanData(
                 gtin14 = event.gtin14,
                 imagePath = event.imagePath,
                 expiry = event.expiry,
                 lotNo = event.lotNo
             )
 
-            is ScanBarcodeEvent.ScannerError -> handleScannerError(event.exception)
-            is ScanBarcodeEvent.StartCount -> handleStartCount()
-            ScanBarcodeEvent.RedoScan -> handleRedoScan()
+            is ScanBarcodeEvent.CreateTxn -> createTxn()
         }
     }
 
@@ -147,7 +163,7 @@ class ScanBarcodeViewModel @Inject constructor(
      *
      * @param gtin14 Raw string value from the scanned barcode.
      */
-    private fun processBarcode(gtin14: String, imagePath: String, expiry: String, lotNo: String) {
+    /*private fun processBarcode(gtin14: String, imagePath: String, expiry: String, lotNo: String) {
         if (uiState.value.isLoading) return
         _uiState.update { it.copy(isLoading = true, error = null) }
 
@@ -196,18 +212,187 @@ class ScanBarcodeViewModel @Inject constructor(
                 }
             }
         }
-    }
+    }*/
+
+    private fun handleScanData(gtin14: String, imagePath: String, expiry: String, lotNo: String) {
+        if (uiState.value.isLoading) return
+        _uiState.update { it.copy(isLoading = true, error = null) }
+
+        viewModelScope.launch {
+            try {
+                val expectedHl7Ndc = uiState.value.hl7ExpectedNdc
+
+                val parsedNdc: String?
+                val qty: String?
+                val rxNo: String?
+
+                if (_txnScanType.value == ScanType.RX_LABEL) {
+                    val result = parseScanData(
+                        preferenceHelper.getBarcodeRegex().toString(),
+                        gtin14
+                    )
+                    parsedNdc = result.ndcNo
+                    qty = result.qty
+                    rxNo = result.rxNo
+                } else {
+                    // BARCODE → no parsing
+                    parsedNdc = gtin14
+                    qty = null
+                    rxNo = null
+                }
+
+                if (_txnScanType.value == ScanType.BARCODE && gtin14.contains(
+                        "RX",
+                        ignoreCase = true
+                    )
+                ) {
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            showInvalidScanDialog = true
+                        )
+                    }
+                    return@launch
+                } else if (_txnScanType.value == ScanType.RX_LABEL) {
+
+                    val isValid = !parsedNdc.isNullOrBlank() &&
+                            !qty.isNullOrBlank() &&
+                            !rxNo.isNullOrBlank()
+
+                    if (!isValid) {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                showInvalidScanDialog = true
+                            )
+                        }
+                        return@launch
+                    }
+                }
+
+                val scannedLookupValue = if (_txnScanType.value == ScanType.RX_LABEL) {
+                    parsedNdc.orEmpty()
+                } else {
+                    gtin14
+                }
+
+                if (scannedLookupValue.isBlank()) {
+                    logger.w("Scanned lookup value is blank. scanType=${_txnScanType.value}")
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            showNdcNotFoundDialog = true
+                        )
+                    }
+                    return@launch
+                }
+
+                logger.i(
+                    "ScanType=${_txnScanType.value}, expectedHl7Ndc='$expectedHl7Ndc', scannedLookupValue='$scannedLookupValue'"
+                )
+
+                // Local search:
+                // - if HL7 expected NDC exists, search local using expected HL7 NDC
+                // - else search local using scanned value
+                val drug = if (expectedHl7Ndc.isNullOrEmpty()) {
+
+                    logger.w("No expected HL7 NDC, using scanned value for local lookup.")
+                    drugMasterDao.getDrugByNdc(scannedLookupValue)
+
+                } else {
+
+                    logger.i("Expected HL7 NDC: '$expectedHl7Ndc', Scanned: '$scannedLookupValue'")
+
+                    if (expectedHl7Ndc == scannedLookupValue) {
+                        logger.i("NDC matched → checking local DB")
+                        drugMasterDao.getDrugByNdc(expectedHl7Ndc)
+                    } else {
+                        logger.w("NDC mismatch → skipping local, will fetch from server")
+                        null
+                    }
+                }
 
 
-    fun resumeScanning() {
-        _uiState.update {
-            it.copy(
-                isLoading = false,
-                showNdcNotFoundDialog = false
-            )
+                if (drug != null) {
+                    logger.i("Drug exists locally: ${drug.drugName}")
+
+                    val isEquivalent = drug.equivalence.equals("true", ignoreCase = true)
+
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            drugName = drug.drugName ?: "Unknown Drug",
+                            ndc = drug.ndc ?: "",
+                            barcodeImagePath = imagePath,
+                            isScannerActive = false,
+                            expiry = expiry,
+                            lotNo = lotNo,
+                            showNdcEquivalenceDialog = isEquivalent,
+                            rxNo = rxNo ?: "",
+                            qty = qty ?: "",
+                            showScanSuccessfullyDialog = !isEquivalent
+                        )
+                    }
+                } else {
+                    logger.i("Drug not found locally. Fetching from server.")
+
+                    val request = GetNdcRequestModel(
+                        target_ndc = expectedHl7Ndc ?: "",
+                        scanned_ndc = scannedLookupValue
+                    )
+
+                    val drugInfo = drugRepository.getDrugInfoByNdc(request)
+
+                    if (drugInfo != null) {
+                        _drugInfo.value = drugInfo
+
+                        val displayName =
+                            drugInfo.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug"
+
+                        drugMasterDao.upsertPreservingId(
+                            DrugMasterEntity(
+                                ndc = drugInfo.ndc,
+                                drugName = displayName,
+                                drugType = drugInfo.drugType,
+                                equivalence = drugInfo.is_ndc_equivalent.toString()
+                            )
+                        )
+
+                        _uiState.update {
+                            val isEquivalent = drugInfo.is_ndc_equivalent == true
+
+                            it.copy(
+                                isLoading = false,
+                                drugName = displayName,
+                                ndc = drugInfo.ndc,
+                                barcodeImagePath = imagePath,
+                                isScannerActive = false,
+                                expiry = expiry,
+                                lotNo = lotNo,
+                                rxNo = rxNo ?: "",
+                                qty = qty ?: "",
+                                showNdcEquivalenceDialog = isEquivalent,
+                                showScanSuccessfullyDialog = !isEquivalent
+                            )
+                        }
+                    } else {
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                showNdcNotFoundDialog = true
+                            )
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to find drug information.",
+                    )
+                }
+            }
         }
-
-        analyzer.resume()
     }
 
 
@@ -230,11 +415,12 @@ class ScanBarcodeViewModel @Inject constructor(
     }
 
     fun hideNdcNotMatchedDialog() {
-        onEvent(ScanBarcodeEvent.RedoScan)
+        analyzer.resume()
         _uiState.update {
             it.copy(
                 showNdcEquivalenceDialog = false,
-                showNdcNotFoundDialog = false
+                showNdcNotFoundDialog = false,
+                showInvalidScanDialog = false
             )
         }
     }
@@ -248,6 +434,68 @@ class ScanBarcodeViewModel @Inject constructor(
      * - Emits a navigation event to proceed to pill count screen.
      */
     private fun handleStartCount() {
+
+        val currentNdc = uiState.value.ndc
+        if (currentNdc.isBlank()) return
+
+        viewModelScope.launch {
+
+            val txnId = preferenceHelper.getTxnId()
+            if (txnId.toString() == "0") {
+                val drugId = drugMasterDao.upsertPreservingId(
+                    DrugMasterEntity(
+                        ndc = currentNdc,
+                        drugName = uiState.value.drugName
+                    )
+                )
+                val qtyInt = uiState.value.qty?.toIntOrNull() ?: 0
+                val txn = PillCountTxnEntity(
+                    localId = preferenceHelper.getLocalId(),
+                    drugId = drugId,
+                    countType = CountType.valueOf(uiState.value.scanType),
+                    status = CountStatus.PARTIAL,
+                    expiry = uiState.value.expiry,
+                    lotNo = uiState.value.lotNo,
+                    barcodeImage = uiState.value.barcodeImagePath,
+                    isNdcVerified = true,
+                    targetCount = qtyInt
+                )
+
+                val newTxnId = pillCountTxnDao.upsertPreservingId(txn)
+                preferenceHelper.saveTxnId(newTxnId)
+            } else {
+                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                val drugId = drugMasterDao.upsertPreservingId(
+                    DrugMasterEntity(
+                        ndc = currentNdc,
+                        drugName = uiState.value.drugName
+                    )
+                )
+                pillCountTxnDao.update(
+                    txn.copy(
+                        countType = CountType.valueOf(uiState.value.scanType),
+                        status = CountStatus.PARTIAL,
+                        expiry = uiState.value.expiry,
+                        barcodeImage = uiState.value.barcodeImagePath,
+                        isNdcVerified = true,
+                        drugId = drugId
+                    )
+                )
+                logger.i("HL7 txn updated with scan data txnId=$txnId")
+
+            }
+            if (_txnScanType.value == ScanType.BARCODE) {
+                _navigationEvent.send(
+                    NavigationEvent.NavigateToPillCount(
+                        ndc = currentNdc,
+                        type = uiState.value.scanType
+                    )
+                )
+            }
+        }
+    }
+
+    private fun createTxn() {
 
         _uiState.update {
             it.copy(
@@ -268,7 +516,7 @@ class ScanBarcodeViewModel @Inject constructor(
                         drugName = uiState.value.drugName
                     )
                 )
-
+                val qtyInt = uiState.value.qty?.toIntOrNull() ?: 0
                 val txn = PillCountTxnEntity(
                     localId = preferenceHelper.getLocalId(),
                     drugId = drugId,
@@ -277,44 +525,24 @@ class ScanBarcodeViewModel @Inject constructor(
                     expiry = uiState.value.expiry,
                     lotNo = uiState.value.lotNo,
                     barcodeImage = uiState.value.barcodeImagePath,
-                    isNdcVerified = true
+                    isNdcVerified = false,
+                    targetCount = qtyInt
                 )
 
                 val newTxnId = pillCountTxnDao.upsertPreservingId(txn)
                 preferenceHelper.saveTxnId(newTxnId)
-            } else {
-                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
-                val isReceivedFromHL7 = txn.isComingFromHL7
-                if (isReceivedFromHL7 == true) {
-                    val drugInfo = drugInfo.value
-                    val drugId = drugMasterDao.upsertPreservingId(
-                        DrugMasterEntity(
-                            ndc = drugInfo?.ndc ?: "N/A",
-                            drugName = drugInfo?.genericName,
-                            equivalence = drugInfo?.is_ndc_equivalent.toString(),
-                            drugType = drugInfo?.drugType
-                        )
-                    )
-                    pillCountTxnDao.update(
-                        txn.copy(
-                            countType = CountType.valueOf(uiState.value.scanType),
-                            status = CountStatus.PARTIAL,
-                            expiry = uiState.value.expiry,
-                            barcodeImage = uiState.value.barcodeImagePath,
-                            isNdcVerified = true,
-                            drugId = drugId
-                        )
-                    )
-                    logger.i("HL7 txn updated with scan data txnId=$txnId")
-                }
             }
-
-            _navigationEvent.send(
-                NavigationEvent.NavigateToPillCount(
-                    ndc = currentNdc,
-                    type = uiState.value.scanType
+            if (_txnScanType.value == ScanType.BARCODE) {
+                _navigationEvent.send(
+                    NavigationEvent.NavigateToPillCount(
+                        ndc = currentNdc,
+                        type = uiState.value.scanType
+                    )
                 )
-            )
+            }
+            if (_txnScanType.value == ScanType.RX_LABEL) {
+                setScanType(ScanType.BARCODE)
+            }
         }
     }
 
@@ -329,26 +557,29 @@ class ScanBarcodeViewModel @Inject constructor(
         _uiState.update { it.copy(error = "Scanner failed. Please try again.") }
     }
 
-    /**
-     * Add a drug manually (fallback path).
-     *
-     * Used when the drug is not recognized or the barcode fails to resolve.
-     *
-     * @param drugName Human-readable drug name entered manually.
-     * @param ndc National Drug Code string.
-     */
-    fun addManualDrug(drugName: String, ndc: String) {
+
+    fun showSuccessDialog() {
         _uiState.update {
             it.copy(
-                isLoading = false,
-                drugName = drugName,
-                ndc = ndc,
-                isScannerActive = false,
-//                showManualEntry = false,
+                showScanSuccessfullyDialog = true
+            )
+        }
+    }
+
+    fun hideSuccessDialog() {
+        _uiState.update {
+            it.copy(
+                showScanSuccessfullyDialog = false
+            )
+        }
+    }
+
+    fun clearToast() {
+        _uiState.update {
+            it.copy(
                 error = null
             )
         }
-        onEvent(ScanBarcodeEvent.BarcodeScanned(ndc, "", "", ""))
     }
 
     companion object {

@@ -51,7 +51,6 @@ fun CountModeLandscape(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val stepType by viewModel.currentStep.collectAsState()
-
     if (stepType != StepState.VIAL) {
         Column(
             modifier = Modifier
@@ -212,7 +211,8 @@ fun CountModeLandscape(
 
             onDone = {
                 viewModel.saveCaptureImage()
-            }
+            },
+            viewModel=viewModel
         )
 
     }

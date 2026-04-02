@@ -12,17 +12,17 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.feature.barcodeScan.data.DrugRepository
+import com.rite.pillcounting.feature.barcodeScan.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.feature.hl7.core.Hl7MessageSender
 import com.rite.pillcounting.feature.hl7.domain.model.MessageType
 import com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import org.rite.hl7.hl7.domain.model.CompleteHL7Message
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.log
 
 @Singleton
 class Hl7Repository @Inject constructor(
@@ -33,7 +33,8 @@ class Hl7Repository @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
     private val pillCountTxnDao: PillCountTxnDao,
     private val userDao: UserDao,
-    private val hl7MessageSender: Hl7MessageSender
+    private val hl7MessageSender: Hl7MessageSender,
+    private val drugRepository: DrugRepository
 ) {
 
     private val logger = AppLogger.create<Hl7Repository>()
@@ -150,27 +151,51 @@ class Hl7Repository @Inject constructor(
         }
     }
 
-
     private suspend fun handleRdeDispenseRequest(
         message: CompleteHL7Message
     ) {
         val medication = message.medications.first()
 
+        val hl7Ndc = medication.drugCode.trim()
+        val hl7DrugName = medication.drugName
+        val targetCount = medication.requestedQty?.toIntOrNull()
 
-        val ndc = medication.drugCode.trim()
+        // Local-first check
+        val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
 
-        val drugName = medication.drugName
+        val finalDrug = if (localDrug != null) {
+            logger.i("Drug found in local DB for NDC: $hl7Ndc")
+            localDrug
+        } else {
+            logger.i("Drug not found locally for NDC: $hl7Ndc, calling API")
 
-
-        val targetCount =
-            medication.requestedQty?.toIntOrNull()
-
-        val drugId = drugMasterDao.upsertPreservingId(
-            DrugMasterEntity(
-                ndc = ndc,
-                drugName = drugName
+            val request = GetNdcRequestModel(
+                target_ndc = hl7Ndc,
+                scanned_ndc = hl7Ndc
             )
-        )
+
+            val drugInfo = try {
+                drugRepository.getDrugInfoByNdc(request)
+            } catch (e: Exception) {
+                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
+                null
+            }
+
+            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: hl7Ndc
+            val resolvedDrugName =
+                drugInfo?.genericName?.takeIf { it.isNotBlank() } ?: hl7DrugName
+            val resolvedDrugType = drugInfo?.drugType
+            val resolvedEquivalence = drugInfo?.is_ndc_equivalent?.toString()
+
+            DrugMasterEntity(
+                ndc = resolvedNdc,
+                drugName = resolvedDrugName,
+                drugType = resolvedDrugType,
+                equivalence = resolvedEquivalence
+            )
+        }
+
+        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
 
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
@@ -186,7 +211,6 @@ class Hl7Repository @Inject constructor(
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
         preferenceHelper.saveTxnId(txnId)
     }
-
 
     private suspend fun handleInrInventoryRequest(
         message: CompleteHL7Message

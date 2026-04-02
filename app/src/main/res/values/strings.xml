@@ -263,7 +263,7 @@
     <string name="count_pills_from_the_container">Count Pills from the container</string>
     <string name="count_prescribed_pills_quantity">Count prescribed Pills quantity</string>
     <string name="recount_prescribed_quantity">Recount prescribed quantity</string>
-<!--    <string name="count_remaining_pills_in_the_container">Count Pills in the container</string>-->
+    <!--    <string name="count_remaining_pills_in_the_container">Count Pills in the container</string>-->
     <string name="capture_photo_of_counted_pills_vial">Capture photo of counted pills vial</string>
     <string name="are_you_sure_you_want_to_complete_this_step">Are you sure you want to complete this step?</string>
     <string name="confirm_steps_completion">Confirm Steps Completion</string>
@@ -298,5 +298,13 @@
     <string name="subtituted_drug">Substituted Drug</string>
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
+
+    <!--    label scanned -->
+    <string name="label_scanned_successfully">Label Scanned Successfully</string>
+    <string name="rx_number">Rx Number</string>
+    <string name="quantity">Quantity</string>
+    <string name="proceed">PROCEED</string>
+    <string name="scan_rx_label">Scan Rx Label</string>
+    <string name="scan_correct_label">Scan Correct Label</string>
 
 </resources>

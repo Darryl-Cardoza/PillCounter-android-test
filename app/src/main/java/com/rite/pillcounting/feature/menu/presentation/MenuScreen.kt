@@ -32,6 +32,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.constants.Dimens.medium
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
 import com.rite.pillcounting.feature.login.viewmodel.LoginViewModel
@@ -89,7 +90,8 @@ fun MenuScreen(
                 partialTint = MaterialTheme.colorScheme.secondary,
                 completedIcon = R.drawable.tick,
                 partialIcon = R.drawable.partial,
-                mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString())) },
+                mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),
+                    ScanType.RX_LABEL)) },
                 onPartialClick = {
                     if (uiState.fixedPartial > 0)
                         navController.navigate(
@@ -114,7 +116,7 @@ fun MenuScreen(
                 partialTint = MaterialTheme.colorScheme.primary,
                 completedIcon = R.drawable.tick,
                 partialIcon = R.drawable.partial,
-                mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.REGULAR.toString())) },
+                mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.REGULAR.toString(),ScanType.RX_LABEL)) },
                 onPartialClick = {
                     if (uiState.regularPartial > 0)
                         navController.navigate(

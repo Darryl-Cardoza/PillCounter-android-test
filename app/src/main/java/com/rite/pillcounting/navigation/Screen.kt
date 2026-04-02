@@ -3,6 +3,7 @@
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavType
 import androidx.navigation.navArgument
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 
 /**
@@ -100,14 +101,27 @@ sealed interface Screen {
     data object ScanBarcode : Screen {
         private const val ROUTE_PREFIX = "scan_barcode"
         const val ARG_TYPE = "type"
+        const val TXN_SCAN_TYPE = "txn_scan_type"
 
-        override val route: String = "$ROUTE_PREFIX/{$ARG_TYPE}"
+        override val route: String =
+            "$ROUTE_PREFIX/{$ARG_TYPE}?$TXN_SCAN_TYPE={$TXN_SCAN_TYPE}"
 
         val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_TYPE) { type = NavType.StringType }
+            navArgument(ARG_TYPE) {
+                type = NavType.StringType
+            },
+            navArgument(TXN_SCAN_TYPE) {
+                type = NavType.StringType
+                defaultValue = ScanType.BARCODE.name
+            }
         )
 
-        fun createRoute(scanType: String) = "$ROUTE_PREFIX/$scanType"
+        fun createRoute(
+            scanType: String,
+            txnScanType: ScanType
+        ): String {
+            return "$ROUTE_PREFIX/$scanType?$TXN_SCAN_TYPE=${txnScanType.name}"
+        }
     }
 
     data object PillCount : Screen {

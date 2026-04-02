@@ -1,8 +1,8 @@
 package com.rite.pillcounting.feature.hl7.notification
 
 
+import Screen
 import android.Manifest
-import android.R
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -13,11 +13,8 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import androidx.core.os.bundleOf
-import androidx.navigation.NavDeepLinkBuilder
-import androidx.navigation.NavType
-import androidx.navigation.navArgument
 import com.rite.pillcounting.MainActivity
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -52,7 +49,7 @@ class Hl7Notifier @Inject constructor(
         message: String
     ) {
         print("notification show")
-        val route = Screen.ScanBarcode.createRoute("HL7")
+        val route = Screen.ScanBarcode.createRoute("HL7", ScanType.BARCODE)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

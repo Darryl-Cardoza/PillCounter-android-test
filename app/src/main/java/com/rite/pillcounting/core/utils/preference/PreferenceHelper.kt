@@ -80,6 +80,7 @@ private const val KEY_REQUIRE_BACK_COUNT = "key_require_back_count"
 private const val KEY_REQUIRE_DOUBLE_COUNT = "key_require_double_count"
 private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
+private const val KEY_BARCODE_REGEX="key_barcode_regex"
 
 
 @Singleton
@@ -493,6 +494,17 @@ class PreferenceHelper @Inject constructor(
         val enabled = prefs.getBoolean(KEY_SOUND_OVERRIDE, true)
         logger.i("isSoundOverride : $enabled")
         return enabled
+    }
+
+    fun saveBarcodeRegex(barcodeRegex: String) {
+        prefs.edit { putString(KEY_BARCODE_REGEX, barcodeRegex) }
+        logger.i("SaveBarcodeRegex securely (length=${barcodeRegex.length})")
+    }
+
+    fun getBarcodeRegex(): String? {
+        val id = prefs.getString(KEY_BARCODE_REGEX, null)
+        logger.d("getBarcodeRegex retrieved (exists=${id != null}, length=${id?.length ?: 0})")
+        return id
     }
 
 }

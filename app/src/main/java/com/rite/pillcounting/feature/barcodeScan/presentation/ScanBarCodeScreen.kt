@@ -19,8 +19,11 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.rite.pillcounting.core.utils.compose.DialogField
+import com.rite.pillcounting.core.utils.compose.LabelScannedSuccessfullyDialog
 import com.rite.pillcounting.feature.barcodeScan.domain.data.NavigationEvent
 import com.rite.pillcounting.feature.barcodeScan.domain.data.ScanBarcodeEvent
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.barcodeScan.presentation.viewmodel.ScanBarcodeViewModel
 
 /**
@@ -34,7 +37,8 @@ import com.rite.pillcounting.feature.barcodeScan.presentation.viewmodel.ScanBarc
 fun ScanBarCodeScreen(
     navController: NavController,
     scanType: String,
-    viewModel: ScanBarcodeViewModel = hiltViewModel(),
+    txnScanType: ScanType,
+    viewModel: ScanBarcodeViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     // Collect the UI state from the ViewModel in a lifecycle-aware manner.
@@ -48,6 +52,7 @@ fun ScanBarCodeScreen(
         )
     }
 
+    val transactionScanType = viewModel.txnScanType.collectAsState().value
 
     val permissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -64,6 +69,7 @@ fun ScanBarCodeScreen(
     }
 
     LaunchedEffect(Unit) {
+        viewModel.setScanType(txnScanType)
         viewModel.navigationEvent.collect { event ->
             when (event) {
                 is NavigationEvent.NavigateToPillCount -> {
@@ -107,12 +113,72 @@ fun ScanBarCodeScreen(
             confirmText = stringResource(R.string.substitute),
             cancelText = stringResource(R.string.cancel),
             onConfirm = {
-                viewModel.onEvent(ScanBarcodeEvent.StartCount())
+                viewModel.analyzer.pause()
+                viewModel.hideNdcNotMatchedDialog()
+                viewModel.showSuccessDialog()
             },
             onCancel = {
                 viewModel.hideNdcNotMatchedDialog()
             }
         )
+    }
+
+    if(uiState.showInvalidScanDialog){
+        CommonDialog(
+            title = stringResource(R.string.rescan_require),
+            message = stringResource(R.string.scan_correct_label),
+            confirmText = stringResource(R.string.rescane),
+            cancelText = "",
+            onConfirm = {
+                viewModel.hideNdcNotMatchedDialog()
+            },
+            onCancel = {},
+            isSingleButton = true
+        )
+    }
+
+    if (uiState.showScanSuccessfullyDialog) {
+        if (transactionScanType == ScanType.RX_LABEL) {
+            LabelScannedSuccessfullyDialog(
+                fields = listOf(
+                    DialogField(stringResource(R.string.rx_number), uiState.rxNo.toString()),
+                    DialogField(stringResource(R.string.ndc_number), uiState.ndc),
+                    DialogField(stringResource(R.string.drugname), uiState.drugName),
+                    DialogField(stringResource(R.string.quantity), uiState.qty.toString())
+                ),
+
+                title = stringResource(R.string.label_scanned_successfully),
+                onCancel = {
+                    viewModel.analyzer.resume()
+                    viewModel.hideSuccessDialog()
+                },
+                onProceed = {
+                    viewModel.hideSuccessDialog()
+                    viewModel.analyzer.resume()
+                    viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
+
+                }
+            )
+        } else {
+            LabelScannedSuccessfullyDialog(
+                fields = listOf(
+                    DialogField(stringResource(R.string.ndc_number), uiState.ndc),
+                    DialogField(stringResource(R.string.drugname), uiState.drugName),
+                    ),
+
+                title = stringResource(R.string.label_scanned_successfully),
+                onCancel = {
+                    viewModel.analyzer.resume()
+                    viewModel.hideSuccessDialog()
+                },
+                onProceed = {
+                    viewModel.hideSuccessDialog()
+                    viewModel.analyzer.resume()
+                    viewModel.onEvent(ScanBarcodeEvent.StartCount())
+                }
+            )
+        }
+        viewModel.analyzer.pause()
 
     }
 
