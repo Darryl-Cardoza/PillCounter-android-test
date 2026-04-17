@@ -28,12 +28,14 @@
     <string name="send_otp">Send OTP</string>
 
     <!-- ================== DASHBOARD ================== -->
-    <string name="fixed_count">Dispense Count</string>
-    <string name="fixed_count_desc">For counting prescribed quantities</string>
-    <string name="regular_count">Quick Count</string>
-    <string name="regular_count_desc">For day to day counts</string>
+    <string name="dispense">Dispense</string>
+    <string name="tap_to_scan_rx_labels">Tap to scan Rx labels</string>
+    <string name="stock_count">Stock Count</string>
+    <string name="start_a_new_inventory_count">Start a new inventory count</string>
+    <string name="new_rx">New Rx</string>
     <string name="completed">completed</string>
-    <string name="partial">pending</string>
+    <string name="ndc_req">NDC Req.</string>
+    <string name="partial">Partials</string>
     <string name="barcode_scan">Scan Code</string>
 
     <!-- ================== SETTINGS ================== -->
@@ -65,6 +67,7 @@
     <string name="menu_history_duration">3 months</string>
     <string name="no_data_found">No Data Found</string>
     <string name="drug_history_details">Drug History Details</string>
+    <string name="drugs_count">%d drugs</string>
 
     <!-- ================== VALIDATION ERRORS ================== -->
     <string name="error_email_empty">Email cannot be empty.</string>
@@ -298,13 +301,58 @@
     <string name="subtituted_drug">Substituted Drug</string>
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
+    <string name="stock_count_dialog_title">What would you like to do?</string>
+    <string name="stock_count_dialog_option_first">Create a new Batch</string>
+    <string name="stock_count_dialog_option_second">Continue with last Batch count</string>
+    <string name="stock_bottles">Stock Bottles</string>
+    <string name="open_pills">Open Pills</string>
+    <string name="partial_stock_counts">Partial Stock Counts</string>
 
     <!--    label scanned -->
     <string name="label_scanned_successfully">Label Scanned Successfully</string>
+    <string name="select_container_status">Select container status</string>
+    <string name="container_status_sealed">Sealed</string>
+    <string name="container_status_opened">Opened</string>
+    <string name="select_bucket">Select Bucket</string>
+    <string name="cd_dropdown">Dropdown</string>
     <string name="rx_number">Rx Number</string>
     <string name="quantity">Quantity</string>
     <string name="proceed">PROCEED</string>
     <string name="scan_rx_label">Scan Rx Label</string>
     <string name="scan_correct_label">Scan Correct Label</string>
+    <string name="inventory_batch_details">Inventory Batch Details</string>
+    <string name="totalNdcCount">Total Ndc Count</string>
+    <string name="total_quantity">Total Quantity</string>
+
+<!--    StockCount-->
+    <string name="scan_stock_bottle">Scan Stock Bottle</string>
+    <string name="scan_open_pills">Scan Open Pills</string>
+
+
+<!--    partial count screen -->
+    <string name="no_results_found">No results found</string>
+    <string name="no_partial_counts">No partial counts available</string>
+    <string name="confirm_delete_batches">Delete selected batch(es)? This action cannot be undone.</string>
+    <string name="confirmation">Confirmation</string>
+    <string name="are_you_sure_you_want_to_end_this_count">Are you sure you want to end this Count?</string>
+    <string name="no_items_in_that_batch_yet">No items in this batch yet</string>
+    <string name="end_this_batch_it_will_be_mark_as_completed">End this batch? It will be marked as complete.</string>
+    <string name="end_batch">End Batch</string>
+    <string name="no_qty_added_title">No Quantity Added</string>
+    <string name="no_qty_added_message">Please add at least one item quantity before ending the batch.</string>
+    <string name="sealed_bottles">Sealed Bottles</string>
+    <string name="opend_bottles">Opened Bottles</string>
+    <string name="end_count">END COUNT</string>
+    <string name="plus_add">+ ADD</string>
+    <string name="incorrect_ndc">Incorrect NDC</string>
+    <string name="you_have_scan_incorrect_ndc_this_item_does_not_match_the_pms_batch">You have scanned an incorrect NDC. This item does not match the PMS batch.</string>
+    <string name="bucket">Bucket</string>
+    <string name="batch">Batch</string>
+    <string name="no_last_batch_available">No last batch available</string>
+
+<!--count Section-->
+    <string name="toggle_with_count">%1$s (%2$d)</string>
+    <string name="dispensed">Dispensed</string>
+    <string name="stock">Stock</string>
 
 </resources>

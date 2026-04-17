@@ -83,7 +83,7 @@ class PillScanningViewModel @Inject constructor(
     private var isAnalyzingFrame = false
     private var isPaused = false
     private var idleJob: Job? = null
-    private val idleTimeout = 30_000L
+    private val idleTimeout = 60_000L
 
     private val _uiState = MutableStateFlow(PillScanningUiState())
     val uiState: StateFlow<PillScanningUiState> = _uiState.asStateFlow()
@@ -141,6 +141,7 @@ class PillScanningViewModel @Inject constructor(
     val trayDetections: StateFlow<List<TrayDetection>> = _trayDetections.asStateFlow()
 
     private var observeTxnDetailsJob: Job? = null
+    private var stockCountBaseTotal: Int = -1
 
     private val _isSoundOverride = MutableStateFlow(preferenceHelper.isSoundOverride())
     val isSoundEnabled: StateFlow<Boolean> = _isSoundOverride.asStateFlow()
@@ -187,8 +188,19 @@ class PillScanningViewModel @Inject constructor(
                         )
                     }
 
+                    val currentSum = history.sumOf { it.count }
+                    val isStockCount = _txnInfo.value?.countType == CountType.REGULAR
+                    if (isStockCount && stockCountBaseTotal == -1) {
+                        stockCountBaseTotal = currentSum
+                    }
+                    val sessionTotal = if (isStockCount) {
+                        maxOf(0, currentSum - stockCountBaseTotal)
+                    } else {
+                        currentSum
+                    }
+
                     _uiState.update { state ->
-                        state.copy(txnDetailHistory = history)
+                        state.copy(txnDetailHistory = history, stockCountSessionTotal = sessionTotal)
                     }
 
                     if (step == StepState.CONTAINER_PENDING) {
@@ -314,7 +326,7 @@ class PillScanningViewModel @Inject constructor(
     ) {
         _uiState.update {
             it.copy(
-                detectedPills = pills, imageFrameWidth = frameWidth, imageFrameHeight = frameHeight
+                detectedPills = pills, imageFrameWidth = frameWidth, imageFrameHeight = frameHeight,
             )
         }
     }
@@ -322,7 +334,7 @@ class PillScanningViewModel @Inject constructor(
     private fun pauseAndClearBuffers() {
         _lastTenDetections.value.clear()
         lastDetectedSnapshot = emptyList()
-        _uiState.update { it.copy(showIdleOverlay = true, detectedPills = emptyList()) }
+        _uiState.update { it.copy(showIdleOverlay = true) }
         _trayDetections.value = emptyList()
         isPaused = true
         _cameraPaused.value = true
@@ -446,7 +458,8 @@ class PillScanningViewModel @Inject constructor(
                         getApplication(),
                         bitmap,
                         "txn_detail_${System.currentTimeMillis()}.jpg",
-                        "transaction_details"
+                        "transaction_details",
+                        grayscale = true
                     )
                 } else null
             } catch (e: Exception) {
@@ -566,7 +579,8 @@ class PillScanningViewModel @Inject constructor(
                         getApplication(),
                         overlayBitmap,
                         "txn_detail_${System.currentTimeMillis()}.jpg",
-                        "transaction_details"
+                        "transaction_details",
+                        grayscale = true
                     )
                 } else null
             } catch (e: Exception) {
@@ -585,6 +599,10 @@ class PillScanningViewModel @Inject constructor(
                 )
             )
 
+            if (txn?.countType == CountType.REGULAR) {
+                pillCountTxnDao.incrementLooseQty(txnId, currentCount)
+            }
+
             if (!workingBitmap.isRecycled) workingBitmap.recycle()
             observeTxnDetailsForTxn(stepType)
             currentFrameBitmap = null
@@ -599,7 +617,20 @@ class PillScanningViewModel @Inject constructor(
         logger.i("Rescan triggered.")
     }
 
+    fun showEndStockCountDialog(){
+        _uiState.update {
+            it.copy(showEndStockCountDialog = true)
+        }
+    }
+
     private fun handleConfirmDialog(event: PillScanningEvent.FinalDone) {
+        if (_txnInfo.value?.countType == CountType.REGULAR) {
+            _uiState.update {
+                it.copy(showEndStockCountDialog = true)
+            }
+            return
+        }
+
         when (event.stepType) {
             StepState.CONTAINER_INITIATE -> {
                 val target = _txnInfo.value?.targetCount ?: return
@@ -655,6 +686,7 @@ class PillScanningViewModel @Inject constructor(
     fun handleDismissDialog() {
         _uiState.update { it.copy(showDialogForControl = false) }
         _uiState.update { it.copy(showCountMismatchDialog = false) }
+        _uiState.update { it.copy(showEndStockCountDialog = false) }
     }
 
     private fun handleDone() {
@@ -663,6 +695,12 @@ class PillScanningViewModel @Inject constructor(
             val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
             if (total == 0) {
                 _uiState.update { it.copy(showNoTransaction = true) }
+                return@launch
+            }
+            if (txnInfo.value?.countType == CountType.REGULAR) {
+                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                pillCountTxnDao.updateTxnStatus(txnId, CountStatus.COMPLETED)
+                _navigationEvent.send(NavigationEvent.NavigateToBatch(txn.batchId ?: 0))
                 return@launch
             }
             val remainingCount =
@@ -726,6 +764,7 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun handleDeleteAllTransactionDetails(event: PillScanningEvent.AllTransactionDetailsDeleted) {
+        stockCountBaseTotal = -1
         viewModelScope.launch {
             pillCountTxnDetailsDao.softDeleteAllTransaction(
                 preferenceHelper.getTxnId(), type = event.stepType
@@ -772,7 +811,7 @@ class PillScanningViewModel @Inject constructor(
                 it.copy(
                     drugName = txnInfo?.drugName.orEmpty(),
                     targetCount = txnInfo?.targetCount ?: 0,
-                    showTargetCountDialog = shouldShowDialog
+                    showTargetCountDialog = shouldShowDialog,
                 )
             }
             logger.d("Txn info loaded. Drug=${txnInfo?.drugName}, Target=${txnInfo?.targetCount}")
@@ -826,10 +865,10 @@ class PillScanningViewModel @Inject constructor(
 
             val latestStep = pillCountTxnDetailsDao.getLatestType(preferenceHelper.getTxnId())
 
-            val resolvedStep = if (_isTxnFromHl7.value) {
-                latestStep ?: StepState.CONTAINER_INITIATE
-            } else {
+            val resolvedStep = if (drugInfo?.drugType.equals("null", true)) {
                 latestStep ?: StepState.TARGET_VERIFICATION
+            } else {
+                latestStep ?: StepState.CONTAINER_INITIATE
             }
 
             _currentStep.value = resolvedStep
@@ -905,15 +944,11 @@ class PillScanningViewModel @Inject constructor(
         isFromHl7: Boolean, simpleFlow: Boolean, drugType: String, countType: CountType?
     ): List<StepState> {
 
-        if (!isFromHl7 && countType?.equals(CountType.FIXED) == true) {
-            return listOf(StepState.SCAN, StepState.TARGET_VERIFICATION, StepState.VIAL)
-        }
-
-        if (!isFromHl7 && countType?.equals(CountType.REGULAR) == true) {
+        if (countType?.equals(CountType.REGULAR) == true) {
             return listOf(StepState.SCAN, StepState.TARGET_VERIFICATION)
         }
 
-        if (isFromHl7 && simpleFlow) {
+        if (countType?.equals(CountType.FIXED) == true && simpleFlow && drugType.equals("null",true)) {
             return listOf(StepState.SCAN, StepState.TARGET_VERIFICATION, StepState.VIAL)
         }
 

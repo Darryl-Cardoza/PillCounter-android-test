@@ -20,6 +20,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.MenuButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.PmsConnectionIcon
@@ -93,6 +95,19 @@ fun DashboardScreen(
         }
     }
 
+    LaunchedEffect(uiState.createdBatchId) {
+        uiState.createdBatchId?.let { batchId ->
+            navController.navigate(
+                Screen.ScanBarcode.createRoute(
+                    txnScanType = ScanType.STOCK_COUNT,
+                    scanType = CountType.REGULAR.toString(),
+                    batchId = batchId
+                )
+            )
+            viewModel.clearCreatedBatchId()
+        }
+    }
+
     Box(
         modifier = Modifier
             .systemBarsPadding()
@@ -100,13 +115,12 @@ fun DashboardScreen(
     ) {
 
         // Show loading indicator if user details are being fetched
-        if(viewModel.isHl7Enabled()) {
+        if (viewModel.isHl7Enabled()) {
             PmsConnectionIcon(
                 modifier = Modifier.align(Alignment.TopStart),
                 isPmsConnected = connected,
             )
         }
-
 
         SplitResponsive(
             topOrLeft = {
@@ -114,7 +128,7 @@ fun DashboardScreen(
                     completedFixedCount = uiState.completedFixedCount,
                     partialFixedCount = uiState.partialFixedCount,
                     navController = navController,
-                    onNavigate = {viewModel.saveTxnId()}
+                    onNavigate = { viewModel.saveTxnId() }
                 )
             },
             bottomOrRight = {
@@ -122,11 +136,11 @@ fun DashboardScreen(
                     completedRegularCount = uiState.completedRegularCount,
                     partialRegularCount = uiState.partialRegularCount,
                     navController = navController,
-                    onNavigate = {viewModel.saveTxnId()}
+                    onNavigate = { viewModel.saveTxnId() },
+                    viewModel = viewModel
                 )
             }
         )
-
 
         // Global navigation menu button (top-right aligned)
         MenuButton(

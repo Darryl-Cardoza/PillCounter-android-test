@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.dashboard.presentation.compose
 
 import Screen
+import android.widget.Toast
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -13,29 +14,37 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.common.navigateSafely
+import com.rite.pillcounting.core.utils.compose.StockIcon
 import com.rite.pillcounting.core.utils.compose.bounceClick
 import com.rite.pillcounting.core.utils.constants.Dimens.extraLarge
 import com.rite.pillcounting.core.utils.constants.Dimens.small
-import com.rite.pillcounting.core.room.models.enums.ScanType
+import com.rite.pillcounting.feature.dashboard.presentation.viewmodel.DashboardViewModel
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.ui.theme.AppTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Dashboard section for displaying the "Regular Count" workflow.
@@ -54,13 +63,19 @@ fun RegularCountSection(
     completedRegularCount: String,
     partialRegularCount: String,
     navController: NavController,
-    onNavigate: () -> Unit
+    onNavigate: () -> Unit,
+    viewModel: DashboardViewModel
 ) {
+    var showCreateBatchDialog by remember { mutableStateOf(false) }
+    var showBucketSelectDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .bounceClick {
-                navigateToBarcodeScanRegularCount(navController)
+                showCreateBatchDialog = true
                 onNavigate()
             },
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -72,19 +87,18 @@ fun RegularCountSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Regular count icon (click → ScanBarcode)
-            Icon(
-                painter = painterResource(id = R.drawable.regular_count),
-                contentDescription = stringResource(R.string.regular_count),
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .size(responsiveDp(120.dp))
+            StockIcon(
+                innerColor = MaterialTheme.colorScheme.secondary,
+                outerCircleColor = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(responsiveDp(120.dp)),
+                contentDescription = stringResource(R.string.stock_count)
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
             // Regular Count title (click → ScanBarcode)
             Text(
-                text = stringResource(R.string.regular_count),
+                text = stringResource(R.string.stock_count),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Normal,
                 color = MaterialTheme.colorScheme.primary,
@@ -94,7 +108,7 @@ fun RegularCountSection(
 
             // Description label (click → ScanBarcode)
             Text(
-                text = stringResource(R.string.regular_count_desc),
+                text = stringResource(R.string.start_a_new_inventory_count),
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppTheme.extendedColors.textColor,
             )
@@ -125,7 +139,7 @@ fun RegularCountSection(
                     text = "$completedRegularCount ${stringResource(R.string.completed)}",
                     backgroundColor = Color.Transparent,
                     textColor = AppTheme.extendedColors.textColor,
-                    iconRes = R.drawable.tick,
+                    iconRes = R.drawable.complete,
                     iconTint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -137,16 +151,15 @@ fun RegularCountSection(
                     interactionSource = remember { MutableInteractionSource() }
                 ) {
                     navController.navigateSafely(
-                        Screen.ResumeRegularCounts.createRoute(CountType.REGULAR.toString())
+                        Screen.PartialCountsScreen.route
                     )
-
                 }
             ) {
                 StatusChip(
                     text = "$partialRegularCount ${stringResource(R.string.partial)}",
                     backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnPrimary,
                     textColor = AppTheme.extendedColors.textColor,
-                    iconRes = R.drawable.partial,
+                    iconRes = R.drawable.prescription_icon,
                     iconTint = MaterialTheme.colorScheme.primary
                 )
             }
@@ -154,8 +167,68 @@ fun RegularCountSection(
 
         Spacer(modifier = Modifier.height(10.dp))
     }
-}
 
-fun navigateToBarcodeScanRegularCount(navController: NavController) {
-    navController.navigate(Screen.ScanBarcode.createRoute(CountType.REGULAR.toString(),ScanType.RX_LABEL))
+    if (showCreateBatchDialog) {
+        val options = listOf(
+            stringResource(R.string.stock_count_dialog_option_first),
+            stringResource(R.string.stock_count_dialog_option_second),
+        )
+
+        val noLastBatchMessage = stringResource(R.string.no_last_batch_available)
+
+        CommonSingleSelectDialog(
+            title = stringResource(R.string.stock_count_dialog_title),
+            options = options,
+            selectedIndex = 0,
+            onCancel = { showCreateBatchDialog = false },
+            onOk = { index ->
+
+                when (index) {
+                    0 -> {
+                        showBucketSelectDialog = true
+                    }
+
+                    1 -> {
+                        scope.launch {
+                            val batch = withContext(Dispatchers.IO) {
+                                viewModel.getLastInProgressBatch()
+                            }
+                            if (batch != null) {
+                                navController.navigate(Screen.Batch.createRoute(batch.batchId))
+                            } else {
+                                showToast(
+                                    context = context,
+                                    message = noLastBatchMessage,
+                                    duration = Toast.LENGTH_SHORT
+                                )
+                            }
+                        }
+                    }
+                }
+
+                showCreateBatchDialog = false
+            },
+            distanceBetweenOptions = 2.dp
+        )
+    }
+
+    if (showBucketSelectDialog) {
+        val bucketList = viewModel.getBucketList()
+
+        val defaultIndex = bucketList.indices.firstOrNull() ?: -1
+
+        CommonSingleSelectDialog(
+            title = stringResource(R.string.select_bucket),
+            options = bucketList,
+            selectedIndex = defaultIndex,
+            onCancel = { showBucketSelectDialog = false },
+            onOk = { index ->
+                if (index in bucketList.indices) {
+                    viewModel.createBatch(bucketList[index])
+                }
+                showBucketSelectDialog = false
+            },
+            distanceBetweenOptions = 2.dp
+        )
+    }
 }

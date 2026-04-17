@@ -38,14 +38,18 @@ fun HeadlineBar(
     showSearch: Boolean,
     isMultiSelectMode: Boolean,
     isAllSelected: Boolean,
-    hasSelection : Boolean,
+    hasSelection: Boolean,
     showDelete: Boolean,
     onSearchClick: () -> Unit,
     onSearchChange: (String) -> Unit,
     onDeleteClick: () -> Unit,
     onCancelClick: () -> Unit,
     onConfirmDelete: () -> Unit,
-    onSelectAll: () -> Unit
+    onSelectAll: () -> Unit,
+    showSearchIcon: Boolean = true,
+    showPdfIcon: Boolean = false,
+    onPdfClick: (() -> Unit)? = null,
+    onBackClick: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier
@@ -87,7 +91,7 @@ fun HeadlineBar(
             Icon(
                 imageVector = Icons.Default.Close,
                 contentDescription = stringResource(R.string.close_app),
-                tint = MaterialTheme.colorScheme.secondary,
+                tint = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .size(26.dp)
                     .clickable { onSearchClick() }
@@ -100,7 +104,8 @@ fun HeadlineBar(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    BackButton(navController)
+
+                    BackButton(navController,onClick = onBackClick)
 
                     Spacer(Modifier.width(4.dp))
 
@@ -112,28 +117,49 @@ fun HeadlineBar(
                         modifier = Modifier.weight(1f)
                     )
 
-                    Icon(
-                        painter = painterResource(id = R.drawable.search),
-                        contentDescription = stringResource(R.string.cd_search),
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier
-                            .size(26.dp)
-                            .clickable { onSearchClick() }
-                    )
+                    // SEARCH ICON (optional now)
+                    if (showSearchIcon) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.search),
+                            contentDescription = stringResource(R.string.cd_search),
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clickable { onSearchClick() }
+                        )
+                    }
 
-                    if (showDelete) {
+                    // PDF ICON (new optional support)
+                    if (showPdfIcon) {
+
                         Spacer(Modifier.width(16.dp))
+
+                        Icon(
+                            painter = painterResource(id = R.drawable.pdf),
+                            contentDescription = "Export PDF",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier
+                                .size(26.dp)
+                                .clickable { onPdfClick?.invoke() }
+                        )
+                    }
+
+                    // DELETE ICON (unchanged behavior)
+                    if (showDelete) {
+
+                        Spacer(Modifier.width(16.dp))
+
                         Icon(
                             painter = painterResource(id = R.drawable.delete),
                             contentDescription = stringResource(R.string.cd_select_items_to_delete),
-                            tint = MaterialTheme.colorScheme.secondary,
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
                                 .size(26.dp)
                                 .clickable { onDeleteClick() }
                         )
                     }
                 }
-            }else{
+            } else {
                 //normal
 
                 Row(verticalAlignment = Alignment.CenterVertically) {

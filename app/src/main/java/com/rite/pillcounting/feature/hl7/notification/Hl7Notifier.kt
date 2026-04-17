@@ -49,7 +49,7 @@ class Hl7Notifier @Inject constructor(
         message: String
     ) {
         print("notification show")
-        val route = Screen.ScanBarcode.createRoute("HL7", ScanType.BARCODE)
+        val route = Screen.ScanBarcode.createRoute("HL7", ScanType.BARCODE,0)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

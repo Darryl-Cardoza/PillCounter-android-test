@@ -44,4 +44,6 @@ data class PillScanningUiState(
     val showErrorMessage: String? = null,
     val isHl7Txn: Boolean = false,
     val showCountMismatchDialog: Boolean = false,
+    val showEndStockCountDialog: Boolean = false,
+    val stockCountSessionTotal: Int = 0,
 )

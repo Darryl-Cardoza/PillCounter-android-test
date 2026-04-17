@@ -47,11 +47,19 @@ import com.rite.pillcounting.core.room.models.enums.CountType
             parentColumns = ["drugId"],
             childColumns = ["drugId"],
             onDelete = ForeignKey.SET_NULL
+        ),
+        ForeignKey(
+            entity = BatchEntity::class,
+            parentColumns = ["batchId"],
+            childColumns = ["batchId"],
+            onDelete = ForeignKey.SET_NULL
         )
     ],
     indices = [
         Index(value = ["localId"], name = "idx_txn_localId"),
-        Index(value = ["drugId"], name = "idx_txn_drugId")
+        Index(value = ["drugId"], name = "idx_txn_drugId"),
+        Index(value = ["batchId"], name = "idx_txn_batchId"),
+
     ]
 )
 
@@ -83,5 +91,11 @@ data class PillCountTxnEntity(
     /** Require for HL7 flow **/
     val isComingFromHL7: Boolean? = null,
     val isSynced: Boolean? = null,
-    val isNdcVerified : Boolean? = null
+    val isNdcVerified: Boolean? = null,
+
+    val bucketId: String? = null,
+    val batchId: Long? = null,
+    val bottleQty: Int? = null,
+    val looseQty: Int? = null
+
 )

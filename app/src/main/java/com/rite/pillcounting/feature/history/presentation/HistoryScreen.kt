@@ -6,15 +6,29 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.compose.SplitResponsive
+import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
+import com.rite.pillcounting.feature.history.domain.model.BatchSummary
+import com.rite.pillcounting.feature.history.domain.model.HistoryMode
+import com.rite.pillcounting.feature.history.domain.model.ToggleOption
+import com.rite.pillcounting.feature.history.presentation.compose.BatchHistoryRow
 import com.rite.pillcounting.feature.history.presentation.compose.CalendarSection
 import com.rite.pillcounting.feature.history.presentation.compose.CountsSection
 import com.rite.pillcounting.feature.history.presentation.compose.HistoryPdfExporter
@@ -25,9 +39,6 @@ import java.io.File
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
-import com.rite.pillcounting.R
-import com.rite.pillcounting.feature.history.domain.model.HistoryMode
-import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
 
 /**
  * HistoryScreen
@@ -53,6 +64,7 @@ fun HistoryScreen(
     // Observe selected date and counts from ViewModel
     val selectedDate by viewModel.selectedDate.collectAsState()
     val counts by viewModel.counts.collectAsState()
+    val batchGroups by viewModel.batchGroups.collectAsState()
     var showDeleteConfirmationDialog by remember { mutableStateOf(false) }
 
     val pdfExporter = remember { HistoryPdfExporter(context) }
@@ -68,6 +80,11 @@ fun HistoryScreen(
         firstVisibleMonth = currentMonth,
         firstDayOfWeek = DayOfWeek.SUNDAY
     )
+    var selectedOption by remember(historyMode) {
+        mutableStateOf(
+            if (historyMode == HistoryMode.DISPENSE) ToggleOption.DISPENSED else ToggleOption.STOCK
+        )
+    }
 
     LaunchedEffect(historyMode) {
         viewModel.setHistoryMode(historyMode)
@@ -95,7 +112,7 @@ fun HistoryScreen(
                 onSearchClick = {
                     viewModel.setSearchQuery("")  // clear text
                     showSearch = false           // return to calendar mode
-                } ,
+                },
                 onSearchChange = { viewModel.setSearchQuery(it) },
                 onDeleteClick = {},
                 onCancelClick = {},
@@ -103,21 +120,35 @@ fun HistoryScreen(
                 onSelectAll = {}
             )
 
-            val openPdfWith = stringResource(R.string.open_pdf_with)
-            CountsSection(
-                counts = counts,
-                onExportClick = {
-                    val file = pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
-                    file?.let {
-                        sharePdfFile(context, it, openPdfWith)
+            if (historyMode == HistoryMode.REGULAR) {
+                BatchListContent(
+                    batches = batchGroups,
+                    onBatchClick = { batchId ->
+                        navController.navigate(Screen.Batch.createRoute(batchId))
                     }
-                },
-                onDeleteClick = { showDeleteConfirmationDialog = true },
-                onTxnClick = { txnId ->
-                    viewModel.selectCurrentTransaction(txnId)
-                    navController.navigate(Screen.HistoryDetail.route)
-                }
-            )
+                )
+            } else {
+                val openPdfWith = stringResource(R.string.open_pdf_with)
+                CountsSection(
+                    counts = counts,
+                    onExportClick = {
+                        val file = pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
+                        file?.let {
+                            sharePdfFile(context, it, openPdfWith)
+                        }
+                    },
+                    onDeleteClick = { showDeleteConfirmationDialog = true },
+                    selectedOption = selectedOption,
+                    onOptionSelected = { selectedOption = it },
+                    onTxnClick = { txnId ->
+                        viewModel.selectCurrentTransaction(txnId)
+                        navController.navigate(Screen.HistoryDetail.route)
+                    },
+                    onBatchClick = { batchId ->
+                        navController.navigate(Screen.Batch.createRoute(batchId))
+                    }
+                )
+            }
 
         } else {
 
@@ -136,22 +167,36 @@ fun HistoryScreen(
                     )
                 },
                 bottomOrRight = {
-                    val openPdfWith = stringResource(R.string.open_pdf_with)
-                    CountsSection(
-                        counts = counts,
-                        onExportClick = {
-                            val file =
-                                pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
-                            file?.let {
-                                sharePdfFile(context, it, openPdfWith)
+                    if (historyMode == HistoryMode.REGULAR) {
+                        BatchListContent(
+                            batches = batchGroups,
+                            onBatchClick = { batchId ->
+                                navController.navigate(Screen.Batch.createRoute(batchId))
                             }
-                        },
-                        onDeleteClick = { showDeleteConfirmationDialog = true },
-                        onTxnClick = { txnId ->
-                            viewModel.selectCurrentTransaction(txnId)
-                            navController.navigate(Screen.HistoryDetail.route)
-                        }
-                    )
+                        )
+                    } else {
+                        val openPdfWith = stringResource(R.string.open_pdf_with)
+                        CountsSection(
+                            counts = counts,
+                            onExportClick = {
+                                val file =
+                                    pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
+                                file?.let {
+                                    sharePdfFile(context, it, openPdfWith)
+                                }
+                            },
+                            selectedOption = selectedOption,
+                            onOptionSelected = { selectedOption = it },
+                            onDeleteClick = { showDeleteConfirmationDialog = true },
+                            onTxnClick = { txnId ->
+                                viewModel.selectCurrentTransaction(txnId)
+                                navController.navigate(Screen.HistoryDetail.route)
+                            },
+                            onBatchClick = { batchId ->
+                                navController.navigate(Screen.Batch.createRoute(batchId))
+                            }
+                        )
+                    }
                 }
             )
         }
@@ -169,6 +214,43 @@ fun HistoryScreen(
             },
             onCancel = { showDeleteConfirmationDialog = false }
         )
+    }
+}
+
+@Composable
+private fun BatchListContent(
+    batches: List<BatchSummary>,
+    onBatchClick: (Long) -> Unit
+) {
+    if (batches.isEmpty()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 5.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = stringResource(R.string.no_data_found),
+                fontSize = 18.sp,
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.6f),
+                textAlign = TextAlign.Center
+            )
+        }
+    } else {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 5.dp),
+            contentPadding = PaddingValues(top = 10.dp, bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            items(batches) { batch ->
+                BatchHistoryRow(
+                    summary = batch,
+                    onBatchClick = { onBatchClick(batch.batchId) }
+                )
+            }
+        }
     }
 }
 

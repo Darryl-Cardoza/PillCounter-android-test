@@ -89,6 +89,15 @@ interface DrugMasterDao {
     suspend fun getDrugByNdc(ndc: String): DrugMasterEntity?
 
     /**
+     * Retrieves a drug by its GTIN.
+     *
+     * @param gtin Global Trade Item Number.
+     * @return The matching [DrugMasterEntity], or `null` if not found.
+     */
+    @Query("SELECT * FROM drug_master WHERE gtin = :gtin LIMIT 1")
+    suspend fun getDrugByGtin(gtin: String): DrugMasterEntity?
+
+    /**
      * Retrieves only the primary key ([drugId]) for a given NDC.
      *
      * @param ndc National Drug Code string.

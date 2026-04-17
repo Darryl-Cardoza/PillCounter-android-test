@@ -119,6 +119,31 @@ class Hl7ServiceManager @Inject constructor(
     }
 
     /**
+     * Send a raw HL7 string via bound service.
+     * Used for inventory responses that are pre-built as raw HL7 text.
+     */
+    fun sendRawMessage(raw: String): Result<Unit> {
+        return try {
+            if (!serviceManager.isServiceStarted())
+                return Result.failure(IllegalStateException("HL7 service not started"))
+
+            if (!serviceManager.isBound())
+                return Result.failure(IllegalStateException("HL7 service not bound"))
+
+            val service = serviceManager.getService()
+                ?: return Result.failure(IllegalStateException("HL7 service unavailable"))
+
+            logger.i("Sending raw HL7 message:\n$raw")
+            service.sendRawHl7Message(raw)
+            Result.success(Unit)
+
+        } catch (e: Exception) {
+            logger.i("Failed sending raw HL7 message", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
      * Trigger PMS discovery & connection.
      */
     fun discoverAndConnect() {

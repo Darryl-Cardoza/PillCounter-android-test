@@ -81,6 +81,7 @@ private const val KEY_REQUIRE_DOUBLE_COUNT = "key_require_double_count"
 private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
 private const val KEY_BARCODE_REGEX="key_barcode_regex"
+private const val KEY_BUCKET_LIST="key_bucket_list"
 
 
 @Singleton
@@ -506,5 +507,21 @@ class PreferenceHelper @Inject constructor(
         logger.d("getBarcodeRegex retrieved (exists=${id != null}, length=${id?.length ?: 0})")
         return id
     }
+
+    fun setKeyBucketList(bucketList: List<String>) {
+        val json = gson.toJson(bucketList)
+        prefs.edit { putString(KEY_BUCKET_LIST, json) }
+        logger.i("Saved bucket list (size=${bucketList.size})")
+    }
+
+    fun getBucketList(): List<String> {
+        val json = prefs.getString(KEY_BUCKET_LIST, null)
+        return if (json != null) {
+            gson.fromJson(json, Array<String>::class.java).toList()
+        } else {
+            emptyList()
+        }
+    }
+
 
 }

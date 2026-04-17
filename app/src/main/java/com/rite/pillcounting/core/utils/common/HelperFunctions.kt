@@ -6,6 +6,10 @@ import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.os.Build
 import android.os.Environment
 import android.os.Process
@@ -166,16 +170,33 @@ object HelperFunctions {
         context: Context,
         bitmap: Bitmap,
         filename: String,
-        child: String = "barcodes"
+        child: String = "barcodes",
+        grayscale: Boolean = false
     ): String {
         val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), child)
         if (!dir.exists()) dir.mkdirs()
 
         val file = File(dir, filename)
-        FileOutputStream(file).use { out ->
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+        val toSave = if (grayscale) toGrayscaleBitmap(bitmap) else bitmap
+        try {
+            FileOutputStream(file).use { out ->
+                toSave.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            }
+        } finally {
+            if (grayscale) toSave.recycle()
         }
         return file.absolutePath
+    }
+
+    private fun toGrayscaleBitmap(src: Bitmap): Bitmap {
+        val gray = Bitmap.createBitmap(src.width, src.height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(gray)
+        val paint = Paint()
+        val colorMatrix = ColorMatrix()
+        colorMatrix.setSaturation(0f)
+        paint.colorFilter = ColorMatrixColorFilter(colorMatrix)
+        canvas.drawBitmap(src, 0f, 0f, paint)
+        return gray
     }
 
     /** Wraps a plain string into a [SecureString] for encrypted Room storage. */

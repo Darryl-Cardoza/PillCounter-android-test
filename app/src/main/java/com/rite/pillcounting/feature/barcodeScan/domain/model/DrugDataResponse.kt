@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.barcodeScan.domain.model
 
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
@@ -34,7 +35,8 @@ data class NdcDrugInfo(
     val therapeutic_rxclass: TherapeuticRxClass? = null,
     val therapeutic_fda: TherapeuticFda? = null,
     val image: DrugImage? = null,
-    val updated_at: String? = null
+    val updated_at: String? = null,
+    val `package`: Package? = null
 )
 
 @Serializable
@@ -60,53 +62,30 @@ data class DrugImage(
     val link: String? = null
 )
 
-//package com.rite.pillcounting.feature.barcodeScan.domain.model
-//
-//import kotlinx.serialization.Serializable
-//
-//@Serializable
-//data class DrugDataResponse(
-//    val data: Data? = null,
-//    val is_success: Boolean? = null,
-//    val message: String? = null,
-//    val status: Int? = null,
-//    val token: String? = null
-//)
-//
-//@Serializable
-//data class Data(
-//    val _match_type: String? = null,
-//    val active_ingredients: List<ActiveIngredient>? = null,
-//    val brand_name: String? = null,
-//    val `class`: DrugClass? = null,
-//    val dosage_form: String? = null,
-//    val generic_name: String? = null,
-//    val package_ndc: String? = null,
-//    val packaging: List<Packaging>? = null,
-//    val product_ndc: String? = null,
-//    val specific_product_id: String? = null,
-//    val theraupetic_id: String? = null
-//)
-//
-//@Serializable
-//data class ActiveIngredient(
-//    val name: String? = null,
-//    val strength: String? = null
-//)
-//
-//@Serializable
-//data class DrugClass(
-//    val pharm_class: List<String>? = null,
-//    val pharm_class_cs: List<String>? = null,
-//    val pharm_class_epc: List<String>? = null,
-//    val pharm_class_moa: List<String>? = null,
-//    val pharm_class_pe: List<String>? = null
-//)
-//
-//@Serializable
-//data class Packaging(
-//    val description: String? = null,
-//    val marketing_start_date: String? = null,
-//    val package_ndc: String? = null,
-//    val sample: Boolean? = null
-//)
+/**
+ * Represents a drug package with hierarchical levels and unit information.
+ *
+ * Example structure:
+ * - CONTAINER (BOTTLE) containing
+ *   - UNIT (TABLET) with modifiers
+ */
+@Serializable
+data class Package(
+    val ndc: String? = null,
+    val description: String? = null,
+    val levels: List<PackageLevel>? = null
+)
+
+/**
+ * Represents a level within a package hierarchy.
+ * Can be a container (e.g., BOTTLE) or unit (e.g., TABLET).
+ */
+@Serializable
+data class PackageLevel(
+    val type: String? = null,
+    val name: String? = null,
+    val quantity: Int? = null,
+    val modifiers: List<String>? = null,
+    val material: String? = null,
+    val contains: PackageLevel? = null
+)

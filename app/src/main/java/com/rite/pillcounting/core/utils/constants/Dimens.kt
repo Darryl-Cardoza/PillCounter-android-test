@@ -7,6 +7,7 @@ object Dimens {
     val small = 10.dp
     val smallMedium = 13.dp
     val medium = 15.dp
+    val mediumLarge = 18.dp
     val large = 20.dp
     val extraLarge = 25.dp
     val xxLarge = 30.dp

@@ -508,7 +508,8 @@ object UserInterfaceUtils {
         options: List<String>,
         selectedIndex: Int? = null,
         onCancel: () -> Unit,
-        onOk: (Int) -> Unit
+        onOk: (Int) -> Unit,
+        distanceBetweenOptions: Dp = 8.dp,
     ) {
         var currentSelection by remember { mutableStateOf(selectedIndex) }
 
@@ -531,7 +532,7 @@ object UserInterfaceUtils {
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .clickable { currentSelection = index }
-                                .padding(vertical = 8.dp)
+                                .padding(vertical = distanceBetweenOptions)
                         ) {
                             RadioButton(
                                 selected = currentSelection == index,

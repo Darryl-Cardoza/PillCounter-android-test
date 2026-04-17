@@ -1,11 +1,9 @@
 package com.rite.pillcounting.feature.pillCountScan.presentation.logic
 
-import android.graphics.Bitmap
 import android.graphics.RectF
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.exp
 import kotlin.math.max
 import kotlin.math.min
@@ -58,17 +56,14 @@ object TrayDetector {
 
     fun detect(
         interpreter: Interpreter,
-        bitmap: Bitmap,
+        inputBuffer: ByteBuffer,
         scaleInfo: Letterbox.ScaleInfo,
         originalWidth: Int,
         originalHeight: Int
     ): List<TrayDetection> {
 
-        require(bitmap.width == INPUT_SIZE && bitmap.height == INPUT_SIZE) {
-            "Expected ${INPUT_SIZE}x$INPUT_SIZE, got ${bitmap.width}x${bitmap.height}"
-        }
-
-        val inputBuffer = bitmapToFloatBuffer(bitmap)
+        // Rewind so the buffer can be re-read even if the pill model used it first.
+        inputBuffer.rewind()
 
         val detOutput = Array(1) { Array(38) { FloatArray(NUM_ANCHORS) } }
         val protoOutput = Array(1) {
@@ -357,20 +352,4 @@ object TrayDetector {
         return sum
     }
 
-    private fun bitmapToFloatBuffer(bitmap: Bitmap): ByteBuffer {
-        val buffer = ByteBuffer.allocateDirect(1 * INPUT_SIZE * INPUT_SIZE * 3 * 4)
-        buffer.order(ByteOrder.nativeOrder())
-
-        val pixels = IntArray(INPUT_SIZE * INPUT_SIZE)
-        bitmap.getPixels(pixels, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
-
-        for (pixel in pixels) {
-            buffer.putFloat(((pixel shr 16) and 0xFF) / 255f)
-            buffer.putFloat(((pixel shr 8) and 0xFF) / 255f)
-            buffer.putFloat((pixel and 0xFF) / 255f)
-        }
-
-        buffer.rewind()
-        return buffer
-    }
 }

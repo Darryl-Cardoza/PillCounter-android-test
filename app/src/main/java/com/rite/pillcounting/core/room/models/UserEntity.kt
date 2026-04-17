@@ -29,7 +29,7 @@ import com.rite.pillcounting.core.security.models.SecureString
         // ───── Profile fields ─────
 
         /** Email address of the user. */
-        @field:TypeConverters(SecureStringConverter::class)
+        @TypeConverters(SecureStringConverter::class)
         val email: SecureString? = null,
 
         /** Full name of the user. */
@@ -37,7 +37,7 @@ import com.rite.pillcounting.core.security.models.SecureString
         val lName: String? = null,
 
         /** Contact phone number. */
-        @field:TypeConverters(SecureStringConverter::class)
+        @TypeConverters(SecureStringConverter::class)
         val phoneNumber: SecureString? = null,
 
         /** Avatar/profile image URL. */

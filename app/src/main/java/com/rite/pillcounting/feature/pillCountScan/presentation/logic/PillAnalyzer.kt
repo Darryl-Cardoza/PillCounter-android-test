@@ -64,7 +64,7 @@ class PillAnalyzer(
 
             val trayDetections = TrayDetector.detect(
                 interpreter    = trayInterpreter,
-                bitmap         = bitmap640,
+                inputBuffer    = inputBuffer,   // reuse buffer — avoids duplicate getPixels+float conversion
                 scaleInfo      = scaleInfo,
                 originalWidth  = originalWidth,
                 originalHeight = originalHeight
@@ -89,6 +89,9 @@ class PillAnalyzer(
 
             // ── STEP 3: Pill detection ────────────────────────────────────────
             val pillStart = System.currentTimeMillis()
+
+            // Rewind: TFLite advances the buffer position during tray inference.
+            inputBuffer.rewind()
 
             val outputShape = pillInterpreter.getOutputTensor(0).shape()
             val output = Array(1) { Array(outputShape[1]) { FloatArray(outputShape[2]) } }

@@ -5,7 +5,7 @@ package com.rite.pillcounting.feature.barcodeScan.domain.data
  */
 sealed interface NavigationEvent {
     data class NavigateToPillCount(val ndc: String, val type: String) : NavigationEvent
-
     data class NavigateToResumePillCount(val ndc: String, val type: String): NavigationEvent
     data object NavigateBack : NavigationEvent
+    data class NavigateToBatch(val batchId: Long) : NavigationEvent
 }

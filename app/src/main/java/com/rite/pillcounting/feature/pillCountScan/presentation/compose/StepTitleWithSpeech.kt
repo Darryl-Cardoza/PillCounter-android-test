@@ -24,9 +24,13 @@ import com.rite.pillcounting.ui.theme.AppTheme
 import java.util.Locale
 
 @Composable
-fun StepTitleWithSpeech(stepType: StepState, isSoundOverride: Boolean) {
+fun StepTitleWithSpeech(
+    stepType: StepState,
+    isSoundOverride: Boolean,
+    titleResOverride: Int? = null
+) {
     val context = LocalContext.current
-    val title = stringResource(stepType.titleRes())
+    val title = if (titleResOverride != null) stringResource(titleResOverride) else stringResource(stepType.titleRes())
 
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var isTtsReady by remember { mutableStateOf(false) }

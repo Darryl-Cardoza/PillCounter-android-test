@@ -82,7 +82,7 @@ fun MenuScreen(
             // Fixed Count
             MenuItemRow(
                 icon = R.drawable.fixed_count,
-                title = stringResource(R.string.fixed_count),
+                title = stringResource(R.string.dispense),
                 completed = stringResource(R.string.menu_completed, uiState.fixedCompleted),
                 partial = stringResource(R.string.menu_partial, uiState.fixedPartial),
                 iconTint = MaterialTheme.colorScheme.secondary,
@@ -91,7 +91,7 @@ fun MenuScreen(
                 completedIcon = R.drawable.tick,
                 partialIcon = R.drawable.partial,
                 mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),
-                    ScanType.RX_LABEL)) },
+                    ScanType.RX_LABEL,0)) },
                 onPartialClick = {
                     if (uiState.fixedPartial > 0)
                         navController.navigate(
@@ -108,7 +108,7 @@ fun MenuScreen(
             // Regular Count
             MenuItemRow(
                 icon = R.drawable.regular_count,
-                title = stringResource(R.string.regular_count),
+                title = stringResource(R.string.stock_count),
                 completed = stringResource(R.string.menu_completed, uiState.regularCompleted),
                 partial = stringResource(R.string.menu_partial, uiState.regularPartial),
                 iconTint = MaterialTheme.colorScheme.primary,
@@ -116,7 +116,7 @@ fun MenuScreen(
                 partialTint = MaterialTheme.colorScheme.primary,
                 completedIcon = R.drawable.tick,
                 partialIcon = R.drawable.partial,
-                mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.REGULAR.toString(),ScanType.RX_LABEL)) },
+                mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.REGULAR.toString(),ScanType.RX_LABEL,0)) },
                 onPartialClick = {
                     if (uiState.regularPartial > 0)
                         navController.navigate(

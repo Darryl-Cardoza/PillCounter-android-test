@@ -93,8 +93,19 @@ class BarcodeDecoder @Inject constructor() {
     }
 
     fun isGs1Barcode(rawBarcode: String): Boolean {
-        val cleaned = rawBarcode.replace(Regex("\\](?i)(c1|j1|q3|e0|d2)"), "")
-        return regexPatterns.values.any { it.containsMatchIn(cleaned) }
+        // GS1 symbology identifiers prepended by the scanner (Code-128, DataMatrix, QR, etc.)
+        if (rawBarcode.startsWith("]C1") || rawBarcode.startsWith("]c1") ||
+            rawBarcode.startsWith("]e0") || rawBarcode.startsWith("]d2") ||
+            rawBarcode.startsWith("]Q3") || rawBarcode.startsWith("]J1")
+        ) return true
+
+        // FNC1 group-separator character — definitive GS1 encoding marker
+        if (rawBarcode.contains('\u001D')) return true
+
+        // Application identifiers expressed with parentheses: (01), (17), (10), etc.
+        if (Regex("\\(\\d{2,4}\\)").containsMatchIn(rawBarcode)) return true
+
+        return false
     }
 
     fun toGtin14(gtin: String?): String? {

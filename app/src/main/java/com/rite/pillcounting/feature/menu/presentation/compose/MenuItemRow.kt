@@ -21,7 +21,10 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.core.utils.compose.MedicalIcon
+import com.rite.pillcounting.core.utils.compose.StockIcon
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 
 /**
@@ -95,12 +98,26 @@ fun MenuItemRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            Icon(
-                painter = painterResource(id = icon),
-                contentDescription = title,
-                tint = iconTint,
-                modifier = Modifier.size(responsiveDp(28.dp))
-            )
+            if (icon == R.drawable.fixed_count) {
+                MedicalIcon(
+                    outerCircleColor = iconTint,
+                    modifier = Modifier.size(responsiveDp(28.dp)),
+                    contentDescription = title
+                )
+            } else if (icon == R.drawable.regular_count) {
+                StockIcon(
+                    outerCircleColor = iconTint,
+                    modifier = Modifier.size(responsiveDp(28.dp)),
+                    contentDescription = title
+                )
+            } else {
+                Icon(
+                    painter = painterResource(id = icon),
+                    contentDescription = title,
+                    tint = iconTint,
+                    modifier = Modifier.size(responsiveDp(28.dp))
+                )
+            }
 
             Spacer(modifier = Modifier.width(12.dp))
 

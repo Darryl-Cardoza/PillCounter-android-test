@@ -83,12 +83,12 @@ class VerifyPinViewModel @Inject constructor(
                     val data = response.data
                     val accessToken = data?.accessToken
                     val refreshToken = data?.refreshToken
-                    val isHL7Enabled = data?.user?.isHl7Enabled ?:false
+//                    val isHL7Enabled = data?.user?.isHl7Enabled ?:false
                     val user = data?.user
 
                     if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
                         prefs.saveTokens(accessToken, refreshToken)
-                        prefs.setHl7Enabled(isHL7Enabled)
+//                        prefs.setHl7Enabled(isHL7Enabled)
                         logger.i("Access and refresh tokens saved securely.")
                     } else {
                         logger.w("Missing access or refresh token in response.")

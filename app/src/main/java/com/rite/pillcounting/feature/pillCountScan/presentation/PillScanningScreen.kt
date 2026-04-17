@@ -64,6 +64,9 @@ fun PillScanningScreen(
     val context = navController.context
     val uiState by viewModel.uiState.collectAsState()
     val logger = remember { AppLogger("PillScanningScreen") }
+    val batchId = navController.previousBackStackEntry
+        ?.arguments?.getLong(Screen.ScanBarcode.ARG_BATCH_ID) ?: 0L
+    val isStockCount = batchId != 0L
     val topHeightPortrait = maxHeight * 0.75f
     val bottomHeightPortrait = maxHeight * 0.25f
     val startWidthLandScape = maxWidth * 0.7f
@@ -187,6 +190,22 @@ fun PillScanningScreen(
         )
     }
 
+    if (uiState.showEndStockCountDialog) {
+        CommonDialog(
+            message = stringResource(R.string.are_you_sure_you_want_to_end_this_count),
+            title = stringResource(R.string.confirmation),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = {
+                viewModel.moveNextStep()
+            },
+            onCancel = {
+                viewModel.resetIdleOverlay()
+                viewModel.handleDismissDialog()
+            }
+        )
+    }
+
     // === Init & Navigation ===
     LaunchedEffect(Unit) {
         viewModel.getDrugInfo()
@@ -196,6 +215,10 @@ fun PillScanningScreen(
             when (event) {
                 is NavigationEvent.NavigateToDashboard -> {
                     navController.navigate(Screen.Dashboard.route)
+                }
+
+                is NavigationEvent.NavigateToBatch -> {
+                    navController.navigate(Screen.Batch.createRoute(event.batchId))
                 }
             }
         }
@@ -275,16 +298,24 @@ fun PillScanningScreen(
                     navController = navController,
                     showBox = false,
                     onClick = {
-                        navController.navigate(Screen.Dashboard.route) {
-                            popUpTo(0)
-                            launchSingleTop = true
+                        if (isStockCount) {
+                            viewModel.showEndStockCountDialog()
+                        } else {
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(0)
+                                launchSingleTop = true
+                            }
                         }
                     }
                 )
 
                 Spacer(modifier = Modifier.weight(0.3f))
 
-                StepTitleWithSpeech(stepType = stepType,  isSoundOverride = isSoundEnabled)
+                StepTitleWithSpeech(
+                    stepType = stepType,
+                    isSoundOverride = isSoundEnabled,
+                    titleResOverride = if (countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null
+                )
 
                 Spacer(modifier = Modifier.weight(1f))
             }

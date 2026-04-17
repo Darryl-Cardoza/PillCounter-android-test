@@ -1,5 +1,3 @@
-// file: navigation/AppNavGraph.kt
-
 package com.rite.pillcounting.navigation
 
 import Screen
@@ -10,7 +8,9 @@ import androidx.navigation.compose.composable
 import androidx.navigation.navDeepLink
 import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.barcodeScan.presentation.ScanBarCodeScreen
+import com.rite.pillcounting.feature.batchCount.presentation.BatchScreen
 import com.rite.pillcounting.feature.countResume.presentation.FixedCountResumeScreen
+import com.rite.pillcounting.feature.countResume.presentation.PartialCountsScreen
 import com.rite.pillcounting.feature.countResume.presentation.RegularCountResumeScreen
 import com.rite.pillcounting.feature.dashboard.presentation.DashboardScreen
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
@@ -48,7 +48,7 @@ fun AppNavGraph(
             route = Screen.ScanBarcode.route, arguments = Screen.ScanBarcode.navArguments,
             deepLinks = listOf(
                 navDeepLink {
-                    uriPattern = "pillcounter://scan/{type}"
+                    uriPattern = "pillcounter://scan/{type}/{batch_id}?txn_scan_type={txn_scan_type}"
                 }
             )
         ) { backStackEntry ->
@@ -60,8 +60,10 @@ fun AppNavGraph(
             }.getOrElse {
                 ScanType.BARCODE
             }
+            val batchId =
+                backStackEntry.arguments?.getLong(Screen.ScanBarcode.ARG_BATCH_ID) ?: 0
 
-            ScanBarCodeScreen(navController, scanType, txnScanType)
+            ScanBarCodeScreen(navController, scanType, txnScanType, batchId = batchId)
         }
 
         composable(
@@ -78,6 +80,23 @@ fun AppNavGraph(
 
         composable(route = Screen.Settings.route) {
             SettingsScreen(navController = navController)
+        }
+
+        composable(
+            route = Screen.Batch.route,
+            arguments = Screen.Batch.navArguments
+        ) {
+            val previousRoute = navController.previousBackStackEntry?.destination?.route
+            BatchScreen(
+                navController = navController,
+                onBackClick = {
+                    if (previousRoute == Screen.PartialCountsScreen.route) {
+                        navController.popBackStack(Screen.PartialCountsScreen.route, inclusive = false)
+                    } else {
+                        navController.popBackStack(Screen.Dashboard.route, inclusive = false)
+                    }
+                }
+            )
         }
 
         composable(route = Screen.ResumeFixedCounts.route) { backStackEntry ->
@@ -127,5 +146,11 @@ fun AppNavGraph(
                 navController = navController
             )
         }
+
+        composable(route = Screen.PartialCountsScreen.route) {
+            PartialCountsScreen(navController = navController)
+        }
+
+
     }
 }

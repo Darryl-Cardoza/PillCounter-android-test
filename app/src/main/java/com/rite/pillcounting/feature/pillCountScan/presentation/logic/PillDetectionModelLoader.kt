@@ -159,8 +159,13 @@ class PillDetectionModelLoader @Inject constructor(
         return withContext(Dispatchers.Main) {
             try {
                 val compatList = CompatibilityList()
-                val delegate = GpuDelegate(compatList.bestOptionsForThisDevice)
-                Log.i(TAG, "$modelName — GPU delegate created")
+                // Start from device-optimal defaults, then allow FP16 for ~2× GPU throughput.
+                // Minor precision loss is acceptable for object detection.
+                val gpuOptions = compatList.bestOptionsForThisDevice.apply {
+                    isPrecisionLossAllowed = true
+                }
+                val delegate = GpuDelegate(gpuOptions)
+                Log.i(TAG, "$modelName — GPU delegate created (FP16 enabled)")
                 delegate
             } catch (e: Exception) {
                 Log.e(TAG, "$modelName — GPU delegate creation failed", e)
@@ -173,6 +178,8 @@ class PillDetectionModelLoader @Inject constructor(
     private fun buildGpuOptions(delegate: GpuDelegate): Interpreter.Options {
         return Interpreter.Options().apply {
             addDelegate(delegate)
+            // Disable XNNPACK: it conflicts with the GPU delegate and wastes CPU cycles.
+            setUseXNNPACK(false)
         }
     }
 

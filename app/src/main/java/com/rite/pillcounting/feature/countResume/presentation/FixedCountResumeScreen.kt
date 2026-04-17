@@ -46,7 +46,7 @@ fun FixedCountResumeScreen(
 
                 NavigationEvent.NavigateBack -> navController.popBackStack()
                 is NavigationEvent.NavigateToScanBarcode -> navController.navigate(
-                    Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),ScanType.BARCODE)
+                    Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),ScanType.BARCODE,0)
                 )
             }
         }

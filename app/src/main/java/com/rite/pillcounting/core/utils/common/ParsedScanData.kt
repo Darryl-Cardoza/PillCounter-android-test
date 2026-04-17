@@ -2,6 +2,7 @@ data class ParsedScanData(
     val rxNo: String? = null,
     val ndcNo: String? = null,
     val qty: String? = null,
+    val bucket: String? = null,
     val rawMap: Map<String, String> = emptyMap()
 )
 
@@ -28,6 +29,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
             rxNo = mappedData["RXNO"],
             ndcNo = mappedData["NDCNO"],
             qty = mappedData["QTY"],
+            bucket = mappedData["BUCKET"],
             rawMap = mappedData
         )
     } catch (e: Exception) {

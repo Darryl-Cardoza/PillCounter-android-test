@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -30,6 +28,7 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.navigateSafely
+import com.rite.pillcounting.core.utils.compose.MedicalIcon
 import com.rite.pillcounting.core.utils.compose.bounceClick
 import com.rite.pillcounting.core.utils.constants.Dimens.extraLarge
 import com.rite.pillcounting.core.utils.constants.Dimens.small
@@ -72,18 +71,18 @@ fun FixedCountSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Fixed count icon leading to ScanBarcode screen
-            Icon(
-                painter = painterResource(id = R.drawable.fixed_count),
-                contentDescription = stringResource(R.string.fixed_count),
-                tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.size(responsiveDp(120.dp))
+            MedicalIcon(
+                outerCircleColor = MaterialTheme.colorScheme.primary,
+                innerColor = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier.size(responsiveDp(120.dp)),
+                contentDescription = stringResource(R.string.dispense)
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
             // Fixed Count title (clickable -> ScanBarcode)
             Text(
-                text = stringResource(R.string.fixed_count),
+                text = stringResource(R.string.dispense),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Normal,
                 color = MaterialTheme.colorScheme.secondary,
@@ -93,7 +92,7 @@ fun FixedCountSection(
 
             // Description text (clickable -> ScanBarcode)
             Text(
-                text = stringResource(R.string.fixed_count_desc),
+                text = stringResource(R.string.tap_to_scan_rx_labels),
                 style = MaterialTheme.typography.bodyMedium,
                 color = AppTheme.extendedColors.textColor,
             )
@@ -121,7 +120,7 @@ fun FixedCountSection(
                     text = "$completedFixedCount ${stringResource(R.string.completed)}",
                     backgroundColor = Color.Transparent,
                     textColor = MaterialTheme.colorScheme.secondary,
-                    iconRes = R.drawable.tick,
+                    iconRes = R.drawable.complete,
                     iconTint = MaterialTheme.colorScheme.secondary
                 )
             }
@@ -138,7 +137,7 @@ fun FixedCountSection(
                     text = "$partialFixedCount ${stringResource(R.string.partial)}",
                     backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnSecondary,
                     textColor = MaterialTheme.colorScheme.secondary,
-                    iconRes = R.drawable.partial,
+                    iconRes = R.drawable.prescription_icon,
                     iconTint = MaterialTheme.colorScheme.secondary
                 )
             }
@@ -149,5 +148,5 @@ fun FixedCountSection(
 }
 
 fun navigateToBarcodeScanFixedCount(navController: NavController) {
-    navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),ScanType.RX_LABEL))
+    navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),ScanType.RX_LABEL,0))
 }

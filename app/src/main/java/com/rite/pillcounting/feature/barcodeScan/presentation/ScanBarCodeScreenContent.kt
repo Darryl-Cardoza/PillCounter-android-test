@@ -1,6 +1,5 @@
 package com.rite.pillcounting.feature.barcodeScan.presentation
 
-import Screen
 import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -18,30 +17,34 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
-import com.rite.pillcounting.core.utils.common.navigateSafely
 import com.rite.pillcounting.feature.barcodeScan.domain.data.ScanBarcodeEvent
 import com.rite.pillcounting.feature.barcodeScan.domain.model.ScanBarcodeUiState
-import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.barcodeScan.presentation.analyzer.BarcodeAnalyzer
 import com.rite.pillcounting.feature.barcodeScan.presentation.compose.ScannerView
 import com.rite.pillcounting.feature.barcodeScan.presentation.viewmodel.ScanBarcodeViewModel
@@ -61,18 +64,18 @@ fun ScanBarCodeScreenContent(
     onEvent: (ScanBarcodeEvent) -> Unit,
     analyzer: BarcodeAnalyzer,
     viewModel: ScanBarcodeViewModel = hiltViewModel(),
+    batchId: Long
 ) {
 
     val isSoundEnabled = viewModel.isSoundEnabled.collectAsState().value
-    val scanType = viewModel.txnScanType.collectAsState().value
+    val scanType by viewModel.txnScanType.collectAsStateWithLifecycle()
+    val latestScanType by rememberUpdatedState(scanType)
     val context = LocalContext.current
-    val type = remember(scanType) {
-        runCatching { ScanType.valueOf(scanType.toString()) }
-            .getOrElse { ScanType.RX_LABEL }
-    }
 
-    val stepType = if (type == ScanType.RX_LABEL) {
+    val stepType = if (latestScanType == ScanType.RX_LABEL) {
         StepState.RX_LABEL
+    } else if (latestScanType == ScanType.STOCK_COUNT) {
+        StepState.STOCK_COUNT
     } else {
         StepState.SCAN
     }
@@ -89,29 +92,57 @@ fun ScanBarCodeScreenContent(
             singleScanMode = true,
             onBarcodeScanned = { value, imagePath ->
                 val decoder = BarcodeDecoder()
-                val cleanedImagePath = imagePath ?: ""
+                val cleanedImagePath = imagePath.orEmpty()
+
+                if (value.isBlank()) {
+                    onEvent(ScanBarcodeEvent.InvalidScan)
+                    return@ScannerView
+                }
 
                 val isGs1 = decoder.isGs1Barcode(value)
                 val decoded = if (isGs1) decoder.decode(value) else null
 
-                val gtin14 = if (scanType == ScanType.RX_LABEL) {
-                    value
+                if (latestScanType == ScanType.RX_LABEL) {
+                    onEvent(
+                        ScanBarcodeEvent.ScanBarcode(
+                            gtin14 = value,
+                            imagePath = cleanedImagePath,
+                            expiry = "",
+                            lotNo = ""
+                        )
+                    )
+                    return@ScannerView
+                }
+
+                val extractedGtin = if (isGs1) {
+                    decoded?.gtin
                 } else {
-                    decoded?.gtin?.let(decoder::toGtin14)
-                        ?: decoder.toGtin14(value)
-                        ?: value
+                    decoder.toGtin14(value)
+                }
+
+                val finalGtin14 = extractedGtin?.let { decoder.toGtin14(it) } ?: ""
+
+                val isInvalidGtin = finalGtin14.isBlank() ||
+                        finalGtin14.length != 14 ||
+                        !finalGtin14.all { it.isDigit() }
+
+                if (isInvalidGtin) {
+                    onEvent(ScanBarcodeEvent.InvalidScan)
+                    return@ScannerView
                 }
 
                 onEvent(
                     ScanBarcodeEvent.ScanBarcode(
-                        gtin14 = gtin14,
+                        gtin14 = finalGtin14,
                         imagePath = cleanedImagePath,
                         expiry = if (isGs1) decoded?.expirationDate.toString() else "",
-                        lotNo = if (isGs1) decoded?.lotNumber ?: "" else ""
+                        lotNo = if (isGs1) decoded?.lotNumber.orEmpty() else ""
                     )
                 )
             },
-            onError = { exception -> onEvent(ScanBarcodeEvent.ScannerError(exception)) }
+            onError = { exception ->
+                onEvent(ScanBarcodeEvent.ScannerError(exception))
+            }
         )
 
         Row(
@@ -126,13 +157,11 @@ fun ScanBarCodeScreenContent(
                 showBox = false,
                 onClick = {
                     analyzer.pause()
-                    navController.navigateSafely(
-                        Screen.Dashboard.route
-                    )
+                    navController.popBackStack()
                 }
             )
 
-            Spacer(modifier = Modifier.weight(0.3f))
+            Spacer(modifier = Modifier.weight(0.8f))
 
             StepTitleWithSpeech(stepType = stepType, isSoundOverride = isSoundEnabled)
 
@@ -142,10 +171,24 @@ fun ScanBarCodeScreenContent(
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
 
-        if(uiState.error!=null){
+        if (uiState.error != null) {
             showToast(context = context, message = uiState.error, duration = Toast.LENGTH_SHORT)
             viewModel.clearToast()
         }
+
+        if (latestScanType == ScanType.STOCK_COUNT)
+            Text(
+                text = "${stringResource(R.string.batch)} $batchId",
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp)
+                    .background(
+                        AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.8f),
+                        shape = RoundedCornerShape(50.dp)
+                    )
+                    .padding(horizontal = 20.dp, vertical = 10.dp),
+                color = AppTheme.extendedColors.textColor,
+            )
     }
 
 }

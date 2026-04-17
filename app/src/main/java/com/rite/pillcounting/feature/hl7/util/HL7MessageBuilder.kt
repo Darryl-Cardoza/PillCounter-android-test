@@ -3,12 +3,20 @@ package com.rite.pillcounting.feature.hl7.util
 
 import android.os.Build
 import com.rite.pillcounting.core.hl7.hl7MessageHandler.domain.model.ObservationData
-import com.rite.pillcounting.core.hl7.imageWebService.NetworkUtils
+import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
-import org.rite.hl7.hl7.domain.model.*
+import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
+import org.rite.hl7.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.hl7.domain.model.DispenseData
+import org.rite.hl7.hl7.domain.model.MessageHeaderData
+import org.rite.hl7.hl7.domain.model.NoteData
+import org.rite.hl7.hl7.domain.model.OrderData
+import org.rite.hl7.hl7.domain.model.PatientData
 import java.text.SimpleDateFormat
-import java.util.*
+import java.util.Date
+import java.util.Locale
 
 /**
  * =========================================================
@@ -46,6 +54,7 @@ object HL7MessageBuilder {
         val totalCount = txnDetails.sumOf { it.pillCount ?: 0 }
 
         val imageObx = buildImageObx(
+            txn,
             txnDetails,
             observationId = "DISP_IMG",
             label = "Dispense Image"
@@ -96,86 +105,162 @@ object HL7MessageBuilder {
         )
     }
 
-    /* =========================================================
-     * INVENTORY (INU U05)
-     * ========================================================= */
 
     fun buildInventoryMessage(
-        txn: PillCountTxnEntity,
-        txnDetails: List<PillCountTxnDetailsEntity>,
-        drugCode: String,
-        drugName: String
-    ): CompleteHL7Message {
+        batch: BatchEntity,
+        txns: List<BatchTxnDto>,
+        requestId: String = batch.requestIdFromPMS.orEmpty(),
+        orderId: String = batch.bucketId.orEmpty()
+    ): String {
 
-        val now = now()
-        val totalCount = txnDetails.sumOf { it.pillCount ?: 0 }
-
-        val imageObx = buildImageObx(
-            txnDetails,
-            observationId = "INV_IMG",
-            label = "Inventory Image"
+        data class Key(
+            val ndc: String,
+            val name: String,
+            val lot: String,
+            val expiry: String
         )
 
-        val inventory = InventoryData(
-            equipmentId = "ROBOT1",
-            eventDateTime = now,
-            bins = listOf(
-                InventoryBinData(
-                    substanceId = drugCode,
-                    substanceName = drugName,
-                    quantityOnHand = totalCount.toString(),
-                    availableQuantity = totalCount.toString(),
-                    quantityUnitCode = "TAB",
-                    quantityUnitText = "Tablets",
-                    expirationDate = txn.expiry,
-                    lotNumber = txn.lotNo
-                )
+        data class Qty(
+            var opened: Int = 0,
+            var sealed: Int = 0
+        )
+
+        val now = System.currentTimeMillis()
+        val messageId = "RES${System.currentTimeMillis() / 1000}"
+
+        val grouped = linkedMapOf<Key, Qty>()
+
+        txns.forEach { txn ->
+            val ndc = txn.ndc.orEmpty()
+            val name = txn.drugName.orEmpty()
+            val lot = txn.lotNo.orEmpty()
+            val expiry = txn.expiry.orEmpty()
+
+            val packageQty = txn.packageQty ?: 0
+            val opened = txn.looseQty ?: 0
+            val sealed = (txn.bottleQty ?: 0) * packageQty
+
+            val key = Key(
+                ndc = ndc,
+                name = name,
+                lot = lot,
+                expiry = expiry
             )
-        )
 
-        return CompleteHL7Message(
-            messageId = System.currentTimeMillis().toString(),
-            messageType = "INU",
-            triggerEvent = "U05",
-            timestamp = now,
-            sendingFacility = "PillCounter-${Build.MODEL}",
+            val existing = grouped.getOrPut(key) { Qty() }
+            existing.opened += opened
+            existing.sealed += sealed
+        }
 
-            header = buildHeader("INU", "U05", now),
+        val hl7 = StringBuilder()
 
-            inventory = inventory,
-            obxSegments = imageObx,
+        // Header
+        hl7.append("MSH|^~\\&|PILLCOUNTER|STORE|PMS|PHARMACY|")
+            .append(now)
+            .append("||INR^U05|")
+            .append(messageId)
+            .append("|P|2.5\n")
 
-            notes = buildCommonNotes(txn, totalCount)
-        )
+        hl7.append("MSA|AA|").append(requestId).append("\n")
+        hl7.append("ORC|RE|").append(orderId).append("\n")
+
+        var index = 1
+
+        grouped.forEach { (key, value) ->
+            val total = value.opened + value.sealed
+
+            // INV
+            hl7.append("INV|")
+                .append(index)
+                .append("|")
+                .append(key.ndc)
+                .append("^")
+                .append(key.name)
+                .append("|||||||||")
+                .append(total)
+                .append("|||||\n")
+
+            // ZIN
+            if (value.opened == 0 && value.sealed == 0) {
+                hl7.append("ZIN|")
+                    .append(index)
+                    .append("|NA|0||\n")
+            } else {
+                if (value.opened > 0) {
+                    hl7.append("ZIN|")
+                        .append(index)
+                        .append("|OPENED|")
+                        .append(value.opened)
+                        .append("|")
+                        .append(key.lot)
+                        .append("|")
+                        .append(key.expiry)
+                        .append("\n")
+                }
+
+                if (value.sealed > 0) {
+                    hl7.append("ZIN|")
+                        .append(index)
+                        .append("|SEALED|")
+                        .append(value.sealed)
+                        .append("|")
+                        .append(key.lot)
+                        .append("|")
+                        .append(key.expiry)
+                        .append("\n")
+                }
+            }
+
+            index++
+        }
+
+        return hl7.toString()
     }
 
-    /* =========================================================
-     * SHARED HELPERS
-     * ========================================================= */
-
     private fun buildImageObx(
+        txn: PillCountTxnEntity,
         details: List<PillCountTxnDetailsEntity>,
         observationId: String,
         label: String
     ): List<ObservationData> {
 
-        val localIp = NetworkUtils.getLocalIpAddress()
+        val detailObxList = details.mapIndexed { index, detail ->
 
-        return details.mapIndexedNotNull { index, detail ->
-            detail.imagePath?.let { path ->
-                ObservationData(
-                    setId = (index + 1).toString(),
-                    valueType = "RP",
-                    observationId = observationId,
-                    observationText = "$label ${index + 1}",
-                    observationValue = buildRoomImageUrl(
-                        localIp?:"",
-                        path.substringAfterLast("/"),
-                        IMAGE_PORT.toString()
-                    ),
-                    resultStatus = "F"
-                )
-            }
+            val count = detail.pillCount ?: 0
+            val type = detail.type ?: "UNKNOWN"
+            val fileName = detail.imagePath?.substringAfterLast("/") ?: ""
+
+            ObservationData(
+                setId = (index + 1).toString(),
+                valueType = "ST",
+                observationId = observationId,
+                observationText = "$label ${index + 1}",
+                observationValue = "count=$count|type=$type|image=$fileName",
+                resultStatus = "F"
+            )
+        }
+
+        val barcodeImagePath = txn.barcodeImage
+        val barcodeFileName = barcodeImagePath?.substringAfterLast("/") ?: ""
+        val barcodeType = StepState.SCAN
+
+        val barcodeObx = if (barcodeFileName.isNotEmpty()) {
+            ObservationData(
+                setId = (detailObxList.size + 1).toString(),
+                valueType = "ST",
+                observationId = observationId,
+                observationText = "Barcode Image",
+                observationValue = "count=0|type=$barcodeType|image=$barcodeFileName",
+                resultStatus = "F"
+            )
+        } else {
+            null
+        }
+
+        return if (barcodeObx != null) {
+            detailObxList + barcodeObx
+        } else {
+            detailObxList
         }
     }
 
@@ -201,7 +286,8 @@ object HL7MessageBuilder {
     ) = listOf(
         NoteData("1", "L", "Transaction completed"),
         NoteData("2", "L", "Total Count: $totalCount"),
-        NoteData("3", "L", "Transaction Id: ${txn.txnId}")
+        NoteData("3", "L", "Transaction Id: ${txn.txnId}"),
+        NoteData("4", "L", "Note: ${txn.note}")
     )
 
     private fun now(): String =

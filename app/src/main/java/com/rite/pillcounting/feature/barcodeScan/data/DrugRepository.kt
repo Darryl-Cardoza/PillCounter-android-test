@@ -70,7 +70,12 @@ class DrugRepository @Inject constructor(
             )
 
             val result = response.data
-            if (result == null) {
+            if (
+                result == null ||
+                (getNdcRequestModel.target_ndc.isNotEmpty() &&
+                        result.is_ndc_same == false &&
+                        result.is_ndc_equivalent == false)
+            ) {
                 logger.w("No result found in API response for NDC: '$getNdcRequestModel'")
                 null
             } else {
@@ -81,13 +86,17 @@ class DrugRepository @Inject constructor(
                     genericName = result.scanned_ndc?.lookup_name ?: "N/A",
                     ndc = result.scanned_ndc?.package_ndc ?: "N/A",
                     is_ndc_equivalent = result.is_ndc_equivalent,
-                    drugType = result.scanned_ndc?.dea_schedule.toString()
+                    drugType = result.scanned_ndc?.dea_schedule.toString(),
+                    qty = result.scanned_ndc?.`package`?.levels?.firstOrNull()?.contains?.quantity
                 ).also {
                     logger.i("Returning mapped DrugInfo -> $it")
                 }
             }
         } catch (e: HttpException) {
-            logger.e("HTTP error while fetching drug info (code=${e.code()}, message=${e.message()})", e)
+            logger.e(
+                "HTTP error while fetching drug info (code=${e.code()}, message=${e.message()})",
+                e
+            )
             null
         } catch (e: IOException) {
             logger.e("Network error while fetching drug info", e)

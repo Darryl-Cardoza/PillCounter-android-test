@@ -12,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
@@ -38,7 +39,8 @@ fun ScanBarCodeScreen(
     navController: NavController,
     scanType: String,
     txnScanType: ScanType,
-    viewModel: ScanBarcodeViewModel = hiltViewModel()
+    viewModel: ScanBarcodeViewModel = hiltViewModel(),
+    batchId: Long
 ) {
     val context = LocalContext.current
     // Collect the UI state from the ViewModel in a lifecycle-aware manner.
@@ -68,6 +70,20 @@ fun ScanBarCodeScreen(
         }
     }
 
+    LaunchedEffect(batchId) {
+        viewModel.setBatchId(batchId)
+    }
+
+    // Resume scanner whenever this screen comes back to the top of the back stack
+    // (e.g. after returning from BatchScreen via popBackStack).
+    val currentEntry by navController.currentBackStackEntryAsState()
+    LaunchedEffect(currentEntry) {
+        val route = currentEntry?.destination?.route ?: ""
+        if (route.startsWith("scan_barcode") && !uiState.showScanSuccessfullyDialog) {
+            viewModel.analyzer.resume()
+        }
+    }
+
     LaunchedEffect(Unit) {
         viewModel.setScanType(txnScanType)
         viewModel.navigationEvent.collect { event ->
@@ -85,6 +101,10 @@ fun ScanBarCodeScreen(
                         scanType
                     )
                 ) {}
+
+                is NavigationEvent.NavigateToBatch -> {
+                    navController.navigate(Screen.Batch.createRoute(event.batchId))
+                }
 
             }
         }
@@ -123,7 +143,7 @@ fun ScanBarCodeScreen(
         )
     }
 
-    if(uiState.showInvalidScanDialog){
+    if (uiState.showInvalidScanDialog) {
         CommonDialog(
             title = stringResource(R.string.rescan_require),
             message = stringResource(R.string.scan_correct_label),
@@ -137,6 +157,18 @@ fun ScanBarCodeScreen(
         )
     }
 
+    if (uiState.showPmsNdcMismatchDialog) {
+        CommonDialog(
+            title = stringResource(R.string.incorrect_ndc),
+            message = stringResource(R.string.you_have_scan_incorrect_ndc_this_item_does_not_match_the_pms_batch),
+            confirmText =stringResource(R.string.rescane),
+            cancelText = "",
+            onConfirm = { viewModel.hidePmsMismatchDialog() },
+            onCancel = {},
+            isSingleButton = true
+        )
+    }
+
     if (uiState.showScanSuccessfullyDialog) {
         if (transactionScanType == ScanType.RX_LABEL) {
             LabelScannedSuccessfullyDialog(
@@ -144,7 +176,56 @@ fun ScanBarCodeScreen(
                     DialogField(stringResource(R.string.rx_number), uiState.rxNo.toString()),
                     DialogField(stringResource(R.string.ndc_number), uiState.ndc),
                     DialogField(stringResource(R.string.drugname), uiState.drugName),
-                    DialogField(stringResource(R.string.quantity), uiState.qty.toString())
+                    DialogField(stringResource(R.string.quantity), uiState.qty.toString()),
+                    DialogField(stringResource(R.string.bucket), uiState.selectedBucketId)
+                ),
+                title = stringResource(R.string.label_scanned_successfully),
+                onCancel = {
+                    viewModel.analyzer.resume()
+                    viewModel.hideSuccessDialog()
+                },
+                onProceed = {
+                    viewModel.hideSuccessDialog()
+                    viewModel.analyzer.resume()
+                    viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
+                },
+                selectedContainerStatus = uiState.selectedContainerStatus,
+                onContainerStatusChange = { status ->
+                    viewModel.onEvent(ScanBarcodeEvent.OnContainerStatusChanged(status))
+                },
+                showSealedButtons = false
+            )
+        } else if (transactionScanType == ScanType.STOCK_COUNT) {
+            LabelScannedSuccessfullyDialog(
+                fields = listOf(
+                    DialogField(stringResource(R.string.ndc_number), uiState.ndc),
+                    DialogField(stringResource(R.string.drugname), uiState.drugName),
+                    DialogField(stringResource(R.string.quantity), uiState.qty.toString()),
+                    DialogField(stringResource(R.string.bucket), uiState.selectedBucketId)
+                ),
+
+                title = stringResource(R.string.label_scanned_successfully),
+                onCancel = {
+                    viewModel.analyzer.resume()
+                    viewModel.hideSuccessDialog()
+                },
+                onProceed = {
+                    viewModel.hideSuccessDialog()
+//                    viewModel.analyzer.resume()
+                    viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
+
+                },
+                selectedContainerStatus = uiState.selectedContainerStatus,
+                onContainerStatusChange = { status ->
+                    viewModel.onEvent(ScanBarcodeEvent.OnContainerStatusChanged(status))
+                },
+                showSealedButtons = true
+            )
+        } else {
+            LabelScannedSuccessfullyDialog(
+                fields = listOf(
+                    DialogField(stringResource(R.string.ndc_number), uiState.ndc),
+                    DialogField(stringResource(R.string.drugname), uiState.drugName),
                 ),
 
                 title = stringResource(R.string.label_scanned_successfully),
@@ -155,27 +236,13 @@ fun ScanBarCodeScreen(
                 onProceed = {
                     viewModel.hideSuccessDialog()
                     viewModel.analyzer.resume()
-                    viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
-
-                }
-            )
-        } else {
-            LabelScannedSuccessfullyDialog(
-                fields = listOf(
-                    DialogField(stringResource(R.string.ndc_number), uiState.ndc),
-                    DialogField(stringResource(R.string.drugname), uiState.drugName),
-                    ),
-
-                title = stringResource(R.string.label_scanned_successfully),
-                onCancel = {
-                    viewModel.analyzer.resume()
-                    viewModel.hideSuccessDialog()
-                },
-                onProceed = {
-                    viewModel.hideSuccessDialog()
-                    viewModel.analyzer.resume()
                     viewModel.onEvent(ScanBarcodeEvent.StartCount())
-                }
+                },
+                selectedContainerStatus = uiState.selectedContainerStatus,
+                onContainerStatusChange = { status ->
+                    viewModel.onEvent(ScanBarcodeEvent.OnContainerStatusChanged(status))
+                },
+                showSealedButtons = false
             )
         }
         viewModel.analyzer.pause()
@@ -188,10 +255,11 @@ fun ScanBarCodeScreen(
         uiState = uiState,
         hasCameraPermission = hasCameraPermission,
         onRequestPermission = {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
+            permissionLauncher.launch(Manifest. permission.CAMERA)
         },
         onEvent = viewModel::onEvent,
-        analyzer = viewModel.analyzer
+        analyzer = viewModel.analyzer,
+        batchId = batchId
     )
 }
 

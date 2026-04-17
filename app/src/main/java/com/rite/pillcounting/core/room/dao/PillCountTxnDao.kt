@@ -8,6 +8,7 @@ import androidx.room.Transaction
 import androidx.room.Update
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.dtos.StatusTypeCount
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
@@ -258,6 +259,23 @@ interface PillCountTxnDao {
     suspend fun getTxnWithDetails(transactionId: Long): TxnWithDetails?
 
     /**
+     * Adds [qty] to the `looseQty` of a transaction (treating NULL as 0).
+     *
+     * Called each time an ADD is confirmed during a REGULAR count so that the
+     * transaction header always reflects the running loose-pill total.
+     *
+     * @param txnId The transaction ID.
+     * @param qty   The pill count to add.
+     * @param now   Timestamp; defaults to [System.currentTimeMillis].
+     */
+    @Query("UPDATE pill_count_txn SET looseQty = IFNULL(looseQty, 0) + :qty, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun incrementLooseQty(
+        txnId: Long,
+        qty: Int,
+        now: Long = System.currentTimeMillis()
+    )
+
+    /**
      * Updates the [CountStatus] of a specific transaction.
      *
      * @param txnId The transaction ID.
@@ -282,8 +300,9 @@ interface PillCountTxnDao {
      */
     @Query(
         """
-    SELECT 
+    SELECT
         txn.txnId,
+        txn.batchId,
         txn.countType,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
@@ -316,8 +335,9 @@ interface PillCountTxnDao {
 
     @Query(
         """
-    SELECT 
+    SELECT
         txn.txnId,
+        txn.batchId,
         txn.countType,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
@@ -341,6 +361,7 @@ interface PillCountTxnDao {
       AND (:status IS NULL OR txn.status = :status)
     GROUP BY
         txn.txnId,
+        txn.batchId,
         txn.countType,
         txn.status,
         drug.drugName,
@@ -417,6 +438,113 @@ interface PillCountTxnDao {
      */
     @Query("DELETE FROM pill_count_txn WHERE txnId = :txnId")
     suspend fun deleteTransaction(txnId: Long)
+
+    /**
+     * Observes all transactions belonging to a batch, joined with drug name and NDC.
+     *
+     * Used to power the BatchScreen UI, grouping transactions by drug.
+     *
+     * @param batchId The batch ID to filter by.
+     * @return A [Flow] emitting a live list of [BatchTxnDto].
+     */
+    @Query(
+        """
+    SELECT
+        txn.txnId,
+        txn.drugId,
+        dm.drugName,
+        dm.ndc,
+        txn.lotNo,
+        txn.expiry,
+        txn.bottleQty,
+        txn.looseQty,
+        dm.packageQty
+    FROM pill_count_txn AS txn
+    LEFT JOIN drug_master AS dm ON txn.drugId = dm.drugId
+    WHERE txn.batchId = :batchId AND txn.isDeleted = 0
+    ORDER BY dm.drugName ASC
+    """
+    )
+    fun observeByBatchId(batchId: Long): Flow<List<BatchTxnDto>>
+
+    /**
+     * One-shot fetch of all transactions for a batch, joined with drug data.
+     * Used for building HL7 inventory response messages.
+     */
+    @Query(
+        """
+    SELECT
+        txn.txnId,
+        txn.drugId,
+        dm.drugName,
+        dm.ndc,
+        txn.lotNo,
+        txn.expiry,
+        txn.bottleQty,
+        txn.looseQty,
+        dm.packageQty
+    FROM pill_count_txn AS txn
+    LEFT JOIN drug_master AS dm ON txn.drugId = dm.drugId
+    WHERE txn.batchId = :batchId AND txn.isDeleted = 0
+    ORDER BY dm.drugName ASC
+    """
+    )
+    suspend fun getTxnsByBatchId(batchId: Long): List<BatchTxnDto>
+
+    /**
+     * Observes the count of distinct NDCs (drug groups) in a batch.
+     * Mirrors the number of drug group cards shown in BatchScreen.
+     */
+    @Query("""
+        SELECT COUNT(DISTINCT txn.drugId)
+        FROM pill_count_txn AS txn
+        WHERE txn.batchId = :batchId AND txn.isDeleted = 0
+    """)
+    fun observeTotalCountByBatchId(batchId: Long): Flow<Int>
+
+
+    /**
+     * Finds an existing STOCK_COUNT transaction under the same batch with matching drug,
+     * lot number, and expiry — used to merge sealed container quantities.
+     */
+    @Query("""
+        SELECT * FROM pill_count_txn
+        WHERE batchId = :batchId
+          AND drugId = :drugId
+          AND (lotNo = :lotNo OR (lotNo IS NULL AND :lotNo IS NULL))
+          AND (expiry = :expiry OR (expiry IS NULL AND :expiry IS NULL))
+          AND isDeleted = 0
+        LIMIT 1
+    """)
+    suspend fun findSealedTxnInBatch(
+        batchId: Long,
+        drugId: String,
+        lotNo: String?,
+        expiry: String?
+    ): PillCountTxnEntity?
+
+    /**
+     * PMS validation query: finds a pre-loaded PMS transaction in the batch for the given drug.
+     *
+     * Null-tolerant matching rules:
+     * - If txn.lotNo IS NULL  → accept any scanned lot  (lot not specified by PMS)
+     * - If txn.lotNo NOT NULL → scanned lot must match exactly
+     * - Same rule applies to expiry.
+     *
+     * This lets PMS batches that have no lot/expiry data validate by NDC alone,
+     * while still enforcing lot+expiry when PMS does provide them.
+     */
+    @Query("""
+        SELECT * FROM pill_count_txn
+        WHERE batchId = :batchId
+          AND drugId = :drugId
+          AND isDeleted = 0
+        LIMIT 1
+    """)
+    suspend fun findPmsTxnInBatch(
+        batchId: Long,
+        drugId: String,
+    ): PillCountTxnEntity?
 
 
     /**

@@ -1,5 +1,7 @@
 package com.rite.pillcounting.feature.barcodeScan.domain.model
 
+import com.rite.pillcounting.core.utils.compose.ContainerStatus
+
 /**
  * Represents the current state of the ScanBarCodeScreen.
  *
@@ -21,11 +23,15 @@ data class ScanBarcodeUiState(
     val isScannerActive: Boolean = true,
     val barcodeImagePath: String? = null,
     val hl7ExpectedNdc: String? = null,
-    val rxNo:String? = null,
-    val qty:String? = null,
+    val rxNo: String? = null,
+    val qty: String? = null,
 
     val showNdcNotFoundDialog: Boolean = false,
     val showNdcEquivalenceDialog: Boolean = false,
     val showScanSuccessfullyDialog: Boolean = false,
-    val showInvalidScanDialog: Boolean = false
+    val showInvalidScanDialog: Boolean = false,
+    val showPmsNdcMismatchDialog: Boolean = false,
+    val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
+    val batchId: Long = 0,
+    val selectedBucketId: String = ""
 )

@@ -25,5 +25,7 @@ data class DrugMasterEntity(
     val ndc: String,
     val equivalence: String? = null,
     val drugType: String? = null,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    val gtin: String?= null,
+    val packageQty: Int?= 0
 )

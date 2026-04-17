@@ -5,6 +5,7 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 
 data class TxnWithDrugDto(
     val txnId: Long,
+    val batchId: Long?,
     val countType: CountType,
     val status: CountStatus,
     val pillCount: Int?,

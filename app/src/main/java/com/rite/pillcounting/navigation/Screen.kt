@@ -39,9 +39,22 @@ sealed interface Screen {
         override val route: String = "settings"
     }
 
-//    data object History : Screen {
-//        override val route: String = "history"
-//    }
+    data object Batch : Screen {
+        private const val ROUTE_PREFIX = "batch"
+        const val ARG_BATCH_ID = "batch_id"
+
+        override val route: String = "$ROUTE_PREFIX?$ARG_BATCH_ID={$ARG_BATCH_ID}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_BATCH_ID) {
+                type = NavType.LongType
+                defaultValue = 0L
+            }
+        )
+
+        /** Navigate to a specific batch; batchId = 0 means "resolve latest batch". */
+        fun createRoute(batchId: Long = 0L): String = "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId"
+    }
 
     data object HistoryDetail : Screen {
         override val route: String = "history_detail"
@@ -100,15 +113,20 @@ sealed interface Screen {
 
     data object ScanBarcode : Screen {
         private const val ROUTE_PREFIX = "scan_barcode"
+
         const val ARG_TYPE = "type"
+        const val ARG_BATCH_ID = "batch_id"
         const val TXN_SCAN_TYPE = "txn_scan_type"
 
         override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}?$TXN_SCAN_TYPE={$TXN_SCAN_TYPE}"
+            "$ROUTE_PREFIX/{$ARG_TYPE}/{$ARG_BATCH_ID}?$TXN_SCAN_TYPE={$TXN_SCAN_TYPE}"
 
         val navArguments: List<NamedNavArgument> = listOf(
             navArgument(ARG_TYPE) {
                 type = NavType.StringType
+            },
+            navArgument(ARG_BATCH_ID) {
+                type = NavType.LongType
             },
             navArgument(TXN_SCAN_TYPE) {
                 type = NavType.StringType
@@ -118,9 +136,10 @@ sealed interface Screen {
 
         fun createRoute(
             scanType: String,
-            txnScanType: ScanType
+            txnScanType: ScanType,
+            batchId: Long
         ): String {
-            return "$ROUTE_PREFIX/$scanType?$TXN_SCAN_TYPE=${txnScanType.name}"
+            return "$ROUTE_PREFIX/$scanType/$batchId?$TXN_SCAN_TYPE=${txnScanType.name}"
         }
     }
 
@@ -155,6 +174,9 @@ sealed interface Screen {
         fun createRoute(type: String) = "$ROUTE_PREFIX/$type"
     }
 
+    data object PartialCountsScreen : Screen {
+        override val route: String = "partial_count_screen"
+    }
 
 }
 

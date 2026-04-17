@@ -3,9 +3,13 @@ package com.rite.pillcounting.feature.dashboard.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.UserEntity
+import com.rite.pillcounting.core.room.models.enums.BatchStatus
+import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.HelperFunctions.mapCounts
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -46,6 +50,7 @@ class DashboardViewModel @Inject constructor(
     private val userDetailRepository: IUserDetailRepository,
     private val preferenceHelper: PreferenceHelper,
     private val userDao: UserDao,
+    private val batchDao: BatchDao,
     private val pillCountTxnDao: PillCountTxnDao,
     private val hl7EventHandler: Hl7EventHandler
 
@@ -66,13 +71,19 @@ class DashboardViewModel @Inject constructor(
         //  To avoid initial observe count call because of absence of localId
         if (preferenceHelper.getLocalId() != 0.toLong()) {
             observeDashboardCounts()
+            observeBatchCount()
+            observeCompletedBatchCount()
         }
         fetchUserDetail()
     }
 
-    fun isHl7Enabled(): Boolean{
+    fun isHl7Enabled(): Boolean {
         return preferenceHelper.isHl7Enabled()
     }
+
+    fun getBucketList(): List<String> = preferenceHelper.getBucketList()
+
+    suspend fun getLastInProgressBatch() = batchDao.getLatest()
 
     /**
      * Observe aggregated transaction counts and update the dashboard UI state.
@@ -89,11 +100,31 @@ class DashboardViewModel @Inject constructor(
                         it.copy(
                             completedFixedCount = counts.fixedCompleted.toString(),
                             partialFixedCount = counts.fixedPartial.toString(),
-                            completedRegularCount = counts.regularCompleted.toString(),
-                            partialRegularCount = counts.regularPartial.toString()
+//                            completedRegularCount = counts.regularCompleted.toString(),
+//                            partialRegularCount = counts.regularPartial.toString()
                         )
                     }
                 }
+        }
+    }
+
+    private fun observeBatchCount() {
+        viewModelScope.launch(Dispatchers.IO) {
+            batchDao.observeActiveInProgressCount().collect { count ->
+                _uiState.update {
+                    it.copy(partialRegularCount = count.toString())
+                }
+            }
+        }
+    }
+
+    private fun observeCompletedBatchCount() {
+        viewModelScope.launch(Dispatchers.IO) {
+            batchDao.observeCompletedBatchCount().collect { count ->
+                _uiState.update {
+                    it.copy(completedRegularCount = count.toString())
+                }
+            }
         }
     }
 
@@ -136,9 +167,12 @@ class DashboardViewModel @Inject constructor(
                             val entity = detail.toUserEntity(jwtUserId = uiUser.profile?.userId)
                             val localId = userDao.upsertPreservingLocalId(user = entity)
                             preferenceHelper.saveUserId(entity.userId)
+                            preferenceHelper.setKeyBucketList(payload.data?.profile?.bucket ?: emptyList())
                             //  To call observe count for first time when localId is 0 (from preference)
                             if (preferenceHelper.getLocalId() == 0.toLong()) {
                                 observeDashboardCounts(localId)
+                                observeBatchCount()
+                                observeCompletedBatchCount()
                             }
                             preferenceHelper.saveLocalId(localId)
                             logger.i("User persisted locally with localId=$localId")
@@ -197,7 +231,49 @@ class DashboardViewModel @Inject constructor(
         preferenceHelper.saveTxnId(0)
     }
 
+    fun createBatch(bucketId: String) {
+        viewModelScope.launch {
+            _uiState.update {
+                it.copy(
+                    isLoading = true,
+                    error = null
+                )
+            }
 
+            try {
+                val batch = BatchEntity(
+                    batchId = System.currentTimeMillis(),
+                    startDateTime = System.currentTimeMillis(),
+                    endDateTime = null, // Will be set when batch is completed
+                    status = BatchStatus.INPROGRESS,
+                    isDeleted = false,
+                    note = null, // Can be set later by user
+                    bucketId = bucketId // Can be set later
+                )
+                val batchId = batchDao.insert(batch)
+
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        createdBatchId = batchId
+                    )
+                }
+            } catch (e: Exception) {
+                _uiState.update {
+                    it.copy(
+                        isLoading = false,
+                        error = e.message ?: "Failed to create batch"
+                    )
+                }
+            }
+        }
+    }
+
+    fun clearCreatedBatchId() {
+        _uiState.update {
+            it.copy(createdBatchId = null)
+        }
+    }
 }
 
 /* ───────────────────────────── Mappers ───────────────────────────── */

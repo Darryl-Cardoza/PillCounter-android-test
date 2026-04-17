@@ -44,5 +44,9 @@ data class DashboardUiState(
 
     /** Triggers navigation to Profile screen if profile details are incomplete. */
     val navigateToProfile: Boolean = false,
-    val logoutUser: Boolean = false
+    val logoutUser: Boolean = false,
+    val isLoading: Boolean = false,
+    val error: String? = null,
+    //set as null because when we set 0 because of observer its consider the Id and redirect to barcode screen
+    val createdBatchId: Long? = null
 )

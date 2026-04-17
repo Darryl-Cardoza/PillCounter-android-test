@@ -25,10 +25,10 @@
     <string name="send_otp">Envoyer OTP</string>
 
     <!-- ================== DASHBOARD ================== -->
-    <string name="fixed_count">Comptage Fixe</string>
-    <string name="fixed_count_desc">Pour compter des quantités fixes</string>
-    <string name="regular_count">Comptage Régulier</string>
-    <string name="regular_count_desc">Pour les comptages quotidiens réguliers</string>
+    <string name="dispense">Comptage Fixe</string>
+    <string name="tap_to_scan_rx_labels">Pour compter des quantités fixes</string>
+    <string name="stock_count">Comptage Régulier</string>
+    <string name="start_a_new_inventory_count">Pour les comptages quotidiens réguliers</string>
     <string name="completed">terminé</string>
     <string name="partial">partiel</string>
     <string name="barcode_scan">Scanner le code-barres</string>
@@ -194,9 +194,36 @@
     <string name="subtituted_drug">Substituted Drug</string>
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
+    <string name="stock_count_dialog_title">What would you like to do?</string>
+    <string name="stock_count_dialog_option_first">Create a new Batch</string>
+    <string name="stock_count_dialog_option_second">Continue with last Batch count</string>
+    <string name="stock_bottles">Stock Bottles</string>
+    <string name="open_pills">Open Pills</string>
+    <string name="partial_stock_counts">Partial Stock Counts</string>
 
     <!--    label scanned -->
     <string name="proceed">PROCEED</string>
     <string name="scan_rx_label">Scan Rx Label</string>
     <string name="scan_correct_label">Scan Correct Label</string>
+    <string name="inventory_batch_details">Inventory Batch Details</string>
+    <string name="totalNdcCount">Total Ndc Count</string>
+    <string name="total_quantity">Total Quantity</string>
+    <string name="no_results_found">no result found</string>
+    <string name="no_partial_counts">no partial counts</string>
+
+<!--    StockCount-->
+    <string name="confirmation">Confirmation</string>
+    <string name="are_you_sure_you_want_to_end_this_count">Are you sure you want to end this Count?</string>
+    <string name="no_items_in_that_batch_yet">No items in this batch yet</string>
+    <string name="end_this_batch_it_will_be_mark_as_completed">End this batch? It will be marked as complete.</string>
+    <string name="end_batch">End Batch</string>
+    <string name="sealed_bottles">Sealed Bottles</string>
+    <string name="opend_bottles">Opened Bottles</string>
+    <string name="end_count">END COUNT</string>
+    <string name="plus_add">+ ADD</string>
+    <string name="incorrect_ndc">Incorrect NDC</string>
+    <string name="you_have_scan_incorrect_ndc_this_item_does_not_match_the_pms_batch">You have scanned an incorrect NDC. This item does not match the PMS batch.</string>
+    <string name="bucket">Bucket</string>
+    <string name="batch">Batch</string>
+    <string name="no_last_batch_available">No last batch available</string>
 </resources>

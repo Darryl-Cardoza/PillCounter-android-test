@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.feature.pillCountScan.domain.data.PillScanningEvent
@@ -64,7 +65,11 @@ fun InformationPanelSection(
     filteredPillCount: Int
 ) {
     val stepType by viewModel.currentStep.collectAsState()
-    val totalCount = uiState.txnDetailHistory.sumOf { it.count }
+    val totalCount = if (uiState.scanType == CountType.REGULAR.toString()) {
+        uiState.stockCountSessionTotal
+    } else {
+        uiState.txnDetailHistory.sumOf { it.count }
+    }
     var showHistory by remember { mutableStateOf(false) }
     val txnHistory = uiState.txnDetailHistory
     val onToggleHistory = { showHistory = !showHistory }

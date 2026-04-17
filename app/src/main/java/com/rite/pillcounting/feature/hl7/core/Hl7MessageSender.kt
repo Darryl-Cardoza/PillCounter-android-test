@@ -12,6 +12,10 @@ class Hl7MessageSender @Inject constructor(
         hl7ServiceManager.sendMessage(message)
     }
 
+    fun sendRaw(raw: String): Result<Unit> {
+        return hl7ServiceManager.sendRawMessage(raw)
+    }
+
     fun connect() {
         hl7ServiceManager.discoverAndConnect()
     }

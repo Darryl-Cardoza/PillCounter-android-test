@@ -2,7 +2,10 @@ package com.rite.pillcounting.core.room.di
 
 import android.content.Context
 import androidx.room.Room
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.rite.pillcounting.core.room.AppDatabase
+import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
@@ -25,6 +28,18 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
+    /*private val MIGRATION_2_3 = object : Migration(2, 3) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE pill_count_txn ADD COLUMN bucketId TEXT")
+        }
+    }
+
+    private val MIGRATION_3_4 = object : Migration(3, 4) {
+        override fun migrate(db: SupportSQLiteDatabase) {
+            db.execSQL("ALTER TABLE pill_count_txn ADD COLUMN batchId INTEGER")
+        }
+    }*/
+
     /** Provides the singleton instance of [AppDatabase]. */
     @Provides
     @Singleton
@@ -34,7 +49,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "pill_counting_db"
         )
-            // .addMigrations(MIGRATION_1_2 /*, ... */)
+            //.addMigrations(MIGRATION_2_3, MIGRATION_3_4)
             .build()
     }
 
@@ -53,4 +68,8 @@ object DatabaseModule {
     /** Provides the [PillCountTxnDetailsDao]. */
     @Provides
     fun providePillCountTxnDetailsDao(db: AppDatabase): PillCountTxnDetailsDao = db.pillCountTxnDetailsDao()
+
+    /** Provides the [BatchDao]. */
+    @Provides
+    fun provideBatchDao(db: AppDatabase): BatchDao = db.batchDao()
 }
