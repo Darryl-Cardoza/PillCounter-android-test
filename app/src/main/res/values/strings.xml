@@ -29,13 +29,13 @@
 
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispense</string>
-    <string name="tap_to_scan_rx_labels">Tap to scan Rx labels</string>
+    <string name="tap_to_scan_rx_labels">Tap to scan Rx Labels</string>
     <string name="stock_count">Stock Count</string>
     <string name="start_a_new_inventory_count">Start a new inventory count</string>
     <string name="new_rx">New Rx</string>
-    <string name="completed">completed</string>
+    <string name="completed">Completed</string>
     <string name="ndc_req">NDC Req.</string>
-    <string name="partial">Partials</string>
+    <string name="partial">Pending</string>
     <string name="barcode_scan">Scan Code</string>
 
     <!-- ================== SETTINGS ================== -->

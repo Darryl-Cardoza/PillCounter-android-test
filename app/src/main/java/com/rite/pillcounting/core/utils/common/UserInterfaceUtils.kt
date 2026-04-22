@@ -848,7 +848,7 @@ object UserInterfaceUtils {
             Icon(
                 painter = painterResource(id = icon),
                 contentDescription = "Menu",
-                tint = if(isPmsConnected) MaterialTheme.colorScheme.primary else Color.Gray,
+                tint = if(isPmsConnected) MaterialTheme.colorScheme.secondary else Color.Gray,
                 modifier = Modifier.padding(extraSmall)
             )
         }
