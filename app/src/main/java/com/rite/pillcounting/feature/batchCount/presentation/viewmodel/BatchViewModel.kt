@@ -19,6 +19,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import kotlinx.coroutines.launch
 import javax.inject.Inject
 
@@ -44,6 +45,14 @@ class BatchViewModel @Inject constructor(
             }
         }
     }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val isBatchCompleted: StateFlow<Boolean> = _resolvedBatchId
+        .flatMapLatest { id ->
+            if (id == 0L) flowOf(false)
+            else batchDao.observeById(id).map { it?.status == BatchStatus.COMPLETED }
+        }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), false)
 
     @OptIn(ExperimentalCoroutinesApi::class)
     val drugGroups: StateFlow<List<BatchDrugGroup>> = _resolvedBatchId

@@ -1,12 +1,15 @@
 package com.rite.pillcounting.core.hl7.mllp.client
 
+import android.util.Log
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsSocketFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import java.io.ByteArrayOutputStream
 import java.io.IOException
@@ -14,15 +17,15 @@ import java.io.InputStream
 import java.io.OutputStream
 import javax.net.ssl.SSLSocket
 
-
 class MllpClient(
     private val socketFactory: TlsSocketFactory
 ) {
     companion object {
+        private const val TAG = "MllpClient"
         private const val SB: Byte = 0x0B
         private const val EB: Byte = 0x1C
         private const val CR: Byte = 0x0D
-        private const val READ_TIMEOUT_MS = 0        // 0 = infinite (server pushes to us)
+        private const val READ_TIMEOUT_MS = 0
     }
 
     private var socket: SSLSocket? = null
@@ -30,101 +33,124 @@ class MllpClient(
     private var output: OutputStream? = null
     private val mutex = Mutex()
 
+    // Semaphore with 1 permit acts as a gate on the input stream.
+    // send() acquires the permit → passiveReader blocks at acquire()
+    // until send() releases it after readResponse() completes.
+    // passiveReader then re-enters its blocking read() immediately —
+    // no polling, no available(), so TCP close is detected instantly.
+    private val streamGate = Semaphore(permits = 1)
+
     suspend fun connect(ip: String, port: Int) = withContext(Dispatchers.IO) {
+        Log.d(TAG, "connect() — $ip:$port")
         mutex.withLock {
             closeInternal()
             val sock = socketFactory.createSocket(ip, port)
-
-            //  TCP-level keepalive — OS sends probe packets automatically
-            // Detects dead connections without any application-level ping
             sock.keepAlive = true
-
-            //  No read timeout — we wait for server to push messages
-            // Disconnect is detected when read() returns -1 or throws
             sock.soTimeout = READ_TIMEOUT_MS
-
             socket = sock
             input = sock.inputStream
             output = sock.outputStream
+            Log.i(TAG, "connect() — socket established to $ip:$port")
         }
     }
 
     suspend fun send(message: String): String = withContext(Dispatchers.IO) {
         mutex.withLock {
             require(isConnected()) { "Not connected" }
-            output!!.write(wrap(message))
-            output!!.flush()
-            readResponse()
+            Log.d(TAG, "send() — writing ${message.length} chars")
+
+            // Acquire the stream gate — passiveReader will block at its
+            // own acquire() call and cannot touch input until we release.
+            streamGate.acquire()
+            try {
+                output?.write(wrap(message))
+                output?.flush()
+                val response = readResponse()
+                Log.d(TAG, "send() — received response (${response.length} chars)")
+                response
+            } finally {
+                // Always release — even if readResponse() throws —
+                // so passiveReader is never permanently frozen.
+                streamGate.release()
+            }
         }
     }
 
-    /**
-     * Passive liveness check — no I/O, just inspects socket state.
-     * Real disconnect detection happens in startPassiveReader().
-     */
     fun isConnected(): Boolean =
         socket?.let { !it.isClosed && it.isConnected } ?: false
 
-    /**
-     * Starts a coroutine that blocks on read().
-     * When PMS closes connection, read() returns -1 immediately.
-     * This is the ONLY reliable way to detect disconnect in MLLP.
-     *
-     * Returns the job so caller can cancel it on shutdown.
-     */
     fun startPassiveReader(
         scope: CoroutineScope,
         onMessageReceived: (String) -> Unit,
         onDisconnected: () -> Unit
     ): Job = scope.launch(Dispatchers.IO) {
+        Log.d(TAG, "startPassiveReader() — started")
         try {
-            val stream = input ?: run { onDisconnected(); return@launch }
+            val stream = input ?: run {
+                Log.w(TAG, "startPassiveReader() — input stream is null")
+                onDisconnected()
+                return@launch
+            }
             val buffer = ByteArrayOutputStream()
             var started = false
 
             while (true) {
-                val b = stream.read()  // blocks until data or disconnect
+                // Wait until send() is not holding the stream.
+                // This is a real suspend — no spin loop, no polling.
+                // withPermit acquires, runs the block, releases.
+                streamGate.withPermit {
+                    // Inside here we own the gate — do ONE blocking read.
+                    // If server disconnects, read() returns -1 immediately.
+                    val b = stream.read()
 
-                if (b == -1) {
-                    // Clean TCP close from PMS
-                    onDisconnected()
-                    return@launch
-                }
-
-                when (b.toByte()) {
-                    SB -> { started = true; buffer.reset() }
-                    EB -> {
-                        stream.read() // CR
-                        if (started) onMessageReceived(buffer.toString(Charsets.UTF_8.name()))
-                        started = false
+                    if (b == -1) {
+                        Log.i(TAG, "startPassiveReader() — clean TCP close (read = -1)")
+                        onDisconnected()
+                        return@launch  // exits the coroutine
                     }
-                    else -> if (started) buffer.write(b)
+
+                    when (b.toByte()) {
+                        SB -> { started = true; buffer.reset() }
+                        EB -> {
+                            stream.read() // consume trailing CR
+                            if (started) {
+                                val msg = buffer.toString(Charsets.UTF_8.name())
+                                Log.d(TAG, "passiveReader — unsolicited msg (${msg.length} chars)")
+                                onMessageReceived(msg)
+                            }
+                            started = false
+                        }
+                        else -> if (started) buffer.write(b)
+                    }
                 }
+                // Gate is released here — if send() is waiting it gets
+                // the permit next, otherwise passiveReader loops back
+                // and re-acquires immediately for the next byte.
             }
-        } catch (_: Exception) {
-            // Socket closed, timeout, or reset — all mean disconnected
+        } catch (e: Exception) {
+            Log.w(TAG, "startPassiveReader() — exception: ${e.message}")
             onDisconnected()
         }
     }
 
     suspend fun close() = withContext(Dispatchers.IO) {
+        Log.d(TAG, "close() — closing socket")
         mutex.withLock { closeInternal() }
     }
 
     private fun wrap(msg: String): ByteArray =
         byteArrayOf(SB) + msg.toByteArray() + byteArrayOf(EB, CR)
 
-    // Keep this for one-shot sends that need a response (dispense/inventory)
     private fun readResponse(): String {
         val buffer = ByteArrayOutputStream()
         var started = false
         while (true) {
             val b = input!!.read()
-            if (b == -1) throw IOException("Connection closed by server")
+            if (b == -1) throw IOException("Connection closed by server mid-read")
             when (b.toByte()) {
                 SB -> { started = true; buffer.reset() }
                 EB -> {
-                    input!!.read()
+                    input!!.read() // consume trailing CR
                     return buffer.toString(Charsets.UTF_8.name())
                 }
                 else -> if (started) buffer.write(b)
@@ -133,6 +159,7 @@ class MllpClient(
     }
 
     private fun closeInternal() {
+        Log.d(TAG, "closeInternal() — releasing streams and socket")
         try { input?.close() } catch (_: Exception) {}
         try { output?.close() } catch (_: Exception) {}
         try { socket?.close() } catch (_: Exception) {}

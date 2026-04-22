@@ -68,6 +68,7 @@ fun BatchScreen(
 ) {
     val drugGroups by viewModel.drugGroups.collectAsStateWithLifecycle()
     val displayBatchId by viewModel.displayBatchId.collectAsStateWithLifecycle()
+    val isBatchCompleted by viewModel.isBatchCompleted.collectAsStateWithLifecycle()
 
     var isMultiSelectMode by remember { mutableStateOf(false) }
     var selectedItems by remember { mutableStateOf(setOf<BatchDrugGroup>()) }
@@ -154,7 +155,7 @@ fun BatchScreen(
         }
 
         // ── Bottom action bar ────────────────────────────────────────────────
-        if (showActions) {
+        if (!isBatchCompleted) {
             BottomActionBar(
                 onEndBatch = { showEndBatchDialog = true },
                 onAdd = {

@@ -120,7 +120,7 @@ fun HistoryScreen(
                 onSelectAll = {}
             )
 
-            if (historyMode == HistoryMode.REGULAR) {
+            if (historyMode != HistoryMode.DISPENSE) {
                 BatchListContent(
                     batches = batchGroups,
                     onBatchClick = { batchId ->
@@ -167,7 +167,7 @@ fun HistoryScreen(
                     )
                 },
                 bottomOrRight = {
-                    if (historyMode == HistoryMode.REGULAR) {
+                    if (historyMode != HistoryMode.DISPENSE) {
                         BatchListContent(
                             batches = batchGroups,
                             onBatchClick = { batchId ->
