@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
+import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchDrugGroup
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchLotEntry
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
@@ -32,15 +33,22 @@ class BatchViewModel @Inject constructor(
 
     private val argBatchId: Long = savedStateHandle["batch_id"] ?: 0
 
-    /** The resolved batch ID — starts from the nav arg, falls back to latest active batch if 0. */
     private val _resolvedBatchId = MutableStateFlow(argBatchId)
     val displayBatchId: StateFlow<Long> = _resolvedBatchId.asStateFlow()
 
+    private val _isBatchCompleted = MutableStateFlow(false)
+    val isBatchCompleted: StateFlow<Boolean> = _isBatchCompleted.asStateFlow()
+
     init {
-        if (argBatchId == 0.toLong()) {
-            //For getting last batch info
-            viewModelScope.launch {
-                batchDao.getLatest()?.let { _resolvedBatchId.value = it.batchId }
+        viewModelScope.launch {
+            val batchId = if (argBatchId == 0L) {
+                batchDao.getLatest()?.batchId?.also { _resolvedBatchId.value = it } ?: 0L
+            } else {
+                argBatchId
+            }
+            if (batchId != 0L) {
+                _isBatchCompleted.value =
+                    batchDao.getById(batchId)?.status == BatchStatus.COMPLETED
             }
         }
     }
@@ -48,7 +56,7 @@ class BatchViewModel @Inject constructor(
     @OptIn(ExperimentalCoroutinesApi::class)
     val drugGroups: StateFlow<List<BatchDrugGroup>> = _resolvedBatchId
         .flatMapLatest { id ->
-            if (id == 0.toLong()) flowOf(emptyList())
+            if (id == 0L) flowOf(emptyList())
             else pillCountTxnDao.observeByBatchId(id).map { it.groupAndMap() }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
@@ -56,8 +64,10 @@ class BatchViewModel @Inject constructor(
     fun endBatch() {
         viewModelScope.launch {
             val id = _resolvedBatchId.value
-            if (id != 0.toLong()) batchDao.markAsCompleted(id)
-           hl7Repository.buildAndSendInventoryResponse(id)
+            if (id != 0L) {
+                batchDao.markAsCompleted(id)
+            }
+            hl7Repository.buildAndSendInventoryResponse(id)
         }
     }
 

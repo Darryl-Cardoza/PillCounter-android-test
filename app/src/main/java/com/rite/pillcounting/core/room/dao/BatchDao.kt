@@ -64,6 +64,9 @@ interface BatchDao {
     @Query("SELECT * FROM batch WHERE batchId = :batchId")
     suspend fun getById(batchId: Long): BatchEntity?
 
+    @Query("SELECT * FROM batch WHERE batchId = :batchId LIMIT 1")
+    fun observeById(batchId: Long): Flow<BatchEntity?>
+
     /**
      * Retrieves all non-deleted batches ordered by creation date (newest first).
      *
