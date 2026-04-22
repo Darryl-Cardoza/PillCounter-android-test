@@ -35,9 +35,8 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSe
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.common.navigateSafely
-import com.rite.pillcounting.core.utils.compose.StockIcon
+import com.rite.pillcounting.core.utils.compose.MedicalIcon
 import com.rite.pillcounting.core.utils.compose.bounceClick
-import com.rite.pillcounting.core.utils.constants.Dimens.extraLarge
 import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.core.utils.constants.Dimens.smallMedium
 import com.rite.pillcounting.feature.dashboard.presentation.viewmodel.DashboardViewModel
@@ -88,9 +87,9 @@ fun RegularCountSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Regular count icon (click → ScanBarcode)
-            StockIcon(
-                innerColor = MaterialTheme.colorScheme.secondary,
+            MedicalIcon(
                 outerCircleColor = MaterialTheme.colorScheme.primary,
+                innerColor = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.size(responsiveDp(120.dp)),
                 contentDescription = stringResource(R.string.stock_count)
             )

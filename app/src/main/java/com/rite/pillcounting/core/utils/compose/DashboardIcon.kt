@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.utils.compose
 
 import android.graphics.BlurMaskFilter
+import androidx.annotation.DrawableRes
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -23,6 +24,7 @@ import com.rite.pillcounting.R
 fun MedicalIcon(
     outerCircleColor: Color,
     innerColor: Color = MaterialTheme.colorScheme.secondary,
+    @DrawableRes innerIconRes: Int = R.drawable.regular_count_inner,
     modifier: Modifier = Modifier,
     size: Dp = 120.dp,
     contentDescription: String? = null
@@ -36,7 +38,6 @@ fun MedicalIcon(
                 val radius = this.size.width / 2f - 2f
 
                 drawIntoCanvas { canvas ->
-                    // Wide soft outer glow
                     val wideGlow = Paint()
                     wideGlow.asFrameworkPaint().apply {
                         style = android.graphics.Paint.Style.STROKE
@@ -46,7 +47,6 @@ fun MedicalIcon(
                     }
                     canvas.drawCircle(Offset(cx, cy), radius, wideGlow)
 
-                    // Tight bright outer glow
                     val tightGlow = Paint()
                     tightGlow.asFrameworkPaint().apply {
                         style = android.graphics.Paint.Style.STROKE
@@ -65,61 +65,7 @@ fun MedicalIcon(
             modifier = Modifier.fillMaxSize()
         )
         Icon(
-            painter = painterResource(id = R.drawable.regular_count_inner),
-            contentDescription = null,
-            tint = innerColor,
-            modifier = Modifier.fillMaxSize()
-        )
-    }
-}
-
-@Composable
-fun StockIcon(
-    outerCircleColor: Color,
-    innerColor: Color = MaterialTheme.colorScheme.primary,
-    modifier: Modifier = Modifier,
-    size: Dp = 120.dp,
-    contentDescription: String? = null
-) {
-    Box(
-        modifier = modifier
-            .size(size)
-            .drawBehind {
-                val cx = this.size.width / 2f
-                val cy = this.size.height / 2f
-                val radius = this.size.width / 2f - 2f
-
-                drawIntoCanvas { canvas ->
-                    // Wide soft outer glow
-                    val wideGlow = Paint()
-                    wideGlow.asFrameworkPaint().apply {
-                        style = android.graphics.Paint.Style.STROKE
-                        strokeWidth = 10f
-                        maskFilter = BlurMaskFilter(55f, BlurMaskFilter.Blur.OUTER)
-                        color = outerCircleColor.copy(alpha = 0.45f).toArgb()
-                    }
-                    canvas.drawCircle(Offset(cx, cy), radius, wideGlow)
-
-                    // Tight bright outer glow
-                    val tightGlow = Paint()
-                    tightGlow.asFrameworkPaint().apply {
-                        style = android.graphics.Paint.Style.STROKE
-                        strokeWidth = 6f
-                        maskFilter = BlurMaskFilter(22f, BlurMaskFilter.Blur.OUTER)
-                        color = outerCircleColor.copy(alpha = 0.95f).toArgb()
-                    }
-                    canvas.drawCircle(Offset(cx, cy), radius, tightGlow)
-                }
-            }
-    ) {
-        Icon(
-            painter = painterResource(id = R.drawable.fixed_count_outer),
-            contentDescription = contentDescription,
-            tint = outerCircleColor,
-            modifier = Modifier.fillMaxSize()
-        )
-        Icon(
-            painter = painterResource(id = R.drawable.fixed_count_inner),
+            painter = painterResource(id = innerIconRes),
             contentDescription = null,
             tint = innerColor,
             modifier = Modifier.fillMaxSize()
