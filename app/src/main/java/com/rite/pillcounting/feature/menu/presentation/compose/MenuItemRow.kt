@@ -98,26 +98,12 @@ fun MenuItemRow(
             verticalAlignment = Alignment.CenterVertically,
             modifier = Modifier.fillMaxWidth()
         ) {
-            if (icon == R.drawable.fixed_count) {
-                MedicalIcon(
-                    outerCircleColor = iconTint,
-                    modifier = Modifier.size(responsiveDp(28.dp)),
-                    contentDescription = title
-                )
-            } else if (icon == R.drawable.regular_count) {
-                StockIcon(
-                    outerCircleColor = iconTint,
-                    modifier = Modifier.size(responsiveDp(28.dp)),
-                    contentDescription = title
-                )
-            } else {
-                Icon(
-                    painter = painterResource(id = icon),
-                    contentDescription = title,
-                    tint = iconTint,
-                    modifier = Modifier.size(responsiveDp(28.dp))
-                )
-            }
+            Icon(
+                painter = painterResource(id = icon),
+                contentDescription = title,
+                tint = iconTint,
+                modifier = Modifier.size(responsiveDp(28.dp))
+            )
 
             Spacer(modifier = Modifier.width(12.dp))
 

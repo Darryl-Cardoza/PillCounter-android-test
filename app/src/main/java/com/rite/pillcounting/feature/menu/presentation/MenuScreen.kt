@@ -81,14 +81,14 @@ fun MenuScreen(
         ) {
             // Fixed Count
             MenuItemRow(
-                icon = R.drawable.fixed_count,
+                icon = R.drawable.regular_count_inner,
                 title = stringResource(R.string.dispense),
                 completed = stringResource(R.string.menu_completed, uiState.fixedCompleted),
                 partial = stringResource(R.string.menu_partial, uiState.fixedPartial),
-                iconTint = MaterialTheme.colorScheme.secondary,
-                completedTint = MaterialTheme.colorScheme.secondary,
-                partialTint = MaterialTheme.colorScheme.secondary,
-                completedIcon = R.drawable.tick,
+                iconTint = MaterialTheme.colorScheme.primary,
+                completedTint = MaterialTheme.colorScheme.primary,
+                partialTint = MaterialTheme.colorScheme.primary,
+                completedIcon = R.drawable.complete,
                 partialIcon = R.drawable.partial,
                 mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),
                     ScanType.RX_LABEL,0)) },
@@ -107,14 +107,14 @@ fun MenuScreen(
 
             // Regular Count
             MenuItemRow(
-                icon = R.drawable.regular_count,
+                icon = R.drawable.fixed_count_inner,
                 title = stringResource(R.string.stock_count),
                 completed = stringResource(R.string.menu_completed, uiState.regularCompleted),
                 partial = stringResource(R.string.menu_partial, uiState.regularPartial),
                 iconTint = MaterialTheme.colorScheme.primary,
                 completedTint = MaterialTheme.colorScheme.primary,
                 partialTint = MaterialTheme.colorScheme.primary,
-                completedIcon = R.drawable.tick,
+                completedIcon = R.drawable.complete,
                 partialIcon = R.drawable.partial,
                 mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.REGULAR.toString(),ScanType.RX_LABEL,0)) },
                 onPartialClick = {
@@ -134,7 +134,7 @@ fun MenuScreen(
             SimpleMenuRow(
                 navController = navController,
                 icon = R.drawable.profile,
-                iconTint = MaterialTheme.colorScheme.secondary,
+                iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.menu_profile),
                 onClick = { navController.navigate(Screen.Profile.route) }
             )
@@ -165,7 +165,7 @@ fun MenuScreen(
             SimpleMenuRow(
                 navController = navController,
                 icon = R.drawable.unsynced_transaction_icon,
-                iconTint = MaterialTheme.colorScheme.secondary,
+                iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.menu_unsync_transaction),
                 trailingText = uiState.unsyncedTransactionCount.toString(),
                 onClick = { navController.navigate(Screen.UnsyncedTransactionScreen.route) }
@@ -188,7 +188,7 @@ fun MenuScreen(
             SimpleMenuRow(
                 navController = navController,
                 icon = R.drawable.logout,
-                iconTint = MaterialTheme.colorScheme.secondary,
+                iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.menu_logout),
                 onClick = {
                     showLogoutConfirmDialog = true
