@@ -73,7 +73,7 @@ fun FixedCountSection(
             DashBoardIcon(
                 outerCircleColor = MaterialTheme.colorScheme.primary,
                 innerColor = MaterialTheme.colorScheme.secondary,
-                innerIconRes = R.drawable.fixed_count_inner,
+                innerIconRes = R.drawable.regular_count_inner,
                 modifier = Modifier.size(responsiveDp(120.dp)),
                 contentDescription = stringResource(R.string.dispense)
             )

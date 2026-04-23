@@ -24,7 +24,7 @@ import com.rite.pillcounting.R
 fun DashBoardIcon(
     outerCircleColor: Color,
     innerColor: Color = MaterialTheme.colorScheme.secondary,
-    @DrawableRes innerIconRes: Int = R.drawable.regular_count_inner,
+    @DrawableRes innerIconRes: Int = R.drawable.fixed_count_inner,
     modifier: Modifier = Modifier,
     size: Dp = 120.dp,
     contentDescription: String? = null
