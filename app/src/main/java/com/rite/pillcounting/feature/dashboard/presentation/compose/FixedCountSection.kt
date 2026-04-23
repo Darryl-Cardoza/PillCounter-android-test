@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,9 +27,8 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.navigateSafely
-import com.rite.pillcounting.core.utils.compose.MedicalIcon
+import com.rite.pillcounting.core.utils.compose.DashBoardIcon
 import com.rite.pillcounting.core.utils.compose.bounceClick
-import com.rite.pillcounting.core.utils.constants.Dimens.extraLarge
 import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.constants.Dimens.smallMedium
@@ -72,7 +70,7 @@ fun FixedCountSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Fixed count icon leading to ScanBarcode screen
-            MedicalIcon(
+            DashBoardIcon(
                 outerCircleColor = MaterialTheme.colorScheme.primary,
                 innerColor = MaterialTheme.colorScheme.secondary,
                 innerIconRes = R.drawable.fixed_count_inner,

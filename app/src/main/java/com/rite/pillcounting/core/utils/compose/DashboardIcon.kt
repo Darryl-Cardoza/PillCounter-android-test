@@ -21,7 +21,7 @@ import androidx.compose.ui.unit.dp
 import com.rite.pillcounting.R
 
 @Composable
-fun MedicalIcon(
+fun DashBoardIcon(
     outerCircleColor: Color,
     innerColor: Color = MaterialTheme.colorScheme.secondary,
     @DrawableRes innerIconRes: Int = R.drawable.regular_count_inner,

@@ -25,7 +25,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
-import com.rite.pillcounting.core.utils.compose.MedicalIcon
+import com.rite.pillcounting.core.utils.compose.DashBoardIcon
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 
 /**
@@ -100,7 +100,7 @@ fun MenuItemRow(
             modifier = Modifier.fillMaxWidth()
         ) {
             if (icon == R.drawable.fixed_count) {
-                MedicalIcon(
+                DashBoardIcon(
                     outerCircleColor = MaterialTheme.colorScheme.primary,
                     innerColor = MaterialTheme.colorScheme.secondary,
                     innerIconRes = R.drawable.fixed_count_inner,
@@ -108,7 +108,7 @@ fun MenuItemRow(
                     contentDescription = stringResource(R.string.stock_count)
                 )
             } else if (icon == R.drawable.regular_count) {
-                MedicalIcon(
+                DashBoardIcon(
                     outerCircleColor = MaterialTheme.colorScheme.primary,
                     innerColor = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.size(responsiveDp(28.dp)),
