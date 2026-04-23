@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -19,12 +20,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
-import com.rite.pillcounting.core.utils.compose.MedicalIcon
-import com.rite.pillcounting.core.utils.compose.StockIcon
+import com.rite.pillcounting.core.utils.compose.DashBoardIcon
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 
 /**
@@ -99,16 +100,19 @@ fun MenuItemRow(
             modifier = Modifier.fillMaxWidth()
         ) {
             if (icon == R.drawable.fixed_count) {
-                MedicalIcon(
-                    outerCircleColor = iconTint,
+                DashBoardIcon(
+                    outerCircleColor = MaterialTheme.colorScheme.primary,
+                    innerColor = MaterialTheme.colorScheme.secondary,
+                    innerIconRes = R.drawable.fixed_count_inner,
                     modifier = Modifier.size(responsiveDp(28.dp)),
-                    contentDescription = title
+                    contentDescription = stringResource(R.string.stock_count)
                 )
             } else if (icon == R.drawable.regular_count) {
-                StockIcon(
-                    outerCircleColor = iconTint,
+                DashBoardIcon(
+                    outerCircleColor = MaterialTheme.colorScheme.primary,
+                    innerColor = MaterialTheme.colorScheme.secondary,
                     modifier = Modifier.size(responsiveDp(28.dp)),
-                    contentDescription = title
+                    contentDescription = stringResource(R.string.stock_count)
                 )
             } else {
                 Icon(

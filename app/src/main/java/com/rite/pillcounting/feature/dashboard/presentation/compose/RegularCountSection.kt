@@ -25,7 +25,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -35,10 +34,10 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSe
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.common.navigateSafely
-import com.rite.pillcounting.core.utils.compose.StockIcon
+import com.rite.pillcounting.core.utils.compose.DashBoardIcon
 import com.rite.pillcounting.core.utils.compose.bounceClick
-import com.rite.pillcounting.core.utils.constants.Dimens.extraLarge
 import com.rite.pillcounting.core.utils.constants.Dimens.small
+import com.rite.pillcounting.core.utils.constants.Dimens.smallMedium
 import com.rite.pillcounting.feature.dashboard.presentation.viewmodel.DashboardViewModel
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.ui.theme.AppTheme
@@ -87,9 +86,9 @@ fun RegularCountSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Regular count icon (click → ScanBarcode)
-            StockIcon(
-                innerColor = MaterialTheme.colorScheme.secondary,
+            DashBoardIcon(
                 outerCircleColor = MaterialTheme.colorScheme.primary,
+                innerColor = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.size(responsiveDp(120.dp)),
                 contentDescription = stringResource(R.string.stock_count)
             )
@@ -101,7 +100,7 @@ fun RegularCountSection(
                 text = stringResource(R.string.stock_count),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Normal,
-                color = MaterialTheme.colorScheme.primary,
+                color = MaterialTheme.colorScheme.secondary,
             )
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -120,7 +119,7 @@ fun RegularCountSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = extraLarge, end = extraLarge, bottom = small),
+                .padding(start = smallMedium, end = smallMedium, bottom = small),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -137,8 +136,8 @@ fun RegularCountSection(
             ) {
                 StatusChip(
                     text = "$completedRegularCount ${stringResource(R.string.completed)}",
-                    backgroundColor = Color.Transparent,
-                    textColor = AppTheme.extendedColors.textColor,
+                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnPrimary,
+                    textColor = MaterialTheme.colorScheme.primary,
                     iconRes = R.drawable.complete,
                     iconTint = MaterialTheme.colorScheme.primary
                 )
@@ -158,8 +157,8 @@ fun RegularCountSection(
                 StatusChip(
                     text = "$partialRegularCount ${stringResource(R.string.partial)}",
                     backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnPrimary,
-                    textColor = AppTheme.extendedColors.textColor,
-                    iconRes = R.drawable.prescription_icon,
+                    textColor = MaterialTheme.colorScheme.primary,
+                    iconRes = R.drawable.partial,
                     iconTint = MaterialTheme.colorScheme.primary
                 )
             }
