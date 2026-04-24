@@ -19,7 +19,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -28,11 +27,11 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.navigateSafely
-import com.rite.pillcounting.core.utils.compose.MedicalIcon
+import com.rite.pillcounting.core.utils.compose.DashBoardIcon
 import com.rite.pillcounting.core.utils.compose.bounceClick
-import com.rite.pillcounting.core.utils.constants.Dimens.extraLarge
 import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.core.room.models.enums.ScanType
+import com.rite.pillcounting.core.utils.constants.Dimens.smallMedium
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.ui.theme.AppTheme
 
@@ -71,9 +70,10 @@ fun FixedCountSection(
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Fixed count icon leading to ScanBarcode screen
-            MedicalIcon(
+            DashBoardIcon(
                 outerCircleColor = MaterialTheme.colorScheme.primary,
                 innerColor = MaterialTheme.colorScheme.secondary,
+                innerIconRes = R.drawable.regular_count_inner,
                 modifier = Modifier.size(responsiveDp(120.dp)),
                 contentDescription = stringResource(R.string.dispense)
             )
@@ -104,7 +104,7 @@ fun FixedCountSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = extraLarge, end = extraLarge, bottom = small),
+                .padding(start = smallMedium, end = smallMedium, bottom = small),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -118,10 +118,10 @@ fun FixedCountSection(
             }) {
                 StatusChip(
                     text = "$completedFixedCount ${stringResource(R.string.completed)}",
-                    backgroundColor = Color.Transparent,
-                    textColor = MaterialTheme.colorScheme.secondary,
+                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnSecondary,
+                    textColor = MaterialTheme.colorScheme.primary,
                     iconRes = R.drawable.complete,
-                    iconTint = MaterialTheme.colorScheme.secondary
+                    iconTint = MaterialTheme.colorScheme.primary
                 )
             }
 
@@ -136,9 +136,9 @@ fun FixedCountSection(
                 StatusChip(
                     text = "$partialFixedCount ${stringResource(R.string.partial)}",
                     backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnSecondary,
-                    textColor = MaterialTheme.colorScheme.secondary,
-                    iconRes = R.drawable.prescription_icon,
-                    iconTint = MaterialTheme.colorScheme.secondary
+                    textColor = MaterialTheme.colorScheme.primary,
+                    iconRes = R.drawable.partial,
+                    iconTint = MaterialTheme.colorScheme.primary
                 )
             }
         }
