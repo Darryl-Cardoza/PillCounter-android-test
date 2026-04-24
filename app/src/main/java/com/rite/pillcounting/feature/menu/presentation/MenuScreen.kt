@@ -107,7 +107,7 @@ fun MenuScreen(
 
             // Regular Count
             MenuItemRow(
-                icon = R.drawable.stockiconformenuscreen,
+                icon = R.drawable.medicationconformenuscreen,
                 title = stringResource(R.string.stock_count),
                 completed = stringResource(R.string.menu_completed, uiState.regularCompleted),
                 partial = stringResource(R.string.menu_partial, uiState.regularPartial),

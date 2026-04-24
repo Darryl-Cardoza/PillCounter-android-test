@@ -1036,6 +1036,20 @@ object UserInterfaceUtils {
         return baseDp * scale
     }
 
+    @Composable
+    fun responsiveBadgeWidth(baseDp: Dp): Dp {
+        val config = LocalConfiguration.current
+        val sw = minOf(config.screenWidthDp, config.screenHeightDp)
+
+        val scale = when {
+            sw < 400 -> 0.9f   // very small phones
+            sw < 600 -> 1f     // normal phones
+            sw < 840 -> 1.15f  // tablets
+            else -> 1.3f       // large tablets
+        }
+        return baseDp * scale
+    }
+
 
     @Composable
     fun responsiveDp(baseDp: Dp): Dp {

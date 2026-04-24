@@ -22,6 +22,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveBadgeWidth
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 
 /**
  * A small pill-shaped badge that displays an icon and label text,
@@ -61,7 +63,7 @@ fun StatBadge(
     val modifier = if (hasBackground) {
         Modifier
             .height(40.dp)
-            .width(140.dp)
+            .width(responsiveBadgeWidth(160.dp))
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                 shape = RoundedCornerShape(20.dp)
