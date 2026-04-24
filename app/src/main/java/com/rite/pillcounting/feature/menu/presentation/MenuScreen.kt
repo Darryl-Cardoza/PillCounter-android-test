@@ -81,7 +81,7 @@ fun MenuScreen(
         ) {
             // Fixed Count
             MenuItemRow(
-                icon = R.drawable.regular_count_inner,
+                icon = R.drawable.pilliconformenuscreen,
                 title = stringResource(R.string.dispense),
                 completed = stringResource(R.string.menu_completed, uiState.fixedCompleted),
                 partial = stringResource(R.string.menu_partial, uiState.fixedPartial),
@@ -107,7 +107,7 @@ fun MenuScreen(
 
             // Regular Count
             MenuItemRow(
-                icon = R.drawable.fixed_count_inner,
+                icon = R.drawable.stockiconformenuscreen,
                 title = stringResource(R.string.stock_count),
                 completed = stringResource(R.string.menu_completed, uiState.regularCompleted),
                 partial = stringResource(R.string.menu_partial, uiState.regularPartial),
