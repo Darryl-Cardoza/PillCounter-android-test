@@ -61,7 +61,7 @@ fun StatBadge(
     val modifier = if (hasBackground) {
         Modifier
             .height(40.dp)
-            .width(120.dp)
+            .width(140.dp)
             .background(
                 color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                 shape = RoundedCornerShape(20.dp)
@@ -85,7 +85,7 @@ fun StatBadge(
             painter = painterResource(id = icon),
             contentDescription = null, // Decorative only
             tint = tint,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(20.dp)
         )
 
         Spacer(modifier = Modifier.width(6.dp))

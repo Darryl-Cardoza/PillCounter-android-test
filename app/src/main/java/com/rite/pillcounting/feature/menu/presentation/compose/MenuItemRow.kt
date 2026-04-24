@@ -125,7 +125,7 @@ fun MenuItemRow(
                         text = completed,
                         tint = completedTint,
                         icon = completedIcon,
-                        hasBackground = false,
+                        hasBackground = true,
                         onBadgeClick = {onCompletedClick()},
                     )
                     Spacer(modifier = Modifier.width(8.dp))
@@ -142,7 +142,7 @@ fun MenuItemRow(
 
         // Portrait: show stats in a separate row below the title
         if (isPortrait && completed != null && partial != null) {
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -152,7 +152,7 @@ fun MenuItemRow(
                     text = completed,
                     tint = completedTint,
                     icon = completedIcon,
-                    hasBackground = false,
+                    hasBackground = true,
                     onBadgeClick = onCompletedClick,
                 )
                 StatBadge(

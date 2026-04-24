@@ -130,17 +130,6 @@ fun MenuScreen(
 
             HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
 
-            // Profile
-            SimpleMenuRow(
-                navController = navController,
-                icon = R.drawable.profile,
-                iconTint = MaterialTheme.colorScheme.primary,
-                title = stringResource(R.string.menu_profile),
-                onClick = { navController.navigate(Screen.Profile.route) }
-            )
-
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
-
             // Load options from strings.xml
             val historyOptions = stringArrayResource(R.array.history_options).toList()
 
@@ -184,6 +173,14 @@ fun MenuScreen(
 
             HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
 
+            SimpleMenuRow(
+                navController = navController,
+                icon = R.drawable.profile,
+                iconTint = MaterialTheme.colorScheme.primary,
+                title = stringResource(R.string.menu_profile),
+                onClick = { navController.navigate(Screen.Profile.route) }
+            )
+            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
             // Logout
             SimpleMenuRow(
                 navController = navController,

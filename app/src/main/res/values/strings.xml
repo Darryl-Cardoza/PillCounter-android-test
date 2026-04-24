@@ -166,8 +166,8 @@
     <string name="menu_history">History</string>
     <string name="menu_settings">Settings</string>
     <string name="menu_logout">Logout</string>
-    <string name="menu_completed">%1$d completed</string>
-    <string name="menu_partial">%1$d pending</string>
+    <string name="menu_completed">%1$d Completed</string>
+    <string name="menu_partial">%1$d Pending</string>
     <string name="menu_unsync_transaction">Unsynced Transactions</string>
 
     <!-- ================== UI CONTENT DESCRIPTIONS ================== -->
