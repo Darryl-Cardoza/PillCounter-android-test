@@ -311,7 +311,9 @@ interface PillCountTxnDao {
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
-        txn.note
+        txn.note,
+        txn.bucketId,
+        drug.drugType
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId AND details.isDeleted = 0
@@ -346,7 +348,9 @@ interface PillCountTxnDao {
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
-        txn.note
+        txn.note,
+        txn.bucketId,
+        drug.drugType
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
@@ -369,7 +373,9 @@ interface PillCountTxnDao {
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
-        txn.note
+        txn.note,
+        txn.bucketId,
+        drug.drugType
     ORDER BY txn.createdAt DESC
     """
     )
@@ -398,15 +404,21 @@ interface PillCountTxnDao {
       AND createdAt < :end
       AND localId = :userLocalId
       AND (:type IS NULL OR countType = :type)
-      AND (:status IS NULL OR status = :status)
+      AND (
+        :isCompleted IS NULL
+        OR (:isCompleted = 1 AND (status = :completedStatus OR status = :forceCompletedStatus))
+        OR (:isCompleted = 0 AND status != :completedStatus AND status != :forceCompletedStatus)
+      )
     """
     )
     suspend fun deleteTransactionsByDate(
         start: Long,
         end: Long,
         type: CountType?,
-        status: CountStatus?,
-        userLocalId: Long
+        isCompleted: Boolean?,
+        userLocalId: Long,
+        completedStatus: CountStatus = CountStatus.COMPLETED,
+        forceCompletedStatus: CountStatus = CountStatus.FORCE_COMPLETED
     )
 
     /**
@@ -438,6 +450,9 @@ interface PillCountTxnDao {
      */
     @Query("DELETE FROM pill_count_txn WHERE txnId = :txnId")
     suspend fun deleteTransaction(txnId: Long)
+
+    @Query("DELETE FROM pill_count_txn WHERE batchId IN (:batchIds)")
+    suspend fun deleteTransactionsByBatchIds(batchIds: List<Long>)
 
     /**
      * Observes all transactions belonging to a batch, joined with drug name and NDC.

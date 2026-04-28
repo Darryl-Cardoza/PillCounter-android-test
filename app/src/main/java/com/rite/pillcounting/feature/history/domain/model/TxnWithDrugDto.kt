@@ -14,5 +14,7 @@ data class TxnWithDrugDto(
     val barcodeImage: String?,
     val createdAt: Long,
     val targetCount: Int?,
-    val note: String?
+    val note: String?,
+    val bucketId: String?,
+    val drugType: String?
 )

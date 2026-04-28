@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -56,7 +57,8 @@ fun BatchHistoryRow(
         ) {
             Box(
                 modifier = Modifier
-                    .size(55.dp)
+                    .width(80.dp)
+                    .height(64.dp)
                     .background(
                         color = AppTheme.extendedColors.primaryBackground,
                         shape = RoundedCornerShape(10.dp)
@@ -64,10 +66,13 @@ fun BatchHistoryRow(
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.stock),
+                    painter = painterResource(
+                        if (summary.requestIdFromPMS != null) R.drawable.prescription_icon
+                        else R.drawable.stock
+                    ),
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
@@ -75,15 +80,48 @@ fun BatchHistoryRow(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = formatDateToUSFormat(date, outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A),
+                    text = summary.batchId.toString(),
                     fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = AppTheme.extendedColors.textColor
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = formatDateToUSFormat(
+                            date,
+                            outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
+                        ),
+                        fontSize = 12.sp,
+                        color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f)
+                    )
+                    Spacer(Modifier.width(12.dp))
+                    if (!summary.bucketId.isNullOrBlank()) {
+                        Text(
+                            text = summary.bucketId,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = AppTheme.extendedColors.textColor
+                        )
+                        Spacer(Modifier.width(6.dp))
+                    }
+                }
+            }
+
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(end = 12.dp)
+            ) {
+                Text(
+                    text = summary.uniqueNdcCount.toString(),
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.secondary
                 )
                 Text(
-                    text = stringResource(R.string.drugs_count, summary.itemCount),
+                    text = stringResource(R.string.ndcs_label),
                     fontSize = 12.sp,
-                    color = AppTheme.extendedColors.textColor
+                    fontWeight = FontWeight.Normal,
+                    color = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),
                 )
             }
         }

@@ -33,6 +33,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.constants.Dimens.medium
 import com.rite.pillcounting.core.room.models.enums.ScanType
+import com.rite.pillcounting.core.utils.common.navigateSafely
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
 import com.rite.pillcounting.feature.login.viewmodel.LoginViewModel
@@ -158,7 +159,9 @@ fun MenuScreen(
                 iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.menu_history),
                 trailingText = trailingText,
-                onClick = { navController.navigate(Screen.History.route) }
+                onClick = { navController.navigateSafely(
+                    Screen.History.createRoute(HistoryMode.NORMAL)
+                ) }
             )
 
             HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
