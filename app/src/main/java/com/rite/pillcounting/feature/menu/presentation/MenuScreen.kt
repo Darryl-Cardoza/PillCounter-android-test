@@ -19,7 +19,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -27,12 +26,12 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.HistoryRetention
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.constants.Dimens.medium
-import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
 import com.rite.pillcounting.feature.login.viewmodel.LoginViewModel
@@ -40,6 +39,7 @@ import com.rite.pillcounting.feature.menu.presentation.compose.MenuItemRow
 import com.rite.pillcounting.feature.menu.presentation.compose.SimpleMenuRow
 import com.rite.pillcounting.feature.menu.presentation.viewmodel.MenuViewModel
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
+import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 
 /**
@@ -103,7 +103,7 @@ fun MenuScreen(
                 onCompletedClick = {  navController.navigate(Screen.History.createRoute(HistoryMode.DISPENSE)) },
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
             // Regular Count
             MenuItemRow(
@@ -128,7 +128,7 @@ fun MenuScreen(
                 onCompletedClick = {  navController.navigate(Screen.History.createRoute(HistoryMode.REGULAR)) },
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
             // Load options from strings.xml
             val historyOptions = stringArrayResource(R.array.history_options).toList()
@@ -150,7 +150,7 @@ fun MenuScreen(
                 onClick = { navController.navigate(Screen.History.route) }
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
             SimpleMenuRow(
                 navController = navController,
                 icon = R.drawable.unsynced_transaction_icon,
@@ -160,7 +160,7 @@ fun MenuScreen(
                 onClick = { navController.navigate(Screen.UnsyncedTransactionScreen.route) }
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
             // Settings
             SimpleMenuRow(
@@ -171,7 +171,7 @@ fun MenuScreen(
                 onClick = { navController.navigate(Screen.Settings.route) }
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
             SimpleMenuRow(
                 navController = navController,
@@ -180,7 +180,7 @@ fun MenuScreen(
                 title = stringResource(R.string.menu_profile),
                 onClick = { navController.navigate(Screen.Profile.route) }
             )
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
             // Logout
             SimpleMenuRow(
                 navController = navController,

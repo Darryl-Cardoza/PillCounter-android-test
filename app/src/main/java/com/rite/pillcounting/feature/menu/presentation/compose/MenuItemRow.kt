@@ -142,7 +142,7 @@ fun MenuItemRow(
 
         // Portrait: show stats in a separate row below the title
         if (isPortrait && completed != null && partial != null) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(18.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -165,6 +165,6 @@ fun MenuItemRow(
             }
         }
 
-        Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(18.dp))
     }
 }
