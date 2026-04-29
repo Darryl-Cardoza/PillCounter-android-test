@@ -74,8 +74,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -96,6 +101,46 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
+
+/**
+ * Formats raw digit input as US phone number: (XXX) XXX-XXXX.
+ * Stores and receives raw digits; the display transformation is visual-only.
+ */
+class PhoneNumberVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val digits = text.text
+        val formatted = buildString {
+            digits.forEachIndexed { i, c ->
+                when (i) {
+                    0 -> append("($c")
+                    3 -> append(") $c")
+                    6 -> append("-$c")
+                    else -> append(c)
+                }
+            }
+        }
+
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = when {
+                offset == 0 -> 0
+                offset <= 3 -> offset + 1   // after '('
+                offset <= 6 -> offset + 3   // after '(XXX) '
+                else -> offset + 4          // after '(XXX) XXX-'
+            }.coerceAtMost(formatted.length)
+
+            override fun transformedToOriginal(offset: Int): Int = when {
+                offset <= 1 -> 0
+                offset <= 4 -> offset - 1
+                offset <= 6 -> 3            // inside ') ' — snap to after digit 3
+                offset <= 9 -> offset - 3
+                offset == 10 -> 6           // on '-' — snap to after digit 6
+                else -> offset - 4
+            }.coerceIn(0, digits.length)
+        }
+
+        return TransformedText(AnnotatedString(formatted), offsetMapping)
+    }
+}
 
 /**
  * **UserInterfaceUtils**
@@ -616,9 +661,10 @@ object UserInterfaceUtils {
         label: String,
         modifier: Modifier = Modifier,
         cornerRadius: Dp = 8.dp,
-        height: Dp = 56.dp,
+        height: Dp = 62.dp,
         cursorColor: Color = AppTheme.extendedColors.textColor,
         isPassword: Boolean = false,
+        visualTransformation: VisualTransformation = VisualTransformation.None,
         keyboardType: KeyboardType = KeyboardType.Text,
         imeAction: ImeAction = ImeAction.Done,
         onImeAction: (() -> Unit)? = null,
@@ -628,103 +674,108 @@ object UserInterfaceUtils {
         var passwordVisible by remember { mutableStateOf(!isPassword) }
         var isFocused by remember { mutableStateOf(false) }
 
+        // Internal TextFieldValue lets us move the cursor to end when focus arrives
+        var textFieldValue by remember { mutableStateOf(TextFieldValue(value)) }
+
+        // Keep internal state in sync when the caller updates the value externally
+        LaunchedEffect(value) {
+            if (textFieldValue.text != value) {
+                textFieldValue = textFieldValue.copy(text = value)
+            }
+        }
+
+        val isActive = isFocused || value.isNotEmpty()
         val horizontalPadding = 15.dp
-        val topPadding = 15.dp
 
-        // Floating label vertical offset
+        // Label moves from vertical center (empty) to top-inside (active)
         val labelOffsetY by animateDpAsState(
-            targetValue = if (isFocused || value.isNotEmpty()) {
-                (-2).dp
-            } else {
-                // center vertically inside text field
-                (height / 2) + 15.dp
-            }, label = "labelOffsetY"
+            targetValue = if (isActive) 6.dp else 20.dp,
+            label = "labelOffsetY"
+        )
+        val labelFontSize by animateFloatAsState(
+            targetValue = if (isActive) 12f else 16f,
+            label = "labelFontSize"
         )
 
-        // Floating label scale
-        val labelScale by animateFloatAsState(
-            targetValue = if (isFocused || value.isNotEmpty()) 0.75f else 1f,
-            label = "labelScale"
-        )
-
+        // Single container — label and input both live inside the dark box
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .heightIn(min = height + topPadding + 12.dp)
+                .height(height)
+                .background(AppTheme.extendedColors.inputBackground, RoundedCornerShape(cornerRadius))
+                .padding(horizontal = horizontalPadding)
         ) {
-            // Text field container
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(height)
-                    .align(Alignment.BottomCenter)
-                    .background(
-                        AppTheme.extendedColors.inputBackground,
-                        RoundedCornerShape(cornerRadius)
-                    )
-                    .padding(horizontal = horizontalPadding, vertical = 8.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    singleLine = true,
-                    enabled = enabled,
-                    readOnly = !enabled,
-                    textStyle = LocalTextStyle.current.copy(
-                        color = AppTheme.extendedColors.textColor,
-                        fontSize = 16.sp
-                    ),
-                    visualTransformation = if (isPassword && !passwordVisible) {
-                        PasswordVisualTransformation()
-                    } else {
-                        VisualTransformation.None
-                    },
-                    cursorBrush = SolidColor(cursorColor),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = keyboardType,
-                        imeAction = imeAction
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onNext = { focusManager.moveFocus(FocusDirection.Next) },
-                        onDone = {
-                            if (onImeAction != null) {
-                                onImeAction()
-                            } else {
-                                focusManager.clearFocus() // closes keyboard
-                            }
-                        }
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { isFocused = it.isFocused }
-                )
-
-                if (isPassword) {
-                    Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                imageVector = if (passwordVisible) Icons.Filled.Visibility
-                                else Icons.Filled.VisibilityOff,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Floating label / placeholder
+            // Label inside the box
             Text(
                 text = label,
                 color = if (isFocused) MaterialTheme.colorScheme.primary
                 else AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                fontSize = 16.sp * labelScale,
+                fontSize = labelFontSize.sp,
                 modifier = Modifier
-                    .padding(start = horizontalPadding)
                     .align(Alignment.TopStart)
                     .offset(y = labelOffsetY)
             )
+
+            // Input text at the bottom portion of the box
+            BasicTextField(
+                value = textFieldValue,
+                onValueChange = { newValue ->
+                    textFieldValue = newValue
+                    onValueChange(newValue.text)
+                },
+                singleLine = true,
+                enabled = enabled,
+                readOnly = !enabled,
+                textStyle = LocalTextStyle.current.copy(
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = 16.sp
+                ),
+                visualTransformation = when {
+                    isPassword && !passwordVisible -> PasswordVisualTransformation()
+                    else -> visualTransformation
+                },
+                cursorBrush = SolidColor(cursorColor),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = keyboardType,
+                    imeAction = imeAction
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Next) },
+                    onDone = {
+                        if (onImeAction != null) {
+                            onImeAction()
+                        } else {
+                            focusManager.clearFocus()
+                        }
+                    }
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 10.dp)
+                    .onFocusChanged { focusState ->
+                        isFocused = focusState.isFocused
+                        if (focusState.isFocused) {
+                            // Move cursor to end when this field gains focus
+                            textFieldValue = textFieldValue.copy(
+                                selection = TextRange(textFieldValue.text.length)
+                            )
+                        }
+                    }
+            )
+
+            if (isPassword) {
+                Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Filled.Visibility
+                            else Icons.Filled.VisibilityOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
         }
     }
 
