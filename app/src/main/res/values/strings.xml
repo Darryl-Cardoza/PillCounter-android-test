@@ -52,6 +52,8 @@
     <string name="are_you_sure_you_want_to_clear_all_data">Are you sure you want to clear all data?</string>
     <string name="select_schedule_codes">Select Schedule Codes</string>
     <string name="voice_feedback">Voice Feedback</string>
+    <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
+    <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
 
     <string-array name="history_options">
         <item>1 Week (Default)</item>

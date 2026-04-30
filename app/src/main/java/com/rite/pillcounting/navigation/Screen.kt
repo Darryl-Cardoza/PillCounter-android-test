@@ -178,6 +178,14 @@ sealed interface Screen {
         override val route: String = "partial_count_screen"
     }
 
+    data object SaveHistoryFor : Screen {
+        override val route: String = "save_history_for"
+    }
+
+    data object RequireDoubleCount : Screen {
+        override val route: String = "require_double_count"
+    }
+
 }
 
 
