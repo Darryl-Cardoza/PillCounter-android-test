@@ -37,6 +37,12 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.utils.common.DateFormats
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
+import com.rite.pillcounting.core.utils.common.formatDateToUSFormat
+import com.rite.pillcounting.core.utils.compose.DrugCountRow
+import com.rite.pillcounting.core.utils.compose.DrugCountRowData
+import com.rite.pillcounting.core.utils.compose.StatusChip
 import com.rite.pillcounting.core.utils.constants.Dimens.medium
 import com.rite.pillcounting.feature.history.domain.model.BatchSummary
 import com.rite.pillcounting.feature.history.domain.model.HistoryDeleteFilter
@@ -153,21 +159,21 @@ fun CountsSection(
         ) {
             StatusChip(
                 label = stringResource(R.string.filter_all),
-                count = allCount,
                 isSelected = statusFilter == StatusFilter.ALL,
-                onClick = { statusFilter = StatusFilter.ALL }
+                onClick = { statusFilter = StatusFilter.ALL },
+                count = allCount
             )
             StatusChip(
                 label = stringResource(R.string.completed),
-                count = completedCount,
                 isSelected = statusFilter == StatusFilter.COMPLETED,
-                onClick = { statusFilter = StatusFilter.COMPLETED }
+                onClick = { statusFilter = StatusFilter.COMPLETED },
+                count = completedCount
             )
             StatusChip(
                 label = stringResource(R.string.partial),
-                count = pendingCount,
                 isSelected = statusFilter == StatusFilter.PENDING,
-                onClick = { statusFilter = StatusFilter.PENDING }
+                onClick = { statusFilter = StatusFilter.PENDING },
+                count = pendingCount
             )
         }
 
@@ -194,9 +200,22 @@ fun CountsSection(
                 when (selectedOption) {
                     ToggleOption.DISPENSED -> {
                         items(filteredDispensed) { rowData ->
-                            CountRow(
-                                rowData = rowData,
-                                onTxnClick = { onTxnClick(rowData.txnId) }
+                            DrugCountRow(
+                                data = DrugCountRowData(
+                                    barcodeImage = rowData.barcodeImage,
+                                    ndc = rowData.ndc,
+                                    drugType = rowData.drugType,
+                                    drugName = rowData.drugName ?: "",
+                                    date = formatDateToUSFormat(
+                                        rowData.createdAt.toFormattedDate(),
+                                        outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
+                                    ),
+                                    bucketId = rowData.bucketId,
+                                    pillCount = rowData.pillCount ?: 0,
+                                    targetCount = rowData.targetCount ?: 0,
+                                    countType = rowData.countType
+                                ),
+                                onClick = { onTxnClick(rowData.txnId) }
                             )
                         }
                     }
@@ -267,28 +286,3 @@ fun ToggleItem(
     }
 }
 
-@Composable
-private fun StatusChip(
-    label: String,
-    count: Int,
-    isSelected: Boolean,
-    onClick: () -> Unit
-) {
-    Box(
-        modifier = Modifier
-            .clip(RoundedCornerShape(50))
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.primary
-                else AppTheme.extendedColors.secondaryBackground
-            )
-            .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 5.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.toggle_with_count, label, count),
-            color = AppTheme.extendedColors.textColor,
-            fontWeight = FontWeight.Normal,
-            fontSize = 12.sp
-        )
-    }
-}

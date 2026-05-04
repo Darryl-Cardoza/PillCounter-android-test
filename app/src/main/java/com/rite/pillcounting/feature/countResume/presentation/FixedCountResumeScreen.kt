@@ -2,8 +2,20 @@ package com.rite.pillcounting.feature.countResume.presentation
 
 import Screen
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -13,6 +25,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
@@ -46,7 +61,7 @@ fun FixedCountResumeScreen(
 
                 NavigationEvent.NavigateBack -> navController.popBackStack()
                 is NavigationEvent.NavigateToScanBarcode -> navController.navigate(
-                    Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),ScanType.BARCODE,0)
+                    Screen.ScanBarcode.createRoute(CountType.FIXED.toString(), ScanType.BARCODE, 0)
                 )
             }
         }
@@ -59,7 +74,6 @@ fun FixedCountResumeScreen(
         override fun itemSwipedToDelete(item: CountItem) = FixedCountsEvent.ItemSwipedToDelete(item)
         override fun forceCompleteTransaction(item: CountItem) =
             FixedCountsEvent.ForceCompleteTransaction(item)
-
         override fun selectItem(item: CountItem) = FixedCountsEvent.SelectItem(item)
         override fun resumeTransaction(item: CountItem) = FixedCountsEvent.resumeTransaction(item)
     }
@@ -73,7 +87,6 @@ fun FixedCountResumeScreen(
             .fillMaxSize()
             .background(AppTheme.extendedColors.primaryBackground)
     ) {
-
         HeadlineBar(
             navController = navController,
             title = stringResource(R.string.fixed_partial_count_title),
@@ -84,7 +97,7 @@ fun FixedCountResumeScreen(
             showDelete = true,
             onSearchClick = {
                 showSearch = !showSearch
-                if (!showSearch) searchQuery = "" // reset when closing
+                if (!showSearch) searchQuery = ""
             },
             onSearchChange = { searchQuery = it },
             onDeleteClick = { viewModel.onFixedEvent(FixedCountsEvent.ToggleMultiSelectMode) },
@@ -94,22 +107,67 @@ fun FixedCountResumeScreen(
             onSelectAll = { viewModel.onFixedEvent(FixedCountsEvent.SelectAllClicked) }
         )
 
-        PartialListPanel(
-            items = uiState.fixedCounts,
-            selectedItems = uiState.selectedItems,
-            isMultiSelectMode = uiState.isMultiSelectMode,
-            searchQuery = searchQuery,
-            onEvent = viewModel::onFixedEvent,
-            eventFactory = fixedEventFactory,
-            countType = CountType.FIXED.toString(),
-            showMultiDeleteConfirmDialog = showDeleteDialog,
-            onMultiDelete = {
-                viewModel.onFixedEvent(FixedCountsEvent.DeleteClicked)
-                showDeleteDialog = false
-            },
-            onCloseDialog = { showDeleteDialog = false }
-        )
+        Box(modifier = Modifier.weight(1f)) {
+            PartialListPanel(
+                items = uiState.fixedCounts,
+                selectedItems = uiState.selectedItems,
+                isMultiSelectMode = uiState.isMultiSelectMode,
+                searchQuery = searchQuery,
+                onEvent = viewModel::onFixedEvent,
+                eventFactory = fixedEventFactory,
+                countType = CountType.FIXED.toString(),
+                showMultiDeleteConfirmDialog = showDeleteDialog,
+                onMultiDelete = {
+                    viewModel.onFixedEvent(FixedCountsEvent.DeleteClicked)
+                    showDeleteDialog = false
+                },
+                onCloseDialog = { showDeleteDialog = false }
+            )
+        }
+
+        if (uiState.isMultiSelectMode) {
+            Surface(
+                shadowElevation = 12.dp,
+                tonalElevation = 0.dp
+            ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { viewModel.onFixedEvent(FixedCountsEvent.ToggleMultiSelectMode) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(
+                        text = stringResource(R.string.cancel).uppercase(),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                }
+
+                Button(
+                    onClick = { showDeleteDialog = true },
+                    enabled = hasSelection,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(
+                        text = stringResource(R.string.delete),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+            } // Surface
+        }
     }
-
-
 }

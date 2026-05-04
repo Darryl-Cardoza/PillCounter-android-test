@@ -124,13 +124,16 @@ interface PillCountTxnDao {
            txn.barcodeImage,
            txn.isComingFromHL7,
            txn.isNdcVerified,
+           txn.bucketId,
            drug.drugName,
+           drug.ndc,
+           drug.drugType,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
-    LEFT JOIN drug_master AS drug 
+    LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
-    LEFT JOIN pill_count_txn_details AS details 
-           ON txn.txnId = details.txnId 
+    LEFT JOIN pill_count_txn_details AS details
+           ON txn.txnId = details.txnId
           AND details.isDeleted = 0
           AND details.type = :type
     WHERE txn.isDeleted = 0
@@ -646,13 +649,16 @@ interface PillCountTxnDao {
            txn.barcodeImage,
            txn.isComingFromHL7,
            txn.isNdcVerified,
+           txn.bucketId,
            drug.drugName,
+           drug.ndc,
+           drug.drugType,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
-    LEFT JOIN drug_master AS drug 
+    LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
-    LEFT JOIN pill_count_txn_details AS details 
-           ON txn.txnId = details.txnId 
+    LEFT JOIN pill_count_txn_details AS details
+           ON txn.txnId = details.txnId
           AND details.isDeleted = 0
     WHERE txn.isDeleted = 0
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)

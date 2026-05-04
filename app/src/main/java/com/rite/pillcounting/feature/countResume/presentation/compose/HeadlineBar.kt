@@ -160,46 +160,40 @@ fun HeadlineBar(
                     }
                 }
             } else {
-                //normal
+                // Delete mode header: back-as-cancel + "DELETE COUNTS" + SELECT ALL
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BackButton(navController, onClick = onCancelClick)
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-
-                    Checkbox(
-                        checked = isAllSelected,
-                        onCheckedChange = { onSelectAll() }
-                    )
-
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(4.dp))
 
                     Text(
-                        text = stringResource(R.string.select_all),
+                        text = stringResource(R.string.delete_counts).uppercase(),
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = AppTheme.extendedColors.textColor
-                    )
-                }
-
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = stringResource(R.string.delete),
-                        fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (hasSelection) MaterialTheme.colorScheme.primary else Color.Gray,
-                        modifier = Modifier.clickable {
-                            if (hasSelection) {
-                                onConfirmDelete()
-                            }
-                        }
+                        color = AppTheme.extendedColors.textColor,
+                        modifier = Modifier.weight(1f)
                     )
 
-                    Spacer(Modifier.width(18.dp))
-
-                    Text(
-                        text = stringResource(R.string.cancel),
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.clickable { onCancelClick() }
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .clickable { onSelectAll() }
+                    ) {
+                        Checkbox(
+                            checked = isAllSelected,
+                            onCheckedChange = { onSelectAll() }
+                        )
+                        Text(
+                            text = stringResource(R.string.select_all).uppercase(),
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }
