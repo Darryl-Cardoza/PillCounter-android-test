@@ -27,7 +27,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
@@ -81,34 +87,34 @@ fun DrugCountRow(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize()
-//            .shadow(
-//                elevation = if (isActive) 0.dp else 4.dp,
-//                shape = RoundedCornerShape(small),
-//                clip = false
-//            )
-//            .drawBehind {
-//                if (isActive) {
-//                    val cornerRadius = small.toPx()
-//                    val maxSpread = 18.dp.toPx()
-//                    clipRect(
-//                        left = -maxSpread,
-//                        top = 0f,
-//                        right = size.width + maxSpread,
-//                        bottom = size.height + maxSpread
-//                    ) {
-//                        repeat(8) { i ->
-//                            val fraction = (i + 1).toFloat() / 8f
-//                            val spread = fraction * maxSpread
-//                            drawRoundRect(
-//                                color = selectionBorderColor.copy(alpha = 0.45f * (1f - fraction)),
-//                                topLeft = Offset(-spread, -spread),
-//                                size = Size(size.width + spread * 2, size.height + spread * 2),
-//                                cornerRadius = CornerRadius(cornerRadius + spread)
-//                            )
-//                        }
-//                    }
-//                }
-//            }
+            .shadow(
+                elevation = if (isActive) 0.dp else 4.dp,
+                shape = RoundedCornerShape(small),
+                clip = false
+            )
+            .drawBehind {
+                if (isActive) {
+                    val cornerRadius = small.toPx()
+                    val maxSpread = 18.dp.toPx()
+                    clipRect(
+                        left = -maxSpread,
+                        top = 0f,
+                        right = size.width + maxSpread,
+                        bottom = size.height + maxSpread
+                    ) {
+                        repeat(8) { i ->
+                            val fraction = (i + 1).toFloat() / 8f
+                            val spread = fraction * maxSpread
+                            drawRoundRect(
+                                color = selectionBorderColor.copy(alpha = 0.45f * (1f - fraction)),
+                                topLeft = Offset(-spread, -spread),
+                                size = Size(size.width + spread * 2, size.height + spread * 2),
+                                cornerRadius = CornerRadius(cornerRadius + spread)
+                            )
+                        }
+                    }
+                }
+            }
             .background(
                 color = AppTheme.extendedColors.secondaryBackground,
                 shape = RoundedCornerShape(small)
