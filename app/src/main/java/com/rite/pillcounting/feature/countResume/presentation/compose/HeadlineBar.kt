@@ -193,7 +193,7 @@ fun HeadlineBar(
                         Text(
                             text = stringResource(
                                 if (isAllSelected) R.string.deselect_all else R.string.select_all
-                            ).uppercase(),
+                            ),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
