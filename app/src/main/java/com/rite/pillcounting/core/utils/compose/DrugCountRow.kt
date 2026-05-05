@@ -96,13 +96,13 @@ fun DrugCountRow(
                 val cornerRadius = small.toPx()
                 if (isActive) {
                     val glowLayers = 8
-                    val bottomMax = 8.dp.toPx()
-                    val sideMax = 2.dp.toPx()
+                    val bottomMax = 14.dp.toPx()
+                    val sideMax = 6.dp.toPx()
 
-                    // solid stroke on sides + bottom (clipped at top corners)
+                    // thin border stroke
                     clipRect(left = -1f, top = cornerRadius, right = size.width + 1f, bottom = size.height + 1f) {
                         drawRoundRect(
-                            color = selectionColor.copy(alpha = 0.9f),
+                            color = selectionColor.copy(alpha = 0.6f),
                             topLeft = Offset(-1f, 0f),
                             size = Size(size.width + 2f, size.height + 1f),
                             cornerRadius = CornerRadius(cornerRadius),
@@ -110,12 +110,12 @@ fun DrugCountRow(
                         )
                     }
 
-                    // glow layers expanding outward from the stroke
+                    // soft shadow layers — low alpha so they read as shadow, not fill
                     repeat(glowLayers) { i ->
                         val t = (i + 1).toFloat() / glowLayers.toFloat()
                         val bSpread = t * bottomMax
                         val sSpread = t * sideMax
-                        val alpha = 0.35f * (1f - t * t)
+                        val alpha = 0.22f * (1f - t)
                         clipRect(
                             left = -sSpread,
                             top = cornerRadius,
