@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.utils.compose
 
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
