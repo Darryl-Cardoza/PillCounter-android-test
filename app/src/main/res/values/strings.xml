@@ -123,6 +123,7 @@
     <string name="manual">Manual</string>
     <string name="skip_alt">SKIP</string>
     <string name="select_all">Select All</string>
+    <string name="deselect_all">Deselect All</string>
     <string name="delete_counts">Delete Counts</string>
 
 

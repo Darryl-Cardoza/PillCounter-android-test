@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -179,16 +178,22 @@ fun HeadlineBar(
 
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .padding(end = 4.dp)
-                            .clickable { onSelectAll() }
+                        modifier = Modifier.clickable { onSelectAll() }
                     ) {
-                        Checkbox(
-                            checked = isAllSelected,
-                            onCheckedChange = { onSelectAll() }
+                        Icon(
+                            painter = painterResource(
+                                id = if (isAllSelected) R.drawable.deselect_all_image
+                                else R.drawable.select_all_image
+                            ),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(26.dp)
                         )
+                        Spacer(Modifier.width(4.dp))
                         Text(
-                            text = stringResource(R.string.select_all).uppercase(),
+                            text = stringResource(
+                                if (isAllSelected) R.string.deselect_all else R.string.select_all
+                            ).uppercase(),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary

@@ -152,7 +152,7 @@ fun DrugCountRow(
         Card(
             shape = RoundedCornerShape(small),
             colors = CardDefaults.cardColors(
-                containerColor = Color.Transparent // important
+                containerColor = Color.Transparent // important.
             ),
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
@@ -166,7 +166,7 @@ fun DrugCountRow(
                 Box(
                     modifier = Modifier
                         .width(80.dp)
-                        .height(54.dp)
+                        .height(64.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(AppTheme.extendedColors.primaryBackground),
                     contentAlignment = Alignment.Center
