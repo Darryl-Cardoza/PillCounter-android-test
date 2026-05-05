@@ -27,6 +27,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSe
 import com.rite.pillcounting.core.utils.compose.DrugCountRow
 import com.rite.pillcounting.core.utils.compose.DrugCountRowData
 import com.rite.pillcounting.core.utils.constants.Dimens.extraSmall
+import com.rite.pillcounting.core.utils.constants.Dimens.medium
 import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.feature.countResume.domain.data.ResumeEvent
 import com.rite.pillcounting.feature.countResume.domain.data.ResumeEventFactory
@@ -88,7 +89,7 @@ fun <E : ResumeEvent> PartialListPanel(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(medium),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 items(filteredItems, key = { it.id }) { item ->
