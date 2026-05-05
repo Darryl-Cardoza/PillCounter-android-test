@@ -9,13 +9,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -23,16 +18,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.ScanType
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.feature.countResume.domain.data.FixedCountsEvent
 import com.rite.pillcounting.feature.countResume.domain.data.NavigationEvent
 import com.rite.pillcounting.feature.countResume.domain.data.ResumeEventFactory
@@ -126,48 +123,30 @@ fun FixedCountResumeScreen(
         }
 
         if (uiState.isMultiSelectMode) {
-            Surface(
-                shadowElevation = 12.dp,
-                tonalElevation = 0.dp
-            ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 24.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(vertical = 22.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedButton(
-                    onClick = { viewModel.onFixedEvent(FixedCountsEvent.ToggleMultiSelectMode) },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text(
-                        text = stringResource(R.string.cancel).uppercase(),
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                }
-
-                Button(
-                    onClick = { showDeleteDialog = true },
-                    enabled = hasSelection,
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    )
-                ) {
-                    Text(
-                        text = stringResource(R.string.delete),
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = 14.sp
-                    )
-                }
+                HollowButton(
+                    text = stringResource(R.string.cancel).uppercase(),
+                    onClick = {
+                        viewModel.onFixedEvent(FixedCountsEvent.ToggleMultiSelectMode)
+                    },
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.width(responsiveDp(120.dp))
+                )
+                FilledButton(
+                    text = stringResource(R.string.delete).uppercase(),
+                    onClick = {
+                        showDeleteDialog = true
+                    },
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.width(responsiveDp(120.dp))
+                )
             }
-            } // Surface
         }
     }
 }
