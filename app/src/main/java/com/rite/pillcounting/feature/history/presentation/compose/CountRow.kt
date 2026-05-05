@@ -86,7 +86,7 @@ fun CountRow(
             Box(
                 modifier = Modifier
                     .width(80.dp)
-                    .height(54.dp)
+                    .height(64.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(AppTheme.extendedColors.primaryBackground),
                 contentAlignment = Alignment.Center
