@@ -223,7 +223,14 @@ fun CountsSection(
                     else -> {
                         items(filteredBatches) { batch ->
                             BatchHistoryRow(
-                                summary = batch,
+                                title = batch.batchId.toString(),
+                                dateTime = formatDateToUSFormat(
+                                    batch.createdAt.toFormattedDate(),
+                                    outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
+                                ),
+                                bucketId = batch.bucketId,
+                                count = batch.uniqueNdcCount.toString(),
+                                isPrescription = batch.requestIdFromPMS != null,
                                 onBatchClick = { onBatchClick(batch.batchId) }
                             )
                         }

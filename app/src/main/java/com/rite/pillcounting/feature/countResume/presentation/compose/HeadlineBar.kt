@@ -49,6 +49,7 @@ fun HeadlineBar(
     showPdfIcon: Boolean = false,
     onPdfClick: (() -> Unit)? = null,
     onBackClick: (() -> Unit)? = null,
+    bottomBarDeleteMode: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -157,6 +158,32 @@ fun HeadlineBar(
                                 .clickable { onDeleteClick() }
                         )
                     }
+                }
+            } else if (bottomBarDeleteMode) {
+                // Bottom-bar delete mode: back arrow + title + SELECT ALL on right
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BackButton(navController, onClick = onBackClick)
+
+                    Spacer(Modifier.width(4.dp))
+
+                    Text(
+                        text = title.uppercase(),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppTheme.extendedColors.textColor,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Text(
+                        text = stringResource(R.string.select_all).uppercase(),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onSelectAll() }
+                    )
                 }
             } else {
                 // Delete mode header: back-as-cancel + "DELETE COUNTS" + SELECT ALL
