@@ -61,11 +61,12 @@ class BatchViewModel @Inject constructor(
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
-    fun endBatch() {
+    fun endBatch(note: String? = null) {
         viewModelScope.launch {
             val id = _resolvedBatchId.value
             if (id != 0L) {
                 batchDao.markAsCompleted(id)
+                if (!note.isNullOrBlank()) batchDao.updateNote(id, note)
             }
             hl7Repository.buildAndSendInventoryResponse(id)
         }

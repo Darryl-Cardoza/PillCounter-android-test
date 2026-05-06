@@ -123,6 +123,9 @@ interface BatchDao {
     @Query("UPDATE batch SET status = 'COMPLETED', endDateTime = :endDateTime WHERE batchId = :batchId")
     suspend fun markAsCompleted(batchId: Long, endDateTime: Long = System.currentTimeMillis()): Int
 
+    @Query("UPDATE batch SET note = :note WHERE batchId = :batchId")
+    suspend fun updateNote(batchId: Long, note: String?): Int
+
     // ────────────────────────────── Utility ──────────────────────────────
 
     /**

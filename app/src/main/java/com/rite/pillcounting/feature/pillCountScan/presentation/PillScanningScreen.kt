@@ -103,6 +103,7 @@ fun PillScanningScreen(
 
     val showConfirmationDialog = uiState.showDialogForControl
     val showCountMismatchDialog = uiState.showCountMismatchDialog
+    val isTxnFromHl7 by viewModel.isTxnFromHl7.collectAsState()
 
     // Whenever detected pills update, push into buffer
     LaunchedEffect(uiState.detectedPills) {
@@ -158,7 +159,7 @@ fun PillScanningScreen(
             onSave = { note ->
                 viewModel.onEvent(PillScanningEvent.NoteSaved(note))
             },
-            viewModel
+            showSkip = !isTxnFromHl7
         )
     }
 

@@ -56,6 +56,7 @@ import com.rite.pillcounting.feature.batchCount.domain.model.BatchDrugGroup
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchLotEntry
 import com.rite.pillcounting.feature.batchCount.presentation.viewmodel.BatchViewModel
 import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.ui.theme.AppTheme
 
 
@@ -72,7 +73,9 @@ fun BatchScreen(
 
     var isMultiSelectMode by remember { mutableStateOf(false) }
     var selectedItems by remember { mutableStateOf(setOf<BatchDrugGroup>()) }
+    var showNoteDialog by remember { mutableStateOf(false) }
     var showEndBatchDialog by remember { mutableStateOf(false) }
+    var pendingNote by remember { mutableStateOf<String?>(null) }
     var expandedDrugId by remember { mutableStateOf<Long?>(null) }
 
     val hasQty = drugGroups.any { it.totalCount > 0 }
@@ -157,7 +160,7 @@ fun BatchScreen(
         // ── Bottom action bar ────────────────────────────────────────────────
         if (!isBatchCompleted) {
             BottomActionBar(
-                onEndBatch = { showEndBatchDialog = true },
+                onEndBatch = { showNoteDialog = true },
                 onAdd = {
                     navController.navigate(
                         Screen.ScanBarcode.createRoute(
@@ -169,6 +172,24 @@ fun BatchScreen(
                 }
             )
         }
+    }
+
+    // ── Note dialog (shown before end-batch confirmation) ────────────────────
+    if (showNoteDialog) {
+        AddNoteDialog(
+            onDismiss = { showNoteDialog = false },
+            onSkip = {
+                showNoteDialog = false
+                pendingNote = null
+                showEndBatchDialog = true
+            },
+            onSave = { note ->
+                showNoteDialog = false
+                pendingNote = note
+                showEndBatchDialog = true
+            },
+            showSkip = true
+        )
     }
 
     // ── End-batch confirmation dialog ────────────────────────────────────────
@@ -183,14 +204,16 @@ fun BatchScreen(
             confirmText = stringResource(R.string.end_batch),
             cancelText = stringResource(R.string.cancel),
             onConfirm = {
-                viewModel.endBatch()
+                viewModel.endBatch(pendingNote)
                 showEndBatchDialog = false
+                pendingNote = null
                 navController.navigate(Screen.Dashboard.route) {
                     popUpTo(Screen.Dashboard.route) { inclusive = false }
                 }
             },
             onCancel = {
                 showEndBatchDialog = false
+                pendingNote = null
             }
         )
     }
