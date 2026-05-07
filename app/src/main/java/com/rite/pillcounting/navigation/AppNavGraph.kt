@@ -14,6 +14,7 @@ import com.rite.pillcounting.feature.countResume.presentation.PartialCountsScree
 import com.rite.pillcounting.feature.countResume.presentation.RegularCountResumeScreen
 import com.rite.pillcounting.feature.dashboard.presentation.DashboardScreen
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
+import com.rite.pillcounting.feature.history.presentation.BatchHistoryDetailScreen
 import com.rite.pillcounting.feature.history.presentation.HistoryDetailScreen
 import com.rite.pillcounting.feature.history.presentation.HistoryScreen
 import com.rite.pillcounting.feature.menu.presentation.MenuScreen
@@ -133,6 +134,13 @@ fun AppNavGraph(
             HistoryDetailScreen(
                 navController = navController,
             )
+        }
+
+        composable(
+            route = Screen.BatchHistoryDetail.route,
+            arguments = Screen.BatchHistoryDetail.navArguments
+        ) {
+            BatchHistoryDetailScreen(navController = navController)
         }
 
         composable(route = Screen.UnsyncedTransactionScreen.route) {

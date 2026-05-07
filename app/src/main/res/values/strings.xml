@@ -359,5 +359,7 @@
     <string name="stock">Stock</string>
     <string name="ndcs_label">NDCs</string>
     <string name="stock_count_label">Stock Count</string>
+    <string name="total_ndc_count">TOTAL NDC COUNT</string>
+    <string name="completed_on">Completed on </string>
 
 </resources>

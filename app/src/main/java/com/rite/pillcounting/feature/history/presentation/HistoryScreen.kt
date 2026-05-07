@@ -125,7 +125,13 @@ fun HistoryScreen(
                     navController.navigate(Screen.HistoryDetail.route)
                 },
                 onBatchClick = { batchId ->
-                    navController.navigate(Screen.Batch.createRoute(batchId))
+                    val isCompleted = batchGroups.find { it.batchId == batchId }
+                        ?.status == com.rite.pillcounting.core.room.models.enums.BatchStatus.COMPLETED
+                    if (isCompleted) {
+                        navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
+                    } else {
+                        navController.navigate(Screen.Batch.createRoute(batchId))
+                    }
                 }
             )
         } else {
@@ -164,7 +170,13 @@ fun HistoryScreen(
                             navController.navigate(Screen.HistoryDetail.route)
                         },
                         onBatchClick = { batchId ->
-                            navController.navigate(Screen.Batch.createRoute(batchId))
+                            val isCompleted = batchGroups.find { it.batchId == batchId }
+                                ?.status == com.rite.pillcounting.core.room.models.enums.BatchStatus.COMPLETED
+                            if (isCompleted) {
+                                navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
+                            } else {
+                                navController.navigate(Screen.Batch.createRoute(batchId))
+                            }
                         }
                     )
                 },

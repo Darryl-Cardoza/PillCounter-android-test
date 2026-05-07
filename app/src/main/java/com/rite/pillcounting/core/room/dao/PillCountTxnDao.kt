@@ -457,6 +457,9 @@ interface PillCountTxnDao {
     @Query("DELETE FROM pill_count_txn WHERE batchId IN (:batchIds)")
     suspend fun deleteTransactionsByBatchIds(batchIds: List<Long>)
 
+    @Query("SELECT COUNT(DISTINCT drugId) FROM pill_count_txn WHERE batchId = :batchId AND isDeleted = 0 AND localId = :userLocalId")
+    suspend fun getUniqueNdcCountForBatch(batchId: Long, userLocalId: Long): Int
+
     /**
      * Observes all transactions belonging to a batch, joined with drug name and NDC.
      *
