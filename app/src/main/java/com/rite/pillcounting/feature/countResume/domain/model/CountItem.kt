@@ -18,6 +18,9 @@ import com.rite.pillcounting.R
 data class CountItem(
     val id: Long,
     val name: String,
+    val ndc: String?,
+    val drugType: String?,
+    val bucketId: String?,
     val pillCount: Int,
     val target: Int,
     val barcodeImage: String?,

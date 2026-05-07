@@ -46,6 +46,8 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import androidx.compose.ui.text.input.VisualTransformation
+import com.rite.pillcounting.core.utils.common.PhoneNumberVisualTransformation
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FloatingLabelTextField
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
@@ -242,18 +244,18 @@ fun ProfileScreen(
                     color = MaterialTheme.colorScheme.primary,
                     modifier = if (isLandscape) Modifier else Modifier.weight(1f)
                 )
-                HollowButton(
-                    text = stringResource(R.string.skip_alt),
-                    onClick = {
-                        navController.navigate(Screen.Menu.route) {
-                            popUpTo(Screen.Menu.route) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                        viewModel.resetUpdateState()
-                    },
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = if (isLandscape) Modifier else Modifier.weight(1f)
-                )
+//                HollowButton(
+//                    text = stringResource(R.string.skip_alt),
+//                    onClick = {
+//                        navController.navigate(Screen.Menu.route) {
+//                            popUpTo(Screen.Menu.route) { inclusive = true }
+//                            launchSingleTop = true
+//                        }
+//                        viewModel.resetUpdateState()
+//                    },
+//                    color = MaterialTheme.colorScheme.primary,
+//                    modifier = if (isLandscape) Modifier else Modifier.weight(1f)
+//                )
                 ActionButtonPrimary(
                     text = stringResource(R.string.save),
                     onClick = { viewModel.updateProfile() },
@@ -299,30 +301,27 @@ private fun ProfileTextField(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(horizontal = 20.dp, vertical = 8.dp)
     ) {
         FloatingLabelTextField(
             value = value,
             onValueChange = {
                 if (!readOnly) {
                     var input = it
-
                     if (keyboardType == KeyboardType.Phone) {
                         input = input.filter { char -> char.isDigit() }
                     }
-
-                    maxLength?.let { length ->
-                        input = input.take(length)
-                    }
-
                     onValueChange(input)
                 }
             },
             label = label,
             keyboardType = keyboardType,
             imeAction = imeAction,
+            visualTransformation = if (keyboardType == KeyboardType.Phone)
+                PhoneNumberVisualTransformation() else VisualTransformation.None,
             modifier = Modifier.fillMaxWidth(),
-            enabled = !readOnly
+            enabled = !readOnly,
+            maxLength = maxLength
         )
         if (!error.isNullOrEmpty()) {
             Text(
@@ -382,7 +381,8 @@ private fun ResponsiveProfileFields(
             { v -> viewModel.npi = v },
             R.string.npi_number,
             viewModel.npiError,
-            keyboardType = KeyboardType.Number
+            keyboardType = KeyboardType.Number,
+            maxLength = 10
         )
     )
 
@@ -421,7 +421,7 @@ private fun ResponsiveProfileFields(
                 }
             }
         }
-        Spacer(Modifier.height(20.dp))
+
     } else {
         fields.forEach { field ->
             ProfileTextField(

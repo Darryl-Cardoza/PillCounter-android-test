@@ -40,6 +40,9 @@ class UnsyncedTransactionViewModel @Inject constructor(
                         CountItem(
                             id = it.txnId,
                             name = it.drugName ?: "",
+                            ndc = it.ndc,
+                            drugType = it.drugType,
+                            bucketId = it.bucketId,
                             pillCount = it.totalPillCount,
                             target = it.targetCount ?: 0,
                             barcodeImage = it.barcodeImage,

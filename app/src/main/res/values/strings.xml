@@ -125,6 +125,8 @@
     <string name="manual">Manual</string>
     <string name="skip_alt">SKIP</string>
     <string name="select_all">Select All</string>
+    <string name="deselect_all">Deselect All</string>
+    <string name="delete_counts">Delete Counts</string>
 
 
     <!-- ================== PILL COUNT ================== -->
@@ -144,6 +146,7 @@
     <string name="transaction_detail">Transaction Detail</string>
     <string name="total">Total</string>
     <string name="total_count">Total Count</string>
+    <string name="delete_count_title">Delete Count</string>
     <string name="max_count_reached">Total Transaction count exceeds target.</string>
     <string name="no_transaction_found">No Transaction Found, please start counting pills</string>
     <string name="confirm_done">Confirm Completion</string>
@@ -168,8 +171,8 @@
     <string name="menu_history">History</string>
     <string name="menu_settings">Settings</string>
     <string name="menu_logout">Logout</string>
-    <string name="menu_completed">%1$d completed</string>
-    <string name="menu_partial">%1$d pending</string>
+    <string name="menu_completed">%1$d Completed</string>
+    <string name="menu_partial">%1$d Pending</string>
     <string name="menu_unsync_transaction">Unsynced Transactions</string>
 
     <!-- ================== UI CONTENT DESCRIPTIONS ================== -->
@@ -356,5 +359,9 @@
     <string name="toggle_with_count">%1$s (%2$d)</string>
     <string name="dispensed">Dispensed</string>
     <string name="stock">Stock</string>
+    <string name="ndcs_label">NDCs</string>
+    <string name="stock_count_label">Stock Count</string>
+    <string name="total_ndc_count">TOTAL NDC COUNT</string>
+    <string name="completed_on">Completed on </string>
 
 </resources>
