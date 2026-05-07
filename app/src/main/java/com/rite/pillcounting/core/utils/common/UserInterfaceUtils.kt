@@ -668,7 +668,8 @@ object UserInterfaceUtils {
         keyboardType: KeyboardType = KeyboardType.Text,
         imeAction: ImeAction = ImeAction.Done,
         onImeAction: (() -> Unit)? = null,
-        enabled: Boolean = true
+        enabled: Boolean = true,
+        maxLength: Int? = null
     ) {
         val focusManager = LocalFocusManager.current
         var passwordVisible by remember { mutableStateOf(!isPassword) }
@@ -720,8 +721,11 @@ object UserInterfaceUtils {
             BasicTextField(
                 value = textFieldValue,
                 onValueChange = { newValue ->
-                    textFieldValue = newValue
-                    onValueChange(newValue.text)
+                    val clamped = if (maxLength != null && newValue.text.length > maxLength)
+                        newValue.copy(text = newValue.text.take(maxLength))
+                    else newValue
+                    textFieldValue = clamped
+                    onValueChange(clamped.text)
                 },
                 singleLine = true,
                 enabled = enabled,

@@ -308,15 +308,9 @@ private fun ProfileTextField(
             onValueChange = {
                 if (!readOnly) {
                     var input = it
-
                     if (keyboardType == KeyboardType.Phone) {
                         input = input.filter { char -> char.isDigit() }
                     }
-
-                    maxLength?.let { length ->
-                        input = input.take(length)
-                    }
-
                     onValueChange(input)
                 }
             },
@@ -326,7 +320,8 @@ private fun ProfileTextField(
             visualTransformation = if (keyboardType == KeyboardType.Phone)
                 PhoneNumberVisualTransformation() else VisualTransformation.None,
             modifier = Modifier.fillMaxWidth(),
-            enabled = !readOnly
+            enabled = !readOnly,
+            maxLength = maxLength
         )
         if (!error.isNullOrEmpty()) {
             Text(
