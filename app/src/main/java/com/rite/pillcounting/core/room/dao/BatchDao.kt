@@ -1,12 +1,11 @@
 package com.rite.pillcounting.core.room.dao
 
 import androidx.room.Dao
-import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import androidx.room.Update
 import com.rite.pillcounting.core.room.models.BatchEntity
+import com.rite.pillcounting.core.room.models.dtos.BatchSummaryDto
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import kotlinx.coroutines.flow.Flow
 
@@ -124,6 +123,9 @@ interface BatchDao {
     @Query("UPDATE batch SET status = 'COMPLETED', endDateTime = :endDateTime WHERE batchId = :batchId")
     suspend fun markAsCompleted(batchId: Long, endDateTime: Long = System.currentTimeMillis()): Int
 
+    @Query("UPDATE batch SET note = :note WHERE batchId = :batchId")
+    suspend fun updateNote(batchId: Long, note: String?): Int
+
     // ────────────────────────────── Utility ──────────────────────────────
 
     /**
@@ -151,4 +153,75 @@ interface BatchDao {
 
     @Query("DELETE FROM batch")
     suspend fun deleteAll()
+
+    @Query("""
+        SELECT batchId FROM batch
+        WHERE isDeleted = 0
+          AND startDateTime BETWEEN :start AND :end
+          AND (
+            :isCompleted IS NULL
+            OR (:isCompleted = 1 AND status = :completedStatus)
+            OR (:isCompleted = 0 AND status = :inProgressStatus)
+          )
+    """)
+    suspend fun getBatchIdsByDate(
+        start: Long,
+        end: Long,
+        isCompleted: Boolean?,
+        completedStatus: BatchStatus = BatchStatus.COMPLETED,
+        inProgressStatus: BatchStatus = BatchStatus.INPROGRESS
+    ): List<Long>
+
+    @Query("""
+        UPDATE batch
+        SET isDeleted = 1
+        WHERE isDeleted = 0
+          AND startDateTime BETWEEN :start AND :end
+          AND (
+            :isCompleted IS NULL
+            OR (:isCompleted = 1 AND status = :completedStatus)
+            OR (:isCompleted = 0 AND status = :inProgressStatus)
+          )
+    """)
+    suspend fun softDeleteBatchesByDate(
+        start: Long,
+        end: Long,
+        isCompleted: Boolean?,
+        completedStatus: BatchStatus = BatchStatus.COMPLETED,
+        inProgressStatus: BatchStatus = BatchStatus.INPROGRESS
+    )
+
+    /**
+     * Returns all non-deleted batches whose [BatchEntity.startDateTime] falls within the given
+     * range, LEFT JOINed with their transactions so that empty batches (no txns yet) still appear
+     * with [BatchSummaryDto.uniqueNdcCount] = 0.
+     *
+     * The join filters transactions by [userLocalId] so that NDC counts are user-scoped, while
+     * the batch rows themselves are always included regardless of whether they have transactions.
+     */
+    @Query(
+        """
+    SELECT
+        b.batchId,
+        b.startDateTime AS createdAt,
+        b.status AS status,
+        b.bucketId AS bucketId,
+        b.requestIdFromPMS AS requestIdFromPMS,
+        COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
+    FROM batch b
+    LEFT JOIN pill_count_txn txn
+        ON b.batchId = txn.batchId
+        AND txn.isDeleted = 0
+        AND txn.localId = :userLocalId
+    WHERE b.isDeleted = 0
+      AND b.startDateTime BETWEEN :startDate AND :endDate
+    GROUP BY b.batchId
+    ORDER BY b.startDateTime DESC
+    """
+    )
+    fun getBatchSummaries(
+        startDate: Long,
+        endDate: Long,
+        userLocalId: Long
+    ): Flow<List<BatchSummaryDto>>
 }

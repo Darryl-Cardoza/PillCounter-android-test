@@ -90,7 +90,7 @@ fun CalendarSection(
         // Vertical calendar → only handles UI rendering
         VerticalCalendar(
             state = calendarState,
-            modifier = Modifier.fillMaxSize().padding(medium),
+            modifier = Modifier.fillMaxSize().padding(8.dp),
             monthHeader = { calendarMonth ->
                 val month = calendarMonth.yearMonth
                 Row(

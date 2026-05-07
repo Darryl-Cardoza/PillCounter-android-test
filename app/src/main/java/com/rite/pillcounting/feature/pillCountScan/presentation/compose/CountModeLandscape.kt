@@ -47,7 +47,8 @@ fun CountModeLandscape(
     onAdd: () -> Unit,
     onDone: () -> Unit,
     viewModel: PillScanningViewModel,
-    drugName: String
+    drugName: String,
+    showHistory: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val stepType by viewModel.currentStep.collectAsState()
@@ -56,10 +57,10 @@ fun CountModeLandscape(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
+                .padding(top = 8.dp)
                 .padding(horizontal = 14.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
-            Spacer(modifier = Modifier.height(responsiveDp(30.dp)))
             // Row: Circle + Add (center)
             Text(
                 text = drugName,
@@ -112,12 +113,10 @@ fun CountModeLandscape(
                 )
             }
 
-            Spacer(modifier = Modifier.height(responsiveDp(20.dp)))
-
             // Row: Total Count (left) + All Done (right)
             Row(
                 modifier = Modifier
-                    .fillMaxWidth(),
+                    .fillMaxWidth().padding(bottom = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
@@ -125,6 +124,7 @@ fun CountModeLandscape(
                 Box(
                     modifier = Modifier
                         .weight(1f)
+                        .clickable { showHistory() }
                         .padding(top = 10.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {

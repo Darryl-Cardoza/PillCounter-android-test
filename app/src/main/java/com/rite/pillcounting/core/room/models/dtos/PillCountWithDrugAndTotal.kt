@@ -3,6 +3,9 @@ package com.rite.pillcounting.core.room.models.dtos
 data class PillCountWithDrugAndTotal(
     val txnId: Long,
     val drugName: String?,
+    val ndc: String?,
+    val drugType: String?,
+    val bucketId: String?,
     val createdAt: Long,
     val targetCount: Int?,
     val barcodeImage: String?,

@@ -28,7 +28,7 @@ fun ActionIcon(
     Icon(
         painter = painterResource(id = iconRes),
         contentDescription = contentDescription,
-        tint = MaterialTheme.colorScheme.secondary,
+        tint = MaterialTheme.colorScheme.primary,
         modifier = modifier
             .size(36.dp)
             .padding(horizontal = 6.dp)

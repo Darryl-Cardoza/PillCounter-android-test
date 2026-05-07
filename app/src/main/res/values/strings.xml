@@ -123,6 +123,8 @@
     <string name="manual">Manual</string>
     <string name="skip_alt">SKIP</string>
     <string name="select_all">Select All</string>
+    <string name="deselect_all">Deselect All</string>
+    <string name="delete_counts">Delete Counts</string>
 
 
     <!-- ================== PILL COUNT ================== -->
@@ -142,6 +144,7 @@
     <string name="transaction_detail">Transaction Detail</string>
     <string name="total">Total</string>
     <string name="total_count">Total Count</string>
+    <string name="delete_count_title">Delete Count</string>
     <string name="max_count_reached">Total Transaction count exceeds target.</string>
     <string name="no_transaction_found">No Transaction Found, please start counting pills</string>
     <string name="confirm_done">Confirm Completion</string>
@@ -354,5 +357,9 @@
     <string name="toggle_with_count">%1$s (%2$d)</string>
     <string name="dispensed">Dispensed</string>
     <string name="stock">Stock</string>
+    <string name="ndcs_label">NDCs</string>
+    <string name="stock_count_label">Stock Count</string>
+    <string name="total_ndc_count">TOTAL NDC COUNT</string>
+    <string name="completed_on">Completed on </string>
 
 </resources>
