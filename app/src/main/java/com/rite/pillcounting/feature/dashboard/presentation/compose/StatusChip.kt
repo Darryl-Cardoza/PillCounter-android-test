@@ -48,7 +48,7 @@ fun StatusChip(
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Spacer(modifier = Modifier.width(3.dp))
+        Spacer(modifier = Modifier.width(8.dp))
 
         // Leading icon
         Image(
@@ -67,6 +67,6 @@ fun StatusChip(
             style = MaterialTheme.typography.bodyMedium
         )
 
-        Spacer(modifier = Modifier.width(3.dp))
+        Spacer(modifier = Modifier.width(8.dp))
     }
 }

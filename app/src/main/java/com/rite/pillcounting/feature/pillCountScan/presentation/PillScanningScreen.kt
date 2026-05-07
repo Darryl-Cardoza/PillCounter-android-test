@@ -21,6 +21,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +48,10 @@ import com.rite.pillcounting.feature.pillCountScan.domain.data.NavigationEvent
 import com.rite.pillcounting.feature.pillCountScan.domain.data.PillScanningEvent
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.CameraPreviewSection
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModeLandscape
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModePortrait
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.InformationPanelSection
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.StepTitleWithSpeech
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.TargetPillsCountDialog
@@ -75,13 +80,30 @@ fun PillScanningScreen(
     // Buffer of last 10 detections
     var lastTenDetections by remember { mutableStateOf<List<Int>>(emptyList()) }
 
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     var filteredPillCount by remember { mutableStateOf(0) }
+    var showHistory by rememberSaveable { mutableStateOf(false) }
 
-    var previewWidth by remember { mutableStateOf<Int?>(null) }
-    var previewHeight by remember { mutableStateOf<Int?>(null) }
+    LaunchedEffect(showHistory) {
+        if (showHistory) {
+            viewModel.pauseIdleTimer()
+        } else {
+            viewModel.resetIdleTimer()
+        }
+        viewModel.setCameraPaused(showHistory)
+    }
+    val totalCount = if (uiState.scanType == CountType.REGULAR.toString()) {
+        uiState.stockCountSessionTotal
+    } else {
+        uiState.txnDetailHistory.sumOf { it.count }
+    }
+
+    var previewWidth by rememberSaveable { mutableStateOf<Int?>(null) }
+    var previewHeight by rememberSaveable { mutableStateOf<Int?>(null) }
 
     val showConfirmationDialog = uiState.showDialogForControl
     val showCountMismatchDialog = uiState.showCountMismatchDialog
+    val isTxnFromHl7 by viewModel.isTxnFromHl7.collectAsState()
 
     // Whenever detected pills update, push into buffer
     LaunchedEffect(uiState.detectedPills) {
@@ -137,7 +159,7 @@ fun PillScanningScreen(
             onSave = { note ->
                 viewModel.onEvent(PillScanningEvent.NoteSaved(note))
             },
-            viewModel
+            showSkip = !isTxnFromHl7
         )
     }
 
@@ -242,48 +264,51 @@ fun PillScanningScreen(
                 }
             }
     ) {
-        // Camera + Info
-        SplitResponsive(
-            topOrLeft = {
-                CameraPreviewSection(
-                    viewModel = viewModel,
-                    pills = uiState.detectedPills,
-                    isCameraPaused = viewModel.cameraPaused.collectAsState().value,
-                    onFrame = { imageProxy ->
-                        viewModel.onFrameCaptured(imageProxy)
-                    },
-                    onFilteredCountChanged = { count -> filteredPillCount = count },
-                    modifier = Modifier.fillMaxSize(),
+        // Camera + Info — not rendered while history is visible so CameraX cannot
+        // rebind on rotation-triggered lifecycle restarts and flash the preview.
+        if (!showHistory) {
+            SplitResponsive(
+                topOrLeft = {
+                    CameraPreviewSection(
+                        viewModel = viewModel,
+                        pills = uiState.detectedPills,
+                        isCameraPaused = viewModel.cameraPaused.collectAsState().value,
+                        onFrame = { imageProxy ->
+                            viewModel.onFrameCaptured(imageProxy)
+                        },
+                        onFilteredCountChanged = { count -> filteredPillCount = count },
+                        modifier = Modifier.fillMaxSize(),
 
-                    imageFrameWidth = uiState.imageFrameWidth,
-                    imageFrameHeight = uiState.imageFrameHeight,
+                        imageFrameWidth = uiState.imageFrameWidth,
+                        imageFrameHeight = uiState.imageFrameHeight,
 
-                    onPreviewSizeKnown = { w, h ->
-                        // Store once
-                        if (previewWidth == null || previewHeight == null) {
-                            previewWidth = w
-                            previewHeight = h
+                        onPreviewSizeKnown = { w, h ->
+                            if (previewWidth == null || previewHeight == null) {
+                                previewWidth = w
+                                previewHeight = h
 
-                            viewModel.initializeInterpreter(
-                                retryCount = 2,
-                                viewWidth = w,
-                                viewHeight = h
-                            )
+                                viewModel.initializeInterpreter(
+                                    retryCount = 2,
+                                    viewWidth = w,
+                                    viewHeight = h
+                                )
+                            }
                         }
-                    }
-                )
-            },
-            bottomOrRight = {
-                InformationPanelSection(
-                    uiState = uiState,
-                    viewModel = viewModel,
-                    onEvent = viewModel::onEvent,
-                    filteredPillCount = filteredPillCount
-                )
-            },
-            landscapeRatio = startWidthLandScape to endWidthLandscape,
-            portraitRatio = topHeightPortrait to bottomHeightPortrait
-        )
+                    )
+                },
+                bottomOrRight = {
+                    InformationPanelSection(
+                        uiState = uiState,
+                        viewModel = viewModel,
+                        onEvent = viewModel::onEvent,
+                        filteredPillCount = filteredPillCount,
+                        onShowHistory = { showHistory = true }
+                    )
+                },
+                landscapeRatio = startWidthLandScape to endWidthLandscape,
+                portraitRatio = topHeightPortrait to bottomHeightPortrait
+            )
+        }
 
         if (!uiState.showIdleOverlay) {
 
@@ -320,8 +345,35 @@ fun PillScanningScreen(
                 Spacer(modifier = Modifier.weight(1f))
             }
         }
-        // === Overlay placed last → ensures it is on top ===
-        if (uiState.showIdleOverlay) {
+        if (showHistory) {
+            if (isLandscape) {
+                HistoryModeLandscape(
+                    navController = navController,
+                    scanType = uiState.scanType,
+                    targetCount = uiState.targetCount,
+                    totalCount = totalCount,
+                    txnHistory = uiState.txnDetailHistory,
+                    onDeleteTxn = { id -> viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(id)) },
+                    viewModel = viewModel,
+                    drugName = uiState.drugName,
+                    onBack = { showHistory = false }
+                )
+            } else {
+                HistoryModePortrait(
+                    navController = navController,
+                    scanType = uiState.scanType,
+                    targetCount = uiState.targetCount,
+                    totalCount = totalCount,
+                    txnHistory = uiState.txnDetailHistory,
+                    onDeleteTxn = { id -> viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(id)) },
+                    viewModel = viewModel,
+                    drugName = uiState.drugName,
+                    onBack = { showHistory = false }
+                )
+            }
+        }
+
+        if (uiState.showIdleOverlay && !showHistory) {
             logger.i("Overlay visible")
             Box(
                 modifier = Modifier

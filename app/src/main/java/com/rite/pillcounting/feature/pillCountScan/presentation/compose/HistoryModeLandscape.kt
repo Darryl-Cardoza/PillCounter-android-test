@@ -4,9 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -20,122 +22,210 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
+import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
 import com.rite.pillcounting.feature.pillCountScan.domain.model.TxnDetail
 import com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable
 fun HistoryModeLandscape(
+    navController: NavController,
     scanType: String,
     targetCount: Int,
     totalCount: Int,
     txnHistory: List<TxnDetail>,
     onDeleteTxn: (Long) -> Unit,
-    drugName : String,
-    viewModel: PillScanningViewModel
+    viewModel: PillScanningViewModel,
+    drugName: String,
+    onBack: () -> Unit
 ) {
-    val latestTxnId = txnHistory.maxByOrNull { it.createdAt }?.txnDetailId
-    val activeHistory = txnHistory
-        .filter { true }
-        .sortedBy { it.createdAt }
+    val activeHistory = remember(txnHistory) { txnHistory.sortedBy { it.createdAt } }
+    val stepType by viewModel.currentStep.collectAsState()
+    var isDeleteMode by remember { mutableStateOf(false) }
+    var selectedIds by remember { mutableStateOf(setOf<Long>()) }
+    var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var selectedImagePath by remember { mutableStateOf<String?>(null) }
+    val isAllSelected = selectedIds.size == activeHistory.size && activeHistory.isNotEmpty()
 
     val listState = rememberLazyListState()
-    val stepType by viewModel.currentStep.collectAsState()
 
     LaunchedEffect(activeHistory.size) {
-        if (activeHistory.isNotEmpty()) {
-            listState.animateScrollToItem(activeHistory.lastIndex)
+        if (activeHistory.isNotEmpty()) listState.animateScrollToItem(activeHistory.lastIndex)
+    }
+
+    val handleBack: () -> Unit = {
+        if (isDeleteMode) {
+            isDeleteMode = false
+            selectedIds = emptySet()
+        } else {
+            onBack()
         }
     }
 
-    Column(
-        modifier = Modifier.fillMaxHeight(),
-    ) {
-        Spacer(modifier = Modifier.weight(0.8f))
-        Text(
-            text = drugName,
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 18.sp,
-            fontWeight = FontWeight.Medium,
-            modifier = Modifier.fillMaxWidth(),
-            textAlign = TextAlign.Center,
-            maxLines = 1
-        )
-        Spacer(modifier = Modifier.weight(0.8f))
-        LazyRow(
-            state = listState,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-        ) {
-            itemsIndexed(
-                items = activeHistory,
-                key = { _, item -> item.txnDetailId }
-            ) { index, item ->
-                Chip(
-                    txnDetail = item,
-                    index = index + 1,
-                    onDelete = onDeleteTxn,
-                    count = item.count.toString(),
-                    highlight = item.txnDetailId == latestTxnId
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.weight(0.8f))
-
+    Box(modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .fillMaxSize()
+                .background(AppTheme.extendedColors.primaryBackground)
         ) {
-            Text(
-                text = totalCount.toString(),
-                color = MaterialTheme.colorScheme.primary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold
+            HeadlineBar(
+                navController = navController,
+                title = stringResource(R.string.total_count),
+                searchQuery = "",
+                showSearch = false,
+                isMultiSelectMode = isDeleteMode,
+                isAllSelected = isAllSelected,
+                hasSelection = selectedIds.isNotEmpty(),
+                showDelete = true,
+                showSearchIcon = false,
+                onSearchClick = {},
+                onSearchChange = {},
+                onDeleteClick = { isDeleteMode = true },
+                onCancelClick = { handleBack() },
+                onConfirmDelete = {},
+                onSelectAll = {
+                    selectedIds = if (isAllSelected) emptySet()
+                    else activeHistory.map { it.txnDetailId }.toSet()
+                },
+                onBackClick = { handleBack() }
             )
 
-            if (scanType == CountType.FIXED.toString() && stepType != StepState.CONTAINER_INITIATE) {
-                Spacer(Modifier.height(4.dp))
-
-                Column(modifier = Modifier.width(IntrinsicSize.Min)) {
-                    Box(
-                        modifier = Modifier
-                            .height(1.dp)
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.6f))
-                    )
-                    Spacer(Modifier.height(4.dp))
+            // ── Drug name + count (hidden in delete mode) ──
+            if (!isDeleteMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
                     Text(
-                        text = targetCount.toString(),
-                        color = MaterialTheme.colorScheme.primary,
+                        text = drugName,
+                        color = AppTheme.extendedColors.textColor,
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = if (scanType == CountType.FIXED.toString() && stepType != StepState.CONTAINER_INITIATE)
+                            "$totalCount/$targetCount"
+                        else
+                            "$totalCount",
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
                 }
             }
 
-            Spacer(Modifier.height(6.dp))
+            // ── Horizontal card list ──
+            LazyRow(
+                state = listState,
+                modifier = Modifier
+                    .height(responsiveDp(230.dp))
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(vertical = 8.dp)
+            ) {
+                itemsIndexed(
+                    items = activeHistory,
+                    key = { _, item -> item.txnDetailId }
+                ) { index, item ->
+                    TxnHistoryCard(
+                        txnDetail = item,
+                        index = index + 1,
+                        isDeleteMode = isDeleteMode,
+                        isSelected = item.txnDetailId in selectedIds,
+                        onToggleSelect = {
+                            selectedIds = if (item.txnDetailId in selectedIds)
+                                selectedIds - item.txnDetailId
+                            else
+                                selectedIds + item.txnDetailId
+                        },
+                        onDelete = onDeleteTxn,
+                        onImageClick = { path -> selectedImagePath = path },
+                        cardModifier = Modifier
+                            .width(responsiveDp(150.dp))
+                            .fillMaxHeight()
+                    )
+                }
+            }
 
-            Text(
-                text = stringResource(R.string.pill_scanning_total_count),
-                color = AppTheme.extendedColors.textColor,
-                fontSize = 12.sp
+            // ── Delete-mode bottom bar ──
+            if (isDeleteMode) {
+                Spacer(modifier = Modifier.height(18.dp))
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HollowButton(
+                        text = stringResource(R.string.cancel).uppercase(),
+                        onClick = {
+                            isDeleteMode = false
+                            selectedIds = emptySet()
+                        },
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.width(responsiveDp(120.dp))
+                    )
+                    FilledButton(
+                        text = stringResource(R.string.delete).uppercase(),
+                        onClick = {
+                            if (selectedIds.isNotEmpty()) showDeleteConfirmDialog = true
+                        },
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.width(responsiveDp(120.dp))
+                    )
+                }
+            }
+        }
+
+        selectedImagePath?.let { path ->
+            FullScreenImageDialog(
+                imagePath = path,
+                onDismiss = { selectedImagePath = null },
+                modifier = Modifier.zIndex(1f)
             )
         }
+    }
+
+    if (showDeleteConfirmDialog) {
+        CommonDialog(
+            title = stringResource(R.string.confirm_delete_title),
+            message = stringResource(R.string.delete_selected_items_text),
+            confirmText = stringResource(R.string.delete),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = {
+                selectedIds.forEach { id -> onDeleteTxn(id) }
+                showDeleteConfirmDialog = false
+                isDeleteMode = false
+                selectedIds = emptySet()
+            },
+            onCancel = { showDeleteConfirmDialog = false }
+        )
     }
 }

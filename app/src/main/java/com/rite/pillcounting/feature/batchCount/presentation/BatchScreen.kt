@@ -1,11 +1,7 @@
 package com.rite.pillcounting.feature.batchCount.presentation
 
 import Screen
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,19 +12,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowRight
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -39,7 +27,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -53,9 +40,10 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchDrugGroup
-import com.rite.pillcounting.feature.batchCount.domain.model.BatchLotEntry
+import com.rite.pillcounting.feature.batchCount.presentation.compose.BatchNdcCard
 import com.rite.pillcounting.feature.batchCount.presentation.viewmodel.BatchViewModel
 import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.ui.theme.AppTheme
 
 
@@ -72,7 +60,9 @@ fun BatchScreen(
 
     var isMultiSelectMode by remember { mutableStateOf(false) }
     var selectedItems by remember { mutableStateOf(setOf<BatchDrugGroup>()) }
+    var showNoteDialog by remember { mutableStateOf(false) }
     var showEndBatchDialog by remember { mutableStateOf(false) }
+    var pendingNote by remember { mutableStateOf<String?>(null) }
     var expandedDrugId by remember { mutableStateOf<Long?>(null) }
 
     val hasQty = drugGroups.any { it.totalCount > 0 }
@@ -135,19 +125,12 @@ fun BatchScreen(
                 modifier = Modifier.weight(1f)
             ) {
                 items(drugGroups, key = { it.drugId ?: 0L }) { group ->
-                    BatchGroupCard(
+                    BatchNdcCard(
                         group = group,
                         isExpanded = expandedDrugId == group.drugId,
                         onExpandToggle = {
                             expandedDrugId =
                                 if (expandedDrugId == group.drugId) null else group.drugId
-                        },
-                        isMultiSelectMode = isMultiSelectMode,
-                        isSelected = selectedItems.contains(group),
-                        onSelect = {
-                            selectedItems =
-                                if (selectedItems.contains(group)) selectedItems - group
-                                else selectedItems + group
                         }
                     )
                 }
@@ -157,7 +140,7 @@ fun BatchScreen(
         // ── Bottom action bar ────────────────────────────────────────────────
         if (!isBatchCompleted) {
             BottomActionBar(
-                onEndBatch = { showEndBatchDialog = true },
+                onEndBatch = { showNoteDialog = true },
                 onAdd = {
                     navController.navigate(
                         Screen.ScanBarcode.createRoute(
@@ -169,6 +152,24 @@ fun BatchScreen(
                 }
             )
         }
+    }
+
+    // ── Note dialog (shown before end-batch confirmation) ────────────────────
+    if (showNoteDialog) {
+        AddNoteDialog(
+            onDismiss = { showNoteDialog = false },
+            onSkip = {
+                showNoteDialog = false
+                pendingNote = null
+                showEndBatchDialog = true
+            },
+            onSave = { note ->
+                showNoteDialog = false
+                pendingNote = note
+                showEndBatchDialog = true
+            },
+            showSkip = true
+        )
     }
 
     // ── End-batch confirmation dialog ────────────────────────────────────────
@@ -183,197 +184,17 @@ fun BatchScreen(
             confirmText = stringResource(R.string.end_batch),
             cancelText = stringResource(R.string.cancel),
             onConfirm = {
-                viewModel.endBatch()
+                viewModel.endBatch(pendingNote)
                 showEndBatchDialog = false
+                pendingNote = null
                 navController.navigate(Screen.Dashboard.route) {
                     popUpTo(Screen.Dashboard.route) { inclusive = false }
                 }
             },
             onCancel = {
                 showEndBatchDialog = false
+                pendingNote = null
             }
-        )
-    }
-}
-
-// ── BatchGroupCard ────────────────────────────────────────────────────────────
-@Composable
-private fun BatchGroupCard(
-    group: BatchDrugGroup,
-    isExpanded: Boolean,
-    onExpandToggle: () -> Unit,
-    isMultiSelectMode: Boolean,
-    isSelected: Boolean,
-    onSelect: () -> Unit
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
-            .background(AppTheme.extendedColors.secondaryBackground)
-    ) {
-        // Header row
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable {
-                    if (isMultiSelectMode) onSelect() else onExpandToggle()
-                }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.Top
-        ) {
-            if (isMultiSelectMode) {
-                Checkbox(
-                    checked = isSelected,
-                    onCheckedChange = { onSelect() },
-                    colors = CheckboxDefaults.colors(
-                        checkedColor = MaterialTheme.colorScheme.primary,
-                        uncheckedColor = AppTheme.extendedColors.textColor.copy(alpha = 0.7f)
-                    ),
-                    modifier = Modifier
-                        .size(20.dp)
-                        .padding(end = 8.dp)
-                        .align(Alignment.CenterVertically)
-                )
-            }
-
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = group.drugName,
-                    color = AppTheme.extendedColors.textColor,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Spacer(Modifier.height(2.dp))
-                Text(
-                    text = group.ndc,
-                    color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Normal
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = group.totalCount.toString(),
-                    color = MaterialTheme.colorScheme.secondary,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Icon(
-                    imageVector = if (isExpanded) Icons.Default.KeyboardArrowDown
-                    else Icons.Default.KeyboardArrowRight,
-                    contentDescription = if (isExpanded) "Collapse" else "Expand",
-                    tint = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                    modifier = Modifier.size(16.dp)
-                )
-            }
-        }
-
-        // Expanded detail
-        AnimatedVisibility(
-            visible = isExpanded,
-            enter = expandVertically(),
-            exit = shrinkVertically()
-        ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 0.dp)
-            ) {
-                HorizontalDivider(
-                    color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                    thickness = 0.5.dp
-                )
-                Spacer(Modifier.height(8.dp))
-
-                LotSection(
-                    label = stringResource(R.string.sealed_bottles),
-                    total = group.sealedTotal,
-                    lots = group.sealedLots
-                )
-
-                Spacer(Modifier.height(8.dp))
-
-                LotSection(
-                    label = stringResource(R.string.opend_bottles),
-                    total = group.openedTotal,
-                    lots = group.openedLots
-                )
-
-                Spacer(Modifier.height(12.dp))
-            }
-        }
-    }
-}
-
-// ── LotSection ────────────────────────────────────────────────────────────────
-@Composable
-private fun LotSection(label: String, total: Int, lots: List<BatchLotEntry>) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween
-    ) {
-        Text(
-            text = label,
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Normal
-        )
-        Text(
-            text = total.toString(),
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.SemiBold
-        )
-    }
-
-    if (lots.isEmpty()) {
-        Spacer(Modifier.height(2.dp))
-        Text(
-            text = "—",
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 11.sp,
-            modifier = Modifier.padding(start = 8.dp),
-            fontWeight = FontWeight.Normal
-        )
-    } else {
-        Spacer(Modifier.height(4.dp))
-        lots.forEach { LotRow(it) }
-    }
-}
-
-// ── LotRow ────────────────────────────────────────────────────────────────────
-@Composable
-private fun LotRow(lot: BatchLotEntry) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, top = 3.dp, bottom = 3.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "Lot ${lot.lotNo ?: "—"}",
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 14.sp,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = lot.expiry ?: "—",
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 14.sp,
-            modifier = Modifier.padding(horizontal = 8.dp)
-        )
-        Spacer(Modifier.weight(0.1f))
-        Text(
-            text = lot.count.toString(),
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 14.sp
         )
     }
 }
