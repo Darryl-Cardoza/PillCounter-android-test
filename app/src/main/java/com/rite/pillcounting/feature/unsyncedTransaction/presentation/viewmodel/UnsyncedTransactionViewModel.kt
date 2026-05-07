@@ -2,9 +2,15 @@ package com.rite.pillcounting.feature.unsyncedTransaction.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
+import com.rite.pillcounting.core.room.models.enums.BatchStatus
+import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.feature.countResume.domain.model.CountItem
+import com.rite.pillcounting.feature.history.domain.model.BatchSummary
 import com.rite.pillcounting.feature.unsyncedTransaction.domain.model.UnsyncedTransactionUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -18,45 +24,68 @@ import javax.inject.Inject
 
 @HiltViewModel
 class UnsyncedTransactionViewModel @Inject constructor(
-    private val pillCountTxnDao: PillCountTxnDao
+    private val pillCountTxnDao: PillCountTxnDao,
+    private val batchDao: BatchDao
 ) : ViewModel() {
 
-    /** Backing state for fixed count transactions. */
     private val _unsyncedTransactionUiState = MutableStateFlow(UnsyncedTransactionUiState())
 
-    /** Public immutable state for UI to observe. */
     val unsyncedTransactionUiState: StateFlow<UnsyncedTransactionUiState> =
         _unsyncedTransactionUiState.asStateFlow()
 
     init {
-        observeUnsyncedTransaction()
+        observeUnsyncedDispense()
+        observeUnsyncedBatches()
     }
 
-    private fun observeUnsyncedTransaction() {
+    private fun observeUnsyncedDispense() {
         viewModelScope.launch {
-            pillCountTxnDao.observeUnsyncedHl7Txn()
-                .map { txns ->
-                    txns.map {
-                        CountItem(
-                            id = it.txnId,
-                            name = it.drugName ?: "",
-                            ndc = it.ndc,
-                            drugType = it.drugType,
-                            bucketId = it.bucketId,
-                            pillCount = it.totalPillCount,
-                            target = it.targetCount ?: 0,
-                            barcodeImage = it.barcodeImage,
-                            date = it.createdAt.toFormattedDate(),
-                            isComingFromHL7 = it.isComingFromHL7,
-                            isNdcVerified = it.isNdcVerified
-                        )
-                    }
-                }
+            pillCountTxnDao.observeUnsyncedByCountType(
+                CountType.FIXED,
+                type = StepState.TARGET_VERIFICATION.toString()
+            )
+                .map { txns -> txns.map { it.toCountItem() } }
                 .catch { e -> e.printStackTrace() }
                 .collect { items ->
-                    _unsyncedTransactionUiState.update { it.copy(unsyncedTransactionList = items) }
+                    _unsyncedTransactionUiState.update { it.copy(dispenseList = items) }
                 }
         }
     }
 
+    private fun observeUnsyncedBatches() {
+        viewModelScope.launch {
+            batchDao.observeUnsyncedCompletedBatches()
+                .map { dtos ->
+                    dtos.map { dto ->
+                        BatchSummary(
+                            batchId = dto.batchId,
+                            createdAt = dto.createdAt,
+                            uniqueNdcCount = dto.uniqueNdcCount,
+                            status = BatchStatus.valueOf(dto.status),
+                            bucketId = dto.bucketId,
+                            requestIdFromPMS = dto.requestIdFromPMS
+                        )
+                    }
+                }
+                .catch { e -> e.printStackTrace() }
+                .collect { batches ->
+                    _unsyncedTransactionUiState.update { it.copy(batchList = batches) }
+                }
+        }
+    }
+
+    private fun PillCountWithDrugAndTotal.toCountItem() = CountItem(
+        id = txnId,
+        name = drugName ?: "",
+        ndc = ndc,
+        drugType = drugType,
+        bucketId = bucketId,
+        pillCount = totalPillCount,
+        target = targetCount ?: 0,
+        barcodeImage = barcodeImage,
+        date = createdAt.toFormattedDate(),
+        isComingFromHL7 = isComingFromHL7,
+        isNdcVerified = isNdcVerified,
+        countType = countType
+    )
 }

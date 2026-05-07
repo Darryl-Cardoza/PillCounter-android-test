@@ -1,5 +1,7 @@
 package com.rite.pillcounting.core.room.models.dtos
 
+import com.rite.pillcounting.core.room.models.enums.CountType
+
 data class PillCountWithDrugAndTotal(
     val txnId: Long,
     val drugName: String?,
@@ -11,5 +13,6 @@ data class PillCountWithDrugAndTotal(
     val barcodeImage: String?,
     val totalPillCount: Int,
     val isComingFromHL7 : Boolean,
-    val isNdcVerified: Boolean
+    val isNdcVerified: Boolean,
+    val countType: CountType
 )
