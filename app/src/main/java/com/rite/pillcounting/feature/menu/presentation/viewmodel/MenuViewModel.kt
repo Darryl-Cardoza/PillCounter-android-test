@@ -2,6 +2,7 @@ package com.rite.pillcounting.feature.menu.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.common.HelperFunctions.mapCounts
@@ -11,6 +12,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -31,6 +33,7 @@ import javax.inject.Inject
 @HiltViewModel
 class MenuViewModel @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
+    private val batchDao: BatchDao,
     private val preferenceHelper: PreferenceHelper
 ) : ViewModel() {
 
@@ -79,15 +82,14 @@ class MenuViewModel @Inject constructor(
 
     private fun observeUnsyncedTransactionCount() {
         viewModelScope.launch {
-            pillCountTxnDao.getTotalCompletedTransactionCount()
-                .catch { e ->
-                    e.printStackTrace()
-                }
+            combine(
+                pillCountTxnDao.getTotalCompletedTransactionCount(),
+                batchDao.getUnsyncedCompletedBatchCount()
+            ) { dispenseCount, batchCount -> dispenseCount + batchCount }
+                .catch { e -> e.printStackTrace() }
                 .collect { count ->
                     _uiState.update { current ->
-                        current.copy(
-                            unsyncedTransactionCount = count
-                        )
+                        current.copy(unsyncedTransactionCount = count)
                     }
                 }
         }

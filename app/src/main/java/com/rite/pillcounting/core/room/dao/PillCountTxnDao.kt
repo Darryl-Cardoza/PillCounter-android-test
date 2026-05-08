@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.room.dao
 
+import android.R
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -125,6 +126,7 @@ interface PillCountTxnDao {
            txn.isComingFromHL7,
            txn.isNdcVerified,
            txn.bucketId,
+           txn.countType,
            drug.drugName,
            drug.ndc,
            drug.drugType,
@@ -653,6 +655,7 @@ interface PillCountTxnDao {
            txn.isComingFromHL7,
            txn.isNdcVerified,
            txn.bucketId,
+           txn.countType,
            drug.drugName,
            drug.ndc,
            drug.drugType,
@@ -663,17 +666,20 @@ interface PillCountTxnDao {
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
           AND details.isDeleted = 0
+          AND details.type = :type
     WHERE txn.isDeleted = 0
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)
-      AND txn.isComingFromHL7 = 1
+      AND txn.countType = :countType
       AND txn.isSynced = 0
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
     )
-    fun observeUnsyncedHl7Txn(
+    fun observeUnsyncedByCountType(
+        countType: CountType,
         completeStatus: CountStatus = CountStatus.COMPLETED,
-        forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED
+        forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED,
+        type: String
     ): Flow<List<PillCountWithDrugAndTotal>>
 
     @Query(

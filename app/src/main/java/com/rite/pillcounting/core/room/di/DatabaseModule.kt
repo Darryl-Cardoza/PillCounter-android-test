@@ -28,17 +28,11 @@ import javax.inject.Singleton
 @InstallIn(SingletonComponent::class)
 object DatabaseModule {
 
-    /*private val MIGRATION_2_3 = object : Migration(2, 3) {
+    private val MIGRATION_1_2 = object : Migration(1, 2) {
         override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE pill_count_txn ADD COLUMN bucketId TEXT")
+            db.execSQL("ALTER TABLE batch ADD COLUMN isSynced INTEGER NOT NULL DEFAULT 0")
         }
     }
-
-    private val MIGRATION_3_4 = object : Migration(3, 4) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL("ALTER TABLE pill_count_txn ADD COLUMN batchId INTEGER")
-        }
-    }*/
 
     /** Provides the singleton instance of [AppDatabase]. */
     @Provides
@@ -49,7 +43,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "pill_counting_db"
         )
-            //.addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2)
             .build()
     }
 
