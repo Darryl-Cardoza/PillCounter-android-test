@@ -9,6 +9,7 @@ import androidx.security.crypto.MasterKey
 import com.google.gson.Gson
 import com.rite.pillcounting.core.settings.domain.model.ColorSettings
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -82,6 +83,8 @@ private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
 private const val KEY_BARCODE_REGEX="key_barcode_regex"
 private const val KEY_BUCKET_LIST="key_bucket_list"
+private const val KEY_TERMINALS="key_terminals"
+private const val KEY_SELECTED_TERMINAL_ID="key_selected_terminal_id"
 
 
 @Singleton
@@ -521,6 +524,52 @@ class PreferenceHelper @Inject constructor(
         } else {
             emptyList()
         }
+    }
+
+    // ─────────────────────────── TERMINALS ───────────────────────────
+
+    /**
+     * Saves the list of terminals as JSON.
+     * @param terminals List of Terminal objects to persist.
+     */
+    fun saveTerminals(terminals: List<Terminal>) {
+        val json = gson.toJson(terminals)
+        prefs.edit { putString(KEY_TERMINALS, json) }
+        logger.i("Saved terminals list (size=${terminals.size})")
+    }
+
+    /**
+     * Retrieves the saved list of terminals.
+     * @return List of Terminal objects, or empty list if none found.
+     */
+    fun getTerminals(): List<Terminal> {
+        val json = prefs.getString(KEY_TERMINALS, null)
+        return if (json != null) {
+            val array = gson.fromJson(json, Array<Terminal>::class.java)
+            array.toList()
+        } else {
+            logger.d("No terminals found in preferences")
+            emptyList()
+        }
+    }
+
+    /**
+     * Saves the selected terminal ID.
+     * @param terminalId The ID of the selected terminal.
+     */
+    fun saveSelectedTerminalId(terminalId: String) {
+        prefs.edit { putString(KEY_SELECTED_TERMINAL_ID, terminalId) }
+        logger.i("Saved selected terminal ID: $terminalId")
+    }
+
+    /**
+     * Retrieves the selected terminal ID.
+     * @return The selected terminal ID, or null if not set.
+     */
+    fun getSelectedTerminalId(): String? {
+        val id = prefs.getString(KEY_SELECTED_TERMINAL_ID, null)
+        logger.d("Retrieved selected terminal ID: $id")
+        return id
     }
 
 

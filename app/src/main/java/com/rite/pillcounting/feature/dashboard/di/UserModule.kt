@@ -2,7 +2,9 @@ package com.rite.pillcounting.feature.dashboard.di
 
 import com.rite.pillcounting.core.settings.data.remote.IApplicationSettingInterface
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.feature.dashboard.data.TerminalRepository
 import com.rite.pillcounting.feature.dashboard.data.UserDetailRepository
+import com.rite.pillcounting.feature.dashboard.data.remote.ITerminalApi
 import com.rite.pillcounting.feature.dashboard.data.remote.IUserDetailAPI
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
 import dagger.Module
@@ -77,5 +79,48 @@ object UserModule {
             applicationSettingApi = applicationSettingApi,
             preferenceHelper = preferenceHelper,
             ioDispatcher = ioDispatcher
+        )
+
+    /**
+     * Provides a singleton instance of the [ITerminalApi].
+     *
+     * This API interface defines the Retrofit endpoints responsible for
+     * managing terminal settings and configurations.
+     *
+     * @param retrofit The [Retrofit] instance used to create the API implementation.
+     * @return A concrete implementation of [ITerminalApi].
+     */
+    @Provides
+    @Singleton
+    fun provideTerminalApi(
+        retrofit: Retrofit
+    ): ITerminalApi =
+        retrofit.create(ITerminalApi::class.java)
+
+    /**
+     * Provides a singleton instance of the [TerminalRepository].
+     *
+     * The repository manages terminal-related operations including updating
+     * terminal settings and synchronizing with the backend.
+     *
+     * @param terminalApi The [ITerminalApi] used for terminal operations.
+     * @param ioDispatcher The [CoroutineDispatcher] used for I/O operations.
+     * @param preferenceHelper The [PreferenceHelper] for accessing stored tokens.
+     * @param applicationSettingApi The [IApplicationSettingInterface] for token refresh.
+     * @return A concrete implementation of [TerminalRepository].
+     */
+    @Provides
+    @Singleton
+    fun provideTerminalRepository(
+        terminalApi: ITerminalApi,
+        ioDispatcher: CoroutineDispatcher,
+        preferenceHelper: PreferenceHelper,
+        applicationSettingApi: IApplicationSettingInterface
+    ): TerminalRepository =
+        TerminalRepository(
+            terminalApi = terminalApi,
+            ioDispatcher = ioDispatcher,
+            preferenceHelper = preferenceHelper,
+            applicationSettingApi = applicationSettingApi
         )
 }

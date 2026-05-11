@@ -17,6 +17,9 @@ import com.rite.pillcounting.core.utils.common.NetworkUtils
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.validator.CredentialsValidator
+import com.rite.pillcounting.feature.dashboard.data.TerminalRepository
+import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
+import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
@@ -44,6 +47,7 @@ import javax.inject.Inject
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val repository: ProfileRepository,
+    private val terminalRepository: TerminalRepository,
     private val preferenceHelper: PreferenceHelper,
     private val userDao: UserDao,
     private val validator: CredentialsValidator,
@@ -69,6 +73,11 @@ class ProfileViewModel @Inject constructor(
     var email by mutableStateOf("")
     var npi by mutableStateOf("")
     var doNotAskAgain by mutableStateOf(false)
+    
+    // Terminal selection
+    var terminals by mutableStateOf<List<Terminal>>(emptyList())
+    var selectedTerminal by mutableStateOf<Terminal?>(null)
+    private var initialTerminal: Terminal? = null // Track initial value to detect changes
 
     // ─────────────────────────── Validation Errors ───────────────────────────
     var firstNameError by mutableStateOf<Int?>(null)
@@ -88,6 +97,14 @@ class ProfileViewModel @Inject constructor(
 
         doNotAskAgain = preferenceHelper.isDoNotAskAgain()
         logger.i("Initialized doNotAskAgain = $doNotAskAgain")
+
+        // Load terminals from SharedPreferences
+        terminals = preferenceHelper.getTerminals()
+        val savedTerminalId = preferenceHelper.getSelectedTerminalId()
+        selectedTerminal = terminals.firstOrNull { it.terminalId == savedTerminalId }
+            ?: terminals.firstOrNull { it.isActive == true }
+        initialTerminal = selectedTerminal // Store initial value to detect changes
+        logger.i("Loaded ${terminals.size} terminals, selected: ${selectedTerminal?.terminalName}")
     }
 
     fun toggleDoNotAskAgain(value: Boolean) {
@@ -111,6 +128,11 @@ class ProfileViewModel @Inject constructor(
                 }
             }
         }
+    }
+    
+    fun onTerminalSelected(terminal: Terminal) {
+        selectedTerminal = terminal
+        logger.i("Terminal selected: ${terminal.terminalName} (ID: ${terminal.terminalId})")
     }
 
     fun onPhoneChanged(input: String) {
@@ -175,7 +197,8 @@ class ProfileViewModel @Inject constructor(
                     language = "en",
                     timezone = "Asia/Kolkata",
                     fName = firstName.trim(),
-                    lName = lastName.trim()
+                    lName = lastName.trim(),
+                    terminalId = selectedTerminal?.terminalId
                 )
 
                 repository.updateProfile(request)
@@ -203,6 +226,45 @@ class ProfileViewModel @Inject constructor(
                         }
 
                         preferenceHelper.saveDoNotAskAgain(doNotAskAgain)
+
+                        // Update terminal if it has changed
+                        if (selectedTerminal != null && selectedTerminal?.terminalId != initialTerminal?.terminalId) {
+                            val terminalId = selectedTerminal!!.terminalId
+                            if (terminalId != null) {
+                                logger.i("Terminal changed from ${initialTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
+
+                                val terminalRequest = TerminalUpdateRequest(
+                                    terminalName = selectedTerminal!!.terminalName ?: "Unknown",
+                                    isActive = true
+                                )
+
+                                viewModelScope.launch {
+                                    terminalRepository.updateTerminal(terminalId, terminalRequest)
+                                        .onSuccess { _ ->
+                                            logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
+
+                                            // Update local terminals list - mark selected as active, others as inactive
+                                            terminals = terminals.map { t ->
+                                                t.copy(isActive = t.terminalId == terminalId)
+                                            }
+
+                                            // Save updated terminal selection to preferences
+                                            preferenceHelper.saveSelectedTerminalId(terminalId)
+                                            preferenceHelper.saveTerminals(terminals)
+
+                                            // Update initial terminal to current selection
+                                            initialTerminal = selectedTerminal
+                                        }
+                                        .onFailure { e ->
+                                            logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
+                                            // Don't fail the entire profile update if terminal update fails
+                                        }
+                                }
+                            }
+                        } else {
+                            logger.i("Terminal unchanged, skipping terminal update API call")
+                        }
+
                         _updateUiState.value = ProfileUpdateUiState.Success
                     }
                     .onFailure { e ->

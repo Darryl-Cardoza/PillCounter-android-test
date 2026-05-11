@@ -168,6 +168,13 @@ class DashboardViewModel @Inject constructor(
                             val localId = userDao.upsertPreservingLocalId(user = entity)
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.profile?.bucket ?: emptyList())
+                            
+                            // Save terminals to SharedPreferences
+                            detail.terminals?.let { terminals ->
+                                preferenceHelper.saveTerminals(terminals)
+                                logger.i("Saved ${terminals.size} terminals to preferences")
+                            }
+                            
                             //  To call observe count for first time when localId is 0 (from preference)
                             if (preferenceHelper.getLocalId() == 0.toLong()) {
                                 observeDashboardCounts(localId)

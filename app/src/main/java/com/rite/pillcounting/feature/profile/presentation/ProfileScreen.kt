@@ -18,8 +18,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,6 +42,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -52,6 +62,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FloatingLabelT
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
+import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileField
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
@@ -436,5 +447,88 @@ private fun ResponsiveProfileFields(
         }
     }
 
+    // Add Terminal Dropdown if terminals are available
+    if (viewModel.terminals.isNotEmpty()) {
+        TerminalDropdown(
+            terminals = viewModel.terminals,
+            selectedTerminal = viewModel.selectedTerminal,
+            onTerminalSelected = { viewModel.onTerminalSelected(it) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+    }
+
 }
 
+
+/**
+ * Dropdown menu to select a terminal.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TerminalDropdown(
+    terminals: List<Terminal>,
+    selectedTerminal: Terminal?,
+    onTerminalSelected: (Terminal) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded }
+        ) {
+            OutlinedTextField(
+                value = selectedTerminal?.terminalName ?: "Select Terminal",
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Terminal") },
+                modifier = Modifier
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                    .fillMaxWidth(),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = AppTheme.extendedColors.textColor
+                ),
+                shape = RoundedCornerShape(10.dp),
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                    unfocusedBorderColor = AppTheme.extendedColors.secondaryBackground,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedContainerColor = AppTheme.extendedColors.secondaryBackground,
+                    focusedContainerColor = AppTheme.extendedColors.secondaryBackground,
+                    cursorColor = MaterialTheme.colorScheme.primary,
+                    unfocusedLabelColor = AppTheme.extendedColors.textColor,
+                    focusedLabelColor = MaterialTheme.colorScheme.primary
+                ),
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Dropdown",
+                        tint = AppTheme.extendedColors.textColor
+                    )
+                }
+            )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                terminals.forEach { terminal ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = terminal.terminalName ?: "Unknown",
+                                color = AppTheme.extendedColors.textColor
+                            )
+                        },
+                        onClick = {
+                            onTerminalSelected(terminal)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
