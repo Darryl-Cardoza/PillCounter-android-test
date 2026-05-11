@@ -75,22 +75,29 @@ interface PillCountTxnDao {
      */
     @Transaction
     suspend fun upsertPreservingId(txn: PillCountTxnEntity): Long {
-        return if (txn.txnId != 0L) {
-            val existing = getById(txn.txnId)
-            if (existing != null) {
-                update(txn.copy(txnId = existing.txnId))
-                existing.txnId
-            } else {
-                insertIgnore(txn).let { newId ->
+        return try {
+            if (txn.txnId != 0L) {
+                val existing = getById(txn.txnId)
+                if (existing != null) {
+                    update(txn.copy(txnId = existing.txnId))
+                    existing.txnId
+                } else {
+                    val newId = insertIgnore(txn)
                     if (newId == -1L) {
                         getById(txn.txnId)?.txnId
                             ?: throw IllegalStateException("Txn insert failed unexpectedly")
                     } else newId
                 }
+            } else {
+                val newId = insertIgnore(txn)
+                if (newId == -1L) {
+                    throw IllegalStateException("Insert failed: transaction already exists")
+                }
+                newId
             }
-        } else {
-            insertIgnore(txn).takeIf { it != -1L }
-                ?: throw IllegalStateException("Insert failed: transaction already exists")
+        } catch (e: android.database.sqlite.SQLiteConstraintException) {
+            // Log the error and rethrow a more descriptive one or handle it
+            throw IllegalArgumentException("Foreign key constraint failed: Ensure User, Drug, and Batch exist before creating a transaction. ${e.message}")
         }
     }
 

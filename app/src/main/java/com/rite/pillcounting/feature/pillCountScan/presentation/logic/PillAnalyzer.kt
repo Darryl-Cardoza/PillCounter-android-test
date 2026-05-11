@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Matrix
 import androidx.camera.core.ImageProxy
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import org.tensorflow.lite.Interpreter
 
 /**
@@ -11,7 +12,7 @@ import org.tensorflow.lite.Interpreter
  *
  *   1. Pre-process  — letterbox camera frame to 640×640
  *   2. Tray model   — segmentation → per-tray boolean pixel masks
- *   3. Pill model   — detection    → pill bounding boxes
+ *   3. Pill model   —detection    → pill bounding boxes
  *   4. Filter       — keep pills whose centre pixel is inside any tray mask
  *                     (mirrors Python: tray_mask[cy][cx] > 0.5)
  *   5. Callback     — emit filtered pills + tray detections to the UI
@@ -19,10 +20,14 @@ import org.tensorflow.lite.Interpreter
 class PillAnalyzer(
     private val pillInterpreter: Interpreter,
     private val trayInterpreter: Interpreter,
+    private val gloveInterpreter: Interpreter,
+    private val performanceLogger: PerformanceLogger? = null,
+    private val shouldRunGloveDetection: () -> Boolean,
     private val onResult: (
         pillCount: Int,
         pills: List<Detection>,
         trayRects: List<TrayDetection>,
+        gloveDetections: List<GloveDetection>,
         debugBitmap: Bitmap,
         transformMatrix: Matrix,
         imageWidth: Int,
@@ -79,8 +84,24 @@ class PillAnalyzer(
             // (empty) so the UI clears its overlay cleanly.
             if (trayDetections.isEmpty()) {
                 logger.i("[Tray] No tray detected — skipping pill inference")
+
+                // Still run glove detection even when no tray is visible (if enabled)
+                val gloveDetections = if (shouldRunGloveDetection()) {
+                    inputBuffer.rewind()
+                    GloveDetector.detect(
+                        interpreter    = gloveInterpreter,
+                        inputBuffer    = inputBuffer,
+                        scaleInfo      = scaleInfo,
+                        originalWidth  = originalWidth,
+                        originalHeight = originalHeight
+                    )
+                } else {
+                    logger.i("[Glove] Skipping glove detection (already detected)")
+                    emptyList()
+                }
+
                 onResult(
-                    0, emptyList(), emptyList(),
+                    0, emptyList(), emptyList(), gloveDetections,
                     originalBitmap, Matrix(), originalWidth, originalHeight
                 )
                 bitmap640.recycle()
@@ -138,11 +159,55 @@ class PillAnalyzer(
                         "total=${System.currentTimeMillis() - overallStart} ms"
             )
 
-            // ── STEP 5: Callback ──────────────────────────────────────────────
+            // ── STEP 5: Glove detection (conditional based on state) ─────────────
+            val gloveDetections = if (shouldRunGloveDetection()) {
+                val gloveStart = System.currentTimeMillis()
+
+                inputBuffer.rewind()
+                val detections = GloveDetector.detect(
+                    interpreter    = gloveInterpreter,
+                    inputBuffer    = inputBuffer,
+                    scaleInfo      = scaleInfo,
+                    originalWidth  = originalWidth,
+                    originalHeight = originalHeight
+                )
+
+                val gloveTime = System.currentTimeMillis() - gloveStart
+
+                logger.i(
+                    "[Glove] ${detections.size} detection(s) | " +
+                            "$gloveTime ms"
+                )
+
+                // Log glove model inference
+                performanceLogger?.logInference(
+                    modelName = "Glove Detection (YOLOv11)",
+                    inferenceTimeMs = gloveTime,
+                    preprocessTimeMs = 0,
+                    postprocessTimeMs = 0,
+                    detectionCount = detections.size
+                )
+
+                // High-visibility log for the user
+                if (detections.isNotEmpty()) {
+                    val summary = detections.joinToString { "${it.className}(${(it.confidence * 100).toInt()}%)" }
+                    android.util.Log.e("GLOVE_DETECTION", "🎯 FOUND: $summary")
+                } else {
+                    android.util.Log.d("GLOVE_DETECTION", "⚪ No gloves detected in this frame")
+                }
+
+                detections
+            } else {
+                logger.i("[Glove] Skipping glove detection (gloves already detected)")
+                emptyList()
+            }
+
+            // ── STEP 6: Callback ──────────────────────────────────────────────
             onResult(
                 pillsInTray.size,
                 pillsInTray,
                 trayDetections,
+                gloveDetections,
                 originalBitmap,
                 Matrix(),
                 originalWidth,

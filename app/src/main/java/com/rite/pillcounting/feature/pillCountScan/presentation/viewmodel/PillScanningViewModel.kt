@@ -28,6 +28,7 @@ import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.common.OverlayUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.pillCountScan.domain.PillDetectionModelLoader
 import com.rite.pillcounting.feature.pillCountScan.domain.data.NavigationEvent
@@ -37,6 +38,7 @@ import com.rite.pillcounting.feature.pillCountScan.domain.model.PillScanningUiSt
 import com.rite.pillcounting.feature.pillCountScan.domain.model.TxnDetail
 import com.rite.pillcounting.feature.pillCountScan.presentation.logic.CameraHelper
 import com.rite.pillcounting.feature.pillCountScan.presentation.logic.Detection
+import com.rite.pillcounting.feature.pillCountScan.presentation.logic.GloveDetection
 import com.rite.pillcounting.feature.pillCountScan.presentation.logic.PillAnalyzer
 import com.rite.pillcounting.feature.pillCountScan.presentation.logic.TrayDetection
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -73,7 +75,8 @@ class PillScanningViewModel @Inject constructor(
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao,
     private val locationProvider: LocationProvider,
     private val drugMasterDao: DrugMasterDao,
-    private val modelLoader: PillDetectionModelLoader
+    private val modelLoader: PillDetectionModelLoader,
+    private val performanceLogger: PerformanceLogger
 ) : AndroidViewModel(app) {
 
     private val logger = AppLogger("PillScanningVM")
@@ -136,6 +139,11 @@ class PillScanningViewModel @Inject constructor(
     private val _txnInfo = MutableStateFlow<TxnWithDetails?>(null)
     val txnInfo: StateFlow<TxnWithDetails?> = _txnInfo
 
+    // ── Glove detection control: stop running glove model once gloves are detected ──
+    private var glovesDetected = false
+    var shouldRunGloveDetection = true
+        private set
+
     // ── NEW: expose tray detections so the UI can draw the tray boundary ──────
     private val _trayDetections = MutableStateFlow<List<TrayDetection>>(emptyList())
     val trayDetections: StateFlow<List<TrayDetection>> = _trayDetections.asStateFlow()
@@ -145,6 +153,10 @@ class PillScanningViewModel @Inject constructor(
 
     private val _isSoundOverride = MutableStateFlow(preferenceHelper.isSoundOverride())
     val isSoundEnabled: StateFlow<Boolean> = _isSoundOverride.asStateFlow()
+    
+    // Performance monitoring
+    private var performanceMonitorJob: Job? = null
+    private val performanceSnapshotInterval = 10_000L // 10 seconds
 
     companion object {
         private const val ZERO_DETECTIONS_THRESHOLD = 25
@@ -159,7 +171,25 @@ class PillScanningViewModel @Inject constructor(
     }
 
     init {
-        resetIdleTimer()
+//        resetIdleTimer()
+        startPerformanceMonitoring()
+    }
+    
+    /**
+     * Start periodic performance monitoring
+     */
+    private fun startPerformanceMonitoring() {
+        performanceMonitorJob?.cancel()
+        performanceMonitorJob = viewModelScope.launch(Dispatchers.IO) {
+            while (true) {
+                delay(performanceSnapshotInterval)
+                try {
+                    performanceLogger.logPerformanceSnapshot("PERIODIC_MONITORING")
+                } catch (e: Exception) {
+                    logger.e("Performance monitoring failed", e)
+                }
+            }
+        }
     }
 
     // ------------------------------------------------------------------------
@@ -240,21 +270,26 @@ class PillScanningViewModel @Inject constructor(
                 val models = modelLoader.getOrLoadInterpreters()
 
                 val analyzer = PillAnalyzer(
-                    pillInterpreter = models.pillInterpreter,
-                    trayInterpreter = models.trayInterpreter,
-                ) { count, detections, trayDetections, bitmap, matrix, imageWidth, imageHeight ->
-                    processDetections(
-                        count = count,
-                        detections = detections,
-                        trayDets = trayDetections,
-                        bitmap = bitmap,
-                        matrix = matrix,
-                        previewWidth = viewWidth,
-                        previewHeight = viewHeight,
-                        imageWidth = imageWidth,
-                        imageHeight = imageHeight
-                    )
-                }
+                    pillInterpreter  = models.pillInterpreter,
+                    trayInterpreter  = models.trayInterpreter,
+                    gloveInterpreter = models.gloveInterpreter,
+                    performanceLogger = performanceLogger,
+                    shouldRunGloveDetection = { shouldRunGloveDetection },
+                    onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
+                        processDetections(
+                            count         = count,
+                            detections    = detections,
+                            trayDets      = trayDetections,
+                            gloveDets     = gloveDetections,
+                            bitmap        = bitmap,
+                            matrix        = matrix,
+                            previewWidth  = viewWidth,
+                            previewHeight = viewHeight,
+                            imageWidth    = imageWidth,
+                            imageHeight   = imageHeight
+                        )
+                    }
+                )
 
                 _modelState.value = ModelState.Ready(analyzer)
                 logger.i("Both interpreters initialized successfully (via Singleton).")
@@ -280,6 +315,7 @@ class PillScanningViewModel @Inject constructor(
         count: Int,
         detections: List<Detection>,
         trayDets: List<TrayDetection>,
+        gloveDets: List<GloveDetection>,
         bitmap: Bitmap,
         matrix: Matrix,
         previewWidth: Int,
@@ -299,8 +335,19 @@ class PillScanningViewModel @Inject constructor(
 
         logger.d("Frame analyzed | count=$count | scanId=$currentScanId")
 
-        // ── Publish tray detections for the UI overlay ────────────────────────
+        // ── Publish tray & glove detections for the UI overlay ───────────────
         _trayDetections.value = trayDets
+        _uiState.update { it.copy(gloveDetections = gloveDets) }
+
+        // ── Check if gloves detected - if yes, stop running glove detection ──
+        if (gloveDets.isNotEmpty()) {
+            val hasGlovesDetection = gloveDets.any { it.classId == 0 } // classId 0 = "gloves"
+            if (hasGlovesDetection) {
+                glovesDetected = true
+                shouldRunGloveDetection = false
+                logger.i("✅ GLOVES DETECTED - Stopping glove detection model")
+            }
+        }
 
         // Rolling count buffer
         val buffer = ArrayDeque(_lastTenDetections.value)
@@ -331,10 +378,13 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    // DISABLED FOR PERFORMANCE MONITORING: Idle timeout functionality disabled
+    // to ensure continuous scanning without interruptions
+    /*
     private fun pauseAndClearBuffers() {
         _lastTenDetections.value.clear()
         lastDetectedSnapshot = emptyList()
-        _uiState.update { it.copy(showIdleOverlay = true) }
+        _uiState.update { it.copy(showIdleOverlay = true, gloveDetections = emptyList()) }
         _trayDetections.value = emptyList()
         isPaused = true
         _cameraPaused.value = true
@@ -348,6 +398,7 @@ class PillScanningViewModel @Inject constructor(
             pauseAndClearBuffers()
         }
     }
+    */
 
     /** Process an incoming frame from CameraX. */
     fun onFrameCaptured(image: ImageProxy) {
@@ -387,6 +438,10 @@ class PillScanningViewModel @Inject constructor(
         lastChangeTimestamp = System.currentTimeMillis()
         lastAddedScanSignature = null
         _trayDetections.value = emptyList()
+        _uiState.update { it.copy(gloveDetections = emptyList()) }
+
+        // Reset glove detection state
+        resetGloveDetection()
 
         isPaused = false
         _cameraPaused.value = false
@@ -398,8 +453,29 @@ class PillScanningViewModel @Inject constructor(
         _uiState.update { it.copy(filteredPills = filtered) }
     }
 
+    /**
+     * Reset glove detection state.
+     * Called when the pill scanning screen is loaded or when resuming from idle.
+     */
+    fun resetGloveDetection() {
+        glovesDetected = false
+        shouldRunGloveDetection = true
+        logger.i("🔄 Glove detection reset - Model will run on next frame")
+    }
+
     override fun onCleared() {
         super.onCleared()
+
+        // Stop performance monitoring
+        performanceMonitorJob?.cancel()
+
+        // Generate final summary report
+        try {
+            performanceLogger.generateSummaryReport()
+            logger.i("Performance summary generated: ${performanceLogger.getLogFile().absolutePath}")
+        } catch (e: Exception) {
+            logger.e("Failed to generate performance summary", e)
+        }
 
         try {
             currentFrameBitmap?.recycle()

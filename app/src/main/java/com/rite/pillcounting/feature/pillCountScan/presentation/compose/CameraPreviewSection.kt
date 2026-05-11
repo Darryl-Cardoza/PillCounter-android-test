@@ -30,6 +30,10 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -57,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.text.font.FontWeight
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.utils.compose.WorkflowStepper
 import com.rite.pillcounting.feature.pillCountScan.domain.model.DetectedPill
@@ -165,7 +171,9 @@ fun CameraPreviewSection(
     // ── Tray detections: rect is in ORIGINAL IMAGE PIXEL space ───────────────
     // We collect directly from the ViewModel here so the caller (screen/fragment)
     // does not need to pass them as a parameter — the wiring is self-contained.
-    val trayDetections by viewModel.trayDetections.collectAsState()
+    val trayDetections  by viewModel.trayDetections.collectAsState()
+    val uiState         by viewModel.uiState.collectAsState()
+    val gloveDetections = uiState.gloveDetections
 
     // ── Zoom ──────────────────────────────────────────────────────────────────
     LaunchedEffect(Unit) {
@@ -243,6 +251,40 @@ fun CameraPreviewSection(
                         .zIndex(1f)
                 ) {
                     key(popKey) { AddCountBubble(text = popText) }
+                }
+
+                // ── GLOVE WARNING ─────────────────────────────────────────────
+                val noGlovesDetected = gloveDetections.any { it.className == "no_gloves" }
+                val glovesDetected   = gloveDetections.any { it.className == "gloves" }
+
+                if (noGlovesDetected || glovesDetected) {
+                    val isWarning = noGlovesDetected // Warning takes priority
+                    val bgColor   = if (isWarning) Color(0xFFDC0000) else Color(0xFF00C800)
+                    val label     = if (isWarning) "NO GLOVES" else "GLOVES DETECTED"
+                    val icon      = if (isWarning) androidx.compose.material.icons.Icons.Default.Warning else androidx.compose.material.icons.Icons.Default.CheckCircle
+
+                    androidx.compose.foundation.layout.Row(
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 100.dp, end = 16.dp)
+                            .background(bgColor, RoundedCornerShape(8.dp))
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        androidx.compose.material3.Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = label,
+                            color = Color.White,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
                 // ── OVERLAY CANVAS ────────────────────────────────────────────
@@ -377,6 +419,81 @@ fun CameraPreviewSection(
                                 radius = outerRadius,
                                 center = pos,
                                 style  = Stroke(width = strokeWidth)
+                            )
+                        }
+                    }
+
+                    // ─────────────────────────────────────────────────────────
+                    // 3.  GLOVE DETECTION BOXES
+                    //     gloveDetection.rect values are in original image pixel
+                    //     coordinates — same space as tray boxes above.
+                    //     green = gloves detected, red = no_gloves.
+                    // ─────────────────────────────────────────────────────────
+                    val gloveColor = mapOf(
+                        "gloves"    to Color(0xFF00C800),  // green
+                        "no_gloves" to Color(0xFFDC0000)   // red
+                    )
+
+                    drawIntoCanvas { canvas ->
+                        gloveDetections.forEach { glove ->
+                            val sLeft   = imgX(glove.rect.left)
+                            val sTop    = imgY(glove.rect.top)
+                            val sRight  = imgX(glove.rect.right)
+                            val sBottom = imgY(glove.rect.bottom)
+                            val sWidth  = sRight  - sLeft
+                            val sHeight = sBottom - sTop
+
+                            if (sRight <= 0f || sLeft >= previewW ||
+                                sBottom <= 0f || sTop >= previewH
+                            ) return@forEach
+
+                            val boxColor = gloveColor[glove.className] ?: Color.White
+
+                            // Semi-transparent fill
+                            drawRect(
+                                color   = boxColor.copy(alpha = 0.15f),
+                                topLeft = Offset(sLeft, sTop),
+                                size    = Size(sWidth, sHeight)
+                            )
+                            // Solid border
+                            drawRect(
+                                color   = boxColor,
+                                topLeft = Offset(sLeft, sTop),
+                                size    = Size(sWidth, sHeight),
+                                style   = Stroke(width = 3.dp.toPx())
+                            )
+
+                            // Label: "gloves 87%"  /  "no_gloves 72%"
+                            val label    = "${glove.className} ${(glove.confidence * 100).toInt()}%"
+                            val textSize = 36f  // ~14sp equivalent in canvas units
+                            val textPaint = android.graphics.Paint().apply {
+                                color     = android.graphics.Color.WHITE
+                                this.textSize = textSize
+                                isAntiAlias   = true
+                                typeface  = android.graphics.Typeface.DEFAULT_BOLD
+                            }
+                            val bgPaint = android.graphics.Paint().apply {
+                                color = when (glove.className) {
+                                    "gloves"    -> android.graphics.Color.argb(200, 0, 180, 0)
+                                    else        -> android.graphics.Color.argb(200, 180, 0, 0)
+                                }
+                            }
+                            val textBounds = android.graphics.Rect()
+                            textPaint.getTextBounds(label, 0, label.length, textBounds)
+                            val labelW   = textBounds.width()  + 12f
+                            val labelH   = textBounds.height() + 8f
+                            val labelTop = (sTop - labelH).coerceAtLeast(0f)
+
+                            canvas.nativeCanvas.drawRect(
+                                sLeft, labelTop,
+                                sLeft + labelW, labelTop + labelH,
+                                bgPaint
+                            )
+                            canvas.nativeCanvas.drawText(
+                                label,
+                                sLeft + 6f,
+                                labelTop + labelH - 4f,
+                                textPaint
                             )
                         }
                     }

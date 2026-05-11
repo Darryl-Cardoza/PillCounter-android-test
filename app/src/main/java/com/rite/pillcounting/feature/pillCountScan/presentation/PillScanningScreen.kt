@@ -208,6 +208,9 @@ fun PillScanningScreen(
 
     // === Init & Navigation ===
     LaunchedEffect(Unit) {
+        // Reset glove detection state when screen loads
+        viewModel.resetGloveDetection()
+
         viewModel.getDrugInfo()
         viewModel.showTxnInfo(countType)
         viewModel.observeTxnDetailsForTxn(stepType)
@@ -233,6 +236,8 @@ fun PillScanningScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(AppTheme.extendedColors.secondaryBackground)
+            // DISABLED: Idle timer reset disabled for continuous performance monitoring
+            /*
             .pointerInput(Unit) {
                 awaitPointerEventScope {
                     while (true) {
@@ -241,6 +246,7 @@ fun PillScanningScreen(
                     }
                 }
             }
+            */
     ) {
         // Camera + Info
         SplitResponsive(
@@ -347,12 +353,15 @@ fun PillScanningScreen(
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
 
+                    // COMMENTED OUT: Resume functionality disabled for performance monitoring
+                    /*
                     ActionButtonPrimary(
                         text = stringResource(R.string.resume).uppercase(Locale.ROOT),
                         onClick = { viewModel.resetIdleOverlay() },
                         modifier = Modifier.padding(horizontal = 16.dp),
                         color = MaterialTheme.colorScheme.secondary,
                     )
+                    */
                 }
             }
         }
