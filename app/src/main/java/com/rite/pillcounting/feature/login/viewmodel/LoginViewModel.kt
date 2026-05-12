@@ -113,6 +113,7 @@ class LoginViewModel @Inject constructor(
                 .onSuccess {
                     logger.i("Logout successful")
                     _logoutUiState.value = LogoutUiState.Success
+                    preferenceHelper.clearHl7Config()
                 }
                 .onFailure { exception ->
                     logger.e("Logout failed", exception)

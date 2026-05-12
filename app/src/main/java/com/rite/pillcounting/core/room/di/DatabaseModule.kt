@@ -10,6 +10,7 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.security.DatabaseKeyProvider
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -44,12 +45,18 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideDatabase(@ApplicationContext context: Context): AppDatabase {
+        val dbKey = DatabaseKeyProvider.getOrCreateDatabaseKey(context)
+        val passphrase = net.sqlcipher.database.SQLiteDatabase.getBytes(
+            android.util.Base64.encodeToString(dbKey, android.util.Base64.NO_WRAP).toCharArray()
+        )
+        val factory = net.sqlcipher.database.SupportFactory(passphrase)
+
         return Room.databaseBuilder(
             context,
             AppDatabase::class.java,
             "pill_counting_db"
         )
-            //.addMigrations(MIGRATION_2_3, MIGRATION_3_4)
+            .openHelperFactory(factory)  // SQLCipher encryption
             .build()
     }
 

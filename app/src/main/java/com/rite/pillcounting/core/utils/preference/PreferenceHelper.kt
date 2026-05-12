@@ -83,6 +83,10 @@ private const val KEY_SOUND_OVERRIDE="key_sound_override"
 private const val KEY_BARCODE_REGEX="key_barcode_regex"
 private const val KEY_BUCKET_LIST="key_bucket_list"
 
+private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
+private const val KEY_HL7_PILLCOUNTER_HOST = "key_hl7_pillcounter_host"
+private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
+
 
 @Singleton
 class PreferenceHelper @Inject constructor(
@@ -521,6 +525,33 @@ class PreferenceHelper @Inject constructor(
         } else {
             emptyList()
         }
+    }
+
+    fun saveHl7Config(pmsHost: String, pillCounterHost: String) {
+        prefs.edit {
+            putString(KEY_HL7_PMS_HOST, pmsHost)
+            putString(KEY_HL7_PILLCOUNTER_HOST, pillCounterHost)
+            putBoolean(KEY_HL7_CONFIG_FETCHED, true)
+        }
+        logger.i("Saved HL7 config to prefs")
+    }
+
+    fun getHl7PmsHost(): String =
+        prefs.getString(KEY_HL7_PMS_HOST, "") ?: ""
+
+    fun getHl7PillCounterHost(): String =
+        prefs.getString(KEY_HL7_PILLCOUNTER_HOST, "") ?: ""
+
+    fun isHl7ConfigFetched(): Boolean =
+        prefs.getBoolean(KEY_HL7_CONFIG_FETCHED, false)
+
+    fun clearHl7Config() {
+        prefs.edit {
+            remove(KEY_HL7_PMS_HOST)
+            remove(KEY_HL7_PILLCOUNTER_HOST)
+            putBoolean(KEY_HL7_CONFIG_FETCHED, false)
+        }
+        logger.w("Cleared HL7 config from prefs")
     }
 
 

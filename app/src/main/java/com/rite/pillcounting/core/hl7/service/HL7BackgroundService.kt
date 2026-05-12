@@ -1,6 +1,6 @@
 package com.rite.pillcounting.core.hl7.service
 
-import ImageWebServer
+import com.rite.pillcounting.core.hl7.imageWebService.ImageWebServer
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -189,7 +189,7 @@ class HL7Service : Service() {
         builder = HL7MessageBuilder()
         nsdHelper = NsdHelper(this)
 
-        val tlsFactory = TlsSocketFactory()
+        val tlsFactory = TlsSocketFactory(this)
         val client = MllpClient(tlsFactory)
 
         clientManager = MllpConnectionManager(

@@ -1,7 +1,12 @@
 package com.rite.pillcounting.core.hl7.imageWebService
 
 import android.content.Context
+import android.util.Base64
 import android.util.Log
+import androidx.core.content.edit
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
@@ -17,82 +22,107 @@ import java.security.SecureRandom
 import java.util.Calendar
 import java.util.Date
 
+// core/hl7/imageWebService/TlsImageKeystoreUtil.kt
+
 object TlsImageKeystoreUtil {
 
-    private const val TAG = "TlsImageKeystoreUtil"
+    const val TAG = "TlsImageKeystoreUtil"
     private const val KEY_ALIAS = "image_server_tls"
     private const val KEYSTORE_FILE = "image_server.p12"
+    private const val PREFS_NAME = "tls_image_ks_prefs"
+    private const val PREF_KEY_PASSWORD = "ks_pw"
 
-    // Internal password — never exposed outside this object
-    private const val KEYSTORE_PASSWORD = "img_tls_internal"
+    private val logger = AppLogger(TAG)
 
     // ----------------------------------------------------------------
     // Public API
     // ----------------------------------------------------------------
 
-    /** Returns alias used when storing the key entry */
     fun alias(): String = KEY_ALIAS
 
-    /** Returns password as CharArray (required by KeyManagerFactory) */
-    fun password(): CharArray = KEYSTORE_PASSWORD.toCharArray()
+    // FIX 1: Password now fetched from EncryptedSharedPreferences
+    // instead of the hardcoded "img_tls_internal" constant
+    fun password(context: Context): CharArray =
+        getOrCreateKeystorePassword(context)
 
-    /**
-     * Ensures the PKCS12 keystore file exists on disk.
-     * Creates a new self-signed cert if not found.
-     * Returns the loaded KeyStore ready for use in SSLContext.
-     */
     fun ensureKeystore(context: Context): KeyStore {
         val file = keystoreFile(context)
+        val password = getOrCreateKeystorePassword(context)
 
         return if (file.exists()) {
-            Log.d(TAG, "Loading existing keystore from disk")
-            loadFromDisk(file)
+            // FIX 2: Log.d replaced with AppLogger — respects BuildConfig.DEBUG
+            logger.d("Loading existing keystore from disk")
+            loadFromDisk(file, password)
         } else {
-            Log.d(TAG, "No keystore found — generating new self-signed cert")
-            val ks = generateAndSave(file)
-            ks
+            logger.d("No keystore found — generating new self-signed cert")
+            generateAndSave(file, password)
         }
     }
 
-    /**
-     * Returns the SHA-256 fingerprint of the certificate.
-     * Clients can use this for trust-on-first-use (TOFU) pinning.
-     */
     fun fingerprint(context: Context): String {
         return try {
             val ks = ensureKeystore(context)
             val cert = ks.getCertificate(KEY_ALIAS)
-            val digest = MessageDigest.getInstance("SHA-256")
+            MessageDigest.getInstance("SHA-256")
                 .digest(cert.encoded)
-            digest.joinToString(":") { "%02X".format(it) }
+                .joinToString(":") { "%02X".format(it) }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get fingerprint", e)
+            // FIX 2: Log.e replaced — errors always fire, AppLogger.e is correct here
+            logger.e("Failed to get fingerprint", e)
             "UNKNOWN"
         }
     }
 
     // ----------------------------------------------------------------
-    // Private helpers
+    // FIX 1: Password management via EncryptedSharedPreferences
+    // ----------------------------------------------------------------
+
+    private fun getOrCreateKeystorePassword(context: Context): CharArray {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+
+        val prefs = EncryptedSharedPreferences.create(
+            context,
+            PREFS_NAME,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+
+        val existing = prefs.getString(PREF_KEY_PASSWORD, null)
+        if (existing != null) return existing.toCharArray()
+
+        // Generate a new random 32-byte password, store it encrypted
+        val newPassword = ByteArray(32)
+            .also { SecureRandom().nextBytes(it) }
+            .let { Base64.encodeToString(it, Base64.NO_WRAP) }
+
+        prefs.edit { putString(PREF_KEY_PASSWORD, newPassword) }
+        logger.i("Generated new keystore password")
+        return newPassword.toCharArray()
+    }
+
+    // ----------------------------------------------------------------
+    // Private helpers — password passed in rather than read from constant
     // ----------------------------------------------------------------
 
     private fun keystoreFile(context: Context): File =
         File(context.filesDir, KEYSTORE_FILE)
 
-    private fun loadFromDisk(file: File): KeyStore {
+    private fun loadFromDisk(file: File, password: CharArray): KeyStore {
         val ks = KeyStore.getInstance("PKCS12")
         FileInputStream(file).use { fis ->
-            ks.load(fis, KEYSTORE_PASSWORD.toCharArray())
+            ks.load(fis, password)
         }
         return ks
     }
 
-    private fun generateAndSave(file: File): KeyStore {
-        // 1. Generate RSA key pair in software (no AndroidKeyStore)
+    private fun generateAndSave(file: File, password: CharArray): KeyStore {
         val keyPairGen = KeyPairGenerator.getInstance("RSA")
         keyPairGen.initialize(2048, SecureRandom())
         val keyPair = keyPairGen.generateKeyPair()
 
-        // 2. Build self-signed X.509 certificate via BouncyCastle
         val now = Date()
         val expiry = Calendar.getInstance()
             .apply { add(Calendar.YEAR, 10) }.time
@@ -100,11 +130,11 @@ object TlsImageKeystoreUtil {
         val subject = X500Name("CN=PillCounter Image Server")
 
         val certBuilder = JcaX509v3CertificateBuilder(
-            subject,                                    // issuer (self-signed = same as subject)
+            subject,
             BigInteger.valueOf(SecureRandom().nextLong().coerceAtLeast(1)),
             now,
             expiry,
-            subject,                                    // subject
+            subject,
             keyPair.public
         )
 
@@ -114,22 +144,15 @@ object TlsImageKeystoreUtil {
         val cert = JcaX509CertificateConverter()
             .getCertificate(certBuilder.build(signer))
 
-        // 3. Store in PKCS12 keystore
         val ks = KeyStore.getInstance("PKCS12")
         ks.load(null, null)
-        ks.setKeyEntry(
-            KEY_ALIAS,
-            keyPair.private,
-            KEYSTORE_PASSWORD.toCharArray(),
-            arrayOf(cert)
-        )
+        ks.setKeyEntry(KEY_ALIAS, keyPair.private, password, arrayOf(cert))
 
-        // 4. Persist to disk so cert fingerprint stays stable across restarts
         FileOutputStream(file).use { fos ->
-            ks.store(fos, KEYSTORE_PASSWORD.toCharArray())
+            ks.store(fos, password)
         }
 
-        Log.i(TAG, "New self-signed cert generated and saved")
+        logger.i("New self-signed cert generated and saved")
         return ks
     }
 }

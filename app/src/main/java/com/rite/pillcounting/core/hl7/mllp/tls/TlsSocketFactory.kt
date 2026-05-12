@@ -13,14 +13,36 @@ import javax.net.ssl.SSLSocketFactory
  * ✔ Strong ciphers only
  */
 
-class TlsSocketFactory {
+// core/hl7/mllp/tls/TlsSocketFactory.kt
 
-    private val socketFactory: SSLSocketFactory =
-        TlsProvider.createInsecureClientContext().socketFactory
+class TlsSocketFactory(
+    private val context: Context,
+    private val hostIdentifier: String = "pms_server"
+) {
+
+    private val socketFactory: SSLSocketFactory by lazy {
+        TlsProvider.createTofuClientContext(context, hostIdentifier).socketFactory
+    }
 
     fun createSocket(ip: String, port: Int): SSLSocket =
         (socketFactory.createSocket(ip, port) as SSLSocket).apply {
             TlsProvider.configureClientSocket(this)
-            startHandshake() // 🔐 encryption starts here
+            startHandshake()
         }
+
+    /**
+     * Call this when the PMS server certificate is intentionally rotated.
+     * Forces re-pinning on the next connection attempt.
+     */
+    fun clearServerPin() {
+        TofuTrustManager(context, hostIdentifier).clearPin()
+    }
+
+    /**
+     * Returns the currently pinned cert fingerprint.
+     * Useful for displaying in an admin/settings screen for verification.
+     */
+    fun pinnedFingerprint(): String? {
+        return TofuTrustManager(context, hostIdentifier).currentPin()
+    }
 }

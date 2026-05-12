@@ -20,11 +20,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.rite.pillcounting.core.security.SecurityUtils
 import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.rite.pillcounting.core.utils.common.HelperFunctions.getStartDestination
 import com.rite.pillcounting.core.utils.common.HelperFunctions.openPlayStore
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.SecurityErrorDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toColor
 import com.rite.pillcounting.core.utils.compose.MaintenanceScreen
 import com.rite.pillcounting.core.utils.compose.UpdateScreen
@@ -143,10 +145,10 @@ class MainActivity : ComponentActivity() {
                         }
 
                         // Security check overlay if you want:
-//                        val violations = SecurityUtils.getSecurityViolations(this)
-//                        if (violations.isNotEmpty()) {
-//                            SecurityErrorDialog(violations)
-//                        }
+                        val violations = SecurityUtils.getSecurityViolations(this)
+                        if (violations.isNotEmpty()) {
+                            SecurityErrorDialog(violations)
+                        }
                     }
                 }
             }

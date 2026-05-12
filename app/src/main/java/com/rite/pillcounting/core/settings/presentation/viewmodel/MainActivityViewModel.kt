@@ -307,19 +307,61 @@ class MainActivityViewModel @Inject constructor(
     /**
      * Updates and caches the HL7 network service discovery (NSD) types from remote settings.
      */
+    // core/settings/presentation/viewmodel/MainActivityViewModel.kt
+
     private fun updateHl7Config(setting: ApiResponse<SettingsDataDto>) {
+
+        // Guard 1: Don't process HL7 config if HL7 is disabled for this device
+        if (!preferenceHelper.isHl7Enabled()) {
+            logger.i("HL7 disabled for this device — skipping HL7 config update")
+            return
+        }
+
+        // Guard 2: Don't re-process if we already have a cached config
+        // (avoids re-saving hostnames to prefs on every app launch)
+        if (preferenceHelper.isHl7ConfigFetched()) {
+            logger.i("HL7 config already cached — loading from prefs")
+            _uiState.update {
+                it.copy(
+                    nsdBroadcastType = preferenceHelper.getHl7PillCounterHost(),
+                    nsdDiscoveryType = preferenceHelper.getHl7PmsHost(),
+                    isHl7Enabled = true
+                )
+            }
+            return
+        }
+
+        // Guard 3: Server didn't return hl7_config (future server-side fix)
         val dto = setting.data?.hl7Config
-        val nsdDiscoverType = dto?.pmsHostName ?: ""
-        val nsdBroadCastType = dto?.pillCounterHostName ?: ""
-        preferenceHelper.saveBarcodeRegex(dto?.barcodeFormat ?: "")
+        if (dto == null) {
+            logger.w("HL7 enabled locally but server returned no hl7_config")
+            return
+        }
+
+        val nsdDiscoveryType = dto.pmsHostName
+        val nsdBroadcastType = dto.pillCounterHostName
+
+        // Only store and expose if both values are non-empty
+        if (nsdDiscoveryType.isBlank() || nsdBroadcastType.isBlank()) {
+            logger.w("HL7 config received but host names are empty — skipping")
+            return
+        }
+
+        // Persist so subsequent launches don't need to re-fetch
+        preferenceHelper.saveHl7Config(
+            pmsHost = nsdDiscoveryType,
+            pillCounterHost = nsdBroadcastType
+        )
+
         _uiState.update {
             it.copy(
-                nsdBroadcastType = nsdBroadCastType,
-                nsdDiscoveryType = nsdDiscoverType,
-                isHl7Enabled = preferenceHelper.isHl7Enabled()
+                nsdBroadcastType = nsdBroadcastType,
+                nsdDiscoveryType = nsdDiscoveryType,
+                isHl7Enabled = true
             )
         }
-        logger.i("nsd service name $dto")
+
+        logger.i("HL7 config updated and cached: pms=$nsdDiscoveryType, counter=$nsdBroadcastType")
     }
 
 

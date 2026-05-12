@@ -35,7 +35,7 @@ class FCMService @Inject constructor(
             }
 
             val token = task.result
-            logger.i("FCM Token: $token")
+            logger.i("FCM Token retrieved (length=${task.result?.length ?: 0})")
 
             // Optionally send this token to your backend
         }

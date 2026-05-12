@@ -5,6 +5,7 @@ import com.chuckerteam.chucker.api.ChuckerInterceptor
 import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.core.api.interfaceDetail.HeaderInterceptor
 import com.rite.pillcounting.core.refreshToken.data.TokenAuthenticator
+import com.rite.pillcounting.core.security.RuntimeUnit
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
@@ -45,15 +46,15 @@ import javax.net.ssl.X509TrustManager
 @InstallIn(SingletonComponent::class)
 object NetworkModule {
 
-    private val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
-        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-    })
-
-    private val sslContext = SSLContext.getInstance("TLS").apply {
-        init(null, trustAllCerts, SecureRandom())
-    }
+//    private val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+//        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
+//        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
+//        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+//    })
+//
+//    private val sslContext = SSLContext.getInstance("TLS").apply {
+//        init(null, trustAllCerts, SecureRandom())
+//    }
 
 
     /** Base URL for main backend API calls. */
@@ -64,7 +65,19 @@ object NetworkModule {
     @Provides
     @Singleton
     fun provideLoggingInterceptor(): HttpLoggingInterceptor =
-        HttpLoggingInterceptor().setLevel(HttpLoggingInterceptor.Level.BODY)
+        HttpLoggingInterceptor().apply {
+            level = if (BuildConfig.DEBUG) {
+                HttpLoggingInterceptor.Level.BODY
+            } else {
+                HttpLoggingInterceptor.Level.NONE  // Silence in production
+            }
+        }
+
+    @Provides
+    @Singleton
+    fun provideRuntimeUnit(
+        @ApplicationContext context: Context
+    ): RuntimeUnit = RuntimeUnit(context).also { it.activateIfNeeded() }
 
     /**
      * Provides the main [OkHttpClient] with:
@@ -77,12 +90,13 @@ object NetworkModule {
     fun provideOkHttpClient(
         loggingInterceptor: HttpLoggingInterceptor,
         @ApplicationContext context: Context,
-        tokenAuthenticator: TokenAuthenticator
+        tokenAuthenticator: TokenAuthenticator,
+        runtimeUnit: RuntimeUnit
     ): OkHttpClient =
         OkHttpClient.Builder()
-            .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
-            .hostnameVerifier { hostname, session -> true }
-            .addInterceptor(HeaderInterceptor())
+//            .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
+//            .hostnameVerifier { hostname, session -> true }
+            .addInterceptor(HeaderInterceptor(runtimeUnit))
             .addInterceptor(loggingInterceptor)
             .addInterceptor(ChuckerInterceptor(context))
             .authenticator(tokenAuthenticator)

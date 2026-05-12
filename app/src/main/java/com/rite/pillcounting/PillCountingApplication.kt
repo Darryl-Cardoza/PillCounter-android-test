@@ -16,7 +16,6 @@ class PillCountingApplication : Application() {
 
     @Inject
     lateinit var modelLoader: PillDetectionModelLoader
-
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {

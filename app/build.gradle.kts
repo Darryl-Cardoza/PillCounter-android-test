@@ -25,11 +25,6 @@ android {
         resValue("string", "app_version_name", versionName ?: "")
         buildConfigField(
             "String",
-            "SERVER_KEY",
-            "\"d1ff4797acb7147205bb249cce918f23a4f8e54a8d56488d79e83abcdf1b24f6f1ccc9af5dea3c1a1b5e2b6aa247ff55ac8e12f165974f8cfce41328f7ea447e\""
-        )
-        buildConfigField(
-            "String",
             "BASE_URL",
             "\"https://pill.ccrlindia.com/\""
         )
@@ -112,7 +107,7 @@ dependencies {
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-graphics")
     implementation("androidx.graphics:graphics-path:1.0.1")
-    implementation("androidx.compose.ui:ui-tooling-preview")
+//    implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.compose.material3:material3:1.3.2")
     implementation("androidx.compose.material:material-icons-extended:1.7.8")
     implementation("androidx.compose.material:material:1.7.0")
@@ -140,6 +135,9 @@ dependencies {
     implementation("androidx.room:room-runtime:2.6.1")
     kapt("androidx.room:room-compiler:2.6.1")
     implementation("androidx.room:room-ktx:2.6.1")
+
+    implementation("net.zetetic:android-database-sqlcipher:4.5.4")
+    implementation("androidx.sqlite:sqlite-ktx:2.4.0")
 
     // --- Retrofit & Networking ---
     implementation("com.squareup.retrofit2:retrofit:2.9.0")

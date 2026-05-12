@@ -1,0 +1,169 @@
+package com.rite.pillcounting.core.security
+
+import android.content.Context
+import android.content.SharedPreferences
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import androidx.core.content.edit
+import androidx.security.crypto.EncryptedSharedPreferences
+import androidx.security.crypto.MasterKey
+import java.nio.ByteBuffer
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
+
+class RuntimeUnit(private val context: Context) {
+
+    // MARK: - PUBLIC INTERFACE
+
+    /** Call once at app start — stores protected material if not already stored */
+    fun activateIfNeeded() {
+        if (existsInStore()) return
+
+        val raw = compose()
+        val refined = refine(raw)
+        persist(seal(refined))
+        destroy(refined)
+    }
+
+    /** Retrieves and decrypts the stored value for runtime use */
+    @Throws(Exception::class)
+    fun material(): String {
+        val sealed = retrieve()
+        return open(sealed)
+    }
+
+    // MARK: - ASSEMBLY
+
+    private fun compose(): String {
+        return listOf(f1(), f2(), f3(), f4(), f5(), f6()).joinToString("")
+    }
+
+    private fun refine(value: String): String {
+        return value.filter { it.isLetterOrDigit() }
+    }
+
+    private fun destroy(value: String) {
+        // Best-effort memory zeroing — JVM doesn't guarantee this
+        // but we make the attempt
+        try {
+            val field = String::class.java.getDeclaredField("value")
+            field.isAccessible = true
+            val chars = field.get(value)
+            when (chars) {
+                is ByteArray -> chars.fill(0)
+                is CharArray -> chars.fill('\u0000')
+            }
+        } catch (_: Exception) { }
+    }
+
+    // MARK: - FRAGMENTS
+    // Same noise-filter pattern as your iOS RuntimeUnit
+
+    private fun f1() = "_d1@#\$ff4797@#\$ac_b714@#%#^7205bb249#\$%\$%cce9"
+    private fun f2() = "-_18f)23a4*(f%%8e&^#54a8"
+    private fun f3() = "_d5648@#%^8d79e83^&%\$abcdf1*\$@b24f6f1^*cc&"
+    private fun f4() = "-c9+af%@*5dea#@&3c^@!1a1b^@!5e2b#^(%6"
+    private fun f5() = "_a-a2-4-7@#\$^*^ff55ac8e12#\$^%*f165974&*"
+    private fun f6() = "_f#\$^%*&8cf#\$%^*(ce41328^#&)(f7ea447e\$#&"
+
+    // MARK: - ANDROID KEYSTORE
+    // Equivalent of iOS Secure Enclave
+
+    private val keystoreAlias = "com.runtime.unit.node"
+
+    private fun getOrCreateKeystoreKey(): SecretKey {
+        val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+
+        keystore.getKey(keystoreAlias, null)?.let { return it as SecretKey }
+
+        val keyGenerator = KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            "AndroidKeyStore"
+        )
+
+        keyGenerator.init(
+            KeyGenParameterSpec.Builder(
+                keystoreAlias,
+                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+            )
+                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                .setKeySize(256)
+                .setUserAuthenticationRequired(false)
+                .build()
+        )
+
+        return keyGenerator.generateKey()
+    }
+
+    private fun seal(value: String): ByteArray {
+        val key = getOrCreateKeystoreKey()
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+
+        val iv = cipher.iv                          // 12 bytes, Keystore-generated
+        val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+
+        // Persist IV alongside ciphertext — needed for decryption
+        // Format: [4 bytes iv length][iv][ciphertext]
+        return ByteBuffer.allocate(4 + iv.size + ciphertext.size)
+            .putInt(iv.size)
+            .put(iv)
+            .put(ciphertext)
+            .array()
+    }
+
+    private fun open(data: ByteArray): String {
+        val key = getOrCreateKeystoreKey()
+
+        val buffer = ByteBuffer.wrap(data)
+        val ivLen = buffer.int
+        val iv = ByteArray(ivLen).also { buffer.get(it) }
+        val ciphertext = ByteArray(buffer.remaining()).also { buffer.get(it) }
+
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+
+        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }
+
+    // MARK: - STORAGE
+    // Equivalent of iOS Keychain — EncryptedSharedPreferences
+
+    private val storageID = "runtime_unit_payload_v3"
+    private val prefsName = "runtime_unit_store"
+
+    private fun getStore(): SharedPreferences {
+        val masterKey = MasterKey.Builder(context)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+
+        return EncryptedSharedPreferences.create(
+            context,
+            prefsName,
+            masterKey,
+            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
+            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        )
+    }
+
+    private fun existsInStore(): Boolean {
+        return getStore().contains(storageID)
+    }
+
+    private fun persist(data: ByteArray) {
+        getStore().edit {
+            putString(storageID, Base64.encodeToString(data, Base64.NO_WRAP))
+        }
+    }
+
+    private fun retrieve(): ByteArray {
+        val encoded = getStore().getString(storageID, null)
+            ?: throw IllegalStateException("RuntimeUnit: payload not found in store")
+        return Base64.decode(encoded, Base64.NO_WRAP)
+    }
+}
