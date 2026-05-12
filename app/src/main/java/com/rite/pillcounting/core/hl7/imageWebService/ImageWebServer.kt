@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.hl7.imageWebService
 
-import ImageNanoServer
 import android.content.Context
 import android.util.Log
 import com.rite.pillcounting.core.utils.logger.AppLogger
