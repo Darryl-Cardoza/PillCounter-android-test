@@ -31,8 +31,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.FrontHand
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -174,6 +174,9 @@ fun CameraPreviewSection(
     val trayDetections  by viewModel.trayDetections.collectAsState()
     val uiState         by viewModel.uiState.collectAsState()
     val gloveDetections = uiState.gloveDetections
+    // Sticky once the workflow has seen gloves at high confidence; reset only when
+    // the workflow resumes from idle (see PillScanningViewModel.resetGloveDetection).
+    val glovesDetectedSticky by viewModel.glovesDetected.collectAsState()
 
     // ── Zoom ──────────────────────────────────────────────────────────────────
     LaunchedEffect(Unit) {
@@ -253,38 +256,27 @@ fun CameraPreviewSection(
                     key(popKey) { AddCountBubble(text = popText) }
                 }
 
-                // ── GLOVE WARNING ─────────────────────────────────────────────
-                val noGlovesDetected = gloveDetections.any { it.className == "no_gloves" }
-                val glovesDetected   = gloveDetections.any { it.className == "gloves" }
-
-                if (noGlovesDetected || glovesDetected) {
-                    val isWarning = noGlovesDetected // Warning takes priority
-                    val bgColor   = if (isWarning) Color(0xFFDC0000) else Color(0xFF00C800)
-                    val label     = if (isWarning) "NO GLOVES" else "GLOVES DETECTED"
-                    val icon      = if (isWarning) androidx.compose.material.icons.Icons.Default.Warning else androidx.compose.material.icons.Icons.Default.CheckCircle
-
-                    androidx.compose.foundation.layout.Row(
+                // ── GLOVE STATUS HAND ICON ────────────────────────────────────
+                // Green hand once gloves have been confirmed at high confidence in this
+                // workflow; red until then. State is sticky — see
+                // PillScanningViewModel.glovesDetected; it resets when the workflow
+                // resumes from the idle/paused state.
+                val handTint = if (glovesDetectedSticky) Color(0xFF00C800) else Color(0xFFDC0000)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 100.dp, end = 16.dp)
+                        .size(44.dp)
+                        .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.FrontHand,
+                        contentDescription = if (glovesDetectedSticky) "Gloves detected" else "No gloves",
+                        tint = handTint,
                         modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 100.dp, end = 16.dp)
-                            .background(bgColor, RoundedCornerShape(8.dp))
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        androidx.compose.material3.Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            tint = Color.White,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = label,
-                            color = Color.White,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                            .align(Alignment.Center)
+                            .size(26.dp)
+                    )
                 }
 
                 // ── OVERLAY CANVAS ────────────────────────────────────────────

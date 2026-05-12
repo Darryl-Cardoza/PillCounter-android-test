@@ -13,9 +13,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -26,7 +23,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -101,7 +97,6 @@ fun PillScanningScreen(
 
     val stepType by viewModel.currentStep.collectAsState()
     val isSoundEnabled = viewModel.isSoundEnabled.collectAsState().value
-    val glovesDetected by viewModel.glovesDetected.collectAsState()
 
     // === Toasts ===
     if (uiState.restrictAdd) {
@@ -356,43 +351,11 @@ fun PillScanningScreen(
                         modifier = Modifier.padding(bottom = 16.dp)
                     )
 
-                    // COMMENTED OUT: Resume functionality disabled for performance monitoring
-                    /*
-                    ActionButtonPrimary(
-                        text = stringResource(R.string.resume).uppercase(Locale.ROOT),
-                        onClick = { viewModel.resetIdleOverlay() },
-                        modifier = Modifier.padding(horizontal = 16.dp),
-                        color = MaterialTheme.colorScheme.secondary,
-                    )
-                    */
-//                )
-            }
-        }
-
-        // === Gloves Detected Indicator ===
-        if (glovesDetected && !uiState.showIdleOverlay) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(16.dp)
-                ) {
-                    Card(
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF4CAF50).copy(alpha = 0.9f)
-                        ),
-                        shape = RoundedCornerShape(8.dp),
-                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
-                    ) {
-                        Text(
-                            text = "✓ Gloves Detected",
-                            color = Color.White,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
-                        )
-                    }
+                    // Resume button intentionally disabled for performance monitoring;
+                    // the workflow stays paused until the camera resumes externally.
                 }
             }
         }
+        // Glove-status hand icon is rendered inside CameraPreviewSection's overlay.
     }
 }

@@ -5,17 +5,24 @@ import android.graphics.Matrix
 import androidx.camera.core.ImageProxy
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import org.tensorflow.lite.Interpreter
+import java.nio.ByteBuffer
 
 /**
- * Runs the dual-model pipeline on every camera frame:
+ * Runs the three-model pipeline on every camera frame:
  *
- *   1. Pre-process  — letterbox camera frame to 640×640
- *   2. Tray model   — segmentation → per-tray boolean pixel masks
- *   3. Pill model   —detection    → pill bounding boxes
- *   4. Filter       — keep pills whose centre pixel is inside any tray mask
- *                     (mirrors Python: tray_mask[cy][cx] > 0.5)
- *   5. Callback     — emit filtered pills + tray detections to the UI
+ *   1. Pre-process — letterbox camera frame to 640×640
+ *   2. Tray, pill, (optional) glove inference — IN PARALLEL on Dispatchers.Default,
+ *      each with its own ByteBuffer view of the same underlying memory.
+ *      Each Interpreter has its own GpuDelegate so they don't interfere.
+ *   3. Postprocess pill output and filter to pills inside any tray
+ *   4. Callback to UI
+ *
+ * Parallelising the three inferences cuts steady-state per-frame time roughly to
+ * max(tray, pill, glove) instead of their sum.
  */
 class PillAnalyzer(
     private val pillInterpreter: Interpreter,
@@ -37,14 +44,33 @@ class PillAnalyzer(
 
     private val logger = AppLogger("PillAnalyzer")
 
-    fun analyze(imageProxy: ImageProxy) {
+    // Glove cadence: run glove inference EVERY frame until we've seen at least one
+    // glove-class detection (so the banner appears within one frame after the operator
+    // puts their hands in view). After that, rate-limit to GLOVE_STEADY_INTERVAL_MS so
+    // we don't burn weak-GPU budget on a state that changes slowly.
+    private var lastGloveRunMs = 0L
+    private var hasDetectedAnyGlove = false
+    private var cachedGloveDetections: List<GloveDetection> = emptyList()
+
+    // Reusable inference output buffers. Allocating these per-frame (~1MB of floats
+    // for the tray detector alone) shows up as GC pressure on weak devices.
+    private val pillOutputBuf: Array<Array<FloatArray>> by lazy {
+        val s = pillInterpreter.getOutputTensor(0).shape()
+        Array(s[0]) { Array(s[1]) { FloatArray(s[2]) } }
+    }
+    private val trayDetOutputBuf by lazy { TrayDetector.allocateDetOutput() }
+    private val trayProtoOutputBuf by lazy { TrayDetector.allocateProtoOutput() }
+    private val gloveOutputBuf by lazy { GloveDetector.allocateOutput(gloveInterpreter) }
+
+    companion object {
+        // Run every frame until first glove detection arrives; afterwards only every
+        // GLOVE_STEADY_INTERVAL_MS so we keep the GPU free for pill + tray.
+        private const val GLOVE_STEADY_INTERVAL_MS = 400L
+    }
+
+    suspend fun analyze(imageProxy: ImageProxy) {
         val overallStart = System.currentTimeMillis()
         var trackingBitmap: Bitmap? = null
-
-        logger.i(
-            "Frame — ${imageProxy.width}×${imageProxy.height} " +
-                    "rot=${imageProxy.imageInfo.rotationDegrees}"
-        )
 
         try {
             // ── STEP 1: Pre-process ───────────────────────────────────────────
@@ -54,174 +80,112 @@ class PillAnalyzer(
             val scaleInfo = Letterbox.currentScaleInfo
                 ?: throw IllegalStateException("Letterbox.currentScaleInfo missing after preprocess")
 
-            // Original camera frame dimensions (before letterboxing)
-            val originalWidth  = imageProxy.width
+            val originalWidth = imageProxy.width
             val originalHeight = imageProxy.height
 
-            logger.i(
-                "[Letterbox] scale=${scaleInfo.scale} " +
-                        "padX=${scaleInfo.padX} padY=${scaleInfo.padY} " +
-                        "original=${originalWidth}x${originalHeight}"
-            )
+            // Independent ByteBuffer views over the same memory. duplicate() is cheap
+            // (no memcpy) and lets each Interpreter advance its own read pointer.
+            val trayBuf = inputBuffer.duplicateRewound()
+            val pillBuf = inputBuffer.duplicateRewound()
+            val gloveBuf = inputBuffer.duplicateRewound()
 
-            // ── STEP 2: Tray segmentation ─────────────────────────────────────
-            val trayStart = System.currentTimeMillis()
+            // Glove cadence:
+            //   • If session has been locked off (high-conf glove seen) — skip entirely.
+            //   • Before the first detection — run every frame for fast initial pickup.
+            //   • After first detection — rate-limit to GLOVE_STEADY_INTERVAL_MS.
+            val now = System.currentTimeMillis()
+            val interval = if (hasDetectedAnyGlove) GLOVE_STEADY_INTERVAL_MS else 0L
+            val runGloveThisFrame = shouldRunGloveDetection() &&
+                    (now - lastGloveRunMs >= interval)
+            if (runGloveThisFrame) lastGloveRunMs = now
 
-            val trayDetections = TrayDetector.detect(
-                interpreter    = trayInterpreter,
-                inputBuffer    = inputBuffer,   // reuse buffer — avoids duplicate getPixels+float conversion
-                scaleInfo      = scaleInfo,
-                originalWidth  = originalWidth,
-                originalHeight = originalHeight
-            )
+            // ── STEP 2: Run models in parallel ────────────────────────────────
+            val trayDetections: List<TrayDetection>
+            val pillRaw: Array<FloatArray>?
+            val gloveDetections: List<GloveDetection>
 
-            logger.i(
-                "[Tray] ${trayDetections.size} tray(s) | " +
-                        "${System.currentTimeMillis() - trayStart} ms"
-            )
-
-            // No tray visible → report zero pills, but still emit tray list
-            // (empty) so the UI clears its overlay cleanly.
-            if (trayDetections.isEmpty()) {
-                logger.i("[Tray] No tray detected — skipping pill inference")
-
-                // Still run glove detection even when no tray is visible (if enabled)
-                val gloveDetections = if (shouldRunGloveDetection()) {
-                    inputBuffer.rewind()
-                    GloveDetector.detect(
-                        interpreter    = gloveInterpreter,
-                        inputBuffer    = inputBuffer,
-                        scaleInfo      = scaleInfo,
-                        originalWidth  = originalWidth,
-                        originalHeight = originalHeight
+            val parallelStart = System.currentTimeMillis()
+            coroutineScope {
+                val trayDeferred = async(Dispatchers.Default) {
+                    TrayDetector.detect(
+                        interpreter = trayInterpreter,
+                        inputBuffer = trayBuf,
+                        scaleInfo = scaleInfo,
+                        originalWidth = originalWidth,
+                        originalHeight = originalHeight,
+                        detOutput = trayDetOutputBuf,
+                        protoOutput = trayProtoOutputBuf
                     )
+                }
+                val pillDeferred = async(Dispatchers.Default) {
+                    runPillInferenceRaw(pillBuf)
+                }
+                val gloveDeferred = if (runGloveThisFrame) async(Dispatchers.Default) {
+                    GloveDetector.detect(
+                        interpreter = gloveInterpreter,
+                        inputBuffer = gloveBuf,
+                        scaleInfo = scaleInfo,
+                        originalWidth = originalWidth,
+                        originalHeight = originalHeight,
+                        rawOutput = gloveOutputBuf
+                    )
+                } else null
+
+                trayDetections = trayDeferred.await()
+                pillRaw = pillDeferred.await()
+                gloveDetections = if (gloveDeferred != null) {
+                    val fresh = gloveDeferred.await()
+                    cachedGloveDetections = fresh
+                    if (fresh.isNotEmpty()) hasDetectedAnyGlove = true
+                    fresh
                 } else {
-                    logger.i("[Glove] Skipping glove detection (already detected)")
-                    emptyList()
+                    cachedGloveDetections
                 }
+            }
+            val parallelMs = System.currentTimeMillis() - parallelStart
 
-                onResult(
-                    0, emptyList(), emptyList(), gloveDetections,
-                    originalBitmap, Matrix(), originalWidth, originalHeight
+            // ── STEP 3: Postprocess pill output (only if a tray was found) ────
+            val pillsInTray: List<Detection>
+            if (trayDetections.isEmpty() || pillRaw == null) {
+                pillsInTray = emptyList()
+            } else {
+                val allPills = Postprocessor.decode(
+                    raw = pillRaw,
+                    confThreshold = 0.70f,
+                    scale = scaleInfo.scale,
+                    padX = scaleInfo.padX,
+                    padY = scaleInfo.padY
                 )
-                bitmap640.recycle()
-                return
-            }
-
-            // ── STEP 3: Pill detection ────────────────────────────────────────
-            val pillStart = System.currentTimeMillis()
-
-            // Rewind: TFLite advances the buffer position during tray inference.
-            inputBuffer.rewind()
-
-            val outputShape = pillInterpreter.getOutputTensor(0).shape()
-            val output = Array(1) { Array(outputShape[1]) { FloatArray(outputShape[2]) } }
-            pillInterpreter.run(inputBuffer, output)
-
-            logger.i("[Pill inference] ${System.currentTimeMillis() - pillStart} ms")
-
-            // Decode transposed YOLO layout [1, 5, N]
-            val raw        = output[0]
-            val numAnchors = raw[0].size
-
-            val coords = Array(numAnchors) { FloatArray(4) }
-            val conf   = Array(numAnchors) { FloatArray(1) }
-
-            for (i in 0 until numAnchors) {
-                coords[i][0] = raw[0][i] // cx (normalised)
-                coords[i][1] = raw[1][i] // cy
-                coords[i][2] = raw[2][i] // w
-                coords[i][3] = raw[3][i] // h
-                conf[i][0]   = raw[4][i] // confidence
-            }
-
-            val allPills = Postprocessor.decode(
-                coords        = coords,
-                conf          = conf,
-                confThreshold = 0.70f,
-                scale         = scaleInfo.scale,
-                padX          = scaleInfo.padX,
-                padY          = scaleInfo.padY
-            )
-
-            // ── STEP 4: NMS ───────────────────────────────────────────────────
-            val pillsAfterNms = NMS.run(allPills, iouThreshold = 0.80f)
-
-            logger.i("[Pills After NMS] ${pillsAfterNms.size} pills detected:")
-            pillsAfterNms.take(10).forEachIndexed { idx, pill ->
-                logger.i("  Pill[$idx] center=(${pill.rect.centerX().toInt()}, ${pill.rect.centerY().toInt()}) " +
-                        "rect=${pill.rect} conf=${pill.confidence}")
-            }
-
-            // Log tray info
-            trayDetections.forEachIndexed { idx, tray ->
-                logger.i("[Tray[$idx]] rect=${tray.rect}")
-                logger.i("[Tray[$idx]] ${tray.getMaskStats()}")
-            }
-
-            val pillsInTray = pillsAfterNms.filter { pill ->
-                val cx = pill.rect.centerX().toInt()
-                val cy = pill.rect.centerY().toInt()
-                val isInside = trayDetections.any { tray -> tray.containsPoint(cx, cy) }
-
-                // Log first 10 pills to debug filtering
-                if (pillsAfterNms.indexOf(pill) < 10) {
-                    logger.i("  Pill at ($cx, $cy) inside tray? $isInside")
+                val pillsAfterNms = NMS.run(allPills, iouThreshold = 0.80f)
+                pillsInTray = pillsAfterNms.filter { pill ->
+                    val cx = pill.rect.centerX().toInt()
+                    val cy = pill.rect.centerY().toInt()
+                    trayDetections.any { tray -> tray.containsPoint(cx, cy) }
                 }
-
-                isInside
             }
 
+            val totalMs = System.currentTimeMillis() - overallStart
             logger.i(
-                "[Filter] ${pillsAfterNms.size} pills → " +
-                        "${pillsInTray.size} inside tray | " +
-                        "total=${System.currentTimeMillis() - overallStart} ms"
+                "Frame ${originalWidth}x${originalHeight} | trays=${trayDetections.size} " +
+                        "pills=${pillsInTray.size} gloves=${gloveDetections.size} " +
+                        "parallel=${parallelMs}ms total=${totalMs}ms"
             )
 
-            // ── STEP 5: Glove detection (conditional based on state) ─────────────
-            val gloveDetections = if (shouldRunGloveDetection()) {
-                val gloveStart = System.currentTimeMillis()
-
-                inputBuffer.rewind()
-                val detections = GloveDetector.detect(
-                    interpreter    = gloveInterpreter,
-                    inputBuffer    = inputBuffer,
-                    scaleInfo      = scaleInfo,
-                    originalWidth  = originalWidth,
-                    originalHeight = originalHeight
-                )
-
-                val gloveTime = System.currentTimeMillis() - gloveStart
-
-                logger.i(
-                    "[Glove] ${detections.size} detection(s) | " +
-                            "$gloveTime ms"
-                )
-
-                // Log glove model inference
+            if (runGloveThisFrame) {
                 performanceLogger?.logInference(
                     modelName = "Glove Detection (YOLOv11)",
-                    inferenceTimeMs = gloveTime,
+                    inferenceTimeMs = parallelMs.toLong(),
                     preprocessTimeMs = 0,
                     postprocessTimeMs = 0,
-                    detectionCount = detections.size
+                    detectionCount = gloveDetections.size
                 )
-
-                // High-visibility log for the user
-                if (detections.isNotEmpty()) {
-                    val summary = detections.joinToString { "${it.className}(${(it.confidence * 100).toInt()}%)" }
+                if (gloveDetections.isNotEmpty()) {
+                    val summary = gloveDetections.joinToString { "${it.className}(${(it.confidence * 100).toInt()}%)" }
                     android.util.Log.e("GLOVE_DETECTION", "🎯 FOUND: $summary")
-                } else {
-                    android.util.Log.d("GLOVE_DETECTION", "⚪ No gloves detected in this frame")
                 }
-
-                detections
-            } else {
-                logger.i("[Glove] Skipping glove detection (gloves already detected)")
-                emptyList()
             }
 
-            // ── STEP 6: Callback ──────────────────────────────────────────────
+            // ── STEP 4: Callback ──────────────────────────────────────────────
             onResult(
                 pillsInTray.size,
                 pillsInTray,
@@ -232,7 +196,7 @@ class PillAnalyzer(
                 originalWidth,
                 originalHeight
             )
-            
+
             bitmap640.recycle()
 
         } catch (e: Exception) {
@@ -241,5 +205,36 @@ class PillAnalyzer(
         } finally {
             imageProxy.close()
         }
+    }
+
+    /**
+     * Re-enable fast (every-frame) glove inference. Call when the screen is
+     * (re-)opened or the user manually resets the workflow, so the next "gloves on
+     * vs off" decision is made within one frame instead of after the rate-limit
+     * window.
+     */
+    fun resetGloveCadence() {
+        hasDetectedAnyGlove = false
+        lastGloveRunMs = 0L
+        cachedGloveDetections = emptyList()
+    }
+
+    /**
+     * Runs the pill interpreter into the reusable [pillOutputBuf] and returns the
+     * first batch (`[channels][anchors]`) view. Returns null on failure.
+     */
+    private fun runPillInferenceRaw(buf: ByteBuffer): Array<FloatArray>? {
+        return try {
+            pillInterpreter.run(buf, pillOutputBuf)
+            pillOutputBuf[0]
+        } catch (e: Exception) {
+            logger.e("Pill inference failed", e)
+            null
+        }
+    }
+
+    private fun ByteBuffer.duplicateRewound(): ByteBuffer = duplicate().apply {
+        order(this@duplicateRewound.order())
+        rewind()
     }
 }

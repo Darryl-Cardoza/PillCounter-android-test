@@ -26,7 +26,9 @@ object GloveDetector {
 
     val CLASSES = listOf("gloves", "no_gloves")
     private const val INPUT_SIZE = 640
-    private const val CONF_THRESHOLD = 0.35f
+    // 0.35 was way too permissive — produced ~9 false-positive "gloves" boxes on
+    // empty frames at 36–52% conf, which permanently locked glove detection off.
+    private const val CONF_THRESHOLD = 0.65f
     private const val IOU_THRESHOLD  = 0.45f
 
     /**
@@ -40,23 +42,24 @@ object GloveDetector {
      * @param originalWidth   Width  of the camera frame before letterboxing.
      * @param originalHeight  Height of the camera frame before letterboxing.
      */
+    /** Allocates the glove model's [1, 6, N] output buffer (re-usable across frames). */
+    fun allocateOutput(interpreter: Interpreter): Array<Array<FloatArray>> {
+        val shape = interpreter.getOutputTensor(0).shape()
+        return Array(shape[0]) { Array(shape[1]) { FloatArray(shape[2]) } }
+    }
+
     fun detect(
         interpreter: Interpreter,
         inputBuffer: ByteBuffer,
         scaleInfo: Letterbox.ScaleInfo,
         originalWidth: Int,
-        originalHeight: Int
+        originalHeight: Int,
+        rawOutput: Array<Array<FloatArray>>
     ): List<GloveDetection> {
 
         return try {
-            // ── 1. Prepare output tensor ──────────────────────────────────────
-            val outputShape = interpreter.getOutputTensor(0).shape()
-            // Expected: [1, 4+nc, N]  i.e. [1, 6, N]
-            val batch    = outputShape[0]
-            val channels = outputShape[1]
-            val numAnchors = outputShape[2]
-
-            val rawOutput = Array(batch) { Array(channels) { FloatArray(numAnchors) }  }
+            val channels = rawOutput[0].size
+            val numAnchors = rawOutput[0][0].size
 
             // Rewind so the interpreter reads from the start
             inputBuffer.rewind()
@@ -89,13 +92,7 @@ object GloveDetector {
                     }
                 }
 
-                if (bestScore < confThresh) {
-                    // Log extremely low scores only if needed for deep debugging,
-                    // but usually we just skip.
-                    continue
-                }
-
-                Log.d(TAG, "Candidate found: class=$bestClass(${CLASSES[bestClass]}), score=$bestScore")
+                if (bestScore < confThresh) continue
 
                 // Box is in 640-space (absolute pixels inside the letterboxed image)
                 val cx = raw[0][i]

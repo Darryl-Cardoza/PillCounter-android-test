@@ -4,46 +4,47 @@ import android.graphics.RectF
 
 object Postprocessor {
 
+    /**
+     * Decode YOLO-style pill output of shape `[5, N]` (channel-first):
+     * row 0=cx, 1=cy, 2=w, 3=h, 4=conf. Coordinates are emitted in 640-pixel space
+     * (not normalised), so no scaling-by-640 happens here. Reverse-letterbox to
+     * the original camera frame using the supplied scale/pad values.
+     */
     fun decode(
-        coords: Array<FloatArray>,
-        conf: Array<FloatArray>,
+        raw: Array<FloatArray>,
         confThreshold: Float,
         scale: Float,
         padX: Float,
         padY: Float
     ): List<Detection> {
 
-        val results = mutableListOf<Detection>()
+        val cxs = raw[0]
+        val cys = raw[1]
+        val ws  = raw[2]
+        val hs  = raw[3]
+        val confs = raw[4]
+        val n = cxs.size
 
-        for (i in coords.indices) {
-            val score = conf[i][0]
+        val results = ArrayList<Detection>(64)
+
+        for (i in 0 until n) {
+            val score = confs[i]
             if (score < confThreshold) continue
 
-            // MODEL SPACE (640)
-            val cx = coords[i][0] * 640f
-            val cy = coords[i][1] * 640f
-            val w = coords[i][2] * 640f
-            val h = coords[i][3] * 640f
+            val cx = cxs[i]
+            val cy = cys[i]
+            val w  = ws[i]
+            val h  = hs[i]
 
-            var x1 = cx - w / 2f
-            var y1 = cy - h / 2f
-            var x2 = cx + w / 2f
-            var y2 = cy + h / 2f
+            val halfW = w / 2f
+            val halfH = h / 2f
 
-            // REVERSE LETTERBOX
-            x1 = (x1 - padX) / scale
-            y1 = (y1 - padY) / scale
-            x2 = (x2 - padX) / scale
-            y2 = (y2 - padY) / scale
+            val x1 = (cx - halfW - padX) / scale
+            val y1 = (cy - halfH - padY) / scale
+            val x2 = (cx + halfW - padX) / scale
+            val y2 = (cy + halfH - padY) / scale
 
-            val rect = RectF(x1, y1, x2, y2)
-
-            results.add(
-                Detection(
-                    rect = rect,
-                    confidence = score
-                )
-            )
+            results.add(Detection(rect = RectF(x1, y1, x2, y2), confidence = score))
         }
 
         return results

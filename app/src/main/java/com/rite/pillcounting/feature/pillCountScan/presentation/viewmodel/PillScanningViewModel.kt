@@ -342,13 +342,12 @@ class PillScanningViewModel @Inject constructor(
         _uiState.update { it.copy(gloveDetections = gloveDets) }
 
         // ── Check if gloves detected - if yes, stop running glove detection ──
-        if (gloveDets.isNotEmpty()) {
-            val hasGlovesDetection = gloveDets.any { it.classId == 0 } // classId 0 = "gloves"
-            if (hasGlovesDetection) {
-                _glovesDetected.value = true
-                shouldRunGloveDetection = false
-                logger.i("✅ GLOVES DETECTED - Stopping glove detection model")
-            }
+        // Require a strong detection before locking the session state, otherwise a single
+        // weak false positive on the warm-up frame disables glove detection permanently.
+        if (gloveDets.any { it.classId == 0 && it.confidence >= 0.75f }) {
+            _glovesDetected.value = true
+            shouldRunGloveDetection = false
+            logger.i("✅ GLOVES DETECTED - Stopping glove detection model")
         }
 
         // Rolling count buffer
@@ -462,6 +461,9 @@ class PillScanningViewModel @Inject constructor(
     fun resetGloveDetection() {
         _glovesDetected.value = false
         shouldRunGloveDetection = true
+        // Also re-enable the analyzer's fast initial cadence so the first detection
+        // after a reset arrives in one frame, not after the rate-limit window.
+        (_modelState.value as? ModelState.Ready)?.analyzer?.resetGloveCadence()
         logger.i("🔄 Glove detection reset - Model will run on next frame")
     }
 

@@ -30,8 +30,10 @@ data class LoadedModels(
 
 private data class InterpreterHolder(
     val interpreter: Interpreter,
-    val usesGpu: Boolean
-)
+    val delegate: GpuDelegate?
+) {
+    val usesGpu: Boolean get() = delegate != null
+}
 
 @Singleton
 class PillDetectionModelLoader @Inject constructor(
@@ -46,8 +48,11 @@ class PillDetectionModelLoader @Inject constructor(
     private var trayInterpreter: Interpreter? = null
     private var gloveInterpreter: Interpreter? = null
 
-    // ✅ SINGLE SHARED GPU DELEGATE for all 3 models
-    private var sharedGpuDelegate: GpuDelegate? = null
+    // One GpuDelegate per interpreter — TFLite does not support sharing a delegate
+    // across multiple Interpreter instances (silent wrong outputs if you try).
+    private var pillGpuDelegate: GpuDelegate? = null
+    private var trayGpuDelegate: GpuDelegate? = null
+    private var gloveGpuDelegate: GpuDelegate? = null
 
     companion object {
         private const val PILL_MODEL_FILENAME = "pillcountingmodel"
@@ -101,30 +106,21 @@ class PillDetectionModelLoader @Inject constructor(
 
                     Log.i(TAG, "Model buffers ready")
 
-                    // ✅ CREATE SHARED GPU DELEGATE ONCE with retry logic
                     val gpuSupported = withContext(Dispatchers.Main) {
                         CompatibilityList().isDelegateSupportedOnThisDevice
                     }
 
                     Log.i(TAG, "GPU supported on device: $gpuSupported")
 
-                    if (gpuSupported) {
-                        sharedGpuDelegate = createSharedGpuDelegate()
-                        if (sharedGpuDelegate != null) {
-                            Log.i(TAG, "✅ SHARED GPU DELEGATE created successfully - will be used by all 3 models")
-                        } else {
-                            Log.w(TAG, "⚠️ GPU delegate creation failed - all models will fall back to CPU")
-                        }
-                    } else {
-                        Log.i(TAG, "GPU not supported on device - all models will use CPU")
-                    }
-
-                    // ✅ LOAD ALL 3 MODELS using shared GPU delegate
+                    // Each interpreter gets its own GpuDelegate — sharing one across
+                    // multiple interpreters silently corrupts outputs (TFLite limitation).
                     val pillInterpreterStart = System.currentTimeMillis()
-                    val pillHolder = createInterpreterWithSharedGpu(
+                    val pillHolder = createInterpreterWithFallback(
                         modelBuffer = pillBuffer,
-                        modelName = "Pill model"
+                        modelName = "Pill model",
+                        tryGpu = gpuSupported
                     )
+                    pillGpuDelegate = pillHolder.delegate
                     val pillInterpreterTime = System.currentTimeMillis() - pillInterpreterStart
 
                     // Log pill model load
@@ -138,10 +134,12 @@ class PillDetectionModelLoader @Inject constructor(
                     )
 
                     val trayInterpreterStart = System.currentTimeMillis()
-                    val trayHolder = createInterpreterWithSharedGpu(
+                    val trayHolder = createInterpreterWithFallback(
                         modelBuffer = trayBuffer,
-                        modelName = "Tray model"
+                        modelName = "Tray model",
+                        tryGpu = gpuSupported
                     )
+                    trayGpuDelegate = trayHolder.delegate
                     val trayInterpreterTime = System.currentTimeMillis() - trayInterpreterStart
 
                     // Log tray model load
@@ -155,10 +153,12 @@ class PillDetectionModelLoader @Inject constructor(
                     )
 
                     val gloveInterpreterStart = System.currentTimeMillis()
-                    val gloveHolder = createInterpreterWithSharedGpu(
+                    val gloveHolder = createInterpreterWithFallback(
                         modelBuffer = gloveBuffer,
-                        modelName = "Glove model"
+                        modelName = "Glove model",
+                        tryGpu = gpuSupported
                     )
+                    gloveGpuDelegate = gloveHolder.delegate
                     val gloveInterpreterTime = System.currentTimeMillis() - gloveInterpreterStart
 
                     // Log glove model load
@@ -182,13 +182,8 @@ class PillDetectionModelLoader @Inject constructor(
                     Log.i(TAG, "All three interpreters initialized successfully")
                     logger.i("Pill + tray + glove interpreters ready")
 
-                    // ✅ Log GPU delegate memory info
-                    if (sharedGpuDelegate != null) {
-                        Log.i(TAG, "📊 GPU DELEGATE MEMORY:")
-                        Log.i(TAG, "  - Shared by: Pill, Tray, Glove models")
-                        Log.i(TAG, "  - FP16 Precision: ENABLED")
-                        Log.i(TAG, "  - Total models on GPU: 3")
-                    }
+                    val gpuCount = listOf(pillHolder, trayHolder, gloveHolder).count { it.delegate != null }
+                    Log.i(TAG, "📊 GPU delegates active: $gpuCount / 3 (one per interpreter)")
 
                     // Log post-load system state
                     performanceLogger.logPerformanceSnapshot("POST_MODEL_LOAD")
@@ -204,10 +199,10 @@ class PillDetectionModelLoader @Inject constructor(
     }
 
     /**
-     * ✅ Creates a SINGLE shared GPU delegate with retry logic.
-     * This delegate will be reused by all 3 models for efficient GPU memory usage.
+     * Creates a fresh GpuDelegate (with retry) for a single interpreter.
+     * Each Interpreter needs its own delegate — they cannot be shared.
      */
-    private suspend fun createSharedGpuDelegate(): GpuDelegate? {
+    private suspend fun createGpuDelegateSafely(modelName: String): GpuDelegate? {
         return withContext(Dispatchers.Main) {
             var lastException: Exception? = null
 
@@ -215,61 +210,63 @@ class PillDetectionModelLoader @Inject constructor(
                 try {
                     if (attempt > 0) {
                         delay(GPU_DELEGATE_RETRY_DELAY_MS)
-                        Log.i(TAG, "GPU delegate creation retry attempt ${attempt + 1}/$GPU_DELEGATE_RETRY_COUNT")
+                        Log.i(TAG, "$modelName — GPU delegate retry ${attempt + 1}/$GPU_DELEGATE_RETRY_COUNT")
                     }
 
                     val compatList = CompatibilityList()
                     val gpuOptions = compatList.bestOptionsForThisDevice.apply {
-                        // ✅ Enable FP16 for 2× performance boost
                         isPrecisionLossAllowed = true
-
-                        // ✅ Set inference preference (optional - tune for your needs)
                         inferencePreference = GpuDelegate.Options.INFERENCE_PREFERENCE_FAST_SINGLE_ANSWER
-
-                        // ✅ Enable quantized model support (if needed)
                         setQuantizedModelsAllowed(true)
                     }
 
                     val delegate = GpuDelegate(gpuOptions)
-                    Log.i(TAG, "✅ Shared GPU delegate created successfully (FP16 enabled, attempt ${attempt + 1})")
+                    Log.i(TAG, "$modelName — GPU delegate created (FP16 enabled, attempt ${attempt + 1})")
                     return@withContext delegate
 
                 } catch (e: Exception) {
                     lastException = e
-                    Log.w(TAG, "GPU delegate creation attempt ${attempt + 1} failed: ${e.message}")
+                    Log.w(TAG, "$modelName — GPU delegate attempt ${attempt + 1} failed: ${e.message}")
                 }
             }
 
-            Log.e(TAG, "❌ GPU delegate creation failed after $GPU_DELEGATE_RETRY_COUNT attempts", lastException)
-            logger.w("GPU delegate creation failed after retries", lastException)
+            Log.e(TAG, "$modelName — GPU delegate creation failed after $GPU_DELEGATE_RETRY_COUNT attempts", lastException)
+            logger.w("$modelName GPU delegate creation failed after retries", lastException)
             null
         }
     }
 
     /**
-     * ✅ Creates interpreter using the SHARED GPU delegate.
-     * Falls back to CPU only if GPU delegate doesn't exist or interpreter init fails.
+     * Creates an interpreter for the given model. Tries to give it a fresh GpuDelegate
+     * first; falls back to CPU if either delegate creation or GPU interpreter init fails.
      */
-    private suspend fun createInterpreterWithSharedGpu(
+    private suspend fun createInterpreterWithFallback(
         modelBuffer: ByteBuffer,
-        modelName: String
+        modelName: String,
+        tryGpu: Boolean
     ): InterpreterHolder {
-        val delegate = sharedGpuDelegate
+        var delegate: GpuDelegate? = null
 
-        // Try GPU first if delegate exists
-        if (delegate != null) {
-            try {
-                Log.i(TAG, "$modelName — creating interpreter with SHARED GPU delegate")
-                val options = buildGpuOptions(delegate)
-                val interpreter = Interpreter(modelBuffer.duplicateAndRewind(), options)
-                Log.i(TAG, "$modelName — ✅ GPU interpreter initialized successfully")
-                return InterpreterHolder(interpreter, usesGpu = true)
-            } catch (e: Exception) {
-                Log.e(TAG, "$modelName — GPU interpreter init failed, falling back to CPU", e)
-                logger.w("$modelName GPU interpreter failed", e)
+        if (tryGpu) {
+            delegate = createGpuDelegateSafely(modelName)
+
+            if (delegate != null) {
+                try {
+                    Log.i(TAG, "$modelName — creating GPU interpreter")
+                    val options = buildGpuOptions(delegate)
+                    val interpreter = Interpreter(modelBuffer.duplicateAndRewind(), options)
+                    Log.i(TAG, "$modelName — ✅ GPU interpreter initialized successfully")
+                    return InterpreterHolder(interpreter, delegate)
+                } catch (e: Exception) {
+                    Log.e(TAG, "$modelName — GPU interpreter init failed, falling back to CPU", e)
+                    safelyCloseDelegate(delegate, "$modelName GPU delegate after init failure")
+                    delegate = null
+                }
+            } else {
+                Log.i(TAG, "$modelName — GPU delegate unavailable, using CPU")
             }
         } else {
-            Log.i(TAG, "$modelName — no GPU delegate available, using CPU")
+            Log.i(TAG, "$modelName — GPU not supported on device, using CPU")
         }
 
         // CPU fallback
@@ -277,10 +274,19 @@ class PillDetectionModelLoader @Inject constructor(
             val cpuOptions = buildCpuOptions()
             val interpreter = Interpreter(modelBuffer.duplicateAndRewind(), cpuOptions)
             Log.i(TAG, "$modelName — CPU interpreter initialized successfully")
-            InterpreterHolder(interpreter, usesGpu = false)
+            InterpreterHolder(interpreter, delegate = null)
         } catch (e: Exception) {
             Log.e(TAG, "$modelName — CPU interpreter initialization failed", e)
             throw IllegalStateException("$modelName failed on both GPU and CPU initialization", e)
+        }
+    }
+
+    private fun safelyCloseDelegate(delegate: GpuDelegate?, label: String) {
+        try {
+            delegate?.close()
+            if (delegate != null) Log.i(TAG, "$label closed")
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to close $label", e)
         }
     }
 
@@ -373,20 +379,17 @@ class PillDetectionModelLoader @Inject constructor(
             Log.e(TAG, "Failed to close gloveInterpreter", e)
         }
 
-        // ✅ Close SHARED GPU delegate ONCE (used by all 3 models)
-        try {
-            sharedGpuDelegate?.close()
-            if (sharedGpuDelegate != null) {
-                Log.i(TAG, "Shared GPU delegate closed")
-            }
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to close shared GPU delegate", e)
-        }
+        // Close each model's own GPU delegate
+        safelyCloseDelegate(pillGpuDelegate, "pillGpuDelegate")
+        safelyCloseDelegate(trayGpuDelegate, "trayGpuDelegate")
+        safelyCloseDelegate(gloveGpuDelegate, "gloveGpuDelegate")
 
-        pillInterpreter  = null
-        trayInterpreter  = null
-        gloveInterpreter = null
-        sharedGpuDelegate = null
+        pillInterpreter   = null
+        trayInterpreter   = null
+        gloveInterpreter  = null
+        pillGpuDelegate   = null
+        trayGpuDelegate   = null
+        gloveGpuDelegate  = null
 
         logger.i("All model resources released")
         Log.i(TAG, "All model resources released and cleared")
