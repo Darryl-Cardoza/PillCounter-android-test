@@ -140,7 +140,9 @@ class PillScanningViewModel @Inject constructor(
     val txnInfo: StateFlow<TxnWithDetails?> = _txnInfo
 
     // ── Glove detection control: stop running glove model once gloves are detected ──
-    private var glovesDetected = false
+    private val _glovesDetected = MutableStateFlow(false)
+    val glovesDetected: StateFlow<Boolean> = _glovesDetected.asStateFlow()
+
     var shouldRunGloveDetection = true
         private set
 
@@ -343,7 +345,7 @@ class PillScanningViewModel @Inject constructor(
         if (gloveDets.isNotEmpty()) {
             val hasGlovesDetection = gloveDets.any { it.classId == 0 } // classId 0 = "gloves"
             if (hasGlovesDetection) {
-                glovesDetected = true
+                _glovesDetected.value = true
                 shouldRunGloveDetection = false
                 logger.i("✅ GLOVES DETECTED - Stopping glove detection model")
             }
@@ -458,7 +460,7 @@ class PillScanningViewModel @Inject constructor(
      * Called when the pill scanning screen is loaded or when resuming from idle.
      */
     fun resetGloveDetection() {
-        glovesDetected = false
+        _glovesDetected.value = false
         shouldRunGloveDetection = true
         logger.i("🔄 Glove detection reset - Model will run on next frame")
     }

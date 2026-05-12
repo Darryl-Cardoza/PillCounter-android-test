@@ -147,10 +147,29 @@ class PillAnalyzer(
             // ── STEP 4: NMS ───────────────────────────────────────────────────
             val pillsAfterNms = NMS.run(allPills, iouThreshold = 0.80f)
 
+            logger.i("[Pills After NMS] ${pillsAfterNms.size} pills detected:")
+            pillsAfterNms.take(10).forEachIndexed { idx, pill ->
+                logger.i("  Pill[$idx] center=(${pill.rect.centerX().toInt()}, ${pill.rect.centerY().toInt()}) " +
+                        "rect=${pill.rect} conf=${pill.confidence}")
+            }
+
+            // Log tray info
+            trayDetections.forEachIndexed { idx, tray ->
+                logger.i("[Tray[$idx]] rect=${tray.rect}")
+                logger.i("[Tray[$idx]] ${tray.getMaskStats()}")
+            }
+
             val pillsInTray = pillsAfterNms.filter { pill ->
                 val cx = pill.rect.centerX().toInt()
                 val cy = pill.rect.centerY().toInt()
-                trayDetections.any { tray -> tray.containsPoint(cx, cy) }
+                val isInside = trayDetections.any { tray -> tray.containsPoint(cx, cy) }
+
+                // Log first 10 pills to debug filtering
+                if (pillsAfterNms.indexOf(pill) < 10) {
+                    logger.i("  Pill at ($cx, $cy) inside tray? $isInside")
+                }
+
+                isInside
             }
 
             logger.i(

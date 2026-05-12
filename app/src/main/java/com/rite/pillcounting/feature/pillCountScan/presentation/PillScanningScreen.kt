@@ -13,7 +13,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -24,6 +26,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -37,7 +40,6 @@ import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
@@ -99,6 +101,7 @@ fun PillScanningScreen(
 
     val stepType by viewModel.currentStep.collectAsState()
     val isSoundEnabled = viewModel.isSoundEnabled.collectAsState().value
+    val glovesDetected by viewModel.glovesDetected.collectAsState()
 
     // === Toasts ===
     if (uiState.restrictAdd) {
@@ -236,17 +239,17 @@ fun PillScanningScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(AppTheme.extendedColors.secondaryBackground)
-            // DISABLED: Idle timer reset disabled for continuous performance monitoring
-            /*
-            .pointerInput(Unit) {
-                awaitPointerEventScope {
-                    while (true) {
-                        awaitPointerEvent()
-                        viewModel.resetIdleTimer()
-                    }
+        // DISABLED: Idle timer reset disabled for continuous performance monitoring
+        /*
+        .pointerInput(Unit) {
+            awaitPointerEventScope {
+                while (true) {
+                    awaitPointerEvent()
+                    viewModel.resetIdleTimer()
                 }
             }
-            */
+        }
+        */
     ) {
         // Camera + Info
         SplitResponsive(
@@ -362,6 +365,32 @@ fun PillScanningScreen(
                         color = MaterialTheme.colorScheme.secondary,
                     )
                     */
+//                )
+            }
+        }
+
+        // === Gloves Detected Indicator ===
+        if (glovesDetected && !uiState.showIdleOverlay) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(16.dp)
+                ) {
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = Color(0xFF4CAF50).copy(alpha = 0.9f)
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+                    ) {
+                        Text(
+                            text = "✓ Gloves Detected",
+                            color = Color.White,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                        )
+                    }
                 }
             }
         }

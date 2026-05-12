@@ -13,11 +13,57 @@ data class TrayDetection(
     val rect: RectF,
     val confidence: Float
 ) {
+    private val logger = AppLogger("TrayDetection")
+    private var debugLogCount = 0  // Limit debug logs
+
     fun containsPoint(x: Int, y: Int): Boolean {
-        if (y < 0 || y >= mask.size) return false
-        if (mask.isEmpty()) return false
-        if (x < 0 || x >= mask[0].size) return false
-        return mask[y][x]
+        // Bounds check
+        if (y < 0 || y >= mask.size) {
+            if (debugLogCount < 3) {
+                logger.w("Point ($x, $y) outside mask Y bounds [0, ${mask.size})")
+                debugLogCount++
+            }
+            return false
+        }
+
+        if (mask.isEmpty()) {
+            if (debugLogCount < 3) {
+                logger.w("Mask is empty!")
+                debugLogCount++
+            }
+            return false
+        }
+
+        if (x < 0 || x >= mask[0].size) {
+            if (debugLogCount < 3) {
+                logger.w("Point ($x, $y) outside mask X bounds [0, ${mask[0].size})")
+                debugLogCount++
+            }
+            return false
+        }
+
+        val result = mask[y][x]
+
+        // Log first few checks for debugging
+        if (debugLogCount < 5) {
+            logger.i("containsPoint($x, $y) in mask[${mask.size}×${mask[0].size}] = $result")
+            debugLogCount++
+        }
+
+        return result
+    }
+
+    fun getMaskStats(): String {
+        if (mask.isEmpty()) return "Empty mask"
+        var trueCount = 0
+        var totalCount = 0
+        for (row in mask) {
+            for (value in row) {
+                if (value) trueCount++
+                totalCount++
+            }
+        }
+        return "Mask: ${mask.size}×${mask[0].size} = $totalCount pixels, $trueCount true (${(trueCount * 100 / totalCount)}%)"
     }
 
     override fun equals(other: Any?): Boolean {
@@ -33,15 +79,17 @@ object TrayDetector {
 
     private const val INPUT_SIZE = 640
 
-    private const val CONF_THRESHOLD = 0.50f
+    private const val CONF_THRESHOLD = 0.70f  // Raised from 0.50 to reduce false positives
     private const val MASK_THRESHOLD = 0.30f
     private const val NMS_IOU_THRESHOLD = 0.45f
+    private const val MAX_DETECTIONS = 5  // Safety limit: max 5 trays per frame
 
     private const val NUM_COEFFS = 32
     private const val NUM_ANCHORS = 8400
     private const val PROTO_H = 160
     private const val PROTO_W = 160
-    private const val TRAY_CLASS_ROW = 5
+    private const val CLASS0_ROW = 4  // First class (background/no-tray)
+    private const val CLASS1_ROW = 5  // Second class (tray)
 
     private val logger = AppLogger("TrayDetector")
 
@@ -81,12 +129,22 @@ object TrayDetector {
 
         interpreter.runForMultipleInputsOutputs(arrayOf(inputBuffer), outputs)
 
-        logDiagnostics(detOutput)
+        // Diagnostic logging disabled by default to reduce memory pressure
+        // Uncomment for debugging: logDiagnostics(detOutput)
 
         val rawBoxes = mutableListOf<RawBox>()
 
         for (a in 0 until NUM_ANCHORS) {
-            val conf = detOutput[0][TRAY_CLASS_ROW][a]
+            // Read raw class scores and apply sigmoid to convert logits to probabilities
+            val cls0Raw = detOutput[0][CLASS0_ROW][a]
+            val cls1Raw = detOutput[0][CLASS1_ROW][a]
+
+            val cls0 = sigmoid(cls0Raw)
+            val cls1 = sigmoid(cls1Raw)
+
+            // Use the tray class (cls1) as confidence
+            val conf = cls1
+
             if (conf < CONF_THRESHOLD) continue
 
             // IMPORTANT:
@@ -119,9 +177,15 @@ object TrayDetector {
         val kept = nms(rawBoxes, NMS_IOU_THRESHOLD)
         logger.i("After NMS: ${kept.size} unique tray(s)")
 
+        // Safety limit: prevent memory exhaustion from too many detections
+        val safeKept = kept.take(MAX_DETECTIONS)
+        if (kept.size > MAX_DETECTIONS) {
+            logger.w("⚠️ Limiting trays from ${kept.size} to $MAX_DETECTIONS to prevent memory exhaustion")
+        }
+
         val detections = mutableListOf<TrayDetection>()
 
-        for ((index, box) in kept.withIndex()) {
+        for ((index, box) in safeKept.withIndex()) {
             val rawMask = buildRawMask(protoOutput[0], box.coeffs)
             val croppedMask = cropMaskToBox(rawMask, box)
 
@@ -146,11 +210,14 @@ object TrayDetector {
             val finalRect = maskRect ?: boxRect
 
             if (finalRect.width() <= 0f || finalRect.height() <= 0f) {
-                logger.i("Skipping tray[$index]: invalid rect | maskRect=$maskRect boxRect=$boxRect")
+                logger.d("Skipping tray[$index]: invalid rect")
                 continue
             }
 
-            logger.i("Tray[$index] conf=${box.conf} maskRect=$maskRect boxRect=$boxRect finalRect=$finalRect")
+            // Only log first 3 detections to reduce memory pressure
+            if (index < 3) {
+                logger.i("Tray[$index] conf=${box.conf} rect=$finalRect")
+            }
 
             detections.add(
                 TrayDetection(
@@ -166,25 +233,42 @@ object TrayDetector {
     }
 
     private fun logDiagnostics(detOutput: Array<Array<FloatArray>>) {
-        var maxCls0 = 0f
-        var maxCls1 = 0f
+        var maxCls0Raw = -Float.MAX_VALUE
+        var maxCls1Raw = -Float.MAX_VALUE
+        var maxCls0Sigmoid = 0f
+        var maxCls1Sigmoid = 0f
 
         for (a in 0 until NUM_ANCHORS) {
-            if (detOutput[0][4][a] > maxCls0) maxCls0 = detOutput[0][4][a]
-            if (detOutput[0][5][a] > maxCls1) maxCls1 = detOutput[0][5][a]
+            val cls0Raw = detOutput[0][CLASS0_ROW][a]
+            val cls1Raw = detOutput[0][CLASS1_ROW][a]
+
+            if (cls0Raw > maxCls0Raw) maxCls0Raw = cls0Raw
+            if (cls1Raw > maxCls1Raw) maxCls1Raw = cls1Raw
+
+            val cls0Sig = sigmoid(cls0Raw)
+            val cls1Sig = sigmoid(cls1Raw)
+
+            if (cls0Sig > maxCls0Sigmoid) maxCls0Sigmoid = cls0Sig
+            if (cls1Sig > maxCls1Sigmoid) maxCls1Sigmoid = cls1Sig
         }
 
-        logger.i("Max scores -> cls0=$maxCls0 cls1(tray)=$maxCls1 threshold=$CONF_THRESHOLD")
+        logger.i("Max RAW logits -> cls0=$maxCls0Raw cls1(tray)=$maxCls1Raw")
+        logger.i("Max SIGMOID scores -> cls0=$maxCls0Sigmoid cls1(tray)=$maxCls1Sigmoid threshold=$CONF_THRESHOLD")
 
         for (a in 0 until min(10, NUM_ANCHORS)) {
+            val cls0Raw = detOutput[0][CLASS0_ROW][a]
+            val cls1Raw = detOutput[0][CLASS1_ROW][a]
+            val cls0Sig = sigmoid(cls0Raw)
+            val cls1Sig = sigmoid(cls1Raw)
+
             logger.i(
                 "sample[$a] " +
                         "cx=${detOutput[0][0][a]} " +
                         "cy=${detOutput[0][1][a]} " +
                         "w=${detOutput[0][2][a]} " +
                         "h=${detOutput[0][3][a]} " +
-                        "cls0=${detOutput[0][4][a]} " +
-                        "cls1=${detOutput[0][5][a]}"
+                        "cls0_raw=$cls0Raw cls0_sig=$cls0Sig " +
+                        "cls1_raw=$cls1Raw cls1_sig=$cls1Sig"
             )
         }
     }
