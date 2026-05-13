@@ -145,10 +145,10 @@ class MainActivity : ComponentActivity() {
                         }
 
                         // Security check overlay if you want:
-//                        val violations = SecurityUtils.getSecurityViolations(this)
-//                        if (violations.isNotEmpty()) {
-//                            SecurityErrorDialog(violations)
-//                        }
+                        val violations = SecurityUtils.getSecurityViolations(this)
+                        if (violations.isNotEmpty()) {
+                            SecurityErrorDialog(violations)
+                        }
                     }
                 }
             }
