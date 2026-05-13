@@ -106,7 +106,6 @@ class LoginViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            logger.i("Logout attempt with refresh token: $refreshToken")
             _logoutUiState.value = LogoutUiState.Loading
 
             repository.logout(refreshToken)

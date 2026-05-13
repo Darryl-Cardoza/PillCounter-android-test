@@ -8,6 +8,7 @@ import android.os.Debug
 import android.provider.Settings
 import com.rite.pillcounting.R
 import java.io.File
+import java.security.MessageDigest
 
 /**
  * Centralized Security Utilities
@@ -87,21 +88,35 @@ object SecurityUtils {
      * Replace [EXPECTED_SIGNATURE_HASH] with your actual release key hash.
      */
     private fun isSignatureValid(context: Context): Boolean {
-        val EXPECTED_SIGNATURE_HASH = "YOUR_RELEASE_SIGNATURE_HASH"
+        // Get this value by running against your release APK:
+        // keytool -printcert -jarfile app-release.apk
+        // Or: apksigner verify --print-certs app-release.apk
+        // Copy the "SHA-256" line exactly as shown
+        val EXPECTED_SHA256 = "YOUR_RELEASE_SHA256_HERE"
 
         return try {
             val pm = context.packageManager
             val signatures = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNING_CERTIFICATES)
-                    .signingInfo?.apkContentsSigners
+                pm.getPackageInfo(
+                    context.packageName,
+                    PackageManager.GET_SIGNING_CERTIFICATES
+                ).signingInfo?.apkContentsSigners
             } else {
                 @Suppress("DEPRECATION")
-                pm.getPackageInfo(context.packageName, PackageManager.GET_SIGNATURES).signatures
+                pm.getPackageInfo(
+                    context.packageName,
+                    PackageManager.GET_SIGNATURES
+                ).signatures
             }
 
             signatures?.any { sig ->
-                sig.toCharsString().hashCode().toString() == EXPECTED_SIGNATURE_HASH
+                // SHA-256 of the raw DER certificate bytes — matches keytool output
+                val digest = MessageDigest.getInstance("SHA-256")
+                    .digest(sig.toByteArray())  // toByteArray() not toCharsString()
+                val actual = digest.joinToString(":") { "%02X".format(it) }
+                actual == EXPECTED_SHA256
             } ?: false
+
         } catch (_: Exception) {
             false
         }

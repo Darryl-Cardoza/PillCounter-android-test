@@ -29,16 +29,6 @@ import javax.net.ssl.X509TrustManager
 @Module
 @InstallIn(SingletonComponent::class)
 object RefreshTokenModule {
-
-//    private val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
-//        override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {}
-//        override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {}
-//        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-//    })
-//
-//    private val sslContext = SSLContext.getInstance("TLS").apply {
-//        init(null, trustAllCerts, SecureRandom())
-//    }
     /** Base URL for token refresh API calls. */
     //private const val BASE_URL = "https://pill.ccrlindia.com:8000/"
 
@@ -57,8 +47,6 @@ object RefreshTokenModule {
     @Named("refresh_okhttp")
     fun provideRefreshOkHttpClient(): OkHttpClient =
         OkHttpClient.Builder()
-//            .sslSocketFactory(sslContext.socketFactory, trustAllCerts[0] as X509TrustManager)
-//            .hostnameVerifier { hostname, session -> true }
             .addInterceptor(HttpLoggingInterceptor().apply {
                 level = HttpLoggingInterceptor.Level.BODY
             })

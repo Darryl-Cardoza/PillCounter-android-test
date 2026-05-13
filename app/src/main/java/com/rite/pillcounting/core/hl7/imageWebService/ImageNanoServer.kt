@@ -20,6 +20,7 @@ class ImageNanoServer(
     init {
         // Attach the SSL factory — this makes NanoHTTPD use HTTPS
         makeSecure(sslFactory, null)
+        setTempFileManagerFactory { PrivateTempFileManager(context) }
     }
 
     override fun serve(session: IHTTPSession): Response {
