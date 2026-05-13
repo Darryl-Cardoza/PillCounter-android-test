@@ -85,6 +85,7 @@ private const val KEY_BARCODE_REGEX="key_barcode_regex"
 private const val KEY_BUCKET_LIST="key_bucket_list"
 private const val KEY_TERMINALS="key_terminals"
 private const val KEY_SELECTED_TERMINAL_ID="key_selected_terminal_id"
+private const val KEY_SELECTED_TERMINAL_NAME="key_selected_terminal_name"
 
 
 @Singleton
@@ -570,6 +571,25 @@ class PreferenceHelper @Inject constructor(
         val id = prefs.getString(KEY_SELECTED_TERMINAL_ID, null)
         logger.d("Retrieved selected terminal ID: $id")
         return id
+    }
+
+    /**
+     * Saves the selected terminal name.
+     * @param terminalName The name of the selected terminal.
+     */
+    fun saveSelectedTerminalName(terminalName: String) {
+        prefs.edit { putString(KEY_SELECTED_TERMINAL_NAME, terminalName) }
+        logger.i("Saved selected terminal name: $terminalName")
+    }
+
+    /**
+     * Retrieves the selected terminal name.
+     * @return The selected terminal name, or null if not set.
+     */
+    fun getSelectedTerminalName(): String? {
+        val name = prefs.getString(KEY_SELECTED_TERMINAL_NAME, null)
+        logger.d("Retrieved selected terminal name: $name")
+        return name
     }
 
 

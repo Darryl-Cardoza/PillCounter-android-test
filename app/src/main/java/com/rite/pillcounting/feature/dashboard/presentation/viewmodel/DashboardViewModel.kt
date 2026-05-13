@@ -66,6 +66,10 @@ class DashboardViewModel @Inject constructor(
     val uiState = _uiState.asStateFlow()
     val isConnected: StateFlow<Boolean> = hl7EventHandler.connectionState
 
+    /** StateFlow to signal when terminal info is loaded from auth/me */
+    private val _terminalInfoLoaded = MutableStateFlow(false)
+    val terminalInfoLoaded: StateFlow<Boolean> = _terminalInfoLoaded.asStateFlow()
+
     init {
         logger.i("DashboardViewModel initialized.")
         //  To avoid initial observe count call because of absence of localId
@@ -173,6 +177,24 @@ class DashboardViewModel @Inject constructor(
                             detail.terminals?.let { terminals ->
                                 preferenceHelper.saveTerminals(terminals)
                                 logger.i("Saved ${terminals.size} terminals to preferences")
+
+                                // Find and save the active terminal
+                                val activeTerminal = terminals.firstOrNull { it.isActive == true }
+                                if (activeTerminal != null) {
+                                    activeTerminal.terminalId?.let { id ->
+                                        preferenceHelper.saveSelectedTerminalId(id)
+                                    }
+                                    activeTerminal.terminalName?.let { name ->
+                                        preferenceHelper.saveSelectedTerminalName(name)
+                                    }
+                                    logger.i("Active terminal found and saved: ${activeTerminal.terminalName} (ID: ${activeTerminal.terminalId})")
+                                } else {
+                                    logger.w("No active terminal found in auth/me response")
+                                }
+
+                                // Signal that terminal info is loaded
+                                _terminalInfoLoaded.value = true
+                                logger.i("Terminal info loaded signal sent - HL7 can now start")
                             }
                             
                             //  To call observe count for first time when localId is 0 (from preference)

@@ -311,7 +311,11 @@ class MainActivityViewModel @Inject constructor(
         val dto = setting.data?.hl7Config
         val nsdDiscoverType = dto?.pmsHostName ?: ""
         val nsdBroadCastType = dto?.pillCounterHostName ?: ""
+        // Save NSD settings to preferences so ProfileViewModel can access them
+        preferenceHelper.saveNsdBroadcastType(nsdBroadCastType)
+        preferenceHelper.saveNsdDiscoveryType(nsdDiscoverType)
         preferenceHelper.saveBarcodeRegex(dto?.barcodeFormat ?: "")
+        
         _uiState.update {
             it.copy(
                 nsdBroadcastType = nsdBroadCastType,
@@ -319,7 +323,9 @@ class MainActivityViewModel @Inject constructor(
                 isHl7Enabled = preferenceHelper.isHl7Enabled()
             )
         }
-        logger.i("nsd service name $dto")
+        logger.i("NSD settings updated and saved to preferences:")
+        logger.i("  • Broadcast Type: $nsdBroadCastType")
+        logger.i("  • Discovery Type: $nsdDiscoverType")
     }
 
 
@@ -331,10 +337,12 @@ class MainActivityViewModel @Inject constructor(
         val broadCastServiceName = _uiState.value.nsdBroadcastType ?: return
         val discoverServiceName = _uiState.value.nsdDiscoveryType ?: return
 
+        // Use terminal name from preferences, fallback to device model if not available
+        val terminalName = preferenceHelper.getSelectedTerminalName() ?: "PillCounter-${Build.MODEL}"
         val config = HL7Config(
             serverPort = 2575,
             autoResponseDelayMs = 10_000L,
-            nsdBroadcastServiceName = "PillCounter-${Build.MODEL}",
+            nsdBroadcastServiceName = terminalName,
             nsdBroadcastType = broadCastServiceName,
             nsdDiscoveryType = discoverServiceName,
             imageServicePort = 8080,
@@ -350,13 +358,37 @@ class MainActivityViewModel @Inject constructor(
     fun evaluateHl7State() {
         val state = _uiState.value
 
-        logger.i("evaluateHl7State $state")
-        if (state.isHl7Enabled == true && preferenceHelper.isUserLoggedIn()) {
-            startHl7Service()
-            logger.i("HL7 Started")
-        } else {
+        logger.i("evaluateHl7State called - isHl7Enabled=${state.isHl7Enabled}, isUserLoggedIn=${preferenceHelper.isUserLoggedIn()}")
+
+        if (state.isHl7Enabled != true || !preferenceHelper.isUserLoggedIn()) {
+            logger.i("HL7 disabled or user not logged in - stopping HL7 service")
             stopHl7Service()
+        } else {
+            logger.i("HL7 enabled and user logged in - waiting for terminal info from auth/me")
+            // Don't start automatically - wait for terminal info
         }
+    }
+
+    /**
+     * Starts HL7 service after terminal information is available from auth/me.
+     * This should be called after the user detail API completes.
+     */
+    fun startHl7AfterTerminalLoaded() {
+        val state = _uiState.value
+
+        if (state.isHl7Enabled != true || !preferenceHelper.isUserLoggedIn()) {
+            logger.w("Cannot start HL7 - either disabled or user not logged in")
+            return
+        }
+
+        val terminalName = preferenceHelper.getSelectedTerminalName()
+        if (terminalName.isNullOrEmpty()) {
+            return
+        }
+
+        logger.i("Terminal name available: $terminalName - starting HL7 service")
+        startHl7Service()
+        logger.i("HL7 Started with terminal: $terminalName")
     }
 
 

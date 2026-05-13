@@ -481,10 +481,10 @@ private fun TerminalDropdown(
             onExpandedChange = { expanded = !expanded }
         ) {
             OutlinedTextField(
-                value = selectedTerminal?.terminalName ?: "Select Terminal",
+                value = selectedTerminal?.terminalName ?: stringResource(R.string.select_terminal),
                 onValueChange = {},
                 readOnly = true,
-                label = { Text("Terminal") },
+                label = { Text(stringResource(R.string.terminal)) },
                 modifier = Modifier
                     .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                     .fillMaxWidth(),
@@ -518,7 +518,7 @@ private fun TerminalDropdown(
                     DropdownMenuItem(
                         text = {
                             Text(
-                                text = terminal.terminalName ?: "Unknown",
+                                text = terminal.terminalName ?: stringResource(R.string.unknown),
                                 color = AppTheme.extendedColors.textColor
                             )
                         },
