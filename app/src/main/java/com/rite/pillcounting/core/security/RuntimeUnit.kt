@@ -6,8 +6,6 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -19,17 +17,14 @@ class RuntimeUnit(private val context: Context) {
 
     // MARK: - PUBLIC INTERFACE
 
-    /** Call once at app start — stores protected material if not already stored */
     fun activateIfNeeded() {
         if (existsInStore()) return
-
         val raw = compose()
         val refined = refine(raw)
         persist(seal(refined))
         destroy(refined)
     }
 
-    /** Retrieves and decrypts the stored value for runtime use */
     @Throws(Exception::class)
     fun material(): String {
         val sealed = retrieve()
@@ -47,8 +42,6 @@ class RuntimeUnit(private val context: Context) {
     }
 
     private fun destroy(value: String) {
-        // Best-effort memory zeroing — JVM doesn't guarantee this
-        // but we make the attempt
         try {
             val field = String::class.java.getDeclaredField("value")
             field.isAccessible = true
@@ -61,7 +54,6 @@ class RuntimeUnit(private val context: Context) {
     }
 
     // MARK: - FRAGMENTS
-    // Same noise-filter pattern as your iOS RuntimeUnit
 
     private fun f1() = "_d1@#\$ff4797@#\$ac_b714@#%#^7205bb249#\$%\$%cce9"
     private fun f2() = "-_18f)23a4*(f%%8e&^#54a8"
@@ -70,46 +62,50 @@ class RuntimeUnit(private val context: Context) {
     private fun f5() = "_a-a2-4-7@#\$^*^ff55ac8e12#\$^%*f165974&*"
     private fun f6() = "_f#\$^%*&8cf#\$%^*(ce41328^#&)(f7ea447e\$#&"
 
-    // MARK: - ANDROID KEYSTORE
-    // Equivalent of iOS Secure Enclave
+    // MARK: - ANDROID KEYSTORE (Secure Enclave equivalent)
+    // Key 1: encrypts the assembled runtime value (seal/open)
+    // Key 2: encrypts the stored payload in SharedPreferences (persist/retrieve)
 
-    private val keystoreAlias = "com.runtime.unit.node"
+    private val runtimeKeyAlias = "com.runtime.unit.node"
+    private val storageKeyAlias = "com.runtime.unit.storage"
 
-    private fun getOrCreateKeystoreKey(): SecretKey {
+    private fun getOrCreateKey(alias: String): SecretKey {
         val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
 
-        keystore.getKey(keystoreAlias, null)?.let { return it as SecretKey }
+        keystore.getKey(alias, null)?.let { return it as SecretKey }
 
-        val keyGenerator = KeyGenerator.getInstance(
+        KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES,
             "AndroidKeyStore"
-        )
-
-        keyGenerator.init(
-            KeyGenParameterSpec.Builder(
-                keystoreAlias,
-                KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+        ).apply {
+            init(
+                KeyGenParameterSpec.Builder(
+                    alias,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .setUserAuthenticationRequired(false)
+                    .build()
             )
-                .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
-                .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
-                .setKeySize(256)
-                .setUserAuthenticationRequired(false)
-                .build()
-        )
+        }.generateKey()
 
-        return keyGenerator.generateKey()
+        return KeyStore.getInstance("AndroidKeyStore")
+            .also { it.load(null) }
+            .getKey(alias, null) as SecretKey
     }
 
+    // MARK: - SEAL / OPEN (encrypts assembled value using runtimeKeyAlias)
+
     private fun seal(value: String): ByteArray {
-        val key = getOrCreateKeystoreKey()
+        val key = getOrCreateKey(runtimeKeyAlias)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.ENCRYPT_MODE, key)
 
-        val iv = cipher.iv                          // 12 bytes, Keystore-generated
+        val iv = cipher.iv
         val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
 
-        // Persist IV alongside ciphertext — needed for decryption
-        // Format: [4 bytes iv length][iv][ciphertext]
         return ByteBuffer.allocate(4 + iv.size + ciphertext.size)
             .putInt(iv.size)
             .put(iv)
@@ -118,7 +114,7 @@ class RuntimeUnit(private val context: Context) {
     }
 
     private fun open(data: ByteArray): String {
-        val key = getOrCreateKeystoreKey()
+        val key = getOrCreateKey(runtimeKeyAlias)
 
         val buffer = ByteBuffer.wrap(data)
         val ivLen = buffer.int
@@ -132,38 +128,49 @@ class RuntimeUnit(private val context: Context) {
     }
 
     // MARK: - STORAGE
-    // Equivalent of iOS Keychain — EncryptedSharedPreferences
+    // Replaces EncryptedSharedPreferences — uses plain SharedPreferences
+    // with payload encrypted by a separate Keystore-backed key (storageKeyAlias)
 
     private val storageID = "runtime_unit_payload_v3"
     private val prefsName = "runtime_unit_store"
 
-    private fun getStore(): SharedPreferences {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-
-        return EncryptedSharedPreferences.create(
-            context,
-            prefsName,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+    private val plainPrefs: SharedPreferences by lazy {
+        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
     }
 
-    private fun existsInStore(): Boolean {
-        return getStore().contains(storageID)
-    }
+    private fun existsInStore(): Boolean =
+        plainPrefs.contains(storageID)
 
     private fun persist(data: ByteArray) {
-        getStore().edit {
-            putString(storageID, Base64.encodeToString(data, Base64.NO_WRAP))
-        }
+        val encrypted = encryptForStorage(data)
+        plainPrefs.edit { putString(storageID, encrypted) }
     }
 
     private fun retrieve(): ByteArray {
-        val encoded = getStore().getString(storageID, null)
+        val encrypted = plainPrefs.getString(storageID, null)
             ?: throw IllegalStateException("RuntimeUnit: payload not found in store")
-        return Base64.decode(encoded, Base64.NO_WRAP)
+        return decryptFromStorage(encrypted)
+    }
+
+    private fun encryptForStorage(data: ByteArray): String {
+        val key = getOrCreateKey(storageKeyAlias)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        val ciphertext = cipher.doFinal(data)
+        return "${Base64.encodeToString(iv, Base64.NO_WRAP)}:${
+            Base64.encodeToString(ciphertext, Base64.NO_WRAP)
+        }"
+    }
+
+    private fun decryptFromStorage(stored: String): ByteArray {
+        val parts = stored.split(":")
+        require(parts.size == 2) { "RuntimeUnit: invalid stored format" }
+        val iv = Base64.decode(parts[0], Base64.NO_WRAP)
+        val ciphertext = Base64.decode(parts[1], Base64.NO_WRAP)
+        val key = getOrCreateKey(storageKeyAlias)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+        return cipher.doFinal(ciphertext)
     }
 }

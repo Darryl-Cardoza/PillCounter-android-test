@@ -1,11 +1,10 @@
-package com.rite.pillcounting.core.hl7.imageWebService
+package com.rite.pillcounting.core.hl7.mllp.tls
 
 import android.content.Context
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
 import android.util.Base64
-import android.util.Log
 import androidx.core.content.edit
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
@@ -21,6 +20,10 @@ import java.security.MessageDigest
 import java.security.SecureRandom
 import java.util.Calendar
 import java.util.Date
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 
 // core/hl7/imageWebService/TlsImageKeystoreUtil.kt
 
@@ -29,8 +32,8 @@ object TlsImageKeystoreUtil {
     const val TAG = "TlsImageKeystoreUtil"
     private const val KEY_ALIAS = "image_server_tls"
     private const val KEYSTORE_FILE = "image_server.p12"
-    private const val PREFS_NAME = "tls_image_ks_prefs"
-    private const val PREF_KEY_PASSWORD = "ks_pw"
+//    private const val PREFS_NAME = "tls_image_ks_prefs"
+//    private const val PREF_KEY_PASSWORD = "ks_pw"
 
     private val logger = AppLogger(TAG)
 
@@ -38,9 +41,7 @@ object TlsImageKeystoreUtil {
     // Public API
     // ----------------------------------------------------------------
 
-    fun alias(): String = KEY_ALIAS
-
-    // FIX 1: Password now fetched from EncryptedSharedPreferences
+    // Password fetched from Keystore
     // instead of the hardcoded "img_tls_internal" constant
     fun password(context: Context): CharArray =
         getOrCreateKeystorePassword(context)
@@ -78,29 +79,77 @@ object TlsImageKeystoreUtil {
     // ----------------------------------------------------------------
 
     private fun getOrCreateKeystorePassword(context: Context): CharArray {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
+        val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+        val alias = "com.rite.pillcounting.tls_image_ks_pw"
+        val prefs = context.getSharedPreferences("tls_image_ks_prefs", Context.MODE_PRIVATE)
+        val prefKey = "ks_pw_encrypted"
 
-        val prefs = EncryptedSharedPreferences.create(
-            context,
-            PREFS_NAME,
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
+        // Return existing password if already stored
+        val existing = prefs.getString(prefKey, null)
+        if (existing != null) {
+            return decrypt(existing, keystore, alias).toCharArray()
+        }
+
+        // Generate new random password
+        val newPassword = Base64.encodeToString(
+            ByteArray(32).also { SecureRandom().nextBytes(it) },
+            Base64.NO_WRAP
         )
 
-        val existing = prefs.getString(PREF_KEY_PASSWORD, null)
-        if (existing != null) return existing.toCharArray()
-
-        // Generate a new random 32-byte password, store it encrypted
-        val newPassword = ByteArray(32)
-            .also { SecureRandom().nextBytes(it) }
-            .let { Base64.encodeToString(it, Base64.NO_WRAP) }
-
-        prefs.edit { putString(PREF_KEY_PASSWORD, newPassword) }
+        // Encrypt and store it
+        val encrypted = encrypt(newPassword, keystore, alias)
+        prefs.edit { putString(prefKey, encrypted) }
         logger.i("Generated new keystore password")
         return newPassword.toCharArray()
+    }
+
+    private fun getOrCreateEncryptionKey(
+        keystore: KeyStore,
+        alias: String
+    ): SecretKey {
+        keystore.getKey(alias, null)?.let { return it as SecretKey }
+
+        KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            "AndroidKeyStore"
+        ).apply {
+            init(
+                KeyGenParameterSpec.Builder(
+                    alias,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .setUserAuthenticationRequired(false)
+                    .build()
+            )
+        }.generateKey()
+
+        return keystore.getKey(alias, null) as SecretKey
+    }
+
+    private fun encrypt(value: String, keystore: KeyStore, alias: String): String {
+        val key = getOrCreateEncryptionKey(keystore, alias)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        // Store as base64(iv):base64(ciphertext)
+        return "${Base64.encodeToString(iv, Base64.NO_WRAP)}:${
+            Base64.encodeToString(ciphertext, Base64.NO_WRAP)
+        }"
+    }
+
+    private fun decrypt(stored: String, keystore: KeyStore, alias: String): String {
+        val parts = stored.split(":")
+        require(parts.size == 2) { "Invalid stored password format" }
+        val iv = Base64.decode(parts[0], Base64.NO_WRAP)
+        val ciphertext = Base64.decode(parts[1], Base64.NO_WRAP)
+        val key = getOrCreateEncryptionKey(keystore, alias)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
     }
 
     // ----------------------------------------------------------------

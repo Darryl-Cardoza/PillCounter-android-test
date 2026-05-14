@@ -2,98 +2,128 @@ package com.rite.pillcounting.core.hl7.mllp.tls
 
 import android.content.Context
 import android.content.SharedPreferences
-import android.util.Log
-import androidx.core.content.edit
-import androidx.security.crypto.EncryptedSharedPreferences
-import androidx.security.crypto.MasterKey
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.cert.CertificateException
 import java.security.cert.X509Certificate
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
+import androidx.core.content.edit
 
+@Suppress("CustomX509TrustManager")
 class TofuTrustManager(
     private val context: Context,
     private val hostIdentifier: String
 ) : X509TrustManager {
 
     private val pinKey = "pin_${hostIdentifier}"
+    private val keystoreAlias = "com.rite.pillcounting.tofu_key"
 
-    // ── Android's default trust manager — do NOT bypass this ──────────
     private val systemTrustManager: X509TrustManager by lazy {
         val factory = TrustManagerFactory.getInstance(
             TrustManagerFactory.getDefaultAlgorithm()
         )
-        factory.init(null as KeyStore?)  // null = use system trust store
+        factory.init(null as KeyStore?)
         factory.trustManagers
             .filterIsInstance<X509TrustManager>()
             .first()
     }
 
-    private val prefs: SharedPreferences by lazy {
-        val masterKey = MasterKey.Builder(context)
-            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
-            .build()
-        EncryptedSharedPreferences.create(
-            context,
-            "tofu_pins",
-            masterKey,
-            EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
-            EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM
-        )
+    // Plain SharedPreferences — values encrypted manually via Keystore
+    private val plainPrefs: SharedPreferences by lazy {
+        context.getSharedPreferences("tofu_pins", Context.MODE_PRIVATE)
     }
 
-    override fun checkClientTrusted(
-        chain: Array<X509Certificate>,
-        authType: String
-    ) {
-        // Delegate to system — we are the client, not the server
+    private fun getOrCreateKey(): SecretKey {
+        val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+        keystore.getKey(keystoreAlias, null)?.let { return it as SecretKey }
+
+        KeyGenerator.getInstance(
+            KeyProperties.KEY_ALGORITHM_AES,
+            "AndroidKeyStore"
+        ).apply {
+            init(
+                KeyGenParameterSpec.Builder(
+                    keystoreAlias,
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                )
+                    .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    .setKeySize(256)
+                    .setUserAuthenticationRequired(false)
+                    .build()
+            )
+        }.generateKey()
+
+        return KeyStore.getInstance("AndroidKeyStore")
+            .also { it.load(null) }
+            .getKey(keystoreAlias, null) as SecretKey
+    }
+
+    private fun encrypt(value: String): String {
+        val key = getOrCreateKey()
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, key)
+        val iv = cipher.iv
+        val ciphertext = cipher.doFinal(value.toByteArray(Charsets.UTF_8))
+        return "${Base64.encodeToString(iv, Base64.NO_WRAP)}:${
+            Base64.encodeToString(ciphertext, Base64.NO_WRAP)
+        }"
+    }
+
+    private fun decrypt(stored: String): String {
+        val parts = stored.split(":")
+        require(parts.size == 2) { "Invalid pin format" }
+        val iv = Base64.decode(parts[0], Base64.NO_WRAP)
+        val ciphertext = Base64.decode(parts[1], Base64.NO_WRAP)
+        val key = getOrCreateKey()
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }
+
+    private fun getPin(): String? {
+        val stored = plainPrefs.getString(pinKey, null) ?: return null
+        return try { decrypt(stored) } catch (e: Exception) { null }
+    }
+
+    private fun savePin(pin: String) {
+        plainPrefs.edit { putString(pinKey, encrypt(pin)) }
+    }
+
+    // ── X509TrustManager ─────────────────────────────────────────────
+
+    override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {
         systemTrustManager.checkClientTrusted(chain, authType)
     }
 
-    override fun checkServerTrusted(
-        chain: Array<X509Certificate>,
-        authType: String
-    ) {
+    override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) {
         if (chain.isEmpty()) throw CertificateException("Empty certificate chain")
 
         val serverCert = chain[0]
         val incomingPin = computePin(serverCert)
-        val storedPin = prefs.getString(pinKey, null)
+        val storedPin = getPin()
 
-        when {
-            storedPin == null -> {
-                // First connection — try system validation first.
-                // If the PMS server has a CA-signed cert, great.
-                // If it's self-signed, system validation throws and we
-                // fall through to TOFU pinning below.
+        when (storedPin) {
+            null -> {
                 runCatching {
                     systemTrustManager.checkServerTrusted(chain, authType)
-                    // System validation passed — also pin it for consistency
-                    prefs.edit { putString(pinKey, incomingPin) }
-                    Log.i(TAG, "[$hostIdentifier] CA-valid cert pinned: $incomingPin")
+                    savePin(incomingPin)
                 }.onFailure {
-                    // System validation failed (expected for self-signed LAN certs)
-                    // Accept and pin on first sight — TOFU
-                    prefs.edit { putString(pinKey, incomingPin) }
-                    Log.i(TAG, "[$hostIdentifier] Self-signed cert pinned via TOFU: $incomingPin")
+                    savePin(incomingPin)
                 }
             }
-
-            storedPin == incomingPin -> {
-                // Pin matches — cert is known and trusted
-                // Still run system validation if possible, but don't fail if not
-                runCatching {
-                    systemTrustManager.checkServerTrusted(chain, authType)
-                }
-                Log.d(TAG, "[$hostIdentifier] Cert matches stored pin ✓")
+            incomingPin -> {
+                runCatching { systemTrustManager.checkServerTrusted(chain, authType) }
             }
-
             else -> {
-                // Pin mismatch — reject unconditionally regardless of CA validity
-                // This protects against MITM even with a rogue trusted CA
-                Log.e(TAG, "[$hostIdentifier] CERT MISMATCH — stored=$storedPin incoming=$incomingPin")
                 throw CertificateException(
                     "Certificate fingerprint mismatch for $hostIdentifier. " +
                             "If the server certificate was legitimately rotated, " +
@@ -104,24 +134,18 @@ class TofuTrustManager(
     }
 
     override fun getAcceptedIssuers(): Array<X509Certificate> =
-        systemTrustManager.acceptedIssuers  // Delegate to system — never return empty
+        systemTrustManager.acceptedIssuers
 
     // ── Helpers ──────────────────────────────────────────────────────
 
-    private fun computePin(cert: X509Certificate): String {
-        return MessageDigest.getInstance("SHA-256")
+    private fun computePin(cert: X509Certificate): String =
+        MessageDigest.getInstance("SHA-256")
             .digest(cert.encoded)
             .joinToString(":") { "%02X".format(it) }
-    }
 
     fun clearPin() {
-        prefs.edit { remove(pinKey) }
-        Log.w(TAG, "[$hostIdentifier] Pin cleared — will re-pin on next connection")
+        plainPrefs.edit { remove(pinKey) }
     }
 
-    fun currentPin(): String? = prefs.getString(pinKey, null)
-
-    companion object {
-        private const val TAG = "TofuTrustManager"
-    }
+    fun currentPin(): String? = getPin()
 }

@@ -13,7 +13,15 @@ dependencyResolutionManagement {
         mavenCentral()
         maven("https://jitpack.io")
     }
+
+    versionCatalogs {
+        create("libs") {
+            from(files("libs.versions.toml"))
+        }
+    }
 }
+
+
 
 rootProject.name = "PillCountingNewModels"
 include(":app")
