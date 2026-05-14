@@ -21,6 +21,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.rite.pillcounting.core.security.RuntimeUnit
 import com.rite.pillcounting.core.security.SecurityUtils
 import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.core.utils.common.HelperFunctions.enableImmersiveFullscreen
@@ -56,6 +57,7 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var fcmService: FCMService
 
+    @Inject lateinit var runtimeUnit: RuntimeUnit
 
     @Inject
     lateinit var preferenceHelper: PreferenceHelper
@@ -136,8 +138,11 @@ class MainActivity : ComponentActivity() {
 
                         // ── Security dialog shown once over all other content ──
                         if (securityViolations.isNotEmpty()) {
+                            runtimeUnit.revokeClearance()
                             SecurityErrorDialog(securityViolations)
                         } else {
+                            runtimeUnit.grantClearance()
+                            runtimeUnit.activateIfNeeded()
                             when {
                                 settingsState.isMaintenanceMode -> MaintenanceScreen()
 
