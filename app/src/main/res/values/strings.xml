@@ -355,4 +355,6 @@
     <string name="dispensed">Dispensed</string>
     <string name="stock">Stock</string>
 
+    <string name="violation_screen_overlay">Screen overlay detected — another app may be intercepting touch input</string>
+
 </resources>

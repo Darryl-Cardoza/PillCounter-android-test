@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -61,8 +62,17 @@ class MainActivity : ComponentActivity() {
 
     private lateinit var navController: NavController
 
+    private var securityViolations: List<String> = emptyList()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // ── Block overlays and screen recording on this window ────────────
+        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        window.decorView.filterTouchesWhenObscured = true
+
+        // ── Security check — runs once, not on every recomposition ────────────
+        securityViolations = SecurityUtils.getSecurityViolations(this)
 
         fcmService.initFCM()
         fcmService.subscribeToTopic("global_updates")
@@ -115,40 +125,40 @@ class MainActivity : ComponentActivity() {
                     )
 
                     PillCountingNewModelsTheme(
-                        lightColors = lightColorSchemeDynamic,
-                        darkColors = darkColorSchemeDynamic,
+                        lightColors         = lightColorSchemeDynamic,
+                        darkColors          = darkColorSchemeDynamic,
                         lightExtendedColors = extendedDynamicLight,
-                        darkExtendedColors = extendedDynamicDark
+                        darkExtendedColors  = extendedDynamicDark
                     ) {
                         navController = rememberNavController()
                         val preferenceHelper = remember { PreferenceHelper(this) }
                         val startDestination = remember { getStartDestination(preferenceHelper) }
 
-                        // Decide which screen to show
-                        when {
-                            settingsState.isMaintenanceMode -> {
-                                MaintenanceScreen()
-                            }
+                        // ── Security dialog shown once over all other content ──
+                        if (securityViolations.isNotEmpty()) {
+                            SecurityErrorDialog(securityViolations)
+                        } else {
+                            when {
+                                settingsState.isMaintenanceMode -> MaintenanceScreen()
 
-                            settingsState.isUpdateRequired -> {
-                                UpdateScreen(onUpdateClick = { openPlayStore(this) })
-                            }
+                                settingsState.isUpdateRequired  -> UpdateScreen(
+                                    onUpdateClick = { openPlayStore(this) }
+                                )
 
-                            else -> {
-                                AppNavGraph(
-                                    navController = navController as NavHostController,
+                                else -> AppNavGraph(
+                                    navController    = navController as NavHostController,
                                     startDestination = startDestination,
-                                    onLogin = { settingsViewModel.onUserLoginOrLogOut() },
-                                    onLogOut = { settingsViewModel.onUserLoginOrLogOut() }
+                                    onLogin          = { settingsViewModel.onUserLoginOrLogOut() },
+                                    onLogOut         = { settingsViewModel.onUserLoginOrLogOut() }
                                 )
                             }
                         }
 
                         // Security check overlay if you want:
-                        val violations = SecurityUtils.getSecurityViolations(this)
-                        if (violations.isNotEmpty()) {
-                            SecurityErrorDialog(violations)
-                        }
+//                        val violations = SecurityUtils.getSecurityViolations(this)
+//                        if (violations.isNotEmpty()) {
+//                            SecurityErrorDialog(violations)
+//                        }
                     }
                 }
             }

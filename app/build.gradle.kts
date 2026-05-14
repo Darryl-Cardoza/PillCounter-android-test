@@ -30,12 +30,23 @@ android {
             "\"https://pill.ccrlindia.com/\""
         )
 
+        externalNativeBuild {
+            cmake {
+                cppFlags += "-std=c++17"
+            }
+        }
+
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
     }
 
-
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
+    }
 
     buildTypes {
         release {
@@ -113,6 +124,7 @@ dependencies {
     implementation(libs.androidx.graphics.path)
     implementation(libs.bundles.compose.ui)
     debugImplementation(libs.compose.ui.tooling)
+    releaseImplementation(libs.compose.ui.tooling.preview)
     debugImplementation(libs.compose.ui.test.manifest)
 
     // --- Lifecycle & ViewModel ---
