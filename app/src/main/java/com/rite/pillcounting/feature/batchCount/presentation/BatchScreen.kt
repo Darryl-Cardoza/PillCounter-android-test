@@ -36,6 +36,7 @@ import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForBatchScreen
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchDrugGroup
 import com.rite.pillcounting.feature.batchCount.presentation.compose.BatchNdcCard
 import com.rite.pillcounting.feature.batchCount.presentation.viewmodel.BatchViewModel
@@ -112,7 +113,7 @@ fun BatchScreen(
                 Text(
                     text = stringResource(R.string.no_items_in_that_batch_yet),
                     color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                    fontSize = 14.sp
+                    fontSize =  responsiveSpForBatchScreen(12.sp)
                 )
             }
         } else {

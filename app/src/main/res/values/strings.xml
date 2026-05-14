@@ -239,6 +239,7 @@
 
     <string name="add_note">Add Note</string>
     <string name="add_note_error">Please enter a note or tap Skip</string>
+    <string name="type_here">Type here...</string>
     <string name="save_history_confirmation">Are you sure you want to keep history for</string>>
     <string name="save_history_note">Note: Data older than this period will be permanently deleted.</string>
     <string name="profile_updated">Profile updated successfully!</string>
@@ -364,5 +365,9 @@
     <string name="stock_count_label">Stock Count</string>
     <string name="total_ndc_count">TOTAL NDC COUNT</string>
     <string name="completed_on">Completed on </string>
+    <string name="lot_No">Lot Number</string>
+    <string name="expiry_date">Expiry Date</string>
+    <string name="pills">Pills</string>
+    <string name="total_pills">Total Pills</string>
 
 </resources>

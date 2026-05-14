@@ -22,9 +22,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForBatchScreen
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchDrugGroup
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchLotEntry
 import com.rite.pillcounting.ui.theme.AppTheme
@@ -46,7 +49,7 @@ fun BatchNdcCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .clickable { onExpandToggle() }
-                .padding(horizontal = 14.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.SpaceBetween,
             verticalAlignment = Alignment.Top
         ) {
@@ -54,14 +57,14 @@ fun BatchNdcCard(
                 Text(
                     text = group.drugName,
                     color = AppTheme.extendedColors.textColor,
-                    fontSize = 16.sp,
+                    fontSize = responsiveSpForBatchScreen(14.sp),
                     fontWeight = FontWeight.SemiBold
                 )
                 Spacer(Modifier.height(2.dp))
                 Text(
                     text = group.ndc,
                     color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                    fontSize = 14.sp,
+                    fontSize = responsiveSpForBatchScreen(12.sp),
                     fontWeight = FontWeight.Normal
                 )
             }
@@ -73,7 +76,7 @@ fun BatchNdcCard(
                 Text(
                     text = group.totalCount.toString(),
                     color = MaterialTheme.colorScheme.secondary,
-                    fontSize = 16.sp,
+                    fontSize = responsiveSpForBatchScreen(16.sp),
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -87,21 +90,19 @@ fun BatchNdcCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 14.dp)
+                    .padding(horizontal = 20.dp)
             ) {
-                HorizontalDivider(
-                    color = AppTheme.extendedColors.textColor.copy(alpha = 0.15f),
-                    thickness = 0.5.dp
-                )
                 Spacer(Modifier.height(8.dp))
                 BatchLotSection(
                     label = stringResource(R.string.sealed_bottles),
+                    headerQty = group.sealedBottleQty,
                     total = group.sealedTotal,
                     lots = group.sealedLots
                 )
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(responsiveDp(20.dp)))
                 BatchLotSection(
                     label = stringResource(R.string.opend_bottles),
+                    headerQty = null,
                     total = group.openedTotal,
                     lots = group.openedLots
                 )
@@ -112,62 +113,126 @@ fun BatchNdcCard(
 }
 
 @Composable
-fun BatchLotSection(label: String, total: Int, lots: List<BatchLotEntry>) {
+fun BatchLotSection(label: String, headerQty: Int?, total: Int, lots: List<BatchLotEntry>) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(
             text = label,
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 14.sp,
-            fontWeight = FontWeight.Normal
-        )
-        Text(
-            text = total.toString(),
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 14.sp,
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+            fontSize = responsiveSpForBatchScreen(12.sp),
             fontWeight = FontWeight.SemiBold
         )
+        if (headerQty != null) {
+            Text(
+                text = headerQty.toString(),
+                color = AppTheme.extendedColors.textColor,
+                fontSize = responsiveSpForBatchScreen(12.sp),
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
-    Spacer(Modifier.height(4.dp))
+    Spacer(Modifier.height(responsiveDp(12.dp)))
     if (lots.isEmpty()) {
         Text(
             text = "—",
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 11.sp,
+            color = AppTheme.extendedColors.textColor,
+            fontSize = responsiveSpForBatchScreen(12.sp),
             modifier = Modifier.padding(start = 8.dp)
         )
     } else {
-        lots.forEach { BatchLotRow(it) }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.lot_No),
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = responsiveSpForBatchScreen(12.sp),
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(3f)
+                )
+                Text(
+                    text = stringResource(R.string.expiry_date),
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = responsiveSpForBatchScreen(12.sp),
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1.5f)
+                )
+                Text(
+                    text = stringResource(R.string.pills),
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = responsiveSpForBatchScreen(12.sp),
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.weight(1.5f),
+                    textAlign = TextAlign.End
+                )
+            }
+            HorizontalDivider(
+                color = AppTheme.extendedColors.primaryBackground,
+                modifier = Modifier.padding(top = 6.dp)
+            )
+            lots.forEach { lot ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = responsiveDp(10.dp)),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = lot.lotNo ?: "—",
+                        color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+                        fontSize = responsiveSpForBatchScreen(12.sp),
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.weight(3f)
+                    )
+                    Text(
+                        text = lot.expiry ?: "—",
+                        color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+                        fontSize = responsiveSpForBatchScreen(12.sp),
+                        textAlign = TextAlign.Start,
+                        modifier = Modifier.weight(1.5f)
+                    )
+                    Text(
+                        text = lot.count.toString(),
+                        color = AppTheme.extendedColors.textColor,
+                        fontSize = responsiveSpForBatchScreen(12.sp),
+                        textAlign = TextAlign.End,
+                        modifier = Modifier.weight(1.5f)
+                    )
+                }
+                HorizontalDivider(
+                    color = AppTheme.extendedColors.primaryBackground
+                )
+            }
+        }
+        Spacer(Modifier.height(responsiveDp(8.dp)))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(start = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = stringResource(R.string.total_pills),
+                color = AppTheme.extendedColors.textColor,
+                fontSize = responsiveSpForBatchScreen(12.sp),
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = total.toString(),
+                color = AppTheme.extendedColors.textColor,
+                fontSize = responsiveSpForBatchScreen(12.sp),
+                fontWeight = FontWeight.SemiBold
+            )
+        }
     }
 }
 
-@Composable
-fun BatchLotRow(lot: BatchLotEntry) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 8.dp, top = 3.dp, bottom = 3.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Text(
-            text = "Lot ${lot.lotNo ?: "—"}",
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 14.sp,
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            text = lot.expiry ?: "—",
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 14.sp,
-            modifier = Modifier.padding(horizontal = 8.dp)
-        )
-        Text(
-            text = lot.count.toString(),
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 14.sp
-        )
-    }
-}

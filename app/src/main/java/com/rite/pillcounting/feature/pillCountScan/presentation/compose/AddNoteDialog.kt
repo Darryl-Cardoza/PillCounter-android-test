@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +42,8 @@ import androidx.compose.ui.window.DialogProperties
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForAddNoteDialog
 import com.rite.pillcounting.ui.theme.AppTheme
 
 
@@ -54,15 +57,6 @@ fun AddNoteDialog(
     val dimens = AppTheme.dimens
     var noteText by rememberSaveable { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
-    val configuration = LocalConfiguration.current
-    val screenWidth = configuration.screenWidthDp.dp
-
-    // Adjust width based on orientation
-    val dialogWidth = if (configuration.orientation == Configuration.ORIENTATION_LANDSCAPE) {
-        screenWidth * 0.6f // 70% of width in landscape
-    } else {
-        screenWidth * 0.85f // 90% of width in portrait
-    }
 
     Dialog(
         onDismissRequest = onDismiss,
@@ -73,13 +67,13 @@ fun AddNoteDialog(
         Card(
             shape = RoundedCornerShape(dimens.medium),
             modifier = Modifier
-                .width(dialogWidth)
+                .width(responsiveDpForAddNoteDialog(300.dp))
                 .wrapContentHeight()
         ) {
             Column(
                 modifier = Modifier
                     .background(AppTheme.extendedColors.primaryBackground)
-                    .padding(dimens.medium)
+                    .padding(bottom = dimens.medium, start = dimens.medium, end = dimens.medium, top = dimens.small)
             ) {
                 // Top Row: Heading + Cross button
                 Row(
@@ -89,28 +83,27 @@ fun AddNoteDialog(
                 ) {
                     Text(
                         text = stringResource(R.string.add_note).uppercase(),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = AppTheme.extendedColors.textColor
+                        fontSize = 18.sp,
+                        color = AppTheme.extendedColors.textColor,
                     )
                     IconButton(onClick = onDismiss) {
                         Icon(
-                            imageVector = Icons.Default.Close, contentDescription = "Close"
+                            imageVector = Icons.Default.Close, contentDescription = "Close",
+                            modifier = Modifier.size(responsiveDp(24.dp))
                         )
                     }
                 }
-
-                Spacer(modifier = Modifier.height(dimens.medium))
 
                 // Text area
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(160.dp)
+                        .height(responsiveDpForAddNoteDialog(180.dp))
                         .background(
                             color = AppTheme.extendedColors.inputBackground,
                             shape = RoundedCornerShape(dimens.small)
                         )
-                        .padding(dimens.small)
+                        .padding(bottom = dimens.small, start = dimens.small, end = dimens.small)
                 ) {
                     BasicTextField(
                         value = noteText,
@@ -125,7 +118,20 @@ fun AddNoteDialog(
                         cursorBrush = SolidColor(AppTheme.extendedColors.textColor),
                         modifier = Modifier
                             .fillMaxSize()
-                            .padding(4.dp)
+                            .padding(15.dp),
+                        decorationBox = { innerTextField ->
+                            if (noteText.isEmpty()) {
+                                Text(
+                                    text = stringResource(R.string.type_here),
+                                    style = TextStyle(
+                                        color = AppTheme.extendedColors.textColor.copy(alpha = 0.4f),
+                                        fontSize = 16.sp
+                                    ),
+//                                    modifier = Modifier.padding(top = 10.dp)
+                                )
+                            }
+                            innerTextField()
+                        }
                     )
                 }
 
@@ -138,13 +144,13 @@ fun AddNoteDialog(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(dimens.extraLarge))
+                Spacer(modifier = Modifier.height(dimens.medium))
 
                 // Buttons Row
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp),
+                        .padding(horizontal = 10.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
                     if (showSkip) {

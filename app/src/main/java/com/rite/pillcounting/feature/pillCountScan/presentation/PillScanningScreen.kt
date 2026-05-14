@@ -335,8 +335,11 @@ fun PillScanningScreen(
                         }
                     }
                 )
-
-                Spacer(modifier = Modifier.weight(0.3f))
+                if (isLandscape) {
+                    Spacer(modifier = Modifier.weight(0.3f))
+                } else {
+                    Spacer(modifier = Modifier.weight(0.6f))
+                }
 
                 StepTitleWithSpeech(
                     stepType = stepType,
@@ -355,7 +358,13 @@ fun PillScanningScreen(
                     targetCount = uiState.targetCount,
                     totalCount = totalCount,
                     txnHistory = uiState.txnDetailHistory,
-                    onDeleteTxn = { id -> viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(id)) },
+                    onDeleteTxn = { id ->
+                        viewModel.onEvent(
+                            PillScanningEvent.TransactionDetailDeleted(
+                                id
+                            )
+                        )
+                    },
                     viewModel = viewModel,
                     drugName = uiState.drugName,
                     onBack = { showHistory = false }
@@ -367,7 +376,13 @@ fun PillScanningScreen(
                     targetCount = uiState.targetCount,
                     totalCount = totalCount,
                     txnHistory = uiState.txnDetailHistory,
-                    onDeleteTxn = { id -> viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(id)) },
+                    onDeleteTxn = { id ->
+                        viewModel.onEvent(
+                            PillScanningEvent.TransactionDetailDeleted(
+                                id
+                            )
+                        )
+                    },
                     viewModel = viewModel,
                     drugName = uiState.drugName,
                     onBack = { showHistory = false }

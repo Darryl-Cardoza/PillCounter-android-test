@@ -98,7 +98,9 @@ fun BatchHistoryDetailScreen(
             // ── Info row (outside card) ───────────────────────────────────────
             item {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 10.dp, end = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Row(

@@ -1212,7 +1212,33 @@ object UserInterfaceUtils {
         return (baseSp.value * scale).sp
     }
 
+    @Composable
+    fun responsiveSpForBatchScreen(baseSp: TextUnit): TextUnit {
+        val configuration = LocalConfiguration.current
+        val smallestWidthDp = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val scale = when {
+            smallestWidthDp < 400 -> 1.2f //small phone
+            smallestWidthDp < 600 -> 1.3f   //phone
+            smallestWidthDp < 840 -> 1.4f //small tablets
+            else -> 1.6f          //large tablets
+        }
+        return (baseSp.value * scale).sp
+    }
 
+    @Composable
+    fun responsiveDpForAddNoteDialog(baseDp: Dp): Dp {
+        val config = LocalConfiguration.current
+        val shortestSide = minOf(config.screenWidthDp, config.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) config.screenWidthDp else shortestSide
 
+        val scale = when {
+            sw < 360 -> 0.9f
+            sw < 600 -> 1.3f
+            sw < 840 -> 1.8f
+            else -> 1.8f
+        }
+        return baseDp * scale
+    }
 
 }
