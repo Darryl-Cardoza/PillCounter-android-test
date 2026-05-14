@@ -38,16 +38,16 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.common.PhoneNumberVisualTransformation
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
-import androidx.compose.ui.text.input.VisualTransformation
-import com.rite.pillcounting.core.utils.common.PhoneNumberVisualTransformation
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FloatingLabelTextField
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
@@ -242,24 +242,10 @@ fun ProfileScreen(
                     text = stringResource(R.string.delete),
                     onClick = { showDeleteDialog = true },
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = if (isLandscape) Modifier else Modifier.weight(1f)
                 )
-//                HollowButton(
-//                    text = stringResource(R.string.skip_alt),
-//                    onClick = {
-//                        navController.navigate(Screen.Menu.route) {
-//                            popUpTo(Screen.Menu.route) { inclusive = true }
-//                            launchSingleTop = true
-//                        }
-//                        viewModel.resetUpdateState()
-//                    },
-//                    color = MaterialTheme.colorScheme.primary,
-//                    modifier = if (isLandscape) Modifier else Modifier.weight(1f)
-//                )
                 ActionButtonPrimary(
                     text = stringResource(R.string.save),
                     onClick = { viewModel.updateProfile() },
-                    modifier = if (isLandscape) Modifier else Modifier.weight(1f)
                 )
             }
 
@@ -296,12 +282,14 @@ private fun ProfileTextField(
     error: String?,
     modifier: Modifier = Modifier,
     readOnly: Boolean = false,
-    maxLength: Int? = null
+    maxLength: Int? = null,
+    paddingStart: androidx.compose.ui.unit.Dp = 20.dp,
+    paddingEnd: androidx.compose.ui.unit.Dp = 20.dp,
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp)
+            .padding(start = paddingStart, end = paddingEnd, top = 8.dp, bottom = 8.dp)
     ) {
         FloatingLabelTextField(
             value = value,
@@ -388,10 +376,7 @@ private fun ResponsiveProfileFields(
 
     if (isLandscape) {
         for (i in fields.indices step 2) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth()) {
                 val field1 = fields[i]
                 ProfileTextField(
                     value = field1.value,
@@ -401,7 +386,9 @@ private fun ResponsiveProfileFields(
                     error = field1.error?.let { stringResource(it) },
                     modifier = Modifier.weight(1f),
                     readOnly = field1.readOnly,
-                    maxLength = field1.maxLength
+                    maxLength = field1.maxLength,
+                    paddingStart = 20.dp,
+                    paddingEnd = 10.dp
                 )
 
                 if (i + 1 < fields.size) {
@@ -414,7 +401,9 @@ private fun ResponsiveProfileFields(
                         error = field2.error?.let { stringResource(it) },
                         modifier = Modifier.weight(1f),
                         readOnly = field2.readOnly,
-                        maxLength = field2.maxLength
+                        maxLength = field2.maxLength,
+                        paddingStart = 10.dp,
+                        paddingEnd = 20.dp
                     )
                 } else {
                     Spacer(modifier = Modifier.weight(1f))

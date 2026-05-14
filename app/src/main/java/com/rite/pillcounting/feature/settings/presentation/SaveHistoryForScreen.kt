@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -21,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -33,6 +31,7 @@ import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityVi
 import com.rite.pillcounting.core.utils.common.HistoryRetention
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.LocalExtendedColors
 
 @Composable
@@ -48,7 +47,7 @@ fun SaveHistoryForScreen(
 
     var showConfirmationDialog by remember { mutableStateOf(false) }
     var tempSelectedOption by remember { mutableStateOf("") }
-
+    val dimens = AppTheme.dimens
     val extendedColors = LocalExtendedColors.current
 
     Column(
@@ -86,7 +85,7 @@ fun SaveHistoryForScreen(
                                 showConfirmationDialog = true
                             }
                         }
-                        .padding(vertical = 4.dp, horizontal = 8.dp)
+                        .padding(vertical =dimens.small, horizontal = 8.dp)
                 ) {
                     RadioButton(
                         selected = selectedOption == option,
@@ -107,7 +106,7 @@ fun SaveHistoryForScreen(
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
-                HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+//                HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
             }
         }
     }
@@ -115,9 +114,8 @@ fun SaveHistoryForScreen(
     if (showConfirmationDialog) {
         val days = historyOptionDays[historyOptions.indexOf(tempSelectedOption)]
         CommonDialog(
-            message = "${stringResource(R.string.save_history_confirmation)} $tempSelectedOption ${
-                stringResource(R.string.save_history_note)
-            }",
+            message = stringResource(R.string.save_history_note),
+            title = "${stringResource(R.string.save_history_confirmation)} $tempSelectedOption?",
             confirmText = stringResource(R.string.yes),
             cancelText = stringResource(R.string.no),
             onConfirm = {

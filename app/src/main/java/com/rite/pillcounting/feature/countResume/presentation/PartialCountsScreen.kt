@@ -77,7 +77,8 @@ fun PartialCountsScreen(
             isMultiSelectMode = isMultiSelectMode,
             isAllSelected = isAllSelected,
             hasSelection = selectedItems.isNotEmpty(),
-            showDelete = true,
+            showDelete = partialList.isNotEmpty(),
+            showSearchIcon = partialList.isNotEmpty(),
 
             onSearchClick = {
                 showSearch = !showSearch
@@ -161,7 +162,7 @@ fun PartialCountsScreen(
             else {
                 LazyColumn(
                     modifier = Modifier.fillMaxSize().padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
                     items(filteredList) { item ->
                         BatchHistoryRow(

@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -21,7 +20,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -31,6 +29,7 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.settings.domain.model.enums.ScheduleCode
 import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
+import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.LocalExtendedColors
 
 @SuppressLint("UnrememberedGetBackStackEntry")
@@ -43,6 +42,7 @@ fun SaveCsDoubleCountScreen(
     val selectedSchedules by viewModel.selectedSchedules.collectAsState()
     val schedules = ScheduleCode.entries
     val extendedColors = LocalExtendedColors.current
+    val dimens = AppTheme.dimens
 
     Column(
         modifier = Modifier
@@ -74,7 +74,7 @@ fun SaveCsDoubleCountScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { viewModel.toggleSchedule(code) }
-                        .padding(vertical = 4.dp)
+                        .padding(vertical = dimens.small)
                 ) {
                     Checkbox(
                         checked = selectedSchedules.contains(code),
@@ -92,7 +92,6 @@ fun SaveCsDoubleCountScreen(
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 }
-                HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
             }
         }
     }

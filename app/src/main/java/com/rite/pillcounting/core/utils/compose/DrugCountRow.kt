@@ -39,8 +39,6 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.utils.constants.Dimens.extraSmall
-import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
 
@@ -65,6 +63,7 @@ fun DrugCountRow(
     isSelected: Boolean = false,
     onSelectChange: () -> Unit = {}
 ) {
+    val dimens = AppTheme.dimens
     val progress = when {
         data.countType == CountType.FIXED && data.targetCount > 0 ->
             (data.pillCount.toFloat() / data.targetCount.toFloat()).coerceIn(0f, 1f)
@@ -82,12 +81,12 @@ fun DrugCountRow(
             .cardSelectionShadow(isActive = isActive, selectionColor = selectionColor)
             .background(
                 color = AppTheme.extendedColors.secondaryBackground,
-                shape = RoundedCornerShape(small)
+                shape = RoundedCornerShape(dimens.small)
             )
             .clickable { if (multiSelectMode) onSelectChange() else onClick() }
     ) {
         Card(
-            shape = RoundedCornerShape(small),
+            shape = RoundedCornerShape(dimens.small),
             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
@@ -163,7 +162,7 @@ fun DrugCountRow(
                     Text(
                         text = data.drugName,
                         fontSize = 12.sp,
-                        fontWeight = FontWeight.Normal,
+                        fontWeight = FontWeight.SemiBold,
                         color = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -201,7 +200,7 @@ fun DrugCountRow(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(extraSmall))
+                Spacer(modifier = Modifier.width(dimens.extraSmall))
 
                 // Pie progress + count
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

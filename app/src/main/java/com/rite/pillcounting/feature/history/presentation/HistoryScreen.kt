@@ -110,6 +110,7 @@ fun HistoryScreen(
                 counts = counts,
                 batches = batchGroups,
                 initialShowComplete = defaultToComplete,
+                isSearchActive = true,
                 onExportClick = {
                     val file = pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
                     file?.let { sharePdfFile(context, it, openPdfWith) }

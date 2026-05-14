@@ -15,7 +15,7 @@ import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.rite.pillcounting.core.utils.constants.Dimens.small
+import com.rite.pillcounting.ui.theme.AppTheme
 
 /**
  * Applies a soft drop-shadow at rest, and an animated border + glow when [isActive] is true.
@@ -25,7 +25,7 @@ import com.rite.pillcounting.core.utils.constants.Dimens.small
 fun Modifier.cardSelectionShadow(
     isActive: Boolean,
     selectionColor: Color,
-    cornerRadius: Dp = small
+    cornerRadius: Dp = AppTheme.dimens.small
 ): Modifier {
     val scale by animateFloatAsState(
         targetValue = if (isActive) 0.97f else 1f,

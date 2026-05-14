@@ -49,6 +49,7 @@ import com.rite.pillcounting.feature.pillCountScan.domain.data.PillScanningEvent
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.CameraPreviewSection
 import android.content.res.Configuration
+import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalConfiguration
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModePortrait
@@ -57,6 +58,7 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.StepTitl
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.TargetPillsCountDialog
 import com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
+import com.rite.pillcounting.ui.theme.AppTheme.dimens
 import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
 
@@ -402,7 +404,7 @@ fun PillScanningScreen(
                     ActionButtonPrimary(
                         text = stringResource(R.string.resume).uppercase(Locale.ROOT),
                         onClick = { viewModel.resetIdleOverlay() },
-                        modifier = Modifier.padding(horizontal = 16.dp),
+                        modifier = Modifier.width(dimens.dialogButtonWidth),
                         color = MaterialTheme.colorScheme.secondary,
                     )
                 }

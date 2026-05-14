@@ -28,7 +28,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.compose.cardSelectionShadow
-import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable
@@ -43,6 +42,7 @@ fun BatchHistoryRow(
     onSelect: () -> Unit = {},
     onBatchClick: () -> Unit
 ) {
+    val dimens = AppTheme.dimens
     val isActive = isMultiSelectMode && isSelected
     val selectionColor = MaterialTheme.colorScheme.secondary
 
@@ -52,12 +52,12 @@ fun BatchHistoryRow(
             .cardSelectionShadow(isActive = isActive, selectionColor = selectionColor)
             .background(
                 color = AppTheme.extendedColors.secondaryBackground,
-                shape = RoundedCornerShape(small)
+                shape = RoundedCornerShape(dimens.small)
             )
             .clickable(onClick = if (isMultiSelectMode) onSelect else onBatchClick)
     ) {
         Card(
-            shape = RoundedCornerShape(small),
+            shape = RoundedCornerShape(dimens.small),
             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
@@ -83,8 +83,8 @@ fun BatchHistoryRow(
                             else R.drawable.stock
                         ),
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.size(22.dp)
+                        tint = AppTheme.extendedColors.textColor,
+                        modifier = Modifier.size(36.dp)
                     )
                 }
 

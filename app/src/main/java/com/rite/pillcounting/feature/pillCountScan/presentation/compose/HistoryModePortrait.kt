@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -31,11 +30,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -50,6 +49,7 @@ import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingHistoryScreen
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.core.utils.compose.cardSelectionShadow
 import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
@@ -72,6 +72,7 @@ fun HistoryModePortrait(
 ) {
     val activeHistory = remember(txnHistory) { txnHistory.sortedBy { it.createdAt } }
     val stepType by viewModel.currentStep.collectAsState()
+    val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
     var isDeleteMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -117,45 +118,36 @@ fun HistoryModePortrait(
             )
 
             // ── Drug name + count ──
-            Column(
+            Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = drugName,
                     color = AppTheme.extendedColors.textColor,
-                    fontSize = 16.sp,
+                    fontSize = responsiveSpForPillCountingHistoryScreen(18.sp),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        text = "$totalCount",
-                        color = MaterialTheme.colorScheme.secondary,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    if (scanType == CountType.FIXED.toString() && stepType != StepState.CONTAINER_INITIATE) {
-                        Text(
-                            text = "/$targetCount",
-                            color = MaterialTheme.colorScheme.secondary,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
+                Text(
+                    text = if (scanType == CountType.FIXED.toString() && stepType != StepState.CONTAINER_INITIATE)
+                        "$totalCount/$targetCount"
+                    else
+                        "$totalCount",
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontSize = responsiveSpForPillCountingHistoryScreen(18.sp),
+                    fontWeight = FontWeight.SemiBold
+                )
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             // ── Grid ──
             LazyVerticalGrid(
-                columns = GridCells.Fixed(2),
+                columns = GridCells.Fixed(if (isTablet) 4 else 2),
                 modifier = Modifier
                     .weight(1f)
                     .padding(horizontal = 18.dp),
@@ -179,7 +171,10 @@ fun HistoryModePortrait(
                                 selectedIds + item.txnDetailId
                         },
                         onDelete = onDeleteTxn,
-                        onImageClick = { path -> selectedImagePath = path }
+                        onImageClick = { path -> selectedImagePath = path },
+                        cardModifier = Modifier
+                            .fillMaxWidth()
+                            .aspectRatio(1f)
                     )
                 }
             }
@@ -271,6 +266,7 @@ internal fun TxnHistoryCard(
             )
             .background(AppTheme.extendedColors.secondaryBackground, RoundedCornerShape(8.dp))
             .clip(RoundedCornerShape(8.dp))
+            .fillMaxWidth()
             .clickable {
                 if (isDeleteMode) {
                     onToggleSelect()
@@ -290,21 +286,21 @@ internal fun TxnHistoryCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .clip(RoundedCornerShape(6.dp)),
+                    .clip(RoundedCornerShape(8.dp)),
                 contentScale = ContentScale.Crop
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = txnDetail.count.toString(),
                 color = MaterialTheme.colorScheme.primary,
-                fontSize = 20.sp,
+                fontSize = responsiveSpForPillCountingHistoryScreen(16.sp),
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier.padding(top = 6.dp)
             )
             Text(
                 text = txnDetail.createdAt.toFormattedDate(),
                 color = AppTheme.extendedColors.textColor,
-                fontSize = 12.sp
+                fontSize = responsiveSpForPillCountingHistoryScreen(12.sp)
             )
             Spacer(modifier = Modifier.height(10.dp))
         }

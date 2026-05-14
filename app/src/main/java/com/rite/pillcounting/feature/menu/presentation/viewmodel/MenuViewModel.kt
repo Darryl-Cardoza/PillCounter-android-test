@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.models.BatchEntity
+import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.common.HelperFunctions.mapCounts
 import com.rite.pillcounting.feature.menu.domain.model.MenuUiState
@@ -45,6 +47,8 @@ class MenuViewModel @Inject constructor(
 
     init {
         observeDashboardCounts()
+        observeBatchCount()
+        observeCompletedBatchCount()
         observeUnsyncedTransactionCount()
     }
 
@@ -54,7 +58,6 @@ class MenuViewModel @Inject constructor(
      * Uses [mapCounts] to ensure consistent logic across dashboard and menu screens.
      * Provides:
      * - Fixed Completed / Partial
-     * - Regular Completed / Partial
      */
     private fun observeDashboardCounts() {
         viewModelScope.launch {
@@ -68,9 +71,31 @@ class MenuViewModel @Inject constructor(
                         current.copy(
                             fixedCompleted = counts.fixedCompleted,
                             fixedPartial = counts.fixedPartial,
-                            regularCompleted = counts.regularCompleted,
-                            regularPartial = counts.regularPartial
                         )
+                    }
+                }
+        }
+    }
+
+    private fun observeBatchCount() {
+        viewModelScope.launch {
+            batchDao.observeActiveInProgressCount()
+                .catch { e -> e.printStackTrace() }
+                .collect { count ->
+                    _uiState.update { current ->
+                        current.copy(regularPartial = count)
+                    }
+                }
+        }
+    }
+
+    private fun observeCompletedBatchCount() {
+        viewModelScope.launch {
+            batchDao.observeCompletedBatchCount()
+                .catch { e -> e.printStackTrace() }
+                .collect { count ->
+                    _uiState.update { current ->
+                        current.copy(regularCompleted = count)
                     }
                 }
         }
@@ -78,6 +103,27 @@ class MenuViewModel @Inject constructor(
 
     fun getSavedHistoryOption(): Int {
         return preferenceHelper.getHistoryRetention()
+    }
+
+    fun getBucketList(): List<String> = preferenceHelper.getBucketList()
+
+    suspend fun getLastInProgressBatch() = batchDao.getLatest()
+
+    suspend fun createBatch(bucketId: String): Long? {
+        return try {
+            val batch = BatchEntity(
+                batchId = System.currentTimeMillis(),
+                startDateTime = System.currentTimeMillis(),
+                endDateTime = null,
+                status = BatchStatus.INPROGRESS,
+                isDeleted = false,
+                note = null,
+                bucketId = bucketId
+            )
+            batchDao.insert(batch)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     private fun observeUnsyncedTransactionCount() {

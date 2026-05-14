@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -38,12 +39,12 @@ import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.DateFormats
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForHistoryScreen
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.core.utils.common.formatDateToUSFormat
 import com.rite.pillcounting.core.utils.compose.DrugCountRow
 import com.rite.pillcounting.core.utils.compose.DrugCountRowData
 import com.rite.pillcounting.core.utils.compose.StatusChip
-import com.rite.pillcounting.core.utils.constants.Dimens.medium
 import com.rite.pillcounting.feature.history.domain.model.BatchSummary
 import com.rite.pillcounting.feature.history.domain.model.HistoryDeleteFilter
 import com.rite.pillcounting.feature.history.domain.model.ToggleOption
@@ -58,6 +59,7 @@ fun CountsSection(
     batches: List<BatchSummary>,
     selectedOption: ToggleOption,
     initialShowComplete: Boolean = false,
+    isSearchActive: Boolean = false,
     onExportClick: () -> Unit = {},
     onDeleteClick: (HistoryDeleteFilter) -> Unit = {},
     onTxnClick: (Long) -> Unit = {},
@@ -103,81 +105,86 @@ fun CountsSection(
         if (selectedOption == ToggleOption.STOCK) pendingBatches.size else pendingDispensed.size
 
     val isEmpty = when (selectedOption) {
-        ToggleOption.DISPENSED -> filteredDispensed.isEmpty()
-        else -> filteredBatches.isEmpty()
+        ToggleOption.DISPENSED -> dispensedCounts.isEmpty()
+        else -> batches.isEmpty()
     }
+    val dimens = AppTheme.dimens
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(horizontal = 12.dp)
     ) {
-        // Main toggle row
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
+        if (!isSearchActive) {
+            // Main toggle row
             Row(
-                modifier = Modifier
-                    .weight(1f)
-                    .horizontalScroll(rememberScrollState()),
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                DispensedStockToggleRow(
-                    dispensedCount = dispensedCount,
-                    stockCount = stockCount,
-                    selectedOption = selectedOption,
-                    onOptionSelected = {
-                        onOptionSelected(it)
-                        statusFilter = StatusFilter.ALL
-                    }
-                )
-            }
-
-            Spacer(Modifier.width(8.dp))
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ActionIcon(
-                    iconRes = R.drawable.delete,
-                    contentDescription = stringResource(R.string.delete_content_description),
-                    onClick = {
-                        val filter = when (statusFilter) {
-                            StatusFilter.ALL -> HistoryDeleteFilter.ALL
-                            StatusFilter.COMPLETED -> HistoryDeleteFilter.COMPLETED
-                            StatusFilter.PENDING -> HistoryDeleteFilter.PENDING
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .horizontalScroll(rememberScrollState()),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    DispensedStockToggleRow(
+                        dispensedCount = dispensedCount,
+                        stockCount = stockCount,
+                        selectedOption = selectedOption,
+                        onOptionSelected = {
+                            onOptionSelected(it)
+                            statusFilter = StatusFilter.ALL
                         }
-                        onDeleteClick(filter)
+                    )
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                if (!isEmpty) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ActionIcon(
+                            iconRes = R.drawable.delete,
+                            contentDescription = stringResource(R.string.delete_content_description),
+                            onClick = {
+                                val filter = when (statusFilter) {
+                                    StatusFilter.ALL -> HistoryDeleteFilter.ALL
+                                    StatusFilter.COMPLETED -> HistoryDeleteFilter.COMPLETED
+                                    StatusFilter.PENDING -> HistoryDeleteFilter.PENDING
+                                }
+                                onDeleteClick(filter)
+                            }
+                        )
                     }
+                }
+            }
+
+            // Status filter chips — counts reflect the active tab
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                StatusChip(
+                    label = stringResource(R.string.filter_all),
+                    isSelected = statusFilter == StatusFilter.ALL,
+                    onClick = { statusFilter = StatusFilter.ALL },
+                    count = allCount
+                )
+                StatusChip(
+                    label = stringResource(R.string.completed),
+                    isSelected = statusFilter == StatusFilter.COMPLETED,
+                    onClick = { statusFilter = StatusFilter.COMPLETED },
+                    count = completedCount
+                )
+                StatusChip(
+                    label = stringResource(R.string.partial),
+                    isSelected = statusFilter == StatusFilter.PENDING,
+                    onClick = { statusFilter = StatusFilter.PENDING },
+                    count = pendingCount
                 )
             }
-        }
 
-        // Status filter chips — counts reflect the active tab
-        Row(
-            modifier = Modifier.horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            StatusChip(
-                label = stringResource(R.string.filter_all),
-                isSelected = statusFilter == StatusFilter.ALL,
-                onClick = { statusFilter = StatusFilter.ALL },
-                count = allCount
-            )
-            StatusChip(
-                label = stringResource(R.string.completed),
-                isSelected = statusFilter == StatusFilter.COMPLETED,
-                onClick = { statusFilter = StatusFilter.COMPLETED },
-                count = completedCount
-            )
-            StatusChip(
-                label = stringResource(R.string.partial),
-                isSelected = statusFilter == StatusFilter.PENDING,
-                onClick = { statusFilter = StatusFilter.PENDING },
-                count = pendingCount
-            )
+            Spacer(Modifier.height(dimens.small))
         }
-
-        Spacer(Modifier.height(8.dp))
 
         if (isEmpty) {
             Box(
@@ -197,42 +204,83 @@ fun CountsSection(
                 contentPadding = PaddingValues(bottom = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                when (selectedOption) {
-                    ToggleOption.DISPENSED -> {
-                        items(filteredDispensed) { rowData ->
-                            DrugCountRow(
-                                data = DrugCountRowData(
-                                    barcodeImage = rowData.barcodeImage,
-                                    ndc = rowData.ndc,
-                                    drugType = rowData.drugType,
-                                    drugName = rowData.drugName ?: "",
-                                    date = formatDateToUSFormat(
-                                        rowData.createdAt.toFormattedDate(),
+                if (isSearchActive) {
+                    when (selectedOption) {
+                        ToggleOption.DISPENSED -> {
+                            items(dispensedCounts) { rowData ->
+                                DrugCountRow(
+                                    data = DrugCountRowData(
+                                        barcodeImage = rowData.barcodeImage,
+                                        ndc = rowData.ndc,
+                                        drugType = rowData.drugType,
+                                        drugName = rowData.drugName ?: "",
+                                        date = formatDateToUSFormat(
+                                            rowData.createdAt.toFormattedDate(),
+                                            outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
+                                        ),
+                                        bucketId = rowData.bucketId,
+                                        pillCount = rowData.pillCount ?: 0,
+                                        targetCount = rowData.targetCount ?: 0,
+                                        countType = rowData.countType
+                                    ),
+                                    onClick = { onTxnClick(rowData.txnId) }
+                                )
+                            }
+                        }
+                        else -> {
+                            items(batches) { batch ->
+                                BatchHistoryRow(
+                                    title = batch.batchId.toString(),
+                                    dateTime = formatDateToUSFormat(
+                                        batch.createdAt.toFormattedDate(),
                                         outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
                                     ),
-                                    bucketId = rowData.bucketId,
-                                    pillCount = rowData.pillCount ?: 0,
-                                    targetCount = rowData.targetCount ?: 0,
-                                    countType = rowData.countType
-                                ),
-                                onClick = { onTxnClick(rowData.txnId) }
-                            )
+                                    bucketId = batch.bucketId,
+                                    count = batch.uniqueNdcCount.toString(),
+                                    isPrescription = batch.requestIdFromPMS != null,
+                                    onBatchClick = { onBatchClick(batch.batchId) }
+                                )
+                            }
                         }
                     }
+                } else {
+                    when (selectedOption) {
+                        ToggleOption.DISPENSED -> {
+                            items(filteredDispensed) { rowData ->
+                                DrugCountRow(
+                                    data = DrugCountRowData(
+                                        barcodeImage = rowData.barcodeImage,
+                                        ndc = rowData.ndc,
+                                        drugType = rowData.drugType,
+                                        drugName = rowData.drugName ?: "",
+                                        date = formatDateToUSFormat(
+                                            rowData.createdAt.toFormattedDate(),
+                                            outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
+                                        ),
+                                        bucketId = rowData.bucketId,
+                                        pillCount = rowData.pillCount ?: 0,
+                                        targetCount = rowData.targetCount ?: 0,
+                                        countType = rowData.countType
+                                    ),
+                                    onClick = { onTxnClick(rowData.txnId) }
+                                )
+                            }
+                        }
 
-                    else -> {
-                        items(filteredBatches) { batch ->
-                            BatchHistoryRow(
-                                title = batch.batchId.toString(),
-                                dateTime = formatDateToUSFormat(
-                                    batch.createdAt.toFormattedDate(),
-                                    outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
-                                ),
-                                bucketId = batch.bucketId,
-                                count = batch.uniqueNdcCount.toString(),
-                                isPrescription = batch.requestIdFromPMS != null,
-                                onBatchClick = { onBatchClick(batch.batchId) }
-                            )
+                        else -> {
+                            items(filteredBatches) { batch ->
+                                BatchHistoryRow(
+                                    title = batch.batchId.toString(),
+                                    dateTime = formatDateToUSFormat(
+                                        batch.createdAt.toFormattedDate(),
+                                        outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
+                                    ),
+                                    bucketId = batch.bucketId,
+                                    count = batch.uniqueNdcCount.toString(),
+                                    isPrescription = batch.requestIdFromPMS != null,
+                                    onBatchClick = { onBatchClick(batch.batchId) }
+                                )
+                            }
                         }
                     }
                 }
@@ -251,19 +299,21 @@ fun DispensedStockToggleRow(
     val dispensedLabel = stringResource(R.string.dispensed)
     val stockLabel = stringResource(R.string.stock_count_label)
 
+    val dimens = AppTheme.dimens
+
     Row(modifier = Modifier.padding(top = 10.dp, bottom = 10.dp)) {
         ToggleItem(
             title = stringResource(R.string.toggle_with_count, dispensedLabel, dispensedCount),
             isSelected = selectedOption == ToggleOption.DISPENSED,
-            onClick = { onOptionSelected(ToggleOption.DISPENSED) }
+            onClick = { onOptionSelected(ToggleOption.DISPENSED) },
+            modifier = Modifier.padding(bottom = dimens.toggleVerticalPadding, top = dimens.toggleVerticalPadding, end = dimens.toggleVerticalPadding)
         )
-
-        Spacer(Modifier.width(8.dp))
 
         ToggleItem(
             title = stringResource(R.string.toggle_with_count, stockLabel, stockCount),
             isSelected = selectedOption == ToggleOption.STOCK,
-            onClick = { onOptionSelected(ToggleOption.STOCK) }
+            onClick = { onOptionSelected(ToggleOption.STOCK) },
+            modifier = Modifier.padding(bottom = dimens.toggleVerticalPadding, top = dimens.toggleVerticalPadding)
         )
     }
 }
@@ -272,23 +322,25 @@ fun DispensedStockToggleRow(
 fun ToggleItem(
     title: String,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
+    val dimens = AppTheme.dimens
     Box(
-        modifier = Modifier
+        modifier = modifier
             .clip(RoundedCornerShape(50))
             .background(
                 if (isSelected) MaterialTheme.colorScheme.primary
                 else AppTheme.extendedColors.secondaryBackground
             )
             .clickable { onClick() }
-            .padding(horizontal = medium, vertical = 5.dp)
+            .padding(horizontal = dimens.medium, vertical = 5.dp)
     ) {
         Text(
             text = title,
-            color = AppTheme.extendedColors.textColor,
+            color = if (isSelected) Color.White else AppTheme.extendedColors.textColor,
             fontWeight = FontWeight.Normal,
-            fontSize = 12.sp
+            fontSize = responsiveSpForHistoryScreen(12.sp)
         )
     }
 }

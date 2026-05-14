@@ -27,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable
@@ -54,7 +55,7 @@ fun HeadlineBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(end = 12.dp),
+            .padding(end = 12.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -124,7 +125,7 @@ fun HeadlineBar(
                             contentDescription = stringResource(R.string.cd_search),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .size(26.dp)
+                                .size(responsiveDp(25.dp))
                                 .clickable { onSearchClick() }
                         )
                     }
@@ -139,7 +140,7 @@ fun HeadlineBar(
                             contentDescription = "Export PDF",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .size(26.dp)
+                                .size(responsiveDp(25.dp))
                                 .clickable { onPdfClick?.invoke() }
                         )
                     }
@@ -154,7 +155,7 @@ fun HeadlineBar(
                             contentDescription = stringResource(R.string.cd_select_items_to_delete),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .size(26.dp)
+                                .size(responsiveDp(25.dp))
                                 .clickable { onDeleteClick() }
                         )
                     }
@@ -179,7 +180,7 @@ fun HeadlineBar(
 
                     Text(
                         text = stringResource(R.string.select_all).uppercase(),
-                        fontSize = 14.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.clickable { onSelectAll() }
@@ -188,7 +189,7 @@ fun HeadlineBar(
             } else {
                 // Delete mode header: back-as-cancel + "DELETE COUNTS" + SELECT ALL
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     BackButton(navController, onClick = onCancelClick)
@@ -221,7 +222,7 @@ fun HeadlineBar(
                             text = stringResource(
                                 if (isAllSelected) R.string.deselect_all else R.string.select_all
                             ),
-                            fontSize = 14.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.primary
                         )

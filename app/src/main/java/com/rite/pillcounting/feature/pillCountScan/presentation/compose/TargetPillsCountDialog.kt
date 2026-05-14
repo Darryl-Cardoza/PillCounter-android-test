@@ -32,14 +32,11 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
-import com.rite.pillcounting.core.utils.constants.Dimens.huge
-import com.rite.pillcounting.core.utils.constants.Dimens.medium
-import com.rite.pillcounting.core.utils.constants.Dimens.small
-import com.rite.pillcounting.core.utils.constants.Dimens.xxLarge
 import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable
 fun TargetPillsCountDialog(onDismiss: () -> Unit, onOkay: (Int) -> Unit) {
+    val dimens = AppTheme.dimens
 
     var count by rememberSaveable { mutableStateOf("") }
 
@@ -66,7 +63,7 @@ fun TargetPillsCountDialog(onDismiss: () -> Unit, onOkay: (Int) -> Unit) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = medium, top = medium, end = medium),
+                        .padding(start = dimens.medium, top = dimens.medium, end = dimens.medium),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
 
@@ -90,9 +87,9 @@ fun TargetPillsCountDialog(onDismiss: () -> Unit, onOkay: (Int) -> Unit) {
                 }
 
 
-                Spacer(modifier = Modifier.height(small))
+                Spacer(modifier = Modifier.height(dimens.small))
 
-                Row(modifier = Modifier.padding(medium)) {
+                Row(modifier = Modifier.padding(dimens.medium)) {
                     PillCountTextField(
                         pillCount = count,
                         onPillCountChange = { count = it },
@@ -102,16 +99,16 @@ fun TargetPillsCountDialog(onDismiss: () -> Unit, onOkay: (Int) -> Unit) {
 
 
 
-                Spacer(modifier = Modifier.height(responsiveDp(medium)))
+                Spacer(modifier = Modifier.height(responsiveDp(dimens.medium)))
 
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(responsiveDp(medium)),
+                    horizontalArrangement = Arrangement.spacedBy(responsiveDp(dimens.medium)),
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier.padding(
-                        bottom = responsiveDp(xxLarge),
-                        top = small,
-                        start = xxLarge,
-                        end = xxLarge
+                        bottom = responsiveDp(dimens.xxLarge),
+                        top = dimens.small,
+                        start = dimens.xxLarge,
+                        end = dimens.xxLarge
                     )
                 ) {
                     HollowButton(
@@ -119,7 +116,7 @@ fun TargetPillsCountDialog(onDismiss: () -> Unit, onOkay: (Int) -> Unit) {
                         onClick = onDismiss,
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f),
-                        buttonHeightDefault = huge
+                        buttonHeightDefault = dimens.huge
                     )
 
                     FilledButton(
@@ -127,7 +124,7 @@ fun TargetPillsCountDialog(onDismiss: () -> Unit, onOkay: (Int) -> Unit) {
                         onClick = { onOkay(count.toInt()) },
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.weight(1f),
-                        buttonHeightDefault = huge
+                        buttonHeightDefault = dimens.huge
                     )
                 }
 

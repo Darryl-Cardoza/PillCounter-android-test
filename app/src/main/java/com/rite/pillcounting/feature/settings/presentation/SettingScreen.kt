@@ -40,6 +40,7 @@ import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityVi
 import com.rite.pillcounting.core.utils.common.HistoryRetention
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.rite.pillcounting.core.utils.constants.LocalDimens
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.LocalExtendedColors
 
@@ -62,6 +63,7 @@ fun SettingsScreen(
     var showCLearAllDataConfirmDialog by remember { mutableStateOf(false) }
     val selectedSchedules by viewModel.selectedSchedules.collectAsState()
     val isSoundOverrideEnable by viewModel.isSoundOverride.collectAsState()
+    val dimens = LocalDimens.current
 
     Column(
         modifier = Modifier
@@ -205,7 +207,7 @@ fun SettingsScreen(
                     .clickable {
                         showCLearAllDataConfirmDialog = true
                     }
-                    .padding(vertical = 12.dp, horizontal = 16.dp)
+                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
             )
 
         }
@@ -234,12 +236,13 @@ fun SettingSwitch(
     checkedTrackColor: Color = MaterialTheme.colorScheme.secondary
 ) {
     val extendedColors = LocalExtendedColors.current
+    val dimens = LocalDimens.current
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 8.dp, horizontal = 16.dp)
+            .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
     ) {
         Text(
             text = stringResource(labelRes),

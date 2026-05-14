@@ -2,6 +2,7 @@ package com.rite.pillcounting.core.utils.common
 
 import Screen
 import android.content.Context
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
@@ -20,7 +21,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -90,10 +90,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.utils.constants.Dimens.buttonCornerRadius
-import com.rite.pillcounting.core.utils.constants.Dimens.buttonHeight
-import com.rite.pillcounting.core.utils.constants.Dimens.extraSmall
-import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.text.SimpleDateFormat
 import java.time.Instant
@@ -433,14 +429,13 @@ object UserInterfaceUtils {
         showBox: Boolean = false,
         onClick: (() -> Unit)? = null
     ) {
-
+        val dimens = AppTheme.dimens
         val clickAction = { onClick?.invoke() ?: navController.popBackStack() }
 
         if (showBox) {
             // ---- Circle background version ----
             Box(
                 modifier = modifier
-                    .padding(small)
                     .size(responsiveDp(40.dp))
                     .background(Color.White, CircleShape)
                     .clickable { clickAction() },
@@ -458,14 +453,14 @@ object UserInterfaceUtils {
             IconButton(
                 onClick = { onClick?.invoke() ?: navController.popBackStack() },
                 modifier = modifier
-                    .padding(small)
-                    .size(responsiveDp(40.dp))
+                    .padding(dimens.small)
+                    .size(responsiveDp(36.dp))
             ) {
                 Icon(
                     painter = painterResource(id = backIcon),
                     contentDescription = "Back",
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(extraSmall)
+                    modifier = Modifier.padding(dimens.extraSmall)
                 )
             }
         }
@@ -484,14 +479,16 @@ object UserInterfaceUtils {
         shape: RoundedCornerShape = RoundedCornerShape(12.dp),
         isSingleButton: Boolean = false // Flag to control single button
     ) {
+        val dimens = AppTheme.dimens
         AlertDialog(
             onDismissRequest = {},
+            modifier = Modifier.widthIn(max = 400.dp),
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     title?.let {
                         Text(
                             text = it,
-                            fontSize = 18.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = AppTheme.extendedColors.textColor,
                             textAlign = TextAlign.Center,
@@ -502,7 +499,7 @@ object UserInterfaceUtils {
                     }
                     Text(
                         text = message,
-                        fontSize = 16.sp,
+                        fontSize = 14.sp,
                         color = AppTheme.extendedColors.textColor,
                         textAlign = TextAlign.Center
                     )
@@ -514,19 +511,22 @@ object UserInterfaceUtils {
                 if (!isSingleButton) {
                     // Show both Cancel and Confirm buttons
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         HollowButton(
                             text = cancelText.uppercase(),
                             onClick = onCancel,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f)
+                            fixedWidth = false,
+                            modifier = Modifier.width(dimens.dialogButtonWidth)
                         )
+                        Spacer(modifier = Modifier.width(16.dp))
                         ActionButtonPrimary(
                             text = confirmText.uppercase(),
                             onClick = onConfirm,
-                            modifier = Modifier.weight(1f)
+                            fixedWidth = false,
+                            modifier = Modifier.width(dimens.dialogButtonWidth)
                         )
                     }
                 } else {
@@ -538,7 +538,7 @@ object UserInterfaceUtils {
                         ActionButtonPrimary(
                             text = confirmText.uppercase(),
                             onClick = onConfirm,
-                            modifier = Modifier.fillMaxWidth(0.5f)
+//                            modifier = Modifier.fillMaxWidth(0.5f)
                         )
                     }
                 }
@@ -556,10 +556,12 @@ object UserInterfaceUtils {
         onOk: (Int) -> Unit,
         distanceBetweenOptions: Dp = 8.dp,
     ) {
+        val dimens = AppTheme.dimens
         var currentSelection by remember { mutableStateOf(selectedIndex) }
 
         AlertDialog(
             onDismissRequest = {},
+            modifier = Modifier.widthIn(max = 400.dp),
             shape = RoundedCornerShape(12.dp),
             containerColor = AppTheme.extendedColors.primaryBackground,
             text = {
@@ -586,7 +588,7 @@ object UserInterfaceUtils {
                                     selectedColor = MaterialTheme.colorScheme.primary
                                 )
                             )
-                            Spacer(modifier = Modifier.width(small))
+                            Spacer(modifier = Modifier.width(dimens.small))
                             Text(
                                 text = option,
                                 fontSize = 16.sp,
@@ -598,19 +600,22 @@ object UserInterfaceUtils {
             },
             confirmButton = {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.Center,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     HollowButton(
                         text = stringResource(R.string.cancel).uppercase(),
                         onClick = onCancel,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
+                        fixedWidth = false,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
                     )
+                    Spacer(modifier = Modifier.width(16.dp))
                     ActionButtonPrimary(
                         text = stringResource(R.string.ok).uppercase(),
                         onClick = { currentSelection?.let { onOk(it) } },
-                        modifier = Modifier.weight(1f)
+                        fixedWidth = false,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
                     )
                 }
             }
@@ -624,17 +629,18 @@ object UserInterfaceUtils {
         onClick: () -> Unit,
         color: Color,
         modifier: Modifier = Modifier,
-        buttonHeightDefault: Dp = buttonHeight,
+        buttonHeightDefault: Dp = AppTheme.dimens.buttonHeight,
     ) {
+        val dimens = AppTheme.dimens
         Button(
             onClick = onClick,
             modifier = modifier
-                .height(buttonHeightDefault)
-                .widthIn(min = 100.dp)
+                .height(dimens.buttonHeight)
+                .width(dimens.buttonWidth)
                 .border(
                     width = 1.dp,
                     color = color,
-                    shape = RoundedCornerShape(buttonCornerRadius)
+                    shape = RoundedCornerShape(dimens.buttonCornerRadius)
                 ),
             colors = ButtonDefaults.buttonColors(
                 containerColor = color,
@@ -661,7 +667,7 @@ object UserInterfaceUtils {
         label: String,
         modifier: Modifier = Modifier,
         cornerRadius: Dp = 8.dp,
-        height: Dp = 62.dp,
+        height: Dp = AppTheme.dimens.profileTextFieldHeight,
         cursorColor: Color = AppTheme.extendedColors.textColor,
         isPassword: Boolean = false,
         visualTransformation: VisualTransformation = VisualTransformation.None,
@@ -790,17 +796,22 @@ object UserInterfaceUtils {
         onClick: () -> Unit,
         color: Color,
         modifier: Modifier = Modifier,
-        buttonHeightDefault: Dp = buttonHeight,
+        buttonHeightDefault: Dp = AppTheme.dimens.buttonHeight,
+        fixedWidth: Boolean = true,
     ) {
+        val dimens = AppTheme.dimens
+        val sizeModifier = if (fixedWidth)
+            Modifier.height(dimens.buttonHeight).width(dimens.buttonWidth)
+        else
+            Modifier.height(dimens.buttonHeight)
         Button(
             onClick = onClick,
-            modifier = modifier
-                .height(buttonHeightDefault)
-                .widthIn(min = 100.dp)
+            modifier = sizeModifier
+                .then(modifier)
                 .border(
                     width = 1.dp,
                     color = color,
-                    shape = RoundedCornerShape(buttonCornerRadius)
+                    shape = RoundedCornerShape(dimens.buttonCornerRadius)
                 ),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color.Transparent,
@@ -840,14 +851,17 @@ object UserInterfaceUtils {
         modifier: Modifier = Modifier,
         color: Color = MaterialTheme.colorScheme.primary,
         enabled: Boolean = true,
-        width: Int = 100,
         fontSize: Int = 13,
+        fixedWidth: Boolean = true,
     ) {
+        val dimens = AppTheme.dimens
+        val sizeModifier = if (fixedWidth)
+            Modifier.height(dimens.buttonHeight).width(dimens.buttonWidth)
+        else
+            Modifier.height(dimens.buttonHeight)
         Button(
             onClick = onClick,
-            modifier = modifier
-                .height(buttonHeight)
-                .widthIn(min = width.dp),
+            modifier = sizeModifier.then(modifier),
             colors = ButtonDefaults.buttonColors(
                 containerColor = color,
                 contentColor = Color.White,
@@ -855,7 +869,7 @@ object UserInterfaceUtils {
                 disabledContentColor = Color.White // or use a theme color
             ),
             //CodeReview - Static Color
-            shape = RoundedCornerShape(buttonCornerRadius),
+            shape = RoundedCornerShape(dimens.buttonCornerRadius),
             enabled = enabled
         ) {
             Text(text = text, fontSize = fontSize.sp)
@@ -869,19 +883,20 @@ object UserInterfaceUtils {
         modifier: Modifier = Modifier,
         backIcon: Int = R.drawable.menu,
     ) {
+        val dimens = AppTheme.dimens
         IconButton(
             onClick = {
                 navController.navigate(Screen.Menu.route)
             },
             modifier = modifier
-                .padding(small)
+                .padding(dimens.small)
                 .size(responsiveDp(40.dp))
         ) {
             Icon(
                 painter = painterResource(id = backIcon),
                 contentDescription = "Menu",
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(extraSmall)
+                modifier = Modifier.padding(dimens.extraSmall)
             )
         }
     }
@@ -894,17 +909,18 @@ object UserInterfaceUtils {
         icon: Int = R.drawable.pms_connection_icon,
         isPmsConnected: Boolean,
     ) {
+        val dimens = AppTheme.dimens
         IconButton(
             onClick = {},
             modifier = modifier
-                .padding(small)
+                .padding(dimens.small)
                 .size(responsiveDp(50.dp))
         ) {
             Icon(
                 painter = painterResource(id = icon),
                 contentDescription = "Menu",
-                tint = if(isPmsConnected) MaterialTheme.colorScheme.secondary else Color.Gray,
-                modifier = Modifier.padding(extraSmall)
+                tint = if (isPmsConnected) MaterialTheme.colorScheme.secondary else Color.Gray,
+                modifier = Modifier.padding(dimens.extraSmall)
             )
         }
     }
@@ -1109,65 +1125,93 @@ object UserInterfaceUtils {
     @Composable
     fun responsiveDp(baseDp: Dp): Dp {
         val config = LocalConfiguration.current
-        val sw = minOf(config.screenWidthDp, config.screenHeightDp)
+        val shortestSide = minOf(config.screenWidthDp, config.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) config.screenWidthDp else shortestSide
 
         val scale = when {
-            sw < 360 -> 0.9f   // very small phones
-            sw < 600 -> 1f     // normal phones
-            sw < 840 -> 1.15f  // tablets
-            else -> 1.3f       // large tablets
+            sw < 360 -> 0.9f
+            sw < 600 -> 1f
+            sw < 840 -> 1.8f
+            else -> 1.8f
         }
         return baseDp * scale
     }
 
     @Composable
-    fun responsiveDpForCircularCountProgressPortrait(baseDp: Dp): Dp {
+    fun responsiveDpForCircularCountIndicator(): Dp {
         val config = LocalConfiguration.current
+        val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
         val sw = minOf(config.screenWidthDp, config.screenHeightDp)
-
-        val scale = when {
-            sw < 400 -> 1f   // very small phones
-            sw < 500 -> 1f     // normal phones
-            sw < 840 -> 1.1f  // tablets
-            else -> 1.3f       // large tablets
+        val percent = when {
+            sw < 600 -> if (isLandscape) 0.30f else 0.25f   // phones
+            sw < 840 -> if (isLandscape) 0.30f else 0.20f   // tablets
+            else     -> if (isLandscape) 0.30f else 0.22f   // large tablets
         }
-        return baseDp * scale
-    }
-
-    @Composable
-    fun responsiveDpForCircularCountProgressPortrait(percent: Float): Dp {
-        val config = LocalConfiguration.current
-        val sw = minOf(config.screenWidthDp, config.screenHeightDp)
-
         return (sw * percent).dp
     }
 
-    @Composable
-    fun responsiveDpForCircularCountProgressLandscape(baseDp: Dp): Dp {
-        val config = LocalConfiguration.current
-        val sw = minOf(config.screenWidthDp, config.screenHeightDp)
-
-        val scale = when {
-            sw < 400 -> 0.8f   // very small phones
-            sw < 500 -> 1f     // normal phones
-            sw < 840 -> 1.15f  // tablets
-            else -> 1.3f       // large tablets
-        }
-        return baseDp * scale
-    }
 
     @Composable
     fun responsiveSp(baseSp: TextUnit): TextUnit {
         val configuration = LocalConfiguration.current
-        val smallestWidthDp = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
         val scale = when {
-//            smallestWidthDp < 400 -> 0.8f //small phone
-            smallestWidthDp < 600 -> 1f   //phone
-            smallestWidthDp < 840 -> 1.5f //small tablets
-            else -> 2f          //large tablets
+            sw < 360 -> 0.9f
+            sw < 600 -> 1f
+            sw < 840 -> 1.5f
+            else -> 2f
         }
         return (baseSp.value * scale).sp
     }
+
+    @Composable
+    fun responsiveSpForPillCountingScreen(baseSp: TextUnit): TextUnit {
+        val configuration = LocalConfiguration.current
+        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
+        val scale = when {
+            sw < 360 -> 0.8f
+            sw < 600 -> 0.8f
+            sw < 840 -> 1f
+            else -> 1.2f
+        }
+        return (baseSp.value * scale).sp
+    }
+
+    @Composable
+    fun responsiveSpForPillCountingHistoryScreen(baseSp: TextUnit): TextUnit {
+        val configuration = LocalConfiguration.current
+        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
+        val scale = when {
+            sw < 360 -> 0.8f
+            sw < 600 -> 1f
+            sw < 840 -> 1f
+            else -> 1.1f
+        }
+        return (baseSp.value * scale).sp
+    }
+
+    @Composable
+    fun responsiveSpForHistoryScreen(baseSp: TextUnit): TextUnit {
+        val configuration = LocalConfiguration.current
+        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
+        val scale = when {
+            sw < 360 -> 0.9f
+            sw < 600 -> 1f
+            sw < 840 -> 1f
+            else -> 1.1f
+        }
+        return (baseSp.value * scale).sp
+    }
+
 
 
 

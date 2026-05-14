@@ -16,9 +16,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.kizitonwose.calendar.core.CalendarDay
-import com.rite.pillcounting.ui.theme.AppTheme
+import java.time.LocalDate
 
 @Composable
 fun DayCell(
@@ -28,49 +31,51 @@ fun DayCell(
     isInRange: Boolean,
     onClick: () -> Unit
 ) {
-
+    val today = LocalDate.now()
+    val isFuture = day.date.isAfter(today)
+    val isToday = day.date == today
     val primary = MaterialTheme.colorScheme.primary
-    val onPrimary = AppTheme.extendedColors.textColor
+    val config = LocalConfiguration.current
+    val isTablet = minOf(config.screenWidthDp, config.screenHeightDp) >= 600
+    val rangeCapPadding = if (isTablet) 40.dp else 20.dp
 
     val sliderShape = when {
-        isStart && isEnd -> RoundedCornerShape(50) // single day range
+        isStart && isEnd -> RoundedCornerShape(50)
         isStart -> RoundedCornerShape(
             topStart = 20.dp,
             bottomStart = 20.dp,
             topEnd = 0.dp,
             bottomEnd = 0.dp
         )
-
         isEnd -> RoundedCornerShape(
             topStart = 0.dp,
             bottomStart = 0.dp,
             topEnd = 20.dp,
             bottomEnd = 20.dp
         )
-
         isInRange -> RoundedCornerShape(0.dp)
         else -> null
     }
 
     Box(
         modifier = Modifier
-            .padding(vertical = 4.dp)
-            .height(40.dp)
+            .height(48.dp)
             .fillMaxWidth()
-            .clickable(
-                onClick = onClick,
-                indication = null,
-                interactionSource = remember { MutableInteractionSource() }),
+            .then(
+                if (!isFuture) Modifier.clickable(
+                    onClick = onClick,
+                    indication = null,
+                    interactionSource = remember { MutableInteractionSource() }
+                ) else Modifier
+            ),
         contentAlignment = Alignment.Center
     ) {
-
-        //  Slider background
         val isSingleDay = isStart && isEnd
 
+        // Slider range background — fills full cell height so rows form a continuous strip
         if ((isInRange || isEnd) && !isSingleDay) {
-
-            val horizontalPaddingStart = if (isStart) 20.dp else 0.dp
-            val horizontalPaddingEnd = if (isEnd) 20.dp else 0.dp
+            val horizontalPaddingStart = if (isStart) rangeCapPadding else 0.dp
+            val horizontalPaddingEnd = if (isEnd) rangeCapPadding else 0.dp
 
             Box(
                 modifier = Modifier
@@ -87,7 +92,7 @@ fun DayCell(
             )
         }
 
-        // Start & End circle on top
+        // Selected (start / end) circle
         if (isStart || isEnd) {
             Box(
                 modifier = Modifier
@@ -97,12 +102,12 @@ fun DayCell(
             ) {
                 Text(
                     text = day.date.dayOfMonth.toString(),
-                    color = onPrimary
+                    color = Color.White
                 )
             }
         }
 
-        // Middle text
+        // In-range middle text
         else if (isInRange) {
             Text(
                 text = day.date.dayOfMonth.toString(),
@@ -110,7 +115,24 @@ fun DayCell(
             )
         }
 
-        // Normal
+        // Future dates — grayed out
+        else if (isFuture) {
+            Text(
+                text = day.date.dayOfMonth.toString(),
+                color = Color.Gray.copy(alpha = 0.4f)
+            )
+        }
+
+        // Today — primary color + bold
+        else if (isToday) {
+            Text(
+                text = day.date.dayOfMonth.toString(),
+                color = primary,
+                fontWeight = FontWeight.Bold
+            )
+        }
+
+        // Normal past date
         else {
             Text(
                 text = day.date.dayOfMonth.toString(),

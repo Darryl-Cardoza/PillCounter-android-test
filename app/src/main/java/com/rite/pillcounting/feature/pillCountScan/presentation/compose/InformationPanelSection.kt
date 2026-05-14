@@ -54,7 +54,8 @@ fun InformationPanelSection(
     ) {
         if (stepType != StepState.VIAL && !isLandscape) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth()
+                    .padding(top = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(

@@ -569,6 +569,8 @@ class PillScanningViewModel @Inject constructor(
                         timestamp = System.currentTimeMillis(),
                         ndc = drug?.ndc,
                         count = currentCount.toString(),
+                        rx = txn?.rxNo,
+                        stepLabel = stepType.name,
                     )
                 } catch (e: Exception) {
                     logger.e("Overlay drawing failed, using bitmap without overlay", e)

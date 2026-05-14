@@ -151,7 +151,7 @@
     <string name="no_transaction_found">No Transaction Found, please start counting pills</string>
     <string name="confirm_done">Confirm Completion</string>
     <string name="confirm_done_desc_regular">Are you sure you want to mark this transaction as completed?</string>
-    <string name="confirm_done_desc_fixed">Target not reached. This transaction will be marked as PENDING.</string>
+    <string name="confirm_done_desc_fixed">Target not reached. This transaction will be marked as Completed.</string>
     <string name="force_complete">Force Complete</string>
 
     <!-- ================== PROFILE ================== -->
@@ -240,7 +240,7 @@
     <string name="add_note">Add Note</string>
     <string name="add_note_error">Please enter a note or tap Skip</string>
     <string name="save_history_confirmation">Are you sure you want to keep history for</string>>
-    <string name="save_history_note">\n\nNote: Data older than this period will be permanently deleted.</string>
+    <string name="save_history_note">Note: Data older than this period will be permanently deleted.</string>
     <string name="profile_updated">Profile updated successfully!</string>
     <string name="confirm_logout_title">Confirm Logout</string>
     <string name="confirm_logout_text">Are you sure you want to logout?</string>>
@@ -292,8 +292,9 @@
     <string name="substitute">Substitute</string>
 
     <!-- Unsynced Transaction-->
-    <string name="unsynced_transaction">UNSYNCED TRANSACTION</string>
+    <string name="unsynced_transaction">UNSYNCED TRANSACTIONS</string>
     <string name="sync_all">SYNC ALL</string>
+    <string name="no_unsynced_transactions">No unsynced transactions</string>
     <string name="pills_count_should_be_greater_than_target_count">Pills count should be greater than target count</string>
     <string name="pill_count">PILL COUNT</string>
     <string name="initial_stock_bottle_count">INITIAL STOCK BOTTLE COUNT</string>
@@ -308,7 +309,7 @@
     <string name="no_batches_recorded">No batches recorded</string>
     <string name="stock_count_dialog_title">What would you like to do?</string>
     <string name="stock_count_dialog_option_first">Create a new Batch</string>
-    <string name="stock_count_dialog_option_second">Continue with last Batch count</string>
+    <string name="stock_count_dialog_option_second">Continue last Batch</string>
     <string name="stock_bottles">Stock Bottles</string>
     <string name="open_pills">Open Pills</string>
     <string name="partial_stock_counts">Partial Stock Counts</string>
