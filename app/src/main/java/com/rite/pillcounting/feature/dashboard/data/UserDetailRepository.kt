@@ -41,10 +41,12 @@ class UserDetailRepository @Inject constructor(
             try {
                 logger.i("Fetching user detail with token: ${token.take(10)}...")
                 // Fetch the latest FCM token asynchronously
-                val fcmToken =
+                val currentFcmToken =
                     com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
+                val lastSentFcmToken = preferenceHelper.getLastSentFcmToken()
+
                 val request = UserDetailRequest(
-                    fcmToken = fcmToken,
+                    fcmToken = currentFcmToken,  // always send
                     platform = "android",
                     appVersion = BuildConfig.VERSION_NAME
                 )
@@ -56,6 +58,9 @@ class UserDetailRepository @Inject constructor(
                     response.isSuccessful -> {
                         response.body()?.let {
                             logger.i("User detail fetched successfully.")
+                            if (currentFcmToken != lastSentFcmToken) {
+                                preferenceHelper.saveLastSentFcmToken(currentFcmToken)
+                            }
                             Result.success(it)
                         } ?: run {
                             logger.e("Empty response body while fetching user detail.")

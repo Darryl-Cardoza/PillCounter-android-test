@@ -10,7 +10,7 @@ object DatabaseKeyProvider {
     private const val KEY_ENCRYPTED_DB_KEY = "encrypted_db_key"
 
     fun getOrCreateDatabaseKey(context: Context): ByteArray {
-        val prefs = SecurePreferences(context)
+        val prefs = SecurePreferences(context, "pillcounting_db_key_prefs")
 
         val existing = prefs.getString(KEY_ENCRYPTED_DB_KEY)
         if (existing != null) {

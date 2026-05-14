@@ -12,6 +12,7 @@ import com.rite.pillcounting.core.settings.domain.data.IApplicationSettingsRepos
 import com.rite.pillcounting.core.settings.domain.data.IApplicationSettingsViewModel
 import com.rite.pillcounting.core.settings.domain.model.ApplicationSettingsUiState
 import com.rite.pillcounting.core.settings.domain.model.ColorSettings
+import com.rite.pillcounting.core.settings.domain.model.Hl7ServiceConfig
 import com.rite.pillcounting.core.settings.domain.model.SettingsDataDto
 import com.rite.pillcounting.core.settings.domain.model.ThemeColors
 import com.rite.pillcounting.core.settings.domain.model.enums.ScheduleCode
@@ -332,14 +333,8 @@ class MainActivityViewModel @Inject constructor(
         }
 
         // Guard 3: Server didn't return hl7_config (future server-side fix)
-        val dto = setting.data?.hl7Config
-        if (dto == null) {
-            logger.w("HL7 enabled locally but server returned no hl7_config")
-            return
-        }
-
-        val nsdDiscoveryType = dto.pmsHostName
-        val nsdBroadcastType = dto.pillCounterHostName
+        val nsdDiscoveryType = Hl7ServiceConfig.PMS_HOST_NAME
+        val nsdBroadcastType = Hl7ServiceConfig.PILL_COUNTER_HOST_NAME
 
         // Only store and expose if both values are non-empty
         if (nsdDiscoveryType.isBlank() || nsdBroadcastType.isBlank()) {

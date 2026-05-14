@@ -179,3 +179,23 @@
 ############################################
 -keep class fi.iki.elonen.** { *; }
 -dontwarn fi.iki.elonen.**
+
+
+############################################
+# STRIP ALL LOG CALLS IN RELEASE
+############################################
+-assumenosideeffects class android.util.Log {
+    public static int d(...);
+    public static int i(...);
+    public static int v(...);
+    public static int w(...);
+    public static int e(...);
+}
+
+# Also strip AppLogger (which delegates to android.util.Log)
+-assumenosideeffects class com.rite.pillcounting.core.utils.logger.AppLogger {
+    public void d(...);
+    public void i(...);
+    public void w(...);
+    public void e(...);
+}

@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.pillCountScan.domain
 import android.content.Context
 import android.util.Log
 import com.rite.pillcounting.core.security.ModelDecryptor
+import com.rite.pillcounting.core.security.ModelKeyUnit
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -43,6 +44,8 @@ class PillDetectionModelLoader @Inject constructor(
 
     private var pillGpuDelegate: GpuDelegate? = null
     private var trayGpuDelegate: GpuDelegate? = null
+
+    val modelKeyUnit = ModelKeyUnit(context)
 
     companion object {
         private const val PILL_MODEL_FILENAME = "pillcountingmodel"
@@ -216,6 +219,7 @@ class PillDetectionModelLoader @Inject constructor(
 
     private fun loadModelFile(modelName: String): ByteBuffer {
         val encFile = File(context.filesDir, "$modelName.enc")
+        modelKeyUnit.activateIfNeeded()
 
         if (!encFile.exists()) {
             context.assets.open("$modelName.enc").use { input ->
@@ -225,7 +229,7 @@ class PillDetectionModelLoader @Inject constructor(
             }
         }
 
-        val decryptedBytes = ModelDecryptor.decryptToBytes(encFile)
+        val decryptedBytes = ModelDecryptor.decryptToBytes(encFile, modelKeyUnit)
 
         return ByteBuffer.allocateDirect(decryptedBytes.size).apply {
             order(ByteOrder.nativeOrder())

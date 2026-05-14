@@ -12,7 +12,8 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-class SecurePreferences(context: Context) {
+class SecurePreferences(context: Context,
+                        prefsName: String = PREF_NAME ) {
 
     private val prefs: SharedPreferences =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
