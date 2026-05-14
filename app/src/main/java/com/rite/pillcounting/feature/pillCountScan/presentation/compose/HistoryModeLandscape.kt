@@ -7,15 +7,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyHorizontalGrid
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -35,13 +39,14 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingHistoryScreen
 import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
 import com.rite.pillcounting.feature.pillCountScan.domain.model.TxnDetail
 import com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.PillScanningViewModel
@@ -61,13 +66,14 @@ fun HistoryModeLandscape(
 ) {
     val activeHistory = remember(txnHistory) { txnHistory.sortedBy { it.createdAt } }
     val stepType by viewModel.currentStep.collectAsState()
+    val isTablet = LocalConfiguration.current.smallestScreenWidthDp >= 600
     var isDeleteMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var selectedImagePath by remember { mutableStateOf<String?>(null) }
     val isAllSelected = selectedIds.size == activeHistory.size && activeHistory.isNotEmpty()
 
-    val listState = rememberLazyListState()
+    val listState = rememberLazyGridState()
 
     LaunchedEffect(activeHistory.size) {
         if (activeHistory.isNotEmpty()) listState.animateScrollToItem(activeHistory.lastIndex)
@@ -115,13 +121,13 @@ fun HistoryModeLandscape(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
+                        .padding(horizontal = 16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = drugName,
                         color = AppTheme.extendedColors.textColor,
-                        fontSize = 16.sp,
+                        fontSize = responsiveSpForPillCountingHistoryScreen(18.sp),
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -133,49 +139,86 @@ fun HistoryModeLandscape(
                         else
                             "$totalCount",
                         color = MaterialTheme.colorScheme.secondary,
-                        fontSize = 24.sp,
+                        fontSize = responsiveSpForPillCountingHistoryScreen(18.sp),
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             }
-
-            // ── Horizontal card list ──
-            LazyRow(
-                state = listState,
-                modifier = Modifier
-                    .height(responsiveDp(230.dp))
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                itemsIndexed(
-                    items = activeHistory,
-                    key = { _, item -> item.txnDetailId }
-                ) { index, item ->
-                    TxnHistoryCard(
-                        txnDetail = item,
-                        index = index + 1,
-                        isDeleteMode = isDeleteMode,
-                        isSelected = item.txnDetailId in selectedIds,
-                        onToggleSelect = {
-                            selectedIds = if (item.txnDetailId in selectedIds)
-                                selectedIds - item.txnDetailId
-                            else
-                                selectedIds + item.txnDetailId
-                        },
-                        onDelete = onDeleteTxn,
-                        onImageClick = { path -> selectedImagePath = path },
-                        cardModifier = Modifier
-                            .width(responsiveDp(150.dp))
-                            .fillMaxHeight()
-                    )
+            Spacer(modifier = Modifier.height(16.dp))
+            // ── Grid ──
+            if (isTablet) {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(6),
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    itemsIndexed(
+                        items = activeHistory,
+                        key = { _, item -> item.txnDetailId }
+                    ) { index, item ->
+                        TxnHistoryCard(
+                            txnDetail = item,
+                            index = index + 1,
+                            isDeleteMode = isDeleteMode,
+                            isSelected = item.txnDetailId in selectedIds,
+                            onToggleSelect = {
+                                selectedIds = if (item.txnDetailId in selectedIds)
+                                    selectedIds - item.txnDetailId
+                                else
+                                    selectedIds + item.txnDetailId
+                            },
+                            onDelete = onDeleteTxn,
+                            onImageClick = { path -> selectedImagePath = path },
+                            cardModifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1f)
+                        )
+                    }
+                }
+            } else {
+                LazyHorizontalGrid(
+                    rows = GridCells.Fixed(1),
+                    state = listState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 16.dp)
+                        .padding(bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(horizontal = 8.dp)
+                ) {
+                    itemsIndexed(
+                        items = activeHistory,
+                        key = { _, item -> item.txnDetailId }
+                    ) { index, item ->
+                        TxnHistoryCard(
+                            txnDetail = item,
+                            index = index + 1,
+                            isDeleteMode = isDeleteMode,
+                            isSelected = item.txnDetailId in selectedIds,
+                            onToggleSelect = {
+                                selectedIds = if (item.txnDetailId in selectedIds)
+                                    selectedIds - item.txnDetailId
+                                else
+                                    selectedIds + item.txnDetailId
+                            },
+                            onDelete = onDeleteTxn,
+                            onImageClick = { path -> selectedImagePath = path },
+                            cardModifier = Modifier
+                                .fillMaxHeight()
+                                .aspectRatio(1f)
+                        )
+                    }
                 }
             }
 
             // ── Delete-mode bottom bar ──
             if (isDeleteMode) {
-                Spacer(modifier = Modifier.height(18.dp))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()

@@ -37,6 +37,7 @@
     <string name="settings_title" translatable="false">SETTINGS</string>
     <string name="setting_barcode_scan_first">Siempre realizar el escaneo de código de barras primero</string>
     <string name="setting_ask_to_add_notes">Siempre preguntar para añadir notas</string>
+    <string name="type_here">Escribe aquí...</string>
     <string name="setting_save_history_for">Guardar historial por</string>
 
     <string-array name="history_options">
@@ -223,6 +224,10 @@
     <string name="bucket">Bucket</string>
     <string name="batch">Batch</string>
     <string name="no_last_batch_available">No last batch available</string>
+    <string name="lot_No">Lot Number</string>
+    <string name="expiry_date">Expiry Date</string>
+    <string name="pills">Pills</string>
+    <string name="total_pills">Total Pills</string>
 
 
 </resources>

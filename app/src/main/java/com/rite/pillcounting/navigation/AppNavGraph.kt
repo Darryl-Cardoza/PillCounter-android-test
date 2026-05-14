@@ -20,6 +20,8 @@ import com.rite.pillcounting.feature.history.presentation.HistoryScreen
 import com.rite.pillcounting.feature.menu.presentation.MenuScreen
 import com.rite.pillcounting.feature.pillCountScan.presentation.PillScanningScreen
 import com.rite.pillcounting.feature.profile.presentation.ProfileScreen
+import com.rite.pillcounting.feature.settings.presentation.SaveCsDoubleCountScreen
+import com.rite.pillcounting.feature.settings.presentation.SaveHistoryForScreen
 import com.rite.pillcounting.feature.settings.presentation.SettingsScreen
 import com.rite.pillcounting.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
 
@@ -157,6 +159,14 @@ fun AppNavGraph(
 
         composable(route = Screen.PartialCountsScreen.route) {
             PartialCountsScreen(navController = navController)
+        }
+
+        composable(route = Screen.SaveHistoryFor.route) {
+            SaveHistoryForScreen(navController = navController)
+        }
+
+        composable(route = Screen.RequireDoubleCount.route) {
+            SaveCsDoubleCountScreen(navController = navController)
         }
 
 

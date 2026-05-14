@@ -45,7 +45,7 @@ fun StepCircle(
             painter = painterResource(id = step.icon()),
             contentDescription = step.name,
             tint = AppTheme.extendedColors.textColor,
-            modifier = Modifier.size(16.dp)
+            modifier = Modifier.size(responsiveDp(16.dp))
         )
     }
 }

@@ -12,13 +12,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -27,9 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -38,13 +33,17 @@ import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.ScanType
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForBatchScreen
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchDrugGroup
 import com.rite.pillcounting.feature.batchCount.presentation.compose.BatchNdcCard
 import com.rite.pillcounting.feature.batchCount.presentation.viewmodel.BatchViewModel
 import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.ui.theme.AppTheme
+import com.rite.pillcounting.ui.theme.AppTheme.dimens
 
 
 @Composable
@@ -114,7 +113,7 @@ fun BatchScreen(
                 Text(
                     text = stringResource(R.string.no_items_in_that_batch_yet),
                     color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                    fontSize = 14.sp
+                    fontSize =  responsiveSpForBatchScreen(12.sp)
                 )
             }
         } else {
@@ -210,36 +209,21 @@ private fun BottomActionBar(
             .fillMaxWidth()
             .background(AppTheme.extendedColors.primaryBackground)
             .padding(horizontal = 16.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
+        horizontalArrangement = Arrangement.Center,
     ) {
-        OutlinedButton(
+        HollowButton(
+            text = stringResource(R.string.end_count).uppercase(),
             onClick = onEndBatch,
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(20.dp),
-            border = ButtonDefaults.outlinedButtonBorder.copy(
-                brush = SolidColor(MaterialTheme.colorScheme.primary)
-            )
-        ) {
-            Text(
-                stringResource(R.string.end_count),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = MaterialTheme.colorScheme.primary
-            )
-        }
-
-        Button(
+            color = MaterialTheme.colorScheme.primary,
+            fixedWidth = false,
+            modifier = Modifier.width(dimens.dialogButtonWidth)
+        )
+        Spacer(modifier = Modifier.width(16.dp))
+        ActionButtonPrimary(
+            text = stringResource(R.string.plus_add).uppercase(),
             onClick = onAdd,
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(20.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
-        ) {
-            Text(
-                stringResource(R.string.plus_add),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium,
-                color = AppTheme.extendedColors.textColor
-            )
-        }
+            fixedWidth = false,
+            modifier = Modifier.width(dimens.dialogButtonWidth)
+        )
     }
 }

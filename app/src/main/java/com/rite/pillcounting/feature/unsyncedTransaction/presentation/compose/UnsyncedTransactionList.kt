@@ -35,10 +35,6 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDat
 import com.rite.pillcounting.core.utils.common.formatDateToUSFormat
 import com.rite.pillcounting.core.utils.compose.DrugCountRow
 import com.rite.pillcounting.core.utils.compose.DrugCountRowData
-import com.rite.pillcounting.core.utils.constants.Dimens.buttonCornerRadius
-import com.rite.pillcounting.core.utils.constants.Dimens.buttonHeight
-import com.rite.pillcounting.core.utils.constants.Dimens.extraSmall
-import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.feature.countResume.domain.model.CountItem
 import com.rite.pillcounting.feature.history.domain.model.BatchSummary
 import com.rite.pillcounting.feature.history.presentation.compose.BatchHistoryRow
@@ -50,93 +46,111 @@ fun UnsyncedTransactionList(
     batchList: List<BatchSummary>,
     onButtonClick: () -> Unit = {}
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(start = small, end = small, bottom = extraSmall)
-    ) {
-        LazyColumn(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 10.dp, end = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(bottom = 16.dp)
-        ) {
-            if (dispenseList.isNotEmpty()) {
-                item {
-                    SectionHeader(
-                        text = stringResource(R.string.dispense),
-                        count = dispenseList.size
-                    )
-                }
-                items(dispenseList, key = { "dispense_${it.id}" }) { item ->
-                    DrugCountRow(
-                        data = DrugCountRowData(
-                            barcodeImage = item.barcodeImage,
-                            ndc = item.ndc,
-                            drugType = item.drugType,
-                            drugName = item.name,
-                            date = item.date,
-                            bucketId = item.bucketId,
-                            pillCount = item.pillCount,
-                            targetCount = item.target,
-                            countType = item.countType,
-                            isComingFromHL7 = item.isComingFromHL7
-                        ),
-                        onClick = {}
-                    )
-                }
-            }
+    val dimens = AppTheme.dimens
+    val isEmpty = dispenseList.isEmpty() && batchList.isEmpty()
 
-            if (batchList.isNotEmpty()) {
-                item {
-                    SectionHeader(
-                        text = stringResource(R.string.stock),
-                        count = batchList.size,
-                        topPadding = if (dispenseList.isNotEmpty()) 8.dp else 0.dp
-                    )
-                }
-                items(batchList, key = { "batch_${it.batchId}" }) { batch ->
-                    BatchHistoryRow(
-                        title = batch.batchId.toString(),
-                        dateTime = formatDateToUSFormat(
-                            batch.createdAt.toFormattedDate(),
-                            outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
-                        ),
-                        bucketId = batch.bucketId,
-                        count = batch.uniqueNdcCount.toString(),
-                        isPrescription = batch.requestIdFromPMS != null,
-                        onBatchClick = {}
-                    )
-                }
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
+    if (isEmpty) {
         Box(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
         ) {
-            Button(
-                onClick = onButtonClick,
-                shape = RoundedCornerShape(buttonCornerRadius),
-                colors = ButtonDefaults.buttonColors(
-                    backgroundColor = MaterialTheme.colorScheme.primary,
-                    contentColor = AppTheme.extendedColors.textColor
-                ),
-                modifier = Modifier
-                    .height(buttonHeight)
-                    .padding(horizontal = 16.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.sync_all),
-                    fontSize = 14.sp
-                )
-            }
+            Text(
+                text = stringResource(R.string.no_unsynced_transactions),
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Medium,
+                color = AppTheme.extendedColors.textColor
+            )
         }
+    } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(start = dimens.small, end = dimens.small, bottom = dimens.extraSmall)
+        ) {
+            LazyColumn(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 10.dp, end = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(bottom = 16.dp)
+            ) {
+                if (dispenseList.isNotEmpty()) {
+                    item {
+                        SectionHeader(
+                            text = stringResource(R.string.dispense),
+                            count = dispenseList.size
+                        )
+                    }
+                    items(dispenseList, key = { "dispense_${it.id}" }) { item ->
+                        DrugCountRow(
+                            data = DrugCountRowData(
+                                barcodeImage = item.barcodeImage,
+                                ndc = item.ndc,
+                                drugType = item.drugType,
+                                drugName = item.name,
+                                date = item.date,
+                                bucketId = item.bucketId,
+                                pillCount = item.pillCount,
+                                targetCount = item.target,
+                                countType = item.countType,
+                                isComingFromHL7 = item.isComingFromHL7
+                            ),
+                            onClick = {}
+                        )
+                    }
+                }
 
-        Spacer(modifier = Modifier.height(12.dp))
+                if (batchList.isNotEmpty()) {
+                    item {
+                        SectionHeader(
+                            text = stringResource(R.string.stock),
+                            count = batchList.size,
+                            topPadding = if (dispenseList.isNotEmpty()) 8.dp else 0.dp
+                        )
+                    }
+                    items(batchList, key = { "batch_${it.batchId}" }) { batch ->
+                        BatchHistoryRow(
+                            title = batch.batchId.toString(),
+                            dateTime = formatDateToUSFormat(
+                                batch.createdAt.toFormattedDate(),
+                                outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
+                            ),
+                            bucketId = batch.bucketId,
+                            count = batch.uniqueNdcCount.toString(),
+                            isPrescription = batch.requestIdFromPMS != null,
+                            onBatchClick = {}
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Button(
+                    onClick = onButtonClick,
+                    shape = RoundedCornerShape(dimens.buttonCornerRadius),
+                    colors = ButtonDefaults.buttonColors(
+                        backgroundColor = MaterialTheme.colorScheme.primary,
+                        contentColor = AppTheme.extendedColors.textColor
+                    ),
+                    modifier = Modifier
+                        .height(dimens.buttonHeight)
+                        .padding(horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.sync_all),
+                        fontSize = 14.sp,
+                        color = Color.White
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+        }
     }
 }
 

@@ -19,7 +19,6 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.utils.constants.Dimens.medium
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.kizitonwose.calendar.compose.CalendarState
 import com.kizitonwose.calendar.compose.VerticalCalendar
@@ -91,6 +90,11 @@ fun CalendarSection(
         VerticalCalendar(
             state = calendarState,
             modifier = Modifier.fillMaxSize().padding(8.dp),
+            monthBody = { _, content ->
+                androidx.compose.foundation.layout.Box(
+                    modifier = Modifier.padding(bottom = 16.dp)
+                ) { content() }
+            },
             monthHeader = { calendarMonth ->
                 val month = calendarMonth.yearMonth
                 Row(
@@ -149,7 +153,7 @@ fun CalendarSection(
                 } else {
                     Spacer(
                         modifier = Modifier
-                            .height(40.dp)
+                            .height(48.dp)
                             .fillMaxWidth()
                     )
                 }

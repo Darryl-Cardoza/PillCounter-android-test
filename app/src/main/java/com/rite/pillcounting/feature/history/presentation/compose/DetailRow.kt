@@ -10,15 +10,15 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import com.rite.pillcounting.core.utils.constants.Dimens.medium
 import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable
 fun DetailRow(label: String, value: String) {
+    val dimens = AppTheme.dimens
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(medium),
+            .padding(dimens.medium),
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         Text(

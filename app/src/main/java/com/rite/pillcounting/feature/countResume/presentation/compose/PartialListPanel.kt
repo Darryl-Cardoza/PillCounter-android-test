@@ -23,12 +23,9 @@ import androidx.compose.ui.unit.dp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.compose.DrugCountRow
 import com.rite.pillcounting.core.utils.compose.DrugCountRowData
-import com.rite.pillcounting.core.utils.constants.Dimens.extraSmall
-import com.rite.pillcounting.core.utils.constants.Dimens.medium
-import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.feature.countResume.domain.data.ResumeEvent
 import com.rite.pillcounting.feature.countResume.domain.data.ResumeEventFactory
 import com.rite.pillcounting.feature.countResume.domain.model.CountItem
@@ -49,22 +46,32 @@ fun <E : ResumeEvent> PartialListPanel(
     onMultiDelete: () -> Unit,
     onCloseDialog: () -> Unit
 ) {
+    val dimens = AppTheme.dimens
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showForceCompletedDialog by remember { mutableStateOf(false) }
-    var showMoreDialog by remember { mutableStateOf(false) }
+//    var showMoreDialog by remember { mutableStateOf(false) }
     var pendingItem by remember { mutableStateOf<CountItem?>(null) }
     var selectedFilter by remember { mutableStateOf(FilterType.ALL) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(start = small, end = small, bottom = extraSmall)
+            .padding(
+                start = dimens.small,
+                end = dimens.small,
+                bottom = dimens.extraSmall,
+                top = dimens.extraSmall
+            )
     ) {
         val filteredItems = remember(searchQuery, items, selectedFilter) {
             val searchFiltered = if (searchQuery.isBlank()) {
                 items
             } else {
-                items.filter { it.name.contains(searchQuery, ignoreCase = true) }
+                items.filter {
+                    it.name.contains(searchQuery, ignoreCase = true) ||
+                            it.ndc?.contains(searchQuery, ignoreCase = true) == true ||
+                            it.bucketId?.contains(searchQuery, ignoreCase = true) == true
+                }
             }
 
             when (selectedFilter) {
@@ -89,7 +96,7 @@ fun <E : ResumeEvent> PartialListPanel(
         } else {
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(medium),
+                verticalArrangement = Arrangement.spacedBy(responsiveDp(10.dp)),
                 contentPadding = PaddingValues(bottom = 16.dp)
             ) {
                 items(filteredItems, key = { it.id }) { item ->
@@ -111,7 +118,8 @@ fun <E : ResumeEvent> PartialListPanel(
                         onSelectChange = { onEvent(eventFactory.selectItem(item)) },
                         onClick = {
                             pendingItem = item
-                            showMoreDialog = true
+//                            showMoreDialog = true
+                            onEvent(eventFactory.resumeTransaction(item))
                         }
                     )
                 }
@@ -159,35 +167,6 @@ fun <E : ResumeEvent> PartialListPanel(
             },
             onCancel = {
                 onCloseDialog()
-            }
-        )
-    }
-
-    if (showMoreDialog && pendingItem != null) {
-        val options = listOf(
-            stringResource(R.string.resume).uppercase(),
-            stringResource(R.string.force_complete).uppercase(),
-            stringResource(R.string.delete).uppercase()
-        )
-        CommonSingleSelectDialog(
-            title = stringResource(R.string.select_option).uppercase(),
-            options = options,
-            selectedIndex = 0,
-            onCancel = { showMoreDialog = false; pendingItem = null },
-            onOk = { index ->
-                pendingItem?.let { item ->
-                    when (index) {
-                        0 -> {
-                            onEvent(eventFactory.resumeTransaction(item))
-                            pendingItem = null
-                        }
-
-                        1 -> showForceCompletedDialog = true
-
-                        2 -> showDeleteDialog = true
-                    }
-                }
-                showMoreDialog = false
             }
         )
     }

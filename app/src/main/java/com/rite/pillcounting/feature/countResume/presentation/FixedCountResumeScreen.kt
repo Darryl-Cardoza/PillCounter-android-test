@@ -91,7 +91,8 @@ fun FixedCountResumeScreen(
             showSearch = showSearch,
             isMultiSelectMode = uiState.isMultiSelectMode,
             hasSelection = hasSelection,
-            showDelete = true,
+            showDelete = uiState.fixedCounts.isNotEmpty(),
+            showSearchIcon = uiState.fixedCounts.isNotEmpty(),
             onSearchClick = {
                 showSearch = !showSearch
                 if (!showSearch) searchQuery = ""

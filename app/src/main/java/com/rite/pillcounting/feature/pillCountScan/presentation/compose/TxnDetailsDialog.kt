@@ -56,7 +56,6 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
-import com.rite.pillcounting.core.utils.constants.Dimens.smallMedium
 import com.rite.pillcounting.feature.pillCountScan.domain.model.TxnDetail
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
@@ -68,6 +67,7 @@ fun TxnDetailDialog(
     onDismiss: () -> Unit,
     details: TxnDetail
 ) {
+    val dimens = AppTheme.dimens
     var showConfirmDeleteDialog by remember { mutableStateOf(false) }
     var showFullScreen by remember { mutableStateOf(false) }
 
@@ -165,7 +165,7 @@ fun TxnDetailDialog(
                                 fontWeight = FontWeight.Medium
                             )
                         )
-                        Spacer(modifier = Modifier.height(smallMedium))
+                        Spacer(modifier = Modifier.height(dimens.smallMedium))
                         Box(
                             contentAlignment = Alignment.Center,
                             modifier = Modifier
@@ -180,7 +180,7 @@ fun TxnDetailDialog(
                                 fontWeight = FontWeight.Medium
                             )
                         }
-                        Spacer(modifier = Modifier.height(smallMedium))
+                        Spacer(modifier = Modifier.height(dimens.smallMedium))
                         Text(
                             text = details.createdAt.toFormattedDate(),
                             style = MaterialTheme.typography.bodySmall.copy(

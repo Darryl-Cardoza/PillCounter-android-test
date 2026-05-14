@@ -23,8 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -36,8 +36,6 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.common.navigateSafely
 import com.rite.pillcounting.core.utils.compose.DashBoardIcon
 import com.rite.pillcounting.core.utils.compose.bounceClick
-import com.rite.pillcounting.core.utils.constants.Dimens.small
-import com.rite.pillcounting.core.utils.constants.Dimens.smallMedium
 import com.rite.pillcounting.feature.dashboard.presentation.viewmodel.DashboardViewModel
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.ui.theme.AppTheme
@@ -65,6 +63,7 @@ fun RegularCountSection(
     onNavigate: () -> Unit,
     viewModel: DashboardViewModel
 ) {
+    val dimens = AppTheme.dimens
     var showCreateBatchDialog by remember { mutableStateOf(false) }
     var showBucketSelectDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -72,17 +71,17 @@ fun RegularCountSection(
 
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .bounceClick {
-                showCreateBatchDialog = true
-                onNavigate()
-            },
+            .fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Spacer(modifier = Modifier.weight(1f))
 
         Column(
+            modifier = Modifier.bounceClick {
+                showCreateBatchDialog = true
+                onNavigate()
+            },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Regular count icon (click → ScanBarcode)
@@ -90,10 +89,12 @@ fun RegularCountSection(
                 outerCircleColor = MaterialTheme.colorScheme.primary,
                 innerColor = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.size(responsiveDp(120.dp)),
+                outerSize = 120.dp,
+                innerSize = 90.dp,
                 contentDescription = stringResource(R.string.stock_count)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(responsiveDp(24.dp)))
 
             // Regular Count title (click → ScanBarcode)
             Text(
@@ -103,7 +104,7 @@ fun RegularCountSection(
                 color = MaterialTheme.colorScheme.secondary,
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(responsiveDp(10.dp)))
 
             // Description label (click → ScanBarcode)
             Text(
@@ -119,52 +120,60 @@ fun RegularCountSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = smallMedium, end = smallMedium, bottom = small),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(
+                    start = dimens.smallMedium,
+                    end = dimens.smallMedium,
+                    bottom = dimens.small
+                ),
+            horizontalArrangement = Arrangement.spacedBy(responsiveDp(14.dp)),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Completed status
             Box(
-                modifier = Modifier.clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) {
-                    navController.navigateSafely(
-                        Screen.History.createRoute(HistoryMode.REGULAR)
-                    )
-                }
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        navController.navigateSafely(
+                            Screen.History.createRoute(HistoryMode.REGULAR)
+                        )
+                    }
             ) {
                 StatusChip(
                     text = "$completedRegularCount ${stringResource(R.string.completed)}",
-                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnPrimary,
+                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnPrimary.copy(alpha = 0.5f),
                     textColor = MaterialTheme.colorScheme.primary,
                     iconRes = R.drawable.complete,
-                    iconTint = MaterialTheme.colorScheme.primary
+                    iconTint = MaterialTheme.colorScheme.primary,
                 )
             }
 
             // Partial status (click → ResumeRegularCounts screen)
             Box(
-                modifier = Modifier.clickable(
-                    indication = null,
-                    interactionSource = remember { MutableInteractionSource() }
-                ) {
-                    navController.navigateSafely(
-                        Screen.PartialCountsScreen.route
-                    )
-                }
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }
+                    ) {
+                        navController.navigateSafely(
+                            Screen.PartialCountsScreen.route
+                        )
+                    }
             ) {
                 StatusChip(
                     text = "$partialRegularCount ${stringResource(R.string.partial)}",
-                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnPrimary,
+                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnPrimary.copy(alpha = 0.5f),
                     textColor = MaterialTheme.colorScheme.primary,
                     iconRes = R.drawable.partial,
-                    iconTint = MaterialTheme.colorScheme.primary
+                    iconTint = MaterialTheme.colorScheme.primary,
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(16.dp))
     }
 
     if (showCreateBatchDialog) {

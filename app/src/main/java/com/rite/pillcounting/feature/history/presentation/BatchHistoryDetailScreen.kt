@@ -42,6 +42,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toDateString
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toTimeString
@@ -97,7 +98,9 @@ fun BatchHistoryDetailScreen(
             // ── Info row (outside card) ───────────────────────────────────────
             item {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(start = 10.dp, end = 10.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 10.dp, end = 10.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Row(
@@ -235,7 +238,7 @@ private fun NotesCard(note: String) {
                 else Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(20.dp)
+                modifier = Modifier.size(responsiveDp(22.dp))
             )
         }
         AnimatedVisibility(

@@ -118,7 +118,7 @@ class HistoryViewModel @Inject constructor(
 
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    val batchGroups: StateFlow<List<BatchSummary>> =
+    private val rawBatchGroups: StateFlow<List<BatchSummary>> =
         combine(_startDate, _endDate) { start, end -> start to end }
             .flatMapLatest { (start, end) ->
                 repository.getBatchSummaries(
@@ -127,6 +127,20 @@ class HistoryViewModel @Inject constructor(
                     userLocalId = preferenceHelper.getLocalId()
                 )
             }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val batchGroups: StateFlow<List<BatchSummary>> =
+        combine(rawBatchGroups, _searchQuery) { list, query ->
+            if (query.isBlank()) {
+                list
+            } else {
+                list.filter {
+                    it.batchId.toString().contains(query, ignoreCase = true) ||
+                            it.bucketId?.contains(query, ignoreCase = true) == true ||
+                            it.requestIdFromPMS?.contains(query, ignoreCase = true) == true
+                }
+            }
+        }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setHistoryMode(mode: HistoryMode) {

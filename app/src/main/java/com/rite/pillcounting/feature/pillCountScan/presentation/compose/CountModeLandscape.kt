@@ -32,12 +32,13 @@ import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveButtonHeight
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountProgressLandscape
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingScreen
 import com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
+
 @Composable
 fun CountModeLandscape(
     totalCount: Int,
@@ -57,8 +58,7 @@ fun CountModeLandscape(
             modifier = Modifier
                 .fillMaxWidth()
                 .fillMaxHeight()
-                .padding(top = 8.dp)
-                .padding(horizontal = 14.dp),
+                .padding(top = responsiveDp(14.dp), bottom = responsiveDp(15.dp)),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             // Row: Circle + Add (center)
@@ -71,15 +71,16 @@ fun CountModeLandscape(
                 textAlign = TextAlign.Center,
                 maxLines = 1
             )
+            val circleSize = responsiveDpForCircularCountIndicator()
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(responsiveDpForCircularCountProgressLandscape(160.dp)),
+                    .height(circleSize + responsiveButtonHeight(40.dp) - responsiveDp(10.dp)),
                 contentAlignment = Alignment.TopCenter
             ) {
                 Box(
                     modifier = Modifier
-                        .size(responsiveDpForCircularCountProgressLandscape(160.dp)),
+                        .size(circleSize),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularCountIndicator(
@@ -88,7 +89,7 @@ fun CountModeLandscape(
                     )
                 }
 
-                ActionButtonPrimary(
+                PillAddButton(
                     text = if (uiState.isAddCooldown)
                         stringResource(R.string.pill_scanning_wait_button)
                     else
@@ -106,10 +107,7 @@ fun CountModeLandscape(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .offset(y = (-6).dp)
-                        .height(responsiveButtonHeight(40.dp))
                         .padding(horizontal = 14.dp),
-                    width = 80,
-                    fontSize = 15
                 )
             }
 
@@ -125,7 +123,7 @@ fun CountModeLandscape(
                     modifier = Modifier
                         .weight(1f)
                         .clickable { showHistory() }
-                        .padding(top = 10.dp),
+                        .padding(top = 10.dp, start = responsiveDp(15.dp)),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     Column(
@@ -136,8 +134,8 @@ fun CountModeLandscape(
                         Text(
                             text = totalCount.toString(),
                             color = MaterialTheme.colorScheme.primary,
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Medium
+                            fontSize = responsiveSpForPillCountingScreen(32.sp),
+                            fontWeight = FontWeight.SemiBold
                         )
 
                         Spacer(Modifier.height(4.dp))
@@ -155,17 +153,17 @@ fun CountModeLandscape(
                             Text(
                                 text = targetCount.toString(),
                                 color = MaterialTheme.colorScheme.primary,
-                                fontSize = 20.sp,
+                                fontSize = responsiveSpForPillCountingScreen(32.sp),
                                 fontWeight = FontWeight.Medium
                             )
+                            Spacer(modifier = Modifier.height(responsiveDp(8.dp)))
                         } else {
                             Spacer(modifier = Modifier.height(responsiveDp(20.dp)))
                         }
-
                         Text(
                             text = stringResource(R.string.pill_scanning_total_count),
                             color = AppTheme.extendedColors.textColor,
-                            fontSize = 15.sp
+                            fontSize = 14.sp
                         )
                     }
                 }
@@ -174,9 +172,10 @@ fun CountModeLandscape(
                 // RIGHT done
                 Box(
                     contentAlignment = Alignment.BottomEnd,
+                    modifier = Modifier.padding(end = responsiveDp(15.dp))
                 ) {
                     Column(
-                        horizontalAlignment = Alignment.End,
+                        horizontalAlignment = Alignment.CenterHorizontally,
                         modifier = Modifier
                             .clickable(onClick = onDone)
                     ) {
@@ -185,7 +184,7 @@ fun CountModeLandscape(
                             painter = painterResource(id = R.drawable.all_done),
                             contentDescription = "All Done",
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(40.dp)
+                            modifier = Modifier.size(responsiveDp(36.dp))
                         )
                         Spacer(modifier = Modifier.height(responsiveDp(20.dp)))
                         Text(
