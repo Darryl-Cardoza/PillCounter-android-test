@@ -214,13 +214,11 @@ class Hl7Repository @Inject constructor(
             val resolvedDrugName =
                 drugInfo?.genericName?.takeIf { it.isNotBlank() } ?: hl7DrugName
             val resolvedDrugType = drugInfo?.drugType
-            val resolvedEquivalence = drugInfo?.is_ndc_equivalent?.toString()
 
             DrugMasterEntity(
                 ndc = resolvedNdc,
                 drugName = resolvedDrugName,
                 drugType = resolvedDrugType,
-                equivalence = resolvedEquivalence
             )
         }
 
@@ -540,7 +538,6 @@ class Hl7Repository @Inject constructor(
                     ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
                     drugName = resolvedDrugName,
                     drugType = drugInfo.drugType,
-                    equivalence = drugInfo.is_ndc_equivalent?.toString(),
                     packageQty = drugInfo.qty
                 )
 

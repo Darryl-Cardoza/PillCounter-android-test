@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.barcodeScan.presentation
 
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -30,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -71,7 +73,7 @@ fun ScanBarCodeScreenContent(
     val scanType by viewModel.txnScanType.collectAsStateWithLifecycle()
     val latestScanType by rememberUpdatedState(scanType)
     val context = LocalContext.current
-
+    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val stepType = if (latestScanType == ScanType.RX_LABEL) {
         StepState.RX_LABEL
     } else if (latestScanType == ScanType.STOCK_COUNT) {
@@ -161,7 +163,11 @@ fun ScanBarCodeScreenContent(
                 }
             )
 
-            Spacer(modifier = Modifier.weight(0.8f))
+            if (isLandscape) {
+                Spacer(modifier = Modifier.weight(0.3f))
+            } else {
+                Spacer(modifier = Modifier.weight(0.6f))
+            }
 
             StepTitleWithSpeech(stepType = stepType, isSoundOverride = isSoundEnabled)
 
