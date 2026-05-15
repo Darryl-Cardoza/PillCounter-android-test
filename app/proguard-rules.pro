@@ -10,6 +10,8 @@
 -keepattributes Signature
 -keepattributes *Annotation*
 -keepattributes KotlinMetadata
+-keepattributes SourceFile,LineNumberTable
+-renamesourcefileattribute SourceFile
 
 
 ############################################
@@ -154,6 +156,33 @@
 # YOUR APP (KEEP ONLY WHAT USES REFLECTION)
 ############################################
 
+############################################
+# SECURITY — JNI NATIVE METHODS
+############################################
+# R8 must NOT rename these — libsecurity.so calls them by exact name
+-keepclasseswithmembernames class com.rite.pillcounting.core.security.SecurityUtils {
+    private native boolean nativeIsRooted();
+    private native boolean nativeIsDebuggerAttached();
+}
+
+############################################
+# SECURITY — KEYSTORE / CRYPTO CLASSES
+############################################
+# These use reflection internally via Keystore — keep their structure
+-keep class com.rite.pillcounting.core.security.RuntimeUnit { *; }
+-keep class com.rite.pillcounting.core.security.DatabaseKeyProvider { *; }
+-keep class com.rite.pillcounting.core.security.SecurityAuditLogger { *; }
+-keep class com.rite.pillcounting.core.security.AuditEvent { *; }
+-keep class com.rite.pillcounting.core.security.SecurityViolationPolicy { *; }
+-keep class com.rite.pillcounting.core.utils.preference.SecurePreferences { *; }
+
+############################################
+# SQLCIPHER
+############################################
+-keep class net.sqlcipher.** { *; }
+-keep class net.sqlcipher.database.** { *; }
+-dontwarn net.sqlcipher.**
+
 # Example: JSON / DB / Serialization models
 # Adjust package as needed
 ############################################
@@ -199,3 +228,5 @@
     public void w(...);
     public void e(...);
 }
+
+-assumenosideeffects class kotlinx.coroutines.debug.** { *; }

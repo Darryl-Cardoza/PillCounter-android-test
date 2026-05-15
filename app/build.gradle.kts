@@ -52,6 +52,7 @@ android {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -111,6 +112,7 @@ configurations.all {
     resolutionStrategy {
         force("com.google.mlkit:barcode-scanning:17.3.0")
     }
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-debug")
 }
 
 dependencies {

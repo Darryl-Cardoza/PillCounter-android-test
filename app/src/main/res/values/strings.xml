@@ -356,5 +356,14 @@
     <string name="stock">Stock</string>
 
     <string name="violation_screen_overlay">Screen overlay detected — another app may be intercepting touch input</string>
+    <string name="permission_location_rationale">
+    Location access is used only to identify your Wi-Fi network for
+    HL7 medical device discovery. Your location is never stored,
+    transmitted, or linked to patient data.
+</string>
+    <string name="permission_location_denied">
+    Without location permission, automatic medical device discovery
+    is unavailable. You can connect manually in Settings.
+</string>
 
 </resources>

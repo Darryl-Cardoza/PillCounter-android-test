@@ -180,23 +180,33 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestLocationPermission() {
-
         val permissions = mutableListOf<String>()
 
-        // Location permission
         if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                this, Manifest.permission.ACCESS_COARSE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            // Show rationale if the user has previously denied
+            if (ActivityCompat.shouldShowRequestPermissionRationale(
+                    this, Manifest.permission.ACCESS_COARSE_LOCATION)
+            ) {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Location Access")
+                    .setMessage(getString(R.string.permission_location_rationale))
+                    .setPositiveButton("Continue") { _, _ ->
+                        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        requestPermissions(permissions)
+                    }
+                    .setNegativeButton("Not now", null)
+                    .show()
+                return
+            }
+            permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
-        // Notification permission (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
+                    this, Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
                 permissions.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -204,12 +214,12 @@ class MainActivity : ComponentActivity() {
         }
 
         if (permissions.isNotEmpty()) {
-            ActivityCompat.requestPermissions(
-                this,
-                permissions.toTypedArray(),
-                1001
-            )
+            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 1001)
         }
+    }
+
+    private fun requestPermissions(permissions: List<String>) {
+        ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 1001)
     }
 
     private fun handleNavigationIntent(intent: Intent) {

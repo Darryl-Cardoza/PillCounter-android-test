@@ -16,7 +16,7 @@ class SecurePreferences(context: Context,
                         prefsName: String = PREF_NAME ) {
 
     private val prefs: SharedPreferences =
-        context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
+        context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
     private val keystore = KeyStore.getInstance("AndroidKeyStore")
         .also { it.load(null) }

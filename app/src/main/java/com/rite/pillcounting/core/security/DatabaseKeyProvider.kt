@@ -8,9 +8,10 @@ import java.security.SecureRandom
 object DatabaseKeyProvider {
 
     private const val KEY_ENCRYPTED_DB_KEY = "encrypted_db_key"
+    private const val PREFS_NAME = "pillcounting_db_key_prefs"
 
     fun getOrCreateDatabaseKey(context: Context): ByteArray {
-        val prefs = SecurePreferences(context, "pillcounting_db_key_prefs")
+        val prefs = SecurePreferences(context, PREFS_NAME)
 
         val existing = prefs.getString(KEY_ENCRYPTED_DB_KEY)
         if (existing != null) {

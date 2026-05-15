@@ -224,5 +224,8 @@
     <string name="batch">Batch</string>
     <string name="no_last_batch_available">No last batch available</string>
 
+    <string name="violation_screen_overlay">Superposición de pantalla detectada — otra aplicación podría estar interceptando la entrada táctil</string>
+    <string name="permission_location_rationale">El acceso a la ubicación se utiliza únicamente para identificar su red Wi-Fi para el descubrimiento de dispositivos médicos HL7. Su ubicación nunca se almacena, transmite ni vincula a datos de pacientes.</string>
+    <string name="permission_location_denied">Sin permiso de ubicación, el descubrimiento automático de dispositivos médicos no está disponible. Puede conectarse manualmente en Configuración.</string>
 
 </resources>

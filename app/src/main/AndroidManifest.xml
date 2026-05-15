@@ -3,7 +3,13 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+
+    <!-- ACCESS_COARSE_LOCATION: Required by Android for Wi-Fi NSD (Network Service
+     Discovery) used to auto-discover HL7 MLLP medical devices on the local network.
+     HIPAA note: Location data is not collected, stored, or transmitted. It is used
+     transiently by the Android NSD API only. See HL7Service + NsdHelper. -->
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+
     <uses-permission
         android:name="android.permission.ACCESS_FINE_LOCATION"
         tools:node="remove" />
@@ -37,6 +43,13 @@
     <uses-permission android:name="com.google.android.gms.permission.AD_ID" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_ADSERVICES_AD_ID" tools:node="remove" />
     <uses-permission android:name="android.permission.ACCESS_ADSERVICES_ATTRIBUTION" tools:node="remove" />
+    <uses-permission android:name="android.permission.WAKE_LOCK" tools:node="remove" />
+
+    <permission
+        android:name="${applicationId}.permission.C2D_MESSAGE"
+        android:protectionLevel="signature" />
+    <uses-permission android:name="${applicationId}.permission.C2D_MESSAGE" />
+    <uses-permission android:name="com.google.android.c2dm.permission.SEND" />
 
     <uses-feature
         android:name="android.hardware.camera"
@@ -73,6 +86,11 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name="androidx.compose.ui.tooling.PreviewActivity"
+            android:exported="false"
+            tools:node="replace" />
+
             <provider
                 android:name="androidx.core.content.FileProvider"
                 android:authorities="${applicationId}.provider"
@@ -82,6 +100,16 @@
                     android:name="android.support.FILE_PROVIDER_PATHS"
                     android:resource="@xml/file_paths" />
             </provider>
+
+        <receiver
+            android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver"
+            android:exported="true"
+            android:permission="com.google.android.c2dm.permission.SEND"
+            tools:node="merge">
+            <intent-filter>
+                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+            </intent-filter>
+        </receiver>
 
         <service android:name=".core.hl7.service.HL7Service"
             android:foregroundServiceType="dataSync|connectedDevice"
