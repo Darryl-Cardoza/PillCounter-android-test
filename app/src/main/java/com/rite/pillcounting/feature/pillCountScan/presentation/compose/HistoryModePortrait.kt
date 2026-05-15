@@ -50,6 +50,7 @@ import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingHistoryScreen
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.core.utils.compose.cardSelectionShadow
@@ -203,7 +204,8 @@ fun HistoryModePortrait(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     HollowButton(
                         text = stringResource(R.string.cancel).uppercase(),
@@ -212,7 +214,7 @@ fun HistoryModePortrait(
                             selectedIds = emptySet()
                         },
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                        modifier = Modifier.width(responsiveDp(120.dp))
                     )
                     FilledButton(
                         text = stringResource(R.string.delete).uppercase(),
@@ -220,7 +222,7 @@ fun HistoryModePortrait(
                             if (selectedIds.isNotEmpty()) showDeleteConfirmDialog = true
                         },
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                        modifier = Modifier.width(responsiveDp(120.dp))
                     )
                 }
             }
