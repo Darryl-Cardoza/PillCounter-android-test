@@ -15,6 +15,7 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.SocketTimeoutException
 import javax.net.ssl.SSLSocket
 
 class MllpClient(
@@ -25,7 +26,7 @@ class MllpClient(
         private const val SB: Byte = 0x0B
         private const val EB: Byte = 0x1C
         private const val CR: Byte = 0x0D
-        private const val READ_TIMEOUT_MS = 0
+        private const val READ_TIMEOUT_MS = 1_000  // non-zero so passiveReader releases streamGate on timeout
     }
 
     private var socket: SSLSocket? = null
@@ -99,33 +100,32 @@ class MllpClient(
                 // This is a real suspend — no spin loop, no polling.
                 // withPermit acquires, runs the block, releases.
                 streamGate.withPermit {
-                    // Inside here we own the gate — do ONE blocking read.
-                    // If server disconnects, read() returns -1 immediately.
-                    val b = stream.read()
+                    try {
+                        val b = stream.read()
 
-                    if (b == -1) {
-                        Log.i(TAG, "startPassiveReader() — clean TCP close (read = -1)")
-                        onDisconnected()
-                        return@launch  // exits the coroutine
-                    }
-
-                    when (b.toByte()) {
-                        SB -> { started = true; buffer.reset() }
-                        EB -> {
-                            stream.read() // consume trailing CR
-                            if (started) {
-                                val msg = buffer.toString(Charsets.UTF_8.name())
-                                Log.d(TAG, "passiveReader — unsolicited msg (${msg.length} chars)")
-                                onMessageReceived(msg)
-                            }
-                            started = false
+                        if (b == -1) {
+                            Log.i(TAG, "startPassiveReader() — clean TCP close (read = -1)")
+                            onDisconnected()
+                            return@launch
                         }
-                        else -> if (started) buffer.write(b)
+
+                        when (b.toByte()) {
+                            SB -> { started = true; buffer.reset() }
+                            EB -> {
+                                stream.read() // consume trailing CR
+                                if (started) {
+                                    val msg = buffer.toString(Charsets.UTF_8.name())
+                                    Log.d(TAG, "passiveReader — unsolicited msg (${msg.length} chars)")
+                                    onMessageReceived(msg)
+                                }
+                                started = false
+                            }
+                            else -> if (started) buffer.write(b)
+                        }
+                    } catch (_: SocketTimeoutException) {
+                        // soTimeout expired; release gate so send() can proceed
                     }
                 }
-                // Gate is released here — if send() is waiting it gets
-                // the permit next, otherwise passiveReader loops back
-                // and re-acquires immediately for the next byte.
             }
         } catch (e: Exception) {
             Log.w(TAG, "startPassiveReader() — exception: ${e.message}")
