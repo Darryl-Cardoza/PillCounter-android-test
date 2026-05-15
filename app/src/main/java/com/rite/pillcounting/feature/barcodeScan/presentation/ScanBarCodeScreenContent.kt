@@ -1,22 +1,35 @@
 package com.rite.pillcounting.feature.barcodeScan.presentation
 
 import android.widget.Toast
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.Orientation
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -24,14 +37,21 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,6 +63,8 @@ import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
+import com.rite.pillcounting.core.utils.compose.HideSystemBarsInCurrentWindow
+import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.rite.pillcounting.feature.barcodeScan.domain.data.ScanBarcodeEvent
 import com.rite.pillcounting.feature.barcodeScan.domain.model.ScanBarcodeUiState
 import com.rite.pillcounting.feature.barcodeScan.presentation.analyzer.BarcodeAnalyzer
@@ -50,6 +72,7 @@ import com.rite.pillcounting.feature.barcodeScan.presentation.compose.ScannerVie
 import com.rite.pillcounting.feature.barcodeScan.presentation.viewmodel.ScanBarcodeViewModel
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.StepTitleWithSpeech
 import com.rite.pillcounting.ui.theme.AppTheme
+import kotlinx.coroutines.launch
 
 /**
  * Stateless composable for the barcode scanning screen.
@@ -64,7 +87,10 @@ fun ScanBarCodeScreenContent(
     onEvent: (ScanBarcodeEvent) -> Unit,
     analyzer: BarcodeAnalyzer,
     viewModel: ScanBarcodeViewModel = hiltViewModel(),
-    batchId: Long
+    batchId: Long,
+    showInlineRxPanel: Boolean = false,
+    onRxCancel: () -> Unit = {},
+    onRxProceed: () -> Unit = {},
 ) {
 
     val isSoundEnabled = viewModel.isSoundEnabled.collectAsState().value
@@ -79,6 +105,28 @@ fun ScanBarCodeScreenContent(
     } else {
         StepState.SCAN
     }
+
+    // Re-assert immersive (no nav buttons / status bar) on the activity window
+    // whenever the inline RX panel is showing. The activity is already immersive
+    // globally, but some focus transitions can momentarily re-show bars; this
+    // SideEffect re-hides them as the panel composes/recomposes.
+    if (showInlineRxPanel) {
+        HideSystemBarsInCurrentWindow()
+    }
+
+    // In landscape RX-label flow the inline panel overlays the right side, but the
+    // camera preview stays full-bleed in the background so there's no dead black
+    // strip behind the panel. Tablet gets a wider drawer (~40% of screen width)
+    // matching the tablet-landscape proportions used elsewhere.
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.smallestScreenWidthDp >= 600
+    // Aim for ~30% of the landscape width. Clamp so it's never absurdly narrow
+    // on small devices or absurdly wide on large tablets. Easy to nudge: bump
+    // the 0.3f multiplier or the clamp bounds.
+    val rxPanelWidth = (configuration.screenWidthDp.dp * 0.3f).coerceIn(
+        if (isTablet) 320.dp else 280.dp,
+        if (isTablet) 440.dp else 340.dp,
+    )
 
     Box(
         modifier = Modifier
@@ -148,6 +196,12 @@ fun ScanBarCodeScreenContent(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
+                .padding(
+                    start = 0.dp,
+                    end = if (showInlineRxPanel) rxPanelWidth else 0.dp,
+                    top = 0.dp,
+                    bottom = 0.dp,
+                )
                 .padding(vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -189,6 +243,103 @@ fun ScanBarCodeScreenContent(
                     .padding(horizontal = 20.dp, vertical = 10.dp),
                 color = AppTheme.extendedColors.textColor,
             )
+
+        // Tap-outside scrim: a transparent, full-screen click target that intercepts
+        // taps to the left of the panel. Only enabled when the panel is visible.
+        AnimatedVisibility(
+            visible = showInlineRxPanel,
+            enter = fadeIn(animationSpec = tween(durationMillis = 200)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 180)),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onRxCancel,
+                    )
+            )
+        }
+
+        // The panel itself — slides in from the right, with swipe-right-to-dismiss.
+        AnimatedVisibility(
+            visible = showInlineRxPanel,
+            enter = slideInHorizontally(
+                initialOffsetX = { it },
+                animationSpec = tween(durationMillis = 260)
+            ) + fadeIn(animationSpec = tween(durationMillis = 260)),
+            exit = slideOutHorizontally(
+                targetOffsetX = { it },
+                animationSpec = tween(durationMillis = 220)
+            ) + fadeOut(animationSpec = tween(durationMillis = 220)),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(rxPanelWidth)
+        ) {
+            val density = LocalDensity.current
+            val dismissThresholdPx = with(density) { (rxPanelWidth * 0.35f).toPx() }
+            // Animatable gives direct (non-recomposing) updates while dragging and
+            // a smooth animateTo() for spring-back — feels much less laggy than
+            // animateFloatAsState driven by a State<Float>.
+            val dragOffset = remember { androidx.compose.animation.core.Animatable(0f) }
+            val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(dragOffset.value.toInt(), 0) }
+                    .draggable(
+                        orientation = Orientation.Horizontal,
+                        state = rememberDraggableState { delta ->
+                            // Only allow rightward drag (positive); clamp to non-negative.
+                            val next = (dragOffset.value + delta).coerceAtLeast(0f)
+                            coroutineScope.launch { dragOffset.snapTo(next) }
+                        },
+                        onDragStopped = {
+                            if (dragOffset.value >= dismissThresholdPx) {
+                                onRxCancel()
+                            } else {
+                                coroutineScope.launch {
+                                    dragOffset.animateTo(
+                                        targetValue = 0f,
+                                        animationSpec = tween(durationMillis = 200)
+                                    )
+                                }
+                            }
+                        }
+                    )
+                    // Swallow taps so they don't bubble to the scrim and dismiss.
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    )
+            ) {
+                VerifyRxDetailsInlinePanel(
+                    drugName = uiState.drugName,
+                    quantity = uiState.qty.toString(),
+                    bucket = uiState.selectedBucketId,
+                    ndcNumber = uiState.ndc,
+                    rxNumber = uiState.rxNo.toString(),
+                    onCancel = onRxCancel,
+                    onProceed = onRxProceed,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = 20.dp,
+                                bottomStart = 20.dp,
+                                topEnd = 0.dp,
+                                bottomEnd = 0.dp,
+                            )
+                        ),
+                    cornerRadius = 0.dp,
+                )
+            }
+        }
     }
 
 }

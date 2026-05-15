@@ -63,6 +63,98 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPr
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.ui.theme.AppTheme
 
+/**
+ * Hides status + navigation bars on whichever window owns the calling composable.
+ * For a ModalBottomSheet / Dialog this targets the dialog window (so the sheet
+ * doesn't pull nav buttons over its content). For a regular activity content
+ * scope this targets the activity window. Uses SideEffect + a brief
+ * FLAG_NOT_FOCUSABLE toggle so the WindowInsetsController applies even on
+ * dialog windows that wouldn't otherwise honor it.
+ */
+@Composable
+fun HideSystemBarsInCurrentWindow() {
+    val view = LocalView.current
+    androidx.compose.runtime.SideEffect {
+        val window: android.view.Window =
+            (view.parent as? androidx.compose.ui.window.DialogWindowProvider)?.window
+                ?: run {
+                    var ctx: android.content.Context? = view.context
+                    while (ctx != null && ctx !is android.app.Activity) {
+                        ctx = (ctx as? android.content.ContextWrapper)?.baseContext
+                    }
+                    (ctx as? android.app.Activity)?.window
+                }
+                ?: return@SideEffect
+
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        window.setFlags(
+            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+        )
+        // Toggle focusability so the InsetsController actually applies to the dialog window.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+        val controller = androidx.core.view.WindowInsetsControllerCompat(window, view)
+        controller.systemBarsBehavior =
+            androidx.core.view.WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        controller.hide(androidx.core.view.WindowInsetsCompat.Type.systemBars())
+        window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE)
+    }
+}
+
+/**
+ * Inline (NOT overlay) version of the Rx-details panel — designed to be placed
+ * as a sibling of another composable (e.g. the camera scanner) inside a Row in
+ * landscape, so the scanner can shrink to give it space rather than being
+ * covered by an overlay. The caller controls visibility and animation; this
+ * composable just renders the styled body.
+ *
+ * Uses tablet-vertical layout on tablets and the compact phone body on phones.
+ */
+@Composable
+fun VerifyRxDetailsInlinePanel(
+    drugName: String,
+    quantity: String,
+    bucket: String,
+    ndcNumber: String,
+    rxNumber: String,
+    onCancel: () -> Unit,
+    onProceed: () -> Unit,
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = 20.dp,
+) {
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.smallestScreenWidthDp >= 600
+
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(cornerRadius))
+            .background(AppTheme.extendedColors.primaryBackground)
+    ) {
+        if (isTablet) {
+            TabletVerticalBody(
+                drugName = drugName,
+                quantity = quantity,
+                bucket = bucket,
+                ndcNumber = ndcNumber,
+                rxNumber = rxNumber,
+                onCancel = onCancel,
+                onProceed = onProceed,
+            )
+        } else {
+            SheetBody(
+                drugName = drugName,
+                quantity = quantity,
+                bucket = bucket,
+                ndcNumber = ndcNumber,
+                rxNumber = rxNumber,
+                isLandscape = true,
+                onCancel = onCancel,
+                onProceed = onProceed,
+            )
+        }
+    }
+}
+
 /* ── Tweakable knobs ──────────────────────────────────────────────
  * Adjust these to nudge the sheet/drawer position if your device still
  * shows a gap. Negative values push past the system-bar inset.
@@ -227,10 +319,13 @@ private fun VerifyRxDetailsBottomSheet(
         containerColor = AppTheme.extendedColors.primaryBackground,
         dragHandle = null,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
-        // Let the sheet honor the system nav-bar inset so its content sits *above*
-        // the gesture-pill / nav buttons instead of being overlaid by them.
-        contentWindowInsets = { WindowInsets.navigationBars }
+        // Bars are hidden by HideSystemBarsInCurrentWindow below, so content goes
+        // flush to the screen edge with no nav-bar inset reserved.
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
     ) {
+        // Targets the sheet's dialog window — this is the call that actually
+        // removes the gesture-pill / nav buttons from overlaying the sheet.
+        HideSystemBarsInCurrentWindow()
         SheetBody(
             drugName = drugName,
             quantity = quantity,
@@ -411,8 +506,9 @@ private fun VerifyRxDetailsTabletBottomSheet(
         containerColor = AppTheme.extendedColors.primaryBackground,
         dragHandle = null,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-        contentWindowInsets = { WindowInsets.navigationBars }
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
     ) {
+        HideSystemBarsInCurrentWindow()
         TabletHorizontalBody(
             drugName = drugName,
             quantity = quantity,
@@ -522,24 +618,49 @@ private fun TabletHorizontalBody(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-            HollowButton(
-                text = stringResource(R.string.cancel).uppercase(),
-                onClick = onCancel,
-                color = MaterialTheme.colorScheme.primary,
-                fixedWidth = false,
-                modifier = Modifier.width(140.dp)
-            )
-            ActionButtonPrimary(
-                text = stringResource(R.string.proceed).uppercase(),
-                onClick = onProceed,
-                color = MaterialTheme.colorScheme.primary,
-                fixedWidth = false,
-                modifier = Modifier.width(140.dp)
-            )
-        }
+        // Use the local tablet button row so HollowButton & ActionButtonPrimary
+        // share identical outer widths in portrait *and* landscape on tablet.
+        TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 14.dp)
 
         Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+/**
+ * Tablet button row: CANCEL/PROCEED with identical widths. Both use the same
+ * underlying Box(width = TABLET_BUTTON_WIDTH) wrapping HollowButton/ActionButtonPrimary,
+ * with the inner button forced to fillMaxSize() so border + content padding
+ * resolve to the same bounds for both.
+ */
+@Composable
+private fun TabletButtonRow(
+    onCancel: () -> Unit,
+    onProceed: () -> Unit,
+    spacing: Dp,
+) {
+    // Use the universal HollowButton (outlined) + ActionButtonPrimary (filled).
+    // Give the Row a fixed total width and let each child claim weight(1f) of it
+    // — this forces identical layout widths regardless of the differing internal
+    // size/border modifiers inside the two button composables.
+    val rowWidth = TABLET_BUTTON_WIDTH * 2 + spacing
+    Row(
+        modifier = Modifier.width(rowWidth),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
+    ) {
+        HollowButton(
+            text = stringResource(R.string.cancel).uppercase(),
+            onClick = onCancel,
+            color = MaterialTheme.colorScheme.primary,
+            fixedWidth = false,
+            modifier = Modifier.weight(1f),
+        )
+        ActionButtonPrimary(
+            text = stringResource(R.string.proceed).uppercase(),
+            onClick = onProceed,
+            color = MaterialTheme.colorScheme.primary,
+            fixedWidth = false,
+            modifier = Modifier.weight(1f),
+        )
     }
 }
 
@@ -559,8 +680,8 @@ private fun TabletVerticalBody(
 ) {
     Column(
         modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 24.dp, vertical = 20.dp),
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 16.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
@@ -568,16 +689,16 @@ private fun TabletVerticalBody(
             color = AppTheme.extendedColors.textColor,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(bottom = 16.dp)
+            modifier = Modifier.padding(bottom = 12.dp)
         )
 
         Column(
             modifier = Modifier
-                .weight(1f, fill = false)
+                .weight(1f, fill = true)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             FormTile()
             QuantityTile(quantity = quantity)
@@ -601,26 +722,16 @@ private fun TabletVerticalBody(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            HollowButton(
-                text = stringResource(R.string.cancel).uppercase(),
-                onClick = onCancel,
-                color = MaterialTheme.colorScheme.primary,
-                fixedWidth = false,
-                modifier = Modifier.width(120.dp)
-            )
-            ActionButtonPrimary(
-                text = stringResource(R.string.proceed).uppercase(),
-                onClick = onProceed,
-                color = MaterialTheme.colorScheme.primary,
-                fixedWidth = false,
-                modifier = Modifier.width(120.dp)
-            )
-        }
+        TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 12.dp)
 
         Spacer(modifier = Modifier.height(8.dp))
     }
 }
+
+// Tablet CANCEL/PROCEED button dimensions — same in portrait & landscape so they
+// look identical on a tablet. Adjust here to resize both at once.
+private val TABLET_BUTTON_WIDTH = 140.dp
+private val TABLET_BUTTON_HEIGHT = 44.dp
 
 /** Centered label-on-top, value-below detail item used in tablet layouts. */
 @Composable
@@ -667,10 +778,13 @@ private fun SheetBody(
     // 3-section layout: fixed title, scrollable middle (gets remaining height),
     // pinned button row. Outer column fills the parent's bounded height so weight() works.
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
+    // Inline landscape usage gives this Column a bounded height, so fillMaxHeight
+    // pushes the buttons to the bottom via weight(1f) on the scroll section.
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 12.dp + extraBottom)
+            .let { if (isLandscape) it.fillMaxHeight() else it }
+            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 16.dp + extraBottom)
     ) {
         Text(
             text = stringResource(R.string.verify_rx_details),
@@ -685,7 +799,7 @@ private fun SheetBody(
 
         Column(
             modifier = Modifier
-                .weight(1f, fill = false)
+                .weight(1f, fill = isLandscape)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
         ) {
@@ -701,28 +815,41 @@ private fun SheetBody(
 
         Spacer(modifier = Modifier.height(if (isLandscape) 10.dp else 14.dp))
 
+        // Fixed-width buttons so the physical size matches across portrait
+        // (wide sheet) and landscape (narrow side panel) on the same device.
+        // HollowButton vs ActionButtonPrimary internally apply slightly different
+        // size/border modifiers, so wrapping each in a Box(width=BUTTON_WIDTH) +
+        // fillMaxWidth() on the button forces both outer bounds to match exactly.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
         ) {
-            HollowButton(
-                text = stringResource(R.string.cancel).uppercase(),
-                onClick = onCancel,
-                color = MaterialTheme.colorScheme.primary,
-                fixedWidth = false,
-                modifier = Modifier.weight(1f)
-            )
+            Box(modifier = Modifier.width(BUTTON_WIDTH)) {
+                HollowButton(
+                    text = stringResource(R.string.cancel).uppercase(),
+                    onClick = onCancel,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
 
-            ActionButtonPrimary(
-                text = stringResource(R.string.proceed).uppercase(),
-                onClick = onProceed,
-                color = MaterialTheme.colorScheme.primary,
-                fixedWidth = false,
-                modifier = Modifier.weight(1f)
-            )
+            Box(modifier = Modifier.width(BUTTON_WIDTH)) {
+                ActionButtonPrimary(
+                    text = stringResource(R.string.proceed).uppercase(),
+                    onClick = onProceed,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
         }
     }
 }
+
+// Phone-body CANCEL/PROCEED button width — same in portrait & landscape so they
+// look identical on a single device. Adjust here to resize both at once.
+private val BUTTON_WIDTH = 130.dp
 
 /**
  * Renders three aligned rows: [Form tile | Drug Name], [Quantity tile | NDC Number],
@@ -789,7 +916,7 @@ private fun FormTile(compact: Boolean = false) {
             painter = painterResource(R.drawable.pill_capsule),
             contentDescription = null,
             tint = Color.Unspecified,
-            modifier = Modifier.size(if (compact) 18.dp else 28.dp)
+            modifier = Modifier.size(if (compact) 22.dp else 28.dp)
         )
     }
 }
@@ -800,7 +927,7 @@ private fun QuantityTile(quantity: String, compact: Boolean = false) {
         Text(
             text = quantity,
             color = MaterialTheme.colorScheme.primary,
-            fontSize = if (compact) 16.sp else 20.sp,
+            fontSize = if (compact) 18.sp else 20.sp,
             fontWeight = FontWeight.SemiBold
         )
     }
@@ -812,7 +939,7 @@ private fun BucketTile(bucket: String, compact: Boolean = false) {
         Text(
             text = bucket.ifBlank { "-" },
             color = MaterialTheme.colorScheme.primary,
-            fontSize = if (compact) 13.sp else 15.sp,
+            fontSize = if (compact) 14.sp else 15.sp,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center
         )
@@ -825,24 +952,24 @@ private fun SquareTile(
     compact: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val tileSize = if (compact) 58.dp else 84.dp
+    val tileSize = if (compact) 70.dp else 84.dp
     Column(
         modifier = Modifier
             .width(tileSize)
             .clip(RoundedCornerShape(12.dp))
             .background(AppTheme.extendedColors.secondaryBackground)
-            .padding(vertical = if (compact) 5.dp else 10.dp, horizontal = 6.dp),
+            .padding(vertical = if (compact) 7.dp else 10.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Text(
             text = label,
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = if (compact) 9.sp else 12.sp,
+            fontSize = if (compact) 11.sp else 12.sp,
             fontWeight = FontWeight.Normal
         )
         Box(
-            modifier = Modifier.height(if (compact) 22.dp else 34.dp),
+            modifier = Modifier.height(if (compact) 26.dp else 34.dp),
             contentAlignment = Alignment.Center
         ) {
             content()
@@ -864,13 +991,13 @@ private fun DetailItem(
         Text(
             text = label,
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.6f),
-            fontSize = if (compact) 10.sp else 12.sp,
+            fontSize = if (compact) 11.sp else 12.sp,
             fontWeight = FontWeight.Normal
         )
         Text(
             text = value,
             color = AppTheme.extendedColors.textColor,
-            fontSize = if (compact) 12.sp else 15.sp,
+            fontSize = if (compact) 14.sp else 15.sp,
             fontWeight = FontWeight.SemiBold
         )
     }

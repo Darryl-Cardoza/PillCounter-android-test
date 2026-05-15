@@ -5,6 +5,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import android.content.res.Configuration
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -12,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -170,24 +172,38 @@ fun ScanBarCodeScreen(
         )
     }
 
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // RX-label verification:
+    //  - Portrait → ModalBottomSheet overlay (kept as-is, working).
+    //  - Landscape → inline panel rendered inside the scanner content (set up below).
+    val showRxPanel = uiState.showScanSuccessfullyDialog &&
+        transactionScanType == ScanType.RX_LABEL
+    val onRxCancel: () -> Unit = {
+        viewModel.analyzer.resume()
+        viewModel.hideSuccessDialog()
+    }
+    val onRxProceed: () -> Unit = {
+        viewModel.hideSuccessDialog()
+        viewModel.analyzer.resume()
+        viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
+    }
+
     if (uiState.showScanSuccessfullyDialog) {
         if (transactionScanType == ScanType.RX_LABEL) {
-            VerifyRxDetailsSheet(
-                drugName = uiState.drugName,
-                quantity = uiState.qty.toString(),
-                bucket = uiState.selectedBucketId,
-                ndcNumber = uiState.ndc,
-                rxNumber = uiState.rxNo.toString(),
-                onCancel = {
-                    viewModel.analyzer.resume()
-                    viewModel.hideSuccessDialog()
-                },
-                onProceed = {
-                    viewModel.hideSuccessDialog()
-                    viewModel.analyzer.resume()
-                    viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
-                }
-            )
+            if (!isLandscape) {
+                VerifyRxDetailsSheet(
+                    drugName = uiState.drugName,
+                    quantity = uiState.qty.toString(),
+                    bucket = uiState.selectedBucketId,
+                    ndcNumber = uiState.ndc,
+                    rxNumber = uiState.rxNo.toString(),
+                    onCancel = onRxCancel,
+                    onProceed = onRxProceed,
+                )
+            }
+            // Landscape: the inline panel is rendered inside ScanBarCodeScreenContent.
         } else if (transactionScanType == ScanType.STOCK_COUNT) {
             LabelScannedSuccessfullyDialog(
                 fields = listOf(
@@ -252,7 +268,10 @@ fun ScanBarCodeScreen(
         },
         onEvent = viewModel::onEvent,
         analyzer = viewModel.analyzer,
-        batchId = batchId
+        batchId = batchId,
+        showInlineRxPanel = showRxPanel && isLandscape,
+        onRxCancel = onRxCancel,
+        onRxProceed = onRxProceed,
     )
 }
 
