@@ -923,7 +923,7 @@ class PillScanningViewModel @Inject constructor(
 
             _steps.value = when {
                 isComingFromHL7 && drugInfo?.drugType?.let {
-                    ScheduleCode.valueOf(it)
+                    runCatching { ScheduleCode.valueOf(it) }.getOrNull()
                 } in controlledSchedules -> buildWorkflowSteps(
                     isFromHl7 = true,
                     simpleFlow = false,
@@ -932,7 +932,7 @@ class PillScanningViewModel @Inject constructor(
                 )
 
                 isComingFromHL7 && drugInfo?.drugType?.let {
-                    ScheduleCode.valueOf(it)
+                    runCatching { ScheduleCode.valueOf(it) }.getOrNull()
                 } !in controlledSchedules -> buildWorkflowSteps(
                     isFromHl7 = true,
                     simpleFlow = true,
