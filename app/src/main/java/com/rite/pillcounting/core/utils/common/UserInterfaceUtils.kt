@@ -6,8 +6,16 @@ import android.content.res.Configuration
 import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -91,6 +99,7 @@ import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.ui.theme.AppTheme
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.ZoneId
@@ -901,8 +910,7 @@ object UserInterfaceUtils {
         }
     }
 
-    /** A PMS icon button that shows pms connection status. */
-
+    /** A PMS icon button that shows pms connection status with animated label. */
     @Composable
     fun PmsConnectionIcon(
         modifier: Modifier = Modifier,
@@ -910,18 +918,70 @@ object UserInterfaceUtils {
         isPmsConnected: Boolean,
     ) {
         val dimens = AppTheme.dimens
-        IconButton(
-            onClick = {},
-            modifier = modifier
-                .padding(dimens.small)
-                .size(responsiveDp(50.dp))
+
+        // After connecting, briefly show "Connected" then hide it
+        var showConnectedLabel by remember { mutableStateOf(false) }
+        LaunchedEffect(isPmsConnected) {
+            if (isPmsConnected) {
+                showConnectedLabel = true
+                delay(2000)
+                showConnectedLabel = false
+            }
+        }
+
+        // Pulsing alpha for "Connecting..." text
+        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+        val connectingAlpha by infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.2f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(800),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "connectingAlpha"
+        )
+
+        Row(
+            modifier = modifier.padding(dimens.small),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                painter = painterResource(id = icon),
-                contentDescription = "Menu",
-                tint = if (isPmsConnected) MaterialTheme.colorScheme.secondary else Color.Gray,
-                modifier = Modifier.padding(dimens.extraSmall)
-            )
+            IconButton(
+                onClick = {},
+                modifier = Modifier.size(responsiveDp(50.dp))
+            ) {
+                Icon(
+                    painter = painterResource(id = icon),
+                    contentDescription = "PMS connection",
+                    tint = if (isPmsConnected) MaterialTheme.colorScheme.secondary else Color.Gray,
+                    modifier = Modifier.padding(dimens.extraSmall)
+                )
+            }
+
+            // "Connected" label — visible briefly after connection
+            AnimatedVisibility(
+                visible = showConnectedLabel,
+                enter = fadeIn(tween(300)),
+                exit = fadeOut(tween(500))
+            ) {
+                Text(
+                    text = stringResource(R.string.pms_connected),
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontSize = 16.sp
+                )
+            }
+
+            // "Connecting..." label — visible while disconnected and not showing "Connected"
+            AnimatedVisibility(
+                visible = !isPmsConnected && !showConnectedLabel,
+                enter = fadeIn(tween(300)),
+                exit = fadeOut(tween(300))
+            ) {
+                Text(
+                    text = stringResource(R.string.pms_connecting),
+                    color = Color.Gray.copy(alpha = connectingAlpha),
+                    fontSize = 16.sp,
+                )
+            }
         }
     }
 

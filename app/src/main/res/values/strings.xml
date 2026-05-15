@@ -255,6 +255,8 @@
     <string name="selected_items_count">%1$d items selected</string>
     <string name="tap_to_delete">Tap delete to remove</string>
     <string name="session_expired">Session Expired!</string>
+    <string name="pms_connected">Connected</string>
+    <string name="pms_connecting">Connecting...</string>
 
     <!-- Optional: if you want a singular/plural version -->
     <plurals name="selected_items_count_plural">
@@ -269,6 +271,7 @@
     <string name="pill_scanning_all_done">All Done</string>
     <string name="confirm_delete_message_on_reset_click">Are you sure you want to delete all the transaction for this current transaction.</string>
     <string name="cannot_reset_no_pills_detected">Cannot reset no pills detected transactionDetails.</string>
+    <string name="no_pill_added_yet">No Pill Added yet</string>
     <string name="count_pills_from_the_container">Count Pills from the container</string>
     <string name="count_prescribed_pills_quantity">Count prescribed Pills quantity</string>
     <string name="recount_prescribed_quantity">Recount prescribed quantity</string>

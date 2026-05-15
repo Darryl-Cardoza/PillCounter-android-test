@@ -146,36 +146,52 @@ fun HistoryModePortrait(
             Spacer(modifier = Modifier.height(14.dp))
 
             // ── Grid ──
-            LazyVerticalGrid(
-                columns = GridCells.Fixed(if (isTablet) 4 else 2),
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(horizontal = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                itemsIndexed(
-                    items = activeHistory,
-                    key = { _, item -> item.txnDetailId }
-                ) { index, item ->
-                    TxnHistoryCard(
-                        txnDetail = item,
-                        index = index + 1,
-                        isDeleteMode = isDeleteMode,
-                        isSelected = item.txnDetailId in selectedIds,
-                        onToggleSelect = {
-                            selectedIds = if (item.txnDetailId in selectedIds)
-                                selectedIds - item.txnDetailId
-                            else
-                                selectedIds + item.txnDetailId
-                        },
-                        onDelete = onDeleteTxn,
-                        onImageClick = { path -> selectedImagePath = path },
-                        cardModifier = Modifier
-                            .fillMaxWidth()
-                            .aspectRatio(1f)
+            if (activeHistory.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.no_pill_added_yet),
+                        color = AppTheme.extendedColors.textColor,
+                        fontSize = responsiveSpForPillCountingHistoryScreen(16.sp),
+                        fontWeight = FontWeight.Medium
                     )
+                }
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Fixed(if (isTablet) 4 else 2),
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(horizontal = 18.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    itemsIndexed(
+                        items = activeHistory,
+                        key = { _, item -> item.txnDetailId }
+                    ) { index, item ->
+                        TxnHistoryCard(
+                            txnDetail = item,
+                            index = index + 1,
+                            isDeleteMode = isDeleteMode,
+                            isSelected = item.txnDetailId in selectedIds,
+                            onToggleSelect = {
+                                selectedIds = if (item.txnDetailId in selectedIds)
+                                    selectedIds - item.txnDetailId
+                                else
+                                    selectedIds + item.txnDetailId
+                            },
+                            onDelete = onDeleteTxn,
+                            onImageClick = { path -> selectedImagePath = path },
+                            cardModifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(0.80f)
+                        )
+                    }
                 }
             }
 
@@ -243,7 +259,7 @@ internal fun TxnHistoryCard(
     onToggleSelect: () -> Unit,
     onDelete: (Long) -> Unit,
     onImageClick: (String) -> Unit = {},
-    cardModifier: Modifier = Modifier.aspectRatio(0.75f)
+    cardModifier: Modifier = Modifier.aspectRatio(0.80f)
 ) {
     val painter = if (!txnDetail.image.isNullOrEmpty()) {
         rememberAsyncImagePainter(
@@ -278,7 +294,7 @@ internal fun TxnHistoryCard(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(top = 10.dp, start = 10.dp, end = 10.dp)
+                .padding(top = 14.dp, start = 14.dp, end = 14.dp)
         ) {
             Image(
                 painter = painter,

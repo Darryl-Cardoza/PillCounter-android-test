@@ -146,7 +146,21 @@ fun HistoryModeLandscape(
             }
             Spacer(modifier = Modifier.height(16.dp))
             // ── Grid ──
-            if (isTablet) {
+            if (activeHistory.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.no_pill_added_yet),
+                        color = AppTheme.extendedColors.textColor,
+                        fontSize = responsiveSpForPillCountingHistoryScreen(16.sp),
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            } else if (isTablet) {
                 LazyVerticalGrid(
                     columns = GridCells.Fixed(6),
                     state = listState,
@@ -176,7 +190,7 @@ fun HistoryModeLandscape(
                             onImageClick = { path -> selectedImagePath = path },
                             cardModifier = Modifier
                                 .fillMaxWidth()
-                                .aspectRatio(1f)
+                                .aspectRatio(0.80f)
                         )
                     }
                 }
@@ -211,7 +225,7 @@ fun HistoryModeLandscape(
                             onImageClick = { path -> selectedImagePath = path },
                             cardModifier = Modifier
                                 .fillMaxHeight()
-                                .aspectRatio(1f)
+                                .aspectRatio(0.80f)
                         )
                     }
                 }
