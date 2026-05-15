@@ -58,7 +58,8 @@ fun UnsyncedTransactionScreen(
             }
 
             UnsyncedTransactionList(
-                items = uiState.unsyncedTransactionList,
+                dispenseList = uiState.dispenseList,
+                batchList = uiState.batchList,
             )
         }
     }

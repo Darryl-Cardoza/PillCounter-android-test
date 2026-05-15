@@ -7,6 +7,11 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalConfiguration
+import com.rite.pillcounting.core.utils.constants.Dimens
+import com.rite.pillcounting.core.utils.constants.LocalDimens
+import com.rite.pillcounting.core.utils.constants.phoneDimens
+import com.rite.pillcounting.core.utils.constants.tabletDimens
 
 // Light color scheme
 private val LightColorScheme = lightColorScheme(
@@ -32,9 +37,12 @@ fun PillCountingNewModelsTheme(
 ) {
     val colorScheme = if (darkTheme) darkColors else lightColors
     val extendedColors = if (darkTheme) darkExtendedColors else lightExtendedColors
+    val dimens = if (LocalConfiguration.current.screenWidthDp >= 600) tabletDimens else phoneDimens
 
-    // Apply MaterialTheme
-    CompositionLocalProvider(LocalExtendedColors provides extendedColors) {
+    CompositionLocalProvider(
+        LocalExtendedColors provides extendedColors,
+        LocalDimens provides dimens,
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,
@@ -47,4 +55,8 @@ object AppTheme {
     val extendedColors: ExtendedColors
         @Composable
         get() = LocalExtendedColors.current
+
+    val dimens: Dimens
+        @Composable
+        get() = LocalDimens.current
 }

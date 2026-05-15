@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.countResume.domain.model
 
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.room.models.enums.CountType
 
 /**
  * Represents a single item in a partial or fixed count list.
@@ -18,11 +19,15 @@ import com.rite.pillcounting.R
 data class CountItem(
     val id: Long,
     val name: String,
+    val ndc: String?,
+    val drugType: String?,
+    val bucketId: String?,
     val pillCount: Int,
     val target: Int,
     val barcodeImage: String?,
     val date: String,
     val image: Int = R.drawable.logo,
     val isComingFromHL7: Boolean,
-    val isNdcVerified: Boolean
+    val isNdcVerified: Boolean,
+    val countType: CountType = CountType.REGULAR
 )

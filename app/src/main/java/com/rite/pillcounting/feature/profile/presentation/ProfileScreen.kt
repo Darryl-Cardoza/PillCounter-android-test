@@ -18,8 +18,16 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.MenuAnchorType
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -34,15 +42,19 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.common.PhoneNumberVisualTransformation
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -50,6 +62,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FloatingLabelT
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
+import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileField
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
@@ -240,24 +253,10 @@ fun ProfileScreen(
                     text = stringResource(R.string.delete),
                     onClick = { showDeleteDialog = true },
                     color = MaterialTheme.colorScheme.primary,
-                    modifier = if (isLandscape) Modifier else Modifier.weight(1f)
-                )
-                HollowButton(
-                    text = stringResource(R.string.skip_alt),
-                    onClick = {
-                        navController.navigate(Screen.Menu.route) {
-                            popUpTo(Screen.Menu.route) { inclusive = true }
-                            launchSingleTop = true
-                        }
-                        viewModel.resetUpdateState()
-                    },
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = if (isLandscape) Modifier else Modifier.weight(1f)
                 )
                 ActionButtonPrimary(
                     text = stringResource(R.string.save),
                     onClick = { viewModel.updateProfile() },
-                    modifier = if (isLandscape) Modifier else Modifier.weight(1f)
                 )
             }
 
@@ -294,35 +293,34 @@ private fun ProfileTextField(
     error: String?,
     modifier: Modifier = Modifier,
     readOnly: Boolean = false,
-    maxLength: Int? = null
+    maxLength: Int? = null,
+    paddingStart: androidx.compose.ui.unit.Dp = 20.dp,
+    paddingEnd: androidx.compose.ui.unit.Dp = 20.dp,
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
+            .padding(start = paddingStart, end = paddingEnd, top = 8.dp, bottom = 8.dp)
     ) {
         FloatingLabelTextField(
             value = value,
             onValueChange = {
                 if (!readOnly) {
                     var input = it
-
                     if (keyboardType == KeyboardType.Phone) {
                         input = input.filter { char -> char.isDigit() }
                     }
-
-                    maxLength?.let { length ->
-                        input = input.take(length)
-                    }
-
                     onValueChange(input)
                 }
             },
             label = label,
             keyboardType = keyboardType,
             imeAction = imeAction,
+            visualTransformation = if (keyboardType == KeyboardType.Phone)
+                PhoneNumberVisualTransformation() else VisualTransformation.None,
             modifier = Modifier.fillMaxWidth(),
-            enabled = !readOnly
+            enabled = !readOnly,
+            maxLength = maxLength
         )
         if (!error.isNullOrEmpty()) {
             Text(
@@ -382,16 +380,14 @@ private fun ResponsiveProfileFields(
             { v -> viewModel.npi = v },
             R.string.npi_number,
             viewModel.npiError,
-            keyboardType = KeyboardType.Number
+            keyboardType = KeyboardType.Number,
+            maxLength = 10
         )
     )
 
     if (isLandscape) {
         for (i in fields.indices step 2) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
+            Row(modifier = Modifier.fillMaxWidth()) {
                 val field1 = fields[i]
                 ProfileTextField(
                     value = field1.value,
@@ -401,7 +397,9 @@ private fun ResponsiveProfileFields(
                     error = field1.error?.let { stringResource(it) },
                     modifier = Modifier.weight(1f),
                     readOnly = field1.readOnly,
-                    maxLength = field1.maxLength
+                    maxLength = field1.maxLength,
+                    paddingStart = 20.dp,
+                    paddingEnd = 10.dp
                 )
 
                 if (i + 1 < fields.size) {
@@ -414,14 +412,16 @@ private fun ResponsiveProfileFields(
                         error = field2.error?.let { stringResource(it) },
                         modifier = Modifier.weight(1f),
                         readOnly = field2.readOnly,
-                        maxLength = field2.maxLength
+                        maxLength = field2.maxLength,
+                        paddingStart = 10.dp,
+                        paddingEnd = 20.dp
                     )
                 } else {
                     Spacer(modifier = Modifier.weight(1f))
                 }
             }
         }
-        Spacer(Modifier.height(20.dp))
+
     } else {
         fields.forEach { field ->
             ProfileTextField(
@@ -436,5 +436,88 @@ private fun ResponsiveProfileFields(
         }
     }
 
+    // Add Terminal Dropdown if terminals are available
+    if (viewModel.terminals.isNotEmpty()) {
+        TerminalDropdown(
+            terminals = viewModel.terminals,
+            selectedTerminal = viewModel.selectedTerminal,
+            onTerminalSelected = { viewModel.onTerminalSelected(it) },
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp)
+        )
+    }
+
 }
 
+
+/**
+ * Dropdown menu to select a terminal.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun TerminalDropdown(
+    terminals: List<Terminal>,
+    selectedTerminal: Terminal?,
+    onTerminalSelected: (Terminal) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(modifier = modifier) {
+        ExposedDropdownMenuBox(
+            expanded = expanded,
+            onExpandedChange = { expanded = !expanded }
+        ) {
+            OutlinedTextField(
+                value = selectedTerminal?.terminalName ?: stringResource(R.string.select_terminal),
+                onValueChange = {},
+                readOnly = true,
+                label = { Text(stringResource(R.string.terminal)) },
+                modifier = Modifier
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                    .fillMaxWidth(),
+                textStyle = MaterialTheme.typography.bodyMedium.copy(
+                    color = AppTheme.extendedColors.textColor
+                ),
+                shape = RoundedCornerShape(10.dp),
+                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
+                    unfocusedBorderColor = AppTheme.extendedColors.secondaryBackground,
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedContainerColor = AppTheme.extendedColors.secondaryBackground,
+                    focusedContainerColor = AppTheme.extendedColors.secondaryBackground,
+                    cursorColor = MaterialTheme.colorScheme.primary,
+                    unfocusedLabelColor = AppTheme.extendedColors.textColor,
+                    focusedLabelColor = MaterialTheme.colorScheme.primary
+                ),
+                trailingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.ArrowDropDown,
+                        contentDescription = "Dropdown",
+                        tint = AppTheme.extendedColors.textColor
+                    )
+                }
+            )
+
+            ExposedDropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false }
+            ) {
+                terminals.forEach { terminal ->
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                text = terminal.terminalName ?: stringResource(R.string.unknown),
+                                color = AppTheme.extendedColors.textColor
+                            )
+                        },
+                        onClick = {
+                            onTerminalSelected(terminal)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}

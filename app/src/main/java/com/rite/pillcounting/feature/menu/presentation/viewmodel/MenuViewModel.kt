@@ -2,7 +2,10 @@ package com.rite.pillcounting.feature.menu.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.models.BatchEntity
+import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.common.HelperFunctions.mapCounts
 import com.rite.pillcounting.feature.menu.domain.model.MenuUiState
@@ -11,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -31,6 +35,7 @@ import javax.inject.Inject
 @HiltViewModel
 class MenuViewModel @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
+    private val batchDao: BatchDao,
     private val preferenceHelper: PreferenceHelper
 ) : ViewModel() {
 
@@ -42,6 +47,8 @@ class MenuViewModel @Inject constructor(
 
     init {
         observeDashboardCounts()
+        observeBatchCount()
+        observeCompletedBatchCount()
         observeUnsyncedTransactionCount()
     }
 
@@ -51,7 +58,6 @@ class MenuViewModel @Inject constructor(
      * Uses [mapCounts] to ensure consistent logic across dashboard and menu screens.
      * Provides:
      * - Fixed Completed / Partial
-     * - Regular Completed / Partial
      */
     private fun observeDashboardCounts() {
         viewModelScope.launch {
@@ -65,9 +71,31 @@ class MenuViewModel @Inject constructor(
                         current.copy(
                             fixedCompleted = counts.fixedCompleted,
                             fixedPartial = counts.fixedPartial,
-                            regularCompleted = counts.regularCompleted,
-                            regularPartial = counts.regularPartial
                         )
+                    }
+                }
+        }
+    }
+
+    private fun observeBatchCount() {
+        viewModelScope.launch {
+            batchDao.observeActiveInProgressCount()
+                .catch { e -> e.printStackTrace() }
+                .collect { count ->
+                    _uiState.update { current ->
+                        current.copy(regularPartial = count)
+                    }
+                }
+        }
+    }
+
+    private fun observeCompletedBatchCount() {
+        viewModelScope.launch {
+            batchDao.observeCompletedBatchCount()
+                .catch { e -> e.printStackTrace() }
+                .collect { count ->
+                    _uiState.update { current ->
+                        current.copy(regularCompleted = count)
                     }
                 }
         }
@@ -77,17 +105,37 @@ class MenuViewModel @Inject constructor(
         return preferenceHelper.getHistoryRetention()
     }
 
+    fun getBucketList(): List<String> = preferenceHelper.getBucketList()
+
+    suspend fun getLastInProgressBatch() = batchDao.getLatest()
+
+    suspend fun createBatch(bucketId: String): Long? {
+        return try {
+            val batch = BatchEntity(
+                batchId = System.currentTimeMillis(),
+                startDateTime = System.currentTimeMillis(),
+                endDateTime = null,
+                status = BatchStatus.INPROGRESS,
+                isDeleted = false,
+                note = null,
+                bucketId = bucketId
+            )
+            batchDao.insert(batch)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
     private fun observeUnsyncedTransactionCount() {
         viewModelScope.launch {
-            pillCountTxnDao.getTotalCompletedTransactionCount()
-                .catch { e ->
-                    e.printStackTrace()
-                }
+            combine(
+                pillCountTxnDao.getTotalCompletedTransactionCount(),
+                batchDao.getUnsyncedCompletedBatchCount()
+            ) { dispenseCount, batchCount -> dispenseCount + batchCount }
+                .catch { e -> e.printStackTrace() }
                 .collect { count ->
                     _uiState.update { current ->
-                        current.copy(
-                            unsyncedTransactionCount = count
-                        )
+                        current.copy(unsyncedTransactionCount = count)
                     }
                 }
         }

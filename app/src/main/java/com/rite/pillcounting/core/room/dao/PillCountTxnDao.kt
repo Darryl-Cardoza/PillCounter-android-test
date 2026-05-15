@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.room.dao
 
+import android.R
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -124,13 +125,17 @@ interface PillCountTxnDao {
            txn.barcodeImage,
            txn.isComingFromHL7,
            txn.isNdcVerified,
+           txn.bucketId,
+           txn.countType,
            drug.drugName,
+           drug.ndc,
+           drug.drugType,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
-    LEFT JOIN drug_master AS drug 
+    LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
-    LEFT JOIN pill_count_txn_details AS details 
-           ON txn.txnId = details.txnId 
+    LEFT JOIN pill_count_txn_details AS details
+           ON txn.txnId = details.txnId
           AND details.isDeleted = 0
           AND details.type = :type
     WHERE txn.isDeleted = 0
@@ -311,7 +316,9 @@ interface PillCountTxnDao {
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
-        txn.note
+        txn.note,
+        txn.bucketId,
+        drug.drugType
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId AND details.isDeleted = 0
@@ -346,7 +353,9 @@ interface PillCountTxnDao {
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
-        txn.note
+        txn.note,
+        txn.bucketId,
+        drug.drugType
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
@@ -369,7 +378,9 @@ interface PillCountTxnDao {
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
-        txn.note
+        txn.note,
+        txn.bucketId,
+        drug.drugType
     ORDER BY txn.createdAt DESC
     """
     )
@@ -398,15 +409,21 @@ interface PillCountTxnDao {
       AND createdAt < :end
       AND localId = :userLocalId
       AND (:type IS NULL OR countType = :type)
-      AND (:status IS NULL OR status = :status)
+      AND (
+        :isCompleted IS NULL
+        OR (:isCompleted = 1 AND (status = :completedStatus OR status = :forceCompletedStatus))
+        OR (:isCompleted = 0 AND status != :completedStatus AND status != :forceCompletedStatus)
+      )
     """
     )
     suspend fun deleteTransactionsByDate(
         start: Long,
         end: Long,
         type: CountType?,
-        status: CountStatus?,
-        userLocalId: Long
+        isCompleted: Boolean?,
+        userLocalId: Long,
+        completedStatus: CountStatus = CountStatus.COMPLETED,
+        forceCompletedStatus: CountStatus = CountStatus.FORCE_COMPLETED
     )
 
     /**
@@ -438,6 +455,12 @@ interface PillCountTxnDao {
      */
     @Query("DELETE FROM pill_count_txn WHERE txnId = :txnId")
     suspend fun deleteTransaction(txnId: Long)
+
+    @Query("DELETE FROM pill_count_txn WHERE batchId IN (:batchIds)")
+    suspend fun deleteTransactionsByBatchIds(batchIds: List<Long>)
+
+    @Query("SELECT COUNT(DISTINCT drugId) FROM pill_count_txn WHERE batchId = :batchId AND isDeleted = 0 AND localId = :userLocalId")
+    suspend fun getUniqueNdcCountForBatch(batchId: Long, userLocalId: Long): Int
 
     /**
      * Observes all transactions belonging to a batch, joined with drug name and NDC.
@@ -631,25 +654,32 @@ interface PillCountTxnDao {
            txn.barcodeImage,
            txn.isComingFromHL7,
            txn.isNdcVerified,
+           txn.bucketId,
+           txn.countType,
            drug.drugName,
+           drug.ndc,
+           drug.drugType,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
-    LEFT JOIN drug_master AS drug 
+    LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
-    LEFT JOIN pill_count_txn_details AS details 
-           ON txn.txnId = details.txnId 
+    LEFT JOIN pill_count_txn_details AS details
+           ON txn.txnId = details.txnId
           AND details.isDeleted = 0
+          AND details.type = :type
     WHERE txn.isDeleted = 0
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)
-      AND txn.isComingFromHL7 = 1
+      AND txn.countType = :countType
       AND txn.isSynced = 0
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
     )
-    fun observeUnsyncedHl7Txn(
+    fun observeUnsyncedByCountType(
+        countType: CountType,
         completeStatus: CountStatus = CountStatus.COMPLETED,
-        forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED
+        forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED,
+        type: String
     ): Flow<List<PillCountWithDrugAndTotal>>
 
     @Query(

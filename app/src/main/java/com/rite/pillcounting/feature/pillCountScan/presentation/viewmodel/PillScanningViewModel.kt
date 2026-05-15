@@ -349,6 +349,11 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    fun pauseIdleTimer() {
+        idleJob?.cancel()
+        idleJob = null
+    }
+
     /** Process an incoming frame from CameraX. */
     fun onFrameCaptured(image: ImageProxy) {
         if (isPaused) {
@@ -564,6 +569,8 @@ class PillScanningViewModel @Inject constructor(
                         timestamp = System.currentTimeMillis(),
                         ndc = drug?.ndc,
                         count = currentCount.toString(),
+                        rx = txn?.rxNo,
+                        stepLabel = stepType.name,
                     )
                 } catch (e: Exception) {
                     logger.e("Overlay drawing failed, using bitmap without overlay", e)
@@ -996,5 +1003,16 @@ class PillScanningViewModel @Inject constructor(
         isPaused = true
         _uiState.update { it.copy(detectedPills = emptyList()) }
         _trayDetections.value = emptyList()
+    }
+
+    fun setCameraPaused(paused: Boolean) {
+        _cameraPaused.value = paused
+        if (paused) {
+            isPaused = true
+            _uiState.update { it.copy(detectedPills = emptyList()) }
+            _trayDetections.value = emptyList()
+        } else {
+            isPaused = false
+        }
     }
 }

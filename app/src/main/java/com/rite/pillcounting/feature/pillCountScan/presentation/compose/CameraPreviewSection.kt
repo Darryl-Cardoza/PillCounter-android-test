@@ -17,19 +17,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -42,7 +32,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -57,70 +46,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
-import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.utils.compose.WorkflowStepper
 import com.rite.pillcounting.feature.pillCountScan.domain.model.DetectedPill
 import com.rite.pillcounting.feature.pillCountScan.presentation.logic.CameraHelper
 import com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.PillScanningViewModel
 import kotlinx.coroutines.flow.conflate
 
-// =========================================================
-// ZOOM CONTROL COMPOSABLE
-// =========================================================
-@SuppressLint("UnusedBoxWithConstraintsScope")
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun ZoomControls(
-    zoom: Float,
-    min: Float = 1f,
-    max: Float = 3f,
-    onChange: (Float) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    BoxWithConstraints(
-        modifier = modifier
-            .width(220.dp)
-            .rotate(-90f)
-            .padding(top = 130.dp),
-    ) {
-        Column(
-            horizontalAlignment = Alignment.End,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 32.dp)
-        ) {
-            Slider(
-                value = zoom,
-                onValueChange = onChange,
-                valueRange = min..max,
-                modifier = Modifier.fillMaxWidth(),
-                colors = SliderDefaults.colors(
-                    thumbColor = Color.Transparent,
-                    activeTrackColor = Color.Transparent,
-                    inactiveTrackColor = Color.Transparent
-                ),
-                thumb = {
-                    Box(
-                        modifier = Modifier
-                            .size(24.dp)
-                            .background(Color.White, CircleShape)
-                    )
-                },
-                track = {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(3.dp)
-                            .background(
-                                MaterialTheme.colorScheme.secondary,
-                                RoundedCornerShape(2.dp)
-                            )
-                    )
-                }
-            )
-        }
-    }
-}
 
 // =========================================================
 // MAIN CAMERA PREVIEW
@@ -380,21 +311,6 @@ fun CameraPreviewSection(
                             )
                         }
                     }
-                }
-
-                // ── ZOOM SLIDER ───────────────────────────────────────────────
-                if (stepType != StepState.VIAL) {
-                    ZoomControls(
-                        zoom     = zoomRatio.floatValue,
-                        min      = minZoom,
-                        max      = maxZoom,
-                        onChange = { value ->
-                            val stepped = (value * 10f).toInt() / 10f
-                            zoomRatio.floatValue = stepped
-                            cameraHelper.setZoom(stepped)
-                        },
-                        modifier = Modifier.align(Alignment.CenterEnd)
-                    )
                 }
 
                 // ── WORKFLOW STEPPER ──────────────────────────────────────────

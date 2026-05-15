@@ -25,13 +25,11 @@ import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.navigateSafely
 import com.rite.pillcounting.core.utils.compose.DashBoardIcon
 import com.rite.pillcounting.core.utils.compose.bounceClick
-import com.rite.pillcounting.core.utils.constants.Dimens.small
-import com.rite.pillcounting.core.room.models.enums.ScanType
-import com.rite.pillcounting.core.utils.constants.Dimens.smallMedium
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.ui.theme.AppTheme
 
@@ -54,19 +52,20 @@ fun FixedCountSection(
     navController: NavController,
     onNavigate: () -> Unit
 ) {
+    val dimens = AppTheme.dimens
     Column(
         modifier = Modifier
-            .fillMaxSize()
-            .bounceClick {
-                navigateToBarcodeScanFixedCount(navController)
-                onNavigate()
-            },
+            .fillMaxSize(),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center,
     ) {
         Spacer(modifier = Modifier.weight(1f))
 
         Column(
+            modifier = Modifier.bounceClick() {
+                navigateToBarcodeScanFixedCount(navController)
+                onNavigate()
+            },
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             // Fixed count icon leading to ScanBarcode screen
@@ -75,10 +74,12 @@ fun FixedCountSection(
                 innerColor = MaterialTheme.colorScheme.secondary,
                 innerIconRes = R.drawable.regular_count_inner,
                 modifier = Modifier.size(responsiveDp(120.dp)),
+                outerSize = 120.dp,
+                innerSize = 100.dp,
                 contentDescription = stringResource(R.string.dispense)
             )
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(responsiveDp(24.dp)))
 
             // Fixed Count title (clickable -> ScanBarcode)
             Text(
@@ -88,7 +89,7 @@ fun FixedCountSection(
                 color = MaterialTheme.colorScheme.secondary,
             )
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(responsiveDp(10.dp)))
 
             // Description text (clickable -> ScanBarcode)
             Text(
@@ -104,49 +105,65 @@ fun FixedCountSection(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = smallMedium, end = smallMedium, bottom = small),
-            horizontalArrangement = Arrangement.SpaceBetween,
+                .padding(
+                    start = dimens.smallMedium, end = dimens.smallMedium,
+                    bottom = dimens.small
+                ),
+            horizontalArrangement = Arrangement.spacedBy(responsiveDp(14.dp)),
             verticalAlignment = Alignment.CenterVertically
         ) {
             // Completed status
             Box(
-                modifier = Modifier.clickable(
-                indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                navController.navigateSafely(
-                    Screen.History.createRoute(HistoryMode.DISPENSE)
-                )
-            }) {
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }) {
+                        navController.navigateSafely(
+                            Screen.History.createRoute(HistoryMode.DISPENSE)
+                        )
+                    }) {
                 StatusChip(
                     text = "$completedFixedCount ${stringResource(R.string.completed)}",
-                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnSecondary,
+                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnSecondary.copy(alpha = 0.7f),
                     textColor = MaterialTheme.colorScheme.primary,
                     iconRes = R.drawable.complete,
-                    iconTint = MaterialTheme.colorScheme.primary
+                    iconTint = MaterialTheme.colorScheme.primary,
                 )
             }
 
             // Partial status (clickable -> ResumeFixedCounts screen)
             Box(
-                modifier = Modifier.clickable(
-                indication = null, interactionSource = remember { MutableInteractionSource() }) {
-                navController.navigateSafely(
-                    Screen.ResumeFixedCounts.createRoute(CountType.FIXED.toString())
-                )
-            }) {
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable(
+                        indication = null,
+                        interactionSource = remember { MutableInteractionSource() }) {
+                        navController.navigateSafely(
+                            Screen.ResumeFixedCounts.createRoute(CountType.FIXED.toString())
+                        )
+                    }
+            ) {
                 StatusChip(
                     text = "$partialFixedCount ${stringResource(R.string.partial)}",
-                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnSecondary,
+                    backgroundColor = AppTheme.extendedColors.statusChipBackgroundOnSecondary.copy(alpha = 0.7f),
                     textColor = MaterialTheme.colorScheme.primary,
                     iconRes = R.drawable.partial,
-                    iconTint = MaterialTheme.colorScheme.primary
+                    iconTint = MaterialTheme.colorScheme.primary,
                 )
             }
         }
 
-        Spacer(modifier = Modifier.height(10.dp))
+        Spacer(modifier = Modifier.height(16.dp))
     }
 }
 
 fun navigateToBarcodeScanFixedCount(navController: NavController) {
-    navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),ScanType.RX_LABEL,0))
+    navController.navigate(
+        Screen.ScanBarcode.createRoute(
+            CountType.FIXED.toString(),
+            ScanType.RX_LABEL,
+            0
+        )
+    )
 }

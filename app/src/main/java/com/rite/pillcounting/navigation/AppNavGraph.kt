@@ -14,11 +14,14 @@ import com.rite.pillcounting.feature.countResume.presentation.PartialCountsScree
 import com.rite.pillcounting.feature.countResume.presentation.RegularCountResumeScreen
 import com.rite.pillcounting.feature.dashboard.presentation.DashboardScreen
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
+import com.rite.pillcounting.feature.history.presentation.BatchHistoryDetailScreen
 import com.rite.pillcounting.feature.history.presentation.HistoryDetailScreen
 import com.rite.pillcounting.feature.history.presentation.HistoryScreen
 import com.rite.pillcounting.feature.menu.presentation.MenuScreen
 import com.rite.pillcounting.feature.pillCountScan.presentation.PillScanningScreen
 import com.rite.pillcounting.feature.profile.presentation.ProfileScreen
+import com.rite.pillcounting.feature.settings.presentation.SaveCsDoubleCountScreen
+import com.rite.pillcounting.feature.settings.presentation.SaveHistoryForScreen
 import com.rite.pillcounting.feature.settings.presentation.SettingsScreen
 import com.rite.pillcounting.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
 
@@ -135,6 +138,13 @@ fun AppNavGraph(
             )
         }
 
+        composable(
+            route = Screen.BatchHistoryDetail.route,
+            arguments = Screen.BatchHistoryDetail.navArguments
+        ) {
+            BatchHistoryDetailScreen(navController = navController)
+        }
+
         composable(route = Screen.UnsyncedTransactionScreen.route) {
             UnsyncedTransactionScreen(
                 navController = navController,
@@ -149,6 +159,14 @@ fun AppNavGraph(
 
         composable(route = Screen.PartialCountsScreen.route) {
             PartialCountsScreen(navController = navController)
+        }
+
+        composable(route = Screen.SaveHistoryFor.route) {
+            SaveHistoryForScreen(navController = navController)
+        }
+
+        composable(route = Screen.RequireDoubleCount.route) {
+            SaveCsDoubleCountScreen(navController = navController)
         }
 
 
