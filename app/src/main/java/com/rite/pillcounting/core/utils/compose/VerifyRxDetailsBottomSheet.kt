@@ -128,7 +128,7 @@ fun VerifyRxDetailsInlinePanel(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(cornerRadius))
-            .background(AppTheme.extendedColors.primaryBackground)
+            .background(AppTheme.extendedColors.secondaryBackground)
     ) {
         if (isTablet) {
             TabletVerticalBody(
@@ -316,7 +316,7 @@ private fun VerifyRxDetailsBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onCancel,
         sheetState = sheetState,
-        containerColor = AppTheme.extendedColors.primaryBackground,
+        containerColor = AppTheme.extendedColors.secondaryBackground,
         dragHandle = null,
         shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
         // Bars are hidden by HideSystemBarsInCurrentWindow below, so content goes
@@ -453,7 +453,7 @@ private fun SwipeableSideDrawer(
                         .fillMaxHeight()
                         .width(drawerWidth)
                         .clip(RoundedCornerShape(topStart = cornerRadius, bottomStart = cornerRadius))
-                        .background(AppTheme.extendedColors.primaryBackground)
+                        .background(AppTheme.extendedColors.secondaryBackground)
                         // Swallow taps so they don't bubble to the scrim.
                         .clickable(
                             interactionSource = remember { MutableInteractionSource() },
@@ -503,7 +503,7 @@ private fun VerifyRxDetailsTabletBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onCancel,
         sheetState = sheetState,
-        containerColor = AppTheme.extendedColors.primaryBackground,
+        containerColor = AppTheme.extendedColors.secondaryBackground,
         dragHandle = null,
         shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
@@ -747,7 +747,7 @@ private fun CenteredDetail(
     ) {
         Text(
             text = label,
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.6f),
+            color = AppTheme.extendedColors.textColor,
             fontSize = 12.sp,
             fontWeight = FontWeight.Normal,
             textAlign = TextAlign.Center
@@ -801,7 +801,12 @@ private fun SheetBody(
             modifier = Modifier
                 .weight(1f, fill = isLandscape)
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
+                .then(
+                    // Portrait: keep verticalScroll so long content doesn't break
+                    // layout. Landscape: skip scroll so DetailsGrid can fillMaxHeight()
+                    // and use SpaceBetween to evenly distribute the three rows.
+                    if (isLandscape) Modifier else Modifier.verticalScroll(rememberScrollState())
+                )
         ) {
             DetailsGrid(
                 drugName = drugName,
@@ -865,7 +870,14 @@ private fun DetailsGrid(
     compact: Boolean,
 ) {
     val rowSpacing = if (compact) 6.dp else 10.dp
-    Column(verticalArrangement = Arrangement.spacedBy(rowSpacing)) {
+    // Landscape: fill the available height and SpaceBetween-distribute the three
+    // rows so the gap between rows expands instead of leaving dead space below
+    // the last row. Portrait keeps fixed spacedBy() — natural top-aligned flow.
+    Column(
+        modifier = if (compact) Modifier.fillMaxHeight() else Modifier,
+        verticalArrangement = if (compact) Arrangement.SpaceBetween
+        else Arrangement.spacedBy(rowSpacing)
+    ) {
         TileDetailRow(
             tile = { FormTile(compact = compact) },
             label = stringResource(R.string.drugname),
@@ -926,7 +938,7 @@ private fun QuantityTile(quantity: String, compact: Boolean = false) {
     SquareTile(label = stringResource(R.string.quantity), compact = compact) {
         Text(
             text = quantity,
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.secondary,
             fontSize = if (compact) 18.sp else 20.sp,
             fontWeight = FontWeight.SemiBold
         )
@@ -938,7 +950,7 @@ private fun BucketTile(bucket: String, compact: Boolean = false) {
     SquareTile(label = stringResource(R.string.bucket), compact = compact) {
         Text(
             text = bucket.ifBlank { "-" },
-            color = MaterialTheme.colorScheme.primary,
+            color = MaterialTheme.colorScheme.secondary,
             fontSize = if (compact) 14.sp else 15.sp,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center
@@ -957,14 +969,14 @@ private fun SquareTile(
         modifier = Modifier
             .width(tileSize)
             .clip(RoundedCornerShape(12.dp))
-            .background(AppTheme.extendedColors.secondaryBackground)
+            .background(AppTheme.extendedColors.primaryBackground)
             .padding(vertical = if (compact) 7.dp else 10.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         Text(
             text = label,
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+            color = AppTheme.extendedColors.textColor,
             fontSize = if (compact) 11.sp else 12.sp,
             fontWeight = FontWeight.Normal
         )
@@ -988,12 +1000,14 @@ private fun DetailItem(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(2.dp)
     ) {
+        // Header (e.g. "Drug Name") → white.
         Text(
             text = label,
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.6f),
+            color = AppTheme.extendedColors.textColor,
             fontSize = if (compact) 11.sp else 12.sp,
             fontWeight = FontWeight.Normal
         )
+        // Value below the header → app textColor token (not the cyan accent).
         Text(
             text = value,
             color = AppTheme.extendedColors.textColor,
