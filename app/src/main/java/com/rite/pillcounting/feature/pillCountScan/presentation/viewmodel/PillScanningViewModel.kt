@@ -381,7 +381,6 @@ class PillScanningViewModel @Inject constructor(
 
     // DISABLED FOR PERFORMANCE MONITORING: Idle timeout functionality disabled
     // to ensure continuous scanning without interruptions
-    /*
     private fun pauseAndClearBuffers() {
         _lastTenDetections.value.clear()
         lastDetectedSnapshot = emptyList()
@@ -399,7 +398,6 @@ class PillScanningViewModel @Inject constructor(
             pauseAndClearBuffers()
         }
     }
-    */
 
     fun pauseIdleTimer() {
         idleJob?.cancel()

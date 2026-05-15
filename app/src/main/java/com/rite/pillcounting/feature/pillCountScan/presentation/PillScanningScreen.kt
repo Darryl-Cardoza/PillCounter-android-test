@@ -49,6 +49,7 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.AddNoteD
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.CameraPreviewSection
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.platform.LocalConfiguration
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModePortrait
