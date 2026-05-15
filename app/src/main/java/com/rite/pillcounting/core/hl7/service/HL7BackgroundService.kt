@@ -76,6 +76,7 @@ class HL7Service : Service() {
 
     private lateinit var imageServer: ImageWebServer
     private var serverStarted = false
+
     @Volatile
     private var lastConnectedHost: String? = null
     private val logger = AppLogger("HL7backgroundService")
@@ -128,7 +129,6 @@ class HL7Service : Service() {
     }
 
 
-
     override fun onDestroy() {
         Log.i(TAG, "Service destroying")
         serviceScope.launch { cleanup() }
@@ -136,11 +136,26 @@ class HL7Service : Service() {
     }
 
     private suspend fun cleanup() {
-        try { server.stop() } catch (_: Exception) {}
-        try { clientManager.shutdown() } catch (_: Exception) {}
-        try { nsdHelper.shutdown() } catch (_: Exception) {}
-        try { networkIpMonitor.stop() } catch (_: Exception) {}
-        try { imageServer.stop() } catch (_: Exception) {}
+        try {
+            server.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            clientManager.shutdown()
+        } catch (_: Exception) {
+        }
+        try {
+            nsdHelper.shutdown()
+        } catch (_: Exception) {
+        }
+        try {
+            networkIpMonitor.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            imageServer.stop()
+        } catch (_: Exception) {
+        }
     }
 
     /** -------------------- CONFIGURATION -------------------- **/
@@ -181,7 +196,6 @@ class HL7Service : Service() {
     }
 
     /* -------------------- INITIALIZATION -------------------- */
-
 
 
     private fun initializeCoreComponents() {
