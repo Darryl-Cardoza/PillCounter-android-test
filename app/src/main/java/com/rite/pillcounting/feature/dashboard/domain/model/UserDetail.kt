@@ -10,7 +10,8 @@ import com.squareup.moshi.JsonClass
 data class UserDetail(
 
     @Json(name = "profile") val profile: UserProfile?,
-    @Json(name = "settings") val settings: UserSettings?
+    @Json(name = "settings") val settings: UserSettings?,
+    @Json(name = "terminals") val terminals: List<Terminal>? = null
 )
 
 

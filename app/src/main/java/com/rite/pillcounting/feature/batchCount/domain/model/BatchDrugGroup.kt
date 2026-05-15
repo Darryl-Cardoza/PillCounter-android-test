@@ -13,6 +13,7 @@ data class BatchDrugGroup(
     val sealedTotal: Int,
     val openedTotal: Int,
     val totalCount: Int,
+    val sealedBottleQty: Int,
     val sealedLots: List<BatchLotEntry>,
     val openedLots: List<BatchLotEntry>
 )

@@ -149,4 +149,14 @@ class Hl7ServiceManager @Inject constructor(
     fun discoverAndConnect() {
         serviceManager.getService()?.discoverPmsAndConnect()
     }
+
+    /**
+     * Update HL7 configuration and rebroadcast NSD.
+     * Called when terminal name changes.
+     */
+    fun updateConfigAndRebroadcast(config: HL7Config) {
+        currentConfig = config
+        serviceManager.updateConfig(config)
+        serviceManager.getService()?.rebroadcastNsd()
+    }
 }

@@ -19,6 +19,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 
 @Composable
 fun DashBoardIcon(
@@ -26,12 +27,13 @@ fun DashBoardIcon(
     innerColor: Color = MaterialTheme.colorScheme.secondary,
     @DrawableRes innerIconRes: Int = R.drawable.fixed_count_inner,
     modifier: Modifier = Modifier,
-    size: Dp = 120.dp,
+    outerSize: Dp = 120.dp,
+    innerSize: Dp = 60.dp,
     contentDescription: String? = null
 ) {
     Box(
         modifier = modifier
-            .size(size)
+            .size(responsiveDp(outerSize))
             .drawBehind {
                 val cx = this.size.width / 2f
                 val cy = this.size.height / 2f
@@ -62,13 +64,15 @@ fun DashBoardIcon(
             painter = painterResource(id = R.drawable.fixed_count_outer),
             contentDescription = contentDescription,
             tint = outerCircleColor,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier.size(responsiveDp(outerSize))
         )
         Icon(
             painter = painterResource(id = innerIconRes),
             contentDescription = null,
             tint = innerColor,
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .size(responsiveDp(innerSize))
+                .align(androidx.compose.ui.Alignment.Center)
         )
     }
 }

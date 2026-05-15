@@ -8,6 +8,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.UserEntity
@@ -17,6 +18,10 @@ import com.rite.pillcounting.core.utils.common.NetworkUtils
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.validator.CredentialsValidator
+import com.rite.pillcounting.feature.dashboard.data.TerminalRepository
+import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
+import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
+import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
@@ -44,9 +49,11 @@ import javax.inject.Inject
 @HiltViewModel
 class ProfileViewModel @Inject constructor(
     private val repository: ProfileRepository,
+    private val terminalRepository: TerminalRepository,
     private val preferenceHelper: PreferenceHelper,
     private val userDao: UserDao,
     private val validator: CredentialsValidator,
+    private val hl7ServiceManager: Hl7ServiceManager,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -69,6 +76,11 @@ class ProfileViewModel @Inject constructor(
     var email by mutableStateOf("")
     var npi by mutableStateOf("")
     var doNotAskAgain by mutableStateOf(false)
+    
+    // Terminal selection
+    var terminals by mutableStateOf<List<Terminal>>(emptyList())
+    var selectedTerminal by mutableStateOf<Terminal?>(null)
+    private var initialTerminal: Terminal? = null // Track initial value to detect changes
 
     // ─────────────────────────── Validation Errors ───────────────────────────
     var firstNameError by mutableStateOf<Int?>(null)
@@ -88,6 +100,20 @@ class ProfileViewModel @Inject constructor(
 
         doNotAskAgain = preferenceHelper.isDoNotAskAgain()
         logger.i("Initialized doNotAskAgain = $doNotAskAgain")
+
+        // Load terminals from SharedPreferences
+        terminals = preferenceHelper.getTerminals()
+        val savedTerminalId = preferenceHelper.getSelectedTerminalId()
+        selectedTerminal = terminals.firstOrNull { it.terminalId == savedTerminalId }
+            ?: terminals.firstOrNull { it.isActive == true }
+        initialTerminal = selectedTerminal // Store initial value to detect changes
+        
+        // Ensure terminal name is saved for the selected terminal
+        selectedTerminal?.terminalName?.let { terminalName ->
+            preferenceHelper.saveSelectedTerminalName(terminalName)
+        }
+        
+        logger.i("Loaded ${terminals.size} terminals, selected: ${selectedTerminal?.terminalName}")
     }
 
     fun toggleDoNotAskAgain(value: Boolean) {
@@ -111,6 +137,11 @@ class ProfileViewModel @Inject constructor(
                 }
             }
         }
+    }
+    
+    fun onTerminalSelected(terminal: Terminal) {
+        selectedTerminal = terminal
+        logger.i("Terminal selected: ${terminal.terminalName} (ID: ${terminal.terminalId})")
     }
 
     fun onPhoneChanged(input: String) {
@@ -175,7 +206,8 @@ class ProfileViewModel @Inject constructor(
                     language = "en",
                     timezone = "Asia/Kolkata",
                     fName = firstName.trim(),
-                    lName = lastName.trim()
+                    lName = lastName.trim(),
+                    terminalId = selectedTerminal?.terminalId
                 )
 
                 repository.updateProfile(request)
@@ -203,6 +235,49 @@ class ProfileViewModel @Inject constructor(
                         }
 
                         preferenceHelper.saveDoNotAskAgain(doNotAskAgain)
+
+                        // Update terminal if it has changed
+                        if (selectedTerminal != null && selectedTerminal?.terminalId != initialTerminal?.terminalId) {
+                            val terminalId = selectedTerminal?.terminalId
+                            if (terminalId != null) {
+                                logger.i("Terminal changed from ${initialTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
+
+                                val terminalRequest = TerminalUpdateRequest(
+                                    terminalName = selectedTerminal?.terminalName ?: "Unknown",
+                                    isActive = true
+                                )
+
+                                viewModelScope.launch {
+                                    terminalRepository.updateTerminal(terminalId, terminalRequest)
+                                        .onSuccess { _ ->
+                                            logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
+
+                                            // Update local terminals list - mark selected as active, others as inactive
+                                            terminals = terminals.map { t ->
+                                                t.copy(isActive = t.terminalId == terminalId)
+                                            }
+
+                                            // Save updated terminal selection to preferences
+                                            preferenceHelper.saveSelectedTerminalId(terminalId)
+                                            preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: "Unknown")
+                                            preferenceHelper.saveTerminals(terminals)
+
+                                            // Update initial terminal to current selection
+                                            initialTerminal = selectedTerminal
+
+                                            // Update HL7 service with new terminal name and rebroadcast NSD
+                                            updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: "Unknown")
+                                        }
+                                        .onFailure { e ->
+                                            logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
+                                            // Don't fail the entire profile update if terminal update fails
+                                        }
+                                }
+                            }
+                        } else {
+                            logger.i("Terminal unchanged, skipping terminal update API call")
+                        }
+
                         _updateUiState.value = ProfileUpdateUiState.Success
                     }
                     .onFailure { e ->
@@ -274,5 +349,36 @@ class ProfileViewModel @Inject constructor(
 
     fun resetDeleteState() {
         _deleteUiState.value = ProfileDeleteUiState.Idle
+    }
+
+    // ─────────────────────────── HL7 Config Update ───────────────────────────
+    /**
+     * Updates the HL7 service configuration with the new terminal name
+     * and triggers NSD rebroadcast.
+     */
+    private fun updateHl7ConfigWithNewTerminal(terminalName: String) {
+        // Check if HL7 is enabled and user is logged in
+        if (!preferenceHelper.isHl7Enabled() || !preferenceHelper.isUserLoggedIn()) {
+            return
+        }
+
+        val broadCastServiceName = preferenceHelper.getNsdBroadcastType()
+        val discoverServiceName = preferenceHelper.getNsdDiscoveryType()
+
+        if (broadCastServiceName.isEmpty() || discoverServiceName.isEmpty()) {
+            return
+        }
+
+        val config = HL7Config(
+            serverPort = 2575,
+            autoResponseDelayMs = 10_000L,
+            nsdBroadcastServiceName = terminalName,
+            nsdBroadcastType = broadCastServiceName,
+            nsdDiscoveryType = discoverServiceName,
+            imageServicePort = 8080,
+            imageServiceSecurePort = 8443
+        )
+
+        hl7ServiceManager.updateConfigAndRebroadcast(config)
     }
 }

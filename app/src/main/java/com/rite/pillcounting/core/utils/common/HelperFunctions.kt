@@ -24,6 +24,8 @@ import com.rite.pillcounting.core.security.models.SecureString
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.menu.domain.model.CountBuckets
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
+import com.rite.pillcounting.core.security.ImageCrypto
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.system.exitProcess
@@ -179,9 +181,10 @@ object HelperFunctions {
         val file = File(dir, filename)
         val toSave = if (grayscale) toGrayscaleBitmap(bitmap) else bitmap
         try {
-            FileOutputStream(file).use { out ->
-                toSave.compress(Bitmap.CompressFormat.JPEG, 90, out)
-            }
+            val baos = ByteArrayOutputStream()
+            toSave.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+            val encryptedBytes = ImageCrypto.encrypt(baos.toByteArray())
+            FileOutputStream(file).use { out -> out.write(encryptedBytes) }
         } finally {
             if (grayscale) toSave.recycle()
         }

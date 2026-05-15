@@ -67,9 +67,9 @@ import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.dtos.TxnDetailInfo
 import com.rite.pillcounting.core.utils.common.DateFormats
 import com.rite.pillcounting.core.utils.common.formatDateToUSFormat
-import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
 
@@ -99,29 +99,29 @@ fun DrugInfoSection(
     onDelete: () -> Unit,
     onOk: () -> Unit,
     isEquivalence: String,
+    onImagePreview: (String) -> Unit = {},
 ) {
-    var previewImagePath by remember { mutableStateOf<String?>(null) }
     val scrollState = rememberScrollState()
 
-    BoxWithConstraints(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(AppTheme.extendedColors.secondaryBackground)
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = maxHeight)
-                .verticalScroll(scrollState)
-                .padding(horizontal = 14.dp, vertical = 10.dp)
-        ) {
+    Box(modifier = Modifier.fillMaxSize()) {
 
+        BoxWithConstraints(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(AppTheme.extendedColors.secondaryBackground)
+        ) {
             Column(
-                modifier = Modifier.fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = maxHeight)
+                    .verticalScroll(scrollState)
+                    .padding(horizontal = 14.dp, vertical = 10.dp)
             ) {
 
-                if (isFromHl7) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(responsiveDp(10.dp))
+                ) {
 
                     if (transactionDetails.hasStep(StepState.CONTAINER_INITIATE)) {
                         SectionBox(
@@ -137,7 +137,7 @@ fun DrugInfoSection(
                                 batches = transactionDetails.forStep(StepState.CONTAINER_INITIATE),
                                 isVial = false,
                                 onBatchImageClick = { imagePath ->
-                                    previewImagePath = imagePath
+                                    onImagePreview(imagePath)
                                 },
                                 stringResource(R.string.total_count).uppercase()
                             )
@@ -162,7 +162,10 @@ fun DrugInfoSection(
                                 stringResource(R.string.ndc).uppercase() to ndc,
                                 stringResource(R.string.expiry) to expiry,
                                 stringResource(R.string.lotNo) to lotNo,
-                                stringResource(R.string.date) to formatDateToUSFormat(date,DateFormats.MM_DD_YYYY),
+                                stringResource(R.string.date) to formatDateToUSFormat(
+                                    date,
+                                    DateFormats.MM_DD_YYYY
+                                ),
                                 stringResource(R.string.time) to time,
                             )
                         )
@@ -178,7 +181,7 @@ fun DrugInfoSection(
                                 batches = transactionDetails.forStep(StepState.TARGET_VERIFICATION),
                                 isVial = false,
                                 onBatchImageClick = { imagePath ->
-                                    previewImagePath = imagePath
+                                    onImagePreview(imagePath)
                                 },
                                 stringResource(R.string.total_count).uppercase()
                             )
@@ -195,7 +198,7 @@ fun DrugInfoSection(
                                 batches = transactionDetails.forStep(StepState.TARGET_REVERIFICATION),
                                 isVial = false,
                                 onBatchImageClick = { imagePath ->
-                                    previewImagePath = imagePath
+                                    onImagePreview(imagePath)
                                 },
                                 stringResource(R.string.total_re_count).uppercase()
                             )
@@ -212,7 +215,7 @@ fun DrugInfoSection(
                                 batches = transactionDetails.forStep(StepState.VIAL),
                                 isVial = true,
                                 onBatchImageClick = { imagePath ->
-                                    previewImagePath = imagePath
+                                    onImagePreview(imagePath)
                                 },
                                 stringResource(R.string.total_re_count).uppercase()
                             )
@@ -229,7 +232,7 @@ fun DrugInfoSection(
                                 batches = transactionDetails.forStep(StepState.CONTAINER_PENDING),
                                 isVial = false,
                                 onBatchImageClick = { imagePath ->
-                                    previewImagePath = imagePath
+                                    onImagePreview(imagePath)
                                 },
                                 stringResource(R.string.total_count).uppercase()
                             )
@@ -245,94 +248,18 @@ fun DrugInfoSection(
                         )
                     }
 
-                } else {
-
-                    if (transactionDetails.hasStep(StepState.TARGET_VERIFICATION)) {
-                        SectionBox(
-                            title = stringResource(R.string.pill_count),
-                            allowCollapse = false,
-                            defaultExpanded = true
-                        ) {
-                            CountSectionContent(
-                                barcodeImage = barcodeImage,
-                                count = transactionDetails.sumForStep(StepState.TARGET_VERIFICATION),
-                                showFraction = targetCount != null,
-                                targetCount = targetCount,
-                                batches = transactionDetails.forStep(StepState.TARGET_VERIFICATION),
-                                isVial = false,
-                                onBatchImageClick = { imagePath ->
-                                    previewImagePath = imagePath
-                                },
-                                stringResource(R.string.total_count).uppercase()
-                            )
-                        }
-                    }
-                    val title = if (isEquivalence == "true") {
-                        stringResource(R.string.substitute_drug_details)
-                    } else {
-                        stringResource(R.string.dispense_drug_details)
-                    }
-                    val drugNameTitle = if (isEquivalence == "true") {
-                        stringResource(R.string.subtituted_drug)
-                    } else {
-                        stringResource(R.string.drug_name)
-                    }
-                    SectionBox(title = title) {
-                        KeyValueList(
-                            rows = listOf(
-                                drugNameTitle to drugName,
-                                stringResource(R.string.ndc).uppercase() to ndc,
-                                stringResource(R.string.expiry) to expiry,
-                                stringResource(R.string.lotNo) to lotNo,
-                                stringResource(R.string.date) to formatDateToUSFormat(date,"MM-dd-yyyy"),
-                                stringResource(R.string.time) to time,
-                            )
-                        )
-                    }
-
-                    if (transactionDetails.hasStep(StepState.VIAL)) {
-                        SectionBox(title = stringResource(R.string.vial_capture)) {
-                            CountSectionContent(
-                                barcodeImage = null,
-                                count = 0,
-                                showFraction = false,
-                                targetCount = null,
-                                batches = transactionDetails.forStep(StepState.VIAL),
-                                isVial = true,
-                                onBatchImageClick = { imagePath ->
-                                    previewImagePath = imagePath
-                                },
-                                stringResource(R.string.total_re_count).uppercase()
-                            )
-                        }
-                    }
-
-                    SectionBox(title = stringResource(R.string.notes)) {
-                        Text(
-                            text = note.ifBlank { "—" },
-                            color = AppTheme.extendedColors.textColor,
-                            fontSize = 16.sp,
-                            lineHeight = 20.sp
-                        )
-                    }
                 }
+
+                Spacer(modifier = Modifier.weight(1f, fill = true))
+
+                BottomActionButtons(
+                    onDelete = onDelete,
+                    onOk = onOk
+                )
             }
-
-            Spacer(modifier = Modifier.weight(1f, fill = true))
-
-            BottomActionButtons(
-                onDelete = onDelete,
-                onOk = onOk
-            )
         }
-    }
 
-    previewImagePath?.let { imagePath ->
-        FullScreenImageDialog(
-            imagePath = imagePath,
-            onDismiss = { previewImagePath = null }
-        )
-    }
+    } // outer Box
 }
 
 @Composable
@@ -382,7 +309,7 @@ private fun SectionBox(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier
-                        .size(20.dp)
+                        .size(responsiveDp(22.dp))
                         .rotate(chevronDeg)
                 )
             }
@@ -424,8 +351,8 @@ private fun CountSectionContent(
                 DrugImageCard(
                     imagePath = barcodeImage,
                     modifier = Modifier
-                        .width(120.dp)
-                        .height(90.dp),
+                        .width(responsiveDp(100.dp))
+                        .height(responsiveDp(80.dp)),
                     onClick = {
                         barcodeImage?.takeIf { it.isNotBlank() }?.let(onBatchImageClick)
                     }
@@ -569,8 +496,8 @@ private fun TrayBatchCard(
 
     Box(
         modifier = Modifier
-            .width(100.dp)
-            .height(68.dp)
+            .width(responsiveDp(90.dp))
+            .height(responsiveDp(60.dp))
             .clip(RoundedCornerShape(8.dp))
             .clickable(enabled = !imagePath.isNullOrBlank()) { onClick() }
     ) {
@@ -616,8 +543,8 @@ private fun VialBatchCard(
 
     Box(
         modifier = Modifier
-            .width(100.dp)
-            .height(68.dp)
+            .width(responsiveDp(90.dp))
+            .height(responsiveDp(60.dp))
             .clip(RoundedCornerShape(8.dp))
             .clickable(enabled = !imagePath.isNullOrBlank()) { onClick() },
         contentAlignment = Alignment.Center
@@ -708,21 +635,17 @@ private fun BottomActionButtons(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .navigationBarsPadding()
-            .padding(vertical = 12.dp, horizontal = 20.dp),
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
+            .padding(top = responsiveDp(12.dp)),
+        horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally)
     ) {
         HollowButton(
             text = stringResource(R.string.delete).uppercase(),
             onClick = onDelete,
             color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f)
         )
-
         ActionButtonPrimary(
             text = stringResource(R.string.ok).uppercase(),
             onClick = onOk,
-            modifier = Modifier.weight(1f)
         )
     }
 }

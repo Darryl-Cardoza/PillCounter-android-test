@@ -33,8 +33,6 @@ import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.utils.constants.Dimens.extraSmall
-import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.feature.countResume.domain.model.CountItem
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
@@ -44,23 +42,24 @@ import java.io.File
 fun UnsyncedTransactionListCard(
     item: CountItem
 ) {
+    val dimens = AppTheme.dimens
 
     Card(
-        shape = RoundedCornerShape(small),
+        shape = RoundedCornerShape(dimens.small),
         colors = CardDefaults.cardColors(
             containerColor = AppTheme.extendedColors.secondaryBackground
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = extraSmall
+            defaultElevation = dimens.extraSmall
         ),
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = small)
+            .padding(bottom = dimens.small)
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(start = small, top = small, bottom = small),
+                .padding(start = dimens.small, top = dimens.small, bottom = dimens.small),
             verticalAlignment = Alignment.CenterVertically
         ) {
 

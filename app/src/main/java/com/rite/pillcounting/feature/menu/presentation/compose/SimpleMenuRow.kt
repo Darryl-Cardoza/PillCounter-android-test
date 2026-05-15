@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -20,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.core.utils.constants.LocalDimens
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 
 /**
@@ -64,13 +66,15 @@ fun SimpleMenuRow(
     trailingText: String? = null,
     onClick: (() -> Unit)? = null
 ) {
-    Spacer(modifier = Modifier.height(8.dp))
+    val dimens = LocalDimens.current
+
+    Spacer(modifier = Modifier.height(dimens.menuRowSpacing))
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = onClick != null) { onClick?.invoke() }
-            .padding(start = 12.dp, top = 12.dp, bottom = 12.dp),
+            .padding(start = 12.dp, top = dimens.menuRowVerticalPadding, bottom = dimens.menuRowVerticalPadding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -82,7 +86,7 @@ fun SimpleMenuRow(
                 tint = iconTint,
                 modifier = Modifier.size(responsiveDp(28.dp))
             )
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(responsiveDp(12.dp)))
             Text(
                 text = title,
                 fontSize = 16.sp,
@@ -94,12 +98,12 @@ fun SimpleMenuRow(
         trailingText?.let {
             Text(
                 text = it,
-                fontSize = 14.sp,
-                color = extendedColors.textColor,
+                fontSize = 16.sp,
+                color = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier.padding(end = 12.dp)
             )
         }
     }
 
-    Spacer(modifier = Modifier.height(8.dp))
+    Spacer(modifier = Modifier.height(dimens.menuRowSpacing))
 }

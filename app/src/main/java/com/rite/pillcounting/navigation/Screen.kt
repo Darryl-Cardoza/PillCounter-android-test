@@ -60,6 +60,19 @@ sealed interface Screen {
         override val route: String = "history_detail"
     }
 
+    data object BatchHistoryDetail : Screen {
+        private const val ROUTE_PREFIX = "batch_history_detail"
+        const val ARG_BATCH_ID = "batch_id"
+
+        override val route: String = "$ROUTE_PREFIX/{$ARG_BATCH_ID}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_BATCH_ID) { type = NavType.LongType }
+        )
+
+        fun createRoute(batchId: Long): String = "$ROUTE_PREFIX/$batchId"
+    }
+
     data object Profile : Screen {
         override val route: String = "profile"
     }
@@ -176,6 +189,14 @@ sealed interface Screen {
 
     data object PartialCountsScreen : Screen {
         override val route: String = "partial_count_screen"
+    }
+
+    data object SaveHistoryFor : Screen {
+        override val route: String = "save_history_for"
+    }
+
+    data object RequireDoubleCount : Screen {
+        override val route: String = "require_double_count"
     }
 
 }

@@ -39,7 +39,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
-import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.ui.theme.AppTheme
 
 
@@ -52,6 +51,7 @@ fun PillCountTextField(
     boxBackground: Color = AppTheme.extendedColors.inputBackground,
     textColor: Color = AppTheme.extendedColors.textColor
 ) {
+    val dimens = AppTheme.dimens
     val focusRequester = remember { FocusRequester() }
 
     var tfValue by remember {
@@ -104,7 +104,7 @@ fun PillCountTextField(
         cursorBrush = SolidColor(Color.Transparent),
         decorationBox = { innerTextField ->
             Row(
-                horizontalArrangement = Arrangement.spacedBy(small),
+                horizontalArrangement = Arrangement.spacedBy(dimens.small),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 displayedValue.forEach { digit ->

@@ -28,6 +28,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.PmsConnectionI
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.compose.SplitResponsive
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.feature.dashboard.presentation.compose.FixedCountSection
 import com.rite.pillcounting.feature.dashboard.presentation.compose.RegularCountSection
 import com.rite.pillcounting.feature.dashboard.presentation.viewmodel.DashboardViewModel
@@ -55,6 +56,7 @@ import com.rite.pillcounting.ui.theme.AppTheme
 fun DashboardScreen(
     navController: NavController,
     viewModel: DashboardViewModel = hiltViewModel(),
+    mainActivityViewModel: MainActivityViewModel = hiltViewModel()
 ) {
     var showLogoutDialog by remember { mutableStateOf(false) }
 
@@ -70,6 +72,14 @@ fun DashboardScreen(
     // Collect dashboard UI state reactively
     val uiState by viewModel.uiState.collectAsState()
     val connected by viewModel.isConnected.collectAsState()
+    val terminalInfoLoaded by viewModel.terminalInfoLoaded.collectAsState()
+
+    // Start HL7 service after terminal info is loaded from auth/me
+    LaunchedEffect(terminalInfoLoaded) {
+        if (terminalInfoLoaded) {
+            mainActivityViewModel.startHl7AfterTerminalLoaded()
+        }
+    }
 
     // Handle navigation to Profile screen if profile is incomplete
     LaunchedEffect(uiState.navigateToProfile) {

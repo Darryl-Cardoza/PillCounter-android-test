@@ -14,5 +14,6 @@ data class ProfileUpdateRequest(
     @Json(name = "avatar_url") val avatarUrl: String,
     @Json(name = "notifications_enabled") val notificationsEnabled: Boolean,
     @Json(name = "language") val language: String,
-    @Json(name = "timezone") val timezone: String
+    @Json(name = "timezone") val timezone: String,
+    @Json(name = "terminal_id") val terminalId: String? = null
 )

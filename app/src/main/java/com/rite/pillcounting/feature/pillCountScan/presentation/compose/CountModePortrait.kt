@@ -31,10 +31,10 @@ import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveButtonHeight
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountProgressPortrait
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingScreen
 import com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 
@@ -46,7 +46,8 @@ fun CountModePortrait(
     detectedCount: Int,
     onAdd: () -> Unit,
     onDone: () -> Unit,
-    viewModel: PillScanningViewModel
+    viewModel: PillScanningViewModel,
+    showHistory: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val stepType by viewModel.currentStep.collectAsState()
@@ -54,7 +55,7 @@ fun CountModePortrait(
         Row(
             modifier = Modifier
                 .fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom
+            verticalAlignment = Alignment.CenterVertically,
         ) {
 
             // -------- LEFT: Total + Target --------
@@ -62,8 +63,9 @@ fun CountModePortrait(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .padding(top = 10.dp, bottom = 15.dp),
-                contentAlignment = Alignment.BottomCenter
+                    .clickable { showHistory() }
+                    .padding(vertical = 12.dp),
+                contentAlignment = Alignment.Center
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
@@ -73,8 +75,8 @@ fun CountModePortrait(
                     Text(
                         text = totalCount.toString(),
                         color = MaterialTheme.colorScheme.primary,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Medium
+                        fontSize = responsiveSpForPillCountingScreen(28.sp),
+                        fontWeight = FontWeight.SemiBold
                     )
 
                     if (scanType == CountType.FIXED.toString() && stepType != StepState.CONTAINER_INITIATE) {
@@ -88,11 +90,12 @@ fun CountModePortrait(
                         Text(
                             text = targetCount.toString(),
                             color = MaterialTheme.colorScheme.primary,
-                            fontSize = 20.sp,
+                            fontSize = responsiveSpForPillCountingScreen(20.sp),
                             fontWeight = FontWeight.Medium
                         )
+                        Spacer(modifier = Modifier.height(responsiveDp(8.dp)))
                     } else {
-                        Spacer(modifier = Modifier.height(responsiveDp(25.dp)))
+                        Spacer(modifier = Modifier.height(responsiveDp(4.dp)))
                     }
 
                     Text(
@@ -104,17 +107,19 @@ fun CountModePortrait(
                 }
             }
 
-            // -------- CENTER: Circle + Add (merged) --------
+            Spacer(modifier = Modifier.width(8.dp))
 
+            // -------- CENTER: Circle + Add (merged) --------
+            val circleSize = responsiveDpForCircularCountIndicator()
             Box(
                 modifier = Modifier
-                    .height(responsiveDpForCircularCountProgressPortrait(150.dp))
+                    .height(circleSize + responsiveButtonHeight(40.dp) - responsiveDp(10.dp))
                     .weight(1f),
                 contentAlignment = Alignment.BottomCenter
             ) {
                 Box(
                     modifier = Modifier
-                        .size(responsiveDpForCircularCountProgressPortrait(130.dp))
+                        .size(circleSize)
                         .align(Alignment.TopCenter),
                     contentAlignment = Alignment.Center
                 ) {
@@ -124,7 +129,7 @@ fun CountModePortrait(
                     )
                 }
 
-                ActionButtonPrimary(
+                PillAddButton(
                     text = if (uiState.isAddCooldown)
                         stringResource(R.string.pill_scanning_wait_button)
                     else
@@ -142,31 +147,28 @@ fun CountModePortrait(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .offset(y = (-6).dp)
-                        .height(responsiveButtonHeight(40.dp))
                         .padding(horizontal = 14.dp),
-
-                    width = 80,
-                    fontSize = 15
                 )
             }
 //        }
-
+            Spacer(modifier = Modifier.width(8.dp))
             // -------- RIGHT: Done --------
             Column(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .padding(top = 18.dp, end = 8.dp, bottom = 15.dp)
+                    .padding(vertical = 12.dp)
                     .clickable { onDone() },
                 horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Bottom
+                verticalArrangement = Arrangement.Center
             ) {
                 Icon(
                     painter = painterResource(id = R.drawable.all_done),
                     contentDescription = "Done",
                     tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(responsiveDp(36.dp))
                 )
-                Spacer(modifier = Modifier.height(responsiveDp(25.dp)))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = stringResource(R.string.pill_scanning_all_done),
                     color = AppTheme.extendedColors.textColor,
@@ -188,7 +190,7 @@ fun CountModePortrait(
             onDone = {
                 viewModel.saveCaptureImage()
             },
-            viewModel=viewModel
+            viewModel = viewModel
         )
     }
 }
