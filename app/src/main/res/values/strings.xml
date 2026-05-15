@@ -378,4 +378,6 @@
     <string name="select_terminal">Select Terminal</string>
     <string name="unknown">Unknown</string>
 
+    <string name="verify_rx_details">Verify Rx Details</string>
+    <string name="form">Form</string>
 </resources>

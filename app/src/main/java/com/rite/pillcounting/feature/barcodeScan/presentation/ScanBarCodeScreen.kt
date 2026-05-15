@@ -22,6 +22,7 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.compose.DialogField
 import com.rite.pillcounting.core.utils.compose.LabelScannedSuccessfullyDialog
+import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsSheet
 import com.rite.pillcounting.feature.barcodeScan.domain.data.NavigationEvent
 import com.rite.pillcounting.feature.barcodeScan.domain.data.ScanBarcodeEvent
 import com.rite.pillcounting.core.room.models.enums.ScanType
@@ -171,15 +172,12 @@ fun ScanBarCodeScreen(
 
     if (uiState.showScanSuccessfullyDialog) {
         if (transactionScanType == ScanType.RX_LABEL) {
-            LabelScannedSuccessfullyDialog(
-                fields = listOf(
-                    DialogField(stringResource(R.string.rx_number), uiState.rxNo.toString()),
-                    DialogField(stringResource(R.string.ndc_number), uiState.ndc),
-                    DialogField(stringResource(R.string.drugname), uiState.drugName),
-                    DialogField(stringResource(R.string.quantity), uiState.qty.toString()),
-                    DialogField(stringResource(R.string.bucket), uiState.selectedBucketId)
-                ),
-                title = stringResource(R.string.label_scanned_successfully),
+            VerifyRxDetailsSheet(
+                drugName = uiState.drugName,
+                quantity = uiState.qty.toString(),
+                bucket = uiState.selectedBucketId,
+                ndcNumber = uiState.ndc,
+                rxNumber = uiState.rxNo.toString(),
                 onCancel = {
                     viewModel.analyzer.resume()
                     viewModel.hideSuccessDialog()
@@ -188,12 +186,7 @@ fun ScanBarCodeScreen(
                     viewModel.hideSuccessDialog()
                     viewModel.analyzer.resume()
                     viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
-                },
-                selectedContainerStatus = uiState.selectedContainerStatus,
-                onContainerStatusChange = { status ->
-                    viewModel.onEvent(ScanBarcodeEvent.OnContainerStatusChanged(status))
-                },
-                showSealedButtons = false
+                }
             )
         } else if (transactionScanType == ScanType.STOCK_COUNT) {
             LabelScannedSuccessfullyDialog(

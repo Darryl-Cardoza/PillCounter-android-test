@@ -126,6 +126,20 @@ object HelperFunctions {
      * @param activity The current [Activity] context.
      */
     fun enableImmersiveFullscreen(activity: Activity) {
+        // Let the activity draw into display cutout areas in any orientation, so
+        // immersive content (and overlays like bottom-sheets/drawers) reaches the
+        // physical screen edge instead of being letterboxed beside a notch.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            activity.window.attributes = activity.window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS.takeIf {
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                    } ?: android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        // Draw edge-to-edge so child overlays (Popup-based landscape drawer) can
+        // fill the full screen including the inset areas.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(activity.window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             activity.window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
