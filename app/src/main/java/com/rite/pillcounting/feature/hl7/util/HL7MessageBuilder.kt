@@ -109,7 +109,9 @@ object HL7MessageBuilder {
     fun buildInventoryMessage(
         batch: BatchEntity,
         txns: List<BatchTxnDto>,
-        requestId: String = batch.requestIdFromPMS.orEmpty(),
+        requestId: String = batch.requestIdFromPMS
+            ?.takeIf { it.isNotBlank() }
+            ?: "REQ${batch.batchId}",
         orderId: String = batch.bucketId.orEmpty()
     ): String {
 
