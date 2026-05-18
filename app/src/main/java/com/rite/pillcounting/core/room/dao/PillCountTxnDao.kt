@@ -270,7 +270,8 @@ interface PillCountTxnDao {
         IFNULL(SUM(pcd.pillCount), 0) AS totalPillCount,
         pct.isSubstitute,
         dm.drugName AS requestedDrugName,
-        dm.ndc AS requestedNdc
+        dm.ndc AS requestedNdc,
+        pct.workflowStep
     FROM pill_count_txn AS pct
     LEFT JOIN drug_master AS dm
         ON pct.drugId = dm.drugId
@@ -294,6 +295,13 @@ interface PillCountTxnDao {
      * @param qty   The pill count to add.
      * @param now   Timestamp; defaults to [System.currentTimeMillis].
      */
+    @Query("UPDATE pill_count_txn SET workflowStep = :step, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateWorkflowStep(
+        txnId: Long,
+        step: String,
+        now: Long = System.currentTimeMillis()
+    )
+
     @Query("UPDATE pill_count_txn SET looseQty = IFNULL(looseQty, 0) + :qty, updatedAt = :now WHERE txnId = :txnId")
     suspend fun incrementLooseQty(
         txnId: Long,

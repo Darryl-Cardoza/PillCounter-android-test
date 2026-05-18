@@ -34,44 +34,6 @@ object DatabaseModule {
         }
     }
 
-    private val MIGRATION_3_4 = object : Migration(3, 4) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL(
-                "ALTER TABLE pill_count_txn ADD COLUMN substitutedDrugId INTEGER REFERENCES drug_master(drugId) ON DELETE SET NULL"
-            )
-            db.execSQL(
-                "CREATE INDEX IF NOT EXISTS idx_txn_substitutedDrugId ON pill_count_txn (substitutedDrugId)"
-            )
-        }
-    }
-
-    private val MIGRATION_2_3 = object : Migration(2, 3) {
-        override fun migrate(db: SupportSQLiteDatabase) {
-            db.execSQL(
-                """
-                CREATE TABLE IF NOT EXISTS `drug_master_new` (
-                    `drugId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
-                    `drugName` TEXT,
-                    `ndc` TEXT NOT NULL,
-                    `drugType` TEXT,
-                    `createdAt` INTEGER NOT NULL,
-                    `gtin` TEXT,
-                    `packageQty` INTEGER
-                )
-                """.trimIndent()
-            )
-            db.execSQL(
-                """
-                INSERT INTO `drug_master_new` (`drugId`, `drugName`, `ndc`, `drugType`, `createdAt`, `gtin`, `packageQty`)
-                SELECT `drugId`, `drugName`, `ndc`, `drugType`, `createdAt`, `gtin`, `packageQty`
-                FROM `drug_master`
-                """.trimIndent()
-            )
-            db.execSQL("DROP TABLE `drug_master`")
-            db.execSQL("ALTER TABLE `drug_master_new` RENAME TO `drug_master`")
-            db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS `index_drug_master_ndc` ON `drug_master` (`ndc`)")
-        }
-    }
 
     /** Provides the singleton instance of [AppDatabase]. */
     @Provides
@@ -82,7 +44,7 @@ object DatabaseModule {
             AppDatabase::class.java,
             "pill_counting_db"
         )
-            .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+            .addMigrations(MIGRATION_1_2)
             .build()
     }
 

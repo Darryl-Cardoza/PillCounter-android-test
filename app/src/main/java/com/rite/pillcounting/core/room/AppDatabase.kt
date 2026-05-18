@@ -46,7 +46,7 @@ import com.rite.pillcounting.core.security.SecureStringConverter
         PillCountTxnDetailsEntity::class,
         BatchEntity::class
     ],
-    version = 4,
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(

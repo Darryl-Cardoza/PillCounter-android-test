@@ -449,20 +449,15 @@ class MainActivityViewModel @Inject constructor(
     }
 
     private fun loadSchedulesFromPrefs(): Set<ScheduleCode> {
-        val stored = preferenceHelper.getControlDrugTypes()
-
-        if (stored.isEmpty()) {
+        if (!preferenceHelper.isControlDrugTypesInitialized()) {
+            // Never explicitly set — first launch, seed with all schedules selected
             val defaults = ScheduleCode.entries.toSet()
-
-            // Persist defaults so rest of the app reads them
-            preferenceHelper.setControlDrugTypes(
-                defaults.map { it.name }.toSet()
-            )
-
+            preferenceHelper.setControlDrugTypes(defaults.map { it.name }.toSet())
             return defaults
         }
 
-        return stored.mapNotNull {
+        // User has explicitly saved a selection at least once; empty set is a valid choice
+        return preferenceHelper.getControlDrugTypes().mapNotNull {
             runCatching { ScheduleCode.valueOf(it) }.getOrNull()
         }.toSet()
     }
