@@ -13,7 +13,6 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -50,6 +49,7 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.AddNoteD
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.CameraPreviewSection
 import android.content.res.Configuration
 import androidx.compose.foundation.layout.width
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.ui.platform.LocalConfiguration
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModePortrait
@@ -232,6 +232,9 @@ fun PillScanningScreen(
 
     // === Init & Navigation ===
     LaunchedEffect(Unit) {
+        // Reset glove detection state when screen loads
+        viewModel.resetGloveDetection()
+
         viewModel.getDrugInfo()
         viewModel.showTxnInfo(countType)
         viewModel.observeTxnDetailsForTxn(stepType)

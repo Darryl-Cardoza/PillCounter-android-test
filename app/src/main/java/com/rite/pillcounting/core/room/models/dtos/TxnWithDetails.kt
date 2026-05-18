@@ -9,7 +9,6 @@ data class TxnWithDetails(
     val txnId: Long,
     val drugName: String?,
     val drugId: Long,
-    val equivalence: String?,
     val ndc: String?,
     val targetCount: Int?,
     val expiry: String?,
@@ -19,6 +18,7 @@ data class TxnWithDetails(
     val barcodeImage: String?,
     val totalPillCount: Int,
     val countType: CountType,
+    val drugType: String?,
     @Relation(
         parentColumn = "txnId",
         entityColumn = "txnId",
@@ -26,7 +26,10 @@ data class TxnWithDetails(
         projection = ["txnId", "pillCount", "imagePath","type"]
     )
     val txnDetails: List<TxnDetailInfo>,
-    val isComingFromHL7 : Boolean
+    val isComingFromHL7 : Boolean,
+    val isSubstitute: Boolean = false,
+    val requestedDrugName: String? = null,
+    val requestedNdc: String? = null,
 )
 
 data class TxnDetailInfo(

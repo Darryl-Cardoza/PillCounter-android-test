@@ -50,10 +50,10 @@ fun HistoryDetailScreen(
             isMultiSelectMode = false,
             isAllSelected = false,
             hasSelection = false,
-            showDelete = false,
+            showDelete = true,
             onSearchClick = {},
             onSearchChange = {},
-            onDeleteClick = {},
+            onDeleteClick = { showDeleteConfirmDialog = true },
             onCancelClick = {},
             onConfirmDelete = {},
             onSelectAll = {},
@@ -72,14 +72,11 @@ fun HistoryDetailScreen(
             barcodeImage = uiState.txnInfo?.barcodeImage,
             targetCount = uiState.txnInfo?.targetCount,
             transactionDetails = uiState.txnInfo?.txnDetails ?: emptyList(),
-            onDelete = {
-                showDeleteConfirmDialog = true
-            },
-            onOk = {
-                navController.popBackStack()
-            },
+            drugType = uiState.txnInfo?.drugType,
             isFromHl7 = uiState.txnInfo?.isComingFromHL7 ?: false,
-            isEquivalence = uiState.txnInfo?.equivalence ?: "false",
+            isSubstituted = uiState.txnInfo?.isSubstitute ?: false,
+            requestedDrugName = uiState.txnInfo?.requestedDrugName ?: "",
+            requestedNdc = uiState.txnInfo?.requestedNdc ?: "",
             onImagePreview = { previewImagePath = it }
         )
 

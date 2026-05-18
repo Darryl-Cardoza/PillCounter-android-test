@@ -301,16 +301,6 @@ class ScanBarcodeViewModel @Inject constructor(
     }
 
     /**
-     * Determine if drug equivalence flag is set.
-     *
-     * @param equivalenceStr The equivalence string from database ("true"/"false").
-     * @return true if equivalence is marked as true, false otherwise.
-     */
-    private fun isEquivalentDrug(equivalenceStr: String?): Boolean {
-        return equivalenceStr?.equals("true", ignoreCase = true) == true
-    }
-
-    /**
      * Checks if a PMS batch scan is valid.
      *
      * When the batch has a non-null [requestIdFromPMS] (i.e., coming from PMS), the scanned drug/lot/expiry combination
@@ -456,7 +446,7 @@ class ScanBarcodeViewModel @Inject constructor(
                         return@launch
                     }
 
-                    val isEquivalent = isEquivalentDrug(drug.equivalence)
+                    val isEquivalent = false
                     val packageQty = if (currentScanType == ScanType.STOCK_COUNT) {
                         drug.packageQty
                     } else {
@@ -538,7 +528,6 @@ class ScanBarcodeViewModel @Inject constructor(
                     ndc = drugInfo.ndc,
                     drugName = displayName,
                     drugType = drugInfo.drugType,
-                    equivalence = drugInfo.is_ndc_equivalent.toString(),
                     gtin = scannedLookupValue,
                     packageQty = drugInfo.qty,
                 )
@@ -576,6 +565,10 @@ class ScanBarcodeViewModel @Inject constructor(
         }
     }
 
+    fun markSubstituteConfirmed() {
+        _uiState.update { it.copy(isSubstituteConfirmed = true) }
+    }
+
     /**
      * Reset the UI state for a redo scan.
      *
@@ -589,7 +582,8 @@ class ScanBarcodeViewModel @Inject constructor(
                 drugName = "",
                 ndc = "",
                 error = null,
-                isScannerActive = true
+                isScannerActive = true,
+                isSubstituteConfirmed = false
             )
         }
     }
@@ -624,15 +618,29 @@ class ScanBarcodeViewModel @Inject constructor(
         if (currentNdc.isBlank()) return
 
         viewModelScope.launch {
+            val isSubstitute = uiState.value.isSubstituteConfirmed
+            val hl7Ndc = uiState.value.hl7ExpectedNdc
 
             val txnId = preferenceHelper.getTxnId()
             if (txnId.toString() == "0") {
-                val drugId = drugMasterDao.upsertPreservingId(
-                    DrugMasterEntity(
-                        ndc = currentNdc,
-                        drugName = uiState.value.drugName
+                val drugId: Long
+                val substitutedDrugId: Long?
+
+                if (isSubstitute && !hl7Ndc.isNullOrBlank()) {
+                    // drugId = original expected drug; substitutedDrugId = scanned substitute
+                    drugId = drugMasterDao.upsertPreservingId(
+                        DrugMasterEntity(ndc = hl7Ndc)
                     )
-                )
+                    substitutedDrugId = drugMasterDao.upsertPreservingId(
+                        DrugMasterEntity(ndc = currentNdc, drugName = uiState.value.drugName)
+                    )
+                } else {
+                    drugId = drugMasterDao.upsertPreservingId(
+                        DrugMasterEntity(ndc = currentNdc, drugName = uiState.value.drugName)
+                    )
+                    substitutedDrugId = null
+                }
+
                 val qtyInt = uiState.value.qty?.toIntOrNull() ?: 0
                 val txn = PillCountTxnEntity(
                     localId = preferenceHelper.getLocalId(),
@@ -643,13 +651,22 @@ class ScanBarcodeViewModel @Inject constructor(
                     lotNo = uiState.value.lotNo,
                     barcodeImage = uiState.value.barcodeImagePath,
                     isNdcVerified = true,
-                    targetCount = qtyInt
+                    targetCount = qtyInt,
+                    isSubstitute = isSubstitute,
+                    substitutedDrugId = substitutedDrugId
                 )
 
                 val newTxnId = pillCountTxnDao.upsertPreservingId(txn)
                 preferenceHelper.saveTxnId(newTxnId)
             } else {
                 val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                val substitutedDrugId = if (isSubstitute) {
+                    drugMasterDao.upsertPreservingId(
+                        DrugMasterEntity(ndc = currentNdc, drugName = uiState.value.drugName)
+                    )
+                } else {
+                    null
+                }
                 pillCountTxnDao.update(
                     txn.copy(
                         countType = CountType.valueOf(uiState.value.scanType),
@@ -657,11 +674,12 @@ class ScanBarcodeViewModel @Inject constructor(
                         expiry = uiState.value.expiry,
                         barcodeImage = uiState.value.barcodeImagePath,
                         isNdcVerified = true,
-                        drugId = txn.drugId
+                        drugId = txn.drugId,
+                        isSubstitute = isSubstitute,
+                        substitutedDrugId = substitutedDrugId
                     )
                 )
-                logger.i("HL7 txn updated with scan data txnId=$txnId")
-
+                logger.i("HL7 txn updated with scan data txnId=$txnId, isSubstitute=$isSubstitute")
             }
             if (_txnScanType.value == ScanType.BARCODE) {
                 _navigationEvent.send(
@@ -686,9 +704,22 @@ class ScanBarcodeViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
+            val isSubstitute = uiState.value.isSubstituteConfirmed
+            val hl7Ndc = uiState.value.hl7ExpectedNdc
+
             val txnId = preferenceHelper.getTxnId()
             if (txnId.toString() == "0") {
-                val drugId = drugMasterDao.getDrugIdByNdc(currentNdc)
+                val drugId: Long?
+                val substitutedDrugId: Long?
+
+                if (isSubstitute && !hl7Ndc.isNullOrBlank()) {
+                    drugId = drugMasterDao.getDrugIdByNdc(hl7Ndc)
+                    substitutedDrugId = drugMasterDao.getDrugIdByNdc(currentNdc)
+                } else {
+                    drugId = drugMasterDao.getDrugIdByNdc(currentNdc)
+                    substitutedDrugId = null
+                }
+
                 val qtyInt = uiState.value.qty?.toIntOrNull() ?: 0
                 val txn = PillCountTxnEntity(
                     localId = preferenceHelper.getLocalId(),
@@ -701,14 +732,16 @@ class ScanBarcodeViewModel @Inject constructor(
                     isNdcVerified = false,
                     targetCount = qtyInt,
                     bucketId = uiState.value.selectedBucketId.ifBlank { null },
-                    rxNo = uiState.value.rxNo?.ifBlank { null }
+                    rxNo = uiState.value.rxNo?.ifBlank { null },
+                    isSubstitute = isSubstitute,
+                    substitutedDrugId = substitutedDrugId
                 )
                 val newTxnId = pillCountTxnDao.upsertPreservingId(txn)
                 preferenceHelper.saveTxnId(newTxnId)
                 _uiState.update {
                     it.copy(
                         hl7ExpectedNdc = currentNdc,
-                        drugName =  uiState.value.drugName
+                        drugName = uiState.value.drugName
                     )
                 }
             }

@@ -249,6 +249,30 @@ interface BatchDao {
         completedStatus: BatchStatus = BatchStatus.COMPLETED
     ): Flow<List<BatchSummaryDto>>
 
+    @Query(
+        """
+    SELECT
+        b.batchId,
+        b.startDateTime AS createdAt,
+        b.status AS status,
+        b.bucketId AS bucketId,
+        b.requestIdFromPMS AS requestIdFromPMS,
+        COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
+    FROM batch b
+    LEFT JOIN pill_count_txn txn
+        ON b.batchId = txn.batchId
+        AND txn.isDeleted = 0
+    WHERE b.isDeleted = 0
+      AND b.status = :completedStatus
+      AND b.isSynced = 0
+    GROUP BY b.batchId
+    ORDER BY b.startDateTime DESC
+    """
+    )
+    suspend fun getUnsyncedCompletedBatchesOnce(
+        completedStatus: BatchStatus = BatchStatus.COMPLETED
+    ): List<BatchSummaryDto>
+
     @Query("UPDATE batch SET isSynced = 1 WHERE batchId = :batchId")
     suspend fun markBatchSynced(batchId: Long)
 

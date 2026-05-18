@@ -33,5 +33,6 @@ data class ScanBarcodeUiState(
     val showPmsNdcMismatchDialog: Boolean = false,
     val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
     val batchId: Long = 0,
-    val selectedBucketId: String = ""
+    val selectedBucketId: String = "",
+    val isSubstituteConfirmed: Boolean = false
 )

@@ -2,6 +2,7 @@ import android.content.Context
 import android.util.Base64
 import android.util.Log
 import com.rite.pillcounting.core.hl7.imageWebService.TlsImageKeystoreUtil
+import com.rite.pillcounting.core.security.ImageCrypto
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import javax.net.ssl.SSLServerSocketFactory
@@ -80,9 +81,10 @@ class ImageNanoServer(
             )
         }
 
-        // 4. Read and return as base64 JSON
+        // 4. Read, decrypt if needed, and return as base64 JSON
         return try {
-            val bytes = imageFile.readBytes()
+            val raw = imageFile.readBytes()
+            val bytes = if (ImageCrypto.isEncrypted(raw)) ImageCrypto.decrypt(raw) else raw
             val base64 = Base64.encodeToString(bytes, Base64.NO_WRAP)
 
             jsonResponse(

@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
@@ -49,6 +50,7 @@ import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingHistoryScreen
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.core.utils.compose.cardSelectionShadow
@@ -56,6 +58,7 @@ import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBa
 import com.rite.pillcounting.feature.pillCountScan.domain.model.TxnDetail
 import com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
+import com.rite.pillcounting.ui.theme.AppTheme.dimens
 import java.io.File
 
 @Composable
@@ -201,7 +204,8 @@ fun HistoryModePortrait(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 24.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     HollowButton(
                         text = stringResource(R.string.cancel).uppercase(),
@@ -210,7 +214,7 @@ fun HistoryModePortrait(
                             selectedIds = emptySet()
                         },
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.width(responsiveDp(120.dp))
                     )
                     FilledButton(
                         text = stringResource(R.string.delete).uppercase(),
@@ -218,7 +222,7 @@ fun HistoryModePortrait(
                             if (selectedIds.isNotEmpty()) showDeleteConfirmDialog = true
                         },
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.width(responsiveDp(120.dp))
                     )
                 }
             }

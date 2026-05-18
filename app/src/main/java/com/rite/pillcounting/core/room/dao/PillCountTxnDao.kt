@@ -76,22 +76,29 @@ interface PillCountTxnDao {
      */
     @Transaction
     suspend fun upsertPreservingId(txn: PillCountTxnEntity): Long {
-        return if (txn.txnId != 0L) {
-            val existing = getById(txn.txnId)
-            if (existing != null) {
-                update(txn.copy(txnId = existing.txnId))
-                existing.txnId
-            } else {
-                insertIgnore(txn).let { newId ->
+        return try {
+            if (txn.txnId != 0L) {
+                val existing = getById(txn.txnId)
+                if (existing != null) {
+                    update(txn.copy(txnId = existing.txnId))
+                    existing.txnId
+                } else {
+                    val newId = insertIgnore(txn)
                     if (newId == -1L) {
                         getById(txn.txnId)?.txnId
                             ?: throw IllegalStateException("Txn insert failed unexpectedly")
                     } else newId
                 }
+            } else {
+                val newId = insertIgnore(txn)
+                if (newId == -1L) {
+                    throw IllegalStateException("Insert failed: transaction already exists")
+                }
+                newId
             }
-        } else {
-            insertIgnore(txn).takeIf { it != -1L }
-                ?: throw IllegalStateException("Insert failed: transaction already exists")
+        } catch (e: android.database.sqlite.SQLiteConstraintException) {
+            // Log the error and rethrow a more descriptive one or handle it
+            throw IllegalArgumentException("Foreign key constraint failed: Ensure User, Drug, and Batch exist before creating a transaction. ${e.message}")
         }
     }
 
@@ -127,13 +134,18 @@ interface PillCountTxnDao {
            txn.isNdcVerified,
            txn.bucketId,
            txn.countType,
-           drug.drugName,
-           drug.ndc,
-           drug.drugType,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+                THEN subDrug.drugName ELSE drug.drugName END AS drugName,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+                THEN subDrug.ndc ELSE drug.ndc END AS ndc,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+                THEN subDrug.drugType ELSE drug.drugType END AS drugType,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
+    LEFT JOIN drug_master AS subDrug
+           ON txn.substitutedDrugId = subDrug.drugId
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
           AND details.isDeleted = 0
@@ -237,12 +249,14 @@ interface PillCountTxnDao {
     @Transaction
     @Query(
         """
-    SELECT 
+    SELECT
         pct.txnId,
-        dm.drugName,
-        dm.drugId,
-        dm.ndc,
-        dm.equivalence,
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+             THEN subDrug.drugName ELSE dm.drugName END AS drugName,
+        IFNULL(CASE WHEN pct.isSubstitute = 1 AND subDrug.drugId IS NOT NULL
+             THEN subDrug.drugId ELSE dm.drugId END, 0) AS drugId,
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+             THEN subDrug.ndc ELSE dm.ndc END AS ndc,
         pct.targetCount,
         pct.expiry,
         pct.lotNo,
@@ -251,11 +265,18 @@ interface PillCountTxnDao {
         pct.barcodeImage,
         pct.isComingFromHL7,
         pct.countType,
-        IFNULL(SUM(pcd.pillCount), 0) AS totalPillCount
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+             THEN subDrug.drugType ELSE dm.drugType END AS drugType,
+        IFNULL(SUM(pcd.pillCount), 0) AS totalPillCount,
+        pct.isSubstitute,
+        dm.drugName AS requestedDrugName,
+        dm.ndc AS requestedNdc
     FROM pill_count_txn AS pct
-    LEFT JOIN drug_master AS dm 
+    LEFT JOIN drug_master AS dm
         ON pct.drugId = dm.drugId
-    LEFT JOIN pill_count_txn_details AS pcd 
+    LEFT JOIN drug_master AS subDrug
+        ON pct.substitutedDrugId = subDrug.drugId
+    LEFT JOIN pill_count_txn_details AS pcd
         ON pct.txnId = pcd.txnId AND pcd.isDeleted = 0
     WHERE pct.txnId = :transactionId AND pct.isDeleted = 0
     GROUP BY pct.txnId
@@ -311,19 +332,24 @@ interface PillCountTxnDao {
         txn.countType,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
-        drug.drugName,
-        drug.ndc,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+             THEN subDrug.drugName ELSE drug.drugName END AS drugName,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+             THEN subDrug.ndc ELSE drug.ndc END AS ndc,
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
         txn.note,
         txn.bucketId,
-        drug.drugType
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+             THEN subDrug.drugType ELSE drug.drugType END AS drugType
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId AND details.isDeleted = 0
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
+    LEFT JOIN drug_master AS subDrug
+           ON txn.substitutedDrugId = subDrug.drugId
     WHERE txn.createdAt >= :startOfDay
       AND txn.createdAt < :endOfDay
       AND txn.isDeleted = 0
@@ -348,14 +374,17 @@ interface PillCountTxnDao {
         txn.countType,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
-        drug.drugName,
-        drug.ndc,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+             THEN subDrug.drugName ELSE drug.drugName END AS drugName,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+             THEN subDrug.ndc ELSE drug.ndc END AS ndc,
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
         txn.note,
         txn.bucketId,
-        drug.drugType
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+             THEN subDrug.drugType ELSE drug.drugType END AS drugType
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
@@ -363,24 +392,14 @@ interface PillCountTxnDao {
            AND (:stepType IS NULL OR details.type = :stepType)
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
+    LEFT JOIN drug_master AS subDrug
+           ON txn.substitutedDrugId = subDrug.drugId
     WHERE txn.createdAt BETWEEN :startDate AND :endDate
       AND txn.isDeleted = 0
       AND txn.localId = :userLocalId
       AND (:type IS NULL OR txn.countType = :type)
       AND (:status IS NULL OR txn.status = :status)
-    GROUP BY
-        txn.txnId,
-        txn.batchId,
-        txn.countType,
-        txn.status,
-        drug.drugName,
-        drug.ndc,
-        txn.barcodeImage,
-        txn.createdAt,
-        txn.targetCount,
-        txn.note,
-        txn.bucketId,
-        drug.drugType
+    GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
     )
@@ -656,13 +675,18 @@ interface PillCountTxnDao {
            txn.isNdcVerified,
            txn.bucketId,
            txn.countType,
-           drug.drugName,
-           drug.ndc,
-           drug.drugType,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+                THEN subDrug.drugName ELSE drug.drugName END AS drugName,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+                THEN subDrug.ndc ELSE drug.ndc END AS ndc,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+                THEN subDrug.drugType ELSE drug.drugType END AS drugType,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
+    LEFT JOIN drug_master AS subDrug
+           ON txn.substitutedDrugId = subDrug.drugId
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
           AND details.isDeleted = 0
