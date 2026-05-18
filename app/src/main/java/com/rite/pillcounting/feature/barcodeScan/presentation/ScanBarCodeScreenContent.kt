@@ -1,6 +1,5 @@
 package com.rite.pillcounting.feature.barcodeScan.presentation
 
-import android.content.res.Configuration
 import android.widget.Toast
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -11,8 +10,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -31,7 +28,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -73,7 +69,6 @@ fun ScanBarCodeScreenContent(
     val scanType by viewModel.txnScanType.collectAsStateWithLifecycle()
     val latestScanType by rememberUpdatedState(scanType)
     val context = LocalContext.current
-    val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
     val stepType = if (latestScanType == ScanType.RX_LABEL) {
         StepState.RX_LABEL
     } else if (latestScanType == ScanType.STOCK_COUNT) {
@@ -147,14 +142,16 @@ fun ScanBarCodeScreenContent(
             }
         )
 
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            contentAlignment = Alignment.Center
         ) {
+            StepTitleWithSpeech(stepType = stepType, isSoundOverride = isSoundEnabled)
 
             BackButton(
+                modifier = Modifier.align(Alignment.CenterStart),
                 navController = navController,
                 showBox = false,
                 onClick = {
@@ -162,16 +159,6 @@ fun ScanBarCodeScreenContent(
                     navController.popBackStack()
                 }
             )
-
-            if (isLandscape) {
-                Spacer(modifier = Modifier.weight(0.3f))
-            } else {
-                Spacer(modifier = Modifier.weight(0.6f))
-            }
-
-            StepTitleWithSpeech(stepType = stepType, isSoundOverride = isSoundEnabled)
-
-            Spacer(modifier = Modifier.weight(1f))
         }
         if (uiState.isLoading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))

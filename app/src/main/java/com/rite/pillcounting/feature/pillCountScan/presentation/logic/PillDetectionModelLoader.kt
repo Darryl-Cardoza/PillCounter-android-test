@@ -61,7 +61,7 @@ class PillDetectionModelLoader @Inject constructor(
         private const val TAG = "LoadModel"
 
         private const val MAX_CPU_THREADS = 4
-        private const val GPU_DELEGATE_RETRY_COUNT = 3  // ✅ Retry GPU creation
+        private const val GPU_DELEGATE_RETRY_COUNT = 3  // Retry GPU creation
         private const val GPU_DELEGATE_RETRY_DELAY_MS = 150L
     }
 
