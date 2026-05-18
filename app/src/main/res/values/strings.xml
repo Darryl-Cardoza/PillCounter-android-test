@@ -379,4 +379,27 @@
     <string name="select_terminal">Select Terminal</string>
     <string name="unknown">Unknown</string>
 
+    <!-- ================== PDF EXPORT ================== -->
+    <string name="pdf_app_name">PillCounter</string>
+    <string name="pdf_developer_credit">Developed by Rite Technologies</string>
+    <string name="pdf_stock_count_report_title">STOCK COUNT REPORT</string>
+    <string name="pdf_drug_detail_report_title">DRUG DETAIL REPORT</string>
+    <string name="pdf_generated_label">Generated:</string>
+    <string name="pdf_prepared_by_label">PREPARED BY</string>
+    <string name="pdf_prepared_by">Prepared by:</string>
+    <string name="pdf_batch_id">Batch  #%1$d</string>
+    <string name="pdf_status_completed">Completed</string>
+    <string name="pdf_status_in_progress">In Progress</string>
+    <string name="pdf_counted_label">COUNTED</string>
+    <string name="pdf_target_label">TARGET</string>
+    <string name="pdf_total_count_label">TOTAL COUNT</string>
+    <string name="pdf_ndc_label">NDC</string>
+    <string name="pdf_batch_entry">Batch %1$d</string>
+    <string name="pdf_images_captured">%1$d image(s) captured</string>
+    <string name="pdf_footer_stock_count">PillCounter  |  Stock Count Report  |  Developed by Rite Technologies</string>
+    <string name="pdf_footer_drug_detail">PillCounter  |  Drug Detail Report  |  Developed by Rite Technologies</string>
+    <string name="pdf_page">Page %1$d</string>
+    <string name="pdf_open_stock_report">Open Stock Count Report</string>
+    <string name="pdf_open_drug_detail_report">Open Drug Detail Report</string>
+
 </resources>

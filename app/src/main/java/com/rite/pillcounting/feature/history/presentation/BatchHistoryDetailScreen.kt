@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.history.presentation
 
+import android.content.Intent
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -33,32 +34,39 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
-import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toDateString
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toTimeString
 import com.rite.pillcounting.feature.batchCount.presentation.compose.BatchNdcCard
 import com.rite.pillcounting.feature.batchCount.presentation.viewmodel.BatchViewModel
+import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
+import com.rite.pillcounting.feature.history.presentation.compose.BatchStockCountPdfExporter
 import com.rite.pillcounting.ui.theme.AppTheme
+import java.io.File
 
 @Composable
 fun BatchHistoryDetailScreen(
     navController: NavController,
     viewModel: BatchViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val displayBatchId by viewModel.displayBatchId.collectAsStateWithLifecycle()
     val batchEntity by viewModel.batchEntity.collectAsStateWithLifecycle()
     val uniqueNdcCount by viewModel.uniqueNdcCount.collectAsStateWithLifecycle()
     val drugGroups by viewModel.drugGroups.collectAsStateWithLifecycle()
+
+    val pdfExporter = remember { BatchStockCountPdfExporter(context) }
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var expandedDrugId by remember { mutableStateOf<Long?>(null) }
@@ -87,7 +95,18 @@ fun BatchHistoryDetailScreen(
             onConfirmDelete = {},
             onSelectAll = {},
             showSearchIcon = false,
-            showPdfIcon = false
+            showPdfIcon = true,
+            onPdfClick = {
+                val file = pdfExporter.generate(
+                    batchId = displayBatchId,
+                    uniqueNdcCount = uniqueNdcCount,
+                    drugGroups = drugGroups,
+                    batchStatus = batchEntity?.status?.name ?: "INPROGRESS",
+                    startDateTime = batchEntity?.startDateTime,
+                    userName = viewModel.getCurrentUser()
+                )
+                file?.let { shareBatchPdf(context, it) }
+            }
         )
 
         LazyColumn(
@@ -207,6 +226,16 @@ fun BatchHistoryDetailScreen(
             onCancel = { showDeleteDialog = false }
         )
     }
+}
+
+private fun shareBatchPdf(context: android.content.Context, file: File) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/pdf")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+    }
+    context.startActivity(Intent.createChooser(intent, context.getString(com.rite.pillcounting.R.string.pdf_open_stock_report)))
 }
 
 @Composable

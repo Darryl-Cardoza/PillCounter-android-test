@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.history.presentation
 
 
+import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,7 +13,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.core.content.FileProvider
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
@@ -21,9 +24,11 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toDateString
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toTimeString
 import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
+import com.rite.pillcounting.feature.history.presentation.compose.DrugHistoryDetailPdfExporter
 import com.rite.pillcounting.feature.history.presentation.compose.DrugInfoSection
 import com.rite.pillcounting.feature.history.presentation.viewmodel.HistoryDetailsViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
+import java.io.File
 
 
 @Composable
@@ -34,6 +39,8 @@ fun HistoryDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var previewImagePath by remember { mutableStateOf<String?>(null) }
+    val context = LocalContext.current
+    val pdfExporter = remember { DrugHistoryDetailPdfExporter(context) }
 
     Box(modifier = Modifier.fillMaxSize()) {
     Column(
@@ -58,7 +65,13 @@ fun HistoryDetailScreen(
             onConfirmDelete = {},
             onSelectAll = {},
             showSearchIcon = false,
-            showPdfIcon = false,
+            showPdfIcon = true,
+            onPdfClick = {
+                uiState.txnInfo?.let { txn ->
+                    val file = pdfExporter.generate(txn, viewModel.getCurrentUser())
+                    file?.let { shareDrugDetailPdf(context, it) }
+                }
+            },
         )
         } // if previewImagePath == null
         DrugInfoSection(
@@ -104,6 +117,16 @@ fun HistoryDetailScreen(
     }
 
     }
+}
+
+private fun shareDrugDetailPdf(context: android.content.Context, file: File) {
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.provider", file)
+    val intent = Intent(Intent.ACTION_VIEW).apply {
+        setDataAndType(uri, "application/pdf")
+        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        addFlags(Intent.FLAG_ACTIVITY_NO_HISTORY)
+    }
+    context.startActivity(Intent.createChooser(intent, context.getString(com.rite.pillcounting.R.string.pdf_open_drug_detail_report)))
 }
 
 
