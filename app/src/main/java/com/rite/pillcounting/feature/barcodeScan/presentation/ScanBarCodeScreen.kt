@@ -136,6 +136,7 @@ fun ScanBarCodeScreen(
             confirmText = stringResource(R.string.substitute),
             cancelText = stringResource(R.string.cancel),
             onConfirm = {
+                viewModel.markSubstituteConfirmed()
                 viewModel.analyzer.pause()
                 viewModel.hideNdcNotMatchedDialog()
                 viewModel.showSuccessDialog()

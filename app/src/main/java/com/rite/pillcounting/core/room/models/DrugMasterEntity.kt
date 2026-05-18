@@ -10,7 +10,6 @@ import androidx.room.PrimaryKey
  * @property drugId      Auto-generated unique identifier for each drug.
  * @property drugName    Display name of the drug.
  * @property ndc         National Drug Code (unique identifier per drug).
- * @property equivalence Pharmacological or chemical equivalence information.
  * @property drugType    Type/classification of the drug (e.g., tablet, capsule).
  * @property createdAt   Timestamp (epoch millis) when the record was created.
  */
@@ -23,7 +22,6 @@ data class DrugMasterEntity(
     val drugId: Long = 0L,
     val drugName: String? = null,
     val ndc: String,
-    val equivalence: String? = null,
     val drugType: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val gtin: String?= null,

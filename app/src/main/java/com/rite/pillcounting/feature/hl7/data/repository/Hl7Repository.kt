@@ -49,6 +49,7 @@ class Hl7Repository @Inject constructor(
         scope.launch {
             if (preferenceHelper.isHl7Enabled()) {
                 observePendingHl7Transactions()
+                observePendingHl7BatchTransactions()
             }
         }
     }
@@ -121,6 +122,7 @@ class Hl7Repository @Inject constructor(
             val result = hl7MessageSender.sendRaw(message)
             if (result.isSuccess) {
                 logger.i("Inventory HL7 message sent successfully for batchId=$batchId")
+                batchDao.markBatchSynced(batchId)
             } else {
                 logger.e("Failed to send inventory HL7 message for batchId=$batchId: ${result.exceptionOrNull()?.message}")
             }
@@ -151,6 +153,20 @@ class Hl7Repository @Inject constructor(
                         buildAndSendInventoryResponse(batchId = batchId)
                     }
                 }
+            }
+        }
+    }
+
+    fun resendPendingHl7BatchTransactions() {
+        scope.launch {
+            val pendingBatches = batchDao.getUnsyncedCompletedBatchesOnce()
+            if (pendingBatches.isEmpty()) {
+                logger.i("No pending HL7 batch transactions to sync")
+                return@launch
+            }
+            logger.i("Resending ${pendingBatches.size} pending HL7 batch transactions")
+            for (batch in pendingBatches) {
+                buildAndSendInventoryResponse(batchId = batch.batchId)
             }
         }
     }
@@ -198,13 +214,11 @@ class Hl7Repository @Inject constructor(
             val resolvedDrugName =
                 drugInfo?.genericName?.takeIf { it.isNotBlank() } ?: hl7DrugName
             val resolvedDrugType = drugInfo?.drugType
-            val resolvedEquivalence = drugInfo?.is_ndc_equivalent?.toString()
 
             DrugMasterEntity(
                 ndc = resolvedNdc,
                 drugName = resolvedDrugName,
                 drugType = resolvedDrugType,
-                equivalence = resolvedEquivalence
             )
         }
 
@@ -524,7 +538,6 @@ class Hl7Repository @Inject constructor(
                     ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
                     drugName = resolvedDrugName,
                     drugType = drugInfo.drugType,
-                    equivalence = drugInfo.is_ndc_equivalent?.toString(),
                     packageQty = drugInfo.qty
                 )
 
@@ -620,6 +633,16 @@ class Hl7Repository @Inject constructor(
 //                        hl7MessageSender.connect()
                     resendPendingHl7Transactions()
 //                    }
+                }
+        }
+    }
+
+    private fun observePendingHl7BatchTransactions() {
+        scope.launch {
+            batchDao.observeUnsyncedCompletedBatches()
+                .collect { pendingBatches ->
+                    logger.i("HL7 batch observer fired, pending=${pendingBatches.size}")
+                    resendPendingHl7BatchTransactions()
                 }
         }
     }

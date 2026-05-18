@@ -97,7 +97,6 @@ fun ScanBarCodeScreenContent(
     val scanType by viewModel.txnScanType.collectAsStateWithLifecycle()
     val latestScanType by rememberUpdatedState(scanType)
     val context = LocalContext.current
-
     val stepType = if (latestScanType == ScanType.RX_LABEL) {
         StepState.RX_LABEL
     } else if (latestScanType == ScanType.STOCK_COUNT) {
@@ -193,7 +192,7 @@ fun ScanBarCodeScreenContent(
             }
         )
 
-        Row(
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(
@@ -203,10 +202,12 @@ fun ScanBarCodeScreenContent(
                     bottom = 0.dp,
                 )
                 .padding(vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
+            contentAlignment = Alignment.Center
         ) {
+            StepTitleWithSpeech(stepType = stepType, isSoundOverride = isSoundEnabled)
 
             BackButton(
+                modifier = Modifier.align(Alignment.CenterStart),
                 navController = navController,
                 showBox = false,
                 onClick = {
@@ -214,12 +215,6 @@ fun ScanBarCodeScreenContent(
                     navController.popBackStack()
                 }
             )
-
-            Spacer(modifier = Modifier.weight(0.8f))
-
-            StepTitleWithSpeech(stepType = stepType, isSoundOverride = isSoundEnabled)
-
-            Spacer(modifier = Modifier.weight(1f))
         }
         if (uiState.isLoading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))

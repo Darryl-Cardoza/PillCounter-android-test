@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.pillCountScan.domain.model
 
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.feature.pillCountScan.presentation.logic.GloveDetection
 
 /**
  * Represents the UI state for the pill counting process.
@@ -28,6 +29,7 @@ data class PillScanningUiState(
     val txnDetailHistory: List<TxnDetail> = emptyList(),
     val detectedPills: List<DetectedPill> = emptyList(),
     val filteredPills: List<DetectedPill> = emptyList(),
+    val gloveDetections: List<GloveDetection> = emptyList(),
     val isPaused: Boolean = false,
     val isLoading: Boolean = false,
     val restrictAdd: Boolean = false,
