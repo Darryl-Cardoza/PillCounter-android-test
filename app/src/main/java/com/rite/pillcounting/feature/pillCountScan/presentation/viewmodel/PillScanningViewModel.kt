@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel
 import android.app.Application
 import android.content.Context
 import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.MediaActionSound
 import android.os.Build
@@ -23,6 +24,7 @@ import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.settings.domain.model.enums.ScheduleCode
+import com.rite.pillcounting.core.security.ImageCrypto
 import com.rite.pillcounting.core.utils.common.HelperFunctions.saveBitmapToFile
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.common.OverlayUtils
@@ -948,19 +950,61 @@ class PillScanningViewModel @Inject constructor(
                 )
             }
 
-            val latestStep = pillCountTxnDetailsDao.getLatestType(preferenceHelper.getTxnId())
+            val currentSteps = _steps.value
+            val savedWorkflowStep = txnInfo?.workflowStep
+                ?.let { runCatching { StepState.valueOf(it) }.getOrNull() }
 
-            val resolvedStep = if (drugInfo?.drugType.equals("null", true)) {
-                latestStep ?: StepState.TARGET_VERIFICATION
-            } else {
-                latestStep ?: StepState.CONTAINER_INITIATE
+            val resolvedStep = when {
+                savedWorkflowStep == null -> {
+                    // No saved step yet — fall back to deriving from details history
+                    val latestStep = pillCountTxnDetailsDao.getLatestType(preferenceHelper.getTxnId())
+                    if (drugInfo?.drugType.equals("null", true)) {
+                        latestStep ?: StepState.TARGET_VERIFICATION
+                    } else {
+                        latestStep ?: StepState.CONTAINER_INITIATE
+                    }
+                }
+                savedWorkflowStep in currentSteps -> savedWorkflowStep
+                else -> {
+                    // Saved step was removed by a settings change (e.g. double-count or
+                    // back-count toggled off).  Find the nearest valid step:
+                    //   - For a middle step (TARGET_REVERIFICATION): advance to the next
+                    //     step that still exists in the workflow.
+                    //   - For a tail step (CONTAINER_PENDING): fall back to the last
+                    //     remaining step (VIAL).
+                    val savedOrdinal = savedWorkflowStep.ordinal
+                    currentSteps.firstOrNull { it.ordinal > savedOrdinal } ?: currentSteps.last()
+                }
             }
 
             _currentStep.value = resolvedStep
             if (resolvedStep == StepState.VIAL) {
                 pausePillDetection()
+                loadExistingVialPhoto(preferenceHelper.getTxnId())
             }
             observeTxnDetailsForTxn(resolvedStep)
+        }
+    }
+
+    private fun loadExistingVialPhoto(txnId: Long) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val vialDetail = pillCountTxnDetailsDao.observeAllForTxn(txnId, StepState.VIAL).first().firstOrNull()
+                val imagePath = vialDetail?.imagePath ?: return@launch
+                val file = java.io.File(imagePath)
+                if (!file.exists()) return@launch
+                val rawBytes = file.readBytes()
+                val jpegBytes = if (ImageCrypto.isEncrypted(rawBytes)) {
+                    ImageCrypto.decrypt(rawBytes)
+                } else {
+                    rawBytes
+                }
+                val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size) ?: return@launch
+                _capturedBitmap.value = bitmap
+                logger.i("Loaded existing vial photo from $imagePath")
+            } catch (e: Exception) {
+                logger.e("Failed to load existing vial photo", e)
+            }
         }
     }
 
@@ -1023,6 +1067,10 @@ class PillScanningViewModel @Inject constructor(
         _currentStep.value = next
         _uiState.update { it.copy(showDialogForControl = false) }
         observeTxnDetailsForTxn(next)
+
+        viewModelScope.launch(Dispatchers.IO) {
+            pillCountTxnDao.updateWorkflowStep(preferenceHelper.getTxnId(), next.name)
+        }
     }
 
     fun buildWorkflowSteps(

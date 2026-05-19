@@ -191,7 +191,7 @@ fun CameraPreviewSection(
                 // workflow; red until then. State is sticky — see
                 // PillScanningViewModel.glovesDetected; it resets when the workflow
                 // resumes from the idle/paused state.
-                val handTint = if (glovesDetectedSticky) Color.Red else Color.Green
+                val handTint = if (glovesDetectedSticky) Color.Green else Color.Red
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)

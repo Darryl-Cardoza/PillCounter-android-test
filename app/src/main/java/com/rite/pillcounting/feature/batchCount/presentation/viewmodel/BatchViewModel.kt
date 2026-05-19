@@ -92,6 +92,11 @@ class BatchViewModel @Inject constructor(
         }
     }
 
+    fun getCurrentUser(): String =
+        preferenceHelper.getRecentLogins().firstOrNull()
+            ?: preferenceHelper.getUserId()
+            ?: "—"
+
     fun endBatch(note: String? = null) {
         viewModelScope.launch {
             val id = _resolvedBatchId.value

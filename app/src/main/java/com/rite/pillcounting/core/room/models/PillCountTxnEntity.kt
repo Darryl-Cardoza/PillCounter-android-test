@@ -103,6 +103,8 @@ data class PillCountTxnEntity(
     val batchId: Long? = null,
     val bottleQty: Int? = null,
     val looseQty: Int? = null,
-    val substitutedDrugId: Long? = null
+    val substitutedDrugId: Long? = null,
+
+    val workflowStep: String? = null
 
 )

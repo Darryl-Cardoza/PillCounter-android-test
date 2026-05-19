@@ -270,7 +270,8 @@ interface PillCountTxnDao {
         IFNULL(SUM(pcd.pillCount), 0) AS totalPillCount,
         pct.isSubstitute,
         dm.drugName AS requestedDrugName,
-        dm.ndc AS requestedNdc
+        dm.ndc AS requestedNdc,
+        pct.workflowStep
     FROM pill_count_txn AS pct
     LEFT JOIN drug_master AS dm
         ON pct.drugId = dm.drugId
@@ -300,6 +301,14 @@ interface PillCountTxnDao {
         qty: Int,
         now: Long = System.currentTimeMillis()
     )
+
+    @Query("UPDATE pill_count_txn SET workflowStep = :step, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateWorkflowStep(
+        txnId: Long,
+        step: String,
+        now: Long = System.currentTimeMillis()
+    )
+
 
     /**
      * Updates the [CountStatus] of a specific transaction.
