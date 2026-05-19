@@ -380,7 +380,6 @@
     <string name="unknown">Unknown</string>
 
     <!-- ================== PDF EXPORT ================== -->
-    <string name="pdf_app_name">PillCounter</string>
     <string name="pdf_developer_credit">Developed by Rite Technologies</string>
     <string name="pdf_stock_count_report_title">STOCK COUNT REPORT</string>
     <string name="pdf_drug_detail_report_title">DRUG DETAIL REPORT</string>
