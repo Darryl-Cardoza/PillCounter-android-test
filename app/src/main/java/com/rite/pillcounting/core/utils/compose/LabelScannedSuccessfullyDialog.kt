@@ -190,7 +190,7 @@ fun LabelScannedSuccessfullyDialog(
 
 @SuppressLint("UnusedBoxWithConstraintsScope")
 @Composable
-private fun ContainerStatusSlider(
+internal fun ContainerStatusSlider(
     selectedStatus: ContainerStatus,
     onStatusSelected: (ContainerStatus) -> Unit,
     modifier: Modifier = Modifier
@@ -314,7 +314,7 @@ private fun LandscapeFieldsLayout(fields: List<DialogField>) {
 }
 
 @Composable
-private fun InfoField(
+internal fun InfoField(
     label: String,
     value: String,
     modifier: Modifier = Modifier
@@ -344,7 +344,7 @@ private fun InfoField(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun BucketDropdownField(
+internal fun BucketDropdownField(
     bucketList: List<String>,
     selectedBucket: String,
     onBucketSelected: (String) -> Unit,

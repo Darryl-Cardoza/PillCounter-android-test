@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
@@ -329,7 +330,11 @@ private fun VerifyRxDetailsBottomSheet(
         sheetState = sheetState,
         containerColor = AppTheme.extendedColors.secondaryBackground,
         dragHandle = null,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        // Dispense flow uses fully-rounded corners on all four sides for a
+        // floating-pill look. The bottom corners are not visually obvious when
+        // the sheet sits flush against the screen edge, but the shape is set
+        // for consistency with the landscape drawer (also fully rounded below).
+        shape = RoundedCornerShape(20.dp),
         // Bars are hidden by HideSystemBarsInCurrentWindow below, so content goes
         // flush to the screen edge with no nav-bar inset reserved.
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
@@ -368,6 +373,7 @@ private fun VerifyRxDetailsSideDrawer(
         onCancel = onCancel,
         cornerRadius = 20.dp,
         dismissible = dismissible,
+        allCornersRounded = true,
     ) { animatedCancel ->
         SheetBody(
             drugName = drugName,
@@ -399,6 +405,10 @@ private fun SwipeableSideDrawer(
     onCancel: () -> Unit,
     cornerRadius: Dp,
     dismissible: Boolean = true,
+    // When true, all four corners of the drawer are rounded (dispense flow's
+    // look). When false, only the left edge is rounded so the right edge sits
+    // flush against the screen — the legacy stock-count look.
+    allCornersRounded: Boolean = false,
     content: @Composable (animatedCancel: () -> Unit) -> Unit,
 ) {
     HideSystemNavBar()
@@ -461,13 +471,26 @@ private fun SwipeableSideDrawer(
 
                 // LANDSCAPE_RIGHT_NUDGE_DP is negative — pushes the drawer rightward
                 // past the edge of the scrim Box so it reaches the physical screen edge.
-                val rightNudgePx = with(density) { LANDSCAPE_RIGHT_NUDGE_DP.toPx() }
+                // When all corners are rounded the drawer needs to stay inside the
+                // scrim (right side of the rounded shape is on-screen, not clipped
+                // by the edge), so zero the nudge in that case.
+                val rightNudgePx = if (allCornersRounded) 0f
+                    else with(density) { LANDSCAPE_RIGHT_NUDGE_DP.toPx() }
                 Box(
                     modifier = Modifier
                         .offset { androidx.compose.ui.unit.IntOffset(animatedDragOffset.toInt() - rightNudgePx.toInt(), 0) }
                         .fillMaxHeight()
                         .width(drawerWidth)
-                        .clip(RoundedCornerShape(topStart = cornerRadius, bottomStart = cornerRadius))
+                        .clip(
+                            if (allCornersRounded) {
+                                RoundedCornerShape(cornerRadius)
+                            } else {
+                                RoundedCornerShape(
+                                    topStart = cornerRadius,
+                                    bottomStart = cornerRadius,
+                                )
+                            }
+                        )
                         .background(AppTheme.extendedColors.secondaryBackground)
                         // Swallow taps so they don't bubble to the scrim.
                         .clickable(
@@ -525,7 +548,9 @@ private fun VerifyRxDetailsTabletBottomSheet(
         sheetState = sheetState,
         containerColor = AppTheme.extendedColors.secondaryBackground,
         dragHandle = null,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        // Dispense flow: all four corners rounded for visual consistency
+        // with the landscape drawer.
+        shape = RoundedCornerShape(24.dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
     ) {
         HideSystemBarsInCurrentWindow()
@@ -563,6 +588,7 @@ private fun VerifyRxDetailsTabletSideDrawer(
         onCancel = onCancel,
         cornerRadius = 24.dp,
         dismissible = dismissible,
+        allCornersRounded = true,
     ) { animatedCancel ->
         TabletVerticalBody(
             drugName = drugName,
@@ -802,11 +828,18 @@ private fun SheetBody(
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
     // Inline landscape usage gives this Column a bounded height, so fillMaxHeight
     // pushes the buttons to the bottom via weight(1f) on the scroll section.
+    // Slightly bigger outer padding in landscape so the panel doesn't feel
+    // wall-to-wall content; tablet would crop these to its own taste.
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .let { if (isLandscape) it.fillMaxHeight() else it }
-            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 16.dp + extraBottom)
+            .padding(
+                start = if (isLandscape) 18.dp else 14.dp,
+                end = if (isLandscape) 18.dp else 14.dp,
+                top = if (isLandscape) 16.dp else 12.dp,
+                bottom = if (isLandscape) 20.dp else 16.dp + extraBottom,
+            )
     ) {
         Text(
             text = stringResource(R.string.verify_rx_details),
@@ -816,7 +849,7 @@ private fun SheetBody(
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = if (isLandscape) 8.dp else 12.dp)
+                .padding(bottom = if (isLandscape) 14.dp else 12.dp)
         )
 
         Column(
@@ -826,7 +859,7 @@ private fun SheetBody(
                 .then(
                     // Portrait: keep verticalScroll so long content doesn't break
                     // layout. Landscape: skip scroll so DetailsGrid can fillMaxHeight()
-                    // and use SpaceBetween to evenly distribute the three rows.
+                    // and distribute its rows with weight(1f) for breathing room.
                     if (isLandscape) Modifier else Modifier.verticalScroll(rememberScrollState())
                 )
         ) {
@@ -840,18 +873,24 @@ private fun SheetBody(
             )
         }
 
-        Spacer(modifier = Modifier.height(if (isLandscape) 10.dp else 14.dp))
+        Spacer(modifier = Modifier.height(if (isLandscape) 16.dp else 14.dp))
 
         // Fixed-width buttons so the physical size matches across portrait
         // (wide sheet) and landscape (narrow side panel) on the same device.
         // HollowButton vs ActionButtonPrimary internally apply slightly different
         // size/border modifiers, so wrapping each in a Box(width=BUTTON_WIDTH) +
         // fillMaxWidth() on the button forces both outer bounds to match exactly.
+        // In landscape the drawer is narrow and BUTTON_WIDTH * 2 + spacing leaves
+        // no room for the inner text — "PROCEED" wraps to two lines. So in
+        // landscape we let each button claim weight(1f) of the row instead.
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
         ) {
-            Box(modifier = Modifier.width(BUTTON_WIDTH)) {
+            Box(
+                modifier = if (isLandscape) Modifier.weight(1f)
+                else Modifier.width(BUTTON_WIDTH)
+            ) {
                 HollowButton(
                     text = stringResource(R.string.cancel).uppercase(),
                     onClick = onCancel,
@@ -861,7 +900,10 @@ private fun SheetBody(
                 )
             }
 
-            Box(modifier = Modifier.width(BUTTON_WIDTH)) {
+            Box(
+                modifier = if (isLandscape) Modifier.weight(1f)
+                else Modifier.width(BUTTON_WIDTH)
+            ) {
                 ActionButtonPrimary(
                     text = stringResource(R.string.proceed).uppercase(),
                     onClick = onProceed,
@@ -891,33 +933,61 @@ private fun DetailsGrid(
     rxNumber: String,
     compact: Boolean,
 ) {
-    val rowSpacing = if (compact) 6.dp else 10.dp
-    // Landscape: fill the available height and SpaceBetween-distribute the three
-    // rows so the gap between rows expands instead of leaving dead space below
-    // the last row. Portrait keeps fixed spacedBy() — natural top-aligned flow.
+    // Hairline separators between rows mirror the reference screenshot. To stop
+    // the landscape panel from feeling cramped, each row claims an even share of
+    // the available height via weight(1f) — so the dividers sit at the natural
+    // midpoint between rows and the tiles get real breathing room. Portrait
+    // keeps natural flow with spacedBy() since the sheet doesn't have a bounded
+    // height there.
+    val dividerColor = AppTheme.extendedColors.textColor.copy(alpha = 0.5f)
+    val dividerPadding = if (compact) 14.dp else 10.dp
+
     Column(
         modifier = if (compact) Modifier.fillMaxHeight() else Modifier,
-        verticalArrangement = if (compact) Arrangement.SpaceBetween
-        else Arrangement.spacedBy(rowSpacing)
     ) {
-        TileDetailRow(
-            tile = { FormTile(compact = compact) },
-            label = stringResource(R.string.drugname),
-            value = drugName,
-            compact = compact,
+        Box(
+            modifier = if (compact) Modifier.weight(1f) else Modifier,
+            contentAlignment = Alignment.Center,
+        ) {
+            TileDetailRow(
+                tile = { FormTile(compact = compact) },
+                label = stringResource(R.string.drugname),
+                value = drugName,
+                compact = compact,
+            )
+        }
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = dividerColor,
+            modifier = Modifier.padding(vertical = dividerPadding),
         )
-        TileDetailRow(
-            tile = { QuantityTile(quantity = quantity, compact = compact) },
-            label = stringResource(R.string.ndc_number),
-            value = ndcNumber,
-            compact = compact,
+        Box(
+            modifier = if (compact) Modifier.weight(1f) else Modifier,
+            contentAlignment = Alignment.Center,
+        ) {
+            TileDetailRow(
+                tile = { QuantityTile(quantity = quantity, compact = compact) },
+                label = stringResource(R.string.ndc_number),
+                value = ndcNumber,
+                compact = compact,
+            )
+        }
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = dividerColor,
+            modifier = Modifier.padding(vertical = dividerPadding),
         )
-        TileDetailRow(
-            tile = { BucketTile(bucket = bucket, compact = compact) },
-            label = stringResource(R.string.rx_number),
-            value = rxNumber,
-            compact = compact,
-        )
+        Box(
+            modifier = if (compact) Modifier.weight(1f) else Modifier,
+            contentAlignment = Alignment.Center,
+        ) {
+            TileDetailRow(
+                tile = { BucketTile(bucket = bucket, compact = compact) },
+                label = stringResource(R.string.rx_number),
+                value = rxNumber,
+                compact = compact,
+            )
+        }
     }
 }
 
@@ -927,9 +997,10 @@ private fun TileDetailRow(
     label: String,
     value: String,
     compact: Boolean,
+    modifier: Modifier = Modifier,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
@@ -1174,7 +1245,8 @@ private fun VerifyNdcDetailsBottomSheet(
         sheetState = sheetState,
         containerColor = AppTheme.extendedColors.secondaryBackground,
         dragHandle = null,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        // Dispense flow: all four corners rounded.
+        shape = RoundedCornerShape(20.dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
     ) {
         HideSystemBarsInCurrentWindow()
@@ -1205,6 +1277,7 @@ private fun VerifyNdcDetailsSideDrawer(
         onCancel = onCancel,
         cornerRadius = 20.dp,
         dismissible = dismissible,
+        allCornersRounded = true,
     ) { animatedCancel ->
         NdcSheetBody(
             drugName = drugName,
@@ -1236,7 +1309,8 @@ private fun VerifyNdcDetailsTabletBottomSheet(
         sheetState = sheetState,
         containerColor = AppTheme.extendedColors.secondaryBackground,
         dragHandle = null,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        // Dispense flow: all four corners rounded.
+        shape = RoundedCornerShape(24.dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
     ) {
         HideSystemBarsInCurrentWindow()
@@ -1266,6 +1340,7 @@ private fun VerifyNdcDetailsTabletSideDrawer(
         onCancel = onCancel,
         cornerRadius = 24.dp,
         dismissible = dismissible,
+        allCornersRounded = true,
     ) { animatedCancel ->
         NdcTabletVerticalBody(
                 drugName = drugName,
@@ -1292,11 +1367,18 @@ private fun NdcSheetBody(
     onProceed: () -> Unit,
 ) {
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
+    // Landscape gets slightly bigger outer padding so the panel doesn't feel
+    // wall-to-wall content; portrait keeps its current compact spacing.
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .let { if (isLandscape) it.fillMaxHeight() else it }
-            .padding(start = 14.dp, end = 14.dp, top = 12.dp, bottom = 16.dp + extraBottom)
+            .padding(
+                start = if (isLandscape) 18.dp else 14.dp,
+                end = if (isLandscape) 18.dp else 14.dp,
+                top = if (isLandscape) 16.dp else 12.dp,
+                bottom = if (isLandscape) 20.dp else 16.dp + extraBottom,
+            )
     ) {
         Text(
             text = stringResource(R.string.verify_stock_bottle_details),
@@ -1306,7 +1388,7 @@ private fun NdcSheetBody(
             textAlign = TextAlign.Center,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = if (isLandscape) 8.dp else 12.dp)
+                .padding(bottom = if (isLandscape) 14.dp else 12.dp)
         )
 
         Column(
@@ -1325,13 +1407,19 @@ private fun NdcSheetBody(
             )
         }
 
-        Spacer(modifier = Modifier.height(if (isLandscape) 10.dp else 14.dp))
+        Spacer(modifier = Modifier.height(if (isLandscape) 16.dp else 14.dp))
 
+        // In landscape the drawer is narrow and BUTTON_WIDTH * 2 + spacing
+        // leaves no room for the inner text — "PROCEED" wraps to two lines.
+        // So in landscape we let each button claim weight(1f) of the row.
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
         ) {
-            Box(modifier = Modifier.width(BUTTON_WIDTH)) {
+            Box(
+                modifier = if (isLandscape) Modifier.weight(1f)
+                else Modifier.width(BUTTON_WIDTH)
+            ) {
                 HollowButton(
                     text = stringResource(R.string.cancel).uppercase(),
                     onClick = onCancel,
@@ -1340,7 +1428,10 @@ private fun NdcSheetBody(
                     modifier = Modifier.fillMaxWidth()
                 )
             }
-            Box(modifier = Modifier.width(BUTTON_WIDTH)) {
+            Box(
+                modifier = if (isLandscape) Modifier.weight(1f)
+                else Modifier.width(BUTTON_WIDTH)
+            ) {
                 ActionButtonPrimary(
                     text = stringResource(R.string.proceed).uppercase(),
                     onClick = onProceed,
@@ -1353,7 +1444,10 @@ private fun NdcSheetBody(
     }
 }
 
-/** Two-row NDC grid: [Form | NDC number], [Bucket | Drug name]. */
+/** Two-row NDC grid: [Form | NDC number], [Bucket | Drug name].
+ *  A hairline separator divides the two rows, mirroring the reference style.
+ *  Landscape gives each row equal weight so the panel doesn't feel cramped.
+ */
 @Composable
 private fun NdcDetailsGrid(
     drugName: String,
@@ -1361,24 +1455,38 @@ private fun NdcDetailsGrid(
     ndcNumber: String,
     compact: Boolean,
 ) {
-    val rowSpacing = if (compact) 6.dp else 10.dp
+    val dividerColor = AppTheme.extendedColors.textColor.copy(alpha = 0.5f)
+    val dividerPadding = if (compact) 14.dp else 10.dp
     Column(
         modifier = if (compact) Modifier.fillMaxHeight() else Modifier,
-        verticalArrangement = if (compact) Arrangement.SpaceBetween
-        else Arrangement.spacedBy(rowSpacing)
     ) {
-        TileDetailRow(
-            tile = { FormTile(compact = compact) },
-            label = stringResource(R.string.ndc_number),
-            value = ndcNumber,
-            compact = compact,
+        Box(
+            modifier = if (compact) Modifier.weight(1f) else Modifier,
+            contentAlignment = Alignment.Center,
+        ) {
+            TileDetailRow(
+                tile = { FormTile(compact = compact) },
+                label = stringResource(R.string.ndc_number),
+                value = ndcNumber,
+                compact = compact,
+            )
+        }
+        HorizontalDivider(
+            thickness = 1.dp,
+            color = dividerColor,
+            modifier = Modifier.padding(vertical = dividerPadding),
         )
-        TileDetailRow(
-            tile = { BucketTile(bucket = bucket, compact = compact) },
-            label = stringResource(R.string.drugname),
-            value = drugName,
-            compact = compact,
-        )
+        Box(
+            modifier = if (compact) Modifier.weight(1f) else Modifier,
+            contentAlignment = Alignment.Center,
+        ) {
+            TileDetailRow(
+                tile = { BucketTile(bucket = bucket, compact = compact) },
+                label = stringResource(R.string.drugname),
+                value = drugName,
+                compact = compact,
+            )
+        }
     }
 }
 
@@ -1492,5 +1600,446 @@ private fun NdcTabletVerticalBody(
         TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 12.dp)
 
         Spacer(modifier = Modifier.height(8.dp))
+    }
+}
+
+
+// ──────────────────────────────────────────────────────────────────────────────
+// Stock-bottle verification sheet (replaces the old LabelScannedSuccessfullyDialog
+// popup for the STOCK_COUNT flow). Visually shows as:
+//   - Phone portrait → ModalBottomSheet (from the bottom edge)
+//   - Phone landscape → right-side drawer (the swipeable kind we use for RX/NDC)
+//   - Tablet portrait → wider ModalBottomSheet
+//   - Tablet landscape → wider side drawer
+//
+// Content/functionality matches the legacy popup exactly:
+//   - List of label/value fields (NDC, Drug, Quantity, Bucket, etc.) — laid out
+//     in a single column portrait, two columns landscape when there are 4+.
+//   - Optional Sealed/Opened container-status slider.
+//   - Optional bucket dropdown selector.
+//   - Cancel / Add buttons at the bottom.
+//
+// Reuses ContainerStatusSlider, BucketDropdownField, and InfoField from
+// LabelScannedSuccessfullyDialog.kt (made `internal` for this) so the inner
+// widgets stay in one place.
+// ──────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Orientation/device-aware stock-bottle verification sheet. See file header
+ * just above for the layout matrix.
+ *
+ * Set [dismissible] = false to force the user to commit via Cancel/Add (matches
+ * the dispense sheets' contract).
+ */
+@Composable
+fun VerifyStockBottleSheet(
+    fields: List<DialogField>,
+    selectedContainerStatus: ContainerStatus,
+    onContainerStatusChange: (ContainerStatus) -> Unit,
+    onCancel: () -> Unit,
+    onProceed: () -> Unit,
+    title: String = stringResource(R.string.label_scanned_successfully),
+    showSealedButtons: Boolean = false,
+    bucketList: List<String> = emptyList(),
+    showBucketSelector: Boolean = false,
+    onBucketSelected: (String) -> Unit = {},
+    dismissible: Boolean = true,
+) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isTablet = configuration.smallestScreenWidthDp >= 600
+
+    when {
+        isTablet && isLandscape -> VerifyStockBottleTabletSideDrawer(
+            fields = fields,
+            title = title,
+            selectedContainerStatus = selectedContainerStatus,
+            onContainerStatusChange = onContainerStatusChange,
+            showSealedButtons = showSealedButtons,
+            bucketList = bucketList,
+            showBucketSelector = showBucketSelector,
+            onBucketSelected = onBucketSelected,
+            onCancel = onCancel,
+            onProceed = onProceed,
+            dismissible = dismissible,
+        )
+        isTablet -> VerifyStockBottleTabletBottomSheet(
+            fields = fields,
+            title = title,
+            selectedContainerStatus = selectedContainerStatus,
+            onContainerStatusChange = onContainerStatusChange,
+            showSealedButtons = showSealedButtons,
+            bucketList = bucketList,
+            showBucketSelector = showBucketSelector,
+            onBucketSelected = onBucketSelected,
+            onCancel = onCancel,
+            onProceed = onProceed,
+            dismissible = dismissible,
+        )
+        isLandscape -> VerifyStockBottleSideDrawer(
+            fields = fields,
+            title = title,
+            selectedContainerStatus = selectedContainerStatus,
+            onContainerStatusChange = onContainerStatusChange,
+            showSealedButtons = showSealedButtons,
+            bucketList = bucketList,
+            showBucketSelector = showBucketSelector,
+            onBucketSelected = onBucketSelected,
+            onCancel = onCancel,
+            onProceed = onProceed,
+            dismissible = dismissible,
+        )
+        else -> VerifyStockBottlePhoneBottomSheet(
+            fields = fields,
+            title = title,
+            selectedContainerStatus = selectedContainerStatus,
+            onContainerStatusChange = onContainerStatusChange,
+            showSealedButtons = showSealedButtons,
+            bucketList = bucketList,
+            showBucketSelector = showBucketSelector,
+            onBucketSelected = onBucketSelected,
+            onCancel = onCancel,
+            onProceed = onProceed,
+            dismissible = dismissible,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VerifyStockBottlePhoneBottomSheet(
+    fields: List<DialogField>,
+    title: String,
+    selectedContainerStatus: ContainerStatus,
+    onContainerStatusChange: (ContainerStatus) -> Unit,
+    showSealedButtons: Boolean,
+    bucketList: List<String>,
+    showBucketSelector: Boolean,
+    onBucketSelected: (String) -> Unit,
+    onCancel: () -> Unit,
+    onProceed: () -> Unit,
+    dismissible: Boolean,
+) {
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { if (dismissible) true else it != androidx.compose.material3.SheetValue.Hidden }
+    )
+    ModalBottomSheet(
+        onDismissRequest = { if (dismissible) onCancel() },
+        sheetState = sheetState,
+        containerColor = AppTheme.extendedColors.secondaryBackground,
+        dragHandle = null,
+        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
+    ) {
+        HideSystemBarsInCurrentWindow()
+        StockBottleSheetBody(
+            fields = fields,
+            title = title,
+            selectedContainerStatus = selectedContainerStatus,
+            onContainerStatusChange = onContainerStatusChange,
+            showSealedButtons = showSealedButtons,
+            bucketList = bucketList,
+            showBucketSelector = showBucketSelector,
+            onBucketSelected = onBucketSelected,
+            isLandscape = false,
+            onCancel = onCancel,
+            onProceed = onProceed,
+        )
+    }
+}
+
+@Composable
+private fun VerifyStockBottleSideDrawer(
+    fields: List<DialogField>,
+    title: String,
+    selectedContainerStatus: ContainerStatus,
+    onContainerStatusChange: (ContainerStatus) -> Unit,
+    showSealedButtons: Boolean,
+    bucketList: List<String>,
+    showBucketSelector: Boolean,
+    onBucketSelected: (String) -> Unit,
+    onCancel: () -> Unit,
+    onProceed: () -> Unit,
+    dismissible: Boolean,
+) {
+    val config = LocalConfiguration.current
+    val drawerWidth = (config.screenWidthDp.dp * 0.42f).coerceIn(260.dp, 380.dp)
+    SwipeableSideDrawer(
+        drawerWidth = drawerWidth,
+        onCancel = onCancel,
+        cornerRadius = 20.dp,
+        dismissible = dismissible,
+    ) { animatedCancel ->
+        StockBottleSheetBody(
+            fields = fields,
+            title = title,
+            selectedContainerStatus = selectedContainerStatus,
+            onContainerStatusChange = onContainerStatusChange,
+            showSealedButtons = showSealedButtons,
+            bucketList = bucketList,
+            showBucketSelector = showBucketSelector,
+            onBucketSelected = onBucketSelected,
+            isLandscape = true,
+            onCancel = animatedCancel,
+            onProceed = onProceed,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VerifyStockBottleTabletBottomSheet(
+    fields: List<DialogField>,
+    title: String,
+    selectedContainerStatus: ContainerStatus,
+    onContainerStatusChange: (ContainerStatus) -> Unit,
+    showSealedButtons: Boolean,
+    bucketList: List<String>,
+    showBucketSelector: Boolean,
+    onBucketSelected: (String) -> Unit,
+    onCancel: () -> Unit,
+    onProceed: () -> Unit,
+    dismissible: Boolean,
+) {
+    val sheetState = rememberModalBottomSheetState(
+        skipPartiallyExpanded = true,
+        confirmValueChange = { if (dismissible) true else it != androidx.compose.material3.SheetValue.Hidden }
+    )
+    ModalBottomSheet(
+        onDismissRequest = { if (dismissible) onCancel() },
+        sheetState = sheetState,
+        containerColor = AppTheme.extendedColors.secondaryBackground,
+        dragHandle = null,
+        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
+    ) {
+        HideSystemBarsInCurrentWindow()
+        StockBottleSheetBody(
+            fields = fields,
+            title = title,
+            selectedContainerStatus = selectedContainerStatus,
+            onContainerStatusChange = onContainerStatusChange,
+            showSealedButtons = showSealedButtons,
+            bucketList = bucketList,
+            showBucketSelector = showBucketSelector,
+            onBucketSelected = onBucketSelected,
+            isLandscape = false,
+            onCancel = onCancel,
+            onProceed = onProceed,
+        )
+    }
+}
+
+@Composable
+private fun VerifyStockBottleTabletSideDrawer(
+    fields: List<DialogField>,
+    title: String,
+    selectedContainerStatus: ContainerStatus,
+    onContainerStatusChange: (ContainerStatus) -> Unit,
+    showSealedButtons: Boolean,
+    bucketList: List<String>,
+    showBucketSelector: Boolean,
+    onBucketSelected: (String) -> Unit,
+    onCancel: () -> Unit,
+    onProceed: () -> Unit,
+    dismissible: Boolean,
+) {
+    val config = LocalConfiguration.current
+    val drawerWidth = (config.screenWidthDp.dp * 0.4f).coerceIn(360.dp, 520.dp)
+    SwipeableSideDrawer(
+        drawerWidth = drawerWidth,
+        onCancel = onCancel,
+        cornerRadius = 24.dp,
+        dismissible = dismissible,
+    ) { animatedCancel ->
+        StockBottleSheetBody(
+            fields = fields,
+            title = title,
+            selectedContainerStatus = selectedContainerStatus,
+            onContainerStatusChange = onContainerStatusChange,
+            showSealedButtons = showSealedButtons,
+            bucketList = bucketList,
+            showBucketSelector = showBucketSelector,
+            onBucketSelected = onBucketSelected,
+            isLandscape = true,
+            onCancel = animatedCancel,
+            onProceed = onProceed,
+        )
+    }
+}
+
+/**
+ * Body for the stock-bottle sheet. Renders the same content the legacy
+ * LabelScannedSuccessfullyDialog used, just in a bottomsheet/drawer container.
+ *
+ * Layout:
+ *   - Title
+ *   - Fields (single column portrait, two columns landscape when 4+ fields)
+ *   - Optional container-status slider (Sealed/Opened)
+ *   - Optional bucket dropdown
+ *   - Cancel / Add buttons
+ */
+@Composable
+private fun StockBottleSheetBody(
+    fields: List<DialogField>,
+    title: String,
+    selectedContainerStatus: ContainerStatus,
+    onContainerStatusChange: (ContainerStatus) -> Unit,
+    showSealedButtons: Boolean,
+    bucketList: List<String>,
+    showBucketSelector: Boolean,
+    onBucketSelected: (String) -> Unit,
+    isLandscape: Boolean,
+    onCancel: () -> Unit,
+    onProceed: () -> Unit,
+) {
+    val visibleFields = fields.filter { it.value.isNotBlank() }
+    val defaultBucket = remember(bucketList) { bucketList.firstOrNull().orEmpty() }
+    var localSelectedBucket by remember { mutableStateOf(defaultBucket) }
+
+    val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
+    // Bigger outer padding + section spacing in landscape so the panel doesn't
+    // feel wall-to-wall content. Matches the treatment given to the dispense
+    // flow's RX and NDC sheets.
+    val sectionGap = if (isLandscape) 20.dp else 16.dp
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .let { if (isLandscape) it.fillMaxHeight() else it }
+            .padding(
+                start = if (isLandscape) 18.dp else 14.dp,
+                end = if (isLandscape) 18.dp else 14.dp,
+                top = if (isLandscape) 16.dp else 12.dp,
+                bottom = if (isLandscape) 20.dp else 16.dp + extraBottom,
+            )
+    ) {
+        Text(
+            text = title,
+            color = AppTheme.extendedColors.textColor,
+            fontSize = if (isLandscape) 15.sp else 17.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(bottom = if (isLandscape) 14.dp else 12.dp)
+        )
+
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = isLandscape)
+                .fillMaxWidth()
+                .then(
+                    if (isLandscape) Modifier else Modifier.verticalScroll(rememberScrollState())
+                )
+        ) {
+            if (isLandscape && visibleFields.size >= 4) {
+                StockBottleLandscapeFields(fields = visibleFields)
+            } else {
+                StockBottlePortraitFields(fields = visibleFields)
+            }
+
+            if (showSealedButtons) {
+                Spacer(modifier = Modifier.height(sectionGap))
+                Text(
+                    text = stringResource(R.string.select_container_status),
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+                ContainerStatusSlider(
+                    selectedStatus = selectedContainerStatus,
+                    onStatusSelected = onContainerStatusChange,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            if (showBucketSelector && bucketList.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(sectionGap))
+                Text(
+                    text = stringResource(R.string.select_bucket),
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    modifier = Modifier.padding(bottom = 8.dp)
+                )
+                BucketDropdownField(
+                    bucketList = bucketList,
+                    selectedBucket = localSelectedBucket,
+                    onBucketSelected = { localSelectedBucket = it },
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(if (isLandscape) 16.dp else 14.dp))
+
+        // Landscape: buttons claim weight(1f) to avoid text wrap in the narrow
+        // drawer. Portrait keeps the fixed BUTTON_WIDTH.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp, Alignment.CenterHorizontally)
+        ) {
+            Box(
+                modifier = if (isLandscape) Modifier.weight(1f)
+                else Modifier.width(BUTTON_WIDTH)
+            ) {
+                HollowButton(
+                    text = stringResource(R.string.cancel).uppercase(),
+                    onClick = onCancel,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+            Box(
+                modifier = if (isLandscape) Modifier.weight(1f)
+                else Modifier.width(BUTTON_WIDTH)
+            ) {
+                ActionButtonPrimary(
+                    text = stringResource(R.string.add).uppercase(),
+                    onClick = {
+                        if (showBucketSelector) onBucketSelected(localSelectedBucket)
+                        onProceed()
+                    },
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun StockBottlePortraitFields(fields: List<DialogField>) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        fields.forEach { field ->
+            InfoField(label = field.label, value = field.value)
+        }
+    }
+}
+
+@Composable
+private fun StockBottleLandscapeFields(fields: List<DialogField>) {
+    val leftColumn = fields.take(2)
+    val rightColumn = fields.drop(2).take(2)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            leftColumn.forEach { InfoField(label = it.label, value = it.value) }
+        }
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            rightColumn.forEach { InfoField(label = it.label, value = it.value) }
+        }
     }
 }

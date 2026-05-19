@@ -25,6 +25,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.compose.DialogField
 import com.rite.pillcounting.core.utils.compose.LabelScannedSuccessfullyDialog
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsSheet
+import com.rite.pillcounting.core.utils.compose.VerifyStockBottleSheet
 import com.rite.pillcounting.feature.barcodeScan.domain.data.NavigationEvent
 import com.rite.pillcounting.feature.barcodeScan.domain.data.ScanBarcodeEvent
 import com.rite.pillcounting.core.room.models.enums.ScanType
@@ -206,14 +207,17 @@ fun ScanBarCodeScreen(
             }
             // Landscape: the inline panel is rendered inside ScanBarCodeScreenContent.
         } else if (transactionScanType == ScanType.STOCK_COUNT) {
-            LabelScannedSuccessfullyDialog(
+            // Stock count path — converted from popup to a bottomsheet (portrait)
+            // / right-side drawer (landscape) for visual consistency with the
+            // dispense flow's RX and NDC verification sheets. Inner content +
+            // functionality is identical to the previous LabelScannedSuccessfullyDialog.
+            VerifyStockBottleSheet(
                 fields = listOf(
                     DialogField(stringResource(R.string.ndc_number), uiState.ndc),
                     DialogField(stringResource(R.string.drugname), uiState.drugName),
                     DialogField(stringResource(R.string.quantity), uiState.qty.toString()),
                     DialogField(stringResource(R.string.bucket), uiState.selectedBucketId)
                 ),
-
                 title = stringResource(R.string.label_scanned_successfully),
                 onCancel = {
                     viewModel.analyzer.resume()
@@ -221,15 +225,13 @@ fun ScanBarCodeScreen(
                 },
                 onProceed = {
                     viewModel.hideSuccessDialog()
-//                    viewModel.analyzer.resume()
                     viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
-
                 },
                 selectedContainerStatus = uiState.selectedContainerStatus,
                 onContainerStatusChange = { status ->
                     viewModel.onEvent(ScanBarcodeEvent.OnContainerStatusChanged(status))
                 },
-                showSealedButtons = true
+                showSealedButtons = true,
             )
         } else {
             LabelScannedSuccessfullyDialog(
