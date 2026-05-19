@@ -457,13 +457,20 @@ fun DispenseScanScreen(
                     // pause-fast-path inside onFrameCaptured — no leak.
                     if (dispenseState.stage != DispenseStage.COUNTING) {
                         barcodeAnalyzer.analyze(imageProxy) { value, imagePath ->
-                            handleBarcode(
+                            val dispatched = handleBarcode(
                                 value = value,
                                 imagePath = imagePath,
                                 stage = dispenseState.stage,
                                 onRx = dispenseVm::onRxBarcodeRead,
                                 onNdc = dispenseVm::onNdcBarcodeRead,
                             )
+                            // The analyzer self-pauses on every MLKit hit. If we
+                            // dropped the read (false positive, wrong format, or
+                            // the COUNTING stage no-op) without surfacing a sheet,
+                            // resume immediately — otherwise barcode scanning
+                            // would be dead until the user dismissed something
+                            // that never appeared.
+                            if (!dispatched) barcodeAnalyzer.resume()
                         }
                     }
                     pillVm.onFrameCaptured(imageProxy)
@@ -732,16 +739,27 @@ fun DispenseScanScreen(
  * Mirrors the decoding flow from
  * [com.rite.pillcounting.feature.barcodeScan.presentation.ScanBarCodeScreenContent].
  */
+/**
+ * Decode a raw scanned barcode and dispatch it to the appropriate stage
+ * handler. Returns `true` when the barcode was successfully handed off to the
+ * VM (which will open a sheet / show a dialog), `false` when it was dropped
+ * (false positive, wrong format, or stage doesn't accept barcodes). The
+ * caller uses the return to decide whether to resume the analyzer — without
+ * that, a single dropped read leaves the analyzer self-paused forever.
+ */
 private fun handleBarcode(
     value: String,
     imagePath: String?,
     stage: DispenseStage,
     onRx: (String, String?) -> Unit,
     onNdc: (String, String?) -> Unit,
-) {
-    if (value.isBlank()) return
-    when (stage) {
-        DispenseStage.PRE_RX -> onRx(value, imagePath)
+): Boolean {
+    if (value.isBlank()) return false
+    return when (stage) {
+        DispenseStage.PRE_RX -> {
+            onRx(value, imagePath)
+            true
+        }
         DispenseStage.PRE_NDC -> {
             val decoder = BarcodeDecoder()
             val isGs1 = decoder.isGs1Barcode(value)
@@ -751,9 +769,13 @@ private fun handleBarcode(
             val isInvalid = finalGtin14.isBlank() ||
                     finalGtin14.length != 14 ||
                     !finalGtin14.all { it.isDigit() }
-            if (isInvalid) return
-            onNdc(finalGtin14, imagePath)
+            if (isInvalid) {
+                false
+            } else {
+                onNdc(finalGtin14, imagePath)
+                true
+            }
         }
-        DispenseStage.COUNTING -> Unit
+        DispenseStage.COUNTING -> false
     }
 }
