@@ -420,6 +420,13 @@ private fun SwipeableSideDrawer(
             dismissOnClickOutside = dismissible,
         )
     ) {
+        // Re-apply FLAG_LAYOUT_NO_LIMITS to the activity window on every
+        // recomposition so the scrim/drawer can extend behind the landscape
+        // gesture-nav inset on the right. HideSystemNavBar above is a
+        // one-shot DisposableEffect and can race with the first layout pass;
+        // this SideEffect-based helper keeps the flag set reliably.
+        HideSystemBarsInCurrentWindow()
+
         // visible drives both enter and the deferred exit animation.
         var visible by remember { mutableStateOf(false) }
         var pendingClose by remember { mutableStateOf(false) }
@@ -457,7 +464,14 @@ private fun SwipeableSideDrawer(
                     targetOffsetX = { it },
                     animationSpec = tween(durationMillis = 220)
                 ) + fadeOut(animationSpec = tween(durationMillis = 220)),
-                modifier = Modifier.align(Alignment.CenterEnd)
+                // fillMaxHeight on AnimatedVisibility itself — without this,
+                // AnimatedVisibility measures itself to wrap_content and our
+                // inner drawer's fillMaxHeight ends up clamped to that
+                // (visibly shorter than the screen). align(CenterEnd) positions
+                // the now-full-height drawer flush to the right edge.
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
             ) {
                 // Drag offset (px) accumulated by swipe-right gesture.
                 val density = androidx.compose.ui.platform.LocalDensity.current
@@ -470,12 +484,17 @@ private fun SwipeableSideDrawer(
                 )
 
                 // LANDSCAPE_RIGHT_NUDGE_DP is negative — pushes the drawer rightward
-                // past the edge of the scrim Box so it reaches the physical screen edge.
-                // When all corners are rounded the drawer needs to stay inside the
-                // scrim (right side of the rounded shape is on-screen, not clipped
-                // by the edge), so zero the nudge in that case.
-                val rightNudgePx = if (allCornersRounded) 0f
-                    else with(density) { LANDSCAPE_RIGHT_NUDGE_DP.toPx() }
+                // past the edge of the scrim Box so it reaches the physical screen edge
+                // (the scrim doesn't extend behind the landscape gesture-nav pill,
+                // so without this nudge a visible dark strip appears between the
+                // drawer's right edge and the actual screen edge).
+                //
+                // The same nudge is needed for the all-corners-rounded variant —
+                // omitting it leaves the same right-side gap. The rounded right
+                // corners end up partially behind the screen edge, which actually
+                // reads as a clean drawer-flush-with-edge look rather than a
+                // visible floating gap.
+                val rightNudgePx = with(density) { LANDSCAPE_RIGHT_NUDGE_DP.toPx() }
                 Box(
                     modifier = Modifier
                         .offset { androidx.compose.ui.unit.IntOffset(animatedDragOffset.toInt() - rightNudgePx.toInt(), 0) }
@@ -1729,7 +1748,8 @@ private fun VerifyStockBottlePhoneBottomSheet(
         sheetState = sheetState,
         containerColor = AppTheme.extendedColors.secondaryBackground,
         dragHandle = null,
-        shape = RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp),
+        // All four corners rounded to match the dispense flow's visual treatment.
+        shape = RoundedCornerShape(20.dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
     ) {
         HideSystemBarsInCurrentWindow()
@@ -1770,6 +1790,7 @@ private fun VerifyStockBottleSideDrawer(
         onCancel = onCancel,
         cornerRadius = 20.dp,
         dismissible = dismissible,
+        allCornersRounded = true,
     ) { animatedCancel ->
         StockBottleSheetBody(
             fields = fields,
@@ -1811,7 +1832,8 @@ private fun VerifyStockBottleTabletBottomSheet(
         sheetState = sheetState,
         containerColor = AppTheme.extendedColors.secondaryBackground,
         dragHandle = null,
-        shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
+        // All four corners rounded to match the dispense flow's visual treatment.
+        shape = RoundedCornerShape(24.dp),
         contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
     ) {
         HideSystemBarsInCurrentWindow()
@@ -1852,6 +1874,7 @@ private fun VerifyStockBottleTabletSideDrawer(
         onCancel = onCancel,
         cornerRadius = 24.dp,
         dismissible = dismissible,
+        allCornersRounded = true,
     ) { animatedCancel ->
         StockBottleSheetBody(
             fields = fields,
@@ -1901,8 +1924,11 @@ private fun StockBottleSheetBody(
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
     // Bigger outer padding + section spacing in landscape so the panel doesn't
     // feel wall-to-wall content. Matches the treatment given to the dispense
-    // flow's RX and NDC sheets.
-    val sectionGap = if (isLandscape) 20.dp else 16.dp
+    // flow's RX and NDC sheets. The section gap is the same in both
+    // orientations now (12dp) — landscape was 20dp earlier, but combined with
+    // the fields + slider + bucket selector that pushed the slider off-screen.
+    // Scroll catches anything that still overflows.
+    val sectionGap = 12.dp
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1925,6 +1951,12 @@ private fun StockBottleSheetBody(
                 .padding(bottom = if (isLandscape) 14.dp else 12.dp)
         )
 
+        // No scroll: bottomsheets shouldn't scroll. Everything has to fit in the
+        // available height. We use the two-column landscape layout for ANY
+        // multi-field set when in landscape (the old >= 4 threshold left 3-field
+        // cases falling back to the stacked portrait layout, which overflowed
+        // the drawer and clipped the Sealed/Opened slider beneath the buttons).
+        // Portrait keeps the natural single-column scrollable flow.
         Column(
             modifier = Modifier
                 .weight(1f, fill = isLandscape)
@@ -1933,7 +1965,7 @@ private fun StockBottleSheetBody(
                     if (isLandscape) Modifier else Modifier.verticalScroll(rememberScrollState())
                 )
         ) {
-            if (isLandscape && visibleFields.size >= 4) {
+            if (isLandscape && visibleFields.size > 1) {
                 StockBottleLandscapeFields(fields = visibleFields)
             } else {
                 StockBottlePortraitFields(fields = visibleFields)
