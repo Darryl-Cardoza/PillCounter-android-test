@@ -179,9 +179,12 @@ fun VerifyRxDetailsSheet(
     rxNumber: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
-    // When false, the sheet/drawer cannot be dismissed by swipe / outside-tap /
-    // back press — only the Cancel and Proceed buttons close it.
-    dismissible: Boolean = true,
+    // When false (default), the sheet/drawer cannot be dismissed by swipe /
+    // outside-tap / back press — only the Cancel and Proceed buttons close it.
+    // The app-wide rule for verification sheets is "explicit commit required",
+    // so the default is the locked-down behavior; pass `true` if you ever want
+    // the legacy easy-dismiss.
+    dismissible: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -1192,8 +1195,8 @@ fun VerifyNdcDetailsInlinePanel(
  * [VerifyRxDetailsSheet]: portrait → ModalBottomSheet, landscape → right-side
  * drawer; tablet variants for both.
  *
- * Set [dismissible] = false to force the user to commit via Cancel/Proceed
- * (matches the merged dispense flow's contract).
+ * Default is non-dismissible: the user must commit via the Cancel or Proceed
+ * button. Pass `dismissible = true` only if you want legacy easy-dismiss.
  */
 @Composable
 fun VerifyNdcDetailsSheet(
@@ -1202,7 +1205,7 @@ fun VerifyNdcDetailsSheet(
     ndcNumber: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
-    dismissible: Boolean = true,
+    dismissible: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -1650,6 +1653,52 @@ private fun NdcTabletVerticalBody(
  * Set [dismissible] = false to force the user to commit via Cancel/Add (matches
  * the dispense sheets' contract).
  */
+
+/**
+ * Inline (non-overlay) version of the stock-bottle panel for landscape usage
+ * where the camera shrinks to give the panel room rather than being covered
+ * by a popup-based drawer. Mirrors [VerifyRxDetailsInlinePanel] /
+ * [VerifyNdcDetailsInlinePanel]. The caller (e.g. ScanBarCodeScreenContent)
+ * controls visibility, animation, and width — this composable just renders
+ * the styled body. This is what eliminates the popup-window inset gap that
+ * the popup-based drawer can't escape.
+ */
+@Composable
+fun VerifyStockBottleInlinePanel(
+    fields: List<DialogField>,
+    selectedContainerStatus: ContainerStatus,
+    onContainerStatusChange: (ContainerStatus) -> Unit,
+    onCancel: () -> Unit,
+    onProceed: () -> Unit,
+    title: String = stringResource(R.string.label_scanned_successfully),
+    showSealedButtons: Boolean = false,
+    bucketList: List<String> = emptyList(),
+    showBucketSelector: Boolean = false,
+    onBucketSelected: (String) -> Unit = {},
+    modifier: Modifier = Modifier,
+    cornerRadius: Dp = 20.dp,
+) {
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(cornerRadius))
+            .background(AppTheme.extendedColors.secondaryBackground)
+    ) {
+        StockBottleSheetBody(
+            fields = fields,
+            title = title,
+            selectedContainerStatus = selectedContainerStatus,
+            onContainerStatusChange = onContainerStatusChange,
+            showSealedButtons = showSealedButtons,
+            bucketList = bucketList,
+            showBucketSelector = showBucketSelector,
+            onBucketSelected = onBucketSelected,
+            isLandscape = true,
+            onCancel = onCancel,
+            onProceed = onProceed,
+        )
+    }
+}
+
 @Composable
 fun VerifyStockBottleSheet(
     fields: List<DialogField>,
@@ -1662,7 +1711,10 @@ fun VerifyStockBottleSheet(
     bucketList: List<String> = emptyList(),
     showBucketSelector: Boolean = false,
     onBucketSelected: (String) -> Unit = {},
-    dismissible: Boolean = true,
+    // Default non-dismissible: user must commit via Cancel/Add. The legacy
+    // popup-based LabelScannedSuccessfullyDialog was easy-dismiss; this sheet
+    // intentionally tightens that contract.
+    dismissible: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE

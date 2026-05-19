@@ -41,6 +41,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -330,14 +331,24 @@ internal fun InfoField(
             text = label,
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
             fontSize = 12.sp,
-            fontWeight = FontWeight.Normal
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
 
+        // Cap the value at 2 lines with ellipsis. Without this, narrow drawer
+        // widths force long drug names (e.g. "Tramadol Hydrochloride") to wrap
+        // onto 3+ lines, with character-level breaks mid-word
+        // ("Hydrochlor / ide"). Two lines is enough for almost every real value
+        // and keeps the row height predictable so the slider/buttons stay
+        // visible below.
         Text(
             text = value,
             color = AppTheme.extendedColors.textColor,
             fontSize = 16.sp,
-            fontWeight = FontWeight.Normal
+            fontWeight = FontWeight.Normal,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }

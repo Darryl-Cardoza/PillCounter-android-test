@@ -192,6 +192,27 @@ fun ScanBarCodeScreen(
         viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
     }
 
+    // Stock-count verification:
+    //  - Portrait → ModalBottomSheet (popup window — works fine in portrait).
+    //  - Landscape → inline panel rendered inside ScanBarCodeScreenContent, NOT a
+    //    popup. Popup-based drawers can't extend behind the landscape system-bar
+    //    inset on the right edge, which leaves a visible gap. The inline panel
+    //    is part of the screen layout so it reaches the screen edges cleanly,
+    //    matching the dispense flow's RX/NDC inline-panel behavior.
+    val showStockPanel = uiState.showScanSuccessfullyDialog &&
+        transactionScanType == ScanType.STOCK_COUNT
+    val onStockCancel: () -> Unit = {
+        viewModel.analyzer.resume()
+        viewModel.hideSuccessDialog()
+    }
+    val onStockProceed: () -> Unit = {
+        viewModel.hideSuccessDialog()
+        viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
+    }
+    val onStockStatusChange: (com.rite.pillcounting.core.utils.compose.ContainerStatus) -> Unit = { status ->
+        viewModel.onEvent(ScanBarcodeEvent.OnContainerStatusChanged(status))
+    }
+
     if (uiState.showScanSuccessfullyDialog) {
         if (transactionScanType == ScanType.RX_LABEL) {
             if (!isLandscape) {
@@ -207,32 +228,26 @@ fun ScanBarCodeScreen(
             }
             // Landscape: the inline panel is rendered inside ScanBarCodeScreenContent.
         } else if (transactionScanType == ScanType.STOCK_COUNT) {
-            // Stock count path — converted from popup to a bottomsheet (portrait)
-            // / right-side drawer (landscape) for visual consistency with the
-            // dispense flow's RX and NDC verification sheets. Inner content +
-            // functionality is identical to the previous LabelScannedSuccessfullyDialog.
-            VerifyStockBottleSheet(
-                fields = listOf(
-                    DialogField(stringResource(R.string.ndc_number), uiState.ndc),
-                    DialogField(stringResource(R.string.drugname), uiState.drugName),
-                    DialogField(stringResource(R.string.quantity), uiState.qty.toString()),
-                    DialogField(stringResource(R.string.bucket), uiState.selectedBucketId)
-                ),
-                title = stringResource(R.string.label_scanned_successfully),
-                onCancel = {
-                    viewModel.analyzer.resume()
-                    viewModel.hideSuccessDialog()
-                },
-                onProceed = {
-                    viewModel.hideSuccessDialog()
-                    viewModel.onEvent(ScanBarcodeEvent.CreateTxn())
-                },
-                selectedContainerStatus = uiState.selectedContainerStatus,
-                onContainerStatusChange = { status ->
-                    viewModel.onEvent(ScanBarcodeEvent.OnContainerStatusChanged(status))
-                },
-                showSealedButtons = true,
-            )
+            // Portrait stock-count path keeps the popup-based bottomsheet (works
+            // fine since portrait has no right-edge gesture-nav inset to worry
+            // about). Landscape skips this block — the inline panel is rendered
+            // inside ScanBarCodeScreenContent.
+            if (!isLandscape) {
+                VerifyStockBottleSheet(
+                    fields = listOf(
+                        DialogField(stringResource(R.string.ndc_number), uiState.ndc),
+                        DialogField(stringResource(R.string.drugname), uiState.drugName),
+                        DialogField(stringResource(R.string.quantity), uiState.qty.toString()),
+                        DialogField(stringResource(R.string.bucket), uiState.selectedBucketId)
+                    ),
+                    title = stringResource(R.string.label_scanned_successfully),
+                    onCancel = onStockCancel,
+                    onProceed = onStockProceed,
+                    selectedContainerStatus = uiState.selectedContainerStatus,
+                    onContainerStatusChange = onStockStatusChange,
+                    showSealedButtons = true,
+                )
+            }
         } else {
             LabelScannedSuccessfullyDialog(
                 fields = listOf(
@@ -275,6 +290,10 @@ fun ScanBarCodeScreen(
         showInlineRxPanel = showRxPanel && isLandscape,
         onRxCancel = onRxCancel,
         onRxProceed = onRxProceed,
+        showInlineStockPanel = showStockPanel && isLandscape,
+        onStockCancel = onStockCancel,
+        onStockProceed = onStockProceed,
+        onStockStatusChange = onStockStatusChange,
     )
 }
 

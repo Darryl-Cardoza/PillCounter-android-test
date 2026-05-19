@@ -63,8 +63,10 @@ import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
+import com.rite.pillcounting.core.utils.compose.DialogField
 import com.rite.pillcounting.core.utils.compose.HideSystemBarsInCurrentWindow
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsInlinePanel
+import com.rite.pillcounting.core.utils.compose.VerifyStockBottleInlinePanel
 import com.rite.pillcounting.feature.barcodeScan.domain.data.ScanBarcodeEvent
 import com.rite.pillcounting.feature.barcodeScan.domain.model.ScanBarcodeUiState
 import com.rite.pillcounting.feature.barcodeScan.presentation.analyzer.BarcodeAnalyzer
@@ -91,6 +93,15 @@ fun ScanBarCodeScreenContent(
     showInlineRxPanel: Boolean = false,
     onRxCancel: () -> Unit = {},
     onRxProceed: () -> Unit = {},
+    // Landscape-only inline stock-bottle verification panel. Same layout strategy
+    // as the inline RX panel — overlays the right side of the scanner without
+    // covering it with a separate popup window. Pre-existing popup-based stock
+    // sheet had a visible inset gap at the screen edges in landscape; this
+    // inline panel reaches the edges cleanly.
+    showInlineStockPanel: Boolean = false,
+    onStockCancel: () -> Unit = {},
+    onStockProceed: () -> Unit = {},
+    onStockStatusChange: (com.rite.pillcounting.core.utils.compose.ContainerStatus) -> Unit = {},
 ) {
 
     val isSoundEnabled = viewModel.isSoundEnabled.collectAsState().value
@@ -106,10 +117,10 @@ fun ScanBarCodeScreenContent(
     }
 
     // Re-assert immersive (no nav buttons / status bar) on the activity window
-    // whenever the inline RX panel is showing. The activity is already immersive
+    // whenever an inline panel is showing. The activity is already immersive
     // globally, but some focus transitions can momentarily re-show bars; this
     // SideEffect re-hides them as the panel composes/recomposes.
-    if (showInlineRxPanel) {
+    if (showInlineRxPanel || showInlineStockPanel) {
         HideSystemBarsInCurrentWindow()
     }
 
@@ -197,7 +208,7 @@ fun ScanBarCodeScreenContent(
                 .fillMaxWidth()
                 .padding(
                     start = 0.dp,
-                    end = if (showInlineRxPanel) rxPanelWidth else 0.dp,
+                    end = if (showInlineRxPanel || showInlineStockPanel) rxPanelWidth else 0.dp,
                     top = 0.dp,
                     bottom = 0.dp,
                 )
@@ -321,6 +332,105 @@ fun ScanBarCodeScreenContent(
                     rxNumber = uiState.rxNo.toString(),
                     onCancel = onRxCancel,
                     onProceed = onRxProceed,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = 20.dp,
+                                bottomStart = 20.dp,
+                                topEnd = 0.dp,
+                                bottomEnd = 0.dp,
+                            )
+                        ),
+                    cornerRadius = 0.dp,
+                )
+            }
+        }
+
+        // ── Inline stock-bottle panel (landscape) ───────────────────────────
+        // Same scrim + slide-in + swipe-right-to-dismiss treatment as the RX
+        // inline panel above. The panel sits flush against the right edge of
+        // the camera screen — no popup window, so no inset gap at the bottom
+        // or right edge that the popup-based drawer suffered from.
+        AnimatedVisibility(
+            visible = showInlineStockPanel,
+            enter = fadeIn(animationSpec = tween(durationMillis = 200)),
+            exit = fadeOut(animationSpec = tween(durationMillis = 180)),
+            modifier = Modifier.fillMaxSize(),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = onStockCancel,
+                    )
+            )
+        }
+
+        AnimatedVisibility(
+            visible = showInlineStockPanel,
+            enter = slideInHorizontally(
+                initialOffsetX = { it },
+                animationSpec = tween(durationMillis = 260)
+            ) + fadeIn(animationSpec = tween(durationMillis = 260)),
+            exit = slideOutHorizontally(
+                targetOffsetX = { it },
+                animationSpec = tween(durationMillis = 220)
+            ) + fadeOut(animationSpec = tween(durationMillis = 220)),
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .width(rxPanelWidth)
+        ) {
+            val density = LocalDensity.current
+            val dismissThresholdPx = with(density) { (rxPanelWidth * 0.35f).toPx() }
+            val dragOffset = remember { androidx.compose.animation.core.Animatable(0f) }
+            val coroutineScope = androidx.compose.runtime.rememberCoroutineScope()
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .offset { IntOffset(dragOffset.value.toInt(), 0) }
+                    .draggable(
+                        orientation = Orientation.Horizontal,
+                        state = rememberDraggableState { delta ->
+                            val next = (dragOffset.value + delta).coerceAtLeast(0f)
+                            coroutineScope.launch { dragOffset.snapTo(next) }
+                        },
+                        onDragStopped = {
+                            if (dragOffset.value >= dismissThresholdPx) {
+                                onStockCancel()
+                            } else {
+                                coroutineScope.launch {
+                                    dragOffset.animateTo(
+                                        targetValue = 0f,
+                                        animationSpec = tween(durationMillis = 200)
+                                    )
+                                }
+                            }
+                        }
+                    )
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = {},
+                    )
+            ) {
+                VerifyStockBottleInlinePanel(
+                    fields = listOf(
+                        DialogField(stringResource(R.string.ndc_number), uiState.ndc),
+                        DialogField(stringResource(R.string.drugname), uiState.drugName),
+                        DialogField(stringResource(R.string.quantity), uiState.qty.toString()),
+                        DialogField(stringResource(R.string.bucket), uiState.selectedBucketId),
+                    ),
+                    title = stringResource(R.string.label_scanned_successfully),
+                    selectedContainerStatus = uiState.selectedContainerStatus,
+                    onContainerStatusChange = onStockStatusChange,
+                    showSealedButtons = true,
+                    onCancel = onStockCancel,
+                    onProceed = onStockProceed,
                     modifier = Modifier
                         .fillMaxSize()
                         .clip(
