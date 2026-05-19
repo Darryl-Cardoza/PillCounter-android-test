@@ -454,6 +454,17 @@ class PillScanningViewModel @Inject constructor(
     }
 
     fun updateFilteredPills(filtered: List<DetectedPill>) {
+        // The Canvas overlay calls this from inside its draw block on every recompose.
+        // Without a dedupe, every frame triggers a new _uiState emission, which
+        // triggers another recompose, which redraws the Canvas — a tight loop that
+        // burns frame budget on weak devices. Compare references first (cheap),
+        // and only escalate to a structural compare when the reference differs.
+        val current = _uiState.value.filteredPills
+        if (current === filtered) return
+        if (current.size == filtered.size &&
+            current.indices.all { i -> current[i] === filtered[i] }) {
+            return
+        }
         _uiState.update { it.copy(filteredPills = filtered) }
     }
 
@@ -1081,6 +1092,11 @@ class PillScanningViewModel @Inject constructor(
         isPaused = true
         _uiState.update { it.copy(detectedPills = emptyList()) }
         _trayDetections.value = emptyList()
+    }
+
+    /** Resume pill detection after a [pausePillDetection] call. */
+    fun resumePillDetection() {
+        isPaused = false
     }
 
     fun setCameraPaused(paused: Boolean) {

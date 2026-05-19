@@ -18,6 +18,7 @@ import com.rite.pillcounting.feature.history.presentation.BatchHistoryDetailScre
 import com.rite.pillcounting.feature.history.presentation.HistoryDetailScreen
 import com.rite.pillcounting.feature.history.presentation.HistoryScreen
 import com.rite.pillcounting.feature.menu.presentation.MenuScreen
+import com.rite.pillcounting.feature.dispenseScan.presentation.DispenseScanScreen
 import com.rite.pillcounting.feature.pillCountScan.presentation.PillScanningScreen
 import com.rite.pillcounting.feature.profile.presentation.ProfileScreen
 import com.rite.pillcounting.feature.settings.presentation.SaveCsDoubleCountScreen
@@ -74,6 +75,19 @@ fun AppNavGraph(
         ) { backStackEntry ->
             val countType = backStackEntry.arguments?.getString(Screen.PillCount.ARG_TYPE) ?: ""
             PillScanningScreen(navController, countType)
+        }
+
+        // Merged dispense flow (RX + NDC + pill counting on one screen).
+        composable(
+            route = Screen.DispenseScan.route, arguments = Screen.DispenseScan.navArguments
+        ) { backStackEntry ->
+            val countType = backStackEntry.arguments?.getString(Screen.DispenseScan.ARG_TYPE) ?: ""
+            val fromHl7 = backStackEntry.arguments?.getBoolean(Screen.DispenseScan.ARG_FROM_HL7) ?: false
+            DispenseScanScreen(
+                navController = navController,
+                countType = countType,
+                fromHl7 = fromHl7,
+            )
         }
 
 

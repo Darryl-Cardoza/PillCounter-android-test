@@ -169,6 +169,33 @@ sealed interface Screen {
         fun createRoute(scanType: String) = "$ROUTE_PREFIX/$scanType"
     }
 
+    // Merged single-screen flow for the dispense use case.
+    // Combines RX scan, NDC scan, and pill counting on one screen.
+    //
+    // The optional `from_hl7` query flag tells the screen to start at PRE_NDC
+    // and hydrate from the existing PMS-created transaction (drugName,
+    // hl7-expected NDC, targetCount, rxNo are all pre-populated, RX scan is
+    // skipped entirely).
+    data object DispenseScan : Screen {
+        private const val ROUTE_PREFIX = "dispense_scan"
+        const val ARG_TYPE = "type"
+        const val ARG_FROM_HL7 = "from_hl7"
+
+        override val route: String =
+            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_TYPE) { type = NavType.StringType },
+            navArgument(ARG_FROM_HL7) {
+                type = NavType.BoolType
+                defaultValue = false
+            },
+        )
+
+        fun createRoute(scanType: String, fromHl7: Boolean = false) =
+            "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7"
+    }
+
     data object ResumeFixedCounts : Screen {
         private const val ROUTE_PREFIX = "resume_fixed_counts"
         const val ARG_TYPE = "type"

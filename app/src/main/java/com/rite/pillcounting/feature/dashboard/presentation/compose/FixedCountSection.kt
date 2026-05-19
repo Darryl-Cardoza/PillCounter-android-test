@@ -159,11 +159,8 @@ fun FixedCountSection(
 }
 
 fun navigateToBarcodeScanFixedCount(navController: NavController) {
+    // Merged dispense flow: one screen for RX + NDC + pill count.
     navController.navigate(
-        Screen.ScanBarcode.createRoute(
-            CountType.FIXED.toString(),
-            ScanType.RX_LABEL,
-            0
-        )
+        Screen.DispenseScan.createRoute(CountType.FIXED.toString())
     )
 }

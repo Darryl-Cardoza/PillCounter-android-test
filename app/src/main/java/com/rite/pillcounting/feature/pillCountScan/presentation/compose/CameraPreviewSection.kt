@@ -146,6 +146,26 @@ fun CameraPreviewSection(
         else cameraHelper.resumeCamera(previewView)
     }
 
+    // Hoisted overlay scratch objects. The Canvas overlay below redraws on every
+    // frame of detection updates, and allocating Paint/Rect inside the draw loop
+    // is the kind of per-frame churn that wrecks frame budget on weak devices.
+    // Paints are immutable per-class so we can share them across frames.
+    val textPaint = remember {
+        android.graphics.Paint().apply {
+            color = android.graphics.Color.WHITE
+            textSize = 36f
+            isAntiAlias = true
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+        }
+    }
+    val glovesBgPaint = remember {
+        android.graphics.Paint().apply { color = android.graphics.Color.argb(200, 0, 180, 0) }
+    }
+    val noGlovesBgPaint = remember {
+        android.graphics.Paint().apply { color = android.graphics.Color.argb(200, 180, 0, 0) }
+    }
+    val labelBounds = remember { android.graphics.Rect() }
+
     LaunchedEffect(capturedBitmap) {
         if (capturedBitmap == null) cameraHelper.resumeCamera(previewView)
     }
@@ -352,11 +372,6 @@ fun CameraPreviewSection(
                     //     coordinates — same space as tray boxes above.
                     //     green = gloves detected, red = no_gloves.
                     // ─────────────────────────────────────────────────────────
-                    val gloveColor = mapOf(
-                        "gloves" to Color.Green,  // green
-                        "no_gloves" to Color.Red   // red
-                    )
-
                     drawIntoCanvas { canvas ->
                         gloveDetections.forEach { glove ->
                             val sLeft = imgX(glove.rect.left)
@@ -370,7 +385,11 @@ fun CameraPreviewSection(
                                 sBottom <= 0f || sTop >= previewH
                             ) return@forEach
 
-                            val boxColor = gloveColor[glove.className] ?: Color.White
+                            val boxColor = when (glove.className) {
+                                "gloves" -> Color.Green
+                                "no_gloves" -> Color.Red
+                                else -> Color.White
+                            }
 
                             // Semi-transparent fill
                             drawRect(
@@ -387,24 +406,17 @@ fun CameraPreviewSection(
                             )
 
                             // Label: "gloves 87%"  /  "no_gloves 72%"
+                            // Paints + rect are hoisted via remember above so we
+                            // don't allocate them every frame per glove.
                             val label = "${glove.className} ${(glove.confidence * 100).toInt()}%"
-                            val textSize = 36f  // ~14sp equivalent in canvas units
-                            val textPaint = android.graphics.Paint().apply {
-                                color = android.graphics.Color.WHITE
-                                this.textSize = textSize
-                                isAntiAlias = true
-                                typeface = android.graphics.Typeface.DEFAULT_BOLD
+                            val bgPaint = if (glove.className == "gloves") {
+                                glovesBgPaint
+                            } else {
+                                noGlovesBgPaint
                             }
-                            val bgPaint = android.graphics.Paint().apply {
-                                color = when (glove.className) {
-                                    "gloves" -> android.graphics.Color.argb(200, 0, 180, 0)
-                                    else -> android.graphics.Color.argb(200, 180, 0, 0)
-                                }
-                            }
-                            val textBounds = android.graphics.Rect()
-                            textPaint.getTextBounds(label, 0, label.length, textBounds)
-                            val labelW = textBounds.width() + 12f
-                            val labelH = textBounds.height() + 8f
+                            textPaint.getTextBounds(label, 0, label.length, labelBounds)
+                            val labelW = labelBounds.width() + 12f
+                            val labelH = labelBounds.height() + 8f
                             val labelTop = (sTop - labelH).coerceAtLeast(0f)
 
                             canvas.nativeCanvas.drawRect(

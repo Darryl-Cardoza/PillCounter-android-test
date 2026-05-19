@@ -14,7 +14,7 @@ import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.rite.pillcounting.MainActivity
-import com.rite.pillcounting.core.room.models.enums.ScanType
+import com.rite.pillcounting.core.room.models.enums.CountType
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -49,7 +49,14 @@ class Hl7Notifier @Inject constructor(
         message: String
     ) {
         print("notification show")
-        val route = Screen.ScanBarcode.createRoute("HL7", ScanType.BARCODE,0)
+        // PMS-originated dispense: deep-link into the merged DispenseScanScreen
+        // with fromHl7=true so it hydrates from the pre-created txn and starts
+        // at the NDC scan step (the RX info is already in the HL7 payload).
+        // PMS dispense is always FIXED-count (driven by `targetCount` from HL7).
+        val route = Screen.DispenseScan.createRoute(
+            scanType = CountType.FIXED.toString(),
+            fromHl7 = true,
+        )
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

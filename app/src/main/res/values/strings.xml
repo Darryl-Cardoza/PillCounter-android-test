@@ -345,6 +345,10 @@
     <string name="no_partial_counts">No partial counts available</string>
     <string name="confirm_delete_batches">Delete selected batch(es)? This action cannot be undone.</string>
     <string name="confirmation">Confirmation</string>
+    <string name="discard_counted_pills_message">You have counted pills but no RX has been scanned yet. Discard the count and exit?</string>
+    <string name="voice_scan_rx_to_add_count">Scan RX to add the pill count</string>
+    <string name="voice_scan_container_qr">Scan the container QR code</string>
+    <string name="voice_add_the_pill_count">Add the pill count</string>
     <string name="are_you_sure_you_want_to_end_this_count">Are you sure you want to end this Count?</string>
     <string name="no_items_in_that_batch_yet">No items in this batch yet</string>
     <string name="end_this_batch_it_will_be_mark_as_completed">End this batch? It will be marked as complete.</string>
@@ -380,5 +384,6 @@
     <string name="unknown">Unknown</string>
 
     <string name="verify_rx_details">Verify Rx Details</string>
+    <string name="verify_stock_bottle_details">Verify Stock Bottle Details</string>
     <string name="form">Form</string>
 </resources>
