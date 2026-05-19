@@ -2107,23 +2107,63 @@ private fun StockBottlePortraitFields(fields: List<DialogField>) {
 
 @Composable
 private fun StockBottleLandscapeFields(fields: List<DialogField>) {
-    val leftColumn = fields.take(2)
-    val rightColumn = fields.drop(2).take(2)
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            leftColumn.forEach { InfoField(label = it.label, value = it.value) }
+    // Two-column grid for short fields, but any field marked fullWidth = true
+    // spans the entire row by itself. Useful for long values like drug names
+    // that would wrap awkwardly inside a half-width column. The layout reads
+    // top-to-bottom in original list order: short fields pair into rows of two,
+    // and a full-width field flushes the current pair (if any) and gets its
+    // own row.
+    val column2Buffer = mutableListOf<DialogField>()
+    val rows = mutableListOf<List<DialogField>>()
+
+    fields.forEach { field ->
+        if (field.fullWidth) {
+            // Flush any half-pair that was waiting for a partner.
+            if (column2Buffer.isNotEmpty()) {
+                rows.add(column2Buffer.toList())
+                column2Buffer.clear()
+            }
+            rows.add(listOf(field))
+        } else {
+            column2Buffer.add(field)
+            if (column2Buffer.size == 2) {
+                rows.add(column2Buffer.toList())
+                column2Buffer.clear()
+            }
         }
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            rightColumn.forEach { InfoField(label = it.label, value = it.value) }
+    }
+    // Trailing single short field (odd count) — keep it as a half-pair so it
+    // sits in the left column at half width. Looks intentional and avoids the
+    // value suddenly stretching across the whole row when its neighbor isn't
+    // there.
+    if (column2Buffer.isNotEmpty()) {
+        rows.add(column2Buffer.toList())
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        rows.forEach { row ->
+            if (row.size == 1 && row[0].fullWidth) {
+                InfoField(label = row[0].label, value = row[0].value)
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    row.forEach { field ->
+                        InfoField(
+                            label = field.label,
+                            value = field.value,
+                            modifier = Modifier.weight(1f)
+                        )
+                    }
+                    // If the row has only one short field, fill the remaining
+                    // weight with an empty spacer so it occupies the left half
+                    // (mirrors the previous layout's behavior for odd counts).
+                    if (row.size == 1) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
+                }
+            }
         }
     }
 }

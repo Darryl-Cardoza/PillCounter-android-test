@@ -236,7 +236,10 @@ fun ScanBarCodeScreen(
                 VerifyStockBottleSheet(
                     fields = listOf(
                         DialogField(stringResource(R.string.ndc_number), uiState.ndc),
-                        DialogField(stringResource(R.string.drugname), uiState.drugName),
+                        // Drug name spans the full row in landscape so long names
+                        // (e.g. "Tramadol Hydrochloride") have horizontal room
+                        // instead of wrapping inside a half-width column.
+                        DialogField(stringResource(R.string.drugname), uiState.drugName, fullWidth = true),
                         DialogField(stringResource(R.string.quantity), uiState.qty.toString()),
                         DialogField(stringResource(R.string.bucket), uiState.selectedBucketId)
                     ),
