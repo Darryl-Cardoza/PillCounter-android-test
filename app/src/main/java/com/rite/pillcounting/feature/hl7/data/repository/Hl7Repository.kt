@@ -1,13 +1,17 @@
 package com.rite.pillcounting.feature.hl7.data.repository
 
 import android.annotation.SuppressLint
+import android.content.Context
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.BatchEntity
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
+import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
@@ -19,7 +23,9 @@ import com.rite.pillcounting.feature.barcodeScan.data.DrugRepository
 import com.rite.pillcounting.feature.barcodeScan.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.feature.hl7.core.Hl7MessageSender
 import com.rite.pillcounting.feature.hl7.domain.model.MessageType
+import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
 import com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -30,6 +36,7 @@ import javax.inject.Singleton
 
 @Singleton
 class Hl7Repository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val drugMasterDao: DrugMasterDao,
     private val locationProvider: LocationProvider,
     private val txnDao: PillCountTxnDao,
@@ -39,7 +46,8 @@ class Hl7Repository @Inject constructor(
     private val userDao: UserDao,
     private val batchDao: BatchDao,
     private val hl7MessageSender: Hl7MessageSender,
-    private val drugRepository: DrugRepository
+    private val drugRepository: DrugRepository,
+    private val notifier: Hl7Notifier
 ) {
 
     private val logger = AppLogger.create<Hl7Repository>()
@@ -207,22 +215,37 @@ class Hl7Repository @Inject constructor(
                 drugRepository.getDrugInfoByNdc(request)
             } catch (e: Exception) {
                 logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
-                null
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
+                )
+                return
             }
 
-            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: hl7Ndc
-            val resolvedDrugName =
-                drugInfo?.genericName?.takeIf { it.isNotBlank() } ?: hl7DrugName
-            val resolvedDrugType = drugInfo?.drugType
+            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() }
 
-            DrugMasterEntity(
-                ndc = resolvedNdc,
-                drugName = resolvedDrugName,
-                drugType = resolvedDrugType,
-            )
+            val resolvedDrugName = drugInfo?.genericName
+                ?.takeIf { it.isNotBlank() }
+
+            if (resolvedDrugName.isNullOrBlank()) {
+                logger.w("No drug name resolved for NDC: $hl7Ndc")
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_no_drug, hl7Ndc)
+                )
+                return
+            }
+
+            resolvedNdc?.let {
+                DrugMasterEntity(
+                    ndc = it,
+                    drugName = resolvedDrugName,
+                    drugType = drugInfo?.drugType,
+                )
+            }
         }
 
-        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        val drugId = finalDrug?.let { drugMasterDao.upsertPreservingId(it) }
 
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
@@ -238,6 +261,34 @@ class Hl7Repository @Inject constructor(
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
         preferenceHelper.saveTxnId(txnId)
+
+        val inventoryCount = medication.expectedInventoryCount?.toIntOrNull()
+        if (inventoryCount != null) {
+            val detail = PillCountTxnDetailsEntity(
+                txnId = txnId,
+                pillCount = inventoryCount,
+                type = StepState.CONTAINER_INITIATE.name,
+                imagePath = null,
+                isDeleted = false,
+                isManual = false,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            txnDetailsDao.insert(detail)
+            pillCountTxnDao.updateWorkflowStep(txnId, StepState.TARGET_VERIFICATION.name)
+        }
+        val meds = message.medications
+        val notifBody = if (meds.size == 1) {
+            val med = meds[0]
+            val qty = med.requestedQty?.toIntOrNull() ?: 0
+            context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), med.drugName ?: "", qty)
+        } else {
+            context.getString(R.string.hl7_notification_new_rx_multiple, rxNo.orEmpty(), meds.size)
+        }
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_new_rx_title),
+            message = notifBody
+        )
     }
 
 //    private suspend fun handleInrInventoryRequest(
@@ -563,6 +614,10 @@ class Hl7Repository @Inject constructor(
 
         if (resolvedItems.isEmpty()) {
             logger.w("No valid drugs resolved from local DB or API. Batch will not be created.")
+            notifier.show(
+                title = context.getString(R.string.hl7_notification_inventory_title),
+                message = context.getString(R.string.hl7_notification_inventory_no_drugs)
+            )
             return
         }
 
@@ -600,6 +655,11 @@ class Hl7Repository @Inject constructor(
         }
 
         logger.i("Processed ${resolvedItems.size} inventory items for batchId: $batchId")
+
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_inventory_title),
+            message = context.getString(R.string.hl7_notification_inventory_items_count, resolvedItems.size)
+        )
     }
 
     private fun classifyInboundMessage(

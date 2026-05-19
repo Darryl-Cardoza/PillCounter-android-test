@@ -6,14 +6,17 @@ import org.rite.hl7.hl7.domain.model.MedicationData
 /**
  * Parses RXE segments and extracts medication order details.
  * Each RXE represents one ordered medication.
+ * ZIN segments with EXPECTED_ON_HAND are matched by 1-based index to populate expectedInventoryCount.
  */
 fun parseMedications(
     segments: Map<String, List<List<String>>>,
     compSep: String
 ): List<MedicationData> {
 
+    val zinSegments = segments["ZIN"] ?: emptyList()
+
     /** Iterate over all RXE segments (multiple medications allowed) **/
-    return (segments["RXE"] ?: emptyList()).map { rxe ->
+    return (segments["RXE"] ?: emptyList()).mapIndexed { rxeIndex, rxe ->
 
         /** Parsed drug identifier components from RXE-2 **/
         val drugParts = rxe.getOrElse(2) { "" }.split(compSep)
@@ -29,6 +32,15 @@ fun parseMedications(
 
         /** Parsed pharmacist verifier components from RXE-14 **/
         val pharmParts = rxe.getOrNull(14)?.split(compSep) ?: emptyList()
+
+        /** Find matching ZIN segment: field1 is 1-based RXE index, field2 must be EXPECTED_ON_HAND **/
+        val expectedCount = zinSegments
+            .firstOrNull { zin ->
+                zin.getOrNull(1)?.trim() == "${rxeIndex + 1}" &&
+                zin.getOrNull(2)?.trim() == "EXPECTED_ON_HAND"
+            }
+            ?.getOrNull(3)
+            ?.takeIf { it.isNotBlank() }
 
         /** Build and return parsed medication order **/
         MedicationData(
@@ -48,7 +60,8 @@ fun parseMedications(
             dispenseUnitsText = dispUnitParts.getOrNull(1)?.takeIf { it.isNotBlank() },
             numberOfRefills = rxe.getOrNull(12)?.takeIf { it.isNotBlank() },
             pharmacistVerifierId = pharmParts.getOrNull(0)?.takeIf { it.isNotBlank() },
-            pharmacyInstructions = rxe.getOrNull(21)?.takeIf { it.isNotBlank() }
+            pharmacyInstructions = rxe.getOrNull(21)?.takeIf { it.isNotBlank() },
+            expectedInventoryCount = expectedCount
         )
     }
 }
