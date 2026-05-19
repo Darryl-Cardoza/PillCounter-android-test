@@ -49,7 +49,7 @@ fun InformationPanelSection(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppTheme.extendedColors.secondaryBackground)
+            .background(AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.5f))
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         if (stepType != StepState.VIAL && !isLandscape) {

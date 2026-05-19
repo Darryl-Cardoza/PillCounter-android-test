@@ -47,6 +47,7 @@ import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -422,10 +423,23 @@ fun CameraPreviewSection(
                 }
 
                 // ── WORKFLOW STEPPER ──────────────────────────────────────────
+                val configuration = LocalConfiguration.current
+                val isLandscape =
+                    configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                val stepperBottomPadding = if (isLandscape) {
+                    20.dp
+                } else {
+                    (configuration.screenHeightDp * 0.25f).dp + 20.dp
+                }
+                val stepperEndPadding = if (isLandscape) {
+                    (configuration.screenWidthDp * 0.3f).dp
+                } else {
+                    0.dp
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(bottom = 20.dp)
+                        .padding(bottom = stepperBottomPadding, end = stepperEndPadding)
                 ) {
                     WorkflowStepper(steps = steps, currentStep = stepType)
                 }

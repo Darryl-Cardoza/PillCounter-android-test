@@ -1,8 +1,6 @@
 package com.rite.pillcounting.feature.pillCountScan.presentation
 
 import Screen
-import android.R.attr.maxHeight
-import android.R.attr.maxWidth
 import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -10,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -41,7 +40,6 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPr
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
-import com.rite.pillcounting.core.utils.compose.SplitResponsive
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.pillCountScan.domain.data.NavigationEvent
 import com.rite.pillcounting.feature.pillCountScan.domain.data.PillScanningEvent
@@ -74,10 +72,6 @@ fun PillScanningScreen(
     val batchId = navController.previousBackStackEntry
         ?.arguments?.getLong(Screen.ScanBarcode.ARG_BATCH_ID) ?: 0L
     val isStockCount = batchId != 0L
-    val topHeightPortrait = maxHeight * 0.75f
-    val bottomHeightPortrait = maxHeight * 0.25f
-    val startWidthLandScape = maxWidth * 0.7f
-    val endWidthLandscape = maxWidth * 0.3f
 
     // Buffer of last 10 detections
     var lastTenDetections by remember { mutableStateOf<List<Int>>(emptyList()) }
@@ -272,47 +266,54 @@ fun PillScanningScreen(
         // Camera + Info — not rendered while history is visible so CameraX cannot
         // rebind on rotation-triggered lifecycle restarts and flash the preview.
         if (!showHistory) {
-            SplitResponsive(
-                topOrLeft = {
-                    CameraPreviewSection(
-                        viewModel = viewModel,
-                        pills = uiState.detectedPills,
-                        isCameraPaused = viewModel.cameraPaused.collectAsState().value,
-                        onFrame = { imageProxy ->
-                            viewModel.onFrameCaptured(imageProxy)
-                        },
-                        onFilteredCountChanged = { count -> filteredPillCount = count },
-                        modifier = Modifier.fillMaxSize(),
-
-                        imageFrameWidth = uiState.imageFrameWidth,
-                        imageFrameHeight = uiState.imageFrameHeight,
-
-                        onPreviewSizeKnown = { w, h ->
-                            if (previewWidth == null || previewHeight == null) {
-                                previewWidth = w
-                                previewHeight = h
-
-                                viewModel.initializeInterpreter(
-                                    retryCount = 2,
-                                    viewWidth = w,
-                                    viewHeight = h
-                                )
-                            }
-                        }
-                    )
+            CameraPreviewSection(
+                viewModel = viewModel,
+                pills = uiState.detectedPills,
+                isCameraPaused = viewModel.cameraPaused.collectAsState().value,
+                onFrame = { imageProxy ->
+                    viewModel.onFrameCaptured(imageProxy)
                 },
-                bottomOrRight = {
-                    InformationPanelSection(
-                        uiState = uiState,
-                        viewModel = viewModel,
-                        onEvent = viewModel::onEvent,
-                        filteredPillCount = filteredPillCount,
-                        onShowHistory = { showHistory = true }
-                    )
-                },
-                landscapeRatio = startWidthLandScape to endWidthLandscape,
-                portraitRatio = topHeightPortrait to bottomHeightPortrait
+                onFilteredCountChanged = { count -> filteredPillCount = count },
+                modifier = Modifier.fillMaxSize(),
+
+                imageFrameWidth = uiState.imageFrameWidth,
+                imageFrameHeight = uiState.imageFrameHeight,
+
+                onPreviewSizeKnown = { w, h ->
+                    if (previewWidth == null || previewHeight == null) {
+                        previewWidth = w
+                        previewHeight = h
+
+                        viewModel.initializeInterpreter(
+                            retryCount = 2,
+                            viewWidth = w,
+                            viewHeight = h
+                        )
+                    }
+                }
             )
+
+            Box(
+                modifier = if (isLandscape) {
+                    Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .fillMaxWidth(0.3f)
+                } else {
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.25f)
+                }
+            ) {
+                InformationPanelSection(
+                    uiState = uiState,
+                    viewModel = viewModel,
+                    onEvent = viewModel::onEvent,
+                    filteredPillCount = filteredPillCount,
+                    onShowHistory = { showHistory = true }
+                )
+            }
         }
 
         if (!uiState.showIdleOverlay) {
