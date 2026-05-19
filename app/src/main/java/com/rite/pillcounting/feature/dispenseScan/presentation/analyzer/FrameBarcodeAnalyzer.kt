@@ -13,26 +13,37 @@ import com.rite.pillcounting.core.utils.common.HelperFunctions.saveBitmapToFile
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Lightweight barcode analyzer that consumes frames from an existing camera
  * binding (e.g. [com.rite.pillcounting.feature.pillCountScan.presentation.logic.CameraHelper])
  * without owning the [ImageProxy] lifecycle.
  *
- * The caller forwards the same [ImageProxy] to the pill detection pipeline which
- * closes it. To avoid a use-after-close on the underlying media buffer (MLKit
- * processes asynchronously and may still be reading from it when the proxy is
- * closed), this analyzer takes a synchronous [Bitmap] snapshot before MLKit
- * starts — by the time MLKit reads the input, it's reading from the bitmap copy
- * rather than the camera buffer.
+ * The caller forwards the same [ImageProxy] to the pill detection pipeline,
+ * which closes it. To avoid a use-after-close on the underlying media buffer
+ * (MLKit processes asynchronously), we snapshot a [Bitmap] synchronously
+ * BEFORE returning so MLKit reads from the bitmap copy instead of the camera
+ * buffer.
  *
- * Throttling: only one frame is in flight at a time; subsequent frames are
- * dropped while MLKit is still processing. No frame leak — we don't close the
- * proxy here.
+ * Reliability under load (the reason this file exists):
+ *  - Throttle. A barcode is stationary; 30 fps to MLKit just floods the
+ *    pipeline. We accept at most one frame per [MIN_INTERVAL_MS]. This leaves
+ *    headroom for the pill detection model running in parallel.
+ *  - Watchdog. Under GPU pressure MLKit can silently fail to call its
+ *    completion listener, leaving the `isProcessing` gate locked forever and
+ *    barcode reads dead until the screen is rebuilt. A coroutine fires after
+ *    [MLKIT_TIMEOUT_MS] and resets the gate if our frame's callback never came
+ *    back. Token-matched so a fresh frame that legitimately took the gate
+ *    isn't yanked out from under itself.
+ *
+ * No frame leak — we don't close the proxy here.
  */
 class FrameBarcodeAnalyzer(
     private val appContext: Context,
@@ -47,7 +58,19 @@ class FrameBarcodeAnalyzer(
 
     private val isPaused = AtomicBoolean(false)
     private val isProcessing = AtomicBoolean(false)
+    /** Token so a late watchdog wakeup can verify "is this MY stale frame?". */
+    private val frameToken = AtomicLong(0L)
+    private var lastAttemptAtMs: Long = 0L
+    private var watchdogJob: Job? = null
+
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    companion object {
+        /** How long MLKit gets before we declare its frame lost and free the gate. */
+        private const val MLKIT_TIMEOUT_MS = 1500L
+        /** Minimum gap between MLKit attempts. */
+        private const val MIN_INTERVAL_MS = 250L
+    }
 
     fun pause() {
         isPaused.set(true)
@@ -55,10 +78,12 @@ class FrameBarcodeAnalyzer(
 
     fun resume() {
         isPaused.set(false)
-        // Important: if we were stuck mid-process when paused, reset the gate so
-        // we don't deadlock the analyzer (otherwise no future frame would be
-        // processed and the user would be permanently stuck on "scan" state).
+        // If we were stuck mid-process when paused (or MLKit silently lost a
+        // callback), reset the gate so the next frame isn't blocked forever.
         isProcessing.set(false)
+        watchdogJob?.cancel()
+        watchdogJob = null
+        lastAttemptAtMs = 0L
     }
 
     @SuppressLint("UnsafeOptInUsageError")
@@ -67,12 +92,21 @@ class FrameBarcodeAnalyzer(
         onBarcodeDetected: (rawValue: String, imagePath: String?) -> Unit,
     ) {
         if (isPaused.get()) return
-        if (!isProcessing.compareAndSet(false, true)) return
 
-        // Snapshot the frame synchronously into a Bitmap so MLKit can safely read
-        // it even after the caller closes the ImageProxy. This is the same kind
-        // of copy ImagePreprocessor already does for pill detection; we don't
-        // hold onto the result unless a barcode is detected.
+        // Throttle to MIN_INTERVAL_MS. The check is racy by design — we accept
+        // the possibility that two threads slip past simultaneously; the
+        // isProcessing CAS below is the authoritative gate.
+        val now = System.currentTimeMillis()
+        if (now - lastAttemptAtMs < MIN_INTERVAL_MS) return
+
+        if (!isProcessing.compareAndSet(false, true)) return
+        lastAttemptAtMs = now
+
+        // Bitmap copy MUST be synchronous: the caller will hand this same
+        // ImageProxy to the pill VM which eventually closes it. We can't
+        // dispatch toBitmap() to a background coroutine and risk reading after
+        // close. This is the expensive step (~30-80ms on weak ARM) but it's
+        // also what guarantees correctness.
         val rotation = imageProxy.imageInfo.rotationDegrees
         val bitmapCopy: Bitmap? = try {
             imageProxy.toBitmap()
@@ -86,14 +120,29 @@ class FrameBarcodeAnalyzer(
             return
         }
 
+        val token = frameToken.incrementAndGet()
+
+        // Watchdog: if MLKit doesn't complete within the timeout, free the
+        // gate so the next frame can proceed. Critical for the intermittent
+        // "barcode scanner stops working" symptom under GPU pressure where
+        // MLKit drops its callback silently.
+        watchdogJob?.cancel()
+        watchdogJob = ioScope.launch {
+            delay(MLKIT_TIMEOUT_MS)
+            if (frameToken.get() == token && isProcessing.get()) {
+                logger.w("MLKit timeout for frame token=$token — releasing gate")
+                isProcessing.set(false)
+            }
+        }
+
         val input = InputImage.fromBitmap(bitmapCopy, rotation)
 
         scanner.process(input)
             .addOnSuccessListener { barcodes ->
                 val barcode = barcodes.firstOrNull()
                 if (barcode != null && !isPaused.get()) {
-                    // Pause ourselves: we've got a hit. The caller will reset us
-                    // when the user dismisses the resulting RX/NDC sheet.
+                    // Got a hit — self-pause; the caller resumes us when the
+                    // resulting RX/NDC sheet is dismissed.
                     isPaused.set(true)
                     ioScope.launch {
                         val filePath = try {
@@ -111,8 +160,6 @@ class FrameBarcodeAnalyzer(
                         }
                     }
                 } else {
-                    // No barcode this frame — release the bitmap so we don't
-                    // accumulate one per dropped frame.
                     bitmapCopy.recycle()
                 }
             }
@@ -122,6 +169,7 @@ class FrameBarcodeAnalyzer(
             }
             .addOnCompleteListener {
                 isProcessing.set(false)
+                watchdogJob?.cancel()
             }
     }
 }

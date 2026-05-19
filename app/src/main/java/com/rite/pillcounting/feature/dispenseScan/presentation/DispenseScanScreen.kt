@@ -366,10 +366,20 @@ fun DispenseScanScreen(
     )
 
     // ── Back handling ───────────────────────────────────────────────────────
+    // Device-back priority order:
+    //  1. If the history view is open, dismiss it (return to camera + pill panel).
+    //  2. Otherwise, exit the dispense flow to the Dashboard.
+    // This matches the on-screen back arrows: the history view has its own
+    // HeadlineBar back arrow wired to dismiss history; we keep behavior
+    // consistent across both entry points.
     BackHandler {
-        navController.navigate(Screen.Dashboard.route) {
-            popUpTo(0)
-            launchSingleTop = true
+        if (showHistory) {
+            showHistory = false
+        } else {
+            navController.navigate(Screen.Dashboard.route) {
+                popUpTo(0)
+                launchSingleTop = true
+            }
         }
     }
 
@@ -470,13 +480,22 @@ fun DispenseScanScreen(
             // ── Pill count panel ─────────────────────────────────────────────
             // Visible-once-pills-detected is sticky so the panel doesn't
             // flicker on every momentary 0-count frame.
+            //
+            // In COUNTING the panel is shown immediately (no detection
+            // required): RX + NDC are confirmed, counting is the only step
+            // left, so the panel is the primary affordance. Hiding it would
+            // leave the screen looking empty and the user with no Done button.
+            // Pre-COUNTING the panel still waits for pill detection — it's
+            // pure detection feedback there, not the primary action.
             var pillsEverDetected by remember { mutableStateOf(false) }
             LaunchedEffect(filteredPillCount, pillState.detectedPills.size) {
                 if (filteredPillCount > 0 || pillState.detectedPills.isNotEmpty()) {
                     pillsEverDetected = true
                 }
             }
-            if (pillsEverDetected) {
+            val showPillPanel = dispenseState.stage == DispenseStage.COUNTING ||
+                    pillsEverDetected
+            if (showPillPanel) {
                 if (dispenseState.stage == DispenseStage.COUNTING) {
                     // Full pill panel — total / target / circle / Add / Done.
                     Box(
@@ -603,23 +622,38 @@ fun DispenseScanScreen(
         // Top-left back button. The legacy "what to scan" indicator
         // (StepTitleWithSpeech) is intentionally NOT rendered here — voice
         // guidance is handled by DispenseVoicePrompt above.
-        BackButton(
-            modifier = Modifier
-                .align(Alignment.TopStart)
-                .padding(8.dp),
-            navController = navController,
-            showBox = false,
-            onClick = {
-                navController.navigate(Screen.Dashboard.route) {
-                    popUpTo(0)
-                    launchSingleTop = true
-                }
-            },
-        )
+        // Hidden while the history view is up: history renders its own back
+        // arrow in HeadlineBar, and having two stacked arrows confuses which
+        // one navigates back to the pill panel vs. exits the flow.
+        if (!showHistory) {
+            BackButton(
+                modifier = Modifier
+                    .align(Alignment.TopStart)
+                    .padding(8.dp),
+                navController = navController,
+                showBox = false,
+                onClick = {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(0)
+                        launchSingleTop = true
+                    }
+                },
+            )
+        }
 
         if (dispenseState.isLoading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
+
+        // Landscape inline-panel width. Matches the legacy ScanBarCodeScreen
+        // formula: 30% of screen width clamped to a sensible min/max per device
+        // class. Without the clamp the panel becomes uselessly narrow on small
+        // phones and excessively wide on large tablets.
+        val isTabletDevice = configuration.smallestScreenWidthDp >= 600
+        val inlinePanelWidth = (configuration.screenWidthDp.dp * 0.3f).coerceIn(
+            if (isTabletDevice) 320.dp else 280.dp,
+            if (isTabletDevice) 440.dp else 340.dp,
+        )
 
         // ── RX bottomsheet / inline panel ───────────────────────────────────
         // Non-dismissible: the user must hit Cancel or Proceed.
@@ -640,7 +674,7 @@ fun DispenseScanScreen(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
-                        .fillMaxWidth(0.4f)
+                        .width(inlinePanelWidth)
                         .background(androidx.compose.ui.graphics.Color.Transparent)
                 ) {
                     VerifyRxDetailsInlinePanel(
@@ -676,7 +710,7 @@ fun DispenseScanScreen(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
-                        .fillMaxWidth(0.4f)
+                        .width(inlinePanelWidth)
                         .background(androidx.compose.ui.graphics.Color.Transparent)
                 ) {
                     VerifyNdcDetailsInlinePanel(
