@@ -55,5 +55,8 @@ data class MedicationData(
     val pharmacistVerifierId: String? = null,
 
     /** Parsed free-text pharmacy instructions (RXE-21) **/
-    val pharmacyInstructions: String? = null
+    val pharmacyInstructions: String? = null,
+
+    /** Expected on-hand inventory count from ZIN segment (ZIN-3, when ZIN-2 = EXPECTED_ON_HAND) **/
+    val expectedInventoryCount: String? = null
 )

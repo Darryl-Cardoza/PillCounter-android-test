@@ -79,6 +79,9 @@ class HL7Service : Service() {
 
     @Volatile
     private var lastConnectedHost: String? = null
+
+    @Volatile
+    private var lastDiscoveredServiceName: String = "PMS"
     private val logger = AppLogger("HL7backgroundService")
 
     /** Binder to expose service instance to clients */
@@ -217,8 +220,8 @@ class HL7Service : Service() {
             },
 
             onConnected = {
-                Log.i(TAG, "PMS CONNECTED")
-                listener?.onClientConnected("PMS", 0)
+                Log.i(TAG, "${lastDiscoveredServiceName} CONNECTED")
+                listener?.onClientConnected(lastDiscoveredServiceName, 0)
             },
 
             onDisconnected = {
@@ -345,6 +348,7 @@ class HL7Service : Service() {
                 }
 
                 lastConnectedHost = "$host:$port"
+                lastDiscoveredServiceName = info.serviceName
 
                 listener?.onNsdServiceFound(info.serviceName, host, port)
 

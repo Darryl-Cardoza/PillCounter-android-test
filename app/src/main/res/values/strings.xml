@@ -379,6 +379,19 @@
     <string name="select_terminal">Select Terminal</string>
     <string name="unknown">Unknown</string>
 
+    <!-- ================== HL7 NOTIFICATIONS ================== -->
+    <string name="hl7_notification_device_connected_title">Device Connected</string>
+    <string name="hl7_notification_device_connected_message">Connected to %1$s Successfully</string>
+    <string name="hl7_notification_drug_not_found_title">Drug Not Found</string>
+    <string name="hl7_notification_drug_not_found_api_failed">NDC %1$s could not be resolved. API request failed.</string>
+    <string name="hl7_notification_drug_not_found_no_drug">No drug found for NDC %1$s.</string>
+    <string name="hl7_notification_new_rx_title">New RX Fill Request</string>
+    <string name="hl7_notification_new_rx_single">Rx %1$s • %2$s • Qty: %3$d</string>
+    <string name="hl7_notification_new_rx_multiple">Rx %1$s • %2$d items to fill</string>
+    <string name="hl7_notification_inventory_title">Inventory Request</string>
+    <string name="hl7_notification_inventory_no_drugs">No drugs found. Batch could not be created.</string>
+    <string name="hl7_notification_inventory_items_count">%1$d items need stock count</string>
+
     <!-- ================== PDF EXPORT ================== -->
     <string name="pdf_developer_credit">Developed by Rite Technologies</string>
     <string name="pdf_stock_count_report_title">STOCK COUNT REPORT</string>

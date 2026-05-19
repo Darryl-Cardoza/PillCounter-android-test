@@ -10,6 +10,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
@@ -76,10 +77,18 @@ class Hl7Notifier @Inject constructor(
             }
         }
 
+        val contentView = RemoteViews(context.packageName, com.rite.pillcounting.R.layout.notification_hl7_content).apply {
+            setTextViewText(com.rite.pillcounting.R.id.tv_notification_title, title)
+            setTextViewText(com.rite.pillcounting.R.id.tv_notification_body, message)
+        }
+
         val notification = NotificationCompat.Builder(context, channelId)
             .setSmallIcon(com.rite.pillcounting.R.drawable.logo)
             .setContentTitle(title)
             .setContentText(message)
+            .setCustomContentView(contentView)
+            .setCustomHeadsUpContentView(contentView)
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setContentIntent(pendingIntent)
             .setAutoCancel(true)
