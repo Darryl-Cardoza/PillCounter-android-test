@@ -127,7 +127,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
         cv.save()
         cv.rotate(-32f, pageW / 2f, pageH / 2f)
         bp(Color.parseColor("#DBEAFE"), 52f, Paint.Align.CENTER).also { it.alpha = 55 }.let {
-            cv.drawText(context.getString(R.string.pdf_app_name), pageW / 2f, pageH / 2f - 28f, it)
+            cv.drawText(context.getString(R.string.pill_count_app_title), pageW / 2f, pageH / 2f - 28f, it)
         }
         np(Color.parseColor("#DBEAFE"), 20f, Paint.Align.CENTER).also { it.alpha = 45 }.let {
             cv.drawText(context.getString(R.string.pdf_developer_credit), pageW / 2f, pageH / 2f + 18f, it)
@@ -153,7 +153,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
 
         // Brand name
         val nx = mH + 52f
-        cv.drawText(context.getString(R.string.pdf_app_name), nx, h * 0.40f, bp(Color.WHITE, 19f))
+        cv.drawText(context.getString(R.string.pill_count_app_title), nx, h * 0.40f, bp(Color.WHITE, 19f))
         np(Color.WHITE, 8.5f).also { it.alpha = 170 }.let {
             cv.drawText(context.getString(R.string.pdf_developer_credit), nx, h * 0.66f, it)
         }
