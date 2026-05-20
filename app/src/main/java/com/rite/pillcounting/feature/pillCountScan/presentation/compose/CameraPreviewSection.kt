@@ -26,6 +26,7 @@ import androidx.compose.material.icons.filled.FrontHand
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -127,6 +128,35 @@ fun CameraPreviewSection(
 
     LaunchedEffect(Unit) {
         previewView.scaleType = PreviewView.ScaleType.FILL_CENTER
+    }
+
+    // The activity has configChanges=orientation set, so it does NOT recreate on
+    // rotation. CameraX therefore never refreshes ImageAnalysis.targetRotation on
+    // its own — the analyzer keeps emitting frames in the orientation captured at
+    // bind time, and pill centroids end up normalised against stale dims.
+    //
+    // We listen to DisplayManager.DisplayListener.onDisplayChanged so we catch
+    // every rotation, including 180° landscape↔landscape flips (which don't
+    // change Configuration.orientation or the previewView bounds and so would be
+    // missed by either a configuration-keyed LaunchedEffect or a layout listener).
+    DisposableEffect(previewView) {
+        val displayManager = context.getSystemService(
+            android.content.Context.DISPLAY_SERVICE
+        ) as android.hardware.display.DisplayManager
+        val displayListener = object : android.hardware.display.DisplayManager.DisplayListener {
+            override fun onDisplayChanged(displayId: Int) {
+                if (previewView.display?.displayId == displayId) {
+                    previewView.display?.rotation?.let { cameraHelper.setTargetRotation(it) }
+                }
+            }
+            override fun onDisplayAdded(displayId: Int) = Unit
+            override fun onDisplayRemoved(displayId: Int) = Unit
+        }
+        displayManager.registerDisplayListener(displayListener, null)
+        // Push current rotation immediately so the first frames after bind are
+        // aligned (the listener only fires on subsequent display changes).
+        previewView.display?.rotation?.let { cameraHelper.setTargetRotation(it) }
+        onDispose { displayManager.unregisterDisplayListener(displayListener) }
     }
 
     // ── Count pop animation ───────────────────────────────────────────────────
@@ -249,18 +279,13 @@ fun CameraPreviewSection(
 
                     val previewW = size.width
                     val previewH = size.height
-                    val isLandscape = previewW > previewH
 
-                    // Align frame dimensions to screen orientation
-                    val actualFrameW = if (isLandscape)
-                        maxOf(imageFrameWidth, imageFrameHeight).toFloat()
-                    else
-                        minOf(imageFrameWidth, imageFrameHeight).toFloat()
-
-                    val actualFrameH = if (isLandscape)
-                        minOf(imageFrameWidth, imageFrameHeight).toFloat()
-                    else
-                        maxOf(imageFrameWidth, imageFrameHeight).toFloat()
+                    // ImageAnalysis targetRotation is kept in sync with the display
+                    // rotation (CameraHelper.setTargetRotation), so imageFrameWidth/
+                    // imageFrameHeight already match the user-facing orientation.
+                    // Use them directly — no min/max swap.
+                    val actualFrameW = imageFrameWidth.toFloat()
+                    val actualFrameH = imageFrameHeight.toFloat()
 
                     if (actualFrameW <= 0f || actualFrameH <= 0f) return@Canvas
 

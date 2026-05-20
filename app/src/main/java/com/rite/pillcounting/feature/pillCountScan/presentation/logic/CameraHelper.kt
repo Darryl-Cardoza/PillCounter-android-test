@@ -109,11 +109,19 @@ class CameraHelper(
                     .build()
                     .also { it.surfaceProvider = previewView.surfaceProvider }
 
+                // Seed targetRotation from the current display so the first frames
+                // after bind are already oriented correctly. The activity has
+                // configChanges=orientation set, so CameraX will not auto-update
+                // targetRotation on rotation — setTargetRotation() must be called
+                // when the orientation changes (see CameraHelper.setTargetRotation).
+                val initialRotation = previewView.display?.rotation ?: 0
+
                 imageAnalysis = ImageAnalysis.Builder()
                     .setResolutionSelector(resolutionSelector)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .setOutputImageRotationEnabled(true)
+                    .setTargetRotation(initialRotation)
                     .build()
                     .also { analysis ->
                         analysis.setAnalyzer(Executors.newSingleThreadExecutor()) {
@@ -232,6 +240,19 @@ class CameraHelper(
 
     fun getCurrentZoomRatio(): Float? =
         boundCamera?.cameraInfo?.zoomState?.value?.zoomRatio
+
+    /**
+     * Push the current display rotation down to ImageAnalysis. Required when the
+     * activity handles orientation in configChanges (no recreate), otherwise the
+     * analyzer keeps emitting frames in the orientation captured at bind time and
+     * downstream pixel coords go out of sync with the rotated preview.
+     *
+     * Pass a Surface.ROTATION_* constant (typically previewView.display.rotation).
+     */
+    fun setTargetRotation(rotation: Int) {
+        imageAnalysis?.targetRotation = rotation
+        imageCapture?.targetRotation = rotation
+    }
 
     // ---------------------------------------------------------
     // AUTO FOCUS
