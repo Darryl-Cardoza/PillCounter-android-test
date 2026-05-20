@@ -242,7 +242,19 @@ fun CameraPreviewSection(
                 // workflow; red until then. State is sticky — see
                 // PillScanningViewModel.glovesDetected; it resets when the workflow
                 // resumes from the idle/paused state.
+                //
+                // Position: top-right of the visible camera area. In landscape the
+                // pill panel covers the right 30% of the screen, so we shift the
+                // icon left by that amount so it doesn't sit behind the panel.
                 val handTint = if (glovesDetectedSticky) Color.Green else Color.Red
+                val gloveConfig = LocalConfiguration.current
+                val gloveIsLandscape = gloveConfig.orientation ==
+                        android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                val gloveEndPadding = if (gloveIsLandscape) {
+                    (gloveConfig.screenWidthDp * 0.3f).dp + 16.dp
+                } else {
+                    16.dp
+                }
                 Box(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
