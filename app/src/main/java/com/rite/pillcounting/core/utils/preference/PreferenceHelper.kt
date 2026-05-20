@@ -80,6 +80,7 @@ private const val KEY_HAPTIC = "key_pill_count_haptic_enabled"
 private const val KEY_REQUIRE_BACK_COUNT = "key_require_back_count"
 private const val KEY_REQUIRE_DOUBLE_COUNT = "key_require_double_count"
 private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
+private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED = "key_control_drug_types_initialized"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
 private const val KEY_BARCODE_REGEX="key_barcode_regex"
 private const val KEY_BUCKET_LIST="key_bucket_list"
@@ -480,7 +481,10 @@ class PreferenceHelper @Inject constructor(
     }
 
     fun setControlDrugTypes(controlDrugTypes: Set<String>) {
-        prefs.edit { putStringSet(KEY_CONTROL_DRUG_TYPES, controlDrugTypes) }
+        prefs.edit {
+            putStringSet(KEY_CONTROL_DRUG_TYPES, controlDrugTypes)
+            putBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, true)
+        }
         logger.i("setControlDrugTypes : ${controlDrugTypes.joinToString(",")}")
     }
 
@@ -488,6 +492,11 @@ class PreferenceHelper @Inject constructor(
         val types = prefs.getStringSet(KEY_CONTROL_DRUG_TYPES, emptySet()) ?: emptySet()
         logger.d("getControlDrugTypes : ${types.joinToString(",")}")
         return types
+    }
+
+    /** Returns true only after [setControlDrugTypes] has been called at least once. */
+    fun isControlDrugTypesInitialized(): Boolean {
+        return prefs.getBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, false)
     }
 
     fun setSoundOverride(enabled: Boolean){

@@ -30,6 +30,7 @@ data class TxnWithDetails(
     val isSubstitute: Boolean = false,
     val requestedDrugName: String? = null,
     val requestedNdc: String? = null,
+    val workflowStep: String? = null,
 )
 
 data class TxnDetailInfo(
