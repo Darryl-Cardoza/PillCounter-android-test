@@ -61,7 +61,12 @@ fun AddNoteDialog(
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
-            usePlatformDefaultWidth = false // allows your width modifier to take effect
+            // Block accidental dismissals — tapping outside the camera viewport
+            // was closing this mid-flow and losing the note. Only the explicit
+            // Close (X), Skip, and Save buttons should dismiss it.
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false,
+            usePlatformDefaultWidth = false
         )
     ) {
         Card(
