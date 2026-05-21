@@ -222,14 +222,21 @@ class DispenseScanViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // Expected NDC comes from HL7 in the PMS flow, and from the RX
+                // label the user just scanned in the manual flow. Either way,
+                // the container scan has to match it (or be a server-flagged
+                // substitute) before we'll show the success sheet.
                 val expectedNdc = _uiState.value.hl7ExpectedNdc
+                    ?.takeIf { it.isNotBlank() }
+                    ?: _uiState.value.ndc.takeIf { it.isNotBlank() }
 
-                // Try local DB first — but only trust a local hit when there's no
-                // HL7 expected NDC, or when the local hit matches it exactly.
-                // Otherwise fall through to the server so we can detect a
-                // substitute (the server may resolve a different scanned GTIN
-                // back to the expected NDC).
-                val localDrug = drugMasterDao.getDrugByNdc(gtin14)
+                // Try local DB first by GTIN (scanned barcode), falling back to
+                // NDC for cases where the scanned value was already an NDC.
+                // Only trust a local hit when there's no expected NDC, or when
+                // the local row's NDC matches it exactly — otherwise fall
+                // through to the server so substitutes get flagged.
+                val localDrug = drugMasterDao.getDrugByGtin(gtin14)
+                    ?: drugMasterDao.getDrugByNdc(gtin14)
                 val trustLocal = localDrug != null &&
                         (expectedNdc.isNullOrBlank() || expectedNdc == localDrug.ndc)
 
@@ -246,7 +253,8 @@ class DispenseScanViewModel @Inject constructor(
                     return@launch
                 }
 
-                // Server lookup with HL7 context so substitutes get flagged.
+                // Server lookup with the expected NDC as target so substitutes
+                // get flagged via is_ndc_equivalent.
                 val drugInfo = drugRepository.getDrugInfoByNdc(
                     GetNdcRequestModel(
                         target_ndc = expectedNdc.orEmpty(),
@@ -286,8 +294,9 @@ class DispenseScanViewModel @Inject constructor(
                     return@launch
                 }
 
-                // Hard mismatch: expected an HL7 NDC but server didn't even flag
-                // an equivalence. Surface a non-blocking toast and let the user
+                // Hard mismatch: an expected NDC is set (from HL7 or from the
+                // RX label) and the server didn't flag the scan as a
+                // substitute. Surface a non-blocking toast and let the user
                 // rescan — the popup-style dialog was too heavy for this case.
                 if (!expectedNdc.isNullOrBlank() && drugInfo.ndc != expectedNdc) {
                     _uiState.update {
