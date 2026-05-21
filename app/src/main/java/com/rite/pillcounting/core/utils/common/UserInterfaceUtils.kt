@@ -1022,12 +1022,9 @@ object UserInterfaceUtils {
         // convert otp to mutable list for edits
         fun otpToList(): MutableList<Char> = otp.toMutableList()
 
-        // When otp changes, auto-focus desired index but only request if not already focused
-        LaunchedEffect(otp) {
-            val target = desiredFocusIndex()
-            if (!focusStates.getOrNull(target).orFalse()) {
-                focusRequesters[target].requestFocus()
-            }
+        // Initial focus on mount only
+        LaunchedEffect(Unit) {
+            focusRequesters[desiredFocusIndex()].requestFocus()
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -1042,7 +1039,6 @@ object UserInterfaceUtils {
                             if (!ch.isDigit()) return@BasicTextField
 
                             val list = otpToList()
-                            // ensure list has capacity up to i
                             while (list.size < i) list.add(' ')
                             if (i < list.size) {
                                 list[i] = ch
@@ -1051,41 +1047,20 @@ object UserInterfaceUtils {
                             }
                             sanitizeAndEmit(list)
 
-                            // move focus to next logical spot
-                            val next = (otp.length + 1).coerceAtMost(boxCount - 1) // after insert
-                            if (!focusStates.getOrNull(next).orFalse()) {
-                                focusRequesters[next].requestFocus()
-                            }
+                            val next = (i + 1).coerceAtMost(boxCount - 1)
+                            focusRequesters[next].requestFocus()
                         }
                     },
                     modifier = Modifier
                         .size(boxSize)
-                        // when user taps anywhere, we want to redirect focus according to your rule:
-                        .pointerInput(Unit) {
+                        .pointerInput(otp) {
                             detectTapGestures(onTap = {
-                                val desired = desiredFocusIndex()
-                                // if tapped box is not the desired box, request focus to desired
-                                if (desired != i && !focusStates.getOrNull(desired).orFalse()) {
-                                    focusRequesters[desired].requestFocus()
-                                } else {
-                                    // else let this box gain focus normally
-                                    if (!focusStates.getOrNull(i).orFalse()) {
-                                        focusRequesters[i].requestFocus()
-                                    }
-                                }
+                                focusRequesters[desiredFocusIndex()].requestFocus()
                             })
                         }
                         .focusRequester(focusRequesters[i])
                         .onFocusChanged { state ->
                             focusStates[i] = state.isFocused
-                            // If box gained focus due to user tap but we should redirect, do it:
-                            if (state.isFocused) {
-                                val desired = desiredFocusIndex()
-                                if (desired != i && !focusStates.getOrNull(desired).orFalse()) {
-                                    // programmatically move to desired index (will update focusStates accordingly)
-                                    focusRequesters[desired].requestFocus()
-                                }
-                            }
                         }
                         .onKeyEvent { event ->
                             if (event.key == Key.Backspace) {
