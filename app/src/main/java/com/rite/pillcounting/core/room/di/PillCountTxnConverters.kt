@@ -60,4 +60,14 @@ object PillCountTxnConverters {
     @JvmStatic
     fun toCountStatus(value: String?): CountStatus? =
         value?.let { CountStatus.valueOf(it) }
+
+    /* ───────────────────────────── TxnPriority ───────────────────────────── */
+
+//    @TypeConverter
+//    @JvmStatic
+//    fun fromTxnPriority(value: TxnPriority?): String? = value?.name
+//
+//    @TypeConverter
+//    @JvmStatic
+//    fun toTxnPriority(value: String?): TxnPriority? = TxnPriority.fromString(value)
 }
