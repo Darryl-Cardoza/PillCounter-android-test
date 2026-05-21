@@ -306,7 +306,6 @@ fun DispenseScanScreen(
         dispenseState.showNdcNotFoundDialog,
         dispenseState.showInvalidScanDialog,
         dispenseState.showNdcEquivalenceDialog,
-        dispenseState.showPmsNdcMismatchDialog,
         dispenseState.isLoading,
     ) {
         val anyOverlay = dispenseState.showRxDetails ||
@@ -314,7 +313,6 @@ fun DispenseScanScreen(
                 dispenseState.showNdcNotFoundDialog ||
                 dispenseState.showInvalidScanDialog ||
                 dispenseState.showNdcEquivalenceDialog ||
-                dispenseState.showPmsNdcMismatchDialog ||
                 dispenseState.isLoading
         if (anyOverlay) pillVm.pausePillDetection()
         else pillVm.resumePillDetection()
@@ -338,7 +336,6 @@ fun DispenseScanScreen(
         dispenseState.showNdcNotFoundDialog,
         dispenseState.showInvalidScanDialog,
         dispenseState.showNdcEquivalenceDialog,
-        dispenseState.showPmsNdcMismatchDialog,
         dispenseState.isLoading,
     ) {
         val shouldRun = (dispenseState.stage == DispenseStage.PRE_RX ||
@@ -348,7 +345,6 @@ fun DispenseScanScreen(
                 !dispenseState.showNdcNotFoundDialog &&
                 !dispenseState.showInvalidScanDialog &&
                 !dispenseState.showNdcEquivalenceDialog &&
-                !dispenseState.showPmsNdcMismatchDialog &&
                 !dispenseState.isLoading
         if (shouldRun) barcodeAnalyzer.resume() else barcodeAnalyzer.pause()
     }
@@ -427,18 +423,25 @@ fun DispenseScanScreen(
         )
     }
 
-    // Hard PMS NDC mismatch: scanned drug doesn't match what HL7 asked for and
-    // isn't flagged as a substitute. User must rescan.
-    if (dispenseState.showPmsNdcMismatchDialog) {
-        CommonDialog(
-            title = stringResource(R.string.incorrect_ndc),
-            message = stringResource(R.string.you_have_scan_incorrect_ndc_this_item_does_not_match_the_pms_batch),
-            confirmText = stringResource(R.string.rescane),
-            cancelText = "",
-            onConfirm = { dispenseVm.dismissNdcMismatchDialog() },
-            onCancel = {},
-            isSingleButton = true,
-        )
+    // Hard PMS NDC mismatch (scanned NDC doesn't match HL7 and isn't a
+    // substitute) is surfaced as a non-blocking toast via ndcMismatchToastTick
+    // below, not a popup — the popup variant was too disruptive when the user
+    // is mid-rescan.
+    val ndcMismatchToastText = stringResource(R.string.rescan_ndc_does_not_match_toast)
+    LaunchedEffect(dispenseState.ndcMismatchToastTick) {
+        if (dispenseState.ndcMismatchToastTick > 0) {
+            showToast(context, ndcMismatchToastText, Toast.LENGTH_SHORT)
+        }
+    }
+
+    // "Scan NDC" toast: fires when the user is in PRE_NDC but scans an RX
+    // label instead of the container. handleBarcode() detects the format
+    // mismatch and pings the VM, which bumps scanNdcToastTick.
+    val scanNdcToastText = stringResource(R.string.scan_ndc_toast)
+    LaunchedEffect(dispenseState.scanNdcToastTick) {
+        if (dispenseState.scanNdcToastTick > 0) {
+            showToast(context, scanNdcToastText, Toast.LENGTH_SHORT)
+        }
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -463,6 +466,7 @@ fun DispenseScanScreen(
                                 stage = dispenseState.stage,
                                 onRx = dispenseVm::onRxBarcodeRead,
                                 onNdc = dispenseVm::onNdcBarcodeRead,
+                                onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
                             )
                             // The analyzer self-pauses on every MLKit hit. If we
                             // dropped the read (false positive, wrong format, or
@@ -753,6 +757,7 @@ private fun handleBarcode(
     stage: DispenseStage,
     onRx: (String, String?) -> Unit,
     onNdc: (String, String?) -> Unit,
+    onRxInNdcStage: () -> Unit,
 ): Boolean {
     if (value.isBlank()) return false
     return when (stage) {
@@ -761,6 +766,14 @@ private fun handleBarcode(
             true
         }
         DispenseStage.PRE_NDC -> {
+            // Pipe-delimited payloads are the RX-label template
+            // ({RXNO}|{NDCNO}|{QTY}|{BUCKET}) — never a valid GTIN / GS1. If the
+            // user re-scans the RX while we're waiting for the container, nudge
+            // them with a toast instead of silently dropping the read.
+            if (value.contains('|')) {
+                onRxInNdcStage()
+                return false
+            }
             val decoder = BarcodeDecoder()
             val isGs1 = decoder.isGs1Barcode(value)
             val decoded = if (isGs1) decoder.decode(value) else null

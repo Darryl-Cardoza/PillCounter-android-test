@@ -287,10 +287,14 @@ class DispenseScanViewModel @Inject constructor(
                 }
 
                 // Hard mismatch: expected an HL7 NDC but server didn't even flag
-                // an equivalence. Force a rescan rather than silently overwriting.
+                // an equivalence. Surface a non-blocking toast and let the user
+                // rescan — the popup-style dialog was too heavy for this case.
                 if (!expectedNdc.isNullOrBlank() && drugInfo.ndc != expectedNdc) {
                     _uiState.update {
-                        it.copy(isLoading = false, showPmsNdcMismatchDialog = true)
+                        it.copy(
+                            isLoading = false,
+                            ndcMismatchToastTick = it.ndcMismatchToastTick + 1,
+                        )
                     }
                     return@launch
                 }
@@ -389,10 +393,6 @@ class DispenseScanViewModel @Inject constructor(
         }
     }
 
-    fun dismissNdcMismatchDialog() {
-        _uiState.update { it.copy(showPmsNdcMismatchDialog = false) }
-    }
-
     /**
      * Called when the user confirms the NDC popup. Behavior diverges based on
      * whether we entered via the manual flow or via HL7:
@@ -462,6 +462,18 @@ class DispenseScanViewModel @Inject constructor(
         _uiState.update { it.copy(showNdcNotFoundDialog = false) }
     }
 
+    /**
+     * Called from the screen when, during PRE_NDC, the user scans something
+     * that looks like an RX label (pipe-delimited template, not a GTIN-14).
+     * The legacy single-screen flow had no way to surface this; the merged
+     * dispense flow now nudges the user with a toast instead of silently
+     * dropping the read.
+     */
+    fun onRxScannedInNdcStage() {
+        if (_uiState.value.stage != DispenseStage.PRE_NDC) return
+        _uiState.update { it.copy(scanNdcToastTick = it.scanNdcToastTick + 1) }
+    }
+
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }
@@ -490,7 +502,12 @@ data class DispenseScanUiState(
     val showInvalidScanDialog: Boolean = false,
     val showNdcNotFoundDialog: Boolean = false,
     val showNdcEquivalenceDialog: Boolean = false,
-    val showPmsNdcMismatchDialog: Boolean = false,
+
+    // Transient toast signals — set briefly and cleared once the screen has
+    // surfaced the toast. Unlike the dialogs above, these don't gate the
+    // analyzer, so the user can rescan immediately.
+    val scanNdcToastTick: Int = 0,
+    val ndcMismatchToastTick: Int = 0,
 
     val isLoading: Boolean = false,
     val error: String? = null,

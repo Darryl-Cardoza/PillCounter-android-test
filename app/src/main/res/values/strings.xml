@@ -294,6 +294,8 @@
     <string name="rescan_require">Rescan Required</string>
     <string name="the_scanned_ndc_does_not_match">The scanned NDC does not match</string>
     <string name="substitute">Substitute</string>
+    <string name="scan_ndc_toast">Scan NDC</string>
+    <string name="rescan_ndc_does_not_match_toast">Rescan — NDC does not match</string>
 
     <!-- Unsynced Transaction-->
     <string name="unsynced_transaction">UNSYNCED TRANSACTIONS</string>
