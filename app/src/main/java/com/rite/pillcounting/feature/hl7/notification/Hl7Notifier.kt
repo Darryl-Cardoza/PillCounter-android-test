@@ -50,7 +50,7 @@ class Hl7Notifier @Inject constructor(
         message: String
     ) {
         print("notification show")
-        val route = Screen.ScanBarcode.createRoute("HL7", ScanType.BARCODE,0)
+        val route = Screen.ScanBarcode.createRoute("HL7", ScanType.BARCODE, 0)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -77,7 +77,10 @@ class Hl7Notifier @Inject constructor(
             }
         }
 
-        val contentView = RemoteViews(context.packageName, com.rite.pillcounting.R.layout.notification_hl7_content).apply {
+        val contentView = RemoteViews(
+            context.packageName,
+            com.rite.pillcounting.R.layout.notification_hl7_content
+        ).apply {
             setTextViewText(com.rite.pillcounting.R.id.tv_notification_title, title)
             setTextViewText(com.rite.pillcounting.R.id.tv_notification_body, message)
         }
@@ -97,11 +100,6 @@ class Hl7Notifier @Inject constructor(
         NotificationManagerCompat.from(context)
             .notify(System.currentTimeMillis().toInt(), notification)
     }
-
-
-
-
-
 }
 
 
