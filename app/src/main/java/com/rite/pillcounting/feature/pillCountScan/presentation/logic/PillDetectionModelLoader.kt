@@ -367,6 +367,23 @@ class PillDetectionModelLoader @Inject constructor(
         }
     }
 
+    /**
+     * Releases only the glove model resources. Pill + tray interpreters remain cached.
+     * Safe to call from any coroutine; re-entrant (no-op if already unloaded).
+     */
+    fun unloadGloveModel() {
+        try {
+            gloveInterpreter?.close()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to close gloveInterpreter during unload", e)
+        }
+        safelyCloseDelegate(gloveGpuDelegate, "gloveGpuDelegate")
+        gloveInterpreter = null
+        gloveGpuDelegate = null
+        logger.i("Glove model unloaded — pill + tray remain cached")
+        Log.i(TAG, "Glove model resources released")
+    }
+
     fun close() {
         try {
             pillInterpreter?.close()

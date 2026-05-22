@@ -178,6 +178,7 @@ fun DispenseScanScreen(
 
     val pillStepType by pillVm.currentStep.collectAsState()
     val isTxnFromHl7 by pillVm.isTxnFromHl7.collectAsState()
+    val glovesDetected by pillVm.glovesDetected.collectAsState()
 
     // === Pill-VM toasts ===
     if (pillState.restrictAdd) {
@@ -464,7 +465,7 @@ fun DispenseScanScreen(
                 viewModel = pillVm,
                 pills = pillState.detectedPills,
                 isCameraPaused = pillVm.cameraPaused.collectAsState().value,
-                showGloveIcon = dispenseState.isHazardous,
+                showGloveIcon = dispenseState.isHazardous && !glovesDetected,
                 onFrame = { imageProxy ->
                     // Only the barcode analyzer reads the frame metadata before the
                     // frame is forwarded to the pill VM (which always closes it). When

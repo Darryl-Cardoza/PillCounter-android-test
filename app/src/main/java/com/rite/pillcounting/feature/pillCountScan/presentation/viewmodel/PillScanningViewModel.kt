@@ -85,7 +85,7 @@ class PillScanningViewModel @Inject constructor(
     val context: Context = getApplication<Application>().applicationContext
     private var currentFrameBitmap: Bitmap? = null
     private var lastTransformationMatrix: Matrix? = null
-    private var isAnalyzingFrame = false
+    @Volatile private var isAnalyzingFrame = false
     private var isPaused = false
     private var idleJob: Job? = null
     private val idleTimeout = 60_000L
@@ -148,7 +148,7 @@ class PillScanningViewModel @Inject constructor(
     var shouldRunGloveDetection = true
     private var lastPreviewWidth = 0
     private var lastPreviewHeight = 0
-        private set
+    private var gloveTimeoutJob: Job? = null
 
     // ── NEW: expose tray detections so the UI can draw the tray boundary ──────
     private val _trayDetections = MutableStateFlow<List<TrayDetection>>(emptyList())
@@ -177,7 +177,7 @@ class PillScanningViewModel @Inject constructor(
     }
 
     init {
-//        resetIdleTimer()
+        resetIdleTimer()
         startPerformanceMonitoring()
     }
     
@@ -313,6 +313,8 @@ class PillScanningViewModel @Inject constructor(
     /**
      * Loads the glove detection model and rebuilds [PillAnalyzer] to include it.
      * Called only when the confirmed drug is hazardous and the COUNTING stage begins.
+     * Starts a 20-second timeout: if gloves are not confirmed by then, the model is
+     * unloaded automatically to free memory.
      * No-op if glove is already loaded.
      */
     fun loadGloveModelAndRebuildAnalyzer() {
@@ -351,10 +353,70 @@ class PillScanningViewModel @Inject constructor(
 
                 _modelState.value = ModelState.Ready(analyzer)
                 logger.i("Glove model loaded — analyzer rebuilt for hazardous drug.")
+
+                // Start 20-second watchdog: unload glove model if no detection arrives.
+                gloveTimeoutJob?.cancel()
+                gloveTimeoutJob = viewModelScope.launch {
+                    delay(20_000L)
+                    if (!_glovesDetected.value) {
+                        // Stop new glove inferences immediately so no new frame starts
+                        // using the interpreter we are about to close.
+                        shouldRunGloveDetection = false
+                        // Drain: poll until the in-flight frame analysis (which may still
+                        // be executing GloveDetector.detect() on DefaultDispatcher) fully
+                        // completes. A fixed delay is unreliable because GPU inference can
+                        // take longer than any guess. isAnalyzingFrame is @Volatile so the
+                        // write on DefaultDispatcher is visible here on Main.
+                        var waited = 0
+                        while (isAnalyzingFrame && waited < 2000) {
+                            delay(50L)
+                            waited += 50
+                        }
+                        // Re-check: a detection could have arrived during the drain window.
+                        if (!_glovesDetected.value) {
+                            logger.i("Glove detection timeout — no gloves detected in 20s, unloading model")
+                            unloadGloveAndRebuildAnalyzer()
+                        }
+                    }
+                }
             } catch (e: Exception) {
                 logger.e("Glove model load failed", e)
             }
         }
+    }
+
+    /**
+     * Closes the glove TFLite interpreter and rebuilds [PillAnalyzer] without it.
+     * Pill + tray interpreters remain in the loader cache so detection continues uninterrupted.
+     */
+    private suspend fun unloadGloveAndRebuildAnalyzer() {
+        modelLoader.unloadGloveModel()
+        val models = modelLoader.getOrLoadInterpreters(includeGlove = false)
+        val w = lastPreviewWidth
+        val h = lastPreviewHeight
+        val analyzer = PillAnalyzer(
+            pillInterpreter  = models.pillInterpreter,
+            trayInterpreter  = models.trayInterpreter,
+            gloveInterpreter = null,
+            performanceLogger = performanceLogger,
+            shouldRunGloveDetection = { shouldRunGloveDetection },
+            onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
+                processDetections(
+                    count         = count,
+                    detections    = detections,
+                    trayDets      = trayDetections,
+                    gloveDets     = gloveDetections,
+                    bitmap        = bitmap,
+                    matrix        = matrix,
+                    previewWidth  = w,
+                    previewHeight = h,
+                    imageWidth    = imageWidth,
+                    imageHeight   = imageHeight
+                )
+            }
+        )
+        _modelState.value = ModelState.Ready(analyzer)
+        logger.i("Analyzer rebuilt without glove model")
     }
 
     // ------------------------------------------------------------------------
@@ -398,10 +460,20 @@ class PillScanningViewModel @Inject constructor(
         // ── Check if gloves detected - if yes, stop running glove detection ──
         // Require a strong detection before locking the session state, otherwise a single
         // weak false positive on the warm-up frame disables glove detection permanently.
-        if (gloveDets.any { it.classId == 0 && it.confidence >= 0.75f }) {
+        if (!_glovesDetected.value && gloveDets.any { it.classId == 0 && it.confidence >= 0.75f }) {
             _glovesDetected.value = true
             shouldRunGloveDetection = false
-            logger.i("✅ GLOVES DETECTED - Stopping glove detection model")
+            gloveTimeoutJob?.cancel()
+            gloveTimeoutJob = null
+            logger.i("✅ GLOVES DETECTED - Unloading glove model and saving DB flag")
+            viewModelScope.launch {
+                unloadGloveAndRebuildAnalyzer()
+                val txnId = preferenceHelper.getTxnId()
+                if (txnId != 0L) {
+                    pillCountTxnDao.updateGlovesWear(txnId, true)
+                    logger.i("isGlovesWear saved for txn=$txnId")
+                }
+            }
         }
 
         // Rolling count buffer
@@ -538,6 +610,7 @@ class PillScanningViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
 
+        gloveTimeoutJob?.cancel()
         // Stop performance monitoring
         performanceMonitorJob?.cancel()
 
