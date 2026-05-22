@@ -241,6 +241,7 @@ class Hl7Repository @Inject constructor(
                     ndc = it,
                     drugName = resolvedDrugName,
                     drugType = drugInfo?.drugType,
+                    isHazardous = drugInfo?.isHazardous ?: false,
                 )
             }
         }
@@ -589,7 +590,8 @@ class Hl7Repository @Inject constructor(
                     ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
                     drugName = resolvedDrugName,
                     drugType = drugInfo.drugType,
-                    packageQty = drugInfo.qty
+                    packageQty = drugInfo.qty,
+                    isHazardous = drugInfo.isHazardous ?: false,
                 )
 
                 val newDrugId = drugMasterDao.upsertPreservingId(drugEntity)

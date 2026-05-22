@@ -15,6 +15,8 @@ import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.barcodeScan.domain.data.IDrugRepository
 import com.rite.pillcounting.feature.barcodeScan.domain.model.DrugInfo
 import com.rite.pillcounting.feature.barcodeScan.domain.model.GetNdcRequestModel
+import com.rite.pillcounting.feature.dispenseScan.domain.model.DispenseScanUiState
+import com.rite.pillcounting.feature.dispenseScan.domain.model.DispenseStage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -102,9 +104,63 @@ class DispenseScanViewModel @Inject constructor(
                     hl7ExpectedNdc = drug?.ndc,
                     rxNo = txn.rxNo,
                     qty = txn.targetCount?.toString(),
+                    isHazardous = drug?.isHazardous ?: false,
                 )
             }
             logger.i("HL7 init: txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc}")
+        }
+    }
+
+    /**
+     * Hydrate the screen when resuming an existing partial transaction that has
+     * not yet had its NDC verified. Reads the saved txnId from preferences, loads
+     * the drug info, and jumps straight to [DispenseStage.PRE_NDC] so the user
+     * only needs to scan the container — the RX stage is skipped entirely.
+     */
+    fun initializeFromResumedTxn() {
+        viewModelScope.launch {
+            val txnId = preferenceHelper.getTxnId()
+            if (txnId == 0L) {
+                logger.w("Resume init requested but no txnId in preferences — falling back to PRE_RX")
+                return@launch
+            }
+            val txn = pillCountTxnDao.getById(txnId)
+            if (txn == null) {
+                logger.w("Resume init: txn $txnId not found in DB — falling back to PRE_RX")
+                return@launch
+            }
+            val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
+
+            if (txn.isNdcVerified == true) {
+                // RX + container both confirmed — skip straight to pill counting.
+                _uiState.update {
+                    it.copy(
+                        stage = DispenseStage.COUNTING,
+                        txnId = txnId,
+                        drugName = drug?.drugName ?: it.drugName,
+                        ndc = drug?.ndc ?: it.ndc,
+                        rxNo = txn.rxNo,
+                        qty = txn.targetCount?.toString(),
+                        isHazardous = drug?.isHazardous ?: false,
+                    )
+                }
+                logger.i("Resume init (NDC verified): txn=$txnId — jumping to COUNTING")
+            } else {
+                // Container not yet scanned — land in PRE_NDC so the user only scans the container.
+                _uiState.update {
+                    it.copy(
+                        stage = DispenseStage.PRE_NDC,
+                        txnId = txnId,
+                        drugName = drug?.drugName ?: it.drugName,
+                        ndc = drug?.ndc ?: it.ndc,
+                        hl7ExpectedNdc = drug?.ndc,
+                        rxNo = txn.rxNo,
+                        qty = txn.targetCount?.toString(),
+                        isHazardous = drug?.isHazardous ?: false,
+                    )
+                }
+                logger.i("Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc}")
+            }
         }
     }
 
@@ -154,6 +210,7 @@ class DispenseScanViewModel @Inject constructor(
                             rxNo = rxNo,
                             qty = qty,
                             showRxDetails = true,
+                            isHazardous = localDrug.isHazardous,
                         )
                     }
                     return@launch
@@ -172,6 +229,7 @@ class DispenseScanViewModel @Inject constructor(
                             drugType = drugInfo.drugType,
                             gtin = parsedNdc,
                             packageQty = drugInfo.qty,
+                            isHazardous = drugInfo.isHazardous ?: false,
                         )
                     )
                     _uiState.update {
@@ -183,6 +241,7 @@ class DispenseScanViewModel @Inject constructor(
                             rxNo = rxNo,
                             qty = qty,
                             showRxDetails = true,
+                            isHazardous = drugInfo.isHazardous ?: false,
                         )
                     }
                 } else {
@@ -248,6 +307,7 @@ class DispenseScanViewModel @Inject constructor(
                             ndcDrugName = localDrug.drugName ?: it.drugName,
                             barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcDetails = true,
+                            isHazardous = localDrug.isHazardous,
                         )
                     }
                     return@launch
@@ -277,6 +337,7 @@ class DispenseScanViewModel @Inject constructor(
                         drugType = drugInfo.drugType,
                         gtin = gtin14,
                         packageQty = drugInfo.qty,
+                        isHazardous = drugInfo.isHazardous ?: false,
                     )
                 )
 
@@ -289,6 +350,7 @@ class DispenseScanViewModel @Inject constructor(
                             ndcDrugName = displayName,
                             barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcEquivalenceDialog = true,
+                            isHazardous = drugInfo.isHazardous ?: false,
                         )
                     }
                     return@launch
@@ -315,6 +377,7 @@ class DispenseScanViewModel @Inject constructor(
                         ndcDrugName = displayName,
                         barcodeImagePath = imagePath ?: it.barcodeImagePath,
                         showNdcDetails = true,
+                        isHazardous = drugInfo.isHazardous ?: false,
                     )
                 }
             } catch (e: Exception) {
@@ -487,47 +550,3 @@ class DispenseScanViewModel @Inject constructor(
         _uiState.update { it.copy(error = null) }
     }
 }
-
-enum class DispenseStage { PRE_RX, PRE_NDC, COUNTING }
-
-data class DispenseScanUiState(
-    val stage: DispenseStage = DispenseStage.PRE_RX,
-    val scanType: String = CountType.FIXED.toString(),
-
-    val drugName: String = "",
-    val ndc: String = "",
-    val rxNo: String? = null,
-    val qty: String? = null,
-    val selectedBucketId: String = "",
-    val barcodeImagePath: String? = null,
-
-    val ndcScannedValue: String = "",
-    val ndcDrugName: String = "",
-
-    val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
-
-    val showRxDetails: Boolean = false,
-    val showNdcDetails: Boolean = false,
-    val showInvalidScanDialog: Boolean = false,
-    val showNdcNotFoundDialog: Boolean = false,
-    val showNdcEquivalenceDialog: Boolean = false,
-
-    // Transient toast signals — set briefly and cleared once the screen has
-    // surfaced the toast. Unlike the dialogs above, these don't gate the
-    // analyzer, so the user can rescan immediately.
-    val scanNdcToastTick: Int = 0,
-    val ndcMismatchToastTick: Int = 0,
-
-    val isLoading: Boolean = false,
-    val error: String? = null,
-
-    // HL7/PMS-driven entry: when true the user landed here from a PMS
-    // notification, the txn already exists, and the RX scan stage is skipped.
-    val isFromHl7: Boolean = false,
-    // Expected NDC from HL7 (= the drug PMS told us to dispense). Used to
-    // detect substitute / mismatch when the user scans the container.
-    val hl7ExpectedNdc: String? = null,
-    val isSubstituteConfirmed: Boolean = false,
-
-    val txnId: Long = 0L,
-)

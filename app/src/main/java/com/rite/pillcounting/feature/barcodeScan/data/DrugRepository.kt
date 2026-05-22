@@ -87,7 +87,8 @@ class DrugRepository @Inject constructor(
                     ndc = result.scanned_ndc?.package_ndc ?: "N/A",
                     is_ndc_equivalent = result.is_ndc_equivalent,
                     drugType = result.scanned_ndc?.dea_schedule.toString(),
-                    qty = result.scanned_ndc?.`package`?.levels?.firstOrNull()?.contains?.quantity
+                    qty = result.scanned_ndc?.`package`?.levels?.firstOrNull()?.contains?.quantity,
+                    isHazardous = result.scanned_ndc?.is_hazardous
                 ).also {
                     logger.i("Returning mapped DrugInfo -> $it")
                 }

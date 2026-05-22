@@ -11,7 +11,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import com.rite.pillcounting.R
-import com.rite.pillcounting.feature.dispenseScan.presentation.viewmodel.DispenseStage
+import com.rite.pillcounting.feature.dispenseScan.domain.model.DispenseStage
 import java.util.Locale
 
 /**

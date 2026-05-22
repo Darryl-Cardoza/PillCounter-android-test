@@ -14,5 +14,6 @@ data class DrugInfo(
     val ndc: String,
     val is_ndc_equivalent: Boolean? = null,
     val drugType: String,
-    val qty: Int? = 0
+    val qty: Int? = 0,
+    val isHazardous: Boolean? = null
 )

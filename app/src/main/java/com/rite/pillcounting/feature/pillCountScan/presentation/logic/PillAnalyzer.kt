@@ -27,7 +27,7 @@ import java.nio.ByteBuffer
 class PillAnalyzer(
     private val pillInterpreter: Interpreter,
     private val trayInterpreter: Interpreter,
-    private val gloveInterpreter: Interpreter,
+    private val gloveInterpreter: Interpreter?,
     private val performanceLogger: PerformanceLogger? = null,
     private val shouldRunGloveDetection: () -> Boolean,
     private val onResult: (
@@ -41,6 +41,8 @@ class PillAnalyzer(
         imageHeight: Int
     ) -> Unit
 ) {
+
+    val hasGloveInterpreter: Boolean get() = gloveInterpreter != null
 
     private val logger = AppLogger("PillAnalyzer")
 
@@ -60,7 +62,9 @@ class PillAnalyzer(
     }
     private val trayDetOutputBuf by lazy { TrayDetector.allocateDetOutput() }
     private val trayProtoOutputBuf by lazy { TrayDetector.allocateProtoOutput() }
-    private val gloveOutputBuf by lazy { GloveDetector.allocateOutput(gloveInterpreter) }
+    // Only allocated when gloveInterpreter is present; safe because gloveOutputBuf
+    // is only accessed inside the runGloveThisFrame branch which guards on non-null.
+    private val gloveOutputBuf by lazy { GloveDetector.allocateOutput(gloveInterpreter!!) }
 
     companion object {
         // Run every frame until first glove detection arrives; afterwards only every
@@ -95,7 +99,8 @@ class PillAnalyzer(
             //   • After first detection — rate-limit to GLOVE_STEADY_INTERVAL_MS.
             val now = System.currentTimeMillis()
             val interval = if (hasDetectedAnyGlove) GLOVE_STEADY_INTERVAL_MS else 0L
-            val runGloveThisFrame = shouldRunGloveDetection() &&
+            val runGloveThisFrame = gloveInterpreter != null &&
+                    shouldRunGloveDetection() &&
                     (now - lastGloveRunMs >= interval)
             if (runGloveThisFrame) lastGloveRunMs = now
 
@@ -122,7 +127,7 @@ class PillAnalyzer(
                 }
                 val gloveDeferred = if (runGloveThisFrame) async(Dispatchers.Default) {
                     GloveDetector.detect(
-                        interpreter = gloveInterpreter,
+                        interpreter = gloveInterpreter!!,
                         inputBuffer = gloveBuf,
                         scaleInfo = scaleInfo,
                         originalWidth = originalWidth,

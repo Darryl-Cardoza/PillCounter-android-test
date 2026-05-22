@@ -146,6 +146,8 @@ class PillScanningViewModel @Inject constructor(
     val glovesDetected: StateFlow<Boolean> = _glovesDetected.asStateFlow()
 
     var shouldRunGloveDetection = true
+    private var lastPreviewWidth = 0
+    private var lastPreviewHeight = 0
         private set
 
     // ── NEW: expose tray detections so the UI can draw the tray boundary ──────
@@ -261,6 +263,9 @@ class PillScanningViewModel @Inject constructor(
     fun initializeInterpreter(
         retryCount: Int = 1, viewWidth: Int, viewHeight: Int
     ) {
+        lastPreviewWidth = viewWidth
+        lastPreviewHeight = viewHeight
+
         if (_modelState.value is ModelState.Ready) {
             logger.w("Interpreter already initialized, skipping reinitialization.")
             return
@@ -270,8 +275,8 @@ class PillScanningViewModel @Inject constructor(
             _modelState.value = ModelState.Loading
 
             try {
-                // ── Load both models (returns immediately if already cached) ──
-                val models = modelLoader.getOrLoadInterpreters()
+                // Load pill + tray only; glove is deferred until a hazardous drug is confirmed.
+                val models = modelLoader.getOrLoadInterpreters(includeGlove = false)
 
                 val analyzer = PillAnalyzer(
                     pillInterpreter  = models.pillInterpreter,
@@ -296,11 +301,58 @@ class PillScanningViewModel @Inject constructor(
                 )
 
                 _modelState.value = ModelState.Ready(analyzer)
-                logger.i("Both interpreters initialized successfully (via Singleton).")
+                logger.i("Pill + tray interpreters initialized (glove deferred).")
 
             } catch (e: Exception) {
                 logger.e("Interpreter init failed", e)
                 _modelState.value = ModelState.Error("Interpreter initialization failed", e)
+            }
+        }
+    }
+
+    /**
+     * Loads the glove detection model and rebuilds [PillAnalyzer] to include it.
+     * Called only when the confirmed drug is hazardous and the COUNTING stage begins.
+     * No-op if glove is already loaded.
+     */
+    fun loadGloveModelAndRebuildAnalyzer() {
+        if ((_modelState.value as? ModelState.Ready)?.analyzer?.hasGloveInterpreter == true) {
+            logger.i("Glove model already loaded — skipping rebuild")
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                val models = modelLoader.getOrLoadInterpreters(includeGlove = true)
+                val w = lastPreviewWidth
+                val h = lastPreviewHeight
+
+                val analyzer = PillAnalyzer(
+                    pillInterpreter  = models.pillInterpreter,
+                    trayInterpreter  = models.trayInterpreter,
+                    gloveInterpreter = models.gloveInterpreter,
+                    performanceLogger = performanceLogger,
+                    shouldRunGloveDetection = { shouldRunGloveDetection },
+                    onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
+                        processDetections(
+                            count         = count,
+                            detections    = detections,
+                            trayDets      = trayDetections,
+                            gloveDets     = gloveDetections,
+                            bitmap        = bitmap,
+                            matrix        = matrix,
+                            previewWidth  = w,
+                            previewHeight = h,
+                            imageWidth    = imageWidth,
+                            imageHeight   = imageHeight
+                        )
+                    }
+                )
+
+                _modelState.value = ModelState.Ready(analyzer)
+                logger.i("Glove model loaded — analyzer rebuilt for hazardous drug.")
+            } catch (e: Exception) {
+                logger.e("Glove model load failed", e)
             }
         }
     }

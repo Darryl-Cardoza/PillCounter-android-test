@@ -83,10 +83,12 @@ fun AppNavGraph(
         ) { backStackEntry ->
             val countType = backStackEntry.arguments?.getString(Screen.DispenseScan.ARG_TYPE) ?: ""
             val fromHl7 = backStackEntry.arguments?.getBoolean(Screen.DispenseScan.ARG_FROM_HL7) ?: false
+            val fromResume = backStackEntry.arguments?.getBoolean(Screen.DispenseScan.ARG_FROM_RESUME) ?: false
             DispenseScanScreen(
                 navController = navController,
                 countType = countType,
                 fromHl7 = fromHl7,
+                fromResume = fromResume,
             )
         }
 

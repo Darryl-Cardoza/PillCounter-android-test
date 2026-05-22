@@ -26,7 +26,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
@@ -57,8 +56,8 @@ fun FixedCountResumeScreen(
                     navController.navigate(Screen.PillCount.createRoute(event.countType.toString())) {}
 
                 NavigationEvent.NavigateBack -> navController.popBackStack()
-                is NavigationEvent.NavigateToScanBarcode -> navController.navigate(
-                    Screen.ScanBarcode.createRoute(CountType.FIXED.toString(), ScanType.BARCODE, 0)
+                is NavigationEvent.NavigateToDispenseScan -> navController.navigate(
+                    Screen.DispenseScan.createRoute(event.countType.toString(), fromResume = event.fromResume)
                 )
             }
         }

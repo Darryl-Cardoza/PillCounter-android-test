@@ -36,7 +36,8 @@ data class NdcDrugInfo(
     val therapeutic_fda: TherapeuticFda? = null,
     val image: DrugImage? = null,
     val updated_at: String? = null,
-    val `package`: Package? = null
+    val `package`: Package? = null,
+    val is_hazardous: Boolean? = null
 )
 
 @Serializable

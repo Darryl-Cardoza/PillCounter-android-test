@@ -75,6 +75,7 @@ fun CameraPreviewSection(
     onFrame: (ImageProxy) -> Unit,
     onFilteredCountChanged: (Int) -> Unit,
     modifier: Modifier = Modifier,
+    showGloveIcon: Boolean = true,
     onPreviewStarted: (() -> Unit)? = null,
     onPreviewSizeKnown: ((width: Int, height: Int) -> Unit)? = null
 ) {
@@ -238,38 +239,34 @@ fun CameraPreviewSection(
                 }
 
                 // ── GLOVE STATUS HAND ICON ────────────────────────────────────
-                // Green hand once gloves have been confirmed at high confidence in this
-                // workflow; red until then. State is sticky — see
-                // PillScanningViewModel.glovesDetected; it resets when the workflow
-                // resumes from the idle/paused state.
-                //
-                // Position: top-right of the visible camera area. In landscape the
-                // pill panel covers the right 30% of the screen, so we shift the
-                // icon left by that amount so it doesn't sit behind the panel.
-                val handTint = if (glovesDetectedSticky) Color.Green else Color.Red
-                val gloveConfig = LocalConfiguration.current
-                val gloveIsLandscape = gloveConfig.orientation ==
-                        android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                val gloveEndPadding = if (gloveIsLandscape) {
-                    (gloveConfig.screenWidthDp * 0.3f).dp + 16.dp
-                } else {
-                    16.dp
-                }
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .padding(top = 100.dp, end = gloveEndPadding)
-                        .size(44.dp)
-                        .background(Color.Black.copy(alpha = 0.35f), CircleShape)
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.FrontHand,
-                        contentDescription = if (glovesDetectedSticky) "Gloves detected" else "No gloves",
-                        tint = handTint,
+                // Only shown for hazardous drugs (showGloveIcon = true). Green hand
+                // once gloves are confirmed; red until then.
+                if (showGloveIcon) {
+                    val handTint = if (glovesDetectedSticky) Color.Green else Color.Red
+                    val gloveConfig = LocalConfiguration.current
+                    val gloveIsLandscape = gloveConfig.orientation ==
+                            android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                    val gloveEndPadding = if (gloveIsLandscape) {
+                        (gloveConfig.screenWidthDp * 0.3f).dp + 16.dp
+                    } else {
+                        16.dp
+                    }
+                    Box(
                         modifier = Modifier
-                            .align(Alignment.Center)
-                            .size(26.dp)
-                    )
+                            .align(Alignment.TopEnd)
+                            .padding(top = 100.dp, end = gloveEndPadding)
+                            .size(44.dp)
+                            .background(Color.Black.copy(alpha = 0.35f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.FrontHand,
+                            contentDescription = if (glovesDetectedSticky) "Gloves detected" else "No gloves",
+                            tint = handTint,
+                            modifier = Modifier
+                                .align(Alignment.Center)
+                                .size(26.dp)
+                        )
+                    }
                 }
 
                 // ── OVERLAY CANVAS ────────────────────────────────────────────

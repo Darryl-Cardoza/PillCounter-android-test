@@ -56,7 +56,7 @@ import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsSheet
 import com.rite.pillcounting.feature.dispenseScan.presentation.analyzer.FrameBarcodeAnalyzer
 import com.rite.pillcounting.feature.dispenseScan.presentation.viewmodel.DispenseScanViewModel
-import com.rite.pillcounting.feature.dispenseScan.presentation.viewmodel.DispenseStage
+import com.rite.pillcounting.feature.dispenseScan.domain.model.DispenseStage
 import com.rite.pillcounting.feature.pillCountScan.domain.data.NavigationEvent as PillNavigationEvent
 import com.rite.pillcounting.feature.pillCountScan.domain.data.PillScanningEvent
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.AddNoteDialog
@@ -94,6 +94,7 @@ fun DispenseScanScreen(
     navController: NavController,
     countType: String,
     fromHl7: Boolean = false,
+    fromResume: Boolean = false,
     dispenseVm: DispenseScanViewModel = hiltViewModel(),
     pillVm: PillScanningViewModel = hiltViewModel(),
 ) {
@@ -153,6 +154,12 @@ fun DispenseScanScreen(
     // safely fall back to the manual PRE_RX flow.
     LaunchedEffect(fromHl7) {
         if (fromHl7) dispenseVm.initializeFromHl7Txn()
+    }
+
+    // Resume entry: partial transaction already exists, NDC not yet verified.
+    // Skip RX scan and go straight to PRE_NDC so the user only scans the container.
+    LaunchedEffect(fromResume) {
+        if (fromResume) dispenseVm.initializeFromResumedTxn()
     }
 
     // History toggle. When true, the camera + pill panel are hidden and the
@@ -289,6 +296,10 @@ fun DispenseScanScreen(
             pillVm.resumePillDetection()
             pillVm.getDrugInfo()
             pillVm.showTxnInfo(countType)
+            // Load glove model only now that RX + NDC are confirmed and drug is hazardous.
+            if (dispenseState.isHazardous) {
+                pillVm.loadGloveModelAndRebuildAnalyzer()
+            }
         } else {
             // PRE_RX / PRE_NDC — run the detector so the voice prompt can react
             // to pills-in-frame, but keep CPU/GPU off when an overlay is active.
@@ -453,6 +464,7 @@ fun DispenseScanScreen(
                 viewModel = pillVm,
                 pills = pillState.detectedPills,
                 isCameraPaused = pillVm.cameraPaused.collectAsState().value,
+                showGloveIcon = dispenseState.isHazardous,
                 onFrame = { imageProxy ->
                     // Only the barcode analyzer reads the frame metadata before the
                     // frame is forwarded to the pill VM (which always closes it). When

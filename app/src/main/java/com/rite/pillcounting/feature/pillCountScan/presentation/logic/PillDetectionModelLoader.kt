@@ -25,7 +25,7 @@ import javax.inject.Singleton
 data class LoadedModels(
     val pillInterpreter: Interpreter,
     val trayInterpreter: Interpreter,
-    val gloveInterpreter: Interpreter
+    val gloveInterpreter: Interpreter?
 )
 
 private data class InterpreterHolder(
@@ -65,21 +65,25 @@ class PillDetectionModelLoader @Inject constructor(
         private const val GPU_DELEGATE_RETRY_DELAY_MS = 150L
     }
 
-    suspend fun getOrLoadInterpreters(): LoadedModels {
-        Log.i(TAG, "getOrLoadInterpreters() called")
+    suspend fun getOrLoadInterpreters(includeGlove: Boolean = true): LoadedModels {
+        Log.i(TAG, "getOrLoadInterpreters() called (includeGlove=$includeGlove)")
 
         return mutex.withLock {
             val existingPill  = pillInterpreter
             val existingTray  = trayInterpreter
             val existingGlove = gloveInterpreter
 
-            if (existingPill != null && existingTray != null && existingGlove != null) {
+            if (!includeGlove && existingPill != null && existingTray != null) {
+                Log.i(TAG, "Pill + tray already loaded, glove skipped — returning cached")
+                return@withLock LoadedModels(existingPill, existingTray, null)
+            }
+            if (includeGlove && existingPill != null && existingTray != null && existingGlove != null) {
                 Log.i(TAG, "All three models already loaded — returning cached interpreters")
                 return@withLock LoadedModels(existingPill, existingTray, existingGlove)
             }
 
             Log.i(TAG, "One or more interpreters missing — loading models")
-            logger.i("Loading pill + tray + glove interpreters")
+            logger.i(if (includeGlove) "Loading pill + tray + glove interpreters" else "Loading pill + tray interpreters (glove deferred)")
 
             // Log initial system state before model loading
             performanceLogger.logPerformanceSnapshot("PRE_MODEL_LOAD")
@@ -92,8 +96,9 @@ class PillDetectionModelLoader @Inject constructor(
                     val trayLoadStart = System.currentTimeMillis()
                     val trayBufferDeferred  = async { loadModelFile(TRAY_MODEL_FILENAME) }
 
-                    val gloveLoadStart = System.currentTimeMillis()
-                    val gloveBufferDeferred = async { loadModelFile(GLOVE_MODEL_FILENAME) }
+                    val gloveBufferDeferred = if (includeGlove) {
+                        async { loadModelFile(GLOVE_MODEL_FILENAME) }
+                    } else null
 
                     val pillBuffer  = pillBufferDeferred.await()
                     val pillBufferTime = System.currentTimeMillis() - pillLoadStart
@@ -101,10 +106,10 @@ class PillDetectionModelLoader @Inject constructor(
                     val trayBuffer  = trayBufferDeferred.await()
                     val trayBufferTime = System.currentTimeMillis() - trayLoadStart
 
-                    val gloveBuffer = gloveBufferDeferred.await()
-                    val gloveBufferTime = System.currentTimeMillis() - gloveLoadStart
+                    val gloveBuffer = gloveBufferDeferred?.await()
+                    val gloveBufferTime = System.currentTimeMillis() - pillLoadStart
 
-                    Log.i(TAG, "Model buffers ready")
+                    Log.i(TAG, "Model buffers ready (glove=${gloveBuffer != null})")
 
                     val gpuSupported = withContext(Dispatchers.Main) {
                         CompatibilityList().isDelegateSupportedOnThisDevice
@@ -152,38 +157,40 @@ class PillDetectionModelLoader @Inject constructor(
                         gpuDelegateEnabled = trayHolder.usesGpu
                     )
 
-                    val gloveInterpreterStart = System.currentTimeMillis()
-                    val gloveHolder = createInterpreterWithFallback(
-                        modelBuffer = gloveBuffer,
-                        modelName = "Glove model",
-                        tryGpu = gpuSupported
-                    )
-                    gloveGpuDelegate = gloveHolder.delegate
-                    val gloveInterpreterTime = System.currentTimeMillis() - gloveInterpreterStart
-
-                    // Log glove model load
-                    performanceLogger.logModelLoad(
-                        modelName = "Glove Detection Model (YOLOv11)",
-                        loadedOn = if (gloveHolder.usesGpu) "GPU" else "CPU",
-                        interpreter = gloveHolder.interpreter,
-                        modelSizeBytes = gloveBuffer.capacity().toLong(),
-                        loadTimeMs = gloveBufferTime + gloveInterpreterTime,
-                        gpuDelegateEnabled = gloveHolder.usesGpu
-                    )
+                    val gloveHolder = if (gloveBuffer != null) {
+                        val gloveInterpreterStart = System.currentTimeMillis()
+                        val holder = createInterpreterWithFallback(
+                            modelBuffer = gloveBuffer,
+                            modelName = "Glove model",
+                            tryGpu = gpuSupported
+                        )
+                        gloveGpuDelegate = holder.delegate
+                        val gloveInterpreterTime = System.currentTimeMillis() - gloveInterpreterStart
+                        performanceLogger.logModelLoad(
+                            modelName = "Glove Detection Model (YOLOv11)",
+                            loadedOn = if (holder.usesGpu) "GPU" else "CPU",
+                            interpreter = holder.interpreter,
+                            modelSizeBytes = gloveBuffer.capacity().toLong(),
+                            loadTimeMs = gloveBufferTime + gloveInterpreterTime,
+                            gpuDelegateEnabled = holder.usesGpu
+                        )
+                        logTensorInfo(holder.interpreter, "Glove model")
+                        gloveInterpreter = holder.interpreter
+                        holder
+                    } else null
 
                     logTensorInfo(pillHolder.interpreter, "Pill model")
                     logTensorInfo(trayHolder.interpreter, "Tray model")
-                    logTensorInfo(gloveHolder.interpreter, "Glove model")
 
                     pillInterpreter  = pillHolder.interpreter
                     trayInterpreter  = trayHolder.interpreter
-                    gloveInterpreter = gloveHolder.interpreter
 
-                    Log.i(TAG, "All three interpreters initialized successfully")
-                    logger.i("Pill + tray + glove interpreters ready")
+                    val loadedCount = if (gloveHolder != null) "3" else "2"
+                    Log.i(TAG, "$loadedCount interpreters initialized successfully")
+                    logger.i(if (gloveHolder != null) "Pill + tray + glove interpreters ready" else "Pill + tray interpreters ready (glove deferred)")
 
-                    val gpuCount = listOf(pillHolder, trayHolder, gloveHolder).count { it.delegate != null }
-                    Log.i(TAG, "📊 GPU delegates active: $gpuCount / 3 (one per interpreter)")
+                    val gpuCount = listOfNotNull(pillHolder, trayHolder, gloveHolder).count { it.delegate != null }
+                    Log.i(TAG, "📊 GPU delegates active: $gpuCount / ${if (gloveHolder != null) 3 else 2} (one per interpreter)")
 
                     // Log post-load system state
                     performanceLogger.logPerformanceSnapshot("POST_MODEL_LOAD")
@@ -191,7 +198,7 @@ class PillDetectionModelLoader @Inject constructor(
                     LoadedModels(
                         pillInterpreter  = pillHolder.interpreter,
                         trayInterpreter  = trayHolder.interpreter,
-                        gloveInterpreter = gloveHolder.interpreter
+                        gloveInterpreter = gloveHolder?.interpreter
                     )
                 }
             }

@@ -180,9 +180,10 @@ sealed interface Screen {
         private const val ROUTE_PREFIX = "dispense_scan"
         const val ARG_TYPE = "type"
         const val ARG_FROM_HL7 = "from_hl7"
+        const val ARG_FROM_RESUME = "from_resume"
 
         override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}"
+            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}"
 
         val navArguments: List<NamedNavArgument> = listOf(
             navArgument(ARG_TYPE) { type = NavType.StringType },
@@ -190,10 +191,14 @@ sealed interface Screen {
                 type = NavType.BoolType
                 defaultValue = false
             },
+            navArgument(ARG_FROM_RESUME) {
+                type = NavType.BoolType
+                defaultValue = false
+            },
         )
 
-        fun createRoute(scanType: String, fromHl7: Boolean = false) =
-            "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7"
+        fun createRoute(scanType: String, fromHl7: Boolean = false, fromResume: Boolean = false) =
+            "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume"
     }
 
     data object ResumeFixedCounts : Screen {

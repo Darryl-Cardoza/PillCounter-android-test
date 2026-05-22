@@ -150,19 +150,14 @@ class CountsViewModel @Inject constructor(
     private fun resumeTransaction(countType: CountType, item: CountItem) {
         viewModelScope.launch {
             preferenceHelper.saveTxnId(item.id)
-            if (!item.isNdcVerified) {
-                _navigationEvent.send(
-                    NavigationEvent.NavigateToScanBarcode(
-                        countType = countType
-                    )
+            // Always resume via DispenseScanScreen; initializeFromResumedTxn() will
+            // land at PRE_NDC (container scan pending) or COUNTING (both verified).
+            _navigationEvent.send(
+                NavigationEvent.NavigateToDispenseScan(
+                    countType = countType,
+                    fromResume = true,
                 )
-            } else {
-                _navigationEvent.send(
-                    NavigationEvent.NavigateToPillCount(
-                        countType = countType
-                    )
-                )
-            }
+            )
         }
     }
     /* ------------------------- Fixed Counts Logic ------------------------- */

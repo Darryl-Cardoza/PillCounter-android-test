@@ -530,6 +530,7 @@ class ScanBarcodeViewModel @Inject constructor(
                     drugType = drugInfo.drugType,
                     gtin = scannedLookupValue,
                     packageQty = drugInfo.qty,
+                    isHazardous = drugInfo.isHazardous ?: false,
                 )
             )
 
