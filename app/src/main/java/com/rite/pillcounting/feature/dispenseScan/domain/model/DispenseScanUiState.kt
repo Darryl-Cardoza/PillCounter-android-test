@@ -45,4 +45,7 @@ data class DispenseScanUiState(
     val txnId: Long = 0L,
 
     val isHazardous: Boolean = false,
+
+    // Stock-count only: shown when the user scans an RX label instead of an NDC container.
+    val showRxScannedInStockCountDialog: Boolean = false,
 )

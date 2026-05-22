@@ -67,7 +67,9 @@ class DispenseScanViewModel @Inject constructor(
 
     fun setCountType(type: String) {
         countType = runCatching { CountType.valueOf(type) }.getOrDefault(CountType.FIXED)
-        _uiState.update { it.copy(scanType = type) }
+        // Stock count has no RX label — start directly at container (NDC) scanning.
+        val initialStage = if (countType == CountType.REGULAR) DispenseStage.PRE_NDC else DispenseStage.PRE_RX
+        _uiState.update { it.copy(scanType = type, stage = initialStage) }
     }
 
     /**
@@ -479,6 +481,41 @@ class DispenseScanViewModel @Inject constructor(
     fun onNdcConfirmed() {
         val state = _uiState.value
         val txnId = state.txnId
+
+        // Stock count: no RX scan happened, so no txn exists yet. Create one now.
+        if (countType == CountType.REGULAR && txnId == 0L) {
+            viewModelScope.launch {
+                val ndc = state.ndcScannedValue.ifBlank { state.ndc }
+                val drugId = drugMasterDao.upsertPreservingId(
+                    DrugMasterEntity(
+                        ndc = ndc,
+                        drugName = state.ndcDrugName.ifBlank { state.drugName },
+                        isHazardous = state.isHazardous,
+                    )
+                )
+                val txn = PillCountTxnEntity(
+                    localId = preferenceHelper.getLocalId(),
+                    drugId = drugId,
+                    countType = countType,
+                    status = CountStatus.PARTIAL,
+                    expiry = null,
+                    lotNo = null,
+                    barcodeImage = state.barcodeImagePath,
+                    isNdcVerified = true,
+                    targetCount = null,
+                    bucketId = state.selectedBucketId.ifBlank { null },
+                    rxNo = null,
+                )
+                val newTxnId = pillCountTxnDao.upsertPreservingId(txn)
+                preferenceHelper.saveTxnId(newTxnId)
+                _uiState.update {
+                    it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, txnId = newTxnId)
+                }
+                logger.i("Stock count NDC confirmed, txn=$newTxnId, advancing to COUNTING")
+            }
+            return
+        }
+
         if (txnId == 0L) return
 
         viewModelScope.launch {
@@ -544,6 +581,21 @@ class DispenseScanViewModel @Inject constructor(
     fun onRxScannedInNdcStage() {
         if (_uiState.value.stage != DispenseStage.PRE_NDC) return
         _uiState.update { it.copy(scanNdcToastTick = it.scanNdcToastTick + 1) }
+    }
+
+    /**
+     * Called in the stock-count flow when the user scans an RX label instead
+     * of the NDC container barcode. Shows a blocking dialog instead of a toast
+     * because stock count never accepts RX labels — the user must rescan the
+     * correct container.
+     */
+    fun onRxScannedInStockCount() {
+        if (_uiState.value.stage != DispenseStage.PRE_NDC) return
+        _uiState.update { it.copy(showRxScannedInStockCountDialog = true) }
+    }
+
+    fun dismissRxScannedInStockCountDialog() {
+        _uiState.update { it.copy(showRxScannedInStockCountDialog = false) }
     }
 
     fun clearError() {

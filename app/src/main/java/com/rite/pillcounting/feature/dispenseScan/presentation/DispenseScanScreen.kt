@@ -12,6 +12,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -64,6 +66,7 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.CameraPr
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.HistoryModePortrait
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.InformationPanelSection
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.StepTitleWithSpeech
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.TargetPillsCountDialog
 import com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
@@ -318,6 +321,7 @@ fun DispenseScanScreen(
         dispenseState.showNdcNotFoundDialog,
         dispenseState.showInvalidScanDialog,
         dispenseState.showNdcEquivalenceDialog,
+        dispenseState.showRxScannedInStockCountDialog,
         dispenseState.isLoading,
     ) {
         val anyOverlay = dispenseState.showRxDetails ||
@@ -325,6 +329,7 @@ fun DispenseScanScreen(
                 dispenseState.showNdcNotFoundDialog ||
                 dispenseState.showInvalidScanDialog ||
                 dispenseState.showNdcEquivalenceDialog ||
+                dispenseState.showRxScannedInStockCountDialog ||
                 dispenseState.isLoading
         if (anyOverlay) pillVm.pausePillDetection()
         else pillVm.resumePillDetection()
@@ -348,6 +353,7 @@ fun DispenseScanScreen(
         dispenseState.showNdcNotFoundDialog,
         dispenseState.showInvalidScanDialog,
         dispenseState.showNdcEquivalenceDialog,
+        dispenseState.showRxScannedInStockCountDialog,
         dispenseState.isLoading,
     ) {
         val shouldRun = (dispenseState.stage == DispenseStage.PRE_RX ||
@@ -357,6 +363,7 @@ fun DispenseScanScreen(
                 !dispenseState.showNdcNotFoundDialog &&
                 !dispenseState.showInvalidScanDialog &&
                 !dispenseState.showNdcEquivalenceDialog &&
+                !dispenseState.showRxScannedInStockCountDialog &&
                 !dispenseState.isLoading
         if (shouldRun) barcodeAnalyzer.resume() else barcodeAnalyzer.pause()
     }
@@ -435,6 +442,21 @@ fun DispenseScanScreen(
         )
     }
 
+    // Stock-count flow: user scanned an RX label instead of the NDC container.
+    // A blocking dialog is used here (rather than a toast) because stock count
+    // never accepts RX labels — the user must always rescan the container.
+    if (dispenseState.showRxScannedInStockCountDialog) {
+        CommonDialog(
+            title = stringResource(R.string.rescan_require),
+            message = stringResource(R.string.scan_correct_label),
+            confirmText = stringResource(R.string.rescane),
+            cancelText = "",
+            onConfirm = { dispenseVm.dismissRxScannedInStockCountDialog() },
+            onCancel = {},
+            isSingleButton = true,
+        )
+    }
+
     // Hard PMS NDC mismatch (scanned NDC doesn't match HL7 and isn't a
     // substitute) is surfaced as a non-blocking toast via ndcMismatchToastTick
     // below, not a popup — the popup variant was too disruptive when the user
@@ -477,9 +499,11 @@ fun DispenseScanScreen(
                                 value = value,
                                 imagePath = imagePath,
                                 stage = dispenseState.stage,
+                                countType = countType,
                                 onRx = dispenseVm::onRxBarcodeRead,
                                 onNdc = dispenseVm::onNdcBarcodeRead,
                                 onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
+                                onRxInStockCount = dispenseVm::onRxScannedInStockCount,
                             )
                             // The analyzer self-pauses on every MLKit hit. If we
                             // dropped the read (false positive, wrong format, or
@@ -643,26 +667,38 @@ fun DispenseScanScreen(
             }
         }
 
-        // Top-left back button. The legacy "what to scan" indicator
-        // (StepTitleWithSpeech) is intentionally NOT rendered here — voice
-        // guidance is handled by DispenseVoicePrompt above.
-        // Hidden while the history view is up: history renders its own back
-        // arrow in HeadlineBar, and having two stacked arrows confuses which
-        // one navigates back to the pill panel vs. exits the flow.
         if (!showHistory) {
-            BackButton(
+            Row(
                 modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(8.dp),
-                navController = navController,
-                showBox = false,
-                onClick = {
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo(0)
-                        launchSingleTop = true
-                    }
-                },
-            )
+                    .align(Alignment.TopCenter)
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                BackButton(
+                    navController = navController,
+                    showBox = false,
+                    onClick = {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(0)
+                            launchSingleTop = true
+                        }
+                    },
+                )
+                if (isLandscape) {
+                    Spacer(modifier = Modifier.weight(0.3f))
+                } else {
+                    Spacer(modifier = Modifier.weight(0.6f))
+                }
+                if (dispenseState.stage == DispenseStage.COUNTING) {
+                    StepTitleWithSpeech(
+                        stepType = pillStepType,
+                        isSoundOverride = isSoundEnabled,
+                        titleResOverride = if (countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null,
+                    )
+                }
+                Spacer(modifier = Modifier.weight(1f))
+            }
         }
 
         if (dispenseState.isLoading) {
@@ -768,9 +804,11 @@ private fun handleBarcode(
     value: String,
     imagePath: String?,
     stage: DispenseStage,
+    countType: String,
     onRx: (String, String?) -> Unit,
     onNdc: (String, String?) -> Unit,
     onRxInNdcStage: () -> Unit,
+    onRxInStockCount: () -> Unit,
 ): Boolean {
     if (value.isBlank()) return false
     return when (stage) {
@@ -780,10 +818,14 @@ private fun handleBarcode(
         }
         DispenseStage.PRE_NDC -> {
             // Pipe-delimited payloads are the RX-label template
-            // ({RXNO}|{NDCNO}|{QTY}|{BUCKET}) — never a valid GTIN / GS1. If the
-            // user re-scans the RX while we're waiting for the container, nudge
-            // them with a toast instead of silently dropping the read.
+            // ({RXNO}|{NDCNO}|{QTY}|{BUCKET}) — never a valid GTIN / GS1.
+            // Stock count: show a blocking dialog since RX labels are never valid here.
+            // Dispense flow: nudge with a toast and resume scanning.
             if (value.contains('|')) {
+                if (countType == CountType.REGULAR.toString()) {
+                    onRxInStockCount()
+                    return true
+                }
                 onRxInNdcStage()
                 return false
             }
