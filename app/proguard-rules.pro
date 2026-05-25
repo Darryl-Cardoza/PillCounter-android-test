@@ -20,6 +20,12 @@
 # Kotlin stdlib does NOT need keep rules
 # Metadata is enough for reflection / Room / Moshi
 
+# Firebase ComponentRuntime.discoverComponents() has a hardcoded string comparison
+# "kotlinx.coroutines.CoroutineDispatcher" for dedup. R8 renames this to a short
+# name (e.g. jk1), breaking the check and causing DependencyCycleException on launch.
+-keep class kotlinx.coroutines.** { *; }
+-keepnames class kotlinx.coroutines.**
+
 
 ############################################
 # JETPACK COMPOSE
@@ -103,6 +109,25 @@
 # FIREBASE
 ############################################
 
+-keep class com.google.firebase.** { *; }
+-keepclassmembers class com.google.firebase.** { *; }
+-keep class com.google.android.gms.** { *; }
+-keepclassmembers class com.google.android.gms.** { *; }
+
+# Keep all ComponentRegistrar implementations and the interface itself
+-keep interface com.google.firebase.components.ComponentRegistrar
+-keep class * implements com.google.firebase.components.ComponentRegistrar { *; }
+-keep class com.google.firebase.components.** { *; }
+-keep class com.google.firebase.installations.** { *; }
+
+# Prevent R8 from inlining Firebase's ServiceLoader calls.
+# R8's ServiceLoader optimization can corrupt Firebase's component graph.
+-keep class java.util.ServiceLoader { *; }
+-keepclassmembers class java.util.ServiceLoader {
+    public static java.util.ServiceLoader load(java.lang.Class, java.lang.ClassLoader);
+    public static java.util.ServiceLoader load(java.lang.Class);
+}
+
 -dontwarn com.google.firebase.**
 
 
@@ -110,7 +135,18 @@
 # ML KIT
 ############################################
 
+-keep class com.google.mlkit.** { *; }
+-keep class com.google.android.gms.internal.mlkit_vision_barcode.** { *; }
 -dontwarn com.google.mlkit.**
+
+
+############################################
+# PLAY SERVICES (required by Firebase + ML Kit)
+############################################
+
+-keep class com.google.android.gms.common.** { *; }
+-keep class com.google.android.gms.tasks.** { *; }
+-dontwarn com.google.android.gms.**
 
 
 ############################################
@@ -230,3 +266,9 @@
 }
 
 -assumenosideeffects class kotlinx.coroutines.debug.** { *; }
+
+-dontoptimize
+-printconfiguration build/outputs/r8-full-config.txt
+
+-keep class **$$ExternalSyntheticLambda* { *; }
+-keep class **$$InternalSyntheticLambda* { *; }

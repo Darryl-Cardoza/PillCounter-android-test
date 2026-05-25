@@ -101,15 +101,13 @@
                     android:resource="@xml/file_paths" />
             </provider>
 
-        <receiver
-            android:name="com.google.firebase.iid.FirebaseInstanceIdReceiver"
-            android:exported="true"
-            android:permission="com.google.android.c2dm.permission.SEND"
-            tools:node="merge">
+        <service
+            android:name=".core.utils.notification.AppFirebaseMessagingService"
+            android:exported="false">
             <intent-filter>
-                <action android:name="com.google.android.c2dm.intent.RECEIVE" />
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
             </intent-filter>
-        </receiver>
+        </service>
 
         <service android:name=".core.hl7.service.HL7Service"
             android:foregroundServiceType="dataSync|connectedDevice"

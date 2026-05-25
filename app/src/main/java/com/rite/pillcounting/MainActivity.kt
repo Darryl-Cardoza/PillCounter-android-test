@@ -22,7 +22,9 @@ import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
 import com.rite.pillcounting.core.security.RuntimeUnit
-import com.rite.pillcounting.core.security.SecurityUtils
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.rite.pillcounting.core.utils.common.HelperFunctions.getStartDestination
@@ -74,10 +76,20 @@ class MainActivity : ComponentActivity() {
         window.decorView.filterTouchesWhenObscured = true
 
         // ── Security check — runs once, not on every recomposition ────────────
-        securityViolations = SecurityUtils.getSecurityViolations(this)
+//        securityViolations = SecurityUtils.getSecurityViolations(this)
+//
+//        if (securityViolations.isEmpty()) {
+//            runtimeUnit.grantClearance()
+//            runtimeUnit.activateIfNeeded()
+//        } else {
+//            runtimeUnit.revokeClearance()
+//        }
 
-        fcmService.initFCM()
-        fcmService.subscribeToTopic("global_updates")
+        lifecycleScope.launch {
+            delay(1500)
+            fcmService.initFCM()
+            fcmService.subscribeToTopic("global_updates")
+        }
 
 
 
@@ -138,11 +150,8 @@ class MainActivity : ComponentActivity() {
 
                         // ── Security dialog shown once over all other content ──
                         if (securityViolations.isNotEmpty()) {
-                            runtimeUnit.revokeClearance()
                             SecurityErrorDialog(securityViolations)
                         } else {
-                            runtimeUnit.grantClearance()
-                            runtimeUnit.activateIfNeeded()
                             when {
                                 settingsState.isMaintenanceMode -> MaintenanceScreen()
 

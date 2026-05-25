@@ -1,3 +1,8 @@
+@file:OptIn(KspExperimental::class)
+
+import com.google.devtools.ksp.KspExperimental
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -6,6 +11,11 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.gms.google-services")
     alias(libs.plugins.androidx.room)
+}
+
+val keystoreProps = Properties().also { props ->
+    val f = rootProject.file("keystore.properties")
+    if (f.exists()) f.inputStream().use { props.load(it) }
 }
 
 android {
@@ -48,11 +58,21 @@ android {
         }
     }
 
+    signingConfigs {
+        create("release") {
+            storeFile = file(keystoreProps["storeFile"] as String)
+            storePassword = keystoreProps["storePassword"] as String
+            keyAlias = keystoreProps["keyAlias"] as String
+            keyPassword = keystoreProps["keyPassword"] as String
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
+            signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -101,6 +121,7 @@ kotlin {
 }
 
 ksp {
+    useKsp2 = true
     arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
 }
 
@@ -109,9 +130,6 @@ configurations.configureEach {
 }
 
 configurations.all {
-    resolutionStrategy {
-        force("com.google.mlkit:barcode-scanning:17.3.0")
-    }
     exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-debug")
 }
 

@@ -40,3 +40,4 @@ captures/
 
 # Local files
 local.properties
+keystore.properties

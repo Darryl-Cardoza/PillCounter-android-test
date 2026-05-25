@@ -66,9 +66,7 @@ object NetworkModule {
     @Singleton
     fun provideRuntimeUnit(
         @ApplicationContext context: Context
-    ): RuntimeUnit = RuntimeUnit(context).also {
-        it.activateIfNeeded()
-    }
+    ): RuntimeUnit = RuntimeUnit(context)
 
     /**
      * Provides the main [OkHttpClient] with:

@@ -20,8 +20,6 @@ class PillCountingApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
-        FirebaseApp.initializeApp(this)
-
         // Pre-load BOTH models (pill + tray) in parallel on app start.
         // They are cached as singletons so the scanning screen gets them instantly.
         applicationScope.launch {
