@@ -134,6 +134,7 @@ interface PillCountTxnDao {
            txn.isNdcVerified,
            txn.bucketId,
            txn.countType,
+           txn.priority,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
                 THEN subDrug.drugName ELSE drug.drugName END AS drugName,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
@@ -155,7 +156,13 @@ interface PillCountTxnDao {
       AND txn.countType = :countType
       AND txn.localId = :userLocalId
     GROUP BY txn.txnId
-    ORDER BY txn.isComingFromHL7 DESC,
+    ORDER BY CASE txn.priority
+                 WHEN 'High'   THEN 1
+                 WHEN 'Medium' THEN 2
+                 WHEN 'Low'    THEN 3
+                 ELSE 2
+             END ASC, /* values correspond to TxnPriority enum names */
+             txn.isComingFromHL7 DESC,
              txn.createdAt DESC
     """
     )
@@ -207,6 +214,12 @@ interface PillCountTxnDao {
     @Query("UPDATE pill_count_txn SET isDeleted = 1, updatedAt = :now WHERE txnId = :txnId")
     suspend fun softDelete(
         txnId: Long,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query("UPDATE pill_count_txn SET isDeleted = 1, updatedAt = :now WHERE rxNo = :rxNo AND isDeleted = 0")
+    suspend fun softDeleteByRxNo(
+        rxNo: String,
         now: Long = System.currentTimeMillis()
     )
 

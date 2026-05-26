@@ -16,6 +16,7 @@ import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -72,6 +73,9 @@ class Hl7Repository @Inject constructor(
 
                 MessageType.INVENTORY_REQUEST ->
                     handleInrInventoryRequest(message)
+
+                MessageType.CANCEL_ORDER ->
+                    handleOrderCancellation(message)
             }
         }
     }
@@ -248,6 +252,12 @@ class Hl7Repository @Inject constructor(
 
         val drugId = finalDrug?.let { drugMasterDao.upsertPreservingId(it) }
 
+        val priority = TxnPriority.fromString(
+            message.customSegments
+                .firstOrNull { it.segmentType == "ZPR" && it.field2 == "PRIORITY" }
+                ?.field3
+        )
+
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
             drugId = drugId,
@@ -257,7 +267,8 @@ class Hl7Repository @Inject constructor(
             isComingFromHL7 = true,
             isSynced = false,
             isNdcVerified = false,
-            rxNo = rxNo
+            rxNo = rxNo,
+            priority = priority
         )
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
@@ -668,6 +679,10 @@ class Hl7Repository @Inject constructor(
         message: CompleteHL7Message
     ): MessageType? {
         return when {
+            message.order?.orderControl == "CA" &&
+                    !message.order?.placerOrderId.isNullOrBlank() ->
+                MessageType.CANCEL_ORDER
+
             message.messageType == "RDE" &&
                     message.triggerEvent == "O11" &&
                     message.medications.isNotEmpty() ->
@@ -680,6 +695,13 @@ class Hl7Repository @Inject constructor(
 
             else -> null
         }
+    }
+
+    private suspend fun handleOrderCancellation(message: CompleteHL7Message) {
+        val rxNo = message.order?.placerOrderId ?: return
+        logger.i("Received ORC|CA for rxNo=$rxNo — soft-deleting transaction")
+        pillCountTxnDao.softDeleteByRxNo(rxNo)
+        logger.i("Transaction with rxNo=$rxNo marked as deleted")
     }
 
     private fun observePendingHl7Transactions() {

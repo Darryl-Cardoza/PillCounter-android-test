@@ -3,24 +3,19 @@
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:padding="4dp">
 
     <TextView
         android:id="@+id/tv_notification_title"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textAppearance="@android:style/TextAppearance.Material.Notification.Title"
-        android:textStyle="bold"
-        android:maxLines="1"
-        android:ellipsize="end" />
+        android:textAppearance="@style/TextAppearance.Compat.Notification.Title" />
 
     <TextView
         android:id="@+id/tv_notification_body"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="2dp"
-        android:textAppearance="@android:style/TextAppearance.Material.Notification"
-        android:maxLines="3"
-        android:ellipsize="end" />
+        android:textAppearance="@style/TextAppearance.Compat.Notification" />
 
 </LinearLayout>

@@ -84,7 +84,10 @@ class Hl7Notifier @Inject constructor(
             }
         }
 
-        val contentView = RemoteViews(context.packageName, com.rite.pillcounting.R.layout.notification_hl7_content).apply {
+        val contentView = RemoteViews(
+            context.packageName,
+            com.rite.pillcounting.R.layout.notification_hl7_content
+        ).apply {
             setTextViewText(com.rite.pillcounting.R.id.tv_notification_title, title)
             setTextViewText(com.rite.pillcounting.R.id.tv_notification_body, message)
         }
@@ -104,11 +107,6 @@ class Hl7Notifier @Inject constructor(
         NotificationManagerCompat.from(context)
             .notify(System.currentTimeMillis().toInt(), notification)
     }
-
-
-
-
-
 }
 
 
