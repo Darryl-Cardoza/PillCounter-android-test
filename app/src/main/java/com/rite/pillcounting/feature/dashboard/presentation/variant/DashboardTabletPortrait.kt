@@ -138,7 +138,10 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                     onTap = params.onKpiFilterTapped,
                 )
 
-                HorizontalDivider(color = Color(0x14000000))
+                HorizontalDivider(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    color = Color(0x14000000),
+                )
 
                 // Pager state is the single source of truth for which tab is visible. Tab taps
                 // animate the pager; swipes update the pager which then notifies the VM via
@@ -423,6 +426,7 @@ private fun ScaffoldQueueList(items: List<QueueItem>) {
     }
 
     LazyColumn(
+        modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         contentPadding = PaddingValues(vertical = 4.dp),
     ) {
