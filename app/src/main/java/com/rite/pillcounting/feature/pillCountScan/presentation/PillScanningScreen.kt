@@ -470,7 +470,7 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppTheme.extendedColors.secondaryBackground)
+            .background(androidx.compose.ui.graphics.Color(0xFFE5E5E5))
             .padding(12.dp),
         horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {

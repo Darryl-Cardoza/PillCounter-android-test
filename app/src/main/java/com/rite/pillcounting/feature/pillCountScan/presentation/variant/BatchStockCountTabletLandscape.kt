@@ -69,15 +69,21 @@ fun BatchStockCountTabletLandscape(
     onEndCount: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Top card claims the remaining height; bottom card wraps its content. A
-    // generous gap (16 dp) between cards matches the Figma rhythm.
-    Column(
+    // Bottom card overlaps the top card by [BOTTOM_OVERLAP] and carries a soft
+    // upward shadow so it reads as an overlay on the recent-counts card. Box
+    // (instead of Column with spacedBy) lets the bottom child sit at the bottom
+    // edge while the top child fills the rest of the height behind it.
+    Box(
         modifier = modifier
             .fillMaxHeight()
             .padding(vertical = 16.dp, horizontal = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
-        StockCountCard(modifier = Modifier.weight(1f, fill = true)) {
+        StockCountCard(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxHeight()
+                .fillMaxWidth(),
+        ) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -92,31 +98,58 @@ fun BatchStockCountTabletLandscape(
                 }
                 RecentCountsLabelRow(label = label)
                 Spacer(modifier = Modifier.height(8.dp))
+                // Bottom padding clears the overlapping card so the last list
+                // row never hides behind it.
                 RecentCountsList(
                     rows = state.recentCounts,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = OVERLAY_CARD_CLEARANCE),
                 )
             }
         }
-        StockCountCard {
-            if (state.activeNdc != null) {
-                ScannedDrugCard(
-                    active = state.activeNdc,
-                    onIncrement = onIncrement,
-                    onDecrement = onDecrement,
-                    onClear = onClear,
-                    onAdd = onAdd,
+
+        // Bottom card with an upward elevation shadow. `shadow` is applied
+        // BEFORE clip so the shadow renders outside the card's clipped bounds.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .shadow(
+                    elevation = 12.dp,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(CARD_RADIUS),
+                    clip = false,
+                    ambientColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.25f),
+                    spotColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.25f),
                 )
-            } else {
-                ScannedSummaryCard(
-                    totalNdcs = state.totalNdcs,
-                    totalPills = state.totalPills,
-                    onEndCount = onEndCount,
-                )
+        ) {
+            StockCountCard {
+                if (state.activeNdc != null) {
+                    ScannedDrugCard(
+                        active = state.activeNdc,
+                        onIncrement = onIncrement,
+                        onDecrement = onDecrement,
+                        onClear = onClear,
+                        onAdd = onAdd,
+                    )
+                } else {
+                    ScannedSummaryCard(
+                        totalNdcs = state.totalNdcs,
+                        totalPills = state.totalPills,
+                        onEndCount = onEndCount,
+                    )
+                }
             }
         }
     }
 }
+
+/**
+ * Bottom padding reserved inside the top card so the last list row doesn't
+ * hide behind the overlay card. Slightly larger than the overlay's elevation
+ * to leave breathing room.
+ */
+private val OVERLAY_CARD_CLEARANCE = 24.dp
 
 /**
  * Stateful preview host that mimics the Figma: grey camera area on the left,

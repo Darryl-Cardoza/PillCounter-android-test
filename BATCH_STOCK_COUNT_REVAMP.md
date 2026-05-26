@@ -116,7 +116,7 @@ All 4 variants render the same `BatchStockCountUiState`. The shapes/components d
 - Dashboard → Inventory click → bucket-select dialog (single dialog, no New/Resume picker) → creates a batch → navigates to `Screen.InventoryScan`.
 - Tablet landscape:
   - Live CameraX preview on the left (inside an inset rounded card). No analyzer wired; ML interpreter is intentionally not initialized in this mode.
-  - New panel on the right with all §7a polish items applied: white rows + hairline dividers, redesigned counter (square bordered tiles, 1.6:1 ratio, 30 dp cyan icons), 380 dp panel width, 13 dp card radius, NDC value no-wrap, 120 dp CLEAR/ADD buttons.
+  - New panel on the right with all §7a polish items applied: white rows + hairline dividers, redesigned counter (square bordered tiles, 1.6:1 ratio, 30 dp cyan icons), 440 dp panel width, 13 dp card radius, NDC value no-wrap, 120 dp CLEAR/ADD buttons.
   - +/− / CLEAR / ADD update sample state locally. SCAN PILLS / END COUNT are stubs.
 - Other 3 form factors with `isInventory = true` still render the legacy `PillScanningScreen` (acceptable until their Figmas arrive).
 - KPI column regression on tablet-landscape dashboard fixed.
@@ -140,8 +140,8 @@ Concrete diffs observed in the first cut vs. Figma `STOCK COUNT-SEALED-TAB-LANDS
 | 8 | Counter center tile width ratio | ✅ 1.6 : 1 (center vs button). |
 | 9 | CLEAR / ADD buttons | ✅ Fixed 120 dp each, centered with 12 dp gap. |
 | 10 | Side panel width | ✅ 440 dp (bumped from 380 dp after user feedback on cramped detail row). |
-| 11 | Gap between top and bottom card | ✅ 16 dp via `Arrangement.spacedBy`. |
-| 12 | Camera area inset | ✅ Rounded 16 dp card, outer padding 12 dp. |
+| 11 | Gap between top and bottom card | ✅ **Flush (0 dp)** — bottom card reads as an overlay/extension of the top card, matching the Figma "nested rounded corners" look. |
+| 12 | Camera area inset | ✅ Rounded 16 dp card, outer padding 12 dp, light-grey surround (`#E5E5E5`) — replaces the dark theme background so the screen reads as a light surface like the Figma. |
 | 13 | Back arrow in camera area | ✅ Kept, overlaid top-left of camera card. |
 | 14 | Camera preview is static grey | ✅ Live `CameraPreviewSection` wired; no-op `onFrame`/`onFilteredCountChanged` (ML interpreter never initialized in this mode). |
 
