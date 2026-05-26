@@ -506,7 +506,7 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
         // Right: new persistent panel.
         Box(
             modifier = Modifier
-                .width(380.dp)
+                .width(440.dp)
                 .fillMaxHeight()
         ) {
             com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletLandscape(

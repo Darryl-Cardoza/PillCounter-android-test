@@ -13,9 +13,8 @@ The legacy Inventory flow used the same generic verify-NDC / verify-Rx bottom sh
 ## 2. Flow / behavioral contract
 
 ### Entry
-- Dashboard → **Inventory** Quick Action → CommonSingleSelectDialog ("New batch" / "Resume last")
-  - **New batch** → bucket-select dialog → `DashboardViewModel.createBatch(bucket)` → `LaunchedEffect(createdBatchId)` navigates to `Screen.InventoryScan?batch_id={id}`
-  - **Resume last** → `getLastInProgressBatch()` → `Screen.InventoryScan?batch_id={id}` (or toast if none)
+- Dashboard → **Inventory** Quick Action → **bucket-select dialog** (direct, no New/Resume picker) → `DashboardViewModel.createBatch(bucket)` → `LaunchedEffect(createdBatchId)` navigates to `Screen.InventoryScan?batch_id={id}`.
+- Clicking Inventory always creates a new batch. Resume-last is not surfaced from this Quick Action; if needed it must be reached via a different entry point (e.g. history / partial counts screen).
 - The destination screen is **`PillScanningScreen` reused with `isInventory = true`**.
 
 ### Default mode (Sealed-bottle scan)
@@ -75,9 +74,8 @@ All 4 variants render the same `BatchStockCountUiState`. The shapes/components d
 - `app/src/main/java/com/rite/pillcounting/navigation/AppNavGraph.kt`
   - Registers `Screen.InventoryScan` → `PillScanningScreen(navController, CountType.REGULAR, isInventory = true)`.
 - `app/src/main/java/com/rite/pillcounting/feature/dashboard/presentation/DashboardScreen.kt`
-  - Inventory dialog flow ported from `RegularCountSection`: 2-step dialogs (New/Resume → bucket-select) → `createBatch`.
-  - `LaunchedEffect(createdBatchId)` now navigates to `Screen.InventoryScan` (was: `Screen.DispenseScan` — that was wrong).
-  - "Resume last" branch navigates to `Screen.InventoryScan` (was: `Screen.Batch`).
+  - Inventory Quick Action opens **bucket-select directly** (single dialog). The earlier New-batch / Resume-last picker was removed per product decision — Inventory always creates a new batch.
+  - `LaunchedEffect(createdBatchId)` navigates to `Screen.InventoryScan` (was: `Screen.DispenseScan` — that was wrong).
 - `app/src/main/java/com/rite/pillcounting/feature/pillCountScan/presentation/PillScanningScreen.kt`
   - New parameter: `isInventory: Boolean = false`.
   - Early-return into `InventoryTabletLandscapeShell(navController)` when `isInventory && isTablet && isLandscape`. Other 3 form factors fall through to legacy UI until their Figmas land.
@@ -109,12 +107,13 @@ All 4 variants render the same `BatchStockCountUiState`. The shapes/components d
 | 9 | SCAN PILLS hand-off | **B1**: reuse `PillScanningScreen`, toggle ML interpreter + panel content in place (no separate screen) |
 | 10 | Route name | `Screen.InventoryScan` |
 | 11 | First pass scope | UI only, sample data; wiring lands in later turns |
+| 12 | Inventory click → dialog flow | **Single dialog** (bucket-select only). New-batch / Resume-last picker removed — clicking Inventory always creates a new batch. |
 
 ---
 
 ## 6. Current state (as of last session — 2026-05-26)
 
-- Dashboard → Inventory click works end-to-end through the dialog flow → creates a batch → navigates to `Screen.InventoryScan`.
+- Dashboard → Inventory click → bucket-select dialog (single dialog, no New/Resume picker) → creates a batch → navigates to `Screen.InventoryScan`.
 - Tablet landscape:
   - Live CameraX preview on the left (inside an inset rounded card). No analyzer wired; ML interpreter is intentionally not initialized in this mode.
   - New panel on the right with all §7a polish items applied: white rows + hairline dividers, redesigned counter (square bordered tiles, 1.6:1 ratio, 30 dp cyan icons), 380 dp panel width, 13 dp card radius, NDC value no-wrap, 120 dp CLEAR/ADD buttons.
@@ -140,7 +139,7 @@ Concrete diffs observed in the first cut vs. Figma `STOCK COUNT-SEALED-TAB-LANDS
 | 7 | Counter +/− tile design | ✅ Square tiles, thin border, no fill, 30 dp cyan icon. |
 | 8 | Counter center tile width ratio | ✅ 1.6 : 1 (center vs button). |
 | 9 | CLEAR / ADD buttons | ✅ Fixed 120 dp each, centered with 12 dp gap. |
-| 10 | Side panel width | ✅ 380 dp. |
+| 10 | Side panel width | ✅ 440 dp (bumped from 380 dp after user feedback on cramped detail row). |
 | 11 | Gap between top and bottom card | ✅ 16 dp via `Arrangement.spacedBy`. |
 | 12 | Camera area inset | ✅ Rounded 16 dp card, outer padding 12 dp. |
 | 13 | Back arrow in camera area | ✅ Kept, overlaid top-left of camera card. |
@@ -176,7 +175,7 @@ Concrete diffs observed in the first cut vs. Figma `STOCK COUNT-SEALED-TAB-LANDS
 1. Tablet-portrait, phone-landscape, phone-portrait Figmas — not yet provided.
 2. After ADD, should the bottom card flip to Summary or stay showing the just-committed NDC briefly? Currently flips to Summary immediately (matches earlier alignment).
 3. What's the source of truth for `pillsPerBottle` (used to compute "180 pills" under the counter)? Drug master? Per-batch override?
-4. Should "Resume last" jump straight back into NDC scanning, or show the current batch's recent counts first (which is what the current implementation does — it lands on the same screen, just with `recentCounts` pre-populated from DB)?
+4. Resume-last from Inventory Quick Action has been removed. Decide where (if anywhere) Resume-last should live — history screen? a banner on the dashboard? — and whether it lands on `Screen.InventoryScan` with the existing batchId, or on the legacy `BatchScreen` drug-group list.
 5. END COUNT — same confirmation dialog as the legacy stock-count flow, or a new one?
 
 ---
