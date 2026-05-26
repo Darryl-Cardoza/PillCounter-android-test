@@ -110,5 +110,5 @@ data class PillCountTxnEntity(
 
     val priority: TxnPriority? = null,
 
-    val isGlovesWear: Boolean? = null,
+    val isGlovesPresent: Boolean = false,
 )

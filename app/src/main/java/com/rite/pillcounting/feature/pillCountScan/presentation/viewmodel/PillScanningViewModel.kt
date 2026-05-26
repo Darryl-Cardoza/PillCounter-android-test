@@ -470,8 +470,8 @@ class PillScanningViewModel @Inject constructor(
                 unloadGloveAndRebuildAnalyzer()
                 val txnId = preferenceHelper.getTxnId()
                 if (txnId != 0L) {
-                    pillCountTxnDao.updateGlovesWear(txnId, true)
-                    logger.i("isGlovesWear saved for txn=$txnId")
+                    pillCountTxnDao.updateGlovesPresent(txnId, true)
+                    logger.i("isGlovesPresent saved for txn=$txnId")
                 }
             }
         }

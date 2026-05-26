@@ -322,8 +322,8 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
-    @Query("UPDATE pill_count_txn SET isGlovesWear = :value, updatedAt = :now WHERE txnId = :txnId")
-    suspend fun updateGlovesWear(
+    @Query("UPDATE pill_count_txn SET isGlovesPresent = :value, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateGlovesPresent(
         txnId: Long,
         value: Boolean,
         now: Long = System.currentTimeMillis()

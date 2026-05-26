@@ -135,6 +135,7 @@ class DispenseScanViewModel @Inject constructor(
                 logger.w("Resume init: txn $txnId not found in DB — falling back to PRE_RX")
                 return@launch
             }
+            pillCountTxnDao.updateGlovesPresent(txnId, false)
             val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
 
             if (txn.isNdcVerified == true) {

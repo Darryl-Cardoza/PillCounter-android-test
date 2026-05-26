@@ -506,7 +506,7 @@ fun DispenseScanScreen(
                 viewModel = pillVm,
                 pills = pillState.detectedPills,
                 isCameraPaused = pillVm.cameraPaused.collectAsState().value,
-                showGloveIcon = dispenseState.isHazardous && !glovesDetected,
+                showGloveIcon = dispenseState.isHazardous,
                 onFrame = { imageProxy ->
                     // Only the barcode analyzer reads the frame metadata before the
                     // frame is forwarded to the pill VM (which always closes it). When
