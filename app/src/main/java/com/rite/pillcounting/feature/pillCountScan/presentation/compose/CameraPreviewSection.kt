@@ -299,11 +299,15 @@ fun CameraPreviewSection(
                     fun imgY(py: Float) = py * scale + offsetY
 
                     // ─────────────────────────────────────────────────────────
-                    // 1.  TRAY BOUNDING BOXES
-                    //     trayDetection.rect values are in original image pixels
-                    //     (produced by TrayDetector.reverseLetterbox).
+                    // 1.  TRAY BOUNDING BOX (chute is detected for exclusion
+                    //     math but NOT rendered).
                     // ─────────────────────────────────────────────────────────
                     trayDetections.forEach { tray ->
+                        // Skip chute detections in the UI — they exist only to
+                        // exclude pills in the chute area from the count.
+                        if (tray.cls == com.rite.pillcounting.feature.pillCountScan.presentation.logic.TrayClass.CHUTE) {
+                            return@forEach
+                        }
 
                         val sLeft = imgX(tray.rect.left)
                         val sTop = imgY(tray.rect.top)

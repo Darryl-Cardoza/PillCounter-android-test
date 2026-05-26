@@ -6,72 +6,99 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Resizes camera frames to the model's 640×640 letterbox input and converts to a
- * normalized float ByteBuffer that TFLite can consume directly.
+ * Resizes camera frames to the model 640×640 letterbox input and produces the
+ * two float32 buffers the per-frame pipeline needs:
  *
- * Hot path: called once per analyzed frame. The output ByteBuffer must be
- * allocated fresh each call — [PillAnalyzer] hands out three duplicate() views
- * of the same backing memory to run inference in parallel, so reusing the
- * buffer across frames would race with in-flight inference. The IntArray pixel
- * scratch IS safe to reuse: it's fully consumed before this function returns,
- * before any duplicate() view is taken.
+ *  - [Preprocessed.rgbNormalized]   NHWC RGB / 255             (pill + glove TFLite)
+ *  - [Preprocessed.rgbImageNetNchw] NCHW RGB ImageNet-normalized (tray ONNX)
+ *
+ * **All scratch is reused across frames.** Each frame writes into the same
+ * FloatArrays and direct ByteBuffers (~20 MB total). PillAnalyzer hands out
+ * `duplicate()` views and `coroutineScope { ... }.await()` guarantees all
+ * three parallel inferences complete before `analyze()` returns, so the next
+ * frame cannot start until the current frame's reads are done.
+ *
+ * NOT thread-safe across concurrent callers — CameraX's ImageAnalysis use
+ * case delivers frames sequentially, which is what makes this safe.
  */
 object ImagePreprocessor {
 
     private const val INPUT_SIZE = 640
-    private const val FLOATS_PER_PIXEL = 3
+    private const val NUM_PIXELS = INPUT_SIZE * INPUT_SIZE
+    private const val CHANNELS = 3
     private const val BYTES_PER_FLOAT = 4
+    private const val BUFFER_BYTES = CHANNELS * NUM_PIXELS * BYTES_PER_FLOAT
 
-    // Lazy-init reusable pixel scratch. Safe to reuse: it's only read while
-    // bitmapToFloatBuffer is running. Saves ~1.6 MB allocation per frame.
-    private val pixelScratch: IntArray by lazy { IntArray(INPUT_SIZE * INPUT_SIZE) }
+    // ImageNet normalization (RGB) — used by the tray masks ONNX model.
+    // Constants from MOBILE_INTEGRATION_GUIDE 05_TRAY_MASKS_MODEL.md §4.
+    private const val MEAN_R = 123.675f
+    private const val MEAN_G = 116.28f
+    private const val MEAN_B = 103.53f
+    private const val STD_R = 58.395f
+    private const val STD_G = 57.12f
+    private const val STD_B = 57.375f
 
-    fun preprocess(
-        image: ImageProxy
-    ): Triple<ByteBuffer, Bitmap, Bitmap> {
+    // Cached scratch — allocated once, reused every frame.
+    private val pixelScratch = IntArray(NUM_PIXELS)
+    private val rgbScratch = FloatArray(CHANNELS * NUM_PIXELS)
+    private val nchwScratch = FloatArray(CHANNELS * NUM_PIXELS)
+    private val rgbBuf: ByteBuffer =
+        ByteBuffer.allocateDirect(BUFFER_BYTES).order(ByteOrder.nativeOrder())
+    private val nchwBuf: ByteBuffer =
+        ByteBuffer.allocateDirect(BUFFER_BYTES).order(ByteOrder.nativeOrder())
 
-        val bitmap = image.toBitmap()
-        val letterboxed = Letterbox.preprocess(bitmap, INPUT_SIZE)
+    data class Preprocessed(
+        val rgbNormalized: ByteBuffer,
+        val rgbImageNetNchw: ByteBuffer,
+        val letterboxed: Bitmap,
+        val original: Bitmap
+    )
 
-        val buffer = bitmapToFloatBuffer(letterboxed)
+    fun preprocess(image: ImageProxy): Preprocessed {
+        val original = image.toBitmap()
+        val letterboxed = Letterbox.preprocess(original, INPUT_SIZE)
 
-        return Triple(buffer, letterboxed, bitmap)
-    }
+        letterboxed.getPixels(pixelScratch, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
 
-    private fun bitmapToFloatBuffer(bitmap: Bitmap): ByteBuffer {
-        val buffer = ByteBuffer
-            .allocateDirect(INPUT_SIZE * INPUT_SIZE * FLOATS_PER_PIXEL * BYTES_PER_FLOAT)
-            .order(ByteOrder.nativeOrder())
+        val rgb = rgbScratch
+        val nchw = nchwScratch
+        val planeG = NUM_PIXELS
+        val planeB = 2 * NUM_PIXELS
 
-        val pixels = pixelScratch
-        bitmap.getPixels(
-            pixels,
-            0,
-            INPUT_SIZE,
-            0,
-            0,
-            INPUT_SIZE,
-            INPUT_SIZE
-        )
-
-        // Bulk-fill a FloatArray then put() it via the FloatBuffer view in one
-        // call. Measurably faster than 409k individual putFloat() calls on weak
-        // ARM devices because the JIT can hoist bounds checks across the loop.
-        val n = pixels.size
-        val rgb = FloatArray(FLOATS_PER_PIXEL * n)
         var i = 0
         var j = 0
-        while (i < n) {
-            val p = pixels[i]
-            rgb[j] = ((p shr 16) and 0xFF) / 255f
-            rgb[j + 1] = ((p shr 8) and 0xFF) / 255f
-            rgb[j + 2] = (p and 0xFF) / 255f
-            i++
-            j += FLOATS_PER_PIXEL
-        }
-        buffer.asFloatBuffer().put(rgb)
+        while (i < NUM_PIXELS) {
+            val p = pixelScratch[i]
+            val r = ((p shr 16) and 0xFF).toFloat()
+            val g = ((p shr 8) and 0xFF).toFloat()
+            val b = (p and 0xFF).toFloat()
 
-        buffer.rewind()
-        return buffer
+            // NHWC RGB / 255
+            rgb[j] = r / 255f
+            rgb[j + 1] = g / 255f
+            rgb[j + 2] = b / 255f
+
+            // NCHW RGB ImageNet
+            nchw[i]          = (r - MEAN_R) / STD_R
+            nchw[planeG + i] = (g - MEAN_G) / STD_G
+            nchw[planeB + i] = (b - MEAN_B) / STD_B
+
+            i++
+            j += CHANNELS
+        }
+
+        rgbBuf.clear()
+        rgbBuf.asFloatBuffer().put(rgb)
+        rgbBuf.rewind()
+        nchwBuf.clear()
+        nchwBuf.asFloatBuffer().put(nchw)
+        nchwBuf.rewind()
+
+        return Preprocessed(
+            rgbNormalized = rgbBuf,
+            rgbImageNetNchw = nchwBuf,
+            letterboxed = letterboxed,
+            original = original
+        )
     }
 }

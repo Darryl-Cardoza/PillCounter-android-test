@@ -1,386 +1,172 @@
 package com.rite.pillcounting.feature.pillCountScan.presentation.logic
 
+import ai.onnxruntime.OnnxTensor
+import ai.onnxruntime.OrtEnvironment
+import ai.onnxruntime.OrtSession
 import android.graphics.RectF
+import android.util.Log
 import com.rite.pillcounting.core.utils.logger.AppLogger
-import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
-import kotlin.math.exp
-import kotlin.math.max
-import kotlin.math.min
+import java.util.BitSet
+
+/** RTMDet tray model emits two classes — 0 = chute, 1 = tray. */
+enum class TrayClass { TRAY, CHUTE }
 
 /**
- * One detected tray.
+ * One detected tray or chute.
  *
- * @param protoMask    The instance mask in proto resolution (160×160 floats, sigmoid-ed
- *                     and cropped to the box). Index as `protoMask[y][x]`. Avoiding
- *                     a per-pixel original-resolution mask is the main perf win —
- *                     `containsPoint` translates original-frame coords back to proto
- *                     coords on each query rather than upsampling the whole mask.
- * @param rect         Bounding box in original camera-frame pixel coords (for UI).
- * @param confidence   Tray-class confidence in [0, 1].
- * @param scaleInfo    Letterbox parameters used to translate orig-frame coords to
- *                     proto coords inside [containsPoint].
+ * Mask is stored as a packed [BitSet] in row-major 640×640 order — one
+ * allocation per detection (~50 KB) instead of 640 BooleanArray allocations
+ * (~640 small objects + ~410 KB). Lookups are O(1) via a single index.
  */
 data class TrayDetection(
-    val protoMask: Array<FloatArray>,
     val rect: RectF,
     val confidence: Float,
-    val scaleInfo: Letterbox.ScaleInfo,
-    val maskThreshold: Float
+    val cls: TrayClass = TrayClass.TRAY,
+    val mask: BitSet? = null,
+    val maskSize: Int = 0,                       // side length of the square mask (= 640)
+    val scaleInfo: Letterbox.ScaleInfo? = null
 ) {
     fun containsPoint(x: Int, y: Int): Boolean {
-        if (protoMask.isEmpty()) return false
-
-        // orig pixel → 640 letterbox space → proto (160) space
-        val x640 = x * scaleInfo.scale + scaleInfo.padX
-        val y640 = y * scaleInfo.scale + scaleInfo.padY
-
-        val protoH = protoMask.size
-        val protoW = protoMask[0].size
-
-        val xp = (x640 / scaleInfo.inputSize * protoW).toInt()
-        val yp = (y640 / scaleInfo.inputSize * protoH).toInt()
-
-        if (xp < 0 || xp >= protoW || yp < 0 || yp >= protoH) return false
-
-        return protoMask[yp][xp] > maskThreshold
-    }
-
-    fun getMaskStats(): String {
-        if (protoMask.isEmpty()) return "Empty mask"
-        var trueCount = 0
-        var totalCount = 0
-        for (row in protoMask) {
-            for (value in row) {
-                if (value > maskThreshold) trueCount++
-                totalCount++
-            }
+        val m = mask
+        val s = scaleInfo
+        if (m != null && s != null && maskSize > 0) {
+            val x640 = (x.toFloat() * s.scale + s.padX).toInt()
+            val y640 = (y.toFloat() * s.scale + s.padY).toInt()
+            if (x640 < 0 || x640 >= maskSize || y640 < 0 || y640 >= maskSize) return false
+            return m.get(y640 * maskSize + x640)
         }
-        val pct = if (totalCount > 0) trueCount * 100 / totalCount else 0
-        return "ProtoMask: ${protoMask.size}×${protoMask[0].size} = $totalCount cells, $trueCount > thr ($pct%)"
+        return x.toFloat() in rect.left..rect.right && y.toFloat() in rect.top..rect.bottom
     }
 
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is TrayDetection) return false
-        return confidence == other.confidence && rect == other.rect
+        return confidence == other.confidence && rect == other.rect && cls == other.cls
     }
-
-    override fun hashCode(): Int = 31 * rect.hashCode() + confidence.hashCode()
+    override fun hashCode(): Int =
+        31 * (31 * rect.hashCode() + confidence.hashCode()) + cls.hashCode()
 }
 
-object TrayDetector {
+/**
+ * ONNX Runtime wrapper for `rtmdet_ins_tray_tiny_640.onnx`.
+ *
+ *  - Input:    `input`, NCHW float32 [1, 3, 640, 640], RGB ImageNet-normalized
+ *  - Outputs:  dets [1, N, 5]  (x1, y1, x2, y2, score in 640-space)
+ *              labels [1, N]   int64 (0 = chute, 1 = tray)
+ *              masks  [1, N, 640, 640] sigmoid mask (threshold at 0.5)
+ *
+ * Detections are capped in-graph: max N = 10, score_threshold = 0.25.
+ *
+ * In-graph NMS — no app-side NMS needed.
+ * NOT thread-safe — call detect() on a single coroutine at a time.
+ */
+class TrayMasksDetector(
+    private val env: OrtEnvironment,
+    private val session: OrtSession
+) {
+    private val logger = AppLogger(TAG)
 
-    private const val INPUT_SIZE = 640
-
-    private const val CONF_THRESHOLD = 0.50f
-    private const val MASK_THRESHOLD = 0.30f
-    private const val NMS_IOU_THRESHOLD = 0.45f
-    private const val MAX_DETECTIONS = 5  // Safety limit: max 5 trays per frame
-
-    private const val NUM_COEFFS = 32
-    private const val NUM_ANCHORS = 8400
-    private const val PROTO_H = 160
-    private const val PROTO_W = 160
-    private const val TRAY_CLASS_ROW = 5
-
-    private val logger = AppLogger("TrayDetector")
-
-    private data class RawBox(
-        val conf: Float,
-        val cx: Float,
-        val cy: Float,
-        val bw: Float,
-        val bh: Float,
-        val coeffs: FloatArray
-    )
-
-    /**
-     * Allocates the giant tray output buffers once. ~1MB of floats per frame is
-     * otherwise allocated + zeroed + GC'd; reusing these buffers measurably cuts
-     * postprocess time on weak devices.
-     */
-    fun allocateDetOutput(): Array<Array<FloatArray>> =
-        Array(1) { Array(38) { FloatArray(NUM_ANCHORS) } }
-
-    fun allocateProtoOutput(): Array<Array<Array<FloatArray>>> =
-        Array(1) { Array(PROTO_H) { Array(PROTO_W) { FloatArray(NUM_COEFFS) } } }
+    // Per-detection mask scratch — reused for the float → BitSet thresholding.
+    private val maskScratch = FloatArray(INPUT_SIZE * INPUT_SIZE)
 
     fun detect(
-        interpreter: Interpreter,
         inputBuffer: ByteBuffer,
         scaleInfo: Letterbox.ScaleInfo,
         originalWidth: Int,
-        originalHeight: Int,
-        detOutput: Array<Array<FloatArray>>,
-        protoOutput: Array<Array<Array<FloatArray>>>
+        originalHeight: Int
     ): List<TrayDetection> {
+        return try {
+            inputBuffer.rewind()
+            val shape = longArrayOf(1, 3, INPUT_SIZE.toLong(), INPUT_SIZE.toLong())
+            val floatView = inputBuffer.asFloatBuffer()
+            OnnxTensor.createTensor(env, floatView, shape).use { inputTensor ->
+                session.run(mapOf(INPUT_NAME to inputTensor)).use { results ->
+                    decodeOutputs(results, scaleInfo, originalWidth, originalHeight)
+                }
+            }
+        } catch (e: Exception) {
+            Log.e(TAG, "ONNX tray inference failed", e)
+            emptyList()
+        }
+    }
 
-        // Rewind so the buffer can be re-read even if the pill model used it first.
-        inputBuffer.rewind()
+    @Suppress("UNCHECKED_CAST")
+    private fun decodeOutputs(
+        results: OrtSession.Result,
+        scaleInfo: Letterbox.ScaleInfo,
+        originalWidth: Int,
+        originalHeight: Int
+    ): List<TrayDetection> {
+        val dets   = (results.get(0).value as Array<Array<FloatArray>>)[0]   // [N, 5]
+        val labels = (results.get(1).value as Array<LongArray>)[0]           // [N]
+        val n = dets.size
+        if (n == 0) return emptyList()
 
-        val outputs = mapOf(
-            0 to detOutput as Any,
-            1 to protoOutput as Any
-        )
+        val masksTensor = results.get(2) as OnnxTensor
+        val maskFloats = masksTensor.floatBuffer  // length = N * 640 * 640
+        val maskSize = INPUT_SIZE * INPUT_SIZE
 
-        interpreter.runForMultipleInputsOutputs(arrayOf(inputBuffer), outputs)
+        val out = ArrayList<TrayDetection>(4)
+        for (i in 0 until n) {
+            val score = dets[i][4]
+            if (score < SCORE_THRESHOLD) continue
 
-        // Diagnostic logging disabled by default to reduce memory pressure
-        // Uncomment for debugging: logDiagnostics(detOutput)
+            val cls = if (labels[i].toInt() == TRAY_CLASS_ID) TrayClass.TRAY else TrayClass.CHUTE
 
-        val rawBoxes = mutableListOf<RawBox>()
-
-        for (a in 0 until NUM_ANCHORS) {
-            val conf = detOutput[0][TRAY_CLASS_ROW][a]
-            if (conf < CONF_THRESHOLD) continue
-
-            // IMPORTANT:
-            // Logs confirm these coords are normalized [0..1], so scale to 640-space.
-            val cx = detOutput[0][0][a] * INPUT_SIZE
-            val cy = detOutput[0][1][a] * INPUT_SIZE
-            val bw = detOutput[0][2][a] * INPUT_SIZE
-            val bh = detOutput[0][3][a] * INPUT_SIZE
-
-            if (bw <= 0f || bh <= 0f) continue
-
-            rawBoxes.add(
-                RawBox(
-                    conf = conf,
-                    cx = cx,
-                    cy = cy,
-                    bw = bw,
-                    bh = bh,
-                    coeffs = FloatArray(NUM_COEFFS) { i ->
-                        detOutput[0][6 + i][a]
-                    }
-                )
+            val x1 = (dets[i][0] - scaleInfo.padX) / scaleInfo.scale
+            val y1 = (dets[i][1] - scaleInfo.padY) / scaleInfo.scale
+            val x2 = (dets[i][2] - scaleInfo.padX) / scaleInfo.scale
+            val y2 = (dets[i][3] - scaleInfo.padY) / scaleInfo.scale
+            val rect = RectF(
+                x1.coerceIn(0f, originalWidth.toFloat()),
+                y1.coerceIn(0f, originalHeight.toFloat()),
+                x2.coerceIn(0f, originalWidth.toFloat()),
+                y2.coerceIn(0f, originalHeight.toFloat())
             )
-        }
+            if (rect.width() <= 0f || rect.height() <= 0f) continue
 
-        logger.i("Anchors above tray threshold: ${rawBoxes.size}")
+            maskFloats.position(i * maskSize)
+            maskFloats.get(maskScratch)
 
-        if (rawBoxes.isEmpty()) return emptyList()
-
-        val kept = nms(rawBoxes, NMS_IOU_THRESHOLD)
-        logger.i("After NMS: ${kept.size} unique tray(s)")
-
-        // Safety limit: prevent memory exhaustion from too many detections
-        val safeKept = kept.take(MAX_DETECTIONS)
-        if (kept.size > MAX_DETECTIONS) {
-            logger.w("⚠️ Limiting trays from ${kept.size} to $MAX_DETECTIONS to prevent memory exhaustion")
-        }
-
-        val detections = mutableListOf<TrayDetection>()
-
-        for ((index, box) in safeKept.withIndex()) {
-            // Build the box's instance mask at proto resolution only. Translating
-            // orig-frame coords back to proto inside containsPoint is ~10 ops per query
-            // and avoids two ~600k-iteration loops (upsample + reverse-letterbox) per
-            // frame.
-            val rawMask = buildRawMask(protoOutput[0], box.coeffs)
-            val croppedMask = cropMaskToBox(rawMask, box)
-
-            // Bounding rect derived in proto space, then mapped back to original.
-            val maskRect = maskBoundingRectProto(croppedMask, scaleInfo, originalWidth, originalHeight)
-            val boxRect = reverseLetterboxBox(box, scaleInfo, originalWidth, originalHeight)
-
-            val finalRect = maskRect ?: boxRect
-
-            if (finalRect.width() <= 0f || finalRect.height() <= 0f) {
-                continue
+            // Pack the 640×640 threshold result into a single BitSet.
+            // BitSet's internal long[] is ~50 KB vs ~410 KB for Array<BooleanArray>,
+            // and the threshold loop is straight-line over a flat FloatArray.
+            val bits = BitSet(maskSize)
+            for (idx in 0 until maskSize) {
+                if (maskScratch[idx] > MASK_THRESHOLD) bits.set(idx)
             }
 
-            if (index < 3) {
-                logger.i("Tray[$index] conf=${box.conf} rect=$finalRect")
-            }
-
-            detections.add(
+            out.add(
                 TrayDetection(
-                    protoMask = croppedMask,
-                    rect = finalRect,
-                    confidence = box.conf,
-                    scaleInfo = scaleInfo,
-                    maskThreshold = MASK_THRESHOLD
+                    rect = rect,
+                    confidence = score,
+                    cls = cls,
+                    mask = bits,
+                    maskSize = INPUT_SIZE,
+                    scaleInfo = scaleInfo
                 )
             )
         }
 
-        logger.i("TrayDetector final: ${detections.size} tray(s) detected")
-        return detections
+        val trays = out.count { it.cls == TrayClass.TRAY }
+        val chutes = out.count { it.cls == TrayClass.CHUTE }
+        val firstTray = out.firstOrNull { it.cls == TrayClass.TRAY }
+        val maskTrueCount = firstTray?.mask?.cardinality() ?: 0
+        logger.i("TrayMasks: $trays tray(s), $chutes chute(s) [N_raw=$n N_kept=${out.size} trayMaskTrue=$maskTrueCount / $maskSize]")
+        return out
     }
 
-    private fun logDiagnostics(detOutput: Array<Array<FloatArray>>) {
-        var maxCls0 = 0f
-        var maxCls1 = 0f
-
-        for (a in 0 until NUM_ANCHORS) {
-            if (detOutput[0][4][a] > maxCls0) maxCls0 = detOutput[0][4][a]
-            if (detOutput[0][TRAY_CLASS_ROW][a] > maxCls1) maxCls1 = detOutput[0][TRAY_CLASS_ROW][a]
-        }
-
-        logger.i("Max scores -> cls0=$maxCls0 cls1(tray)=$maxCls1 threshold=$CONF_THRESHOLD")
-
-        for (a in 0 until min(10, NUM_ANCHORS)) {
-            logger.i(
-                "sample[$a] " +
-                        "cx=${detOutput[0][0][a]} " +
-                        "cy=${detOutput[0][1][a]} " +
-                        "w=${detOutput[0][2][a]} " +
-                        "h=${detOutput[0][3][a]} " +
-                        "cls0=${detOutput[0][4][a]} " +
-                        "cls1=${detOutput[0][TRAY_CLASS_ROW][a]}"
-            )
-        }
+    fun close() {
+        try { session.close() } catch (e: Exception) { Log.w(TAG, "OrtSession close failed: ${e.message}") }
     }
 
-    private fun buildRawMask(
-        proto: Array<Array<FloatArray>>,
-        coeffs: FloatArray
-    ): Array<FloatArray> {
-        return Array(PROTO_H) { y ->
-            FloatArray(PROTO_W) { x ->
-                sigmoid(dot(proto[y][x], coeffs))
-            }
-        }
+    companion object {
+        private const val TAG = "TrayMasksDetector"
+        const val INPUT_SIZE = 640
+        const val INPUT_NAME = "input"
+        const val SCORE_THRESHOLD = 0.6f
+        const val MASK_THRESHOLD = 0.5f
+        const val TRAY_CLASS_ID = 1   // 0 = chute, 1 = tray (per docs)
     }
-
-    private fun cropMaskToBox(
-        rawMask: Array<FloatArray>,
-        box: RawBox
-    ): Array<FloatArray> {
-        val result = Array(PROTO_H) { y -> rawMask[y].clone() }
-
-        val x1p = (((box.cx - box.bw / 2f) / INPUT_SIZE) * PROTO_W).toInt().coerceIn(0, PROTO_W - 1)
-        val y1p = (((box.cy - box.bh / 2f) / INPUT_SIZE) * PROTO_H).toInt().coerceIn(0, PROTO_H - 1)
-        val x2p = (((box.cx + box.bw / 2f) / INPUT_SIZE) * PROTO_W).toInt().coerceIn(0, PROTO_W - 1)
-        val y2p = (((box.cy + box.bh / 2f) / INPUT_SIZE) * PROTO_H).toInt().coerceIn(0, PROTO_H - 1)
-
-        for (y in 0 until PROTO_H) {
-            for (x in 0 until PROTO_W) {
-                if (x < x1p || x > x2p || y < y1p || y > y2p) {
-                    result[y][x] = 0f
-                }
-            }
-        }
-
-        return result
-    }
-
-    private fun nms(boxes: List<RawBox>, iouThreshold: Float): List<RawBox> {
-        val sorted = boxes.sortedByDescending { it.conf }
-        val keep = mutableListOf<RawBox>()
-
-        for (box in sorted) {
-            val suppress = keep.any { kept ->
-                iouBoxes(box, kept) > iouThreshold
-            }
-            if (!suppress) keep.add(box)
-        }
-
-        return keep
-    }
-
-    private fun iouBoxes(a: RawBox, b: RawBox): Float {
-        val ax1 = a.cx - a.bw / 2f
-        val ay1 = a.cy - a.bh / 2f
-        val ax2 = a.cx + a.bw / 2f
-        val ay2 = a.cy + a.bh / 2f
-
-        val bx1 = b.cx - b.bw / 2f
-        val by1 = b.cy - b.bh / 2f
-        val bx2 = b.cx + b.bw / 2f
-        val by2 = b.cy + b.bh / 2f
-
-        val iw = min(ax2, bx2) - max(ax1, bx1)
-        val ih = min(ay2, by2) - max(ay1, by1)
-        if (iw <= 0f || ih <= 0f) return 0f
-
-        val inter = iw * ih
-        val aArea = a.bw * a.bh
-        val bArea = b.bw * b.bh
-
-        return inter / (aArea + bArea - inter)
-    }
-
-    private fun reverseLetterboxBox(
-        box: RawBox,
-        scaleInfo: Letterbox.ScaleInfo,
-        originalWidth: Int,
-        originalHeight: Int
-    ): RectF {
-        val x1 = ((box.cx - box.bw / 2f) - scaleInfo.padX) / scaleInfo.scale
-        val y1 = ((box.cy - box.bh / 2f) - scaleInfo.padY) / scaleInfo.scale
-        val x2 = ((box.cx + box.bw / 2f) - scaleInfo.padX) / scaleInfo.scale
-        val y2 = ((box.cy + box.bh / 2f) - scaleInfo.padY) / scaleInfo.scale
-
-        return RectF(
-            x1.coerceIn(0f, originalWidth.toFloat()),
-            y1.coerceIn(0f, originalHeight.toFloat()),
-            x2.coerceIn(0f, originalWidth.toFloat()),
-            y2.coerceIn(0f, originalHeight.toFloat())
-        )
-    }
-
-    /**
-     * Computes the mask's bounding rect in proto coords, then maps back to the
-     * original frame. Iterates 160×160 = 25,600 cells instead of 720×960 ≈ 700k.
-     */
-    private fun maskBoundingRectProto(
-        protoMask: Array<FloatArray>,
-        scaleInfo: Letterbox.ScaleInfo,
-        originalWidth: Int,
-        originalHeight: Int
-    ): RectF? {
-        var minX = Int.MAX_VALUE
-        var minY = Int.MAX_VALUE
-        var maxX = Int.MIN_VALUE
-        var maxY = Int.MIN_VALUE
-
-        for (y in protoMask.indices) {
-            val row = protoMask[y]
-            for (x in row.indices) {
-                if (row[x] > MASK_THRESHOLD) {
-                    if (x < minX) minX = x
-                    if (x > maxX) maxX = x
-                    if (y < minY) minY = y
-                    if (y > maxY) maxY = y
-                }
-            }
-        }
-
-        if (minX > maxX || minY > maxY) return null
-
-        // proto → 640 → original
-        val protoW = if (protoMask.isNotEmpty()) protoMask[0].size else PROTO_W
-        val protoH = protoMask.size
-        val scaleX = scaleInfo.inputSize.toFloat() / protoW
-        val scaleY = scaleInfo.inputSize.toFloat() / protoH
-
-        val x1_640 = minX * scaleX
-        val y1_640 = minY * scaleY
-        val x2_640 = (maxX + 1) * scaleX
-        val y2_640 = (maxY + 1) * scaleY
-
-        val x1 = (x1_640 - scaleInfo.padX) / scaleInfo.scale
-        val y1 = (y1_640 - scaleInfo.padY) / scaleInfo.scale
-        val x2 = (x2_640 - scaleInfo.padX) / scaleInfo.scale
-        val y2 = (y2_640 - scaleInfo.padY) / scaleInfo.scale
-
-        return RectF(
-            x1.coerceIn(0f, originalWidth.toFloat()),
-            y1.coerceIn(0f, originalHeight.toFloat()),
-            x2.coerceIn(0f, originalWidth.toFloat()),
-            y2.coerceIn(0f, originalHeight.toFloat())
-        )
-    }
-
-    private fun sigmoid(x: Float): Float = 1f / (1f + exp(-x))
-
-    private fun dot(a: FloatArray, b: FloatArray): Float {
-        var sum = 0f
-        for (i in a.indices) sum += a[i] * b[i]
-        return sum
-    }
-
 }

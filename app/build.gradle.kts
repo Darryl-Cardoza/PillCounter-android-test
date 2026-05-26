@@ -85,6 +85,14 @@ android {
             )
         }
     }
+
+    androidResources {
+        // Don't compress model assets — TFLite mmaps .tflite, and the .onnx
+        // tray model is loaded by ONNX Runtime which prefers uncompressed bytes.
+        // (Models in this project are encrypted with a .enc suffix, but we list
+        // both for future-proofing if any model is shipped unencrypted.)
+        noCompress += listOf("tflite", "onnx", "enc")
+    }
 }
 
 kapt {
@@ -167,10 +175,17 @@ dependencies {
     implementation("com.google.accompanist:accompanist-permissions:0.28.0")
 
     // --- TensorFlow Lite ---
+    // org.tensorflow:tensorflow-lite-* maxes out at 2.17.0 — after that, Google
+    // rebranded the artifact as LiteRT (com.google.ai.edge.litert:litert:1.0.x+).
+    // Migration to LiteRT is a separate task (package renames, API tweaks).
     implementation("org.tensorflow:tensorflow-lite:2.17.0")
     implementation("org.tensorflow:tensorflow-lite-gpu:2.17.0")
     implementation("org.tensorflow:tensorflow-lite-gpu-api:2.17.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.5.0")
+
+    // --- ONNX Runtime (used for the tray segmentation model, which can't be
+    // ---  converted to TFLite — embedded NMS + per-instance dynamic conv).
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 
     //Location
     implementation("com.google.android.gms:play-services-location:21.3.0")

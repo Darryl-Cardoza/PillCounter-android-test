@@ -280,7 +280,7 @@ class PillScanningViewModel @Inject constructor(
 
                 val analyzer = PillAnalyzer(
                     pillInterpreter  = models.pillInterpreter,
-                    trayInterpreter  = models.trayInterpreter,
+                    trayMasksDetector = models.trayMasksDetector,
                     gloveInterpreter = models.gloveInterpreter,
                     performanceLogger = performanceLogger,
                     shouldRunGloveDetection = { shouldRunGloveDetection },
@@ -331,7 +331,7 @@ class PillScanningViewModel @Inject constructor(
 
                 val analyzer = PillAnalyzer(
                     pillInterpreter  = models.pillInterpreter,
-                    trayInterpreter  = models.trayInterpreter,
+                    trayMasksDetector = models.trayMasksDetector,
                     gloveInterpreter = models.gloveInterpreter,
                     performanceLogger = performanceLogger,
                     shouldRunGloveDetection = { shouldRunGloveDetection },
@@ -396,7 +396,7 @@ class PillScanningViewModel @Inject constructor(
         val h = lastPreviewHeight
         val analyzer = PillAnalyzer(
             pillInterpreter  = models.pillInterpreter,
-            trayInterpreter  = models.trayInterpreter,
+            trayMasksDetector = models.trayMasksDetector,
             gloveInterpreter = null,
             performanceLogger = performanceLogger,
             shouldRunGloveDetection = { shouldRunGloveDetection },
