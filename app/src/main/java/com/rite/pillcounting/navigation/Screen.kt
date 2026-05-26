@@ -169,6 +169,50 @@ sealed interface Screen {
         fun createRoute(scanType: String) = "$ROUTE_PREFIX/$scanType"
     }
 
+    // Merged single-screen flow for the dispense use case.
+    // Combines RX scan, NDC scan, and pill counting on one screen.
+    //
+    // The optional `from_hl7` query flag tells the screen to start at PRE_NDC
+    // and hydrate from the existing PMS-created transaction (drugName,
+    // hl7-expected NDC, targetCount, rxNo are all pre-populated, RX scan is
+    // skipped entirely).
+    //
+    // The optional `batch_id` is used in the stock count (REGULAR) flow to
+    // associate the new transaction with the active batch.
+    data object DispenseFlow : Screen {
+        private const val ROUTE_PREFIX = "dispense_flow"
+        const val ARG_TYPE = "type"
+        const val ARG_FROM_HL7 = "from_hl7"
+        const val ARG_FROM_RESUME = "from_resume"
+        const val ARG_BATCH_ID = "batch_id"
+
+        override val route: String =
+            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_TYPE) { type = NavType.StringType },
+            navArgument(ARG_FROM_HL7) {
+                type = NavType.BoolType
+                defaultValue = false
+            },
+            navArgument(ARG_FROM_RESUME) {
+                type = NavType.BoolType
+                defaultValue = false
+            },
+            navArgument(ARG_BATCH_ID) {
+                type = NavType.LongType
+                defaultValue = 0L
+            },
+        )
+
+        fun createRoute(
+            scanType: String,
+            fromHl7: Boolean = false,
+            fromResume: Boolean = false,
+            batchId: Long = 0L,
+        ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId"
+    }
+
     data object ResumeFixedCounts : Screen {
         private const val ROUTE_PREFIX = "resume_fixed_counts"
         const val ARG_TYPE = "type"

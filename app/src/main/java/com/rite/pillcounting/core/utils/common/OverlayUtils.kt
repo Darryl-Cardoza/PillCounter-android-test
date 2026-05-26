@@ -1,11 +1,11 @@
-package com.rite.pillcounting.core.utils.common
+﻿package com.rite.pillcounting.core.utils.common
 
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
-import com.rite.pillcounting.feature.pillCountScan.domain.model.DetectedPill
+import com.rite.pillcounting.feature.dispenseFlow.domain.model.DetectedPill
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

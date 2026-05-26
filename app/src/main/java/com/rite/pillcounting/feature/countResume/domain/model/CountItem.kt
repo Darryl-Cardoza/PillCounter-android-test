@@ -2,6 +2,7 @@ package com.rite.pillcounting.feature.countResume.domain.model
 
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.TxnPriority
 
 /**
  * Represents a single item in a partial or fixed count list.
@@ -29,5 +30,6 @@ data class CountItem(
     val image: Int = R.drawable.logo,
     val isComingFromHL7: Boolean,
     val isNdcVerified: Boolean,
-    val countType: CountType = CountType.REGULAR
+    val countType: CountType = CountType.REGULAR,
+    val priority: TxnPriority? = null
 )

@@ -8,6 +8,7 @@ import androidx.room.TypeConverters
 import com.rite.pillcounting.core.room.di.PillCountTxnConverters
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.TxnPriority
 
 /**
  * Entity representing a pill count transaction (header/master).
@@ -105,6 +106,9 @@ data class PillCountTxnEntity(
     val looseQty: Int? = null,
     val substitutedDrugId: Long? = null,
 
-    val workflowStep: String? = null
+    val workflowStep: String? = null,
 
+    val priority: TxnPriority? = null,
+
+    val isGlovesPresent: Boolean = false,
 )

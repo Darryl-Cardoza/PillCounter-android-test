@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.room.models.dtos
 
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.TxnPriority
 
 data class PillCountWithDrugAndTotal(
     val txnId: Long,
@@ -14,5 +15,6 @@ data class PillCountWithDrugAndTotal(
     val totalPillCount: Int,
     val isComingFromHL7 : Boolean,
     val isNdcVerified: Boolean,
-    val countType: CountType
+    val countType: CountType,
+    val priority: TxnPriority?
 )

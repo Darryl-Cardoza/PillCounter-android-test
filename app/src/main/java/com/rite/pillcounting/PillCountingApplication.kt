@@ -1,4 +1,4 @@
-package com.rite.pillcounting
+﻿package com.rite.pillcounting
 
 import android.app.Application
 import android.util.Log
@@ -6,7 +6,7 @@ import coil.Coil
 import coil.ImageLoader
 import com.google.firebase.FirebaseApp
 import com.rite.pillcounting.core.utils.coil.EncryptedImageFetcher
-import com.rite.pillcounting.feature.pillCountScan.domain.PillDetectionModelLoader
+import com.rite.pillcounting.feature.dispenseFlow.domain.PillDetectionModelLoader
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.menu.presentation
+﻿package com.rite.pillcounting.feature.menu.presentation
 
 import Screen
 import android.widget.Toast
@@ -104,11 +104,9 @@ fun MenuScreen(
                 completedIcon = R.drawable.complete,
                 partialIcon = R.drawable.partial,
                 mainClick = {
+                    // Merged dispense flow: one screen for RX + NDC + pill count.
                     navController.navigate(
-                        Screen.ScanBarcode.createRoute(
-                            CountType.FIXED.toString(),
-                            ScanType.RX_LABEL, 0
-                        )
+                        Screen.DispenseFlow.createRoute(CountType.FIXED.toString())
                     )
                 },
                 onPartialClick = {

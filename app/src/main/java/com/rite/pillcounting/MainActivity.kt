@@ -5,6 +5,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.WindowManager
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -61,6 +62,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Keep the screen on while the app is in the foreground. Users running
+        // the camera-heavy dispense / pill-count flows would otherwise see the
+        // device dim and sleep mid-scan even though they're actively using the
+        // screen. This flag is automatically dropped when the activity is no
+        // longer visible (home button, app switcher), so it doesn't affect
+        // normal lock behavior.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         fcmService.initFCM()
         fcmService.subscribeToTopic("global_updates")

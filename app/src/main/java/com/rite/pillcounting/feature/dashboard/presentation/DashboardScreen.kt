@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.dashboard.presentation
+﻿package com.rite.pillcounting.feature.dashboard.presentation
 
 import Screen
 import android.app.Activity
@@ -21,7 +21,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.MenuButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.PmsConnectionIcon
@@ -108,10 +107,9 @@ fun DashboardScreen(
     LaunchedEffect(uiState.createdBatchId) {
         uiState.createdBatchId?.let { batchId ->
             navController.navigate(
-                Screen.ScanBarcode.createRoute(
-                    txnScanType = ScanType.STOCK_COUNT,
+                Screen.DispenseFlow.createRoute(
                     scanType = CountType.REGULAR.toString(),
-                    batchId = batchId
+                    batchId = batchId,
                 )
             )
             viewModel.clearCreatedBatchId()
