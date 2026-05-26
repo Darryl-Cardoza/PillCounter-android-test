@@ -72,6 +72,10 @@ class DispenseScanViewModel @Inject constructor(
         _uiState.update { it.copy(scanType = type, stage = initialStage) }
     }
 
+    fun setBatchId(batchId: Long) {
+        if (batchId != 0L) _uiState.update { it.copy(batchId = batchId) }
+    }
+
     /**
      * Hydrate the screen for an HL7/PMS-initiated dispense. Reads the
      * PMS-created transaction (saved by [com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository])
@@ -307,6 +311,7 @@ class DispenseScanViewModel @Inject constructor(
                             isLoading = false,
                             ndcScannedValue = localDrug!!.ndc,
                             ndcDrugName = localDrug.drugName ?: it.drugName,
+                            ndcPackageQty = localDrug.packageQty,
                             barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcDetails = true,
                             isHazardous = localDrug.isHazardous,
@@ -350,6 +355,7 @@ class DispenseScanViewModel @Inject constructor(
                             isLoading = false,
                             ndcScannedValue = drugInfo.ndc,
                             ndcDrugName = displayName,
+                            ndcPackageQty = drugInfo.qty,
                             barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcEquivalenceDialog = true,
                             isHazardous = drugInfo.isHazardous ?: false,
@@ -377,6 +383,7 @@ class DispenseScanViewModel @Inject constructor(
                         isLoading = false,
                         ndcScannedValue = drugInfo.ndc,
                         ndcDrugName = displayName,
+                        ndcPackageQty = drugInfo.qty,
                         barcodeImagePath = imagePath ?: it.barcodeImagePath,
                         showNdcDetails = true,
                         isHazardous = drugInfo.isHazardous ?: false,
@@ -483,8 +490,12 @@ class DispenseScanViewModel @Inject constructor(
         val txnId = state.txnId
 
         // Stock count: no RX scan happened, so no txn exists yet. Create one now.
+        // SEALED bottles are immediately complete — bottleQty = 1, status = COMPLETED,
+        // then navigate back to the batch. OPENED bottles are PARTIAL and proceed to
+        // COUNTING so the user can count pills.
         if (countType == CountType.REGULAR && txnId == 0L) {
             viewModelScope.launch {
+                val isSealed = state.selectedContainerStatus == com.rite.pillcounting.core.utils.compose.ContainerStatus.SEALED
                 val ndc = state.ndcScannedValue.ifBlank { state.ndc }
                 val drugId = drugMasterDao.upsertPreservingId(
                     DrugMasterEntity(
@@ -497,7 +508,7 @@ class DispenseScanViewModel @Inject constructor(
                     localId = preferenceHelper.getLocalId(),
                     drugId = drugId,
                     countType = countType,
-                    status = CountStatus.PARTIAL,
+                    status = if (isSealed) CountStatus.COMPLETED else CountStatus.PARTIAL,
                     expiry = null,
                     lotNo = null,
                     barcodeImage = state.barcodeImagePath,
@@ -505,13 +516,26 @@ class DispenseScanViewModel @Inject constructor(
                     targetCount = null,
                     bucketId = state.selectedBucketId.ifBlank { null },
                     rxNo = null,
+                    batchId = state.batchId.takeIf { it != 0L },
+                    bottleQty = if (isSealed) 1 else 0,
                 )
                 val newTxnId = pillCountTxnDao.upsertPreservingId(txn)
                 preferenceHelper.saveTxnId(newTxnId)
-                _uiState.update {
-                    it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, txnId = newTxnId)
+                if (isSealed) {
+                    _uiState.update {
+                        it.copy(
+                            showNdcDetails = false,
+                            txnId = newTxnId,
+                            navigateToBatchId = state.batchId.takeIf { it != 0L } ?: newTxnId,
+                        )
+                    }
+                    logger.i("Stock count SEALED confirmed, txn=$newTxnId batchId=${state.batchId}")
+                } else {
+                    _uiState.update {
+                        it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, txnId = newTxnId)
+                    }
+                    logger.i("Stock count OPENED confirmed, txn=$newTxnId batchId=${state.batchId}, advancing to COUNTING")
                 }
-                logger.i("Stock count NDC confirmed, txn=$newTxnId, advancing to COUNTING")
             }
             return
         }
@@ -554,6 +578,7 @@ class DispenseScanViewModel @Inject constructor(
                 showNdcDetails = false,
                 ndcScannedValue = "",
                 ndcDrugName = "",
+                ndcPackageQty = null,
                 isSubstituteConfirmed = false,
             )
         }
@@ -596,6 +621,10 @@ class DispenseScanViewModel @Inject constructor(
 
     fun dismissRxScannedInStockCountDialog() {
         _uiState.update { it.copy(showRxScannedInStockCountDialog = false) }
+    }
+
+    fun clearNavigateToBatch() {
+        _uiState.update { it.copy(navigateToBatchId = null) }
     }
 
     fun clearError() {

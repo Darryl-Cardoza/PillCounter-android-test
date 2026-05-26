@@ -176,14 +176,18 @@ sealed interface Screen {
     // and hydrate from the existing PMS-created transaction (drugName,
     // hl7-expected NDC, targetCount, rxNo are all pre-populated, RX scan is
     // skipped entirely).
+    //
+    // The optional `batch_id` is used in the stock count (REGULAR) flow to
+    // associate the new transaction with the active batch.
     data object DispenseScan : Screen {
         private const val ROUTE_PREFIX = "dispense_scan"
         const val ARG_TYPE = "type"
         const val ARG_FROM_HL7 = "from_hl7"
         const val ARG_FROM_RESUME = "from_resume"
+        const val ARG_BATCH_ID = "batch_id"
 
         override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}"
+            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}"
 
         val navArguments: List<NamedNavArgument> = listOf(
             navArgument(ARG_TYPE) { type = NavType.StringType },
@@ -195,10 +199,18 @@ sealed interface Screen {
                 type = NavType.BoolType
                 defaultValue = false
             },
+            navArgument(ARG_BATCH_ID) {
+                type = NavType.LongType
+                defaultValue = 0L
+            },
         )
 
-        fun createRoute(scanType: String, fromHl7: Boolean = false, fromResume: Boolean = false) =
-            "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume"
+        fun createRoute(
+            scanType: String,
+            fromHl7: Boolean = false,
+            fromResume: Boolean = false,
+            batchId: Long = 0L,
+        ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId"
     }
 
     data object ResumeFixedCounts : Screen {

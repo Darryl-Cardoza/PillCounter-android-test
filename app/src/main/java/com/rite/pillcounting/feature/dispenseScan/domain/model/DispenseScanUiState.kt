@@ -18,6 +18,7 @@ data class DispenseScanUiState(
 
     val ndcScannedValue: String = "",
     val ndcDrugName: String = "",
+    val ndcPackageQty: Int? = null,
 
     val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
 
@@ -48,4 +49,12 @@ data class DispenseScanUiState(
 
     // Stock-count only: shown when the user scans an RX label instead of an NDC container.
     val showRxScannedInStockCountDialog: Boolean = false,
+
+    // Stock-count batch association. 0L means no batch (dispense flow or stock count
+    // started without a batch context).
+    val batchId: Long = 0L,
+
+    // One-shot navigation signal: non-null after a SEALED stock bottle is confirmed.
+    // The screen observes this and navigates back to the batch, then clears it.
+    val navigateToBatchId: Long? = null,
 )
