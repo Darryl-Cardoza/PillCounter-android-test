@@ -290,7 +290,9 @@ internal fun ScaffoldKpiScrollRow(
                 icon = spec.icon,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
-                modifier = Modifier.width(108.dp),
+                modifier = Modifier
+                    .width(108.dp)
+                    .height(96.dp),
             )
         }
     }
