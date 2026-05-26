@@ -85,30 +85,38 @@ internal fun ScaffoldTopBar(
     showPmsDot: Boolean,
     isPmsConnected: Boolean,
     navController: NavController,
+    compact: Boolean = false,
 ) {
+    val logoSize = if (compact) 40.dp else 80.dp
+    val horizontalPadding = if (compact) 12.dp else 16.dp
+    val verticalPadding = if (compact) 8.dp else 12.dp
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Image(
             painter = painterResource(id = R.drawable.ic_launcher_foreground),
             contentDescription = "Pill Counter",
-            modifier = Modifier.size(80.dp),
+            modifier = Modifier.size(logoSize),
         )
-        Spacer(modifier = Modifier.width(4.dp))
+        Spacer(modifier = Modifier.width(if (compact) 8.dp else 4.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = pharmacyName ?: "—",
-                style = MaterialTheme.typography.titleMedium,
+                style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                 color = DashboardPrimaryText,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             Text(
                 text = terminalAndUserLine,
                 style = MaterialTheme.typography.bodySmall,
                 color = DashboardSubtleText,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
         if (showPmsDot) {
@@ -124,11 +132,12 @@ internal fun ScaffoldTopBar(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = if (isPmsConnected) "PMS Connected" else "PMS Disconnected",
-                    style = MaterialTheme.typography.labelMedium,
+                    style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.secondary,
+                    maxLines = 1,
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(if (compact) 8.dp else 12.dp))
         }
         MenuButton(navController = navController)
     }
@@ -141,6 +150,7 @@ internal fun ScaffoldQuickActionCard(
     @DrawableRes innerIconRes: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
 ) {
     Card(
         modifier = modifier.clickable { onClick() },
@@ -151,26 +161,31 @@ internal fun ScaffoldQuickActionCard(
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(24.dp),
+                .padding(if (compact) 16.dp else 24.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             QuickActionRingIcon(
                 innerIconRes = innerIconRes,
                 contentDescription = title,
+                compact = compact,
             )
-            Spacer(modifier = Modifier.width(20.dp))
-            Column {
+            Spacer(modifier = Modifier.width(if (compact) 14.dp else 20.dp))
+            Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    fontSize = 28.sp,
+                    fontSize = if (compact) 20.sp else 28.sp,
                     color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
                     color = DashboardSubtleText,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
         }
@@ -639,10 +654,13 @@ private fun ScaffoldInventoryRow(item: QueueItem.Inventory, onClick: ((Long) -> 
 private fun QuickActionRingIcon(
     @DrawableRes innerIconRes: Int,
     contentDescription: String?,
+    compact: Boolean = false,
 ) {
+    val ringSize = if (compact) 64.dp else 110.dp
+    val iconSize = if (compact) 32.dp else 56.dp
     Box(
         modifier = Modifier
-            .size(110.dp)
+            .size(ringSize)
             .border(
                 width = 2.dp,
                 color = MaterialTheme.colorScheme.primary,
@@ -654,7 +672,7 @@ private fun QuickActionRingIcon(
             painter = painterResource(id = innerIconRes),
             contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.size(56.dp),
+            modifier = Modifier.size(iconSize),
         )
     }
 }

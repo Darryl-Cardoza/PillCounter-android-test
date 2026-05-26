@@ -61,6 +61,7 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                 showPmsDot = params.isHl7Enabled,
                 isPmsConnected = params.isPmsConnected,
                 navController = params.navController,
+                compact = true,
             )
 
             Column(
@@ -85,7 +86,8 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     onClick = params.onDispenseQuickAction,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(110.dp),
+                        .height(96.dp),
+                    compact = true,
                 )
                 ScaffoldQuickActionCard(
                     title = "Stock Count",
@@ -94,7 +96,8 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     onClick = params.onInventoryQuickAction,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(110.dp),
+                        .height(96.dp),
+                    compact = true,
                 )
 
                 ScaffoldKpiScrollRow(
