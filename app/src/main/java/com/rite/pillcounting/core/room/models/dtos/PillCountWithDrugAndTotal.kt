@@ -16,5 +16,6 @@ data class PillCountWithDrugAndTotal(
     val isComingFromHL7 : Boolean,
     val isNdcVerified: Boolean,
     val countType: CountType,
-    val priority: TxnPriority?
+    val priority: TxnPriority?,
+    val isHazardous: Boolean = false,
 )
