@@ -387,6 +387,7 @@
 
     <string name="verify_rx_details">Verify Rx Details</string>
     <string name="verify_stock_bottle_details">Verify Stock Bottle Details</string>
+    <string name="hazardous_drug_warning">Hazardous Drug</string>
     <string name="form">Form</string>
     <!-- ================== HL7 NOTIFICATIONS ================== -->
     <string name="hl7_notification_device_connected_title">Device Connected</string>
