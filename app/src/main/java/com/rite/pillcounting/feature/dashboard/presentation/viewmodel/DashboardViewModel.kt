@@ -176,8 +176,7 @@ class DashboardViewModel @Inject constructor(
                 val dispenseItems = dispense.map { txn ->
                     QueueItem.Dispense(
                         txn = txn,
-                        // TODO: requires DrugMasterEntity.isHazardous on the JOIN — Turn 2 will extend the query.
-                        isHazardous = false,
+                        isHazardous = txn.isHazardous,
                         isHighPriority = txn.priority == TxnPriority.High,
                         isControlled = isControlledDrugType(txn.drugType),
                     )

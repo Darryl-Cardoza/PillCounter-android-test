@@ -141,6 +141,8 @@ interface PillCountTxnDao {
                 THEN subDrug.ndc ELSE drug.ndc END AS ndc,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
                 THEN subDrug.drugType ELSE drug.drugType END AS drugType,
+           IFNULL(CASE WHEN txn.isSubstitute = 1 AND subDrug.isHazardous IS NOT NULL
+                       THEN subDrug.isHazardous ELSE drug.isHazardous END, 0) AS isHazardous,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug
@@ -710,6 +712,8 @@ interface PillCountTxnDao {
                 THEN subDrug.ndc ELSE drug.ndc END AS ndc,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
                 THEN subDrug.drugType ELSE drug.drugType END AS drugType,
+           IFNULL(CASE WHEN txn.isSubstitute = 1 AND subDrug.isHazardous IS NOT NULL
+                       THEN subDrug.isHazardous ELSE drug.isHazardous END, 0) AS isHazardous,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug
