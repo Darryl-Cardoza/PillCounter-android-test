@@ -842,6 +842,7 @@ fun DispenseFlowScreen(
                         onCancel = { dispenseVm.onNdcCancelled() },
                         onProceed = { dispenseVm.onNdcConfirmed() },
                         dismissible = false,
+                        isHazardous = dispenseState.isHazardous,
                     )
                 } else {
                     Box(
@@ -858,6 +859,7 @@ fun DispenseFlowScreen(
                             onCancel = { dispenseVm.onNdcCancelled() },
                             onProceed = { dispenseVm.onNdcConfirmed() },
                             modifier = Modifier.fillMaxSize(),
+                            isHazardous = dispenseState.isHazardous,
                         )
                     }
                 }

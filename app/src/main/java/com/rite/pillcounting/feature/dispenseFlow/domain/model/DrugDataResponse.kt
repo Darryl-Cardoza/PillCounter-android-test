@@ -1,6 +1,5 @@
 ﻿package com.rite.pillcounting.feature.dispenseFlow.domain.model
 
-import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
 @Serializable
