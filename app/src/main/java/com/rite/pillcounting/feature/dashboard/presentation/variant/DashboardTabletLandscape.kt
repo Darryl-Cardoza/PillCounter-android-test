@@ -146,13 +146,15 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                     }
 
                     // Column 2 — KPI cards stacked vertically. Cards size to content; the
-                    // column does NOT fillMaxHeight so the strip ends with the last card and
-                    // leaves the bottom of the body free (matches the Figma reference).
+                    // column fills the body height so its trailing whitespace mirrors the
+                    // empty area below the Inventory Quick Action card.
                     ScaffoldKpiColumn(
                         counts = uiState.kpiCounts,
                         activeFilter = uiState.activeKpiFilter,
                         onTap = params.onKpiFilterTapped,
-                        modifier = Modifier.weight(0.22f),
+                        modifier = Modifier
+                            .weight(0.22f)
+                            .fillMaxHeight(),
                     )
 
                     // Column 3 — paged Today's Queue / Recent Activity list.
