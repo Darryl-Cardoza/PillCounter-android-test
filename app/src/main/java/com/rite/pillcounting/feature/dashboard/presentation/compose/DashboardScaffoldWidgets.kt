@@ -8,6 +8,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -266,6 +267,40 @@ internal fun ScaffoldKpiColumn(
 }
 
 /**
+ * Vertically scrollable single-column KPI strip. Used by phone landscape where vertical space
+ * is constrained but the middle column is narrow — user scrolls vertically through the 6 cards.
+ * Cards have a fixed height; the column scrolls.
+ */
+@Composable
+internal fun ScaffoldKpiScrollColumn(
+    counts: Map<KpiFilter, Int>,
+    activeFilter: KpiFilter?,
+    onTap: (KpiFilter) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scrollState = androidx.compose.foundation.rememberScrollState()
+    Column(
+        modifier = modifier.verticalScroll(scrollState),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        DefaultKpiCards.forEach { spec ->
+            ScaffoldKpiCard(
+                count = counts[spec.filter] ?: 0,
+                lineOne = spec.lineOne,
+                lineTwo = spec.lineTwo,
+                icon = spec.icon,
+                isActive = activeFilter == spec.filter,
+                onClick = { onTap(spec.filter) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(72.dp),
+                singleLabelLine = true,
+            )
+        }
+    }
+}
+
+/**
  * Horizontally scrollable single-row KPI strip. Used by phone portrait where the 6 cards can't
  * fit side-by-side at narrow widths — user scrolls horizontally to reach the trailing cards.
  * Cards have a fixed width so each is fully readable; the row scrolls.
@@ -293,6 +328,7 @@ internal fun ScaffoldKpiScrollRow(
                 modifier = Modifier
                     .width(108.dp)
                     .height(96.dp),
+                singleLabelLine = true,
             )
         }
     }
@@ -307,6 +343,7 @@ internal fun ScaffoldKpiCard(
     isActive: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    singleLabelLine: Boolean = false,
 ) {
     val scale by animateFloatAsState(targetValue = if (isActive) 1.02f else 1f, label = "kpiScale")
     Card(
@@ -320,7 +357,7 @@ internal fun ScaffoldKpiCard(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .padding(12.dp),
         ) {
             Icon(
@@ -331,23 +368,33 @@ internal fun ScaffoldKpiCard(
                     .align(Alignment.TopEnd)
                     .size(16.dp),
             )
-            Column {
+            Column(modifier = Modifier.align(Alignment.CenterStart)) {
                 Text(
                     text = count.toString(),
                     fontSize = 28.sp,
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
                 )
-                Text(
-                    text = lineOne,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DashboardSubtleText,
-                )
-                Text(
-                    text = lineTwo,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = DashboardSubtleText,
-                )
+                if (singleLabelLine) {
+                    Text(
+                        text = lineTwo,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DashboardSubtleText,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                } else {
+                    Text(
+                        text = lineOne,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DashboardSubtleText,
+                    )
+                    Text(
+                        text = lineTwo,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = DashboardSubtleText,
+                    )
+                }
             }
         }
     }
@@ -383,7 +430,11 @@ private fun ScaffoldTab(
     modifier: Modifier = Modifier,
 ) {
     Column(
-        modifier = modifier.clickable { onClick() },
+        modifier = modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = onClick,
+        ),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
