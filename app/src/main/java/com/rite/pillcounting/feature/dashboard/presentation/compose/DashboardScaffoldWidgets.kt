@@ -228,9 +228,12 @@ internal fun ScaffoldKpiColumn(
     onTap: (KpiFilter) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // SpaceBetween distributes the gaps between cards evenly so the column fills the body
+    // height (matches the height of the Quick Actions column on the left) without forcing any
+    // single card to grow.
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.SpaceBetween,
     ) {
         DefaultKpiCards.forEach { spec ->
             ScaffoldKpiCard(
@@ -481,11 +484,44 @@ private fun ScaffoldDispenseRow(item: QueueItem.Dispense, onClick: ((Long) -> Un
             }
             val target = item.txn.targetCount ?: 0
             val have = item.txn.totalPillCount
-            Text(
-                text = if (target > 0) "$have/$target" else "$have",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                if (target > 0) {
+                    ProgressPie(
+                        progress = (have.toFloat() / target.toFloat()).coerceIn(0f, 1f),
+                        color = MaterialTheme.colorScheme.secondary,
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+                Text(
+                    text = if (target > 0) "$have/$target" else "$have",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = DashboardPrimaryText,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Tiny filled pie indicator showing `progress` (0..1) of a target. Empty arc is rendered as a
+ * light grey ring so 0% reads as a hollow circle and 100% as a fully filled disk.
+ */
+@Composable
+private fun ProgressPie(
+    progress: Float,
+    color: Color,
+    size: androidx.compose.ui.unit.Dp = 24.dp,
+) {
+    androidx.compose.foundation.Canvas(modifier = Modifier.size(size)) {
+        // Empty backdrop ring so the shape is visible at 0%.
+        drawCircle(color = Color(0xFFE0E0E0))
+        if (progress > 0f) {
+            drawArc(
+                color = color,
+                startAngle = -90f,
+                sweepAngle = 360f * progress,
+                useCenter = true,
             )
         }
     }
