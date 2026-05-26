@@ -23,6 +23,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -451,12 +452,17 @@ fun PillScanningScreen(
 /**
  * Tablet-landscape inventory shell — UI-only first pass.
  *
- * Camera placeholder on the left, the new persistent Batch Stock Count panel on
- * the right. Counter +/- mutate sample state in place. SCAN PILLS / ADD / CLEAR /
- * END COUNT are stubs until we wire the real flow.
+ * Live CameraX preview on the left (no analyzer wiring yet — frames are dropped
+ * via a no-op onFrame, and the ML interpreter is never initialized because we
+ * don't call viewModel.initializeInterpreter()). The new persistent Batch Stock
+ * Count panel sits on the right. Counter +/- mutate sample state in place.
+ * SCAN PILLS / ADD / CLEAR / END COUNT remain stubs until wiring.
  */
 @Composable
 private fun InventoryTabletLandscapeShell(navController: NavController) {
+    val viewModel: PillScanningViewModel = hiltViewModel()
+    val uiState by viewModel.uiState.collectAsState()
+
     var state by remember {
         mutableStateOf(com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountSampleData.activeState)
     }
@@ -465,14 +471,31 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
         modifier = Modifier
             .fillMaxSize()
             .background(AppTheme.extendedColors.secondaryBackground)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        // Left: camera preview placeholder (real camera + NDC analyzer wiring lands later).
+        // Left: live CameraX preview rendered inside a rounded card with a thin
+        // outer margin so the device's screen edge isn't flush with the preview
+        // (matches the Figma inset look).
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .background(androidx.compose.ui.graphics.Color(0xFF6F6F6F))
+                .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
+                .background(androidx.compose.ui.graphics.Color(0xFF2A2A2A))
         ) {
+            CameraPreviewSection(
+                viewModel = viewModel,
+                pills = uiState.detectedPills,
+                isCameraPaused = viewModel.cameraPaused.collectAsState().value,
+                imageFrameWidth = uiState.imageFrameWidth,
+                imageFrameHeight = uiState.imageFrameHeight,
+                onFrame = { /* no-op — no analyzer wired yet; ML stays off */ },
+                onFilteredCountChanged = { /* no-op */ },
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            // Back arrow overlaid on the top-left of the camera card.
             BackButton(
                 navController = navController,
                 showBox = false,
@@ -483,7 +506,7 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
         // Right: new persistent panel.
         Box(
             modifier = Modifier
-                .width(420.dp)
+                .width(380.dp)
                 .fillMaxHeight()
         ) {
             com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletLandscape(

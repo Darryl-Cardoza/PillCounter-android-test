@@ -69,27 +69,29 @@ fun BatchStockCountTabletLandscape(
     onEndCount: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Top card claims the remaining height; bottom card wraps its content. A
+    // generous gap (16 dp) between cards matches the Figma rhythm.
     Column(
         modifier = modifier
             .fillMaxHeight()
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(vertical = 16.dp, horizontal = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         StockCountCard(modifier = Modifier.weight(1f, fill = true)) {
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(horizontal = 16.dp, vertical = 14.dp)
+                    .padding(horizontal = 18.dp, vertical = 16.dp)
             ) {
                 BatchStockCountHeader(onScanPills = onScanPills)
-                Spacer(modifier = Modifier.height(14.dp))
+                Spacer(modifier = Modifier.height(16.dp))
                 val label = if (state.activeNdc != null) {
                     "RECENT BATCH COUNT (${state.totalNdcs})"
                 } else {
                     "RECENT COUNTS"
                 }
                 RecentCountsLabelRow(label = label)
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
                 RecentCountsList(
                     rows = state.recentCounts,
                     modifier = Modifier.weight(1f),
@@ -161,7 +163,7 @@ fun BatchStockCountTabletLandscapePreviewHost(
         // Right: the new panel.
         Box(
             modifier = Modifier
-                .width(420.dp)
+                .width(380.dp)
                 .fillMaxHeight()
         ) {
             BatchStockCountTabletLandscape(

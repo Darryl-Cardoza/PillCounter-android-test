@@ -18,12 +18,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -36,20 +36,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
-import com.rite.pillcounting.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 
 /* ─────────────────────────  CARD CONTAINER  ───────────────────────── */
 
-/**
- * Rounded white card used for both the recent-counts list and the bottom
- * scanned/summary card. Background matches the figma off-white tint.
- */
+/** Rounded white card used as the surface for both the top and bottom sections. */
 @Composable
 internal fun StockCountCard(
     modifier: Modifier = Modifier,
@@ -57,12 +54,14 @@ internal fun StockCountCard(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(CARD_RADIUS))
             .background(Color.White)
     ) {
         content()
     }
 }
+
+internal val CARD_RADIUS: Dp = 13.dp
 
 /* ─────────────────────────  RECENT COUNTS LIST  ───────────────────────── */
 
@@ -94,13 +93,13 @@ private fun ScanPillsPillButton(onClick: () -> Unit) {
             .clip(RoundedCornerShape(50))
             .border(1.dp, color, RoundedCornerShape(50))
             .clickable(onClick = onClick)
-            .padding(horizontal = 18.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 7.dp),
         contentAlignment = Alignment.Center,
     ) {
         Text(
             text = "SCAN PILLS",
             color = color,
-            fontSize = 12.sp,
+            fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -117,8 +116,8 @@ internal fun RecentCountsLabelRow(
     ) {
         Text(
             text = label,
-            color = Color(0xFF666666),
-            fontSize = 11.sp,
+            color = Color(0xFF888888),
+            fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f)
         )
@@ -126,22 +125,30 @@ internal fun RecentCountsLabelRow(
             imageVector = Icons.Default.Search,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(18.dp)
+            modifier = Modifier.size(16.dp)
         )
     }
 }
 
+/**
+ * White rows with hairline dividers between (no row backgrounds). Matches the
+ * Figma "list-on-white-card" look — the surrounding [StockCountCard] supplies
+ * the white background.
+ */
 @Composable
 internal fun RecentCountsList(
     rows: List<RecentBatchRow>,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        items(rows) { row ->
-            RecentCountRow(row = row)
+    LazyColumn(modifier = modifier) {
+        items(rows.size) { index ->
+            if (index > 0) {
+                HorizontalDivider(
+                    color = Color(0xFFEEEEEE),
+                    thickness = 1.dp,
+                )
+            }
+            RecentCountRow(row = rows[index])
         }
     }
 }
@@ -151,9 +158,7 @@ private fun RecentCountRow(row: RecentBatchRow) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFFF5F5F5))
-            .padding(horizontal = 12.dp, vertical = 10.dp),
+            .padding(vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
@@ -162,12 +167,15 @@ private fun RecentCountRow(row: RecentBatchRow) {
                 color = Color(0xFF222222),
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = row.ndc,
-                color = Color(0xFF888888),
+                color = Color(0xFFAAAAAA),
                 fontSize = 11.sp,
+                maxLines = 1,
             )
         }
         UnitColumn(value = row.pills.toString(), label = "Pills")
@@ -176,18 +184,20 @@ private fun RecentCountRow(row: RecentBatchRow) {
     }
 }
 
+/** Number on top in magenta, label below in grey caption. Right-aligned. */
 @Composable
 private fun UnitColumn(value: String, label: String) {
-    Column(horizontalAlignment = Alignment.End) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
         Text(
             text = value,
             color = MaterialTheme.colorScheme.secondary,
             fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
         )
+        Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = label,
-            color = Color(0xFF888888),
+            color = Color(0xFFAAAAAA),
             fontSize = 10.sp,
         )
     }
@@ -211,13 +221,13 @@ internal fun ScannedDrugCard(
     ) {
         Text(
             text = "SCANNED DRUG DETAILS",
-            color = Color(0xFF666666),
-            fontSize = 11.sp,
+            color = Color(0xFF888888),
+            fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Row 1: Drug Name | Bucket
+        // Row 1: Drug Name (2x) | Bucket (1x).
         Row(modifier = Modifier.fillMaxWidth()) {
             DetailField(
                 label = "Drug Name",
@@ -232,12 +242,12 @@ internal fun ScannedDrugCard(
         }
         Spacer(modifier = Modifier.height(12.dp))
 
-        // Row 2: NDC | Batch | Expiry
+        // Row 2: NDC (1.2x — wider so the formatted number never wraps) | Batch | Expiry.
         Row(modifier = Modifier.fillMaxWidth()) {
             DetailField(
                 label = "NDC Number",
                 value = active.ndc,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1.2f),
             )
             DetailField(
                 label = "Batch No.",
@@ -260,11 +270,12 @@ internal fun ScannedDrugCard(
         )
         Spacer(modifier = Modifier.height(14.dp))
 
+        // CLEAR / ADD: smaller, centered with a gap, NOT stretched to fill.
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         ) {
-            Box(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.width(120.dp)) {
                 HollowButton(
                     text = "CLEAR",
                     onClick = onClear,
@@ -273,7 +284,7 @@ internal fun ScannedDrugCard(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Box(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.width(120.dp)) {
                 ActionButtonPrimary(
                     text = "ADD",
                     onClick = onAdd,
@@ -300,6 +311,9 @@ private fun DetailField(label: String, value: String, modifier: Modifier = Modif
             color = MaterialTheme.colorScheme.secondary,
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            softWrap = false,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -309,6 +323,9 @@ private fun DetailField(label: String, value: String, modifier: Modifier = Modif
 /**
  * +/- counter with tap = ±1 and long-press = continuous repeat while held.
  * Floor is 1 — the scanned NDC always represents at least one bottle.
+ *
+ * Visually: large square tiles with a subtle border (no fill), thin cyan icon.
+ * Center tile is wider than the buttons (≈ 1.6 : 1).
  */
 @Composable
 internal fun CounterRow(
@@ -317,24 +334,26 @@ internal fun CounterRow(
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
 ) {
+    val borderColor = Color(0xFFE5E5E5)
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(72.dp),
+            .height(76.dp),
         verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         CounterButton(
             icon = false,
             onTick = onDecrement,
+            borderColor = borderColor,
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
-        Spacer(modifier = Modifier.width(8.dp))
         Column(
             modifier = Modifier
-                .weight(1.4f)
+                .weight(1.6f)
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(10.dp))
-                .background(Color(0xFFFAFAFA)),
+                .clip(RoundedCornerShape(12.dp))
+                .border(1.dp, borderColor, RoundedCornerShape(12.dp)),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -346,14 +365,14 @@ internal fun CounterRow(
             )
             Text(
                 text = "$totalPills pills",
-                color = Color(0xFF888888),
+                color = Color(0xFFAAAAAA),
                 fontSize = 11.sp,
             )
         }
-        Spacer(modifier = Modifier.width(8.dp))
         CounterButton(
             icon = true,
             onTick = onIncrement,
+            borderColor = borderColor,
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
     }
@@ -368,6 +387,7 @@ internal fun CounterRow(
 private fun CounterButton(
     icon: Boolean,
     onTick: () -> Unit,
+    borderColor: Color,
     modifier: Modifier = Modifier,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
@@ -386,8 +406,8 @@ private fun CounterButton(
 
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFFFAFAFA))
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .clickable(
                 interactionSource = interactionSource,
                 indication = null,
@@ -399,7 +419,7 @@ private fun CounterButton(
             imageVector = if (icon) Icons.Default.Add else Icons.Default.Remove,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(28.dp),
+            modifier = Modifier.size(30.dp),
         )
     }
 }
@@ -423,8 +443,8 @@ internal fun ScannedSummaryCard(
     ) {
         Text(
             text = "SCANNED SUMMARY",
-            color = Color(0xFF666666),
-            fontSize = 11.sp,
+            color = Color(0xFF888888),
+            fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(modifier = Modifier.height(12.dp))
@@ -434,12 +454,13 @@ internal fun ScannedSummaryCard(
         ) {
             SummaryStat(label = "Total NDCs", value = totalNdcs.toString(), modifier = Modifier.weight(1f))
             SummaryStat(label = "Total Pills", value = totalPills.toString(), modifier = Modifier.weight(1f))
-            Box {
+            Box(modifier = Modifier.width(130.dp)) {
                 ActionButtonPrimary(
                     text = "END COUNT",
                     onClick = onEndCount,
                     color = MaterialTheme.colorScheme.primary,
                     fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }

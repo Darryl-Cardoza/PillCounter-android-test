@@ -110,10 +110,8 @@ fun DashboardScreen(
         }
     }
 
-    // Inventory Quick Action surfaces the same two-dialog flow that RegularCountSection runs
-    // today (pick "New batch" vs "Resume last", then bucket-select). Hoisting the dialog state
-    // up to the dispatcher keeps every variant a pure UI function.
-    var showInventoryDialog by remember { mutableStateOf(false) }
+    // Inventory Quick Action goes straight to bucket-select: clicking Inventory always
+    // creates a new batch. (Resume-last is reachable from elsewhere if needed.)
     var showBucketSelectDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
@@ -133,7 +131,7 @@ fun DashboardScreen(
         },
         onInventoryQuickAction = {
             viewModel.saveTxnId()
-            showInventoryDialog = true
+            showBucketSelectDialog = true
         },
         onRecentDispenseClick = { txnId ->
             viewModel.selectCurrentTransaction(txnId)
@@ -143,35 +141,6 @@ fun DashboardScreen(
             navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
         },
     )
-
-    if (showInventoryDialog) {
-        val options = listOf(
-            stringResource(R.string.stock_count_dialog_option_first),
-            stringResource(R.string.stock_count_dialog_option_second),
-        )
-        val noLastBatchMessage = stringResource(R.string.no_last_batch_available)
-        CommonSingleSelectDialog(
-            title = stringResource(R.string.stock_count_dialog_title),
-            options = options,
-            selectedIndex = 0,
-            onCancel = { showInventoryDialog = false },
-            onOk = { index ->
-                when (index) {
-                    0 -> showBucketSelectDialog = true
-                    1 -> scope.launch {
-                        val batch = withContext(Dispatchers.IO) { viewModel.getLastInProgressBatch() }
-                        if (batch != null) {
-                            navController.navigate(Screen.InventoryScan.createRoute(batch.batchId))
-                        } else {
-                            showToast(context, noLastBatchMessage, Toast.LENGTH_SHORT)
-                        }
-                    }
-                }
-                showInventoryDialog = false
-            },
-            distanceBetweenOptions = 2.dp,
-        )
-    }
 
     if (showBucketSelectDialog) {
         val bucketList = viewModel.getBucketList()
