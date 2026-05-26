@@ -857,7 +857,7 @@ class PillScanningViewModel @Inject constructor(
         when (event.stepType) {
             StepState.CONTAINER_INITIATE -> {
                 val target = _txnInfo.value?.targetCount ?: return
-                if (target < event.totalCount) {
+                if (target <= event.totalCount) {
                     _uiState.update { it.copy(showDialogForControl = true) }
                 } else {
                     _uiState.update {
@@ -869,7 +869,7 @@ class PillScanningViewModel @Inject constructor(
             StepState.CONTAINER_PENDING -> {
                 val remainingCount =
                     _uiState.value.targetCount - _uiState.value.txnDetailHistory.sumOf { it.count }
-                if (remainingCount > 0) {
+                if (remainingCount > 0 && _currentStep.value == StepState.CONTAINER_PENDING) {
                     _uiState.update { it.copy(showCountMismatchDialog = true) }
                     pausePillDetection()
                 } else {
@@ -930,7 +930,7 @@ class PillScanningViewModel @Inject constructor(
                 _uiState.value.targetCount - _uiState.value.txnDetailHistory.sumOf { it.count }
             if (!_isTxnFromHl7.value && preferenceHelper.getShowNotesDialogSetting()) {
                 _uiState.update { it.copy(showNotesDialog = true) }
-            } else if (_isTxnFromHl7.value && remainingCount > 0 && _currentStep.value == StepState.CONTAINER_PENDING) {
+            } else if (remainingCount > 0 && _currentStep.value == StepState.CONTAINER_PENDING) {
                 _uiState.update { it.copy(showNotesDialog = true) }
             } else {
                 showConfirmDialogAfterDone()

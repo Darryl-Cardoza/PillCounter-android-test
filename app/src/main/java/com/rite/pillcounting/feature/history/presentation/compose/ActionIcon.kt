@@ -31,6 +31,6 @@ fun ActionIcon(
         tint = MaterialTheme.colorScheme.primary,
         modifier = Modifier
             .size(responsiveDp(25.dp))
-            .clickable {onClick}
+            .clickable { onClick() }
     )
 }
