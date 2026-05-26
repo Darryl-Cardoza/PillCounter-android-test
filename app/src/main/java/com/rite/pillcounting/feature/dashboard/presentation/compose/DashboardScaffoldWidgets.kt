@@ -7,6 +7,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -244,6 +245,37 @@ internal fun ScaffoldKpiColumn(
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
                 modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+/**
+ * Horizontally scrollable single-row KPI strip. Used by phone portrait where the 6 cards can't
+ * fit side-by-side at narrow widths — user scrolls horizontally to reach the trailing cards.
+ * Cards have a fixed width so each is fully readable; the row scrolls.
+ */
+@Composable
+internal fun ScaffoldKpiScrollRow(
+    counts: Map<KpiFilter, Int>,
+    activeFilter: KpiFilter?,
+    onTap: (KpiFilter) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val scrollState = androidx.compose.foundation.rememberScrollState()
+    Row(
+        modifier = modifier.horizontalScroll(scrollState),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        DefaultKpiCards.forEach { spec ->
+            ScaffoldKpiCard(
+                count = counts[spec.filter] ?: 0,
+                lineOne = spec.lineOne,
+                lineTwo = spec.lineTwo,
+                icon = spec.icon,
+                isActive = activeFilter == spec.filter,
+                onClick = { onTap(spec.filter) },
+                modifier = Modifier.width(108.dp),
             )
         }
     }
