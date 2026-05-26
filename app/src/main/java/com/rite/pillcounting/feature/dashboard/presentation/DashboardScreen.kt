@@ -2,10 +2,8 @@ package com.rite.pillcounting.feature.dashboard.presentation
 
 import Screen
 import android.app.Activity
+import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -13,8 +11,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -22,40 +19,39 @@ import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.MenuButton
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.PmsConnectionIcon
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
-import com.rite.pillcounting.core.utils.compose.SplitResponsive
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
-import com.rite.pillcounting.feature.dashboard.presentation.compose.FixedCountSection
-import com.rite.pillcounting.feature.dashboard.presentation.compose.RegularCountSection
+import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhoneLandscape
+import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhonePortrait
+import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardTabletLandscape
+import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardTabletPortrait
+import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardVariantParams
 import com.rite.pillcounting.feature.dashboard.presentation.viewmodel.DashboardViewModel
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
-import com.rite.pillcounting.ui.theme.AppTheme
 
 /**
  * Dashboard screen entry point.
  *
- * Displays:
- * - [FixedCountSection] on the top/left.
- * - [RegularCountSection] on the bottom/right.
- * - [MenuButton] for navigation.
+ * Acts as a thin dispatcher:
+ *  - Collects state from [DashboardViewModel]
+ *  - Owns global side-effects (back-press → exit dialog, profile redirect, logout, batch-created nav,
+ *    HL7 start once terminal info is loaded)
+ *  - Selects a variant composable based on window form factor + orientation
  *
- * The layout adapts responsively based on available space via [SplitResponsive].
+ * The four variants live under [com.rite.pillcounting.feature.dashboard.presentation.variant] and
+ * all accept the same [DashboardVariantParams]. This enforces "same data, different placement"
+ * at the type level.
  *
- * Handles:
- * - Exit confirmation dialog on back press.
- * - Navigation to Profile screen if profile is incomplete (unless "Do not ask again" is set).
- *
- * @param navController Used for navigation actions from dashboard sections.
- * @param viewModel ViewModel responsible for providing dashboard data/state.
+ * Variant selection uses [Configuration.smallestScreenWidthDp] (≥600dp = tablet) plus the current
+ * orientation. This avoids pulling in the material3-window-size-class artifact for what is, in
+ * practice, a binary form-factor decision.
  */
 @Composable
 fun DashboardScreen(
     navController: NavController,
     viewModel: DashboardViewModel = hiltViewModel(),
-    mainActivityViewModel: MainActivityViewModel = hiltViewModel()
+    mainActivityViewModel: MainActivityViewModel = hiltViewModel(),
 ) {
     var showLogoutDialog by remember { mutableStateOf(false) }
 
@@ -63,24 +59,20 @@ fun DashboardScreen(
     val activity = context as? Activity
     val preferenceHelper = remember { PreferenceHelper(context) }
 
-    // Prevent navigating back from dashboard screen
     BackHandler(enabled = true) {
         showLogoutDialog = true
     }
 
-    // Collect dashboard UI state reactively
     val uiState by viewModel.uiState.collectAsState()
     val connected by viewModel.isConnected.collectAsState()
     val terminalInfoLoaded by viewModel.terminalInfoLoaded.collectAsState()
 
-    // Start HL7 service after terminal info is loaded from auth/me
     LaunchedEffect(terminalInfoLoaded) {
         if (terminalInfoLoaded) {
             mainActivityViewModel.startHl7AfterTerminalLoaded()
         }
     }
 
-    // Handle navigation to Profile screen if profile is incomplete
     LaunchedEffect(uiState.navigateToProfile) {
         val isProfileChecked = preferenceHelper.isProfileChecked()
 
@@ -116,48 +108,51 @@ fun DashboardScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .systemBarsPadding()
-            .background(AppTheme.extendedColors.secondaryBackground)
-    ) {
+    // Inventory Quick Action surfaces the same two-dialog flow that RegularCountSection runs
+    // today (pick "New batch" vs "Resume last", then bucket-select). Hoisting the dialog state
+    // up to the dispatcher keeps every variant a pure UI function. The polished version of these
+    // dialogs lands in Turn 3 — for now we just trigger the first step.
+    var showInventoryDialog by remember { mutableStateOf(false) }
 
-        // Show loading indicator if user details are being fetched
-        if (viewModel.isHl7Enabled()) {
-            PmsConnectionIcon(
-                modifier = Modifier.align(Alignment.TopStart),
-                isPmsConnected = connected,
+    // ── Build the params bag shared by every variant ──
+    val params = DashboardVariantParams(
+        uiState = uiState,
+        isPmsConnected = connected,
+        isHl7Enabled = viewModel.isHl7Enabled(),
+        navController = navController,
+        onKpiFilterTapped = viewModel::onKpiFilterTapped,
+        onTabSelected = viewModel::onTabSelected,
+        onDispenseQuickAction = {
+            viewModel.saveTxnId()
+            navController.navigate(
+                Screen.DispenseScan.createRoute(scanType = CountType.FIXED.toString())
             )
-        }
+        },
+        onInventoryQuickAction = {
+            viewModel.saveTxnId()
+            showInventoryDialog = true
+        },
+    )
 
-        SplitResponsive(
-            topOrLeft = {
-                FixedCountSection(
-                    completedFixedCount = uiState.completedFixedCount,
-                    partialFixedCount = uiState.partialFixedCount,
-                    navController = navController,
-                    onNavigate = { viewModel.saveTxnId() }
-                )
-            },
-            bottomOrRight = {
-                RegularCountSection(
-                    completedRegularCount = uiState.completedRegularCount,
-                    partialRegularCount = uiState.partialRegularCount,
-                    navController = navController,
-                    onNavigate = { viewModel.saveTxnId() },
-                    viewModel = viewModel
-                )
-            }
-        )
-
-        // Global navigation menu button (top-right aligned)
-        MenuButton(
-            navController,
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
+    if (showInventoryDialog) {
+        // TODO Turn 3: replace this toast with the existing CommonSingleSelectDialog flow from
+        // RegularCountSection (new batch / resume last → bucket select → viewModel.createBatch).
+        showToast(context, R.string.start_a_new_inventory_count)
+        showInventoryDialog = false
     }
 
-    // Exit confirmation dialog
+    // ── Dispatch to the right variant ──
+    val config = LocalConfiguration.current
+    val isTablet = config.smallestScreenWidthDp >= TABLET_BREAKPOINT_DP
+    val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    when {
+        isTablet && !isLandscape -> DashboardTabletPortrait(params)
+        isTablet && isLandscape -> DashboardTabletLandscape(params)
+        !isTablet && !isLandscape -> DashboardPhonePortrait(params)
+        else -> DashboardPhoneLandscape(params)
+    }
+
     if (showLogoutDialog) {
         CommonDialog(
             message = stringResource(R.string.exit_text),
@@ -167,7 +162,10 @@ fun DashboardScreen(
                 showLogoutDialog = false
                 activity?.finishAffinity()
             },
-            onCancel = { showLogoutDialog = false }
+            onCancel = { showLogoutDialog = false },
         )
     }
 }
+
+/** Smallest-width breakpoint that distinguishes tablets from phones (matches Android's `sw600dp` qualifier). */
+private const val TABLET_BREAKPOINT_DP = 600

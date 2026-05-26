@@ -573,7 +573,10 @@ private fun VerifyRxDetailsTabletBottomSheet(
         // Dispense flow: all four corners rounded for visual consistency
         // with the landscape drawer.
         shape = RoundedCornerShape(24.dp),
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+        // Material3's ModalBottomSheet defaults sheetMaxWidth to 640dp on tablets, which
+        // leaves visible side gutters. Unspecified makes the sheet fill the screen width.
+        sheetMaxWidth = Dp.Unspecified,
     ) {
         HideSystemBarsInCurrentWindow()
         TabletHorizontalBody(
@@ -1333,7 +1336,9 @@ private fun VerifyNdcDetailsTabletBottomSheet(
         dragHandle = null,
         // Dispense flow: all four corners rounded.
         shape = RoundedCornerShape(24.dp),
-        contentWindowInsets = { WindowInsets(0, 0, 0, 0) }
+        contentWindowInsets = { WindowInsets(0, 0, 0, 0) },
+        // See note in VerifyRxDetailsTabletBottomSheet — override M3's 640dp default cap.
+        sheetMaxWidth = Dp.Unspecified,
     ) {
         HideSystemBarsInCurrentWindow()
         NdcTabletHorizontalBody(

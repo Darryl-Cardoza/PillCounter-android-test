@@ -6,16 +6,22 @@ import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.UserEntity
+import com.rite.pillcounting.core.room.models.dtos.BatchSummaryDto
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
+import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.HelperFunctions.mapCounts
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
+import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardUiState
+import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
+import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -23,6 +29,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -59,6 +66,12 @@ class DashboardViewModel @Inject constructor(
     /** Logger instance for this ViewModel. */
     private val logger = AppLogger.create<DashboardViewModel>()
 
+    /**
+     * Unfiltered combined queue, kept separate so KPI filter toggling can re-derive the
+     * visible queue locally without waiting for the upstream DB flow to re-emit.
+     */
+    private val _unfilteredQueue = MutableStateFlow<List<QueueItem>>(emptyList())
+
     /** Backing state flow for the Dashboard UI. */
     private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -77,6 +90,7 @@ class DashboardViewModel @Inject constructor(
             observeDashboardCounts()
             observeBatchCount()
             observeCompletedBatchCount()
+            observeQueue()
         }
         fetchUserDetail()
     }
@@ -130,6 +144,117 @@ class DashboardViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    // ─────────────────────────── New dashboard: queue + KPIs ───────────────────────────
+
+    /**
+     * Observes the merged "Today's Queue" — pending dispense transactions plus in-progress
+     * batches — and recomputes KPI card counts whenever either source changes.
+     *
+     * Sources are intentionally limited to **existing DAO queries** in this iteration. Fields
+     * that require new joins (hazardous / controlled / high-priority flags on dispense rows,
+     * batch typing for cycle-count vs pending) are stubbed `false` / `0` here and tracked in
+     * `HOMESCREEN_REDESIGN.md` under "Open questions".
+     */
+    private fun observeQueue(localId: Long = preferenceHelper.getLocalId()) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dispenseFlow = pillCountTxnDao.observePartialByCountType(
+                countType = CountType.FIXED,
+                partialStatus = CountStatus.PARTIAL,
+                userLocalId = localId,
+                type = StepState.SCAN,
+            )
+            val inventoryFlow = batchDao.getAllInProgress()
+
+            dispenseFlow.combine(inventoryFlow) { dispense, batches ->
+                val dispenseItems = dispense.map { txn ->
+                    QueueItem.Dispense(
+                        txn = txn,
+                        // TODO: requires DrugMasterEntity.isHazardous on the JOIN — Turn 2 will extend the query.
+                        isHazardous = false,
+                        // TODO: requires `priority` column on PillCountTxnEntity (open question in HOMESCREEN_REDESIGN.md).
+                        isHighPriority = false,
+                        // TODO: requires controlled drugType allowlist (open question in HOMESCREEN_REDESIGN.md).
+                        isControlled = false,
+                    )
+                }
+                val inventoryItems = batches.map { b ->
+                    QueueItem.Inventory(
+                        batch = BatchSummaryDto(
+                            batchId = b.batchId,
+                            createdAt = b.startDateTime,
+                            // uniqueNdcCount is unavailable from getAllInProgress(); Turn 2 query will provide it.
+                            uniqueNdcCount = 0,
+                            status = b.status.name,
+                            bucketId = b.bucketId,
+                            requestIdFromPMS = b.requestIdFromPMS,
+                        )
+                    )
+                }
+                (dispenseItems + inventoryItems).sortedBy { it.createdAt }
+            }.collect { combined ->
+                _unfilteredQueue.value = combined
+                val counts = computeKpiCounts(combined)
+                _uiState.update { state ->
+                    state.copy(
+                        queue = applyKpiFilter(combined, state.activeKpiFilter),
+                        kpiCounts = counts,
+                    )
+                }
+            }
+        }
+    }
+
+    /** Toggle a KPI filter — tapping the same card clears it. */
+    fun onKpiFilterTapped(filter: KpiFilter) {
+        _uiState.update { state ->
+            val newFilter = if (state.activeKpiFilter == filter) null else filter
+            state.copy(
+                activeKpiFilter = newFilter,
+                queue = applyKpiFilter(_unfilteredQueue.value, newFilter),
+            )
+        }
+    }
+
+    /** Switch the active tab between Today's Queue and Recent Activity. */
+    fun onTabSelected(tab: DashboardTab) {
+        _uiState.update { it.copy(activeTab = tab) }
+        if (tab == DashboardTab.RECENT_ACTIVITY) {
+            loadRecentActivity()
+        }
+    }
+
+    private fun loadRecentActivity() {
+        // TODO: Turn 2 — wire pillCountTxnDao.getTransactionsForDateRange(...) +
+        // batchDao.getBatchSummaries(...) merged & sorted DESC. For now, leave empty.
+    }
+
+    private fun computeKpiCounts(items: List<QueueItem>): Map<KpiFilter, Int> {
+        val dispense = items.filterIsInstance<QueueItem.Dispense>()
+        val inventory = items.filterIsInstance<QueueItem.Inventory>()
+        return mapOf(
+            KpiFilter.DISP_HIGH_PRIORITY to dispense.count { it.isHighPriority },
+            KpiFilter.DISP_PENDING to dispense.size,
+            KpiFilter.DISP_CONTROLLED to dispense.count { it.isControlled },
+            KpiFilter.DISP_HAZARDOUS to dispense.count { it.isHazardous },
+            // TODO: split inventory into cycle-count vs pending once BatchEntity has batchType.
+            KpiFilter.INV_CYCLE_COUNT to 0,
+            KpiFilter.INV_PENDING_BATCH to inventory.size,
+        )
+    }
+
+    private fun applyKpiFilter(
+        items: List<QueueItem>,
+        filter: KpiFilter?,
+    ): List<QueueItem> = when (filter) {
+        null -> items
+        KpiFilter.DISP_HIGH_PRIORITY -> items.filter { it is QueueItem.Dispense && it.isHighPriority }
+        KpiFilter.DISP_PENDING -> items.filterIsInstance<QueueItem.Dispense>()
+        KpiFilter.DISP_CONTROLLED -> items.filter { it is QueueItem.Dispense && it.isControlled }
+        KpiFilter.DISP_HAZARDOUS -> items.filter { it is QueueItem.Dispense && it.isHazardous }
+        KpiFilter.INV_CYCLE_COUNT -> emptyList() // see TODO above
+        KpiFilter.INV_PENDING_BATCH -> items.filterIsInstance<QueueItem.Inventory>()
     }
 
     /**
@@ -202,6 +327,7 @@ class DashboardViewModel @Inject constructor(
                                 observeDashboardCounts(localId)
                                 observeBatchCount()
                                 observeCompletedBatchCount()
+                                observeQueue(localId)
                             }
                             preferenceHelper.saveLocalId(localId)
                             logger.i("User persisted locally with localId=$localId")
