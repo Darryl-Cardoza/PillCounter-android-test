@@ -18,8 +18,15 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
+import android.widget.Toast
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.unit.dp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhoneLandscape
@@ -98,21 +105,17 @@ fun DashboardScreen(
 
     LaunchedEffect(uiState.createdBatchId) {
         uiState.createdBatchId?.let { batchId ->
-            navController.navigate(
-                Screen.DispenseScan.createRoute(
-                    scanType = CountType.REGULAR.toString(),
-                    batchId = batchId,
-                )
-            )
+            navController.navigate(Screen.InventoryScan.createRoute(batchId = batchId))
             viewModel.clearCreatedBatchId()
         }
     }
 
     // Inventory Quick Action surfaces the same two-dialog flow that RegularCountSection runs
     // today (pick "New batch" vs "Resume last", then bucket-select). Hoisting the dialog state
-    // up to the dispatcher keeps every variant a pure UI function. The polished version of these
-    // dialogs lands in Turn 3 — for now we just trigger the first step.
+    // up to the dispatcher keeps every variant a pure UI function.
     var showInventoryDialog by remember { mutableStateOf(false) }
+    var showBucketSelectDialog by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     // ── Build the params bag shared by every variant ──
     val params = DashboardVariantParams(
@@ -142,10 +145,50 @@ fun DashboardScreen(
     )
 
     if (showInventoryDialog) {
-        // TODO Turn 3: replace this toast with the existing CommonSingleSelectDialog flow from
-        // RegularCountSection (new batch / resume last → bucket select → viewModel.createBatch).
-        showToast(context, R.string.start_a_new_inventory_count)
-        showInventoryDialog = false
+        val options = listOf(
+            stringResource(R.string.stock_count_dialog_option_first),
+            stringResource(R.string.stock_count_dialog_option_second),
+        )
+        val noLastBatchMessage = stringResource(R.string.no_last_batch_available)
+        CommonSingleSelectDialog(
+            title = stringResource(R.string.stock_count_dialog_title),
+            options = options,
+            selectedIndex = 0,
+            onCancel = { showInventoryDialog = false },
+            onOk = { index ->
+                when (index) {
+                    0 -> showBucketSelectDialog = true
+                    1 -> scope.launch {
+                        val batch = withContext(Dispatchers.IO) { viewModel.getLastInProgressBatch() }
+                        if (batch != null) {
+                            navController.navigate(Screen.InventoryScan.createRoute(batch.batchId))
+                        } else {
+                            showToast(context, noLastBatchMessage, Toast.LENGTH_SHORT)
+                        }
+                    }
+                }
+                showInventoryDialog = false
+            },
+            distanceBetweenOptions = 2.dp,
+        )
+    }
+
+    if (showBucketSelectDialog) {
+        val bucketList = viewModel.getBucketList()
+        val defaultIndex = bucketList.indices.firstOrNull() ?: -1
+        CommonSingleSelectDialog(
+            title = stringResource(R.string.select_bucket),
+            options = bucketList,
+            selectedIndex = defaultIndex,
+            onCancel = { showBucketSelectDialog = false },
+            onOk = { index ->
+                if (index in bucketList.indices) {
+                    viewModel.createBatch(bucketList[index])
+                }
+                showBucketSelectDialog = false
+            },
+            distanceBetweenOptions = 2.dp,
+        )
     }
 
     // ── Dispatch to the right variant ──

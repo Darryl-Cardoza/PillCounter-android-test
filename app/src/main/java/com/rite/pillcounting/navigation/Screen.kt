@@ -56,6 +56,22 @@ sealed interface Screen {
         fun createRoute(batchId: Long = 0L): String = "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId"
     }
 
+    data object InventoryScan : Screen {
+        private const val ROUTE_PREFIX = "inventory_scan"
+        const val ARG_BATCH_ID = "batch_id"
+
+        override val route: String = "$ROUTE_PREFIX?$ARG_BATCH_ID={$ARG_BATCH_ID}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_BATCH_ID) {
+                type = NavType.LongType
+                defaultValue = 0L
+            }
+        )
+
+        fun createRoute(batchId: Long = 0L): String = "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId"
+    }
+
     data object HistoryDetail : Screen {
         override val route: String = "history_detail"
     }

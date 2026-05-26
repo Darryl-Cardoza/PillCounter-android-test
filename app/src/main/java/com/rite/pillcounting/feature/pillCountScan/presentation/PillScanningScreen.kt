@@ -64,8 +64,24 @@ import java.util.Locale
 fun PillScanningScreen(
     navController: NavController,
     countType: String,
-    viewModel: PillScanningViewModel = hiltViewModel()
+    viewModel: PillScanningViewModel = hiltViewModel(),
+    isInventory: Boolean = false,
 ) {
+    val configuration = LocalConfiguration.current
+    val isTablet = configuration.smallestScreenWidthDp >= 600
+    val isLandscapeNow = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // Inventory mode lands here directly from Dashboard with the new persistent
+    // Batch Stock Count panel. The ML interpreter and tray-detection paths stay
+    // disabled until the user taps SCAN PILLS — at which point we'll flip into
+    // the legacy pill-counting UI. For now (UI-only first pass) only the tablet
+    // landscape variant is wired; other form factors fall through to the legacy
+    // flow until their Figmas are delivered.
+    if (isInventory && isTablet && isLandscapeNow) {
+        InventoryTabletLandscapeShell(navController = navController)
+        return
+    }
+
     val context = navController.context
     val uiState by viewModel.uiState.collectAsState()
     val logger = remember { AppLogger("PillScanningScreen") }
@@ -428,6 +444,81 @@ fun PillScanningScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Tablet-landscape inventory shell — UI-only first pass.
+ *
+ * Camera placeholder on the left, the new persistent Batch Stock Count panel on
+ * the right. Counter +/- mutate sample state in place. SCAN PILLS / ADD / CLEAR /
+ * END COUNT are stubs until we wire the real flow.
+ */
+@Composable
+private fun InventoryTabletLandscapeShell(navController: NavController) {
+    var state by remember {
+        mutableStateOf(com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountSampleData.activeState)
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(AppTheme.extendedColors.secondaryBackground)
+    ) {
+        // Left: camera preview placeholder (real camera + NDC analyzer wiring lands later).
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(androidx.compose.ui.graphics.Color(0xFF6F6F6F))
+        ) {
+            BackButton(
+                navController = navController,
+                showBox = false,
+                onClick = { navController.popBackStack() },
+            )
+        }
+
+        // Right: new persistent panel.
+        Box(
+            modifier = Modifier
+                .width(420.dp)
+                .fillMaxHeight()
+        ) {
+            com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletLandscape(
+                state = state,
+                onScanPills = { /* TODO: enable ML + swap to legacy pill-count panel */ },
+                onIncrement = {
+                    state.activeNdc?.let { a ->
+                        state = state.copy(activeNdc = a.copy(bottles = a.bottles + 1))
+                    }
+                },
+                onDecrement = {
+                    state.activeNdc?.let { a ->
+                        val next = (a.bottles - 1).coerceAtLeast(1)
+                        state = state.copy(activeNdc = a.copy(bottles = next))
+                    }
+                },
+                onClear = { state = state.copy(activeNdc = null) },
+                onAdd = {
+                    state.activeNdc?.let { a ->
+                        val newRow = com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentBatchRow(
+                            ndc = a.ndc,
+                            drugName = a.drugName,
+                            pills = a.totalPills,
+                            bottles = a.bottles,
+                        )
+                        state = state.copy(
+                            recentCounts = listOf(newRow) + state.recentCounts,
+                            activeNdc = null,
+                            totalNdcs = state.totalNdcs + 1,
+                            totalPills = state.totalPills + a.totalPills,
+                        )
+                    }
+                },
+                onEndCount = { navController.popBackStack() },
+            )
         }
     }
 }

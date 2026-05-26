@@ -104,6 +104,17 @@ fun AppNavGraph(
         }
 
         composable(
+            route = Screen.InventoryScan.route,
+            arguments = Screen.InventoryScan.navArguments,
+        ) {
+            PillScanningScreen(
+                navController = navController,
+                countType = com.rite.pillcounting.core.room.models.enums.CountType.REGULAR.toString(),
+                isInventory = true,
+            )
+        }
+
+        composable(
             route = Screen.Batch.route,
             arguments = Screen.Batch.navArguments
         ) {

@@ -245,12 +245,12 @@ internal fun ScaffoldKpiColumn(
     onTap: (KpiFilter) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // SpaceBetween distributes the gaps between cards evenly so the column fills the body
-    // height (matches the height of the Quick Actions column on the left) without forcing any
-    // single card to grow.
+    // Each card claims an equal vertical share. This bounds the height every card sees,
+    // which is required because ScaffoldKpiCard's inner Box uses fillMaxSize() — without a
+    // bounded height the first card consumes the column and the rest get pushed off-screen.
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.SpaceBetween,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DefaultKpiCards.forEach { spec ->
             ScaffoldKpiCard(
@@ -260,7 +260,9 @@ internal fun ScaffoldKpiColumn(
                 icon = spec.icon,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
             )
         }
     }
