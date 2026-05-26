@@ -53,6 +53,9 @@ import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.Task
 import androidx.compose.material.icons.outlined.Warning
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.getValue
 import androidx.compose.material3.Icon
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
@@ -364,11 +367,14 @@ private fun ScaffoldKpiCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val scale by animateFloatAsState(targetValue = if (isActive) 1.08f else 1f, label = "kpiScale")
     Card(
-        modifier = modifier.clickable { onClick() },
+        modifier = modifier
+            .graphicsLayer(scaleX = scale, scaleY = scale)
+            .clickable { onClick() },
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isActive) 8.dp else 0.dp),
         border = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
         Box(
