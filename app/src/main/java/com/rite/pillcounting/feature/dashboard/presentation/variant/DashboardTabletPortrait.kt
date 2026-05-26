@@ -367,7 +367,7 @@ private fun ScaffoldKpiCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scale by animateFloatAsState(targetValue = if (isActive) 1.08f else 1f, label = "kpiScale")
+    val scale by animateFloatAsState(targetValue = if (isActive) 1.02f else 1f, label = "kpiScale")
     Card(
         modifier = modifier
             .graphicsLayer(scaleX = scale, scaleY = scale)
