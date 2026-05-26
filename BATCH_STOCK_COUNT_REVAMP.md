@@ -139,9 +139,9 @@ Concrete diffs observed in the first cut vs. Figma `STOCK COUNT-SEALED-TAB-LANDS
 | 7 | Counter +/− tile design | ✅ Square tiles, thin border, no fill, 30 dp cyan icon. |
 | 8 | Counter center tile width ratio | ✅ 1.6 : 1 (center vs button). |
 | 9 | CLEAR / ADD buttons | ✅ Fixed 120 dp each, centered with 12 dp gap. |
-| 10 | Side panel width | ✅ 440 dp (bumped from 380 dp after user feedback on cramped detail row). |
-| 11 | Gap between top and bottom card | ✅ **Flush (0 dp)** — bottom card reads as an overlay/extension of the top card, matching the Figma "nested rounded corners" look. |
-| 12 | Camera area inset | ✅ Rounded 16 dp card, outer padding 12 dp, light-grey surround (`#E5E5E5`) — replaces the dark theme background so the screen reads as a light surface like the Figma. |
+| 10 | Side panel width | ✅ 500 dp (originally 380, then 440, settled at 500 after user feedback). |
+| 11 | Gap between top and bottom card | ✅ **Overlap with shadow** — bottom card uses `Box`-layered positioning (`Alignment.BottomCenter`) and a 12 dp soft elevation shadow so it visibly hovers over the top card. Top card reserves `OVERLAY_CARD_CLEARANCE` (24 dp) bottom padding so the last list row doesn't hide behind it. |
+| 12 | Camera area inset | ✅ Edge-to-edge fullscreen — camera and side panel share the top/bottom edges; no outer padding, no rounded corners on the camera surface. Background tint kept at `#E5E5E5` so any internal panel gaps still read as light. (Earlier rounded-inset look reverted on user feedback — fullscreen + flush feels more like a kiosk app.) |
 | 13 | Back arrow in camera area | ✅ Kept, overlaid top-left of camera card. |
 | 14 | Camera preview is static grey | ✅ Live `CameraPreviewSection` wired; no-op `onFrame`/`onFilteredCountChanged` (ML interpreter never initialized in this mode). |
 

@@ -470,18 +470,14 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
     Row(
         modifier = Modifier
             .fillMaxSize()
-            .background(androidx.compose.ui.graphics.Color(0xFFE5E5E5))
-            .padding(12.dp),
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
+            .background(androidx.compose.ui.graphics.Color(0xFFE5E5E5)),
     ) {
-        // Left: live CameraX preview rendered inside a rounded card with a thin
-        // outer margin so the device's screen edge isn't flush with the preview
-        // (matches the Figma inset look).
+        // Left: live CameraX preview, edge-to-edge. No rounded corners and no
+        // outer margin so it visually shares the top edge with the side panel.
         Box(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxHeight()
-                .clip(androidx.compose.foundation.shape.RoundedCornerShape(16.dp))
                 .background(androidx.compose.ui.graphics.Color(0xFF2A2A2A))
         ) {
             CameraPreviewSection(
@@ -506,7 +502,7 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
         // Right: new persistent panel.
         Box(
             modifier = Modifier
-                .width(440.dp)
+                .width(500.dp)
                 .fillMaxHeight()
         ) {
             com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletLandscape(

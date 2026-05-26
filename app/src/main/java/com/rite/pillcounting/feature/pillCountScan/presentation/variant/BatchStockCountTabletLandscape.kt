@@ -1,7 +1,6 @@
 package com.rite.pillcounting.feature.pillCountScan.presentation.variant
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,7 +18,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
@@ -76,8 +74,7 @@ fun BatchStockCountTabletLandscape(
     // edge while the top child fills the rest of the height behind it.
     Box(
         modifier = modifier
-            .fillMaxHeight()
-            .padding(vertical = 16.dp, horizontal = 12.dp),
+            .fillMaxHeight(),
     ) {
         StockCountCard(
             modifier = Modifier
@@ -110,20 +107,29 @@ fun BatchStockCountTabletLandscape(
             }
         }
 
-        // Bottom card with an upward elevation shadow. `shadow` is applied
-        // BEFORE clip so the shadow renders outside the card's clipped bounds.
-        Box(
+        // Bottom card with a hand-drawn upward gradient shadow. The
+        // Modifier.shadow API on Android often renders too subtly against
+        // white, so we paint our own band above the card with drawBehind.
+        Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .shadow(
-                    elevation = 12.dp,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(CARD_RADIUS),
-                    clip = false,
-                    ambientColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.25f),
-                    spotColor = androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.25f),
-                )
+                .fillMaxWidth(),
         ) {
+            // The shadow band sits ABOVE the card and fades upward — gives a
+            // clear "overlay floating on top" cue.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(OVERLAY_SHADOW_HEIGHT)
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                            colors = listOf(
+                                androidx.compose.ui.graphics.Color.Transparent,
+                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.18f),
+                            )
+                        )
+                    )
+            )
             StockCountCard {
                 if (state.activeNdc != null) {
                     ScannedDrugCard(
@@ -151,6 +157,9 @@ fun BatchStockCountTabletLandscape(
  * to leave breathing room.
  */
 private val OVERLAY_CARD_CLEARANCE = 24.dp
+
+/** Height of the upward gradient shadow band that sits above the bottom overlay card. */
+private val OVERLAY_SHADOW_HEIGHT = 14.dp
 
 /**
  * Stateful preview host that mimics the Figma: grey camera area on the left,
