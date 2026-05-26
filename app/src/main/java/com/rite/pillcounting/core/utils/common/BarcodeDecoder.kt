@@ -1,7 +1,7 @@
-package com.rite.pillcounting.core.utils.common
+﻿package com.rite.pillcounting.core.utils.common
 
 import android.util.Log
-import com.rite.pillcounting.feature.barcodeScan.domain.model.BarcodeData
+import com.rite.pillcounting.feature.dispenseFlow.domain.model.BarcodeData
 import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton

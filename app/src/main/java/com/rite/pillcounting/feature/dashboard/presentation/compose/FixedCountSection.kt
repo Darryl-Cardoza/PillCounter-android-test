@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.dashboard.presentation.compose
+﻿package com.rite.pillcounting.feature.dashboard.presentation.compose
 
 import Screen
 import androidx.compose.foundation.clickable
@@ -161,6 +161,6 @@ fun FixedCountSection(
 fun navigateToBarcodeScanFixedCount(navController: NavController) {
     // Merged dispense flow: one screen for RX + NDC + pill count.
     navController.navigate(
-        Screen.DispenseScan.createRoute(CountType.FIXED.toString())
+        Screen.DispenseFlow.createRoute(CountType.FIXED.toString())
     )
 }

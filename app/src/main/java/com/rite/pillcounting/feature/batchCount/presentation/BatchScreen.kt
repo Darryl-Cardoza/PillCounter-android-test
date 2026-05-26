@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.batchCount.presentation
+﻿package com.rite.pillcounting.feature.batchCount.presentation
 
 import Screen
 import androidx.compose.foundation.background
@@ -40,7 +40,7 @@ import com.rite.pillcounting.feature.batchCount.domain.model.BatchDrugGroup
 import com.rite.pillcounting.feature.batchCount.presentation.compose.BatchNdcCard
 import com.rite.pillcounting.feature.batchCount.presentation.viewmodel.BatchViewModel
 import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.AddNoteDialog
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.dimens
 
@@ -141,7 +141,7 @@ fun BatchScreen(
                 onEndBatch = { showNoteDialog = true },
                 onAdd = {
                     navController.navigate(
-                        Screen.DispenseScan.createRoute(
+                        Screen.DispenseFlow.createRoute(
                             scanType = CountType.REGULAR.toString(),
                             batchId = displayBatchId,
                         )
