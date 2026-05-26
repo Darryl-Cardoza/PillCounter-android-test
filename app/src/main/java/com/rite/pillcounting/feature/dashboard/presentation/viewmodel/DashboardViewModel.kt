@@ -14,6 +14,7 @@ import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.HelperFunctions.mapCounts
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -177,10 +178,8 @@ class DashboardViewModel @Inject constructor(
                         txn = txn,
                         // TODO: requires DrugMasterEntity.isHazardous on the JOIN — Turn 2 will extend the query.
                         isHazardous = false,
-                        // TODO: requires `priority` column on PillCountTxnEntity (open question in HOMESCREEN_REDESIGN.md).
-                        isHighPriority = false,
-                        // TODO: requires controlled drugType allowlist (open question in HOMESCREEN_REDESIGN.md).
-                        isControlled = false,
+                        isHighPriority = txn.priority == TxnPriority.High,
+                        isControlled = isControlledDrugType(txn.drugType),
                     )
                 }
                 val inventoryItems = batches.map { b ->
@@ -280,7 +279,7 @@ class DashboardViewModel @Inject constructor(
                         ),
                         isHazardous = false,
                         isHighPriority = false,
-                        isControlled = false,
+                        isControlled = isControlledDrugType(t.drugType),
                     )
                 }
                 val inventoryItems = batches
@@ -500,6 +499,12 @@ class DashboardViewModel @Inject constructor(
 
     private companion object {
         const val RECENT_ACTIVITY_WINDOW_DAYS = 30L
+
+        /** DEA controlled-substance schedules stored in `drug_master.drugType`. */
+        private val CONTROLLED_DRUG_TYPES = setOf("CI", "CII", "CIII", "CIV", "CV")
+
+        fun isControlledDrugType(drugType: String?): Boolean =
+            drugType?.trim()?.uppercase() in CONTROLLED_DRUG_TYPES
     }
 }
 

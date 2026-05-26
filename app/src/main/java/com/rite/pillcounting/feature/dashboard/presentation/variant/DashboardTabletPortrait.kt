@@ -47,7 +47,15 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.Image
 import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.runtime.remember
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import java.io.File
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.MenuButton
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
@@ -344,7 +352,7 @@ private fun ScaffoldKpiCard(
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.secondary) else null,
+        border = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
         Column(modifier = Modifier.padding(12.dp)) {
             Text(
@@ -458,10 +466,18 @@ private fun ScaffoldQueueList(
 
 @Composable
 private fun ScaffoldDispenseRow(item: QueueItem.Dispense, onClick: ((Long) -> Unit)?) {
+    val interactionSource = remember { MutableInteractionSource() }
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable { onClick(item.txn.txnId) } else Modifier),
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                    ) { onClick(item.txn.txnId) }
+                } else Modifier
+            ),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -474,12 +490,34 @@ private fun ScaffoldDispenseRow(item: QueueItem.Dispense, onClick: ((Long) -> Un
         ) {
             Box(
                 modifier = Modifier
-                    .size(56.dp)
-                    .background(
-                        color = Color(0xFFF0F0F0),
-                        shape = RoundedCornerShape(6.dp),
+                    .size(width = 72.dp, height = 56.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFFF0F0F0)),
+                contentAlignment = Alignment.Center,
+            ) {
+                val path = item.txn.barcodeImage
+                if (!path.isNullOrEmpty()) {
+                    Image(
+                        painter = rememberAsyncImagePainter(
+                            ImageRequest.Builder(LocalContext.current)
+                                .data(File(path))
+                                .placeholder(R.drawable.prescription_icon)
+                                .error(R.drawable.prescription_icon)
+                                .build()
+                        ),
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize(),
                     )
-            )
+                } else {
+                    Icon(
+                        painter = painterResource(id = R.drawable.prescription_icon),
+                        contentDescription = null,
+                        tint = DashboardSubtleText,
+                        modifier = Modifier.size(28.dp),
+                    )
+                }
+            }
             Spacer(modifier = Modifier.width(16.dp))
             Column(
                 modifier = Modifier.weight(1f),
@@ -527,10 +565,18 @@ private fun ScaffoldDispenseRow(item: QueueItem.Dispense, onClick: ((Long) -> Un
 
 @Composable
 private fun ScaffoldInventoryRow(item: QueueItem.Inventory, onClick: ((Long) -> Unit)?) {
+    val interactionSource = remember { MutableInteractionSource() }
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .then(if (onClick != null) Modifier.clickable { onClick(item.batch.batchId) } else Modifier),
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = null,
+                    ) { onClick(item.batch.batchId) }
+                } else Modifier
+            ),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -543,12 +589,18 @@ private fun ScaffoldInventoryRow(item: QueueItem.Inventory, onClick: ((Long) -> 
         ) {
             Box(
                 modifier = Modifier
-                    .size(56.dp)
-                    .background(
-                        color = Color(0xFFF0F0F0),
-                        shape = RoundedCornerShape(6.dp),
-                    )
-            )
+                    .size(width = 72.dp, height = 56.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color(0xFFF0F0F0)),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    painter = painterResource(id = R.drawable.stock),
+                    contentDescription = null,
+                    tint = DashboardSubtleText,
+                    modifier = Modifier.size(28.dp),
+                )
+            }
             Spacer(modifier = Modifier.width(16.dp))
             Column(
                 modifier = Modifier.weight(1f),
