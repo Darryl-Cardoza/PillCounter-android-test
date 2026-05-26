@@ -132,6 +132,13 @@ fun DashboardScreen(
             viewModel.saveTxnId()
             showInventoryDialog = true
         },
+        onRecentDispenseClick = { txnId ->
+            viewModel.selectCurrentTransaction(txnId)
+            navController.navigate(Screen.HistoryDetail.route)
+        },
+        onRecentBatchClick = { batchId ->
+            navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
+        },
     )
 
     if (showInventoryDialog) {

@@ -449,6 +449,11 @@ class DashboardViewModel @Inject constructor(
         preferenceHelper.saveTxnId(0)
     }
 
+    /** Persists the tapped txnId so HistoryDetail can pick it up (mirrors HistoryViewModel.selectCurrentTransaction). */
+    fun selectCurrentTransaction(txnId: Long) {
+        preferenceHelper.saveTxnId(txnId)
+    }
+
     fun createBatch(bucketId: String) {
         viewModelScope.launch {
             _uiState.update {

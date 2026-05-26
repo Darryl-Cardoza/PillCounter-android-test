@@ -100,7 +100,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
 
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
@@ -172,8 +172,16 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                     modifier = Modifier.weight(1f),
                 ) { page ->
                     when (DashboardTab.entries[page]) {
-                        DashboardTab.TODAYS_QUEUE -> ScaffoldQueueList(items = uiState.queue)
-                        DashboardTab.RECENT_ACTIVITY -> ScaffoldQueueList(items = uiState.recentActivity)
+                        DashboardTab.TODAYS_QUEUE -> ScaffoldQueueList(
+                            items = uiState.queue,
+                            onDispenseClick = null,
+                            onInventoryClick = null,
+                        )
+                        DashboardTab.RECENT_ACTIVITY -> ScaffoldQueueList(
+                            items = uiState.recentActivity,
+                            onDispenseClick = params.onRecentDispenseClick,
+                            onInventoryClick = params.onRecentBatchClick,
+                        )
                     }
                 }
             }
@@ -408,7 +416,11 @@ private fun ScaffoldTab(
 }
 
 @Composable
-private fun ScaffoldQueueList(items: List<QueueItem>) {
+private fun ScaffoldQueueList(
+    items: List<QueueItem>,
+    onDispenseClick: ((Long) -> Unit)?,
+    onInventoryClick: ((Long) -> Unit)?,
+) {
     if (items.isEmpty()) {
         Box(
             modifier = Modifier
@@ -437,17 +449,19 @@ private fun ScaffoldQueueList(items: List<QueueItem>) {
             }
         }) { item ->
             when (item) {
-                is QueueItem.Dispense -> ScaffoldDispenseRow(item)
-                is QueueItem.Inventory -> ScaffoldInventoryRow(item)
+                is QueueItem.Dispense -> ScaffoldDispenseRow(item, onDispenseClick)
+                is QueueItem.Inventory -> ScaffoldInventoryRow(item, onInventoryClick)
             }
         }
     }
 }
 
 @Composable
-private fun ScaffoldDispenseRow(item: QueueItem.Dispense) {
+private fun ScaffoldDispenseRow(item: QueueItem.Dispense, onClick: ((Long) -> Unit)?) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable { onClick(item.txn.txnId) } else Modifier),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -455,19 +469,22 @@ private fun ScaffoldDispenseRow(item: QueueItem.Dispense) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 16.dp, vertical = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(56.dp)
                     .background(
                         color = Color(0xFFF0F0F0),
                         shape = RoundedCornerShape(6.dp),
                     )
             )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text(
                     text = "NDC ${item.txn.ndc ?: "—"}",
                     style = MaterialTheme.typography.bodyLarge,
@@ -509,9 +526,11 @@ private fun ScaffoldDispenseRow(item: QueueItem.Dispense) {
 }
 
 @Composable
-private fun ScaffoldInventoryRow(item: QueueItem.Inventory) {
+private fun ScaffoldInventoryRow(item: QueueItem.Inventory, onClick: ((Long) -> Unit)?) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .then(if (onClick != null) Modifier.clickable { onClick(item.batch.batchId) } else Modifier),
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -519,19 +538,22 @@ private fun ScaffoldInventoryRow(item: QueueItem.Inventory) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
+                .padding(horizontal = 16.dp, vertical = 20.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(56.dp)
                     .background(
                         color = Color(0xFFF0F0F0),
                         shape = RoundedCornerShape(6.dp),
                     )
             )
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
+            Spacer(modifier = Modifier.width(16.dp))
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
                 Text(
                     text = item.batch.batchId.toString(),
                     style = MaterialTheme.typography.bodyLarge,

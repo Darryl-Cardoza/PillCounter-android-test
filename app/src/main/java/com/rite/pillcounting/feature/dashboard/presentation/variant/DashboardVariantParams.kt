@@ -32,4 +32,8 @@ data class DashboardVariantParams(
     val onTabSelected: (DashboardTab) -> Unit,
     val onDispenseQuickAction: () -> Unit,
     val onInventoryQuickAction: () -> Unit,
+    /** Tap on a completed dispense row in Recent Activity — routes to HistoryDetail. */
+    val onRecentDispenseClick: (txnId: Long) -> Unit,
+    /** Tap on a completed batch row in Recent Activity — routes to BatchHistoryDetail. */
+    val onRecentBatchClick: (batchId: Long) -> Unit,
 )
