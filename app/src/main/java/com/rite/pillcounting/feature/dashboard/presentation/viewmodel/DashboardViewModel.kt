@@ -10,6 +10,7 @@ import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchSummaryDto
+import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
@@ -31,7 +32,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 
 /**
@@ -225,9 +229,68 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    private fun loadRecentActivity() {
-        // TODO: Turn 2 — wire pillCountTxnDao.getTransactionsForDateRange(...) +
-        // batchDao.getBatchSummaries(...) merged & sorted DESC. For now, leave empty.
+    private var recentActivityJob: Job? = null
+
+    /**
+     * Observes completed dispense transactions + completed batches over the last 30 days,
+     * merged and sorted newest-first. Started lazily the first time the user selects the
+     * Recent Activity tab; re-collecting is a no-op because flows are hot-shared via Room.
+     */
+    private fun loadRecentActivity(localId: Long = preferenceHelper.getLocalId()) {
+        if (recentActivityJob?.isActive == true) return
+        if (localId == 0L) return
+
+        val zone = ZoneId.systemDefault()
+        val endMillis = LocalDate.now().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val startMillis = LocalDate.now().minusDays(RECENT_ACTIVITY_WINDOW_DAYS)
+            .atStartOfDay(zone).toInstant().toEpochMilli()
+
+        recentActivityJob = viewModelScope.launch(Dispatchers.IO) {
+            val completedDispenseFlow = pillCountTxnDao.getTransactionsForDateRange(
+                startDate = startMillis,
+                endDate = endMillis,
+                stepType = StepState.TARGET_VERIFICATION,
+                type = CountType.FIXED,
+                status = CountStatus.COMPLETED,
+                userLocalId = localId,
+            )
+            val completedBatchesFlow = batchDao.getBatchSummaries(
+                startDate = startMillis,
+                endDate = endMillis,
+                userLocalId = localId,
+            )
+
+            completedDispenseFlow.combine(completedBatchesFlow) { dispenses, batches ->
+                val dispenseItems = dispenses.map { t ->
+                    QueueItem.Dispense(
+                        txn = PillCountWithDrugAndTotal(
+                            txnId = t.txnId,
+                            drugName = t.drugName,
+                            ndc = t.ndc,
+                            drugType = t.drugType,
+                            bucketId = t.bucketId,
+                            createdAt = t.createdAt,
+                            targetCount = t.targetCount,
+                            barcodeImage = t.barcodeImage,
+                            totalPillCount = t.pillCount ?: 0,
+                            isComingFromHL7 = false,
+                            isNdcVerified = false,
+                            countType = t.countType,
+                            priority = null,
+                        ),
+                        isHazardous = false,
+                        isHighPriority = false,
+                        isControlled = false,
+                    )
+                }
+                val inventoryItems = batches
+                    .filter { it.status == BatchStatus.COMPLETED.name }
+                    .map { QueueItem.Inventory(batch = it) }
+                (dispenseItems + inventoryItems).sortedByDescending { it.createdAt }
+            }.collect { combined ->
+                _uiState.update { it.copy(recentActivity = combined) }
+            }
+        }
     }
 
     private fun computeKpiCounts(items: List<QueueItem>): Map<KpiFilter, Int> {
@@ -428,6 +491,10 @@ class DashboardViewModel @Inject constructor(
         _uiState.update {
             it.copy(createdBatchId = null)
         }
+    }
+
+    private companion object {
+        const val RECENT_ACTIVITY_WINDOW_DAYS = 30L
     }
 }
 
