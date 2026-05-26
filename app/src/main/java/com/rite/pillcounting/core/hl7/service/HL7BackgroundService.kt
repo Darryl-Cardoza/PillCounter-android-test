@@ -388,7 +388,7 @@ class HL7Service : Service() {
         serviceScope.launch {
             try {
                 val messageStr = original.toTypedHL7String()
-
+                logger.i("sendHl7Message dispense=${messageStr} ")
                 val ack = clientManager.send(messageStr)
                 listener?.onMessageSent(messageStr, original.messageId)
                 listener?.onAckReceived(ack, original.messageId)

@@ -25,5 +25,6 @@ data class DrugMasterEntity(
     val drugType: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
     val gtin: String?= null,
-    val packageQty: Int?= 0
+    val packageQty: Int?= 0,
+    val isHazardous: Boolean = false
 )

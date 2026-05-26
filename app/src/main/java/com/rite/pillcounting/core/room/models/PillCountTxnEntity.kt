@@ -108,6 +108,7 @@ data class PillCountTxnEntity(
 
     val workflowStep: String? = null,
 
-    val priority: TxnPriority? = null
+    val priority: TxnPriority? = null,
 
+    val isGlovesPresent: Boolean = false,
 )

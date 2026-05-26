@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.hl7.data.repository
+﻿package com.rite.pillcounting.feature.hl7.data.repository
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -20,8 +20,8 @@ import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
-import com.rite.pillcounting.feature.barcodeScan.data.DrugRepository
-import com.rite.pillcounting.feature.barcodeScan.domain.model.GetNdcRequestModel
+import com.rite.pillcounting.feature.dispenseFlow.data.DrugRepository
+import com.rite.pillcounting.feature.dispenseFlow.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.feature.hl7.core.Hl7MessageSender
 import com.rite.pillcounting.feature.hl7.domain.model.MessageType
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
@@ -245,6 +245,7 @@ class Hl7Repository @Inject constructor(
                     ndc = it,
                     drugName = resolvedDrugName,
                     drugType = drugInfo?.drugType,
+                    isHazardous = drugInfo?.isHazardous ?: false,
                 )
             }
         }
@@ -600,7 +601,8 @@ class Hl7Repository @Inject constructor(
                     ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
                     drugName = resolvedDrugName,
                     drugType = drugInfo.drugType,
-                    packageQty = drugInfo.qty
+                    packageQty = drugInfo.qty,
+                    isHazardous = drugInfo.isHazardous ?: false,
                 )
 
                 val newDrugId = drugMasterDao.upsertPreservingId(drugEntity)

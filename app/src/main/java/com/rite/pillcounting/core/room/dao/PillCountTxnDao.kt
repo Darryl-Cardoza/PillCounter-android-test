@@ -322,6 +322,13 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
+    @Query("UPDATE pill_count_txn SET isGlovesPresent = :value, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateGlovesPresent(
+        txnId: Long,
+        value: Boolean,
+        now: Long = System.currentTimeMillis()
+    )
+
 
     /**
      * Updates the [CountStatus] of a specific transaction.
