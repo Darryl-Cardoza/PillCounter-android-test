@@ -46,7 +46,15 @@ import androidx.annotation.DrawableRes
 import androidx.compose.foundation.border
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.Image
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.Inventory2
+import androidx.compose.material.icons.outlined.PriorityHigh
+import androidx.compose.material.icons.outlined.Refresh
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.outlined.Task
+import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -317,32 +325,41 @@ private fun ScaffoldKpiRow(
     onTap: (KpiFilter) -> Unit,
 ) {
     val cards = listOf(
-        KpiFilter.DISP_HIGH_PRIORITY to ("Disp." to "High Priority"),
-        KpiFilter.DISP_PENDING to ("Disp." to "Pending"),
-        KpiFilter.DISP_CONTROLLED to ("Disp." to "Cont. Drugs"),
-        KpiFilter.DISP_HAZARDOUS to ("Disp." to "Hazardous"),
-        KpiFilter.INV_CYCLE_COUNT to ("Inv." to "Cycle Count"),
-        KpiFilter.INV_PENDING_BATCH to ("Inv." to "Pending Batch"),
+        KpiCardSpec(KpiFilter.DISP_HIGH_PRIORITY, "Disp.", "High Priority", Icons.Outlined.PriorityHigh),
+        KpiCardSpec(KpiFilter.DISP_PENDING, "Disp.", "Pending", Icons.Outlined.Refresh),
+        KpiCardSpec(KpiFilter.DISP_CONTROLLED, "Disp.", "Cont. Drugs", Icons.Outlined.Shield),
+        KpiCardSpec(KpiFilter.DISP_HAZARDOUS, "Disp.", "Hazardous", Icons.Outlined.Warning),
+        KpiCardSpec(KpiFilter.INV_CYCLE_COUNT, "Inv.", "Cycle Count", Icons.Outlined.Task),
+        KpiCardSpec(KpiFilter.INV_PENDING_BATCH, "Inv.", "Pending Batch", Icons.Outlined.Inventory2),
     )
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        cards.forEach { (filter, label) ->
+        cards.forEach { spec ->
             ScaffoldKpiCard(
-                count = counts[filter] ?: 0,
-                lineOne = label.first,
-                lineTwo = label.second,
-                isActive = activeFilter == filter,
-                onClick = { onTap(filter) },
+                count = counts[spec.filter] ?: 0,
+                lineOne = spec.lineOne,
+                lineTwo = spec.lineTwo,
+                icon = spec.icon,
+                isActive = activeFilter == spec.filter,
+                onClick = { onTap(spec.filter) },
                 modifier = Modifier.weight(1f),
             )
         }
     }
 }
 
+private data class KpiCardSpec(
+    val filter: KpiFilter,
+    val lineOne: String,
+    val lineTwo: String,
+    val icon: ImageVector,
+)
+
 @Composable
 private fun ScaffoldKpiCard(
     count: Int,
     lineOne: String,
     lineTwo: String,
+    icon: ImageVector,
     isActive: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -354,23 +371,37 @@ private fun ScaffoldKpiCard(
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
-        Column(modifier = Modifier.padding(12.dp)) {
-            Text(
-                text = count.toString(),
-                fontSize = 28.sp,
-                color = MaterialTheme.colorScheme.secondary,
-                fontWeight = FontWeight.SemiBold,
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.secondary,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .size(16.dp),
             )
-            Text(
-                text = lineOne,
-                style = MaterialTheme.typography.bodySmall,
-                color = DashboardSubtleText,
-            )
-            Text(
-                text = lineTwo,
-                style = MaterialTheme.typography.bodySmall,
-                color = DashboardSubtleText,
-            )
+            Column {
+                Text(
+                    text = count.toString(),
+                    fontSize = 28.sp,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = lineOne,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DashboardSubtleText,
+                )
+                Text(
+                    text = lineTwo,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = DashboardSubtleText,
+                )
+            }
         }
     }
 }
