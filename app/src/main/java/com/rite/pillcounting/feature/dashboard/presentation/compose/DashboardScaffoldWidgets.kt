@@ -240,9 +240,7 @@ internal fun ScaffoldKpiColumn(
                 icon = spec.icon,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
