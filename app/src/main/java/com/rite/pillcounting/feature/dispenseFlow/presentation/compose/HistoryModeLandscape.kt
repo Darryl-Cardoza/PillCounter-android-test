@@ -42,8 +42,8 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingHistoryScreen
@@ -51,6 +51,7 @@ import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBa
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.TxnDetail
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
+import com.rite.pillcounting.ui.theme.AppTheme.dimens
 
 @Composable
 fun HistoryModeLandscape(
@@ -249,13 +250,13 @@ fun HistoryModeLandscape(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.width(responsiveDp(120.dp))
                     )
-                    FilledButton(
+                    ActionButtonPrimary(
                         text = stringResource(R.string.delete).uppercase(),
                         onClick = {
                             if (selectedIds.isNotEmpty()) showDeleteConfirmDialog = true
                         },
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.width(responsiveDp(120.dp))
+                        fixedWidth = true,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
                     )
                 }
             }

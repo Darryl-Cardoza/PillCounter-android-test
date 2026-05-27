@@ -47,8 +47,8 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FilledButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingHistoryScreen
@@ -216,13 +216,13 @@ fun HistoryModePortrait(
                         color = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.width(responsiveDp(120.dp))
                     )
-                    FilledButton(
+                    ActionButtonPrimary(
                         text = stringResource(R.string.delete).uppercase(),
                         onClick = {
                             if (selectedIds.isNotEmpty()) showDeleteConfirmDialog = true
                         },
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.width(responsiveDp(120.dp))
+                        fixedWidth = true,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
                     )
                 }
             }
