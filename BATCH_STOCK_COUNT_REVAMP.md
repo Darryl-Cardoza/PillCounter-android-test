@@ -111,15 +111,34 @@ All 4 variants render the same `BatchStockCountUiState`. The shapes/components d
 
 ---
 
+## 5b. Decisions added in 2026-05-26 follow-up session
+
+| # | Question | Decision |
+|---|---|---|
+| 13 | After ADD, briefly flash the just-committed NDC or flip straight to Summary | **Flip straight to Summary** (current behavior, simpler, no extra timer state) |
+| 14 | Source of `pillsPerBottle` | **`drug_master.packageQty`** (lookup by NDC/GTIN). Per-batch overrides are not supported in this revamp. |
+| 15 | Resume-last placement after removal from Dashboard | **Reachable via Today's Queue Inventory rows** (which now navigate to `Screen.InventoryScan.createRoute(batchId)`). No separate UI affordance. |
+| 16 | Today's Queue Inventory tap → `Screen.InventoryScan.createRoute(batchId)` | ✅ Wired. |
+| 17 | Today's Queue Dispense tap → `Screen.HistoryDetail` (same as Recent Activity) | ✅ Wired. |
+| 18 | Hardcoded English strings | Extracted to `strings.xml` under `batch_stock_count_*` keys. VM emits `LocalizedError(@StringRes, formatArg?)` so it stays Context-free. |
+
+---
+
 ## 6. Current state (as of last session — 2026-05-26)
 
 - Dashboard → Inventory click → bucket-select dialog (single dialog, no New/Resume picker) → creates a batch → navigates to `Screen.InventoryScan`.
-- Tablet landscape:
-  - Live CameraX preview on the left (inside an inset rounded card). No analyzer wired; ML interpreter is intentionally not initialized in this mode.
-  - New panel on the right with all §7a polish items applied: white rows + hairline dividers, redesigned counter (square bordered tiles, 1.6:1 ratio, 30 dp cyan icons), 440 dp panel width, 13 dp card radius, NDC value no-wrap, 120 dp CLEAR/ADD buttons.
-  - +/− / CLEAR / ADD update sample state locally. SCAN PILLS / END COUNT are stubs.
+- Tablet landscape (**wired to real data as of 2026-05-26**):
+  - Live CameraX preview on the left, edge-to-edge with the panel. Frames are forwarded to `FrameBarcodeAnalyzer` and decoded barcodes are passed to `InventoryScanViewModel.onBarcodeDetected`. ML pill-counting interpreter is intentionally never initialized in this mode (we don't call `onPreviewSizeKnown` / `initializeInterpreter`).
+  - New panel on the right driven by `InventoryScanViewModel.uiState`:
+    - Recent counts list is a Room-backed `Flow` (`pillCountTxnDao.observeByBatchId`) grouped by drug.
+    - Scan flow: GS1 decode → `drug_master` lookup → if existing sealed txn matches `(drugId, lot, expiry)` the active card starts at the existing bottle count; ADD updates the row. Otherwise ADD inserts a new sealed transaction.
+    - CLEAR: in-memory only, no DB write.
+    - END COUNT: confirmation dialog → `batchDao.markAsCompleted` → pop back to dashboard.
+  - Visual polish from §7a still applied: 500 dp panel width, overlay bottom card with curved top + soft shadow band, etc.
 - Other 3 form factors with `isInventory = true` still render the legacy `PillScanningScreen` (acceptable until their Figmas arrive).
 - KPI column regression on tablet-landscape dashboard fixed.
+- **Today's Queue clicks now resume**: Inventory rows → `Screen.InventoryScan.createRoute(batchId)`; Dispense rows → `Screen.HistoryDetail` (matches Recent Activity behavior). Wired via two new fields on `DashboardVariantParams` (`onQueueDispenseClick`, `onQueueInventoryClick`) plumbed through all 4 variants.
+- **Strings extracted** to `strings.xml`. VM emits `LocalizedError(@StringRes, formatArg?)`; the screen resolves via `context.getString`.
 
 ---
 
@@ -145,18 +164,24 @@ Concrete diffs observed in the first cut vs. Figma `STOCK COUNT-SEALED-TAB-LANDS
 | 13 | Back arrow in camera area | ✅ Kept, overlaid top-left of camera card. |
 | 14 | Camera preview is static grey | ✅ Live `CameraPreviewSection` wired; no-op `onFrame`/`onFilteredCountChanged` (ML interpreter never initialized in this mode). |
 
-### 7b. Real wiring (replacing sample data)
-- Hook the camera's NDC barcode analyzer → set `activeNdc` (look up drug details via repo / `PillScanningViewModel` or a new `InventoryViewModel`).
-- ADD → commit bottle to batch via repo. Update `recentCounts` from a Room flow (newest first).
-- CLEAR → just clears the in-memory active NDC; no DB side-effect.
-- END COUNT → existing end-stock-count confirm dialog → finalize batch.
-- Same-NDC rescan → auto-increment existing row + re-activate.
+### 7b. Real wiring (replacing sample data) — **DONE**
+- ✅ Camera NDC barcode analyzer wired (`FrameBarcodeAnalyzer` forwards GS1 → `InventoryScanViewModel.onBarcodeDetected`).
+- ✅ Recent counts list is Room-backed (`pillCountTxnDao.observeByBatchId`).
+- ✅ ADD inserts or updates the matching sealed txn (keyed on drugId + lot + expiry).
+- ✅ CLEAR is in-memory only.
+- ✅ END COUNT shows confirmation dialog and marks batch completed via `batchDao.markAsCompleted`.
+- ✅ Same-NDC rescan: active card starts at the existing bottle count so +/− tunes from there.
 
-### 7c. SCAN PILLS in-place mode toggle (B1)
-- Add a `scanMode: ScanMode { NDC_ONLY, PILL_COUNT }` state in `PillScanningScreen` (or its VM) gated by `isInventory`.
-- `NDC_ONLY` (default for inventory): ML interpreter NOT initialized; right panel = `BatchStockCountTabletLandscape`.
-- `PILL_COUNT` (entered by SCAN PILLS): initialize ML interpreter lazily; right panel = existing `InformationPanelSection` + tray detection. On completion → back to `NDC_ONLY` with the just-counted NDC committed to the batch.
-- Verify the existing idle overlay, history mode, target-count dialog still behave when `isInventory = true`.
+### 7c. SCAN PILLS in-place mode toggle (B1) — **STILL DEFERRED**
+The SCAN PILLS button is a no-op pending this work. Implementation outline (also in the inline TODO at the button's `onScanPills` callback in `PillScanningScreen.kt`):
+
+1. Add `scanMode: ScanMode { NDC_ONLY, PILL_COUNT }` state in `InventoryTabletLandscapeShell` (or hoisted to `InventoryScanViewModel`).
+2. `NDC_ONLY` (default for inventory): ML interpreter NOT initialized; right panel = `BatchStockCountTabletLandscape`; frames → `barcodeAnalyzer.analyze`.
+3. `PILL_COUNT` (entered by SCAN PILLS): lazily call `cameraVm.initializeInterpreter(retryCount, viewWidth, viewHeight)`; right panel = existing `InformationPanelSection` + tray detection; frames → `cameraVm.onFrameCaptured(imageProxy)`.
+4. Intercept `InformationPanelSection`'s DONE flow so it returns to `NDC_ONLY` mode rather than popping the screen. The just-counted NDC/pill count needs to be threaded into the active card or directly committed via `inventoryVm.onAdd(...)`.
+5. Verify idle overlay, history mode, target-count dialog still behave correctly under `isInventory = true`.
+
+Reason for deferral: the legacy `PillScanningScreen` flow is large (idle overlay, history mode, target-count dialog, ML init, frame routing, etc.) and embedding it as a sub-mode in the inventory shell needs careful state-machine work to avoid corrupting camera lifecycle. Plan to land as a dedicated task with its own validation pass.
 
 ### 7d. Remaining 3 variants
 - **Tablet Portrait** — receive Figma, build `BatchStockCountTabletPortrait.kt`, dispatch in `PillScanningScreen`'s inventory branch.
@@ -166,17 +191,15 @@ Concrete diffs observed in the first cut vs. Figma `STOCK COUNT-SEALED-TAB-LANDS
 
 ### 7e. Loose ends
 - Decide whether the legacy `Screen.Batch` / `BatchScreen` (drug-group list) is still reachable from Inventory paths (e.g. from history). If yes, keep it. If no, plan its retirement separately — out of scope for this revamp.
-- Localization: hardcoded English strings in `BatchStockCountComponents.kt` ("Batch Stock Count", "SCAN PILLS", "SCANNED DRUG DETAILS", "Total NDCs", "Total Pills", "END COUNT", "CLEAR", "ADD", "Pills", "Bottles", "Drug Name", "Bucket", "NDC Number", "Batch No.", "Expiry Date", "180 pills") — move to `strings.xml` before shipping.
+- ✅ Localization: all new-panel strings moved to `strings.xml` under `batch_stock_count_*` keys.
 
 ---
 
 ## 8. Open questions to ask the user when resuming
 
-1. Tablet-portrait, phone-landscape, phone-portrait Figmas — not yet provided.
-2. After ADD, should the bottom card flip to Summary or stay showing the just-committed NDC briefly? Currently flips to Summary immediately (matches earlier alignment).
-3. What's the source of truth for `pillsPerBottle` (used to compute "180 pills" under the counter)? Drug master? Per-batch override?
-4. Resume-last from Inventory Quick Action has been removed. Decide where (if anywhere) Resume-last should live — history screen? a banner on the dashboard? — and whether it lands on `Screen.InventoryScan` with the existing batchId, or on the legacy `BatchScreen` drug-group list.
-5. END COUNT — same confirmation dialog as the legacy stock-count flow, or a new one?
+All previously-open questions resolved in 2026-05-26 follow-up session — see §5b for the decisions. The remaining open question is:
+
+1. Tablet-portrait, phone-landscape, phone-portrait Figmas — not yet provided. Until they land, those 3 form factors fall through to the legacy `PillScanningScreen` UI when `isInventory = true`.
 
 ---
 

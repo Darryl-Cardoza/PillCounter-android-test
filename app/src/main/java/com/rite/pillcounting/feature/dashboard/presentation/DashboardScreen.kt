@@ -140,6 +140,15 @@ fun DashboardScreen(
         onRecentBatchClick = { batchId ->
             navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
         },
+        onQueueDispenseClick = { txnId ->
+            // Partial dispense rows resume via HistoryDetail (same destination as Recent Activity).
+            viewModel.selectCurrentTransaction(txnId)
+            navController.navigate(Screen.HistoryDetail.route)
+        },
+        onQueueInventoryClick = { batchId ->
+            // In-progress batch rows resume the new InventoryScan flow.
+            navController.navigate(Screen.InventoryScan.createRoute(batchId))
+        },
     )
 
     if (showBucketSelectDialog) {

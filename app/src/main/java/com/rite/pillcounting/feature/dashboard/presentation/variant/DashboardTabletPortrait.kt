@@ -133,8 +133,8 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                     when (DashboardTab.entries[page]) {
                         DashboardTab.TODAYS_QUEUE -> ScaffoldQueueList(
                             items = uiState.queue,
-                            onDispenseClick = null,
-                            onInventoryClick = null,
+                            onDispenseClick = params.onQueueDispenseClick,
+                            onInventoryClick = params.onQueueInventoryClick,
                         )
                         DashboardTab.RECENT_ACTIVITY -> ScaffoldQueueList(
                             items = uiState.recentActivity,

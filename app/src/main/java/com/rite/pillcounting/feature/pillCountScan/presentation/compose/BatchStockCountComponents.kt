@@ -35,11 +35,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import kotlinx.coroutines.delay
@@ -75,7 +77,7 @@ internal fun BatchStockCountHeader(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = "Batch Stock Count",
+            text = stringResource(R.string.batch_stock_count_title),
             color = Color(0xFF222222),
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
@@ -97,7 +99,7 @@ private fun ScanPillsPillButton(onClick: () -> Unit) {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "SCAN PILLS",
+            text = stringResource(R.string.batch_stock_count_scan_pills),
             color = color,
             fontSize = 11.sp,
             fontWeight = FontWeight.SemiBold,
@@ -178,9 +180,9 @@ private fun RecentCountRow(row: RecentBatchRow) {
                 maxLines = 1,
             )
         }
-        UnitColumn(value = row.pills.toString(), label = "Pills")
+        UnitColumn(value = row.pills.toString(), label = stringResource(R.string.batch_stock_count_label_pills))
         Spacer(modifier = Modifier.width(14.dp))
-        UnitColumn(value = row.bottles.toString(), label = "Bottles")
+        UnitColumn(value = row.bottles.toString(), label = stringResource(R.string.batch_stock_count_label_bottles))
     }
 }
 
@@ -220,7 +222,7 @@ internal fun ScannedDrugCard(
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
         Text(
-            text = "SCANNED DRUG DETAILS",
+            text = stringResource(R.string.batch_stock_count_scanned_drug_details),
             color = Color(0xFF888888),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
@@ -230,12 +232,12 @@ internal fun ScannedDrugCard(
         // Row 1: Drug Name (2x) | Bucket (1x).
         Row(modifier = Modifier.fillMaxWidth()) {
             DetailField(
-                label = "Drug Name",
+                label = stringResource(R.string.batch_stock_count_label_drug_name),
                 value = active.drugName,
                 modifier = Modifier.weight(2f),
             )
             DetailField(
-                label = "Bucket",
+                label = stringResource(R.string.batch_stock_count_label_bucket),
                 value = active.bucket,
                 modifier = Modifier.weight(1f),
             )
@@ -245,17 +247,17 @@ internal fun ScannedDrugCard(
         // Row 2: NDC (1.2x — wider so the formatted number never wraps) | Batch | Expiry.
         Row(modifier = Modifier.fillMaxWidth()) {
             DetailField(
-                label = "NDC Number",
+                label = stringResource(R.string.batch_stock_count_label_ndc),
                 value = active.ndc,
                 modifier = Modifier.weight(1.2f),
             )
             DetailField(
-                label = "Batch No.",
+                label = stringResource(R.string.batch_stock_count_label_batch_no),
                 value = active.batchNo,
                 modifier = Modifier.weight(1f),
             )
             DetailField(
-                label = "Expiry Date",
+                label = stringResource(R.string.batch_stock_count_label_expiry),
                 value = active.expiry,
                 modifier = Modifier.weight(1f),
             )
@@ -277,7 +279,7 @@ internal fun ScannedDrugCard(
         ) {
             Box(modifier = Modifier.width(120.dp)) {
                 HollowButton(
-                    text = "CLEAR",
+                    text = stringResource(R.string.batch_stock_count_clear),
                     onClick = onClear,
                     color = MaterialTheme.colorScheme.primary,
                     fixedWidth = false,
@@ -286,7 +288,7 @@ internal fun ScannedDrugCard(
             }
             Box(modifier = Modifier.width(120.dp)) {
                 ActionButtonPrimary(
-                    text = "ADD",
+                    text = stringResource(R.string.batch_stock_count_add),
                     onClick = onAdd,
                     color = MaterialTheme.colorScheme.primary,
                     fixedWidth = false,
@@ -364,7 +366,7 @@ internal fun CounterRow(
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "$totalPills pills",
+                text = stringResource(R.string.batch_stock_count_pills_suffix, totalPills),
                 color = Color(0xFFAAAAAA),
                 fontSize = 11.sp,
             )
@@ -442,7 +444,7 @@ internal fun ScannedSummaryCard(
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Text(
-            text = "SCANNED SUMMARY",
+            text = stringResource(R.string.batch_stock_count_scanned_summary),
             color = Color(0xFF888888),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
@@ -452,11 +454,11 @@ internal fun ScannedSummaryCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SummaryStat(label = "Total NDCs", value = totalNdcs.toString(), modifier = Modifier.weight(1f))
-            SummaryStat(label = "Total Pills", value = totalPills.toString(), modifier = Modifier.weight(1f))
+            SummaryStat(label = stringResource(R.string.batch_stock_count_total_ndcs), value = totalNdcs.toString(), modifier = Modifier.weight(1f))
+            SummaryStat(label = stringResource(R.string.batch_stock_count_total_pills), value = totalPills.toString(), modifier = Modifier.weight(1f))
             Box(modifier = Modifier.width(130.dp)) {
                 ActionButtonPrimary(
-                    text = "END COUNT",
+                    text = stringResource(R.string.batch_stock_count_end_count),
                     onClick = onEndCount,
                     color = MaterialTheme.colorScheme.primary,
                     fixedWidth = false,

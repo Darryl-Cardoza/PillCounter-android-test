@@ -18,6 +18,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
+import com.rite.pillcounting.R
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
@@ -43,7 +47,6 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCo
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugCard
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedSummaryCard
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.StockCountCard
 
 /**
  * Tablet landscape variant of the redesigned Batch Stock Count panel.
@@ -68,19 +71,30 @@ fun BatchStockCountTabletLandscape(
     onEndCount: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Bottom card overlaps the top card by [BOTTOM_OVERLAP] and carries a soft
-    // upward shadow so it reads as an overlay on the recent-counts card. Box
-    // (instead of Column with spacedBy) lets the bottom child sit at the bottom
-    // edge while the top child fills the rest of the height behind it.
+    // Bottom card overlaps the top card and carries a soft upward shadow so it
+    // reads as an overlay on the recent-counts card. Box (instead of Column
+    // with spacedBy) lets the bottom child sit at the bottom edge while the
+    // top child fills the rest of the height behind it.
+    //
+    // We measure the bottom card's height at runtime so the top list can
+    // reserve exactly that much bottom padding — otherwise the last list rows
+    // would render BEHIND the overlay and bleed through visibly.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var overlayHeightPx by remember { mutableStateOf(0) }
+    val overlayHeightDp = with(density) { overlayHeightPx.toDp() }
     Box(
         modifier = modifier
             .fillMaxHeight(),
     ) {
-        StockCountCard(
+        // Top section: flat-bottom container so the bottom card's rounded top
+        // corners read as the only curve at their meeting point. Top corners
+        // stay square too — the panel sits flush against the screen edge.
+        Box(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxHeight()
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .background(androidx.compose.ui.graphics.Color.White),
         ) {
             Column(
                 modifier = Modifier
@@ -90,19 +104,20 @@ fun BatchStockCountTabletLandscape(
                 BatchStockCountHeader(onScanPills = onScanPills)
                 Spacer(modifier = Modifier.height(16.dp))
                 val label = if (state.activeNdc != null) {
-                    "RECENT BATCH COUNT (${state.totalNdcs})"
+                    stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
                 } else {
-                    "RECENT COUNTS"
+                    stringResource(R.string.batch_stock_count_recent_summary)
                 }
                 RecentCountsLabelRow(label = label)
                 Spacer(modifier = Modifier.height(8.dp))
                 // Bottom padding clears the overlapping card so the last list
-                // row never hides behind it.
+                // row never hides behind it. Width is measured at runtime via
+                // overlayHeightDp (see overlay column's onSizeChanged below).
                 RecentCountsList(
                     rows = state.recentCounts,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = OVERLAY_CARD_CLEARANCE),
+                        .padding(bottom = overlayHeightDp),
                 )
             }
         }
@@ -113,7 +128,8 @@ fun BatchStockCountTabletLandscape(
         Column(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                .onSizeChanged { overlayHeightPx = it.height },
         ) {
             // The shadow band sits ABOVE the card and fades upward — gives a
             // clear "overlay floating on top" cue.
@@ -130,7 +146,22 @@ fun BatchStockCountTabletLandscape(
                         )
                     )
             )
-            StockCountCard {
+            // Bottom card: pronounced top corners (so they read clearly against
+            // the shadow band above), flat bottom corners since the card sits
+            // flush against the screen edge.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(
+                        androidx.compose.foundation.shape.RoundedCornerShape(
+                            topStart = 24.dp,
+                            topEnd = 24.dp,
+                            bottomStart = 0.dp,
+                            bottomEnd = 0.dp,
+                        )
+                    )
+                    .background(androidx.compose.ui.graphics.Color.White)
+            ) {
                 if (state.activeNdc != null) {
                     ScannedDrugCard(
                         active = state.activeNdc,
@@ -150,13 +181,6 @@ fun BatchStockCountTabletLandscape(
         }
     }
 }
-
-/**
- * Bottom padding reserved inside the top card so the last list row doesn't
- * hide behind the overlay card. Slightly larger than the overlay's elevation
- * to leave breathing room.
- */
-private val OVERLAY_CARD_CLEARANCE = 24.dp
 
 /** Height of the upward gradient shadow band that sits above the bottom overlay card. */
 private val OVERLAY_SHADOW_HEIGHT = 14.dp

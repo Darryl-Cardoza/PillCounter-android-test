@@ -24,6 +24,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import com.rite.pillcounting.feature.dispenseScan.presentation.analyzer.FrameBarcodeAnalyzer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
@@ -450,21 +452,58 @@ fun PillScanningScreen(
 }
 
 /**
- * Tablet-landscape inventory shell — UI-only first pass.
+ * Tablet-landscape inventory shell — VM-driven.
  *
- * Live CameraX preview on the left (no analyzer wiring yet — frames are dropped
- * via a no-op onFrame, and the ML interpreter is never initialized because we
- * don't call viewModel.initializeInterpreter()). The new persistent Batch Stock
- * Count panel sits on the right. Counter +/- mutate sample state in place.
- * SCAN PILLS / ADD / CLEAR / END COUNT remain stubs until wiring.
+ * Camera runs in NDC-only mode: frames are forwarded to a [FrameBarcodeAnalyzer]
+ * which calls back to [InventoryScanViewModel.onBarcodeDetected]. The ML
+ * pill-counting interpreter is never initialized in this mode (we omit the
+ * onPreviewSizeKnown call that would normally trigger it). Tap SCAN PILLS to
+ * enable the legacy pill-count panel (still TODO — see §7c of the doc).
+ *
+ * The persistent panel reads its state from the InventoryScanViewModel; END
+ * COUNT shows the existing end-stock-count confirmation dialog.
  */
 @Composable
 private fun InventoryTabletLandscapeShell(navController: NavController) {
-    val viewModel: PillScanningViewModel = hiltViewModel()
-    val uiState by viewModel.uiState.collectAsState()
+    val cameraVm: PillScanningViewModel = hiltViewModel()
+    val inventoryVm: com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.InventoryScanViewModel =
+        hiltViewModel()
 
-    var state by remember {
-        mutableStateOf(com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountSampleData.activeState)
+    val cameraUiState by cameraVm.uiState.collectAsState()
+    val panelState by inventoryVm.uiState.collectAsState()
+    val errorMessage by inventoryVm.errorMessage.collectAsState()
+    val showEndCountDialog by inventoryVm.showEndCountDialog.collectAsState()
+    val batchEnded by inventoryVm.batchEnded.collectAsState()
+
+    val context = LocalContext.current
+    val barcodeAnalyzer = remember { FrameBarcodeAnalyzer(context.applicationContext) }
+
+    // Pause/resume the analyzer based on whether the active NDC card is up.
+    // We track activeNdc directly (not a VM-side scannerPaused flag) so the
+    // resume path is deterministic: as soon as activeNdc becomes null after
+    // ADD/CLEAR or auto-commit, the analyzer is freed to detect the next
+    // barcode immediately.
+    LaunchedEffect(panelState.activeNdc) {
+        if (panelState.activeNdc != null) barcodeAnalyzer.pause() else barcodeAnalyzer.resume()
+    }
+
+    // Surface VM errors as toasts. The VM emits a localized resource id +
+    // optional arg; we resolve here so the VM stays Context-free.
+    LaunchedEffect(errorMessage) {
+        errorMessage?.let { err ->
+            val text = if (err.formatArg != null) {
+                context.getString(err.messageResId, err.formatArg)
+            } else {
+                context.getString(err.messageResId)
+            }
+            android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+            inventoryVm.clearErrorMessage()
+        }
+    }
+
+    // After END COUNT confirms, pop back to dashboard.
+    LaunchedEffect(batchEnded) {
+        if (batchEnded) navController.popBackStack()
     }
 
     Row(
@@ -472,8 +511,7 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
             .fillMaxSize()
             .background(androidx.compose.ui.graphics.Color(0xFFE5E5E5)),
     ) {
-        // Left: live CameraX preview, edge-to-edge. No rounded corners and no
-        // outer margin so it visually shares the top edge with the side panel.
+        // Left: live CameraX preview, edge-to-edge.
         Box(
             modifier = Modifier
                 .weight(1f)
@@ -481,17 +519,23 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
                 .background(androidx.compose.ui.graphics.Color(0xFF2A2A2A))
         ) {
             CameraPreviewSection(
-                viewModel = viewModel,
-                pills = uiState.detectedPills,
-                isCameraPaused = viewModel.cameraPaused.collectAsState().value,
-                imageFrameWidth = uiState.imageFrameWidth,
-                imageFrameHeight = uiState.imageFrameHeight,
-                onFrame = { /* no-op — no analyzer wired yet; ML stays off */ },
-                onFilteredCountChanged = { /* no-op */ },
+                viewModel = cameraVm,
+                pills = cameraUiState.detectedPills,
+                isCameraPaused = cameraVm.cameraPaused.collectAsState().value,
+                imageFrameWidth = cameraUiState.imageFrameWidth,
+                imageFrameHeight = cameraUiState.imageFrameHeight,
+                onFrame = { imageProxy ->
+                    // Forward each frame to the barcode analyzer. We do NOT
+                    // call cameraVm.onFrameCaptured here — that path runs the
+                    // ML pill detector, which inventory mode keeps disabled.
+                    barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
+                        inventoryVm.onBarcodeDetected(raw)
+                    }
+                },
+                onFilteredCountChanged = { /* no-op in inventory mode */ },
                 modifier = Modifier.fillMaxSize(),
             )
 
-            // Back arrow overlaid on the top-left of the camera card.
             BackButton(
                 navController = navController,
                 showBox = false,
@@ -499,45 +543,55 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
             )
         }
 
-        // Right: new persistent panel.
+        // Right: persistent panel driven by the inventory VM.
+        // Left edge is rounded (24 dp) so the panel reads as a curved sheet
+        // overlaying the camera; right edge stays flush against the screen.
         Box(
             modifier = Modifier
                 .width(500.dp)
                 .fillMaxHeight()
+                .clip(
+                    androidx.compose.foundation.shape.RoundedCornerShape(
+                        topStart = 24.dp,
+                        bottomStart = 24.dp,
+                        topEnd = 0.dp,
+                        bottomEnd = 0.dp,
+                    )
+                )
+                .background(androidx.compose.ui.graphics.Color.White)
         ) {
             com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletLandscape(
-                state = state,
-                onScanPills = { /* TODO: enable ML + swap to legacy pill-count panel */ },
-                onIncrement = {
-                    state.activeNdc?.let { a ->
-                        state = state.copy(activeNdc = a.copy(bottles = a.bottles + 1))
-                    }
+                state = panelState,
+                onScanPills = {
+                    // §7c — in-place mode toggle is intentionally deferred.
+                    // Implementation plan documented in BATCH_STOCK_COUNT_REVAMP.md;
+                    // requires:
+                    //   1. mode flag (NDC_ONLY / PILL_COUNT)
+                    //   2. lazy cameraVm.initializeInterpreter(viewWidth, viewHeight)
+                    //   3. swap onFrame target: barcodeAnalyzer.analyze ↔ cameraVm.onFrameCaptured
+                    //   4. swap right panel: BatchStockCountTabletLandscape ↔ InformationPanelSection
+                    //   5. intercept InformationPanelSection's DONE so it returns to NDC_ONLY mode
+                    //      instead of popping the screen.
+                    // No-op until this lands so we don't half-implement a state machine
+                    // that could corrupt the camera lifecycle.
                 },
-                onDecrement = {
-                    state.activeNdc?.let { a ->
-                        val next = (a.bottles - 1).coerceAtLeast(1)
-                        state = state.copy(activeNdc = a.copy(bottles = next))
-                    }
-                },
-                onClear = { state = state.copy(activeNdc = null) },
-                onAdd = {
-                    state.activeNdc?.let { a ->
-                        val newRow = com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentBatchRow(
-                            ndc = a.ndc,
-                            drugName = a.drugName,
-                            pills = a.totalPills,
-                            bottles = a.bottles,
-                        )
-                        state = state.copy(
-                            recentCounts = listOf(newRow) + state.recentCounts,
-                            activeNdc = null,
-                            totalNdcs = state.totalNdcs + 1,
-                            totalPills = state.totalPills + a.totalPills,
-                        )
-                    }
-                },
-                onEndCount = { navController.popBackStack() },
+                onIncrement = inventoryVm::increment,
+                onDecrement = inventoryVm::decrement,
+                onClear = inventoryVm::onClear,
+                onAdd = inventoryVm::onAdd,
+                onEndCount = inventoryVm::requestEndCount,
             )
         }
+    }
+
+    if (showEndCountDialog) {
+        CommonDialog(
+            message = stringResource(R.string.are_you_sure_you_want_to_end_this_count),
+            title = stringResource(R.string.confirmation),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = inventoryVm::confirmEndCount,
+            onCancel = inventoryVm::dismissEndCount,
+        )
     }
 }

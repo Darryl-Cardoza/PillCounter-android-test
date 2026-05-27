@@ -36,4 +36,8 @@ data class DashboardVariantParams(
     val onRecentDispenseClick: (txnId: Long) -> Unit,
     /** Tap on a completed batch row in Recent Activity — routes to BatchHistoryDetail. */
     val onRecentBatchClick: (batchId: Long) -> Unit,
+    /** Tap on a partial dispense row in Today's Queue — resumes/inspects via HistoryDetail. */
+    val onQueueDispenseClick: (txnId: Long) -> Unit,
+    /** Tap on an in-progress inventory batch in Today's Queue — resumes the new InventoryScan. */
+    val onQueueInventoryClick: (batchId: Long) -> Unit,
 )
