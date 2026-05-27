@@ -77,18 +77,18 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
-import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -718,7 +718,10 @@ object UserInterfaceUtils {
             modifier = modifier
                 .fillMaxWidth()
                 .height(height)
-                .background(AppTheme.extendedColors.inputBackground, RoundedCornerShape(cornerRadius))
+                .background(
+                    AppTheme.extendedColors.inputBackground,
+                    RoundedCornerShape(cornerRadius)
+                )
                 .padding(horizontal = horizontalPadding)
         ) {
             // Label inside the box
@@ -810,7 +813,9 @@ object UserInterfaceUtils {
     ) {
         val dimens = AppTheme.dimens
         val sizeModifier = if (fixedWidth)
-            Modifier.height(dimens.buttonHeight).width(dimens.buttonWidth)
+            Modifier
+                .height(dimens.buttonHeight)
+                .width(dimens.buttonWidth)
         else
             Modifier.height(dimens.buttonHeight)
         Button(
@@ -865,7 +870,9 @@ object UserInterfaceUtils {
     ) {
         val dimens = AppTheme.dimens
         val sizeModifier = if (fixedWidth)
-            Modifier.height(dimens.buttonHeight).width(dimens.buttonWidth)
+            Modifier
+                .height(dimens.buttonHeight)
+                .width(dimens.buttonWidth)
         else
             Modifier.height(dimens.buttonHeight)
         Button(
@@ -895,7 +902,7 @@ object UserInterfaceUtils {
         val dimens = AppTheme.dimens
         IconButton(
             onClick = {
-                navController.navigate(Screen.Menu.route)
+                navController.navigateSafely(Screen.Menu.route)
             },
             modifier = modifier
                 .padding(dimens.small)
@@ -1181,7 +1188,7 @@ object UserInterfaceUtils {
         val percent = when {
             sw < 600 -> if (isLandscape) 0.30f else 0.25f   // phones
             sw < 840 -> if (isLandscape) 0.30f else 0.20f   // tablets
-            else     -> if (isLandscape) 0.30f else 0.22f   // large tablets
+            else -> if (isLandscape) 0.30f else 0.22f   // large tablets
         }
         return (sw * percent).dp
     }
