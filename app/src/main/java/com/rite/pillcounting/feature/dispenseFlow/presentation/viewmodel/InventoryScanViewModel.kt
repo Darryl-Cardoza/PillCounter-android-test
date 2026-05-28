@@ -34,6 +34,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 import javax.inject.Inject
@@ -295,8 +296,18 @@ class InventoryScanViewModel @Inject constructor(
                 } else null
 
                 logger.d("INV_SCAN existing-txn lookup batchId=$batchId drugId=${drug.drugId} lot=$lotNo expiry=$expiry → existing=${existing?.localId} prevBottles=${existing?.bottleQty}")
-                val startBottles = (existing?.bottleQty ?: 0).coerceAtLeast(1)
-                _activeNdc.value = ActiveNdc(
+                // Same-NDC rescan = "+1 bottle". If the card already shows this
+                // NDC, bump its bottle count. Otherwise this is a fresh scan
+                // (or a switch back to an NDC that was previously committed): seed
+                // from the existing committed bottleQty, defaulting to 1.
+                val sameAsActive = currentActive != null && currentActive.ndc == drug.ndc
+                val startBottles = when {
+                    sameAsActive -> currentActive!!.bottles + 1
+                    existing != null -> (existing.bottleQty ?: 0).coerceAtLeast(1) + 1
+                    else -> 1
+                }
+                logger.d("INV_SCAN startBottles=$startBottles sameAsActive=$sameAsActive")
+                val newActive = ActiveNdc(
                     ndc = drug.ndc,
                     drugName = drug.drugName ?: "",
                     bucket = _bucketId.value.orEmpty(),
@@ -306,7 +317,14 @@ class InventoryScanViewModel @Inject constructor(
                     bottles = startBottles,
                     isHazardous = drug.isHazardous,
                 )
+                _activeNdc.value = newActive
                 logger.d("INV_SCAN activeNdc SET ndc=${drug.ndc} drug=${drug.drugName} bottles=$startBottles hazardous=${drug.isHazardous} batchId=${_resolvedBatchId.value}")
+
+                // Persist immediately so the batch is durable from the first scan —
+                // BACK/app-kill before ADD must not drop the count. persistActive
+                // INSERTs on the first scan of an (ndc, lot, expiry) tuple in this
+                // batch, UPDATEs on subsequent rescans (same-NDC +1 path).
+                persistActive(newActive)
             } catch (e: Exception) {
                 logger.e("INV_SCAN onBarcodeDetected failed", e)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
@@ -322,11 +340,13 @@ class InventoryScanViewModel @Inject constructor(
     /* ─────────────────────────  Counter  ───────────────────────── */
 
     fun increment() {
-        _activeNdc.update { it?.copy(bottles = it.bottles + 1) }
+        val updated = _activeNdc.updateAndGet { it?.copy(bottles = it.bottles + 1) } ?: return
+        viewModelScope.launch { persistActive(updated) }
     }
 
     fun decrement() {
-        _activeNdc.update { it?.copy(bottles = (it.bottles - 1).coerceAtLeast(1)) }
+        val updated = _activeNdc.updateAndGet { it?.copy(bottles = (it.bottles - 1).coerceAtLeast(1)) } ?: return
+        viewModelScope.launch { persistActive(updated) }
     }
 
     /* ─────────────────────────  Clear / Add  ───────────────────────── */
