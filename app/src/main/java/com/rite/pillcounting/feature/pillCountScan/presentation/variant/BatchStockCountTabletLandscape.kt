@@ -69,6 +69,7 @@ fun BatchStockCountTabletLandscape(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
+    onRowTapped: (RecentBatchRow) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     // Bottom card overlaps the top card and carries a soft upward shadow so it
@@ -115,6 +116,7 @@ fun BatchStockCountTabletLandscape(
                 // overlayHeightDp (see overlay column's onSizeChanged below).
                 RecentCountsList(
                     rows = state.recentCounts,
+                    onRowTapped = onRowTapped,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = overlayHeightDp),

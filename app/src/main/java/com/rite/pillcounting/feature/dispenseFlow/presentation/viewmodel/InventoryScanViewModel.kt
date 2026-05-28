@@ -349,6 +349,46 @@ class InventoryScanViewModel @Inject constructor(
         viewModelScope.launch { persistActive(updated) }
     }
 
+    /* ─────────────────────────  Recent-row tap  ───────────────────────── */
+
+    /**
+     * User tapped a row in the Recent Counts list — re-activate that NDC.
+     * Auto-commits any currently-active NDC (same path the scanner uses when
+     * switching), then seeds the active card from the latest persisted txn for
+     * that NDC so +/- continues from the saved bottle count.
+     */
+    fun onRecentRowTapped(row: RecentBatchRow) {
+        val batchId = _resolvedBatchId.value
+        logger.d("INV_SCAN onRecentRowTapped ndc=${row.ndc} batchId=$batchId")
+        if (batchId == 0L) return
+        viewModelScope.launch {
+            try {
+                val current = _activeNdc.value
+                if (current != null && current.ndc != row.ndc) {
+                    persistActive(current)
+                }
+                val txn = pillCountTxnDao.findLatestTxnByNdcInBatch(batchId, row.ndc)
+                val drug = drugMasterDao.getDrugByNdc(row.ndc)
+                if (txn == null || drug == null) {
+                    logger.w("INV_SCAN onRecentRowTapped: missing txn=${txn?.localId} drug=${drug?.ndc}")
+                    return@launch
+                }
+                _activeNdc.value = ActiveNdc(
+                    ndc = drug.ndc,
+                    drugName = drug.drugName ?: "",
+                    bucket = _bucketId.value.orEmpty(),
+                    batchNo = txn.lotNo.orEmpty(),
+                    expiry = txn.expiry.orEmpty(),
+                    pillsPerBottle = drug.packageQty ?: 0,
+                    bottles = (txn.bottleQty ?: 0).coerceAtLeast(1),
+                    isHazardous = drug.isHazardous,
+                )
+            } catch (e: Exception) {
+                logger.e("INV_SCAN onRecentRowTapped failed", e)
+            }
+        }
+    }
+
     /* ─────────────────────────  Clear / Add  ───────────────────────── */
 
     fun onClear() {

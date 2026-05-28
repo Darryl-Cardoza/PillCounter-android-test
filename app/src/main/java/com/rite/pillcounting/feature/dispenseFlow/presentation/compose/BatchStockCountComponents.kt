@@ -140,30 +140,31 @@ internal fun RecentCountsLabelRow(
 @Composable
 internal fun RecentCountsList(
     rows: List<RecentBatchRow>,
+    onRowTapped: (RecentBatchRow) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    LazyColumn(modifier = modifier) {
+    LazyColumn(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
         itemsIndexed(
             items = rows,
             key = { _, row -> row.ndc },
-        ) { index, row ->
-            if (index > 0) {
-                HorizontalDivider(
-                    color = Color(0xFFEEEEEE),
-                    thickness = 1.dp,
-                )
-            }
-            RecentCountRow(row = row)
+        ) { _, row ->
+            RecentCountRow(row = row, onTap = { onRowTapped(row) })
         }
     }
 }
 
 @Composable
-private fun RecentCountRow(row: RecentBatchRow) {
+private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 10.dp),
+            .clip(RoundedCornerShape(10.dp))
+            .background(Color(0xFFF7F7F7))
+            .clickable(onClick = onTap)
+            .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {

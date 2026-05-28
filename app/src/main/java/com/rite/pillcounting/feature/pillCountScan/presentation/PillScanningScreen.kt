@@ -635,6 +635,10 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
                     barcodeAnalyzer.resume()
                 },
                 onEndCount = inventoryVm::requestEndCount,
+                onRowTapped = { row ->
+                    inventoryVm.onRecentRowTapped(row)
+                    barcodeAnalyzer.resume()
+                },
             )
         }
     }
