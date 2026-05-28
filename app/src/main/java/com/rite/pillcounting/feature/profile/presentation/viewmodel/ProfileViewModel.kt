@@ -167,8 +167,8 @@ class ProfileViewModel @Inject constructor(
     }
     // ─────────────────────────── Validation ───────────────────────────
     private fun validateInputs(): Boolean {
-        firstNameError = validator.validateName(firstName).errorMessageResId
-        lastNameError = validator.validateName(lastName).errorMessageResId
+        firstNameError = validator.validateRequiredName(firstName).errorMessageResId
+        lastNameError = validator.validateRequiredName(lastName).errorMessageResId
         pharmacyNameError = validator.validatePharmacyName(pharmacyName).errorMessageResId
         phoneError = validator.validatePhone(phoneNumber).errorMessageResId
         emailError = validator.validateEmail(email).errorMessageResId

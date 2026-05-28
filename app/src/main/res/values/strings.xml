@@ -84,6 +84,7 @@
     <string name="error_invalid_otp">Invalid Pin entered.</string>
     <string name="error_phone_invalid">Invalid phone number</string>
     <string name="error_name_invalid">Name cannot contain numbers</string>
+    <string name="error_name_required">This field is required</string>
     <string name="error_pharmacy_name_invalid">Pharmacy name too short</string>
     <string name="error_npi_invalid">Invalid NPI number</string>
     <string name="error_no_internet">No internet connection. Please check your network and try again.</string>

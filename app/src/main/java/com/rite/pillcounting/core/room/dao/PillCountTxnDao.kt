@@ -527,14 +527,14 @@ interface PillCountTxnDao {
     )
 
     /**
-     * Retrieves all transactions created before a specific cutoff date.
-     *
-     * Useful for archival or cleanup operations.
+     * Retrieves all completed transactions created before a specific cutoff date.
+     * Only returns COMPLETED or FORCE_COMPLETED transactions; partial/in-progress
+     * transactions are excluded from retention-based cleanup.
      *
      * @param cutoff Timestamp before which records will be selected.
      * @return A list of [PillCountTxnEntity].
      */
-    @Query("SELECT * FROM pill_count_txn WHERE createdAt < :cutoff")
+    @Query("SELECT * FROM pill_count_txn WHERE createdAt < :cutoff AND (status = 'COMPLETED' OR status = 'FORCE_COMPLETED')")
     suspend fun getTransactionsBefore(cutoff: Long): List<PillCountTxnEntity>
 
     /**
