@@ -46,6 +46,14 @@ data class DashboardUiState(
     //set as null because when we set 0 because of observer its consider the Id and redirect to barcode screen
     val createdBatchId: Long? = null,
 
+    /**
+     * Bucket selected for a new stock-count session. Set when the user picks a bucket
+     * from the Inventory quick-action dialog; consumed by the screen to navigate into
+     * the inventory scan flow. The BatchEntity is created lazily on the first NDC scan
+     * inside InventoryScanViewModel, not here — so an abandoned session leaves no row.
+     */
+    val pendingStockCountBucketId: String? = null,
+
     // ────────────────────────────────── New dashboard ──────────────────────────────────
 
     /**

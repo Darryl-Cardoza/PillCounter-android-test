@@ -7,8 +7,10 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
+import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
@@ -68,8 +70,15 @@ class InventoryScanViewModel @Inject constructor(
 
     private val logger = AppLogger("InventoryScanViewModel")
 
-    /** Route arg. May be 0 if caller didn't pass a batch — we'll resolve latest. */
+    /**
+     * Route arg. 0 when the caller hasn't created a batch yet (Inventory quick
+     * action from the dashboard) — the batch is created lazily on the first
+     * successful NDC scan. Non-zero when resuming an existing batch.
+     */
     private val argBatchId: Long = savedStateHandle["batch_id"] ?: 0L
+
+    /** Route arg used only when [argBatchId] is 0 — seeds the lazily-created batch. */
+    private val argBucketId: String? = savedStateHandle.get<String>("bucket_id")?.ifBlank { null }
 
     private val _resolvedBatchId = MutableStateFlow(argBatchId)
 
@@ -130,15 +139,46 @@ class InventoryScanViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            val resolved = if (argBatchId == 0L) {
-                batchDao.getLatest()?.batchId ?: 0L
+            if (argBatchId != 0L) {
+                _resolvedBatchId.value = argBatchId
+                _bucketId.value = batchDao.getById(argBatchId)?.bucketId
             } else {
-                argBatchId
+                // No batch yet — the user selected a bucket on the dashboard but the
+                // batch row will be created on the first successful NDC scan.
+                _bucketId.value = argBucketId
             }
-            _resolvedBatchId.value = resolved
-            if (resolved != 0L) {
-                _bucketId.value = batchDao.getById(resolved)?.bucketId
-            }
+        }
+    }
+
+    /**
+     * Inserts a new BatchEntity for the current bucket and stores its id. Called
+     * once, on the first successful NDC scan, when the screen was entered via the
+     * Inventory quick action (which intentionally defers batch creation so an
+     * abandoned session never produces an empty batch row).
+     *
+     * Returns the new batchId on success, or 0 if the insert failed.
+     */
+    private suspend fun ensureBatchCreated(): Long {
+        val existing = _resolvedBatchId.value
+        if (existing != 0L) return existing
+        return try {
+            val now = System.currentTimeMillis()
+            val newId = batchDao.insert(
+                BatchEntity(
+                    batchId = now,
+                    startDateTime = now,
+                    endDateTime = null,
+                    status = BatchStatus.INPROGRESS,
+                    isDeleted = false,
+                    note = null,
+                    bucketId = _bucketId.value,
+                )
+            )
+            _resolvedBatchId.value = newId
+            newId
+        } catch (e: Exception) {
+            logger.e("ensureBatchCreated failed", e)
+            0L
         }
     }
 
@@ -172,6 +212,17 @@ class InventoryScanViewModel @Inject constructor(
                     _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, gtin14)
                     _scannerPaused.value = false
                     return@launch
+                }
+
+                // First valid scan in a fresh stock-count session: create the
+                // BatchEntity now so abandoned sessions leave no DB row.
+                if (_resolvedBatchId.value == 0L) {
+                    val newBatchId = ensureBatchCreated()
+                    if (newBatchId == 0L) {
+                        _errorMessage.value = LocalizedError(R.string.batch_stock_count_no_active_batch)
+                        _scannerPaused.value = false
+                        return@launch
+                    }
                 }
 
                 // If an NDC is already active, auto-commit it before switching.

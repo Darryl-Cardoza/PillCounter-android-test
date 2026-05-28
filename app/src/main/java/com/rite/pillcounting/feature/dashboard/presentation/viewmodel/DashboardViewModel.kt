@@ -7,7 +7,6 @@ import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.models.StepState
-import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchSummaryDto
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
@@ -477,48 +476,24 @@ class DashboardViewModel @Inject constructor(
         preferenceHelper.saveTxnId(txnId)
     }
 
+    /**
+     * Stages a stock-count session for the chosen bucket. The BatchEntity is NOT
+     * inserted here — it's created lazily on the first NDC scan inside
+     * InventoryScanViewModel, so a user who enters the inventory screen and leaves
+     * without scanning never produces an empty batch row.
+     */
     fun createBatch(bucketId: String) {
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    isLoading = true,
-                    error = null
-                )
-            }
-
-            try {
-                val batch = BatchEntity(
-                    batchId = System.currentTimeMillis(),
-                    startDateTime = System.currentTimeMillis(),
-                    endDateTime = null, // Will be set when batch is completed
-                    status = BatchStatus.INPROGRESS,
-                    isDeleted = false,
-                    note = null, // Can be set later by user
-                    bucketId = bucketId // Can be set later
-                )
-                val batchId = batchDao.insert(batch)
-
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        createdBatchId = batchId
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message ?: "Failed to create batch"
-                    )
-                }
-            }
-        }
+        _uiState.update { it.copy(pendingStockCountBucketId = bucketId) }
     }
 
     fun clearCreatedBatchId() {
         _uiState.update {
             it.copy(createdBatchId = null)
         }
+    }
+
+    fun clearPendingStockCountBucketId() {
+        _uiState.update { it.copy(pendingStockCountBucketId = null) }
     }
 
     private companion object {

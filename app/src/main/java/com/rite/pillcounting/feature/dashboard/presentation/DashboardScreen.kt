@@ -115,6 +115,20 @@ fun DashboardScreen(
         }
     }
 
+    // Inventory quick action: bucket selected but no BatchEntity yet — the batch is
+    // created on the first NDC scan inside InventoryScanViewModel.
+    LaunchedEffect(uiState.pendingStockCountBucketId) {
+        uiState.pendingStockCountBucketId?.let { bucketId ->
+            navController.navigate(
+                Screen.DispenseFlow.createRoute(
+                    scanType = CountType.REGULAR.toString(),
+                    bucketId = bucketId,
+                )
+            )
+            viewModel.clearPendingStockCountBucketId()
+        }
+    }
+
     // Inventory Quick Action goes straight to bucket-select: clicking Inventory always
     // creates a new batch. (Resume-last is reachable from elsewhere if needed.)
     var showBucketSelectDialog by remember { mutableStateOf(false) }
