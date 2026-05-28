@@ -99,6 +99,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                     counts = uiState.kpiCounts,
                     activeFilter = uiState.activeKpiFilter,
                     onTap = params.onKpiFilterTapped,
+                    modifier = Modifier.height(96.dp),
                 )
 
                 HorizontalDivider(

@@ -131,7 +131,7 @@ fun DashboardScreen(
         onDispenseQuickAction = {
             viewModel.saveTxnId()
             navController.navigate(
-                Screen.DispenseScan.createRoute(scanType = CountType.FIXED.toString())
+                Screen.DispenseFlow.createRoute(scanType = CountType.FIXED.toString())
             )
         },
         onInventoryQuickAction = {
