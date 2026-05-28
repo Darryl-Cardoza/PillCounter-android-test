@@ -230,13 +230,14 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
-    /** Toggle a KPI filter — tapping the same card clears it. */
+    /** Toggle a KPI filter — tapping the same card clears it. Also switches to Today's Queue, since that's the list the KPIs filter. */
     fun onKpiFilterTapped(filter: KpiFilter) {
         _uiState.update { state ->
             val newFilter = if (state.activeKpiFilter == filter) null else filter
             state.copy(
                 activeKpiFilter = newFilter,
                 queue = applyKpiFilter(_unfilteredQueue.value, newFilter),
+                activeTab = DashboardTab.TODAYS_QUEUE,
             )
         }
     }

@@ -160,9 +160,16 @@ fun DashboardScreen(
             viewModel.onTabSelected(DashboardTab.TODAYS_QUEUE)
         },
         onQueueDispenseClick = { txnId ->
-            // Partial dispense rows resume via HistoryDetail (same destination as Recent Activity).
+            // Today's Queue holds partial (in-progress) dispense txns — tapping resumes the
+            // DispenseFlow so the user can continue counting. (Recent Activity, which holds
+            // completed txns, still routes to HistoryDetail via onRecentDispenseClick.)
             viewModel.selectCurrentTransaction(txnId)
-            navController.navigate(Screen.HistoryDetail.route)
+            navController.navigate(
+                Screen.DispenseFlow.createRoute(
+                    scanType = CountType.FIXED.toString(),
+                    fromResume = true,
+                )
+            )
         },
         onQueueInventoryClick = { batchId ->
             // In-progress batch rows resume the new InventoryScan flow.
