@@ -536,6 +536,35 @@ class DashboardViewModel @Inject constructor(
  * Map API payload [UserDetail] to persistence [UserEntity].
  * Uses [jwtUserId] (from JWT) as the Room primary key; falls back to email if missing.
  */
+/**
+ * Reverse of [toUserEntity]: build a [UserDetail] from the locally-cached [UserEntity] plus
+ * the terminals list cached in preferences. Used to hydrate the dashboard top bar on cold
+ * start before the network fetch returns. Fields not persisted locally (role, bucket, etc.)
+ * default to null and are refreshed when the network call lands.
+ */
+private fun UserEntity.toCachedUserDetail(
+    terminals: List<com.rite.pillcounting.feature.dashboard.domain.model.Terminal>,
+): UserDetail {
+    val profile = UserProfile(
+        fName = this.fName,
+        lName = this.lName,
+        email = this.email?.value,
+        phoneNumber = this.phoneNumber?.value,
+        avatarUrl = this.avatarUrl,
+        isProfileCompleted = this.isProfileCompleted,
+        pharmacyName = this.pharmacyName,
+        npiId = this.npiId,
+        userId = this.userId,
+        isVerified = this.isVerified,
+    )
+    val settings = UserSettings(
+        notificationsEnabled = this.notifications,
+        language = this.language,
+        timezone = this.timezone,
+    )
+    return UserDetail(profile = profile, settings = settings, terminals = terminals)
+}
+
 private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
     val pk = jwtUserId ?: this.profile?.email.orEmpty()
     return UserEntity(
