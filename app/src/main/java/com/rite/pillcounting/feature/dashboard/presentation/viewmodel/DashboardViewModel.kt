@@ -25,6 +25,8 @@ import com.rite.pillcounting.feature.dashboard.domain.model.DashboardUiState
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
+import com.rite.pillcounting.feature.dashboard.domain.model.UserProfile
+import com.rite.pillcounting.feature.dashboard.domain.model.UserSettings
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -97,7 +99,28 @@ class DashboardViewModel @Inject constructor(
             observeCompletedBatchCount()
             observeQueue()
         }
+        hydrateUserDetailFromCache()
         fetchUserDetail()
+    }
+
+    /**
+     * Seed `uiState.userDetail` from the local Room cache (and terminals from prefs) so the
+     * top bar shows last-known pharmacy/user immediately on cold start — before the network
+     * fetch in [fetchUserDetail] returns. The network result later overwrites this.
+     */
+    private fun hydrateUserDetailFromCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val localId = preferenceHelper.getLocalId()
+            if (localId == 0L) return@launch
+            userDao.observeByLocalId(localId).collect { entity ->
+                if (entity == null) return@collect
+                val cached = entity.toCachedUserDetail(preferenceHelper.getTerminals())
+                _uiState.update { current ->
+                    // Don't clobber fresher data from the network fetch.
+                    if (current.userDetail == null) current.copy(userDetail = cached) else current
+                }
+            }
+        }
     }
 
     fun isHl7Enabled(): Boolean {
