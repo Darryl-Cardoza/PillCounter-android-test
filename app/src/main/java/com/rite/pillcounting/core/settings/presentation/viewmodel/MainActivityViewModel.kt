@@ -308,8 +308,6 @@ class MainActivityViewModel @Inject constructor(
     /**
      * Updates and caches the HL7 network service discovery (NSD) types from remote settings.
      */
-    // core/settings/presentation/viewmodel/MainActivityViewModel.kt
-
     private fun updateHl7Config(setting: ApiResponse<SettingsDataDto>) {
 
         // Guard 1: Don't process HL7 config if HL7 is disabled for this device
@@ -355,8 +353,9 @@ class MainActivityViewModel @Inject constructor(
                 isHl7Enabled = true
             )
         }
-
-        logger.i("HL7 config updated and cached: pms=$nsdDiscoveryType, counter=$nsdBroadcastType")
+        logger.i("NSD settings updated and saved to preferences:")
+        logger.i("  • Broadcast Type: $nsdBroadCastType")
+        logger.i("  • Discovery Type: $nsdDiscoverType")
     }
 
 
@@ -368,10 +367,12 @@ class MainActivityViewModel @Inject constructor(
         val broadCastServiceName = _uiState.value.nsdBroadcastType ?: return
         val discoverServiceName = _uiState.value.nsdDiscoveryType ?: return
 
+        // Use terminal name from preferences, fallback to device model if not available
+        val terminalName = preferenceHelper.getSelectedTerminalName() ?: "PillCounter-${Build.MODEL}"
         val config = HL7Config(
             serverPort = 2575,
             autoResponseDelayMs = 10_000L,
-            nsdBroadcastServiceName = "PillCounter-${Build.MODEL}",
+            nsdBroadcastServiceName = terminalName,
             nsdBroadcastType = broadCastServiceName,
             nsdDiscoveryType = discoverServiceName,
             imageServicePort = 8080,
@@ -387,13 +388,37 @@ class MainActivityViewModel @Inject constructor(
     fun evaluateHl7State() {
         val state = _uiState.value
 
-        logger.i("evaluateHl7State $state")
-        if (state.isHl7Enabled == true && preferenceHelper.isUserLoggedIn()) {
-            startHl7Service()
-            logger.i("HL7 Started")
-        } else {
+        logger.i("evaluateHl7State called - isHl7Enabled=${state.isHl7Enabled}, isUserLoggedIn=${preferenceHelper.isUserLoggedIn()}")
+
+        if (state.isHl7Enabled != true || !preferenceHelper.isUserLoggedIn()) {
+            logger.i("HL7 disabled or user not logged in - stopping HL7 service")
             stopHl7Service()
+        } else {
+            logger.i("HL7 enabled and user logged in - waiting for terminal info from auth/me")
+            // Don't start automatically - wait for terminal info
         }
+    }
+
+    /**
+     * Starts HL7 service after terminal information is available from auth/me.
+     * This should be called after the user detail API completes.
+     */
+    fun startHl7AfterTerminalLoaded() {
+        val state = _uiState.value
+
+        if (state.isHl7Enabled != true || !preferenceHelper.isUserLoggedIn()) {
+            logger.w("Cannot start HL7 - either disabled or user not logged in")
+            return
+        }
+
+        val terminalName = preferenceHelper.getSelectedTerminalName()
+        if (terminalName.isNullOrEmpty()) {
+            return
+        }
+
+        logger.i("Terminal name available: $terminalName - starting HL7 service")
+        startHl7Service()
+        logger.i("HL7 Started with terminal: $terminalName")
     }
 
 
@@ -454,20 +479,15 @@ class MainActivityViewModel @Inject constructor(
     }
 
     private fun loadSchedulesFromPrefs(): Set<ScheduleCode> {
-        val stored = preferenceHelper.getControlDrugTypes()
-
-        if (stored.isEmpty()) {
+        if (!preferenceHelper.isControlDrugTypesInitialized()) {
+            // Never explicitly set — first launch, seed with all schedules selected
             val defaults = ScheduleCode.entries.toSet()
-
-            // Persist defaults so rest of the app reads them
-            preferenceHelper.setControlDrugTypes(
-                defaults.map { it.name }.toSet()
-            )
-
+            preferenceHelper.setControlDrugTypes(defaults.map { it.name }.toSet())
             return defaults
         }
 
-        return stored.mapNotNull {
+        // User has explicitly saved a selection at least once; empty set is a valid choice
+        return preferenceHelper.getControlDrugTypes().mapNotNull {
             runCatching { ScheduleCode.valueOf(it) }.getOrNull()
         }.toSet()
     }

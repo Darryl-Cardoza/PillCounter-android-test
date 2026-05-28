@@ -191,6 +191,7 @@ class MainActivity : ComponentActivity() {
     private fun requestLocationPermission() {
         val permissions = mutableListOf<String>()
 
+        // Location permission
         if (ContextCompat.checkSelfPermission(
                 this, Manifest.permission.ACCESS_COARSE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
@@ -213,6 +214,7 @@ class MainActivity : ComponentActivity() {
             permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
+        // Notification permission (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
                     this, Manifest.permission.POST_NOTIFICATIONS

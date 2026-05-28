@@ -29,7 +29,6 @@ import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.utils.common.DateFormats
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.core.utils.common.formatDateToUSFormat
-import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.feature.history.domain.model.TxnWithDrugDto
 import com.rite.pillcounting.ui.theme.AppTheme
 
@@ -45,9 +44,10 @@ fun StockRow(
     rowData: TxnWithDrugDto,
     onTxnClick: () -> Unit
 ) {
+    val dimens = AppTheme.dimens
     val date =rowData.createdAt.toFormattedDate()
     Card(
-        shape = RoundedCornerShape(small),
+        shape = RoundedCornerShape(dimens.small),
         colors = CardDefaults.cardColors(
             containerColor = AppTheme.extendedColors.secondaryBackground
         ),

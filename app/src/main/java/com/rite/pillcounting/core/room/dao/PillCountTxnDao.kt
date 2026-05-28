@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.room.dao
 
+import android.R
 import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -75,22 +76,29 @@ interface PillCountTxnDao {
      */
     @Transaction
     suspend fun upsertPreservingId(txn: PillCountTxnEntity): Long {
-        return if (txn.txnId != 0L) {
-            val existing = getById(txn.txnId)
-            if (existing != null) {
-                update(txn.copy(txnId = existing.txnId))
-                existing.txnId
-            } else {
-                insertIgnore(txn).let { newId ->
+        return try {
+            if (txn.txnId != 0L) {
+                val existing = getById(txn.txnId)
+                if (existing != null) {
+                    update(txn.copy(txnId = existing.txnId))
+                    existing.txnId
+                } else {
+                    val newId = insertIgnore(txn)
                     if (newId == -1L) {
                         getById(txn.txnId)?.txnId
                             ?: throw IllegalStateException("Txn insert failed unexpectedly")
                     } else newId
                 }
+            } else {
+                val newId = insertIgnore(txn)
+                if (newId == -1L) {
+                    throw IllegalStateException("Insert failed: transaction already exists")
+                }
+                newId
             }
-        } else {
-            insertIgnore(txn).takeIf { it != -1L }
-                ?: throw IllegalStateException("Insert failed: transaction already exists")
+        } catch (e: android.database.sqlite.SQLiteConstraintException) {
+            // Log the error and rethrow a more descriptive one or handle it
+            throw IllegalArgumentException("Foreign key constraint failed: Ensure User, Drug, and Batch exist before creating a transaction. ${e.message}")
         }
     }
 
@@ -124,13 +132,23 @@ interface PillCountTxnDao {
            txn.barcodeImage,
            txn.isComingFromHL7,
            txn.isNdcVerified,
-           drug.drugName,
+           txn.bucketId,
+           txn.countType,
+           txn.priority,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+                THEN subDrug.drugName ELSE drug.drugName END AS drugName,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+                THEN subDrug.ndc ELSE drug.ndc END AS ndc,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+                THEN subDrug.drugType ELSE drug.drugType END AS drugType,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
-    LEFT JOIN drug_master AS drug 
+    LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
-    LEFT JOIN pill_count_txn_details AS details 
-           ON txn.txnId = details.txnId 
+    LEFT JOIN drug_master AS subDrug
+           ON txn.substitutedDrugId = subDrug.drugId
+    LEFT JOIN pill_count_txn_details AS details
+           ON txn.txnId = details.txnId
           AND details.isDeleted = 0
           AND details.type = :type
     WHERE txn.isDeleted = 0
@@ -138,7 +156,13 @@ interface PillCountTxnDao {
       AND txn.countType = :countType
       AND txn.localId = :userLocalId
     GROUP BY txn.txnId
-    ORDER BY txn.isComingFromHL7 DESC,
+    ORDER BY CASE txn.priority
+                 WHEN 'High'   THEN 1
+                 WHEN 'Medium' THEN 2
+                 WHEN 'Low'    THEN 3
+                 ELSE 2
+             END ASC, /* values correspond to TxnPriority enum names */
+             txn.isComingFromHL7 DESC,
              txn.createdAt DESC
     """
     )
@@ -193,6 +217,12 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
+    @Query("UPDATE pill_count_txn SET isDeleted = 1, updatedAt = :now WHERE rxNo = :rxNo AND isDeleted = 0")
+    suspend fun softDeleteByRxNo(
+        rxNo: String,
+        now: Long = System.currentTimeMillis()
+    )
+
     @Query("DELETE FROM pill_count_txn")
     suspend fun deleteAllTransactions()
 
@@ -232,12 +262,14 @@ interface PillCountTxnDao {
     @Transaction
     @Query(
         """
-    SELECT 
+    SELECT
         pct.txnId,
-        dm.drugName,
-        dm.drugId,
-        dm.ndc,
-        dm.equivalence,
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+             THEN subDrug.drugName ELSE dm.drugName END AS drugName,
+        IFNULL(CASE WHEN pct.isSubstitute = 1 AND subDrug.drugId IS NOT NULL
+             THEN subDrug.drugId ELSE dm.drugId END, 0) AS drugId,
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+             THEN subDrug.ndc ELSE dm.ndc END AS ndc,
         pct.targetCount,
         pct.expiry,
         pct.lotNo,
@@ -246,11 +278,19 @@ interface PillCountTxnDao {
         pct.barcodeImage,
         pct.isComingFromHL7,
         pct.countType,
-        IFNULL(SUM(pcd.pillCount), 0) AS totalPillCount
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+             THEN subDrug.drugType ELSE dm.drugType END AS drugType,
+        IFNULL(SUM(pcd.pillCount), 0) AS totalPillCount,
+        pct.isSubstitute,
+        dm.drugName AS requestedDrugName,
+        dm.ndc AS requestedNdc,
+        pct.workflowStep
     FROM pill_count_txn AS pct
-    LEFT JOIN drug_master AS dm 
+    LEFT JOIN drug_master AS dm
         ON pct.drugId = dm.drugId
-    LEFT JOIN pill_count_txn_details AS pcd 
+    LEFT JOIN drug_master AS subDrug
+        ON pct.substitutedDrugId = subDrug.drugId
+    LEFT JOIN pill_count_txn_details AS pcd
         ON pct.txnId = pcd.txnId AND pcd.isDeleted = 0
     WHERE pct.txnId = :transactionId AND pct.isDeleted = 0
     GROUP BY pct.txnId
@@ -274,6 +314,21 @@ interface PillCountTxnDao {
         qty: Int,
         now: Long = System.currentTimeMillis()
     )
+
+    @Query("UPDATE pill_count_txn SET workflowStep = :step, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateWorkflowStep(
+        txnId: Long,
+        step: String,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query("UPDATE pill_count_txn SET isGlovesPresent = :value, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateGlovesPresent(
+        txnId: Long,
+        value: Boolean,
+        now: Long = System.currentTimeMillis()
+    )
+
 
     /**
      * Updates the [CountStatus] of a specific transaction.
@@ -306,17 +361,24 @@ interface PillCountTxnDao {
         txn.countType,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
-        drug.drugName,
-        drug.ndc,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+             THEN subDrug.drugName ELSE drug.drugName END AS drugName,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+             THEN subDrug.ndc ELSE drug.ndc END AS ndc,
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
-        txn.note
+        txn.note,
+        txn.bucketId,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+             THEN subDrug.drugType ELSE drug.drugType END AS drugType
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId AND details.isDeleted = 0
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
+    LEFT JOIN drug_master AS subDrug
+           ON txn.substitutedDrugId = subDrug.drugId
     WHERE txn.createdAt >= :startOfDay
       AND txn.createdAt < :endOfDay
       AND txn.isDeleted = 0
@@ -341,12 +403,17 @@ interface PillCountTxnDao {
         txn.countType,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
-        drug.drugName,
-        drug.ndc,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+             THEN subDrug.drugName ELSE drug.drugName END AS drugName,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+             THEN subDrug.ndc ELSE drug.ndc END AS ndc,
         txn.barcodeImage,
         txn.createdAt,
         txn.targetCount,
-        txn.note
+        txn.note,
+        txn.bucketId,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+             THEN subDrug.drugType ELSE drug.drugType END AS drugType
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
@@ -354,22 +421,14 @@ interface PillCountTxnDao {
            AND (:stepType IS NULL OR details.type = :stepType)
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
+    LEFT JOIN drug_master AS subDrug
+           ON txn.substitutedDrugId = subDrug.drugId
     WHERE txn.createdAt BETWEEN :startDate AND :endDate
       AND txn.isDeleted = 0
       AND txn.localId = :userLocalId
       AND (:type IS NULL OR txn.countType = :type)
       AND (:status IS NULL OR txn.status = :status)
-    GROUP BY
-        txn.txnId,
-        txn.batchId,
-        txn.countType,
-        txn.status,
-        drug.drugName,
-        drug.ndc,
-        txn.barcodeImage,
-        txn.createdAt,
-        txn.targetCount,
-        txn.note
+    GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
     )
@@ -398,15 +457,21 @@ interface PillCountTxnDao {
       AND createdAt < :end
       AND localId = :userLocalId
       AND (:type IS NULL OR countType = :type)
-      AND (:status IS NULL OR status = :status)
+      AND (
+        :isCompleted IS NULL
+        OR (:isCompleted = 1 AND (status = :completedStatus OR status = :forceCompletedStatus))
+        OR (:isCompleted = 0 AND status != :completedStatus AND status != :forceCompletedStatus)
+      )
     """
     )
     suspend fun deleteTransactionsByDate(
         start: Long,
         end: Long,
         type: CountType?,
-        status: CountStatus?,
-        userLocalId: Long
+        isCompleted: Boolean?,
+        userLocalId: Long,
+        completedStatus: CountStatus = CountStatus.COMPLETED,
+        forceCompletedStatus: CountStatus = CountStatus.FORCE_COMPLETED
     )
 
     /**
@@ -438,6 +503,12 @@ interface PillCountTxnDao {
      */
     @Query("DELETE FROM pill_count_txn WHERE txnId = :txnId")
     suspend fun deleteTransaction(txnId: Long)
+
+    @Query("DELETE FROM pill_count_txn WHERE batchId IN (:batchIds)")
+    suspend fun deleteTransactionsByBatchIds(batchIds: List<Long>)
+
+    @Query("SELECT COUNT(DISTINCT drugId) FROM pill_count_txn WHERE batchId = :batchId AND isDeleted = 0 AND localId = :userLocalId")
+    suspend fun getUniqueNdcCountForBatch(batchId: Long, userLocalId: Long): Int
 
     /**
      * Observes all transactions belonging to a batch, joined with drug name and NDC.
@@ -631,25 +702,37 @@ interface PillCountTxnDao {
            txn.barcodeImage,
            txn.isComingFromHL7,
            txn.isNdcVerified,
-           drug.drugName,
+           txn.bucketId,
+           txn.countType,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
+                THEN subDrug.drugName ELSE drug.drugName END AS drugName,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
+                THEN subDrug.ndc ELSE drug.ndc END AS ndc,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
+                THEN subDrug.drugType ELSE drug.drugType END AS drugType,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
-    LEFT JOIN drug_master AS drug 
+    LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
-    LEFT JOIN pill_count_txn_details AS details 
-           ON txn.txnId = details.txnId 
+    LEFT JOIN drug_master AS subDrug
+           ON txn.substitutedDrugId = subDrug.drugId
+    LEFT JOIN pill_count_txn_details AS details
+           ON txn.txnId = details.txnId
           AND details.isDeleted = 0
+          AND details.type = :type
     WHERE txn.isDeleted = 0
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)
-      AND txn.isComingFromHL7 = 1
+      AND txn.countType = :countType
       AND txn.isSynced = 0
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
     )
-    fun observeUnsyncedHl7Txn(
+    fun observeUnsyncedByCountType(
+        countType: CountType,
         completeStatus: CountStatus = CountStatus.COMPLETED,
-        forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED
+        forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED,
+        type: String
     ): Flow<List<PillCountWithDrugAndTotal>>
 
     @Query(

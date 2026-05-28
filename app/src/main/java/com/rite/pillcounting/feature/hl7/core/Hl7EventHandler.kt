@@ -1,10 +1,13 @@
 package com.rite.pillcounting.feature.hl7.core
 
+import android.content.Context
 import com.google.gson.Gson
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.hl7.core.Hl7EventListener
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.rite.hl7.hl7.domain.model.CompleteHL7Message
@@ -24,6 +27,7 @@ import javax.inject.Singleton
  */
 @Singleton
 class Hl7EventHandler @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val hl7Repository: Hl7Repository,
     private val notifier: Hl7Notifier
 ) : Hl7EventListener {
@@ -50,11 +54,6 @@ class Hl7EventHandler @Inject constructor(
         logger.i("HL7 message parsed received | msgId=${Gson().toJson(parsed)} | key=$idempotencyKey ")
         logger.i("HL7 message received | msgId=${parsed.messageId} | key=$idempotencyKey ")
         hl7Repository.handleReceivedMessage(parsed)
-
-        notifier.show(
-            title = "Transaction received!",
-            message = "${parsed.messageType}^${parsed.triggerEvent} from ${parsed.sendingFacility} "
-        )
     }
 
     /**
@@ -144,8 +143,8 @@ class Hl7EventHandler @Inject constructor(
         _connectionState.value = true
         hl7Repository.resendPendingHl7Transactions()
         notifier.show(
-            title = "Device Connected",
-            message = "Connected to $host Successfully"
+            title = context.getString(R.string.hl7_notification_device_connected_title),
+            message = context.getString(R.string.hl7_notification_device_connected_message, host)
         )
     }
 

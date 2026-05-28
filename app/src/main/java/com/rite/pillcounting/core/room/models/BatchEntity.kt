@@ -38,5 +38,6 @@ data class BatchEntity(
     val isDeleted: Boolean = false,
     val note: String? = null,
     val bucketId: String? = null,
-    val requestIdFromPMS: String? = null
+    val requestIdFromPMS: String? = null,
+    val isSynced: Boolean = false
 )

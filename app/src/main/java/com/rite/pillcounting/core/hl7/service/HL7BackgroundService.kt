@@ -76,8 +76,12 @@ class HL7Service : Service() {
 
     private lateinit var imageServer: ImageWebServer
     private var serverStarted = false
+
     @Volatile
     private var lastConnectedHost: String? = null
+
+    @Volatile
+    private var lastDiscoveredServiceName: String = "PMS"
     private val logger = AppLogger("HL7backgroundService")
 
     /** Binder to expose service instance to clients */
@@ -128,7 +132,6 @@ class HL7Service : Service() {
     }
 
 
-
     override fun onDestroy() {
         Log.i(TAG, "Service destroying")
         serviceScope.launch { cleanup() }
@@ -136,11 +139,26 @@ class HL7Service : Service() {
     }
 
     private suspend fun cleanup() {
-        try { server.stop() } catch (_: Exception) {}
-        try { clientManager.shutdown() } catch (_: Exception) {}
-        try { nsdHelper.shutdown() } catch (_: Exception) {}
-        try { networkIpMonitor.stop() } catch (_: Exception) {}
-        try { imageServer.stop() } catch (_: Exception) {}
+        try {
+            server.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            clientManager.shutdown()
+        } catch (_: Exception) {
+        }
+        try {
+            nsdHelper.shutdown()
+        } catch (_: Exception) {
+        }
+        try {
+            networkIpMonitor.stop()
+        } catch (_: Exception) {
+        }
+        try {
+            imageServer.stop()
+        } catch (_: Exception) {
+        }
     }
 
     /** -------------------- CONFIGURATION -------------------- **/
@@ -183,7 +201,6 @@ class HL7Service : Service() {
     /* -------------------- INITIALIZATION -------------------- */
 
 
-
     private fun initializeCoreComponents() {
         parser = Hl7Parser()
         builder = HL7MessageBuilder()
@@ -203,8 +220,8 @@ class HL7Service : Service() {
             },
 
             onConnected = {
-                Log.i(TAG, "PMS CONNECTED")
-                listener?.onClientConnected("PMS", 0)
+                Log.i(TAG, "${lastDiscoveredServiceName} CONNECTED")
+                listener?.onClientConnected(lastDiscoveredServiceName, 0)
             },
 
             onDisconnected = {
@@ -258,6 +275,15 @@ class HL7Service : Service() {
     /* -------------------- NSD -------------------- */
 
     private fun startNsdBroadcast() {
+        logger.i("┌──────────────────────────────────────────────────────┐")
+        logger.i("│ HL7Service: Starting NSD Broadcast                  │")
+        logger.i("├──────────────────────────────────────────────────────┤")
+        logger.i("│ Service Name: ${config.nsdBroadcastServiceName}")
+        logger.i("│ Service Type: ${config.nsdBroadcastType}")
+        logger.i("│ Port: ${config.serverPort}")
+        logger.i("│ Protocol: MLLP/TLS")
+        logger.i("└──────────────────────────────────────────────────────┘")
+
         nsdHelper.registerService(
             port = config.serverPort,
             serviceName = config.nsdBroadcastServiceName,
@@ -266,6 +292,7 @@ class HL7Service : Service() {
         )
 
         listener?.onNsdRegistered(config.nsdBroadcastServiceName)
+        logger.i("✓ NSD broadcast registered successfully")
         Log.i(
             TAG,
             "NSD broadcast registered: ${config.nsdBroadcastServiceName} ${config.nsdBroadcastType}"
@@ -279,15 +306,29 @@ class HL7Service : Service() {
      * - Wi-Fi network changes
      * - IP/interface changes
      * - Router reboot
+     * - Terminal name changes
      */
     fun rebroadcastNsd() {
-        Log.w(TAG, "Rebroadcasting NSD service")
+        logger.w("═══════════════════════════════════════════════════════════")
+        logger.w("HL7Service: REBROADCASTING NSD")
+        logger.w("  Current Config:")
+        logger.w("    • Service Name: ${config.nsdBroadcastServiceName}")
+        logger.w("    • Service Type: ${config.nsdBroadcastType}")
+        logger.w("    • Port: ${config.serverPort}")
+        logger.w("  → Step 1: Stopping current NSD registration...")
+
+        Log.w(TAG, "Rebroadcasting NSD service with name: ${config.nsdBroadcastServiceName}")
 
         nsdHelper.stopRegistration()
+        logger.w("  ✓ NSD registration stopped")
 
         /** Small delay avoids NSD race conditions on Android */
+        logger.w("  → Step 2: Waiting 500ms to avoid race conditions...")
         Handler(Looper.getMainLooper()).postDelayed({
+            logger.w("  → Step 3: Starting new NSD broadcast...")
             startNsdBroadcast()
+            logger.w("  ✓ NSD rebroadcast complete!")
+            logger.w("═══════════════════════════════════════════════════════════")
         }, 500)
     }
 
@@ -307,6 +348,7 @@ class HL7Service : Service() {
                 }
 
                 lastConnectedHost = "$host:$port"
+                lastDiscoveredServiceName = info.serviceName
 
                 listener?.onNsdServiceFound(info.serviceName, host, port)
 
@@ -346,7 +388,7 @@ class HL7Service : Service() {
         serviceScope.launch {
             try {
                 val messageStr = original.toTypedHL7String()
-
+                logger.i("sendHl7Message dispense=${messageStr} ")
                 val ack = clientManager.send(messageStr)
                 listener?.onMessageSent(messageStr, original.messageId)
                 listener?.onAckReceived(ack, original.messageId)

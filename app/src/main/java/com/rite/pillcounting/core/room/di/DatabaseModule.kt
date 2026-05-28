@@ -49,21 +49,26 @@ object DatabaseModule {
             .build()
     }
 
+    /** Provides the [UserDao]. */
     @Provides
     fun provideUserDao(db: AppDatabase): UserDao = db.userDao()
 
+    /** Provides the [DrugMasterDao]. */
     @Provides
     fun provideDrugMasterDao(db: AppDatabase): DrugMasterDao =
         db.drugMasterDao()
 
+    /** Provides the [PillCountTxnDao]. */
     @Provides
     fun providePillCountTxnDao(db: AppDatabase): PillCountTxnDao =
         db.pillCountTxnDao()
 
+    /** Provides the [PillCountTxnDetailsDao]. */
     @Provides
     fun providePillCountTxnDetailsDao(db: AppDatabase): PillCountTxnDetailsDao =
         db.pillCountTxnDetailsDao()
 
+    /** Provides the [BatchDao]. */
     @Provides
     fun provideBatchDao(db: AppDatabase): BatchDao =
         db.batchDao()

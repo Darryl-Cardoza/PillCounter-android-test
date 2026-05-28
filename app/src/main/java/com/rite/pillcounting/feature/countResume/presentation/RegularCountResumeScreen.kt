@@ -1,9 +1,20 @@
-package com.rite.pillcounting.feature.countResume.presentation
+﻿package com.rite.pillcounting.feature.countResume.presentation
 
 import Screen
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -13,11 +24,13 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.feature.countResume.domain.data.NavigationEvent
 import com.rite.pillcounting.feature.countResume.domain.data.RegularCountsEvent
 import com.rite.pillcounting.feature.countResume.domain.data.ResumeEventFactory
@@ -44,8 +57,8 @@ fun RegularCountResumeScreen(
                 is NavigationEvent.NavigateToPillCount ->
                     navController.navigate(Screen.PillCount.createRoute(event.countType.toString())) {}
                 NavigationEvent.NavigateBack -> navController.popBackStack()
-                is NavigationEvent.NavigateToScanBarcode -> navController.navigate(
-                    Screen.ScanBarcode.createRoute(CountType.REGULAR.toString(),ScanType.BARCODE,0)
+                is NavigationEvent.NavigateToDispenseFlow -> navController.navigate(
+                    Screen.DispenseFlow.createRoute(event.countType.toString(), fromResume = event.fromResume)
                 )
             }
         }
@@ -65,7 +78,6 @@ fun RegularCountResumeScreen(
         uiState.regularCounts.isNotEmpty() &&
                 uiState.selectedItems.size == uiState.regularCounts.size
 
-
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -81,30 +93,72 @@ fun RegularCountResumeScreen(
             showDelete = true,
             onSearchClick = {
                 showSearch = !showSearch
-                if (!showSearch) searchQuery = "" // reset when closing
+                if (!showSearch) searchQuery = ""
             },
             onSearchChange = { searchQuery = it },
             onDeleteClick = { viewModel.onRegularEvent(RegularCountsEvent.ToggleMultiSelectMode) },
             isAllSelected = isAllSelected,
-            onCancelClick = {viewModel.onRegularEvent(RegularCountsEvent.ToggleMultiSelectMode)},
-            onConfirmDelete = {showDeleteDialog = true},
-            onSelectAll = {viewModel.onRegularEvent(RegularCountsEvent.SelectAllClicked)}
+            onCancelClick = { viewModel.onRegularEvent(RegularCountsEvent.ToggleMultiSelectMode) },
+            onConfirmDelete = { showDeleteDialog = true },
+            onSelectAll = { viewModel.onRegularEvent(RegularCountsEvent.SelectAllClicked) }
         )
 
-        PartialListPanel(
-            items = uiState.regularCounts,
-            selectedItems = uiState.selectedItems,
-            isMultiSelectMode = uiState.isMultiSelectMode,
-            searchQuery = searchQuery,
-            onEvent = viewModel::onRegularEvent,
-            eventFactory = regularEventFactory,
-            countType = CountType.REGULAR.toString(),
-            showMultiDeleteConfirmDialog = showDeleteDialog,
-            onMultiDelete = {
-                viewModel.onRegularEvent(RegularCountsEvent.DeleteClicked)
-                showDeleteDialog = false
-            },
-            onCloseDialog = {showDeleteDialog = false }
-        )
+        Box(modifier = Modifier.weight(1f)) {
+            PartialListPanel(
+                items = uiState.regularCounts,
+                selectedItems = uiState.selectedItems,
+                isMultiSelectMode = uiState.isMultiSelectMode,
+                searchQuery = searchQuery,
+                onEvent = viewModel::onRegularEvent,
+                eventFactory = regularEventFactory,
+                countType = CountType.REGULAR.toString(),
+                showMultiDeleteConfirmDialog = showDeleteDialog,
+                onMultiDelete = {
+                    viewModel.onRegularEvent(RegularCountsEvent.DeleteClicked)
+                    showDeleteDialog = false
+                },
+                onCloseDialog = { showDeleteDialog = false }
+            )
+        }
+
+        if (uiState.isMultiSelectMode) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                OutlinedButton(
+                    onClick = { viewModel.onRegularEvent(RegularCountsEvent.ToggleMultiSelectMode) },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        contentColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(
+                        text = stringResource(R.string.cancel).uppercase(),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                }
+
+                Button(
+                    onClick = { showDeleteDialog = true },
+                    enabled = hasSelection,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.primary
+                    )
+                ) {
+                    Text(
+                        text = stringResource(R.string.delete),
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                }
+            }
+        }
     }
 }

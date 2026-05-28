@@ -2,11 +2,20 @@ package com.rite.pillcounting.core.utils.common
 
 import Screen
 import android.content.Context
+import android.content.res.Configuration
 import android.widget.Toast
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -20,7 +29,6 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -69,12 +77,17 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -85,17 +98,54 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.utils.constants.Dimens.buttonCornerRadius
-import com.rite.pillcounting.core.utils.constants.Dimens.buttonHeight
-import com.rite.pillcounting.core.utils.constants.Dimens.extraSmall
-import com.rite.pillcounting.core.utils.constants.Dimens.small
 import com.rite.pillcounting.ui.theme.AppTheme
+import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Date
 import java.util.Locale
+
+/**
+ * Formats raw digit input as US phone number: (XXX) XXX-XXXX.
+ * Stores and receives raw digits; the display transformation is visual-only.
+ */
+class PhoneNumberVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val digits = text.text
+        val formatted = buildString {
+            digits.forEachIndexed { i, c ->
+                when (i) {
+                    0 -> append("($c")
+                    3 -> append(") $c")
+                    6 -> append("-$c")
+                    else -> append(c)
+                }
+            }
+        }
+
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = when {
+                offset == 0 -> 0
+                offset <= 3 -> offset + 1   // after '('
+                offset <= 6 -> offset + 3   // after '(XXX) '
+                else -> offset + 4          // after '(XXX) XXX-'
+            }.coerceAtMost(formatted.length)
+
+            override fun transformedToOriginal(offset: Int): Int = when {
+                offset <= 1 -> 0
+                offset <= 4 -> offset - 1
+                offset <= 6 -> 3            // inside ') ' — snap to after digit 3
+                offset <= 9 -> offset - 3
+                offset == 10 -> 6           // on '-' — snap to after digit 6
+                else -> offset - 4
+            }.coerceIn(0, digits.length)
+        }
+
+        return TransformedText(AnnotatedString(formatted), offsetMapping)
+    }
+}
 
 /**
  * **UserInterfaceUtils**
@@ -388,14 +438,13 @@ object UserInterfaceUtils {
         showBox: Boolean = false,
         onClick: (() -> Unit)? = null
     ) {
-
+        val dimens = AppTheme.dimens
         val clickAction = { onClick?.invoke() ?: navController.popBackStack() }
 
         if (showBox) {
             // ---- Circle background version ----
             Box(
                 modifier = modifier
-                    .padding(small)
                     .size(responsiveDp(40.dp))
                     .background(Color.White, CircleShape)
                     .clickable { clickAction() },
@@ -413,14 +462,14 @@ object UserInterfaceUtils {
             IconButton(
                 onClick = { onClick?.invoke() ?: navController.popBackStack() },
                 modifier = modifier
-                    .padding(small)
-                    .size(responsiveDp(40.dp))
+                    .padding(dimens.small)
+                    .size(responsiveDp(36.dp))
             ) {
                 Icon(
                     painter = painterResource(id = backIcon),
                     contentDescription = "Back",
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(extraSmall)
+                    modifier = Modifier.padding(dimens.extraSmall)
                 )
             }
         }
@@ -439,14 +488,16 @@ object UserInterfaceUtils {
         shape: RoundedCornerShape = RoundedCornerShape(12.dp),
         isSingleButton: Boolean = false // Flag to control single button
     ) {
+        val dimens = AppTheme.dimens
         AlertDialog(
             onDismissRequest = {},
+            modifier = Modifier.widthIn(max = 400.dp),
             text = {
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     title?.let {
                         Text(
                             text = it,
-                            fontSize = 18.sp,
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = AppTheme.extendedColors.textColor,
                             textAlign = TextAlign.Center,
@@ -457,7 +508,7 @@ object UserInterfaceUtils {
                     }
                     Text(
                         text = message,
-                        fontSize = 16.sp,
+                        fontSize = 14.sp,
                         color = AppTheme.extendedColors.textColor,
                         textAlign = TextAlign.Center
                     )
@@ -469,19 +520,22 @@ object UserInterfaceUtils {
                 if (!isSingleButton) {
                     // Show both Cancel and Confirm buttons
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(16.dp),
-                        modifier = Modifier.fillMaxWidth()
+                        horizontalArrangement = Arrangement.Center,
+                        modifier = Modifier.fillMaxWidth(),
                     ) {
                         HollowButton(
                             text = cancelText.uppercase(),
                             onClick = onCancel,
                             color = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.weight(1f)
+                            fixedWidth = false,
+                            modifier = Modifier.width(dimens.dialogButtonWidth)
                         )
+                        Spacer(modifier = Modifier.width(16.dp))
                         ActionButtonPrimary(
                             text = confirmText.uppercase(),
                             onClick = onConfirm,
-                            modifier = Modifier.weight(1f)
+                            fixedWidth = false,
+                            modifier = Modifier.width(dimens.dialogButtonWidth)
                         )
                     }
                 } else {
@@ -493,7 +547,7 @@ object UserInterfaceUtils {
                         ActionButtonPrimary(
                             text = confirmText.uppercase(),
                             onClick = onConfirm,
-                            modifier = Modifier.fillMaxWidth(0.5f)
+//                            modifier = Modifier.fillMaxWidth(0.5f)
                         )
                     }
                 }
@@ -511,10 +565,12 @@ object UserInterfaceUtils {
         onOk: (Int) -> Unit,
         distanceBetweenOptions: Dp = 8.dp,
     ) {
+        val dimens = AppTheme.dimens
         var currentSelection by remember { mutableStateOf(selectedIndex) }
 
         AlertDialog(
             onDismissRequest = {},
+            modifier = Modifier.widthIn(max = 400.dp),
             shape = RoundedCornerShape(12.dp),
             containerColor = AppTheme.extendedColors.primaryBackground,
             text = {
@@ -541,7 +597,7 @@ object UserInterfaceUtils {
                                     selectedColor = MaterialTheme.colorScheme.primary
                                 )
                             )
-                            Spacer(modifier = Modifier.width(small))
+                            Spacer(modifier = Modifier.width(dimens.small))
                             Text(
                                 text = option,
                                 fontSize = 16.sp,
@@ -553,19 +609,22 @@ object UserInterfaceUtils {
             },
             confirmButton = {
                 Row(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    horizontalArrangement = Arrangement.Center,
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     HollowButton(
                         text = stringResource(R.string.cancel).uppercase(),
                         onClick = onCancel,
                         color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f)
+                        fixedWidth = false,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
                     )
+                    Spacer(modifier = Modifier.width(16.dp))
                     ActionButtonPrimary(
                         text = stringResource(R.string.ok).uppercase(),
                         onClick = { currentSelection?.let { onOk(it) } },
-                        modifier = Modifier.weight(1f)
+                        fixedWidth = false,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
                     )
                 }
             }
@@ -579,17 +638,18 @@ object UserInterfaceUtils {
         onClick: () -> Unit,
         color: Color,
         modifier: Modifier = Modifier,
-        buttonHeightDefault: Dp = buttonHeight,
+        buttonHeightDefault: Dp = AppTheme.dimens.buttonHeight,
     ) {
+        val dimens = AppTheme.dimens
         Button(
             onClick = onClick,
             modifier = modifier
-                .height(buttonHeightDefault)
-                .widthIn(min = 100.dp)
+                .height(dimens.buttonHeight)
+                .width(dimens.buttonWidth)
                 .border(
                     width = 1.dp,
                     color = color,
-                    shape = RoundedCornerShape(buttonCornerRadius)
+                    shape = RoundedCornerShape(dimens.buttonCornerRadius)
                 ),
             colors = ButtonDefaults.buttonColors(
                 containerColor = color,
@@ -616,115 +676,128 @@ object UserInterfaceUtils {
         label: String,
         modifier: Modifier = Modifier,
         cornerRadius: Dp = 8.dp,
-        height: Dp = 56.dp,
+        height: Dp = AppTheme.dimens.profileTextFieldHeight,
         cursorColor: Color = AppTheme.extendedColors.textColor,
         isPassword: Boolean = false,
+        visualTransformation: VisualTransformation = VisualTransformation.None,
         keyboardType: KeyboardType = KeyboardType.Text,
         imeAction: ImeAction = ImeAction.Done,
         onImeAction: (() -> Unit)? = null,
-        enabled: Boolean = true
+        enabled: Boolean = true,
+        maxLength: Int? = null
     ) {
         val focusManager = LocalFocusManager.current
         var passwordVisible by remember { mutableStateOf(!isPassword) }
         var isFocused by remember { mutableStateOf(false) }
 
+        // Internal TextFieldValue lets us move the cursor to end when focus arrives
+        var textFieldValue by remember { mutableStateOf(TextFieldValue(value)) }
+
+        // Keep internal state in sync when the caller updates the value externally
+        LaunchedEffect(value) {
+            if (textFieldValue.text != value) {
+                textFieldValue = textFieldValue.copy(text = value)
+            }
+        }
+
+        val isActive = isFocused || value.isNotEmpty()
         val horizontalPadding = 15.dp
-        val topPadding = 15.dp
 
-        // Floating label vertical offset
+        // Label moves from vertical center (empty) to top-inside (active)
         val labelOffsetY by animateDpAsState(
-            targetValue = if (isFocused || value.isNotEmpty()) {
-                (-2).dp
-            } else {
-                // center vertically inside text field
-                (height / 2) + 15.dp
-            }, label = "labelOffsetY"
+            targetValue = if (isActive) 6.dp else 20.dp,
+            label = "labelOffsetY"
+        )
+        val labelFontSize by animateFloatAsState(
+            targetValue = if (isActive) 12f else 16f,
+            label = "labelFontSize"
         )
 
-        // Floating label scale
-        val labelScale by animateFloatAsState(
-            targetValue = if (isFocused || value.isNotEmpty()) 0.75f else 1f,
-            label = "labelScale"
-        )
-
+        // Single container — label and input both live inside the dark box
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .heightIn(min = height + topPadding + 12.dp)
-        ) {
-            // Text field container
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(height)
-                    .align(Alignment.BottomCenter)
-                    .background(
-                        AppTheme.extendedColors.inputBackground,
-                        RoundedCornerShape(cornerRadius)
-                    )
-                    .padding(horizontal = horizontalPadding, vertical = 8.dp),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    singleLine = true,
-                    enabled = enabled,
-                    readOnly = !enabled,
-                    textStyle = LocalTextStyle.current.copy(
-                        color = AppTheme.extendedColors.textColor,
-                        fontSize = 16.sp
-                    ),
-                    visualTransformation = if (isPassword && !passwordVisible) {
-                        PasswordVisualTransformation()
-                    } else {
-                        VisualTransformation.None
-                    },
-                    cursorBrush = SolidColor(cursorColor),
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = keyboardType,
-                        imeAction = imeAction
-                    ),
-                    keyboardActions = KeyboardActions(
-                        onNext = { focusManager.moveFocus(FocusDirection.Next) },
-                        onDone = {
-                            if (onImeAction != null) {
-                                onImeAction()
-                            } else {
-                                focusManager.clearFocus() // closes keyboard
-                            }
-                        }
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { isFocused = it.isFocused }
+                .height(height)
+                .background(
+                    AppTheme.extendedColors.inputBackground,
+                    RoundedCornerShape(cornerRadius)
                 )
-
-                if (isPassword) {
-                    Box(modifier = Modifier.align(Alignment.CenterEnd)) {
-                        IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                            Icon(
-                                imageVector = if (passwordVisible) Icons.Filled.Visibility
-                                else Icons.Filled.VisibilityOff,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                    }
-                }
-            }
-
-            // Floating label / placeholder
+                .padding(horizontal = horizontalPadding)
+        ) {
+            // Label inside the box
             Text(
                 text = label,
                 color = if (isFocused) MaterialTheme.colorScheme.primary
                 else AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                fontSize = 16.sp * labelScale,
+                fontSize = labelFontSize.sp,
                 modifier = Modifier
-                    .padding(start = horizontalPadding)
                     .align(Alignment.TopStart)
                     .offset(y = labelOffsetY)
             )
+
+            // Input text at the bottom portion of the box
+            BasicTextField(
+                value = textFieldValue,
+                onValueChange = { newValue ->
+                    val clamped = if (maxLength != null && newValue.text.length > maxLength)
+                        newValue.copy(text = newValue.text.take(maxLength))
+                    else newValue
+                    textFieldValue = clamped
+                    onValueChange(clamped.text)
+                },
+                singleLine = true,
+                enabled = enabled,
+                readOnly = !enabled,
+                textStyle = LocalTextStyle.current.copy(
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = 16.sp
+                ),
+                visualTransformation = when {
+                    isPassword && !passwordVisible -> PasswordVisualTransformation()
+                    else -> visualTransformation
+                },
+                cursorBrush = SolidColor(cursorColor),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = keyboardType,
+                    imeAction = imeAction
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { focusManager.moveFocus(FocusDirection.Next) },
+                    onDone = {
+                        if (onImeAction != null) {
+                            onImeAction()
+                        } else {
+                            focusManager.clearFocus()
+                        }
+                    }
+                ),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 10.dp)
+                    .onFocusChanged { focusState ->
+                        isFocused = focusState.isFocused
+                        if (focusState.isFocused) {
+                            // Move cursor to end when this field gains focus
+                            textFieldValue = textFieldValue.copy(
+                                selection = TextRange(textFieldValue.text.length)
+                            )
+                        }
+                    }
+            )
+
+            if (isPassword) {
+                Box(modifier = Modifier.align(Alignment.CenterEnd)) {
+                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
+                        Icon(
+                            imageVector = if (passwordVisible) Icons.Filled.Visibility
+                            else Icons.Filled.VisibilityOff,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -735,17 +808,24 @@ object UserInterfaceUtils {
         onClick: () -> Unit,
         color: Color,
         modifier: Modifier = Modifier,
-        buttonHeightDefault: Dp = buttonHeight,
+        buttonHeightDefault: Dp = AppTheme.dimens.buttonHeight,
+        fixedWidth: Boolean = true,
     ) {
+        val dimens = AppTheme.dimens
+        val sizeModifier = if (fixedWidth)
+            Modifier
+                .height(dimens.buttonHeight)
+                .width(dimens.buttonWidth)
+        else
+            Modifier.height(dimens.buttonHeight)
         Button(
             onClick = onClick,
-            modifier = modifier
-                .height(buttonHeightDefault)
-                .widthIn(min = 100.dp)
+            modifier = sizeModifier
+                .then(modifier)
                 .border(
                     width = 1.dp,
                     color = color,
-                    shape = RoundedCornerShape(buttonCornerRadius)
+                    shape = RoundedCornerShape(dimens.buttonCornerRadius)
                 ),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color.Transparent,
@@ -785,14 +865,19 @@ object UserInterfaceUtils {
         modifier: Modifier = Modifier,
         color: Color = MaterialTheme.colorScheme.primary,
         enabled: Boolean = true,
-        width: Int = 100,
         fontSize: Int = 13,
+        fixedWidth: Boolean = true,
     ) {
+        val dimens = AppTheme.dimens
+        val sizeModifier = if (fixedWidth)
+            Modifier
+                .height(dimens.buttonHeight)
+                .width(dimens.buttonWidth)
+        else
+            Modifier.height(dimens.buttonHeight)
         Button(
             onClick = onClick,
-            modifier = modifier
-                .height(buttonHeight)
-                .widthIn(min = width.dp),
+            modifier = sizeModifier.then(modifier),
             colors = ButtonDefaults.buttonColors(
                 containerColor = color,
                 contentColor = Color.White,
@@ -800,7 +885,7 @@ object UserInterfaceUtils {
                 disabledContentColor = Color.White // or use a theme color
             ),
             //CodeReview - Static Color
-            shape = RoundedCornerShape(buttonCornerRadius),
+            shape = RoundedCornerShape(dimens.buttonCornerRadius),
             enabled = enabled
         ) {
             Text(text = text, fontSize = fontSize.sp)
@@ -814,43 +899,96 @@ object UserInterfaceUtils {
         modifier: Modifier = Modifier,
         backIcon: Int = R.drawable.menu,
     ) {
+        val dimens = AppTheme.dimens
         IconButton(
             onClick = {
-                navController.navigate(Screen.Menu.route)
+                navController.navigateSafely(Screen.Menu.route)
             },
             modifier = modifier
-                .padding(small)
+                .padding(dimens.small)
                 .size(responsiveDp(40.dp))
         ) {
             Icon(
                 painter = painterResource(id = backIcon),
                 contentDescription = "Menu",
                 tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(extraSmall)
+                modifier = Modifier.padding(dimens.extraSmall)
             )
         }
     }
 
-    /** A PMS icon button that shows pms connection status. */
-
+    /** A PMS icon button that shows pms connection status with animated label. */
     @Composable
     fun PmsConnectionIcon(
         modifier: Modifier = Modifier,
         icon: Int = R.drawable.pms_connection_icon,
         isPmsConnected: Boolean,
     ) {
-        IconButton(
-            onClick = {},
-            modifier = modifier
-                .padding(small)
-                .size(responsiveDp(50.dp))
+        val dimens = AppTheme.dimens
+
+        // After connecting, briefly show "Connected" then hide it
+        var showConnectedLabel by remember { mutableStateOf(false) }
+        LaunchedEffect(isPmsConnected) {
+            if (isPmsConnected) {
+                showConnectedLabel = true
+                delay(2000)
+                showConnectedLabel = false
+            }
+        }
+
+        // Pulsing alpha for "Connecting..." text
+        val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+        val connectingAlpha by infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 0.2f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(800),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "connectingAlpha"
+        )
+
+        Row(
+            modifier = modifier.padding(dimens.small),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                painter = painterResource(id = icon),
-                contentDescription = "Menu",
-                tint = if(isPmsConnected) MaterialTheme.colorScheme.secondary else Color.Gray,
-                modifier = Modifier.padding(extraSmall)
-            )
+            IconButton(
+                onClick = {},
+                modifier = Modifier.size(responsiveDp(50.dp))
+            ) {
+                Icon(
+                    painter = painterResource(id = icon),
+                    contentDescription = "PMS connection",
+                    tint = if (isPmsConnected) MaterialTheme.colorScheme.secondary else Color.Gray,
+                    modifier = Modifier.padding(dimens.extraSmall)
+                )
+            }
+
+            // "Connected" label — visible briefly after connection
+            AnimatedVisibility(
+                visible = showConnectedLabel,
+                enter = fadeIn(tween(300)),
+                exit = fadeOut(tween(500))
+            ) {
+                Text(
+                    text = stringResource(R.string.pms_connected),
+                    color = MaterialTheme.colorScheme.secondary,
+                    fontSize = 16.sp
+                )
+            }
+
+            // "Connecting..." label — visible while disconnected and not showing "Connected"
+            AnimatedVisibility(
+                visible = !isPmsConnected && !showConnectedLabel,
+                enter = fadeIn(tween(300)),
+                exit = fadeOut(tween(300))
+            ) {
+                Text(
+                    text = stringResource(R.string.pms_connecting),
+                    color = Color.Gray.copy(alpha = connectingAlpha),
+                    fontSize = 16.sp,
+                )
+            }
         }
     }
 
@@ -891,12 +1029,9 @@ object UserInterfaceUtils {
         // convert otp to mutable list for edits
         fun otpToList(): MutableList<Char> = otp.toMutableList()
 
-        // When otp changes, auto-focus desired index but only request if not already focused
-        LaunchedEffect(otp) {
-            val target = desiredFocusIndex()
-            if (!focusStates.getOrNull(target).orFalse()) {
-                focusRequesters[target].requestFocus()
-            }
+        // Initial focus on mount only
+        LaunchedEffect(Unit) {
+            focusRequesters[desiredFocusIndex()].requestFocus()
         }
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -911,7 +1046,6 @@ object UserInterfaceUtils {
                             if (!ch.isDigit()) return@BasicTextField
 
                             val list = otpToList()
-                            // ensure list has capacity up to i
                             while (list.size < i) list.add(' ')
                             if (i < list.size) {
                                 list[i] = ch
@@ -920,41 +1054,20 @@ object UserInterfaceUtils {
                             }
                             sanitizeAndEmit(list)
 
-                            // move focus to next logical spot
-                            val next = (otp.length + 1).coerceAtMost(boxCount - 1) // after insert
-                            if (!focusStates.getOrNull(next).orFalse()) {
-                                focusRequesters[next].requestFocus()
-                            }
+                            val next = (i + 1).coerceAtMost(boxCount - 1)
+                            focusRequesters[next].requestFocus()
                         }
                     },
                     modifier = Modifier
                         .size(boxSize)
-                        // when user taps anywhere, we want to redirect focus according to your rule:
-                        .pointerInput(Unit) {
+                        .pointerInput(otp) {
                             detectTapGestures(onTap = {
-                                val desired = desiredFocusIndex()
-                                // if tapped box is not the desired box, request focus to desired
-                                if (desired != i && !focusStates.getOrNull(desired).orFalse()) {
-                                    focusRequesters[desired].requestFocus()
-                                } else {
-                                    // else let this box gain focus normally
-                                    if (!focusStates.getOrNull(i).orFalse()) {
-                                        focusRequesters[i].requestFocus()
-                                    }
-                                }
+                                focusRequesters[desiredFocusIndex()].requestFocus()
                             })
                         }
                         .focusRequester(focusRequesters[i])
                         .onFocusChanged { state ->
                             focusStates[i] = state.isFocused
-                            // If box gained focus due to user tap but we should redirect, do it:
-                            if (state.isFocused) {
-                                val desired = desiredFocusIndex()
-                                if (desired != i && !focusStates.getOrNull(desired).orFalse()) {
-                                    // programmatically move to desired index (will update focusStates accordingly)
-                                    focusRequesters[desired].requestFocus()
-                                }
-                            }
                         }
                         .onKeyEvent { event ->
                             if (event.key == Key.Backspace) {
@@ -1036,14 +1149,13 @@ object UserInterfaceUtils {
         return baseDp * scale
     }
 
-
     @Composable
-    fun responsiveDp(baseDp: Dp): Dp {
+    fun responsiveBadgeWidth(baseDp: Dp): Dp {
         val config = LocalConfiguration.current
         val sw = minOf(config.screenWidthDp, config.screenHeightDp)
 
         val scale = when {
-            sw < 360 -> 0.9f   // very small phones
+            sw < 400 -> 0.9f   // very small phones
             sw < 600 -> 1f     // normal phones
             sw < 840 -> 1.15f  // tablets
             else -> 1.3f       // large tablets
@@ -1051,55 +1163,124 @@ object UserInterfaceUtils {
         return baseDp * scale
     }
 
+
     @Composable
-    fun responsiveDpForCircularCountProgressPortrait(baseDp: Dp): Dp {
+    fun responsiveDp(baseDp: Dp): Dp {
         val config = LocalConfiguration.current
-        val sw = minOf(config.screenWidthDp, config.screenHeightDp)
+        val shortestSide = minOf(config.screenWidthDp, config.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) config.screenWidthDp else shortestSide
 
         val scale = when {
-            sw < 400 -> 1f   // very small phones
-            sw < 500 -> 1f     // normal phones
-            sw < 840 -> 1.1f  // tablets
-            else -> 1.3f       // large tablets
+            sw < 360 -> 0.9f
+            sw < 600 -> 1f
+            sw < 840 -> 1.8f
+            else -> 1.8f
         }
         return baseDp * scale
     }
 
     @Composable
-    fun responsiveDpForCircularCountProgressPortrait(percent: Float): Dp {
+    fun responsiveDpForCircularCountIndicator(): Dp {
         val config = LocalConfiguration.current
+        val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
         val sw = minOf(config.screenWidthDp, config.screenHeightDp)
-
+        val percent = when {
+            sw < 600 -> if (isLandscape) 0.30f else 0.25f   // phones
+            sw < 840 -> if (isLandscape) 0.30f else 0.20f   // tablets
+            else -> if (isLandscape) 0.30f else 0.22f   // large tablets
+        }
         return (sw * percent).dp
     }
 
-    @Composable
-    fun responsiveDpForCircularCountProgressLandscape(baseDp: Dp): Dp {
-        val config = LocalConfiguration.current
-        val sw = minOf(config.screenWidthDp, config.screenHeightDp)
-
-        val scale = when {
-            sw < 400 -> 0.8f   // very small phones
-            sw < 500 -> 1f     // normal phones
-            sw < 840 -> 1.15f  // tablets
-            else -> 1.3f       // large tablets
-        }
-        return baseDp * scale
-    }
 
     @Composable
     fun responsiveSp(baseSp: TextUnit): TextUnit {
         val configuration = LocalConfiguration.current
-        val smallestWidthDp = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
         val scale = when {
-//            smallestWidthDp < 400 -> 0.8f //small phone
-            smallestWidthDp < 600 -> 1f   //phone
-            smallestWidthDp < 840 -> 1.5f //small tablets
-            else -> 2f          //large tablets
+            sw < 360 -> 0.9f
+            sw < 600 -> 1f
+            sw < 840 -> 1.5f
+            else -> 2f
         }
         return (baseSp.value * scale).sp
     }
 
+    @Composable
+    fun responsiveSpForPillCountingScreen(baseSp: TextUnit): TextUnit {
+        val configuration = LocalConfiguration.current
+        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
+        val scale = when {
+            sw < 360 -> 0.8f
+            sw < 600 -> 0.8f
+            sw < 840 -> 1f
+            else -> 1.2f
+        }
+        return (baseSp.value * scale).sp
+    }
 
+    @Composable
+    fun responsiveSpForPillCountingHistoryScreen(baseSp: TextUnit): TextUnit {
+        val configuration = LocalConfiguration.current
+        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
+        val scale = when {
+            sw < 360 -> 0.8f
+            sw < 600 -> 1f
+            sw < 840 -> 1f
+            else -> 1.1f
+        }
+        return (baseSp.value * scale).sp
+    }
+
+    @Composable
+    fun responsiveSpForHistoryScreen(baseSp: TextUnit): TextUnit {
+        val configuration = LocalConfiguration.current
+        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
+        val scale = when {
+            sw < 360 -> 0.9f
+            sw < 600 -> 1f
+            sw < 840 -> 1f
+            else -> 1.1f
+        }
+        return (baseSp.value * scale).sp
+    }
+
+    @Composable
+    fun responsiveSpForBatchScreen(baseSp: TextUnit): TextUnit {
+        val configuration = LocalConfiguration.current
+        val smallestWidthDp = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
+        val scale = when {
+            smallestWidthDp < 400 -> 1.2f //small phone
+            smallestWidthDp < 600 -> 1.3f   //phone
+            smallestWidthDp < 840 -> 1.4f //small tablets
+            else -> 1.6f          //large tablets
+        }
+        return (baseSp.value * scale).sp
+    }
+
+    @Composable
+    fun responsiveDpForAddNoteDialog(baseDp: Dp): Dp {
+        val config = LocalConfiguration.current
+        val shortestSide = minOf(config.screenWidthDp, config.screenHeightDp)
+        val isTablet = shortestSide >= 600
+        val sw = if (isTablet) config.screenWidthDp else shortestSide
+
+        val scale = when {
+            sw < 360 -> 0.9f
+            sw < 600 -> 1.3f
+            sw < 840 -> 1.8f
+            else -> 1.8f
+        }
+        return baseDp * scale
+    }
 
 }

@@ -24,6 +24,8 @@ import com.rite.pillcounting.core.security.models.SecureString
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.menu.domain.model.CountBuckets
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
+import com.rite.pillcounting.core.security.ImageCrypto
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.system.exitProcess
@@ -124,6 +126,20 @@ object HelperFunctions {
      * @param activity The current [Activity] context.
      */
     fun enableImmersiveFullscreen(activity: Activity) {
+        // Let the activity draw into display cutout areas in any orientation, so
+        // immersive content (and overlays like bottom-sheets/drawers) reaches the
+        // physical screen edge instead of being letterboxed beside a notch.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            activity.window.attributes = activity.window.attributes.apply {
+                layoutInDisplayCutoutMode =
+                    android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS.takeIf {
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+                    } ?: android.view.WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_SHORT_EDGES
+            }
+        }
+        // Draw edge-to-edge so child overlays (Popup-based landscape drawer) can
+        // fill the full screen including the inset areas.
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(activity.window, false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             activity.window.insetsController?.let { controller ->
                 controller.hide(WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars())
@@ -179,9 +195,10 @@ object HelperFunctions {
         val file = File(dir, filename)
         val toSave = if (grayscale) toGrayscaleBitmap(bitmap) else bitmap
         try {
-            FileOutputStream(file).use { out ->
-                toSave.compress(Bitmap.CompressFormat.JPEG, 90, out)
-            }
+            val baos = ByteArrayOutputStream()
+            toSave.compress(Bitmap.CompressFormat.JPEG, 90, baos)
+            val encryptedBytes = ImageCrypto.encrypt(baos.toByteArray())
+            FileOutputStream(file).use { out -> out.write(encryptedBytes) }
         } finally {
             if (grayscale) toSave.recycle()
         }

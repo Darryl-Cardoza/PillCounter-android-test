@@ -1,25 +1,32 @@
-package com.rite.pillcounting.feature.hl7.data.repository
+﻿package com.rite.pillcounting.feature.hl7.data.repository
 
 import android.annotation.SuppressLint
+import android.content.Context
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.BatchEntity
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
+import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
-import com.rite.pillcounting.feature.barcodeScan.data.DrugRepository
-import com.rite.pillcounting.feature.barcodeScan.domain.model.GetNdcRequestModel
+import com.rite.pillcounting.feature.dispenseFlow.data.DrugRepository
+import com.rite.pillcounting.feature.dispenseFlow.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.feature.hl7.core.Hl7MessageSender
 import com.rite.pillcounting.feature.hl7.domain.model.MessageType
+import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
 import com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -30,6 +37,7 @@ import javax.inject.Singleton
 
 @Singleton
 class Hl7Repository @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val drugMasterDao: DrugMasterDao,
     private val locationProvider: LocationProvider,
     private val txnDao: PillCountTxnDao,
@@ -39,7 +47,8 @@ class Hl7Repository @Inject constructor(
     private val userDao: UserDao,
     private val batchDao: BatchDao,
     private val hl7MessageSender: Hl7MessageSender,
-    private val drugRepository: DrugRepository
+    private val drugRepository: DrugRepository,
+    private val notifier: Hl7Notifier
 ) {
 
     private val logger = AppLogger.create<Hl7Repository>()
@@ -49,6 +58,7 @@ class Hl7Repository @Inject constructor(
         scope.launch {
             if (preferenceHelper.isHl7Enabled()) {
                 observePendingHl7Transactions()
+                observePendingHl7BatchTransactions()
             }
         }
     }
@@ -63,6 +73,9 @@ class Hl7Repository @Inject constructor(
 
                 MessageType.INVENTORY_REQUEST ->
                     handleInrInventoryRequest(message)
+
+                MessageType.CANCEL_ORDER ->
+                    handleOrderCancellation(message)
             }
         }
     }
@@ -121,6 +134,7 @@ class Hl7Repository @Inject constructor(
             val result = hl7MessageSender.sendRaw(message)
             if (result.isSuccess) {
                 logger.i("Inventory HL7 message sent successfully for batchId=$batchId")
+                batchDao.markBatchSynced(batchId)
             } else {
                 logger.e("Failed to send inventory HL7 message for batchId=$batchId: ${result.exceptionOrNull()?.message}")
             }
@@ -151,6 +165,20 @@ class Hl7Repository @Inject constructor(
                         buildAndSendInventoryResponse(batchId = batchId)
                     }
                 }
+            }
+        }
+    }
+
+    fun resendPendingHl7BatchTransactions() {
+        scope.launch {
+            val pendingBatches = batchDao.getUnsyncedCompletedBatchesOnce()
+            if (pendingBatches.isEmpty()) {
+                logger.i("No pending HL7 batch transactions to sync")
+                return@launch
+            }
+            logger.i("Resending ${pendingBatches.size} pending HL7 batch transactions")
+            for (batch in pendingBatches) {
+                buildAndSendInventoryResponse(batchId = batch.batchId)
             }
         }
     }
@@ -191,24 +219,44 @@ class Hl7Repository @Inject constructor(
                 drugRepository.getDrugInfoByNdc(request)
             } catch (e: Exception) {
                 logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
-                null
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
+                )
+                return
             }
 
-            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: hl7Ndc
-            val resolvedDrugName =
-                drugInfo?.genericName?.takeIf { it.isNotBlank() } ?: hl7DrugName
-            val resolvedDrugType = drugInfo?.drugType
-            val resolvedEquivalence = drugInfo?.is_ndc_equivalent?.toString()
+            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() }
 
-            DrugMasterEntity(
-                ndc = resolvedNdc,
-                drugName = resolvedDrugName,
-                drugType = resolvedDrugType,
-                equivalence = resolvedEquivalence
-            )
+            val resolvedDrugName = drugInfo?.genericName
+                ?.takeIf { it.isNotBlank() }
+
+            if (resolvedDrugName.isNullOrBlank()) {
+                logger.w("No drug name resolved for NDC: $hl7Ndc")
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_no_drug, hl7Ndc)
+                )
+                return
+            }
+
+            resolvedNdc?.let {
+                DrugMasterEntity(
+                    ndc = it,
+                    drugName = resolvedDrugName,
+                    drugType = drugInfo?.drugType,
+                    isHazardous = drugInfo?.isHazardous ?: false,
+                )
+            }
         }
 
-        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
+        val drugId = finalDrug?.let { drugMasterDao.upsertPreservingId(it) }
+
+        val priority = TxnPriority.fromString(
+            message.customSegments
+                .firstOrNull { it.segmentType == "ZPR" && it.field2 == "PRIORITY" }
+                ?.field3
+        )
 
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
@@ -219,11 +267,40 @@ class Hl7Repository @Inject constructor(
             isComingFromHL7 = true,
             isSynced = false,
             isNdcVerified = false,
-            rxNo = rxNo
+            rxNo = rxNo,
+            priority = priority
         )
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
         preferenceHelper.saveTxnId(txnId)
+
+        val inventoryCount = medication.expectedInventoryCount?.toIntOrNull()
+        if (inventoryCount != null) {
+            val detail = PillCountTxnDetailsEntity(
+                txnId = txnId,
+                pillCount = inventoryCount,
+                type = StepState.CONTAINER_INITIATE.name,
+                imagePath = null,
+                isDeleted = false,
+                isManual = false,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis()
+            )
+            txnDetailsDao.insert(detail)
+            pillCountTxnDao.updateWorkflowStep(txnId, StepState.TARGET_VERIFICATION.name)
+        }
+        val meds = message.medications
+        val notifBody = if (meds.size == 1) {
+            val med = meds[0]
+            val qty = med.requestedQty?.toIntOrNull() ?: 0
+            context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), med.drugName ?: "", qty)
+        } else {
+            context.getString(R.string.hl7_notification_new_rx_multiple, rxNo.orEmpty(), meds.size)
+        }
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_new_rx_title),
+            message = notifBody
+        )
     }
 
 //    private suspend fun handleInrInventoryRequest(
@@ -524,8 +601,8 @@ class Hl7Repository @Inject constructor(
                     ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
                     drugName = resolvedDrugName,
                     drugType = drugInfo.drugType,
-                    equivalence = drugInfo.is_ndc_equivalent?.toString(),
-                    packageQty = drugInfo.qty
+                    packageQty = drugInfo.qty,
+                    isHazardous = drugInfo.isHazardous ?: false,
                 )
 
                 val newDrugId = drugMasterDao.upsertPreservingId(drugEntity)
@@ -550,6 +627,10 @@ class Hl7Repository @Inject constructor(
 
         if (resolvedItems.isEmpty()) {
             logger.w("No valid drugs resolved from local DB or API. Batch will not be created.")
+            notifier.show(
+                title = context.getString(R.string.hl7_notification_inventory_title),
+                message = context.getString(R.string.hl7_notification_inventory_no_drugs)
+            )
             return
         }
 
@@ -587,12 +668,21 @@ class Hl7Repository @Inject constructor(
         }
 
         logger.i("Processed ${resolvedItems.size} inventory items for batchId: $batchId")
+
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_inventory_title),
+            message = context.getString(R.string.hl7_notification_inventory_items_count, resolvedItems.size)
+        )
     }
 
     private fun classifyInboundMessage(
         message: CompleteHL7Message
     ): MessageType? {
         return when {
+            message.order?.orderControl == "CA" &&
+                    !message.order?.placerOrderId.isNullOrBlank() ->
+                MessageType.CANCEL_ORDER
+
             message.messageType == "RDE" &&
                     message.triggerEvent == "O11" &&
                     message.medications.isNotEmpty() ->
@@ -605,6 +695,13 @@ class Hl7Repository @Inject constructor(
 
             else -> null
         }
+    }
+
+    private suspend fun handleOrderCancellation(message: CompleteHL7Message) {
+        val rxNo = message.order?.placerOrderId ?: return
+        logger.i("Received ORC|CA for rxNo=$rxNo — soft-deleting transaction")
+        pillCountTxnDao.softDeleteByRxNo(rxNo)
+        logger.i("Transaction with rxNo=$rxNo marked as deleted")
     }
 
     private fun observePendingHl7Transactions() {
@@ -620,6 +717,16 @@ class Hl7Repository @Inject constructor(
 //                        hl7MessageSender.connect()
                     resendPendingHl7Transactions()
 //                    }
+                }
+        }
+    }
+
+    private fun observePendingHl7BatchTransactions() {
+        scope.launch {
+            batchDao.observeUnsyncedCompletedBatches()
+                .collect { pendingBatches ->
+                    logger.i("HL7 batch observer fired, pending=${pendingBatches.size}")
+                    resendPendingHl7BatchTransactions()
                 }
         }
     }

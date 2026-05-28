@@ -1,6 +1,7 @@
-package com.rite.pillcounting.feature.menu.presentation
+﻿package com.rite.pillcounting.feature.menu.presentation
 
 import Screen
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -16,10 +17,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.colorResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -27,12 +29,14 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.HistoryRetention
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
-import com.rite.pillcounting.core.utils.constants.Dimens.medium
-import com.rite.pillcounting.core.room.models.enums.ScanType
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
+import com.rite.pillcounting.core.utils.common.navigateSafely
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
 import com.rite.pillcounting.feature.login.viewmodel.LoginViewModel
@@ -40,7 +44,11 @@ import com.rite.pillcounting.feature.menu.presentation.compose.MenuItemRow
 import com.rite.pillcounting.feature.menu.presentation.compose.SimpleMenuRow
 import com.rite.pillcounting.feature.menu.presentation.viewmodel.MenuViewModel
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
+import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Renders the **Menu Screen**, which serves as the main navigation hub for the application's
@@ -58,12 +66,17 @@ fun MenuScreen(
     navController: NavController,
     viewModel: MenuViewModel = hiltViewModel(),
     loginViewModel: LoginViewModel = hiltViewModel(),
-    onLogOut:()-> Unit
+    onLogOut: () -> Unit
 ) {
+    val dimens = AppTheme.dimens
     val uiState by viewModel.uiState.collectAsState()
     val logoutState by loginViewModel.logoutUiState.collectAsState()
+    val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var showLogoutLoading by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
+    var showStockCountDialog by remember { mutableStateOf(false) }
+    var showBucketSelectDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -76,70 +89,60 @@ fun MenuScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(start = medium, end = medium)
+                .padding(start = dimens.medium, end = dimens.medium)
                 .background(extendedColors.secondaryBackground)
         ) {
             // Fixed Count
             MenuItemRow(
-                icon = R.drawable.fixed_count,
+                icon = R.drawable.pilliconformenuscreen,
                 title = stringResource(R.string.dispense),
                 completed = stringResource(R.string.menu_completed, uiState.fixedCompleted),
                 partial = stringResource(R.string.menu_partial, uiState.fixedPartial),
-                iconTint = MaterialTheme.colorScheme.secondary,
-                completedTint = MaterialTheme.colorScheme.secondary,
-                partialTint = MaterialTheme.colorScheme.secondary,
-                completedIcon = R.drawable.tick,
+                iconTint = MaterialTheme.colorScheme.primary,
+                completedTint = MaterialTheme.colorScheme.primary,
+                partialTint = MaterialTheme.colorScheme.primary,
+                completedIcon = R.drawable.complete,
                 partialIcon = R.drawable.partial,
-                mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.FIXED.toString(),
-                    ScanType.RX_LABEL,0)) },
-                onPartialClick = {
-                    if (uiState.fixedPartial > 0)
-                        navController.navigate(
-                            Screen.ResumeFixedCounts.createRoute(
-                                CountType.FIXED.toString()
-                            )
-                        )
+                mainClick = {
+                    // Merged dispense flow: one screen for RX + NDC + pill count.
+                    navController.navigate(
+                        Screen.DispenseFlow.createRoute(CountType.FIXED.toString())
+                    )
                 },
-                onCompletedClick = {  navController.navigate(Screen.History.createRoute(HistoryMode.DISPENSE)) },
+                onPartialClick = {
+//                    if (uiState.fixedPartial > 0)
+                    navController.navigate(
+                        Screen.ResumeFixedCounts.createRoute(
+                            CountType.FIXED.toString()
+                        )
+                    )
+                },
+                onCompletedClick = { navController.navigate(Screen.History.createRoute(HistoryMode.DISPENSE)) },
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
             // Regular Count
             MenuItemRow(
-                icon = R.drawable.regular_count,
+                icon = R.drawable.medicationconformenuscreen,
                 title = stringResource(R.string.stock_count),
                 completed = stringResource(R.string.menu_completed, uiState.regularCompleted),
                 partial = stringResource(R.string.menu_partial, uiState.regularPartial),
                 iconTint = MaterialTheme.colorScheme.primary,
                 completedTint = MaterialTheme.colorScheme.primary,
                 partialTint = MaterialTheme.colorScheme.primary,
-                completedIcon = R.drawable.tick,
+                completedIcon = R.drawable.complete,
                 partialIcon = R.drawable.partial,
-                mainClick = { navController.navigate(Screen.ScanBarcode.createRoute(CountType.REGULAR.toString(),ScanType.RX_LABEL,0)) },
+                mainClick = { showStockCountDialog = true },
                 onPartialClick = {
-                    if (uiState.regularPartial > 0)
-                        navController.navigate(
-                            Screen.ResumeRegularCounts.createRoute(
-                                CountType.REGULAR.toString()
-                            )
-                        )
+                    navController.navigateSafely(
+                        Screen.PartialCountsScreen.route
+                    )
                 },
-                onCompletedClick = {  navController.navigate(Screen.History.createRoute(HistoryMode.REGULAR)) },
+                onCompletedClick = { navController.navigate(Screen.History.createRoute(HistoryMode.REGULAR)) },
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
-
-            // Profile
-            SimpleMenuRow(
-                navController = navController,
-                icon = R.drawable.profile,
-                iconTint = MaterialTheme.colorScheme.secondary,
-                title = stringResource(R.string.menu_profile),
-                onClick = { navController.navigate(Screen.Profile.route) }
-            )
-
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
             // Load options from strings.xml
             val historyOptions = stringArrayResource(R.array.history_options).toList()
@@ -158,20 +161,24 @@ fun MenuScreen(
                 iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.menu_history),
                 trailingText = trailingText,
-                onClick = { navController.navigate(Screen.History.route) }
+                onClick = {
+                    navController.navigateSafely(
+                        Screen.History.createRoute(HistoryMode.NORMAL)
+                    )
+                }
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
             SimpleMenuRow(
                 navController = navController,
                 icon = R.drawable.unsynced_transaction_icon,
-                iconTint = MaterialTheme.colorScheme.secondary,
+                iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.menu_unsync_transaction),
                 trailingText = uiState.unsyncedTransactionCount.toString(),
                 onClick = { navController.navigate(Screen.UnsyncedTransactionScreen.route) }
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
             // Settings
             SimpleMenuRow(
@@ -182,13 +189,21 @@ fun MenuScreen(
                 onClick = { navController.navigate(Screen.Settings.route) }
             )
 
-            HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
+            SimpleMenuRow(
+                navController = navController,
+                icon = R.drawable.profile,
+                iconTint = MaterialTheme.colorScheme.primary,
+                title = stringResource(R.string.menu_profile),
+                onClick = { navController.navigate(Screen.Profile.route) }
+            )
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
             // Logout
             SimpleMenuRow(
                 navController = navController,
                 icon = R.drawable.logout,
-                iconTint = MaterialTheme.colorScheme.secondary,
+                iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.menu_logout),
                 onClick = {
                     showLogoutConfirmDialog = true
@@ -264,7 +279,7 @@ fun MenuScreen(
                             popUpTo(0) { inclusive = true }
                         }
 
-                        if(!loginViewModel.preferenceHelper.isUserLoggedIn()){
+                        if (!loginViewModel.preferenceHelper.isUserLoggedIn()) {
                             onLogOut()
                         }
                     }
@@ -273,5 +288,69 @@ fun MenuScreen(
                 else -> {}
             }
         }
+    }
+
+    if (showStockCountDialog) {
+        val options = listOf(
+            stringResource(R.string.stock_count_dialog_option_first),
+            stringResource(R.string.stock_count_dialog_option_second),
+        )
+        val noLastBatchMessage = stringResource(R.string.no_last_batch_available)
+
+        CommonSingleSelectDialog(
+            title = stringResource(R.string.stock_count_dialog_title),
+            options = options,
+            selectedIndex = 0,
+            onCancel = { showStockCountDialog = false },
+            onOk = { index ->
+                when (index) {
+                    0 -> showBucketSelectDialog = true
+                    1 -> {
+                        scope.launch {
+                            val batch = withContext(Dispatchers.IO) {
+                                viewModel.getLastInProgressBatch()
+                            }
+                            if (batch != null) {
+                                navController.navigate(Screen.Batch.createRoute(batch.batchId))
+                            } else {
+                                showToast(
+                                    context = context,
+                                    message = noLastBatchMessage,
+                                    duration = Toast.LENGTH_SHORT
+                                )
+                            }
+                        }
+                    }
+                }
+                showStockCountDialog = false
+            },
+            distanceBetweenOptions = 2.dp
+        )
+    }
+
+    if (showBucketSelectDialog) {
+        val bucketList = viewModel.getBucketList()
+        val defaultIndex = bucketList.indices.firstOrNull() ?: -1
+
+        CommonSingleSelectDialog(
+            title = stringResource(R.string.select_bucket),
+            options = bucketList,
+            selectedIndex = defaultIndex,
+            onCancel = { showBucketSelectDialog = false },
+            onOk = { index ->
+                if (index in bucketList.indices) {
+                    scope.launch {
+                        val batchId = withContext(Dispatchers.IO) {
+                            viewModel.createBatch(bucketList[index])
+                        }
+                        if (batchId != null) {
+                            navController.navigate(Screen.Batch.createRoute(batchId))
+                        }
+                    }
+                }
+                showBucketSelectDialog = false
+            },
+            distanceBetweenOptions = 2.dp
+        )
     }
 }

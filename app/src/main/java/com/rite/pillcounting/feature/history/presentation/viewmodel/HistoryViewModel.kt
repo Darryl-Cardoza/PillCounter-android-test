@@ -6,8 +6,10 @@ import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.history.data.HistoryRepository
+import com.rite.pillcounting.feature.history.domain.model.HistoryDeleteFilter
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.history.domain.model.BatchSummary
+import com.rite.pillcounting.feature.history.domain.model.ToggleOption
 import com.rite.pillcounting.feature.history.domain.model.TxnWithDrugDto
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -16,7 +18,6 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
@@ -116,21 +117,31 @@ class HistoryViewModel @Inject constructor(
             )
 
 
-    val batchGroups: StateFlow<List<BatchSummary>> = rawCounts
-        .map { txns ->
-            txns
-                .filter { it.batchId != null }
-                .groupBy { it.batchId!! }
-                .map { (batchId, items) ->
-                    BatchSummary(
-                        batchId = batchId,
-                        createdAt = items.minOf { it.createdAt },
-                        itemCount = items.size
-                    )
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val rawBatchGroups: StateFlow<List<BatchSummary>> =
+        combine(_startDate, _endDate) { start, end -> start to end }
+            .flatMapLatest { (start, end) ->
+                repository.getBatchSummaries(
+                    startDate = start,
+                    endDate = end,
+                    userLocalId = preferenceHelper.getLocalId()
+                )
+            }
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    val batchGroups: StateFlow<List<BatchSummary>> =
+        combine(rawBatchGroups, _searchQuery) { list, query ->
+            if (query.isBlank()) {
+                list
+            } else {
+                list.filter {
+                    it.batchId.toString().contains(query, ignoreCase = true) ||
+                            it.bucketId?.contains(query, ignoreCase = true) == true ||
+                            it.requestIdFromPMS?.contains(query, ignoreCase = true) == true
                 }
-                .sortedByDescending { it.createdAt }
+            }
         }
-        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setHistoryMode(mode: HistoryMode) {
         _currentMode.value = mode
@@ -141,31 +152,33 @@ class HistoryViewModel @Inject constructor(
     }
 
     private fun HistoryMode.toQueryParams(): Pair<CountType?, CountStatus?> =
-        when (this) {
-            HistoryMode.NORMAL ->
-                null to null
-
-            HistoryMode.REGULAR ->
-                CountType.REGULAR to CountStatus.COMPLETED
-
-            HistoryMode.DISPENSE ->
-                CountType.FIXED to CountStatus.COMPLETED
-        }
+        if (this == HistoryMode.DISPENSE) CountType.FIXED to null else null to null
 
 
-    /** delete all transaction selected date **/
-    fun deleteCountsForSelectedDate() {
+    fun deleteCountsForSelectedDate(option: ToggleOption, filter: HistoryDeleteFilter) {
         viewModelScope.launch {
-
-            val (type, status) = currentMode.value.toQueryParams()
-
-            repository.deleteTransactionsForDate(
-                startDate = _startDate.value,
-                endDate = _endDate.value,
-                type = type,
-                status = status,
-                userLocalId = preferenceHelper.getLocalId()
-            )
+            val isCompleted: Boolean? = when (filter) {
+                HistoryDeleteFilter.ALL -> null
+                HistoryDeleteFilter.COMPLETED -> true
+                HistoryDeleteFilter.PENDING -> false
+            }
+            if (option == ToggleOption.STOCK) {
+                repository.deleteBatchesForDateRange(
+                    startDate = _startDate.value,
+                    endDate = _endDate.value,
+                    isCompleted = isCompleted,
+                    userLocalId = preferenceHelper.getLocalId()
+                )
+            } else {
+                val (type, _) = currentMode.value.toQueryParams()
+                repository.deleteTransactionsForDate(
+                    startDate = _startDate.value,
+                    endDate = _endDate.value,
+                    type = type,
+                    isCompleted = isCompleted,
+                    userLocalId = preferenceHelper.getLocalId()
+                )
+            }
         }
     }
 

@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -28,6 +27,7 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable
@@ -50,11 +50,12 @@ fun HeadlineBar(
     showPdfIcon: Boolean = false,
     onPdfClick: (() -> Unit)? = null,
     onBackClick: (() -> Unit)? = null,
+    bottomBarDeleteMode: Boolean = false,
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(end = 12.dp),
+            .padding(end = 12.dp, bottom = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
@@ -124,7 +125,7 @@ fun HeadlineBar(
                             contentDescription = stringResource(R.string.cd_search),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .size(26.dp)
+                                .size(responsiveDp(25.dp))
                                 .clickable { onSearchClick() }
                         )
                     }
@@ -139,7 +140,7 @@ fun HeadlineBar(
                             contentDescription = "Export PDF",
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .size(26.dp)
+                                .size(responsiveDp(25.dp))
                                 .clickable { onPdfClick?.invoke() }
                         )
                     }
@@ -154,52 +155,78 @@ fun HeadlineBar(
                             contentDescription = stringResource(R.string.cd_select_items_to_delete),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .size(26.dp)
+                                .size(responsiveDp(25.dp))
                                 .clickable { onDeleteClick() }
                         )
                     }
                 }
-            } else {
-                //normal
+            } else if (bottomBarDeleteMode) {
+                // Bottom-bar delete mode: back arrow + title + SELECT ALL on right
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BackButton(navController, onClick = onBackClick)
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-
-                    Checkbox(
-                        checked = isAllSelected,
-                        onCheckedChange = { onSelectAll() }
-                    )
-
-                    Spacer(Modifier.width(6.dp))
+                    Spacer(Modifier.width(4.dp))
 
                     Text(
-                        text = stringResource(R.string.select_all),
+                        text = title.uppercase(),
                         fontSize = 16.sp,
-                        fontWeight = FontWeight.Medium,
-                        color = AppTheme.extendedColors.textColor
+                        fontWeight = FontWeight.SemiBold,
+                        color = AppTheme.extendedColors.textColor,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    Text(
+                        text = stringResource(R.string.select_all).uppercase(),
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.clickable { onSelectAll() }
                     )
                 }
+            } else {
+                // Delete mode header: back-as-cancel + "DELETE COUNTS" + SELECT ALL
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BackButton(navController, onClick = onCancelClick)
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Spacer(Modifier.width(4.dp))
+
                     Text(
-                        text = stringResource(R.string.delete),
-                        fontSize = 14.sp,
+                        text = stringResource(R.string.delete_counts).uppercase(),
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = if (hasSelection) MaterialTheme.colorScheme.primary else Color.Gray,
-                        modifier = Modifier.clickable {
-                            if (hasSelection) {
-                                onConfirmDelete()
-                            }
-                        }
+                        color = AppTheme.extendedColors.textColor,
+                        modifier = Modifier.weight(1f)
                     )
 
-                    Spacer(Modifier.width(18.dp))
-
-                    Text(
-                        text = stringResource(R.string.cancel),
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.clickable { onCancelClick() }
-                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.clickable { onSelectAll() }
+                    ) {
+                        Icon(
+                            painter = painterResource(
+                                id = if (isAllSelected) R.drawable.deselect_all_image
+                                else R.drawable.select_all_image
+                            ),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(26.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = stringResource(
+                                if (isAllSelected) R.string.deselect_all else R.string.select_all
+                            ),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }

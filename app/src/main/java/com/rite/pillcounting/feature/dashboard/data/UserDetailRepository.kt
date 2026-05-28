@@ -11,7 +11,6 @@ import com.rite.pillcounting.feature.dashboard.data.remote.IUserDetailAPI
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -41,12 +40,10 @@ class UserDetailRepository @Inject constructor(
             try {
                 logger.i("Fetching user detail with token: ${token.take(10)}...")
                 // Fetch the latest FCM token asynchronously
-                val currentFcmToken =
-                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
-                val lastSentFcmToken = preferenceHelper.getLastSentFcmToken()
-
+//                val fcmToken =
+//                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()
                 val request = UserDetailRequest(
-                    fcmToken = currentFcmToken,  // always send
+//                    fcmToken = fcmToken,
                     platform = "android",
                     appVersion = BuildConfig.VERSION_NAME
                 )
@@ -58,9 +55,6 @@ class UserDetailRepository @Inject constructor(
                     response.isSuccessful -> {
                         response.body()?.let {
                             logger.i("User detail fetched successfully.")
-                            if (currentFcmToken != lastSentFcmToken) {
-                                preferenceHelper.saveLastSentFcmToken(currentFcmToken)
-                            }
                             Result.success(it)
                         } ?: run {
                             logger.e("Empty response body while fetching user detail.")

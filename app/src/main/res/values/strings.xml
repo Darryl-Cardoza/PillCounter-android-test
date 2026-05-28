@@ -52,6 +52,8 @@
     <string name="are_you_sure_you_want_to_clear_all_data">Are you sure you want to clear all data?</string>
     <string name="select_schedule_codes">Select Schedule Codes</string>
     <string name="voice_feedback">Voice Feedback</string>
+    <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
+    <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
 
     <string-array name="history_options">
         <item>1 Week (Default)</item>
@@ -123,6 +125,8 @@
     <string name="manual">Manual</string>
     <string name="skip_alt">SKIP</string>
     <string name="select_all">Select All</string>
+    <string name="deselect_all">Deselect All</string>
+    <string name="delete_counts">Delete Counts</string>
 
 
     <!-- ================== PILL COUNT ================== -->
@@ -142,11 +146,12 @@
     <string name="transaction_detail">Transaction Detail</string>
     <string name="total">Total</string>
     <string name="total_count">Total Count</string>
+    <string name="delete_count_title">Delete Count</string>
     <string name="max_count_reached">Total Transaction count exceeds target.</string>
     <string name="no_transaction_found">No Transaction Found, please start counting pills</string>
     <string name="confirm_done">Confirm Completion</string>
     <string name="confirm_done_desc_regular">Are you sure you want to mark this transaction as completed?</string>
-    <string name="confirm_done_desc_fixed">Target not reached. This transaction will be marked as PENDING.</string>
+    <string name="confirm_done_desc_fixed">Target not reached. This transaction will be marked as Completed.</string>
     <string name="force_complete">Force Complete</string>
 
     <!-- ================== PROFILE ================== -->
@@ -166,8 +171,8 @@
     <string name="menu_history">History</string>
     <string name="menu_settings">Settings</string>
     <string name="menu_logout">Logout</string>
-    <string name="menu_completed">%1$d completed</string>
-    <string name="menu_partial">%1$d pending</string>
+    <string name="menu_completed">%1$d Completed</string>
+    <string name="menu_partial">%1$d Pending</string>
     <string name="menu_unsync_transaction">Unsynced Transactions</string>
 
     <!-- ================== UI CONTENT DESCRIPTIONS ================== -->
@@ -234,8 +239,9 @@
 
     <string name="add_note">Add Note</string>
     <string name="add_note_error">Please enter a note or tap Skip</string>
+    <string name="type_here">Type here...</string>
     <string name="save_history_confirmation">Are you sure you want to keep history for</string>>
-    <string name="save_history_note">\n\nNote: Data older than this period will be permanently deleted.</string>
+    <string name="save_history_note">Note: Data older than this period will be permanently deleted.</string>
     <string name="profile_updated">Profile updated successfully!</string>
     <string name="confirm_logout_title">Confirm Logout</string>
     <string name="confirm_logout_text">Are you sure you want to logout?</string>>
@@ -249,6 +255,8 @@
     <string name="selected_items_count">%1$d items selected</string>
     <string name="tap_to_delete">Tap delete to remove</string>
     <string name="session_expired">Session Expired!</string>
+    <string name="pms_connected">Connected</string>
+    <string name="pms_connecting">Connecting...</string>
 
     <!-- Optional: if you want a singular/plural version -->
     <plurals name="selected_items_count_plural">
@@ -263,6 +271,7 @@
     <string name="pill_scanning_all_done">All Done</string>
     <string name="confirm_delete_message_on_reset_click">Are you sure you want to delete all the transaction for this current transaction.</string>
     <string name="cannot_reset_no_pills_detected">Cannot reset no pills detected transactionDetails.</string>
+    <string name="no_pill_added_yet">No Pill Added yet</string>
     <string name="count_pills_from_the_container">Count Pills from the container</string>
     <string name="count_prescribed_pills_quantity">Count prescribed Pills quantity</string>
     <string name="recount_prescribed_quantity">Recount prescribed quantity</string>
@@ -285,14 +294,18 @@
     <string name="rescan_require">Rescan Required</string>
     <string name="the_scanned_ndc_does_not_match">The scanned NDC does not match</string>
     <string name="substitute">Substitute</string>
+    <string name="scan_ndc_toast">Scan NDC</string>
+    <string name="rescan_ndc_does_not_match_toast">Rescan — NDC does not match</string>
 
     <!-- Unsynced Transaction-->
-    <string name="unsynced_transaction">UNSYNCED TRANSACTION</string>
+    <string name="unsynced_transaction">UNSYNCED TRANSACTIONS</string>
     <string name="sync_all">SYNC ALL</string>
+    <string name="no_unsynced_transactions">No unsynced transactions</string>
     <string name="pills_count_should_be_greater_than_target_count">Pills count should be greater than target count</string>
     <string name="pill_count">PILL COUNT</string>
     <string name="initial_stock_bottle_count">INITIAL STOCK BOTTLE COUNT</string>
     <string name="substitute_drug_details">SUBSTITUTE DRUG DETAILS</string>
+    <string name="requested_drug_details">REQUESTED DRUG DETAILS</string>
     <string name="dispense_drug_details">DISPENSE DRUG DETAILS</string>
     <string name="pill_recount">PILL RECOUNT</string>
     <string name="vial_capture">DISPENSED VIAL</string>
@@ -303,7 +316,7 @@
     <string name="no_batches_recorded">No batches recorded</string>
     <string name="stock_count_dialog_title">What would you like to do?</string>
     <string name="stock_count_dialog_option_first">Create a new Batch</string>
-    <string name="stock_count_dialog_option_second">Continue with last Batch count</string>
+    <string name="stock_count_dialog_option_second">Continue last Batch</string>
     <string name="stock_bottles">Stock Bottles</string>
     <string name="open_pills">Open Pills</string>
     <string name="partial_stock_counts">Partial Stock Counts</string>
@@ -334,6 +347,10 @@
     <string name="no_partial_counts">No partial counts available</string>
     <string name="confirm_delete_batches">Delete selected batch(es)? This action cannot be undone.</string>
     <string name="confirmation">Confirmation</string>
+    <string name="discard_counted_pills_message">You have counted pills but no RX has been scanned yet. Discard the count and exit?</string>
+    <string name="voice_scan_rx_to_add_count">Scan RX to add the pill count</string>
+    <string name="voice_scan_container_qr">Scan the container QR code</string>
+    <string name="voice_add_the_pill_count">Add the pill count</string>
     <string name="are_you_sure_you_want_to_end_this_count">Are you sure you want to end this Count?</string>
     <string name="no_items_in_that_batch_yet">No items in this batch yet</string>
     <string name="end_this_batch_it_will_be_mark_as_completed">End this batch? It will be marked as complete.</string>
@@ -354,6 +371,64 @@
     <string name="toggle_with_count">%1$s (%2$d)</string>
     <string name="dispensed">Dispensed</string>
     <string name="stock">Stock</string>
+    <string name="ndcs_label">NDCs</string>
+    <string name="stock_count_label">Stock Count</string>
+    <string name="total_ndc_count">TOTAL NDC COUNT</string>
+    <string name="completed_on">Completed on </string>
+    <string name="lot_No">Lot Number</string>
+    <string name="expiry_date">Expiry Date</string>
+    <string name="pills">Pills</string>
+    <string name="total_pills">Total Pills</string>
+
+    <!-- ================== TERMINAL & PROFILE ================== -->
+    <string name="terminal">Terminal</string>
+    <string name="select_terminal">Select Terminal</string>
+    <string name="unknown">Unknown</string>
+
+    <string name="verify_rx_details">Verify Rx Details</string>
+    <string name="verify_stock_bottle_details">Verify Stock Bottle Details</string>
+    <string name="hazardous_drug_warning">Hazardous Drug</string>
+    <string name="form">Form</string>
+    <!-- ================== HL7 NOTIFICATIONS ================== -->
+    <string name="hl7_notification_device_connected_title">Device Connected</string>
+    <string name="hl7_notification_device_connected_message">Connected to %1$s Successfully</string>
+    <string name="hl7_notification_drug_not_found_title">Drug Not Found</string>
+    <string name="hl7_notification_drug_not_found_api_failed">NDC %1$s could not be resolved. API request failed.</string>
+    <string name="hl7_notification_drug_not_found_no_drug">No drug found for NDC %1$s.</string>
+    <string name="hl7_notification_new_rx_title">New RX Fill Request</string>
+    <string name="hl7_notification_new_rx_single">Rx %1$s • %2$s • Qty: %3$d</string>
+    <string name="hl7_notification_new_rx_multiple">Rx %1$s • %2$d items to fill</string>
+    <string name="hl7_notification_inventory_title">Inventory Request</string>
+    <string name="hl7_notification_inventory_no_drugs">No drugs found. Batch could not be created.</string>
+    <string name="hl7_notification_inventory_items_count">%1$d items need stock count</string>
+
+    <!-- ================== GLOVE DETECTION ================== -->
+    <string name="glove_class_gloves" translatable="false">gloves</string>
+    <string name="glove_class_no_gloves" translatable="false">no_gloves</string>
+    <string name="cd_gloves_detected">Gloves detected</string>
+    <string name="cd_no_gloves_detected">No gloves</string>
+
+    <!-- ================== PDF EXPORT ================== -->
+    <string name="pdf_developer_credit">Developed by Rite Technologies</string>
+    <string name="pdf_stock_count_report_title">STOCK COUNT REPORT</string>
+    <string name="pdf_drug_detail_report_title">DRUG DETAIL REPORT</string>
+    <string name="pdf_generated_label">Generated:</string>
+    <string name="pdf_prepared_by_label">PREPARED BY</string>
+    <string name="pdf_prepared_by">Prepared by:</string>
+    <string name="pdf_batch_id">Batch  #%1$d</string>
+    <string name="pdf_status_completed">Completed</string>
+    <string name="pdf_status_in_progress">In Progress</string>
+    <string name="pdf_counted_label">COUNTED</string>
+    <string name="pdf_target_label">TARGET</string>
+    <string name="pdf_total_count_label">TOTAL COUNT</string>
+    <string name="pdf_ndc_label">NDC</string>
+    <string name="pdf_batch_entry">Batch %1$d</string>
+    <string name="pdf_images_captured">%1$d image(s) captured</string>
+    <string name="pdf_footer_stock_count">PillCounter  |  Stock Count Report  |  Developed by Rite Technologies</string>
+    <string name="pdf_footer_drug_detail">PillCounter  |  Drug Detail Report  |  Developed by Rite Technologies</string>
+    <string name="pdf_page">Page %1$d</string>
+    <string name="pdf_open_stock_report">Open Stock Count Report</string>
+    <string name="pdf_open_drug_detail_report">Open Drug Detail Report</string>
 
     <string name="violation_screen_overlay">Screen overlay detected — another app may be intercepting touch input</string>
     <string name="permission_location_rationale">

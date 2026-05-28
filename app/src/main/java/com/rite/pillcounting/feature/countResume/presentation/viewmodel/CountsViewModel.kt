@@ -150,19 +150,14 @@ class CountsViewModel @Inject constructor(
     private fun resumeTransaction(countType: CountType, item: CountItem) {
         viewModelScope.launch {
             preferenceHelper.saveTxnId(item.id)
-            if (!item.isNdcVerified) {
-                _navigationEvent.send(
-                    NavigationEvent.NavigateToScanBarcode(
-                        countType = countType
-                    )
+            // Always resume via DispenseFlowScreen; initializeFromResumedTxn() will
+            // land at PRE_NDC (container scan pending) or COUNTING (both verified).
+            _navigationEvent.send(
+                NavigationEvent.NavigateToDispenseFlow(
+                    countType = countType,
+                    fromResume = true,
                 )
-            } else {
-                _navigationEvent.send(
-                    NavigationEvent.NavigateToPillCount(
-                        countType = countType
-                    )
-                )
-            }
+            )
         }
     }
     /* ------------------------- Fixed Counts Logic ------------------------- */
@@ -178,12 +173,16 @@ class CountsViewModel @Inject constructor(
                         CountItem(
                             id = it.txnId,
                             name = it.drugName ?: "",
+                            ndc = it.ndc,
+                            drugType = it.drugType,
+                            bucketId = it.bucketId,
                             pillCount = it.totalPillCount,
                             target = it.targetCount ?: 0,
                             barcodeImage = it.barcodeImage,
                             date = it.createdAt.toFormattedDate(),
                             isComingFromHL7 = it.isComingFromHL7,
-                            isNdcVerified = it.isNdcVerified
+                            isNdcVerified = it.isNdcVerified,
+                            priority = it.priority
                         )
                     }
                 }
@@ -260,6 +259,9 @@ class CountsViewModel @Inject constructor(
                         CountItem(
                             id = it.txnId,
                             name = it.drugName ?: "",
+                            ndc = it.ndc,
+                            drugType = it.drugType,
+                            bucketId = it.bucketId,
                             pillCount = it.totalPillCount,
                             target = it.targetCount ?: 0,
                             barcodeImage = it.barcodeImage,

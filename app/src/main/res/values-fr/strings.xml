@@ -37,6 +37,7 @@
     <string name="settings_title" translatable="false">SETTINGS</string>
     <string name="setting_barcode_scan_first">Toujours effectuer d\'abord le scan du code-barres</string>
     <string name="setting_ask_to_add_notes">Toujours demander d\'ajouter des notes</string>
+    <string name="type_here">Écrivez ici...</string>
     <string name="setting_save_history_for">Enregistrer l\'historique pendant</string>
 
     <string-array name="history_options">
@@ -226,6 +227,10 @@
     <string name="bucket">Bucket</string>
     <string name="batch">Batch</string>
     <string name="no_last_batch_available">No last batch available</string>
+    <string name="lot_No">Lot Number</string>
+    <string name="expiry_date">Expiry Date</string>
+    <string name="pills">Pills</string>
+    <string name="total_pills">Total Pills</string>
 
     <string name="violation_screen_overlay">Superposition d\'écran détectée — une autre application pourrait intercepter les entrées tactiles</string>
     <string name="permission_location_rationale">L\'accès à la localisation est utilisé uniquement pour identifier votre réseau Wi-Fi afin de découvrir les appareils médicaux HL7. Votre localisation n\'est jamais stockée, transmise ni associée aux données des patients.</string>

@@ -9,7 +9,6 @@ data class TxnWithDetails(
     val txnId: Long,
     val drugName: String?,
     val drugId: Long,
-    val equivalence: String?,
     val ndc: String?,
     val targetCount: Int?,
     val expiry: String?,
@@ -19,14 +18,19 @@ data class TxnWithDetails(
     val barcodeImage: String?,
     val totalPillCount: Int,
     val countType: CountType,
+    val drugType: String?,
     @Relation(
         parentColumn = "txnId",
         entityColumn = "txnId",
         entity = PillCountTxnDetailsEntity::class,
-        projection = ["txnId", "pillCount", "imagePath","type"]
+        projection = ["txnId", "pillCount", "imagePath", "type", "isDeleted"]
     )
     val txnDetails: List<TxnDetailInfo>,
-    val isComingFromHL7 : Boolean
+    val isComingFromHL7 : Boolean,
+    val isSubstitute: Boolean = false,
+    val requestedDrugName: String? = null,
+    val requestedNdc: String? = null,
+    val workflowStep: String? = null,
 )
 
 data class TxnDetailInfo(
@@ -34,4 +38,5 @@ data class TxnDetailInfo(
     val pillCount: Int?,
     val imagePath: String?,
     val type: StepState?,
+    val isDeleted: Boolean = false,
 )

@@ -30,6 +30,9 @@ object URLConstant {
     /** API endpoint for refreshing access and refresh tokens securely. */
     const val REFRESH_TOKEN = "/auth/refresh"
 
+    /** API endpoint for updating terminal settings. The terminal ID is appended to the path. */
+    const val UPDATE_TERMINAL = "/terminals/update/"
+
     /** Common HTTP Content-Type header value for all JSON-based API calls. */
     const val CONTENT_TYPE = "application/json"
 }
