@@ -420,9 +420,10 @@ class DashboardViewModel @Inject constructor(
                         // Check if profile is incomplete
                         val isProfileIncomplete = uiUser?.profile?.isProfileCompleted == false
 
-                        _uiState.update {
-                            it.copy(
-                                userDetail = uiUser,
+                        _uiState.update { current ->
+                            current.copy(
+                                // Keep cached userDetail if the server returned null data.
+                                userDetail = uiUser ?: current.userDetail,
                                 isLoadingUserDetail = false,
                                 userDetailError = null,
                                 navigateToProfile = isProfileIncomplete
@@ -448,9 +449,10 @@ class DashboardViewModel @Inject constructor(
                             )
                         }
                     } else {
+                        // Don't null out userDetail on transient network failures — keep the
+                        // cached value hydrated from Room so the top bar stays populated.
                         _uiState.update {
                             it.copy(
-                                userDetail = null,
                                 isLoadingUserDetail = false,
                                 userDetailError = error.message ?: "An unknown error occurred"
                             )
