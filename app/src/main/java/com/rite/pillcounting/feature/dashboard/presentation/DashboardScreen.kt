@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.dashboard.presentation
+﻿package com.rite.pillcounting.feature.dashboard.presentation
 
 import Screen
 import android.app.Activity
@@ -105,7 +105,12 @@ fun DashboardScreen(
 
     LaunchedEffect(uiState.createdBatchId) {
         uiState.createdBatchId?.let { batchId ->
-            navController.navigate(Screen.InventoryScan.createRoute(batchId = batchId))
+            navController.navigate(
+                Screen.DispenseFlow.createRoute(
+                    scanType = CountType.REGULAR.toString(),
+                    batchId = batchId,
+                )
+            )
             viewModel.clearCreatedBatchId()
         }
     }

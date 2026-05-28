@@ -195,8 +195,8 @@ sealed interface Screen {
     //
     // The optional `batch_id` is used in the stock count (REGULAR) flow to
     // associate the new transaction with the active batch.
-    data object DispenseScan : Screen {
-        private const val ROUTE_PREFIX = "dispense_scan"
+    data object DispenseFlow : Screen {
+        private const val ROUTE_PREFIX = "dispense_flow"
         const val ARG_TYPE = "type"
         const val ARG_FROM_HL7 = "from_hl7"
         const val ARG_FROM_RESUME = "from_resume"

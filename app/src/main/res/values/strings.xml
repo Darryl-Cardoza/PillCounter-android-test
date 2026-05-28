@@ -387,6 +387,7 @@
 
     <string name="verify_rx_details">Verify Rx Details</string>
     <string name="verify_stock_bottle_details">Verify Stock Bottle Details</string>
+    <string name="hazardous_drug_warning">Hazardous Drug</string>
     <string name="form">Form</string>
     <!-- ================== HL7 NOTIFICATIONS ================== -->
     <string name="hl7_notification_device_connected_title">Device Connected</string>
@@ -400,6 +401,12 @@
     <string name="hl7_notification_inventory_title">Inventory Request</string>
     <string name="hl7_notification_inventory_no_drugs">No drugs found. Batch could not be created.</string>
     <string name="hl7_notification_inventory_items_count">%1$d items need stock count</string>
+
+    <!-- ================== GLOVE DETECTION ================== -->
+    <string name="glove_class_gloves" translatable="false">gloves</string>
+    <string name="glove_class_no_gloves" translatable="false">no_gloves</string>
+    <string name="cd_gloves_detected">Gloves detected</string>
+    <string name="cd_no_gloves_detected">No gloves</string>
 
     <!-- ================== PDF EXPORT ================== -->
     <string name="pdf_developer_credit">Developed by Rite Technologies</string>

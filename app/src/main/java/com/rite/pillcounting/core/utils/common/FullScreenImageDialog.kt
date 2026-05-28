@@ -72,7 +72,6 @@ fun FullScreenImageDialog(
                 .fillMaxSize()
                 .pointerInput(Unit) {
                     detectTapGestures(
-                        onTap = { onDismiss() },
                         onDoubleTap = {
                             if (scale > 1f) {
                                 scale = 1f

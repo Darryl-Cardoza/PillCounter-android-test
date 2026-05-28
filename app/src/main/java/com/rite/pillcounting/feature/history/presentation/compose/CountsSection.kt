@@ -23,7 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -66,7 +66,7 @@ fun CountsSection(
     onBatchClick: (Long) -> Unit = {},
     onOptionSelected: (ToggleOption) -> Unit
 ) {
-    var statusFilter by remember {
+    var statusFilter by rememberSaveable(initialShowComplete) {
         mutableStateOf(if (initialShowComplete) StatusFilter.COMPLETED else StatusFilter.ALL)
     }
 

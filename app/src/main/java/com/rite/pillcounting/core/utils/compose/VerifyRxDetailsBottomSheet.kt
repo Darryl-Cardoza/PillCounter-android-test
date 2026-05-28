@@ -18,19 +18,20 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -1136,6 +1137,32 @@ private fun DetailItem(
 }
 
 
+@Composable
+private fun HazardousWarningBanner(modifier: Modifier = Modifier) {
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .background(Color(0xFFFF8F00).copy(alpha = 0.15f))
+            .padding(horizontal = 12.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Icon(
+            imageVector = Icons.Default.Warning,
+            contentDescription = null,
+            tint = Color(0xFFFF8F00),
+            modifier = Modifier.size(18.dp)
+        )
+        Text(
+            text = stringResource(R.string.hazardous_drug_warning),
+            color = Color(0xFFFF8F00),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
 // ──────────────────────────────────────────────────────────────────────────────
 // NDC / Stock-bottle verification sheet
 //
@@ -1163,6 +1190,7 @@ fun VerifyNdcDetailsInlinePanel(
     onProceed: () -> Unit,
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 20.dp,
+    isHazardous: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
     val isTablet = configuration.smallestScreenWidthDp >= 600
@@ -1177,6 +1205,7 @@ fun VerifyNdcDetailsInlinePanel(
                 drugName = drugName,
                 bucket = bucket,
                 ndcNumber = ndcNumber,
+                isHazardous = isHazardous,
                 onCancel = onCancel,
                 onProceed = onProceed,
             )
@@ -1186,6 +1215,7 @@ fun VerifyNdcDetailsInlinePanel(
                 bucket = bucket,
                 ndcNumber = ndcNumber,
                 isLandscape = true,
+                isHazardous = isHazardous,
                 onCancel = onCancel,
                 onProceed = onProceed,
             )
@@ -1209,6 +1239,7 @@ fun VerifyNdcDetailsSheet(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = false,
+    isHazardous: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -1219,6 +1250,7 @@ fun VerifyNdcDetailsSheet(
             drugName = drugName,
             bucket = bucket,
             ndcNumber = ndcNumber,
+            isHazardous = isHazardous,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1227,6 +1259,7 @@ fun VerifyNdcDetailsSheet(
             drugName = drugName,
             bucket = bucket,
             ndcNumber = ndcNumber,
+            isHazardous = isHazardous,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1235,6 +1268,7 @@ fun VerifyNdcDetailsSheet(
             drugName = drugName,
             bucket = bucket,
             ndcNumber = ndcNumber,
+            isHazardous = isHazardous,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1243,6 +1277,7 @@ fun VerifyNdcDetailsSheet(
             drugName = drugName,
             bucket = bucket,
             ndcNumber = ndcNumber,
+            isHazardous = isHazardous,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1259,6 +1294,7 @@ private fun VerifyNdcDetailsBottomSheet(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    isHazardous: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -1280,6 +1316,7 @@ private fun VerifyNdcDetailsBottomSheet(
             bucket = bucket,
             ndcNumber = ndcNumber,
             isLandscape = false,
+            isHazardous = isHazardous,
             onCancel = onCancel,
             onProceed = onProceed,
         )
@@ -1294,6 +1331,7 @@ private fun VerifyNdcDetailsSideDrawer(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    isHazardous: Boolean = false,
 ) {
     val config = LocalConfiguration.current
     val drawerWidth = (config.screenWidthDp.dp * 0.42f).coerceIn(260.dp, 380.dp)
@@ -1309,6 +1347,7 @@ private fun VerifyNdcDetailsSideDrawer(
             bucket = bucket,
             ndcNumber = ndcNumber,
             isLandscape = true,
+            isHazardous = isHazardous,
             onCancel = animatedCancel,
             onProceed = onProceed,
         )
@@ -1324,6 +1363,7 @@ private fun VerifyNdcDetailsTabletBottomSheet(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    isHazardous: Boolean = false,
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -1345,6 +1385,7 @@ private fun VerifyNdcDetailsTabletBottomSheet(
             drugName = drugName,
             bucket = bucket,
             ndcNumber = ndcNumber,
+            isHazardous = isHazardous,
             onCancel = onCancel,
             onProceed = onProceed,
         )
@@ -1359,6 +1400,7 @@ private fun VerifyNdcDetailsTabletSideDrawer(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    isHazardous: Boolean = false,
 ) {
     val config = LocalConfiguration.current
     val drawerWidth = (config.screenWidthDp.dp * 0.4f).coerceIn(360.dp, 520.dp)
@@ -1373,6 +1415,7 @@ private fun VerifyNdcDetailsTabletSideDrawer(
                 drugName = drugName,
                 bucket = bucket,
                 ndcNumber = ndcNumber,
+                isHazardous = isHazardous,
                 onCancel = animatedCancel,
                 onProceed = onProceed,
             )
@@ -1392,6 +1435,7 @@ private fun NdcSheetBody(
     isLandscape: Boolean,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
+    isHazardous: Boolean = false,
 ) {
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
     // Landscape gets slightly bigger outer padding so the panel doesn't feel
@@ -1426,6 +1470,10 @@ private fun NdcSheetBody(
                     if (isLandscape) Modifier else Modifier.verticalScroll(rememberScrollState())
                 )
         ) {
+            if (isHazardous) {
+                HazardousWarningBanner()
+                Spacer(modifier = Modifier.height(if (isLandscape) 12.dp else 10.dp))
+            }
             NdcDetailsGrid(
                 drugName = drugName,
                 bucket = bucket,
@@ -1525,6 +1573,7 @@ private fun NdcTabletHorizontalBody(
     ndcNumber: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
+    isHazardous: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -1550,6 +1599,11 @@ private fun NdcTabletHorizontalBody(
         }
 
         Spacer(modifier = Modifier.height(20.dp))
+
+        if (isHazardous) {
+            HazardousWarningBanner()
+            Spacer(modifier = Modifier.height(16.dp))
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1584,6 +1638,7 @@ private fun NdcTabletVerticalBody(
     ndcNumber: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
+    isHazardous: Boolean = false,
 ) {
     Column(
         modifier = Modifier
@@ -1611,6 +1666,10 @@ private fun NdcTabletVerticalBody(
             BucketTile(bucket = bucket)
 
             Spacer(modifier = Modifier.height(8.dp))
+
+            if (isHazardous) {
+                HazardousWarningBanner()
+            }
 
             CenteredDetail(
                 label = stringResource(R.string.ndc_number),
