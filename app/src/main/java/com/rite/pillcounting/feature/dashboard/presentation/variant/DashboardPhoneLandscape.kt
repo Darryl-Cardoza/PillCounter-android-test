@@ -79,6 +79,12 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                 }
             }
 
+            LaunchedEffect(uiState.activeTab) {
+                if (pagerState.currentPage != uiState.activeTab.ordinal) {
+                    pagerState.animateScrollToPage(uiState.activeTab.ordinal)
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .weight(1f)

@@ -124,6 +124,12 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     }
                 }
 
+                LaunchedEffect(uiState.activeTab) {
+                    if (pagerState.currentPage != uiState.activeTab.ordinal) {
+                        pagerState.animateScrollToPage(uiState.activeTab.ordinal)
+                    }
+                }
+
                 ScaffoldTabStrip(
                     activeTab = DashboardTab.entries[pagerState.currentPage],
                     onSelect = { tab ->
