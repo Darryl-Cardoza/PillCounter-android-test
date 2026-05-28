@@ -162,7 +162,7 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(10.dp))
-            .background(Color(0xFFF7F7F7))
+            .background(Color.White)
             .clickable(onClick = onTap)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

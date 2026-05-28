@@ -95,7 +95,7 @@ fun BatchStockCountTabletLandscape(
                 .align(Alignment.TopCenter)
                 .fillMaxHeight()
                 .fillMaxWidth()
-                .background(androidx.compose.ui.graphics.Color.White),
+                .background(androidx.compose.ui.graphics.Color(0xFFF2F2F2)),
         ) {
             Column(
                 modifier = Modifier

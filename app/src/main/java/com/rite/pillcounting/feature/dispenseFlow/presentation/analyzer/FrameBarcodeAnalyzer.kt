@@ -192,9 +192,18 @@ class FrameBarcodeAnalyzer(
 
         scanner.process(input)
             .addOnSuccessListener { barcodes ->
-                val barcode = barcodes.firstOrNull()
+                // Prefer the first GTIN-shaped barcode in the frame. Many drug
+                // labels include a 2D DataMatrix lot/serial alongside the 1D
+                // product barcode (e.g. Strattera's "YL006IDAM02"); MLKit
+                // returns both and `firstOrNull()` flips between them frame to
+                // frame, which defeats the focus-change debouncer downstream
+                // (alternating A→B→A reads each look "new"). Filtering here
+                // means we only ever surface the product barcode.
+                val barcode = barcodes.firstOrNull { it.rawValue?.isGtinLike() == true }
+                    ?: barcodes.firstOrNull()
                 val rawValue = barcode?.rawValue
-                logger.d("INV_SCAN MLKit success token=$token barcodes=${barcodes.size} first='$rawValue' paused=${isPaused.get()}")
+                val isProductBarcode = rawValue?.isGtinLike() == true
+                logger.d("INV_SCAN MLKit success token=$token barcodes=${barcodes.size} first='$rawValue' gtinLike=$isProductBarcode paused=${isPaused.get()}")
 
                 // Decide whether THIS frame should fire a callback. There are two
                 // policies depending on the analyzer's mode:
@@ -211,6 +220,13 @@ class FrameBarcodeAnalyzer(
                 //    move it aside, scan the next" UX.
                 val shouldFire: Boolean = when {
                     barcode == null || isPaused.get() -> false
+                    // In focus-change (inventory) mode, ignore non-product
+                    // barcodes outright so the lot/serial DataMatrix never
+                    // reaches the VM and never spams "invalid label" toasts.
+                    enableFocusChangeDebounce && !isProductBarcode -> {
+                        logger.d("INV_SCAN focus-change: non-GTIN '$rawValue' filtered")
+                        false
+                    }
                     !enableFocusChangeDebounce -> true
                     rawValue != null && rawValue != lastFiredValue -> {
                         // Different value than last fire — fire immediately. This
@@ -235,7 +251,10 @@ class FrameBarcodeAnalyzer(
                 // Track empty-streak for focus-change mode. Any non-null barcode
                 // resets the streak (label visible); a null barcode increments.
                 if (enableFocusChangeDebounce) {
-                    if (barcode == null) {
+                    // Frames where the only visible barcode is a non-product
+                    // (lot/serial) one count as "empty" for the focus-change
+                    // debouncer — they mean the product label isn't in view.
+                    if (barcode == null || !isProductBarcode) {
                         emptyStreak++
                     } else {
                         emptyStreak = 0
@@ -283,4 +302,16 @@ class FrameBarcodeAnalyzer(
                 watchdogJob?.cancel()
             }
     }
+}
+
+/**
+ * Heuristic: does this barcode value plausibly carry a GTIN/NDC? Drug product
+ * barcodes are all-digit and 12–14 chars (UPC-A is 12, EAN-13 is 13, GTIN-14
+ * is 14). GS1 DataMatrix payloads start with the "01" AI followed by a 14-digit
+ * GTIN, so they pass too. Lot/serial codes like "YL006IDAM02" mix letters and
+ * digits and never qualify.
+ */
+private fun String.isGtinLike(): Boolean {
+    if (startsWith("01") && length >= 16 && substring(2, 16).all { it.isDigit() }) return true
+    return length in 12..14 && all { it.isDigit() }
 }

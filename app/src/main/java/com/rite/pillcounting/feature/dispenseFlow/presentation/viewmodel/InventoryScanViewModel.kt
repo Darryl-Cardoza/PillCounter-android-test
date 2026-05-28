@@ -94,6 +94,15 @@ class InventoryScanViewModel @Inject constructor(
     private val _activeNdc = MutableStateFlow<ActiveNdc?>(null)
 
     /**
+     * Timestamp of the last increment for the currently-active NDC. Used to
+     * reject same-NDC rescans that arrive faster than [SAME_NDC_COOLDOWN_MS] —
+     * camera jitter (label drifting in/out of focus, lot-code 2D flickering)
+     * can otherwise trigger many +1 events for one physical bottle. Reset
+     * whenever the active NDC changes or is cleared.
+     */
+    private var lastSameNdcIncrementAtMs: Long = 0L
+
+    /**
      * Internal flag retained for VM-side bookkeeping. No longer exposed —
      * the screen now gates the analyzer on `activeNdc` directly which is
      * more deterministic than mirroring a separate flag through a
@@ -301,6 +310,15 @@ class InventoryScanViewModel @Inject constructor(
                 // (or a switch back to an NDC that was previously committed): seed
                 // from the existing committed bottleQty, defaulting to 1.
                 val sameAsActive = currentActive != null && currentActive.ndc == drug.ndc
+                if (sameAsActive) {
+                    val now = System.currentTimeMillis()
+                    val sinceLast = now - lastSameNdcIncrementAtMs
+                    if (sinceLast < SAME_NDC_COOLDOWN_MS) {
+                        logger.d("INV_SCAN same-NDC rescan IGNORED (cooldown sinceLast=${sinceLast}ms)")
+                        _scannerPaused.value = false
+                        return@launch
+                    }
+                }
                 val startBottles = when {
                     sameAsActive -> currentActive!!.bottles + 1
                     existing != null -> (existing.bottleQty ?: 0).coerceAtLeast(1) + 1
@@ -318,6 +336,7 @@ class InventoryScanViewModel @Inject constructor(
                     isHazardous = drug.isHazardous,
                 )
                 _activeNdc.value = newActive
+                lastSameNdcIncrementAtMs = System.currentTimeMillis()
                 logger.d("INV_SCAN activeNdc SET ndc=${drug.ndc} drug=${drug.drugName} bottles=$startBottles hazardous=${drug.isHazardous} batchId=${_resolvedBatchId.value}")
 
                 // Persist immediately so the batch is durable from the first scan —
@@ -383,6 +402,7 @@ class InventoryScanViewModel @Inject constructor(
                     bottles = (txn.bottleQty ?: 0).coerceAtLeast(1),
                     isHazardous = drug.isHazardous,
                 )
+                lastSameNdcIncrementAtMs = System.currentTimeMillis()
             } catch (e: Exception) {
                 logger.e("INV_SCAN onRecentRowTapped failed", e)
             }
@@ -394,6 +414,7 @@ class InventoryScanViewModel @Inject constructor(
     fun onClear() {
         logger.d("INV_SCAN onClear (active=${_activeNdc.value?.ndc})")
         _activeNdc.value = null
+        lastSameNdcIncrementAtMs = 0L
         _scannerPaused.value = false
     }
 
@@ -517,6 +538,15 @@ data class LocalizedError(
     @androidx.annotation.StringRes val messageResId: Int,
     val formatArg: Any? = null,
 )
+
+/**
+ * Minimum interval between two same-NDC rescans counting as a real "+1 bottle"
+ * event. Anything faster is treated as the camera re-firing on a label still in
+ * view (jitter, lot-code flicker, autofocus bounce) and ignored. 1500ms reflects
+ * the human pace of swapping a bottle aside and bringing the next under the
+ * camera; tighten if power users complain it's sluggish.
+ */
+private const val SAME_NDC_COOLDOWN_MS = 1500L
 
 /* ─────────────────────────  Helpers  ───────────────────────── */
 
