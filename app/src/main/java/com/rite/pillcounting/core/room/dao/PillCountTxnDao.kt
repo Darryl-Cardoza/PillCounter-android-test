@@ -597,6 +597,22 @@ interface PillCountTxnDao {
     ): PillCountTxnEntity?
 
     /**
+     * Latest sealed txn for a given NDC in a batch — used when the user taps a
+     * recent-counts row to re-activate that NDC. Falls back to the most-recently
+     * updated row when multiple (lot, expiry) variants exist for the same drug.
+     */
+    @Query("""
+        SELECT txn.* FROM pill_count_txn AS txn
+        LEFT JOIN drug_master AS dm ON txn.drugId = dm.drugId
+        WHERE txn.batchId = :batchId
+          AND dm.ndc = :ndc
+          AND txn.isDeleted = 0
+        ORDER BY txn.updatedAt DESC
+        LIMIT 1
+    """)
+    suspend fun findLatestTxnByNdcInBatch(batchId: Long, ndc: String): PillCountTxnEntity?
+
+    /**
      * PMS validation query: finds a pre-loaded PMS transaction in the batch for the given drug.
      *
      * Null-tolerant matching rules:
