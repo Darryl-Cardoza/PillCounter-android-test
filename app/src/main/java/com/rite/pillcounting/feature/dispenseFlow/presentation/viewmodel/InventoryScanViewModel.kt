@@ -416,6 +416,13 @@ class InventoryScanViewModel @Inject constructor(
         }
     }
 
+    /**
+     * ADD is now purely a visual transition: txns are written on every scan
+     * and on every +/- tap (see [persistActive]). ADD just closes the active
+     * card so the panel falls back to the Summary view. We still call
+     * persistActive as a belt-and-braces flush in case a +/- tap landed
+     * milliseconds before ADD and its coroutine hasn't completed.
+     */
     fun onAdd() {
         val active = _activeNdc.value
         logger.d("INV_SCAN onAdd active=${active?.ndc} bottles=${active?.bottles}")
