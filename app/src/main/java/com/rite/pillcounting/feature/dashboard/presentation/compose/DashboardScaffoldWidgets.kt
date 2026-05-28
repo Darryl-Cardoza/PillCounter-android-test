@@ -370,7 +370,7 @@ internal fun ScaffoldKpiCard(
                     .align(Alignment.TopEnd)
                     .size(16.dp),
             )
-            Column(modifier = Modifier.align(Alignment.CenterStart)) {
+            Column(modifier = Modifier.align(Alignment.BottomStart)) {
                 Text(
                     text = count.toString(),
                     fontSize = 28.sp,

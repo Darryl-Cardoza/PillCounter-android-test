@@ -12,7 +12,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -155,6 +158,13 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                         modifier = Modifier
                             .weight(0.22f)
                             .fillMaxHeight(),
+                    )
+
+                    VerticalDivider(
+                        modifier = Modifier
+                            .fillMaxHeight()
+                            .width(1.dp),
+                        color = Color(0x14000000),
                     )
 
                     // Column 3 — paged Today's Queue / Recent Activity list.
