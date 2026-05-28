@@ -74,7 +74,11 @@ import java.util.Locale
 
 internal fun buildTerminalUserLine(uiState: DashboardUiState): String {
     val profile = uiState.userDetail?.profile
-    val terminal = profile?.let { null }
+    val activeTerminalName = uiState.userDetail?.terminals
+        ?.firstOrNull { it.isActive == true }
+        ?.terminalName
+        ?.takeIf { it.isNotBlank() }
+    val terminal = activeTerminalName?.let { "Terminal $it" }
     val user = listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }
