@@ -136,33 +136,40 @@ fun DashboardScreen(
     val scope = rememberCoroutineScope()
 
     // ── Build the params bag shared by every variant ──
-    val params = DashboardVariantParams(
-        uiState = uiState,
-        isPmsConnected = connected,
-        isHl7Enabled = viewModel.isHl7Enabled(),
-        navController = navController,
-        onKpiFilterTapped = viewModel::onKpiFilterTapped,
-        onTabSelected = viewModel::onTabSelected,
-        onDispenseQuickAction = {
+    // Lambdas are remembered so [DashboardVariantParams] is referentially stable across
+    // recompositions — variants and their LazyColumn rows can skip re-render when only
+    // `uiState` / `isPmsConnected` change.
+    val onKpiFilterTapped = remember(viewModel) { viewModel::onKpiFilterTapped }
+    val onTabSelected = remember(viewModel) { viewModel::onTabSelected }
+    val onDispenseQuickAction = remember(viewModel, navController) {
+        {
             viewModel.saveTxnId()
             navController.navigate(
                 Screen.DispenseFlow.createRoute(scanType = CountType.FIXED.toString())
             )
-        },
-        onInventoryQuickAction = {
+        }
+    }
+    val onInventoryQuickAction = remember(viewModel) {
+        {
             viewModel.saveTxnId()
             showBucketSelectDialog = true
-        },
-        onRecentDispenseClick = { txnId ->
+        }
+    }
+    val onRecentDispenseClick = remember(viewModel, navController) {
+        { txnId: Long ->
             viewModel.selectCurrentTransaction(txnId)
             navController.navigate(Screen.HistoryDetail.route)
-        },
-        onRecentBatchClick = { batchId ->
+            Unit
+        }
+    }
+    val onRecentBatchClick = remember(navController) {
+        { batchId: Long ->
             navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
-        },
-        onQueueDispenseClick = { txnId ->
-            // Today's Queue holds partial (in-progress) dispense txns — tapping resumes the
-            // DispenseFlow so the user can continue counting.
+            Unit
+        }
+    }
+    val onQueueDispenseClick = remember(viewModel, navController) {
+        { txnId: Long ->
             viewModel.selectCurrentTransaction(txnId)
             navController.navigate(
                 Screen.DispenseFlow.createRoute(
@@ -170,11 +177,29 @@ fun DashboardScreen(
                     fromResume = true,
                 )
             )
-        },
-        onQueueInventoryClick = { batchId ->
-            // In-progress batch rows resume the new InventoryScan flow.
+            Unit
+        }
+    }
+    val onQueueInventoryClick = remember(navController) {
+        { batchId: Long ->
             navController.navigate(Screen.InventoryScan.createRoute(batchId))
-        },
+            Unit
+        }
+    }
+
+    val params = DashboardVariantParams(
+        uiState = uiState,
+        isPmsConnected = connected,
+        isHl7Enabled = viewModel.isHl7Enabled(),
+        navController = navController,
+        onKpiFilterTapped = onKpiFilterTapped,
+        onTabSelected = onTabSelected,
+        onDispenseQuickAction = onDispenseQuickAction,
+        onInventoryQuickAction = onInventoryQuickAction,
+        onRecentDispenseClick = onRecentDispenseClick,
+        onRecentBatchClick = onRecentBatchClick,
+        onQueueDispenseClick = onQueueDispenseClick,
+        onQueueInventoryClick = onQueueInventoryClick,
     )
 
     if (showBucketSelectDialog) {

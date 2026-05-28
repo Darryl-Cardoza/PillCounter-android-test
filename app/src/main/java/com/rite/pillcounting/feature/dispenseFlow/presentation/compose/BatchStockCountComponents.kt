@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -143,14 +143,17 @@ internal fun RecentCountsList(
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(modifier = modifier) {
-        items(rows.size) { index ->
+        itemsIndexed(
+            items = rows,
+            key = { _, row -> row.ndc },
+        ) { index, row ->
             if (index > 0) {
                 HorizontalDivider(
                     color = Color(0xFFEEEEEE),
                     thickness = 1.dp,
                 )
             }
-            RecentCountRow(row = rows[index])
+            RecentCountRow(row = row)
         }
     }
 }

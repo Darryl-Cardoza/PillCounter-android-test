@@ -538,6 +538,7 @@ private fun ScaffoldDispenseRow(item: QueueItem.Dispense, onClick: ((Long) -> Un
                         painter = rememberAsyncImagePainter(
                             ImageRequest.Builder(LocalContext.current)
                                 .data(File(path))
+                                .size(216, 168) // 3x the 72x56dp display box; Coil downsamples on decode
                                 .placeholder(R.drawable.prescription_icon)
                                 .error(R.drawable.prescription_icon)
                                 .build()

@@ -111,6 +111,7 @@ fun DrugCountRow(
                             painter = rememberAsyncImagePainter(
                                 ImageRequest.Builder(LocalContext.current)
                                     .data(File(data.barcodeImage ?: ""))
+                                    .size(240, 192) // 3x the 80x64dp display box; Coil downsamples on decode
                                     .placeholder(R.drawable.prescription_icon)
                                     .error(R.drawable.prescription_icon)
                                     .build()

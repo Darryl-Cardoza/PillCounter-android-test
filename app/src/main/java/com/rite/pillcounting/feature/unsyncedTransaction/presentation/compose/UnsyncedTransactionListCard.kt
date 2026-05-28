@@ -82,6 +82,7 @@ fun UnsyncedTransactionListCard(
                     rememberAsyncImagePainter(
                         ImageRequest.Builder(LocalContext.current)
                             .data(file)
+                            .size(210, 168) // 3x the 70x56dp display box; Coil downsamples on decode
                             .placeholder(R.drawable.bottle)
                             .error(R.drawable.bottle)
                             .build()

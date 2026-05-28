@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.dashboard.presentation.variant
 
+import androidx.compose.runtime.Immutable
 import androidx.navigation.NavController
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardUiState
@@ -23,6 +24,7 @@ import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
  *    dispatcher wires these to the existing Fixed / Regular entry flows (including the
  *    bucket-select + new/resume dialogs for inventory).
  */
+@Immutable
 data class DashboardVariantParams(
     val uiState: DashboardUiState,
     val isPmsConnected: Boolean,

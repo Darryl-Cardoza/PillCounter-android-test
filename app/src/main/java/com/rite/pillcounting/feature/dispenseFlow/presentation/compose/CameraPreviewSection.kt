@@ -90,6 +90,19 @@ fun CameraPreviewSection(
         CameraHelper(context, lifecycleOwner, ContextCompat.getMainExecutor(context))
     }
 
+    // Mask the brief black window between bindToLifecycle() and the first real
+    // surface frame. PreviewView exposes a STREAMING signal via previewStreamState;
+    // we flip this flag the moment that fires so the placeholder fades out exactly
+    // when live pixels are ready.
+    var isPreviewStreaming by remember { mutableStateOf(false) }
+    DisposableEffect(previewView) {
+        val observer = androidx.lifecycle.Observer<PreviewView.StreamState> { state ->
+            isPreviewStreaming = state == PreviewView.StreamState.STREAMING
+        }
+        previewView.previewStreamState.observe(lifecycleOwner, observer)
+        onDispose { previewView.previewStreamState.removeObserver(observer) }
+    }
+
     val zoomRatio = remember { mutableFloatStateOf(1f) }
     val minZoom = 1f
     val maxZoom = 2f
@@ -232,6 +245,28 @@ fun CameraPreviewSection(
                         }
                 )
 
+                // ── PREVIEW WARM-UP PLACEHOLDER ───────────────────────────────
+                // Covers the black gap between bindToLifecycle() and the first
+                // live frame. Fades out the moment PreviewView reports STREAMING.
+                androidx.compose.animation.AnimatedVisibility(
+                    visible = !isPreviewStreaming,
+                    enter = fadeIn(),
+                    exit = fadeOut(),
+                    modifier = Modifier.fillMaxSize(),
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF1F1F1F)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            color = Color.White,
+                            strokeWidth = 3.dp,
+                        )
+                    }
+                }
+
                 // ── COUNT POP ANIMATION ───────────────────────────────────────
                 AnimatedVisibility(
                     visible = showPop,
@@ -304,6 +339,14 @@ fun CameraPreviewSection(
                     fun imgX(px: Float) = px * scale + offsetX
                     fun imgY(py: Float) = py * scale + offsetY
 
+                    // Hoist dp→px conversions once per frame (was per-tray/per-pill).
+                    val trayStrokePx = 3.dp.toPx()
+                    val cornerLenPx = 20.dp.toPx()
+                    val cornerStrokePx = 4.dp.toPx()
+                    val pillOuterRadiusPx = 7.dp.toPx()
+                    val pillStrokePx = 2.dp.toPx()
+                    val gloveStrokePx = 3.dp.toPx()
+
                     // ─────────────────────────────────────────────────────────
                     // 1.  TRAY BOUNDING BOXES
                     //     trayDetection.rect values are in original image pixels
@@ -335,33 +378,24 @@ fun CameraPreviewSection(
                             color = Color(0xFF00C853),
                             topLeft = Offset(sLeft, sTop),
                             size = Size(sWidth, sHeight),
-                            style = Stroke(width = 3.dp.toPx())
+                            style = Stroke(width = trayStrokePx)
                         )
 
-                        // White corner accent marks for clarity
-                        val cLen = 20.dp.toPx()
-                        val cStroke = 4.dp.toPx()
-                        listOf(
-                            // top-left
-                            Offset(sLeft, sTop) to Offset(sLeft + cLen, sTop),
-                            Offset(sLeft, sTop) to Offset(sLeft, sTop + cLen),
-                            // top-right
-                            Offset(sRight, sTop) to Offset(sRight - cLen, sTop),
-                            Offset(sRight, sTop) to Offset(sRight, sTop + cLen),
-                            // bottom-left
-                            Offset(sLeft, sBottom) to Offset(sLeft + cLen, sBottom),
-                            Offset(sLeft, sBottom) to Offset(sLeft, sBottom - cLen),
-                            // bottom-right
-                            Offset(sRight, sBottom) to Offset(sRight - cLen, sBottom),
-                            Offset(sRight, sBottom) to Offset(sRight, sBottom - cLen)
-                        ).forEach { (start, end) ->
-                            drawLine(
-                                color = Color.White,
-                                start = start,
-                                end = end,
-                                strokeWidth = cStroke
-                            )
-                        }
+                        // White corner accent marks for clarity. Inlined as 8 drawLine
+                        // calls (was a per-frame listOf-of-pairs allocation per tray).
+                        val white = Color.White
+                        // top-left
+                        drawLine(white, Offset(sLeft, sTop), Offset(sLeft + cornerLenPx, sTop), strokeWidth = cornerStrokePx)
+                        drawLine(white, Offset(sLeft, sTop), Offset(sLeft, sTop + cornerLenPx), strokeWidth = cornerStrokePx)
+                        // top-right
+                        drawLine(white, Offset(sRight, sTop), Offset(sRight - cornerLenPx, sTop), strokeWidth = cornerStrokePx)
+                        drawLine(white, Offset(sRight, sTop), Offset(sRight, sTop + cornerLenPx), strokeWidth = cornerStrokePx)
+                        // bottom-left
+                        drawLine(white, Offset(sLeft, sBottom), Offset(sLeft + cornerLenPx, sBottom), strokeWidth = cornerStrokePx)
+                        drawLine(white, Offset(sLeft, sBottom), Offset(sLeft, sBottom - cornerLenPx), strokeWidth = cornerStrokePx)
+                        // bottom-right
+                        drawLine(white, Offset(sRight, sBottom), Offset(sRight - cornerLenPx, sBottom), strokeWidth = cornerStrokePx)
+                        drawLine(white, Offset(sRight, sBottom), Offset(sRight, sBottom - cornerLenPx), strokeWidth = cornerStrokePx)
                     }
 
                     // ─────────────────────────────────────────────────────────
@@ -371,37 +405,35 @@ fun CameraPreviewSection(
                     //     Multiply by scaledW/H (not actualFrameW/H) then shift
                     //     by offsetX/Y — same transform as the tray boxes above.
                     // ─────────────────────────────────────────────────────────
-                    val mapped = pills.map { pill ->
-                        val px = pill.x * scaledW + offsetX
-                        val py = pill.y * scaledH + offsetY
-                        pill to Offset(px, py)
-                    }
+                    // Propagate the same filtered list to the ViewModel — behavior
+                    // unchanged from when this used `mapped.map { it.first }`, just
+                    // without the per-frame Pair list allocation.
+                    viewModel.updateFilteredPills(pills)
+                    onFilteredCountChanged(pills.size)
 
-                    // Propagate only the on-screen pills back to ViewModel
-                    viewModel.updateFilteredPills(mapped.map { it.first })
-                    onFilteredCountChanged(mapped.size)
-
+                    val pillShadow = Color.Black.copy(alpha = 0.6f)
+                    val lastIdx = pills.lastIndex
                     drawIntoCanvas {
-                        mapped.forEachIndexed { i, (_, pos) ->
+                        for (i in pills.indices) {
+                            val pill = pills[i]
+                            val px = pill.x * scaledW + offsetX
+                            val py = pill.y * scaledH + offsetY
                             // Discard dots outside the visible crop area
-                            if (pos.x !in 0f..previewW || pos.y !in 0f..previewH) return@forEachIndexed
+                            if (px !in 0f..previewW || py !in 0f..previewH) continue
 
-                            val isLast = i == mapped.lastIndex
-                            val outerRadius = 7.dp.toPx()
-                            val strokeWidth = 2.dp.toPx()
-
+                            val pos = Offset(px, py)
                             // Dark shadow fill for contrast
                             drawCircle(
-                                color = Color.Black.copy(alpha = 0.6f),
-                                radius = outerRadius,
+                                color = pillShadow,
+                                radius = pillOuterRadiusPx,
                                 center = pos
                             )
                             // Coloured ring: yellow = newest detection, white = rest
                             drawCircle(
-                                color = if (isLast) Color.Yellow else Color.White,
-                                radius = outerRadius,
+                                color = if (i == lastIdx) Color.Yellow else Color.White,
+                                radius = pillOuterRadiusPx,
                                 center = pos,
-                                style = Stroke(width = strokeWidth)
+                                style = Stroke(width = pillStrokePx)
                             )
                         }
                     }
@@ -442,7 +474,7 @@ fun CameraPreviewSection(
                                 color = boxColor,
                                 topLeft = Offset(sLeft, sTop),
                                 size = Size(sWidth, sHeight),
-                                style = Stroke(width = 3.dp.toPx())
+                                style = Stroke(width = gloveStrokePx)
                             )
 
                             // Label: "gloves 87%"  /  "no_gloves 72%"

@@ -23,6 +23,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -71,12 +72,16 @@ fun CountsSection(
     }
 
     // ── Dispensed (FIXED) breakdowns ──────────────────────────────────────────
-    val dispensedCounts = counts.filter { it.countType == CountType.FIXED }
-    val completedDispensed = dispensedCounts.filter {
-        it.status == CountStatus.COMPLETED || it.status == CountStatus.FORCE_COMPLETED
+    val dispensedCounts = remember(counts) { counts.filter { it.countType == CountType.FIXED } }
+    val completedDispensed = remember(dispensedCounts) {
+        dispensedCounts.filter {
+            it.status == CountStatus.COMPLETED || it.status == CountStatus.FORCE_COMPLETED
+        }
     }
-    val pendingDispensed = dispensedCounts.filter {
-        it.status != CountStatus.COMPLETED && it.status != CountStatus.FORCE_COMPLETED
+    val pendingDispensed = remember(dispensedCounts) {
+        dispensedCounts.filter {
+            it.status != CountStatus.COMPLETED && it.status != CountStatus.FORCE_COMPLETED
+        }
     }
     val filteredDispensed = when (statusFilter) {
         StatusFilter.ALL -> dispensedCounts
@@ -85,8 +90,8 @@ fun CountsSection(
     }
 
     // ── Stock Count (batch) breakdowns ────────────────────────────────────────
-    val completedBatches = batches.filter { it.status == BatchStatus.COMPLETED }
-    val pendingBatches = batches.filter { it.status == BatchStatus.INPROGRESS }
+    val completedBatches = remember(batches) { batches.filter { it.status == BatchStatus.COMPLETED } }
+    val pendingBatches = remember(batches) { batches.filter { it.status == BatchStatus.INPROGRESS } }
     val filteredBatches = when (statusFilter) {
         StatusFilter.ALL -> batches
         StatusFilter.COMPLETED -> completedBatches
@@ -207,7 +212,7 @@ fun CountsSection(
                 if (isSearchActive) {
                     when (selectedOption) {
                         ToggleOption.DISPENSED -> {
-                            items(dispensedCounts) { rowData ->
+                            items(dispensedCounts, key = { it.txnId }) { rowData ->
                                 DrugCountRow(
                                     data = DrugCountRowData(
                                         barcodeImage = rowData.barcodeImage,
@@ -228,7 +233,7 @@ fun CountsSection(
                             }
                         }
                         else -> {
-                            items(batches) { batch ->
+                            items(batches, key = { it.batchId }) { batch ->
                                 BatchHistoryRow(
                                     title = batch.batchId.toString(),
                                     dateTime = formatDateToUSFormat(
@@ -246,7 +251,7 @@ fun CountsSection(
                 } else {
                     when (selectedOption) {
                         ToggleOption.DISPENSED -> {
-                            items(filteredDispensed) { rowData ->
+                            items(filteredDispensed, key = { it.txnId }) { rowData ->
                                 DrugCountRow(
                                     data = DrugCountRowData(
                                         barcodeImage = rowData.barcodeImage,
@@ -268,7 +273,7 @@ fun CountsSection(
                         }
 
                         else -> {
-                            items(filteredBatches) { batch ->
+                            items(filteredBatches, key = { it.batchId }) { batch ->
                                 BatchHistoryRow(
                                     title = batch.batchId.toString(),
                                     dateTime = formatDateToUSFormat(
