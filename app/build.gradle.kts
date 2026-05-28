@@ -6,6 +6,7 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+    id("org.jetbrains.kotlin.android")
     id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
     id("org.jetbrains.kotlin.plugin.serialization")
@@ -20,12 +21,12 @@ val keystoreProps = Properties().also { props ->
 
 android {
     namespace = "com.rite.pillcounting"
-    compileSdk = 37
+    compileSdk = 36
 
     defaultConfig {
         applicationId = "com.rite.pillcounting"
         minSdk = 29
-        targetSdk = 37
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
 
@@ -49,6 +50,11 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
         }
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     externalNativeBuild {
@@ -112,16 +118,15 @@ android {
     }
 }
 
+kotlin {
+    jvmToolchain(17)
+}
+
 room {
     schemaDirectory("$projectDir/schemas")
 }
 
-kotlin {
-    jvmToolchain(17)  // Locks both Java and Kotlin to JVM 21 — no mismatch possible
-}
-
 ksp {
-    useKsp2 = true
     arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
 }
 

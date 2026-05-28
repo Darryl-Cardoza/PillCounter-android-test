@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Base64
 import android.util.Log
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsImageKeystoreUtil
-import com.rite.pillcounting.core.hl7.imageWebService.TlsImageKeystoreUtil
 import com.rite.pillcounting.core.security.ImageCrypto
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject

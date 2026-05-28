@@ -17,29 +17,68 @@
 ############################################
 # KOTLIN
 ############################################
-# Kotlin stdlib does NOT need keep rules
-# Metadata is enough for reflection / Room / Moshi
 
-# Firebase ComponentRuntime.discoverComponents() has a hardcoded string comparison
-# "kotlinx.coroutines.CoroutineDispatcher" for dedup. R8 renames this to a short
-# name (e.g. jk1), breaking the check and causing DependencyCycleException on launch.
--keep class kotlinx.coroutines.** { *; }
+# Fix Firebase DependencyCycleException
+# Firebase checks CoroutineDispatcher class names internally
 -keepnames class kotlinx.coroutines.**
 
 
 ############################################
 # JETPACK COMPOSE
 ############################################
-# Compose already provides consumer ProGuard rules
-# DO NOT add -keep rules here
+
+# Compose already ships consumer rules
 
 
 ############################################
-# HILT / DAGGER
+# HILT / DAGGER — COMPLETE RULES
 ############################################
 
-# Keep generated Hilt components only
+# Keep @HiltAndroidApp application class
+-keep @dagger.hilt.android.HiltAndroidApp class * { *; }
+
+# Keep @AndroidEntryPoint annotated classes
+-keep @dagger.hilt.android.AndroidEntryPoint class * { *; }
+
+# Keep @HiltViewModel annotated classes
+-keep @dagger.hilt.android.lifecycle.HiltViewModel class * { *; }
+
+# Keep all Hilt-generated components and entry points
+-keep class * extends dagger.hilt.android.internal.managers.ApplicationComponentManager { *; }
+-keep class * implements dagger.hilt.android.internal.managers.ApplicationComponentManager.ComponentSupplier { *; }
+
+# Keep generated _HiltComponents classes
+-keep class **_HiltComponents { *; }
+-keep class **_HiltComponents$* { *; }
+
+# Keep generated Hilt entry point interfaces
+-keep @dagger.hilt.EntryPoint interface * { *; }
+-keep @dagger.hilt.InstallIn class * { *; }
+
+# Keep all generated Hilt module and binding classes
+-keep class **_HiltModules { *; }
+-keep class **_HiltModules$* { *; }
+
+# Keep Hilt's internal component tree wiring
+-keep class dagger.hilt.internal.** { *; }
+-keep class dagger.hilt.android.internal.** { *; }
+
+# Keep aggregated deps (critical — these feed the component graph)
+-keep @dagger.hilt.codegen.OriginatingElement class * { *; }
+-keep @dagger.hilt.internal.aggregatedroot.AggregatedRoot class * { *; }
+-keep @dagger.hilt.internal.definecomponent.DefineComponent class * { *; }
+-keep @dagger.hilt.android.EarlyEntryPoint class * { *; }
+
+# Keep generated component interfaces
 -keep class * implements dagger.hilt.internal.GeneratedComponent { *; }
+-keep class * implements dagger.hilt.internal.GeneratedComponentManager { *; }
+-keep class * implements dagger.hilt.internal.GeneratedComponentManagerHolder { *; }
+
+# Keep Hilt ViewModel factory
+-keep class androidx.hilt.** { *; }
+-keep class * extends androidx.lifecycle.ViewModel {
+    <init>(...);
+}
 
 -dontwarn dagger.**
 -dontwarn javax.inject.**
@@ -60,15 +99,15 @@
 # RETROFIT
 ############################################
 
-# --- Retrofit (required for suspend + annotations reflection) ---
--keepattributes Signature, InnerClasses, EnclosingMethod
--keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations, AnnotationDefault
+-keepattributes Signature
+-keepattributes InnerClasses
+-keepattributes EnclosingMethod
+-keepattributes RuntimeVisibleAnnotations
+-keepattributes RuntimeVisibleParameterAnnotations
+-keepattributes AnnotationDefault
 
-# Keep Retrofit service interfaces (so method generic signatures remain intact)
--keep interface com.rite.pillcounting.** { *; }
--keep class retrofit2.** { *; }
--keep class kotlin.coroutines.** { *; }
-
+# Keep ONLY Retrofit API interfaces
+-keep interface com.rite.pillcounting.data.remote.api.** { *; }
 
 -dontwarn retrofit2.**
 
@@ -77,8 +116,8 @@
 # MOSHI
 ############################################
 
-# Keep only classes annotated with @JsonClass
 -keep @com.squareup.moshi.JsonClass class * { *; }
+
 -dontwarn com.squareup.moshi.**
 
 
@@ -86,7 +125,6 @@
 # GSON
 ############################################
 
-# Keep only fields using @SerializedName
 -keepclassmembers class * {
     @com.google.gson.annotations.SerializedName <fields>;
 }
@@ -106,29 +144,42 @@
 
 
 ############################################
-# FIREBASE
+# FIREBASE — COMPLETE COMPONENT RUNTIME FIX
 ############################################
 
+# Keep ALL Firebase internals — component discovery uses reflection
 -keep class com.google.firebase.** { *; }
--keepclassmembers class com.google.firebase.** { *; }
+-keep interface com.google.firebase.** { *; }
+
+# Keep Google Play Services internals Firebase depends on
 -keep class com.google.android.gms.** { *; }
--keepclassmembers class com.google.android.gms.** { *; }
+-keep interface com.google.android.gms.** { *; }
 
-# Keep all ComponentRegistrar implementations and the interface itself
--keep interface com.google.firebase.components.ComponentRegistrar
--keep class * implements com.google.firebase.components.ComponentRegistrar { *; }
--keep class com.google.firebase.components.** { *; }
--keep class com.google.firebase.installations.** { *; }
-
-# Prevent R8 from inlining Firebase's ServiceLoader calls.
-# R8's ServiceLoader optimization can corrupt Firebase's component graph.
--keep class java.util.ServiceLoader { *; }
--keepclassmembers class java.util.ServiceLoader {
-    public static java.util.ServiceLoader load(java.lang.Class, java.lang.ClassLoader);
-    public static java.util.ServiceLoader load(java.lang.Class);
+# Keep component registrars discovered via manifest meta-data
+-keep class * implements com.google.firebase.components.ComponentRegistrar {
+    <init>();
+    public java.util.List getComponents();
 }
 
--dontwarn com.google.firebase.**
+# Prevent R8 from optimizing Firebase's component graph resolution.
+# ComponentRuntime.discoverComponents() loads registrars by class name
+# from manifest meta-data — R8 cannot see this call chain statically.
+-keep class com.google.firebase.components.ComponentDiscovery { *; }
+-keep class com.google.firebase.components.ComponentDiscoveryService { *; }
+-keepclassmembers class com.google.firebase.components.ComponentRuntime {
+    <init>(...);
+    public void discoverComponents(...);
+}
+-keep class com.google.firebase.components.ComponentRuntime { *; }
+-keep class com.google.firebase.components.Component { *; }
+-keep class com.google.firebase.components.Dependency { *; }
+
+# Keep registrars for each Firebase SDK in this project
+-keep class com.google.firebase.messaging.FirebaseMessagingRegistrar { *; }
+-keep class com.google.firebase.analytics.connector.internal.AnalyticsConnectorRegistrar { *; }
+-keep class com.google.firebase.installations.FirebaseInstallationsRegistrar { *; }
+-keep class com.google.firebase.datatransport.TransportRegistrar { *; }
+-keep class com.google.android.datatransport.runtime.TransportRuntimeModule { *; }
 
 
 ############################################
@@ -136,17 +187,10 @@
 ############################################
 
 -keep class com.google.mlkit.** { *; }
+
 -keep class com.google.android.gms.internal.mlkit_vision_barcode.** { *; }
+
 -dontwarn com.google.mlkit.**
-
-
-############################################
-# PLAY SERVICES (required by Firebase + ML Kit)
-############################################
-
--keep class com.google.android.gms.common.** { *; }
--keep class com.google.android.gms.tasks.** { *; }
--dontwarn com.google.android.gms.**
 
 
 ############################################
@@ -170,6 +214,7 @@
 
 -dontwarn coil.**
 
+
 ############################################
 # ANDROID SECURITY CRYPTO
 ############################################
@@ -189,66 +234,75 @@
 
 
 ############################################
-# YOUR APP (KEEP ONLY WHAT USES REFLECTION)
-############################################
-
-############################################
 # SECURITY — JNI NATIVE METHODS
 ############################################
-# R8 must NOT rename these — libsecurity.so calls them by exact name
+
+# JNI methods MUST keep exact names
 -keepclasseswithmembernames class com.rite.pillcounting.core.security.SecurityUtils {
     private native boolean nativeIsRooted();
     private native boolean nativeIsDebuggerAttached();
 }
 
+
 ############################################
-# SECURITY — KEYSTORE / CRYPTO CLASSES
+# SECURITY — KEYSTORE / CRYPTO
 ############################################
-# These use reflection internally via Keystore — keep their structure
+
 -keep class com.rite.pillcounting.core.security.RuntimeUnit { *; }
+
 -keep class com.rite.pillcounting.core.security.DatabaseKeyProvider { *; }
+
 -keep class com.rite.pillcounting.core.security.SecurityAuditLogger { *; }
+
 -keep class com.rite.pillcounting.core.security.AuditEvent { *; }
+
 -keep class com.rite.pillcounting.core.security.SecurityViolationPolicy { *; }
+
 -keep class com.rite.pillcounting.core.utils.preference.SecurePreferences { *; }
+
 
 ############################################
 # SQLCIPHER
 ############################################
+
 -keep class net.sqlcipher.** { *; }
+
 -keep class net.sqlcipher.database.** { *; }
+
 -dontwarn net.sqlcipher.**
 
-# Example: JSON / DB / Serialization models
-# Adjust package as needed
+
 ############################################
-# API MODELS (Retrofit JSON)
+# API MODELS
 ############################################
+
 -keep class com.rite.pillcounting.feature.**.model.** { *; }
 
-# BlockHound (JVM-only)
+
+############################################
+# OPTIONAL JVM LIBRARIES
+############################################
+
 -dontwarn reactor.blockhound.**
-
-# Jetty NPN / ALPN (JVM-only)
 -dontwarn org.eclipse.jetty.npn.**
-
-# JVM management APIs (not on Android)
 -dontwarn java.lang.management.**
-
-# Optional logging frameworks (not bundled)
 -dontwarn org.apache.log4j.**
 -dontwarn org.apache.logging.log4j.**
+
 
 ############################################
 # NANOHTTPD
 ############################################
+
 -keep class fi.iki.elonen.** { *; }
+
 -dontwarn fi.iki.elonen.**
 
 
 ############################################
-# STRIP ALL LOG CALLS IN RELEASE
+# REMOVE LOGS IN RELEASE
 ############################################
+
 -assumenosideeffects class android.util.Log {
     public static int d(...);
     public static int i(...);
@@ -257,7 +311,6 @@
     public static int e(...);
 }
 
-# Also strip AppLogger (which delegates to android.util.Log)
 -assumenosideeffects class com.rite.pillcounting.core.utils.logger.AppLogger {
     public void d(...);
     public void i(...);
@@ -265,10 +318,22 @@
     public void e(...);
 }
 
--assumenosideeffects class kotlinx.coroutines.debug.** { *; }
+# NOTE: kotlinx.coroutines.debug is intentionally excluded from assumenosideeffects.
+# Adding it caused R8 to strip coroutine infrastructure that Firebase's
+# ComponentRuntime depends on, producing a false DependencyCycleException: [].
 
--dontoptimize
--printconfiguration build/outputs/r8-full-config.txt
+
+############################################
+# SYNTHETIC CLASSES
+############################################
 
 -keep class **$$ExternalSyntheticLambda* { *; }
+
 -keep class **$$InternalSyntheticLambda* { *; }
+
+
+############################################
+# DEBUGGING OUTPUT
+############################################
+
+-printconfiguration build/outputs/r8-full-config.txt

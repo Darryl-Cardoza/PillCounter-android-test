@@ -318,10 +318,8 @@ class PreferenceHelper @Inject constructor(
 
     // Stored as JSON string — SecurePreferences does not support StringSet
     fun setControlDrugTypes(controlDrugTypes: Set<String>) {
-        prefs.edit {
-            putStringSet(KEY_CONTROL_DRUG_TYPES, controlDrugTypes)
-            putBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, true)
-        }
+        prefs.putString(KEY_CONTROL_DRUG_TYPES, gson.toJson(controlDrugTypes))
+        prefs.putBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, true)
         logger.i("setControlDrugTypes : ${controlDrugTypes.joinToString(",")}")
     }
 
@@ -335,8 +333,8 @@ class PreferenceHelper @Inject constructor(
         return prefs.getBoolean(KEY_CONTROL_DRUG_TYPES_INITIALIZED, false)
     }
 
-    fun setSoundOverride(enabled: Boolean){
-        val enabled = prefs.edit().putBoolean(KEY_SOUND_OVERRIDE, enabled).apply()
+    fun setSoundOverride(enabled: Boolean) {
+        prefs.putBoolean(KEY_SOUND_OVERRIDE, enabled)
         logger.i("setSoundOverride : $enabled")
     }
 
@@ -390,7 +388,7 @@ class PreferenceHelper @Inject constructor(
      */
     fun saveTerminals(terminals: List<Terminal>) {
         val json = gson.toJson(terminals)
-        prefs.edit { putString(KEY_TERMINALS, json) }
+        prefs.putString(KEY_TERMINALS, json)
         logger.i("Saved terminals list (size=${terminals.size})")
     }
 
@@ -414,7 +412,7 @@ class PreferenceHelper @Inject constructor(
      * @param terminalId The ID of the selected terminal.
      */
     fun saveSelectedTerminalId(terminalId: String) {
-        prefs.edit { putString(KEY_SELECTED_TERMINAL_ID, terminalId) }
+        prefs.putString(KEY_SELECTED_TERMINAL_ID, terminalId)
         logger.i("Saved selected terminal ID: $terminalId")
     }
 
@@ -433,7 +431,7 @@ class PreferenceHelper @Inject constructor(
      * @param terminalName The name of the selected terminal.
      */
     fun saveSelectedTerminalName(terminalName: String) {
-        prefs.edit { putString(KEY_SELECTED_TERMINAL_NAME, terminalName) }
+        prefs.putString(KEY_SELECTED_TERMINAL_NAME, terminalName)
         logger.i("Saved selected terminal name: $terminalName")
     }
 

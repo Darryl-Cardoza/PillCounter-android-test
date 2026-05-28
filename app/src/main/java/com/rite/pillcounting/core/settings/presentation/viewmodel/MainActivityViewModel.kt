@@ -354,8 +354,8 @@ class MainActivityViewModel @Inject constructor(
             )
         }
         logger.i("NSD settings updated and saved to preferences:")
-        logger.i("  • Broadcast Type: $nsdBroadCastType")
-        logger.i("  • Discovery Type: $nsdDiscoverType")
+        logger.i("  • Broadcast Type: $nsdBroadcastType")
+        logger.i("  • Discovery Type: $nsdDiscoveryType")
     }
 
 

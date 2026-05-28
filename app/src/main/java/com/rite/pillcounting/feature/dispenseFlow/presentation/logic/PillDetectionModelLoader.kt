@@ -3,6 +3,7 @@
 import android.content.Context
 import android.util.Log
 import com.rite.pillcounting.core.security.ModelDecryptor
+import com.rite.pillcounting.core.security.ModelKeyUnit
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -43,6 +44,7 @@ class PillDetectionModelLoader @Inject constructor(
 
     private val logger = AppLogger("PillModelLoader")
     private val mutex = Mutex()
+    private val modelKeyUnit = ModelKeyUnit(context).also { it.activateIfNeeded() }
 
     private var pillInterpreter: Interpreter? = null
     private var trayInterpreter: Interpreter? = null
@@ -351,7 +353,7 @@ class PillDetectionModelLoader @Inject constructor(
             }
         }
 
-        val decryptedBytes = ModelDecryptor.decryptToBytes(encFile)
+        val decryptedBytes = ModelDecryptor.decryptToBytes(encFile, modelKeyUnit)
 
         return ByteBuffer.allocateDirect(decryptedBytes.size).apply {
             order(ByteOrder.nativeOrder())
