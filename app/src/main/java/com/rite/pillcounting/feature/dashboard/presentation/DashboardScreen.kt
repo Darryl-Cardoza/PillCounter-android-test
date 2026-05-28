@@ -29,6 +29,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
+import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhoneLandscape
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhonePortrait
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardTabletLandscape
@@ -152,12 +153,11 @@ fun DashboardScreen(
             viewModel.saveTxnId()
             showBucketSelectDialog = true
         },
-        onRecentDispenseClick = { txnId ->
-            viewModel.selectCurrentTransaction(txnId)
-            navController.navigate(Screen.HistoryDetail.route)
+        onRecentDispenseClick = { _ ->
+            viewModel.onTabSelected(DashboardTab.TODAYS_QUEUE)
         },
-        onRecentBatchClick = { batchId ->
-            navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
+        onRecentBatchClick = { _ ->
+            viewModel.onTabSelected(DashboardTab.TODAYS_QUEUE)
         },
         onQueueDispenseClick = { txnId ->
             // Partial dispense rows resume via HistoryDetail (same destination as Recent Activity).
