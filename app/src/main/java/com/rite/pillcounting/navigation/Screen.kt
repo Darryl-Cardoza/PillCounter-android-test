@@ -59,17 +59,31 @@ sealed interface Screen {
     data object InventoryScan : Screen {
         private const val ROUTE_PREFIX = "inventory_scan"
         const val ARG_BATCH_ID = "batch_id"
+        const val ARG_BUCKET_ID = "bucket_id"
 
-        override val route: String = "$ROUTE_PREFIX?$ARG_BATCH_ID={$ARG_BATCH_ID}"
+        override val route: String =
+            "$ROUTE_PREFIX?$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}"
 
         val navArguments: List<NamedNavArgument> = listOf(
             navArgument(ARG_BATCH_ID) {
                 type = NavType.LongType
                 defaultValue = 0L
+            },
+            navArgument(ARG_BUCKET_ID) {
+                type = NavType.StringType
+                defaultValue = ""
+                nullable = true
             }
         )
 
-        fun createRoute(batchId: Long = 0L): String = "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId"
+        /**
+         * Entry-point route. Supply either:
+         *  - [batchId] to resume an existing batch, OR
+         *  - [bucketId] from the Inventory quick-action; the batch is created
+         *    lazily on the first NDC scan inside `InventoryScanViewModel`.
+         */
+        fun createRoute(batchId: Long = 0L, bucketId: String? = null): String =
+            "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}"
     }
 
     data object HistoryDetail : Screen {

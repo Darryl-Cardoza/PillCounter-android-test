@@ -117,15 +117,11 @@ fun DashboardScreen(
     }
 
     // Inventory quick action: bucket selected but no BatchEntity yet — the batch is
-    // created on the first NDC scan inside InventoryScanViewModel.
+    // created on the first NDC scan inside InventoryScanViewModel. Routes to the
+    // new Batch Stock Count panel (Screen.InventoryScan), NOT the legacy DispenseFlow.
     LaunchedEffect(uiState.pendingStockCountBucketId) {
         uiState.pendingStockCountBucketId?.let { bucketId ->
-            navController.navigate(
-                Screen.DispenseFlow.createRoute(
-                    scanType = CountType.REGULAR.toString(),
-                    bucketId = bucketId,
-                )
-            )
+            navController.navigate(Screen.InventoryScan.createRoute(bucketId = bucketId))
             viewModel.clearPendingStockCountBucketId()
         }
     }
