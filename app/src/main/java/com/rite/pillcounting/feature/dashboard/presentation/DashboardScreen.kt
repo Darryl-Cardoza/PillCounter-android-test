@@ -153,16 +153,16 @@ fun DashboardScreen(
             viewModel.saveTxnId()
             showBucketSelectDialog = true
         },
-        onRecentDispenseClick = { _ ->
-            viewModel.onTabSelected(DashboardTab.TODAYS_QUEUE)
+        onRecentDispenseClick = { txnId ->
+            viewModel.selectCurrentTransaction(txnId)
+            navController.navigate(Screen.HistoryDetail.route)
         },
-        onRecentBatchClick = { _ ->
-            viewModel.onTabSelected(DashboardTab.TODAYS_QUEUE)
+        onRecentBatchClick = { batchId ->
+            navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
         },
         onQueueDispenseClick = { txnId ->
             // Today's Queue holds partial (in-progress) dispense txns — tapping resumes the
-            // DispenseFlow so the user can continue counting. (Recent Activity, which holds
-            // completed txns, still routes to HistoryDetail via onRecentDispenseClick.)
+            // DispenseFlow so the user can continue counting.
             viewModel.selectCurrentTransaction(txnId)
             navController.navigate(
                 Screen.DispenseFlow.createRoute(
