@@ -402,6 +402,12 @@
     <string name="hl7_notification_inventory_no_drugs">No drugs found. Batch could not be created.</string>
     <string name="hl7_notification_inventory_items_count">%1$d items need stock count</string>
 
+    <!-- HL7 Edit/Change order (ORC|XO) -->
+    <string name="hl7_notification_edit_rx_title">RX Updated</string>
+    <string name="hl7_notification_edit_rx_updated">Rx %1$s updated • %2$s • New Qty: %3$d</string>
+    <string name="hl7_notification_edit_rx_not_found">Rx %1$s not found or already completed — update ignored.</string>
+    <string name="hl7_notification_edit_rx_drug_not_found">Rx %1$s update failed: drug NDC %2$s not found.</string>
+
     <!-- ================== GLOVE DETECTION ================== -->
     <string name="glove_class_gloves" translatable="false">gloves</string>
     <string name="glove_class_no_gloves" translatable="false">no_gloves</string>

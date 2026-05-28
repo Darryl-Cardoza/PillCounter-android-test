@@ -71,6 +71,9 @@ class Hl7Repository @Inject constructor(
                 MessageType.DISPENSE_REQUEST ->
                     handleRdeDispenseRequest(message)
 
+                MessageType.EDIT_DISPENSE_REQUEST ->
+                    handleOrderEdit(message)
+
                 MessageType.INVENTORY_REQUEST ->
                     handleInrInventoryRequest(message)
 
@@ -679,10 +682,20 @@ class Hl7Repository @Inject constructor(
         message: CompleteHL7Message
     ): MessageType? {
         return when {
+            // ORC|CA  — cancel an existing order
             message.order?.orderControl == "CA" &&
                     !message.order?.placerOrderId.isNullOrBlank() ->
                 MessageType.CANCEL_ORDER
 
+            // ORC|XO  — change/edit an existing dispense order
+            message.messageType == "RDE" &&
+                    message.triggerEvent == "O11" &&
+                    message.order?.orderControl == "XO" &&
+                    !message.order?.placerOrderId.isNullOrBlank() &&
+                    message.medications.isNotEmpty() ->
+                MessageType.EDIT_DISPENSE_REQUEST
+
+            // ORC|NW (or any other control) — new dispense request
             message.messageType == "RDE" &&
                     message.triggerEvent == "O11" &&
                     message.medications.isNotEmpty() ->
@@ -702,6 +715,119 @@ class Hl7Repository @Inject constructor(
         logger.i("Received ORC|CA for rxNo=$rxNo — soft-deleting transaction")
         pillCountTxnDao.softDeleteByRxNo(rxNo)
         logger.i("Transaction with rxNo=$rxNo marked as deleted")
+    }
+
+    /**
+     * Handles ORC|XO (change-order) messages from PMS.
+     *
+     * Finds the active (PARTIAL, non-deleted) transaction for the given Rx number
+     * and updates its drug, target count, and priority with the new values from the
+     * incoming HL7 message.  If the transaction has already been completed or doesn't
+     * exist, the edit is ignored and a notification is shown.
+     *
+     * Fields updated:
+     * - [PillCountTxnEntity.drugId]      — resolved from the incoming NDC
+     * - [PillCountTxnEntity.targetCount] — from RXE quantity
+     * - [PillCountTxnEntity.priority]    — from ZPR segment
+     * - [PillCountTxnEntity.isSynced]    — reset to false so the updated result is re-sent
+     */
+    private suspend fun handleOrderEdit(message: CompleteHL7Message) {
+        val rxNo = message.order?.placerOrderId ?: return
+        val medication = message.medications.firstOrNull() ?: return
+
+        logger.i("Received ORC|XO for rxNo=$rxNo — looking up existing transaction")
+
+        // 1. Locate the active transaction
+        val existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
+        if (existingTxn == null) {
+            logger.w("ORC|XO ignored: no active PARTIAL transaction found for rxNo=$rxNo")
+            notifier.show(
+                title = context.getString(R.string.hl7_notification_edit_rx_title),
+                message = context.getString(R.string.hl7_notification_edit_rx_not_found, rxNo)
+            )
+            return
+        }
+
+        // 2. Resolve the updated drug (local DB first, then API fallback)
+        val hl7Ndc = medication.drugCode.trim()
+        val hl7DrugName = medication.drugName
+        val newTargetCount = medication.requestedQty?.toIntOrNull()
+
+        val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
+
+        val resolvedDrug = if (localDrug != null) {
+            logger.i("ORC|XO: drug found locally for NDC=$hl7Ndc")
+            localDrug
+        } else {
+            logger.i("ORC|XO: drug not found locally for NDC=$hl7Ndc, calling API")
+            val request = GetNdcRequestModel(target_ndc = hl7Ndc, scanned_ndc = hl7Ndc)
+            try {
+                val drugInfo = drugRepository.getDrugInfoByNdc(request)
+                val resolvedName = drugInfo?.genericName?.takeIf { it.isNotBlank() }
+                if (resolvedName.isNullOrBlank()) {
+                    logger.w("ORC|XO: API returned no drug name for NDC=$hl7Ndc — aborting edit")
+                    notifier.show(
+                        title = context.getString(R.string.hl7_notification_edit_rx_title),
+                        message = context.getString(
+                            R.string.hl7_notification_edit_rx_drug_not_found,
+                            rxNo,
+                            hl7Ndc
+                        )
+                    )
+                    return
+                }
+                DrugMasterEntity(
+                    ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: hl7Ndc,
+                    drugName = resolvedName,
+                    drugType = drugInfo?.drugType,
+                    isHazardous = drugInfo?.isHazardous ?: false,
+                )
+            } catch (e: Exception) {
+                logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e)
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_edit_rx_title),
+                    message = context.getString(
+                        R.string.hl7_notification_edit_rx_drug_not_found,
+                        rxNo,
+                        hl7Ndc
+                    )
+                )
+                return
+            }
+        }
+
+        val newDrugId = resolvedDrug?.let { drugMasterDao.upsertPreservingId(it) }
+            ?: existingTxn.drugId   // keep the old drugId if resolution somehow returned null
+
+        // 3. Parse priority from ZPR segment
+        val newPriority = TxnPriority.fromString(
+            message.customSegments
+                .firstOrNull { it.segmentType == "ZPR" && it.field2 == "PRIORITY" }
+                ?.field3
+        )
+
+        // 4. Apply the edit
+        pillCountTxnDao.updateFromHl7Edit(
+            txnId = existingTxn.txnId,
+            drugId = newDrugId,
+            targetCount = newTargetCount,
+            priority = newPriority
+        )
+
+        logger.i(
+            "ORC|XO applied: txnId=${existingTxn.txnId}, rxNo=$rxNo, " +
+                "drugId=$newDrugId, targetCount=$newTargetCount, priority=$newPriority"
+        )
+
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_edit_rx_title),
+            message = context.getString(
+                R.string.hl7_notification_edit_rx_updated,
+                rxNo,
+                resolvedDrug?.drugName ?: hl7DrugName ?: hl7Ndc,
+                newTargetCount ?: 0
+            )
+        )
     }
 
     private fun observePendingHl7Transactions() {
