@@ -37,6 +37,7 @@ data class ActiveNdc(
     val expiry: String,
     val pillsPerBottle: Int,
     val bottles: Int,
+    val isHazardous: Boolean = false,
 ) {
     val totalPills: Int get() = pillsPerBottle * bottles
 }

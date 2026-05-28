@@ -58,6 +58,11 @@ class FrameBarcodeAnalyzer(
 
     private val isPaused = AtomicBoolean(false)
     private val isProcessing = AtomicBoolean(false)
+    private val frameSeen = java.util.concurrent.atomic.AtomicLong(0L)
+    private val frameDroppedPaused = java.util.concurrent.atomic.AtomicLong(0L)
+    private val frameDroppedThrottle = java.util.concurrent.atomic.AtomicLong(0L)
+    private val frameDroppedProcessing = java.util.concurrent.atomic.AtomicLong(0L)
+    private val frameAccepted = java.util.concurrent.atomic.AtomicLong(0L)
     /** Token so a late watchdog wakeup can verify "is this MY stale frame?". */
     private val frameToken = AtomicLong(0L)
     private var lastAttemptAtMs: Long = 0L
@@ -73,10 +78,12 @@ class FrameBarcodeAnalyzer(
     }
 
     fun pause() {
+        logger.d("INV_SCAN analyzer.pause() wasPaused=${isPaused.get()} processing=${isProcessing.get()}")
         isPaused.set(true)
     }
 
     fun resume() {
+        logger.d("INV_SCAN analyzer.resume() wasPaused=${isPaused.get()} processing=${isProcessing.get()}")
         isPaused.set(false)
         // If we were stuck mid-process when paused (or MLKit silently lost a
         // callback), reset the gate so the next frame isn't blocked forever.
@@ -91,15 +98,30 @@ class FrameBarcodeAnalyzer(
         imageProxy: ImageProxy,
         onBarcodeDetected: (rawValue: String, imagePath: String?) -> Unit,
     ) {
-        if (isPaused.get()) return
+        val seen = frameSeen.incrementAndGet()
+        if (isPaused.get()) {
+            val dropped = frameDroppedPaused.incrementAndGet()
+            if (dropped % 30 == 0L) logger.d("INV_SCAN analyze() dropped (paused) total=$dropped seen=$seen")
+            return
+        }
 
         // Throttle to MIN_INTERVAL_MS. The check is racy by design — we accept
         // the possibility that two threads slip past simultaneously; the
         // isProcessing CAS below is the authoritative gate.
         val now = System.currentTimeMillis()
-        if (now - lastAttemptAtMs < MIN_INTERVAL_MS) return
+        if (now - lastAttemptAtMs < MIN_INTERVAL_MS) {
+            val dropped = frameDroppedThrottle.incrementAndGet()
+            if (dropped % 60 == 0L) logger.d("INV_SCAN analyze() dropped (throttle) total=$dropped seen=$seen")
+            return
+        }
 
-        if (!isProcessing.compareAndSet(false, true)) return
+        if (!isProcessing.compareAndSet(false, true)) {
+            val dropped = frameDroppedProcessing.incrementAndGet()
+            if (dropped % 10 == 0L) logger.d("INV_SCAN analyze() dropped (processing-busy) total=$dropped seen=$seen")
+            return
+        }
+        val accepted = frameAccepted.incrementAndGet()
+        logger.d("INV_SCAN analyze() ACCEPTED frame seen=$seen accepted=$accepted")
         lastAttemptAtMs = now
 
         // Bitmap copy MUST be synchronous: the caller will hand this same
@@ -140,10 +162,12 @@ class FrameBarcodeAnalyzer(
         scanner.process(input)
             .addOnSuccessListener { barcodes ->
                 val barcode = barcodes.firstOrNull()
+                logger.d("INV_SCAN MLKit success token=$token barcodes=${barcodes.size} first='${barcode?.rawValue}' paused=${isPaused.get()}")
                 if (barcode != null && !isPaused.get()) {
                     // Got a hit — self-pause; the caller resumes us when the
                     // resulting RX/NDC sheet is dismissed.
                     isPaused.set(true)
+                    logger.d("INV_SCAN analyzer SELF-PAUSED on hit raw='${barcode.rawValue}'")
                     ioScope.launch {
                         try {
                             val filePath = try {
@@ -168,7 +192,7 @@ class FrameBarcodeAnalyzer(
                 }
             }
             .addOnFailureListener { ex ->
-                logger.e("Barcode detection failed", ex)
+                logger.e("INV_SCAN MLKit failure token=$token", ex)
                 bitmapCopy.recycle()
             }
             .addOnCompleteListener {

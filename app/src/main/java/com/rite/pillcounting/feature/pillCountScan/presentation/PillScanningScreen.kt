@@ -477,14 +477,18 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
 
     val context = LocalContext.current
     val barcodeAnalyzer = remember { FrameBarcodeAnalyzer(context.applicationContext) }
+    val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
 
-    // Pause/resume the analyzer based on whether the active NDC card is up.
-    // We track activeNdc directly (not a VM-side scannerPaused flag) so the
-    // resume path is deterministic: as soon as activeNdc becomes null after
-    // ADD/CLEAR or auto-commit, the analyzer is freed to detect the next
-    // barcode immediately.
+    // Resume the analyzer whenever the active NDC card clears. We deliberately
+    // do NOT pause while activeNdc is non-null — the analyzer self-pauses on
+    // each successful hit (see FrameBarcodeAnalyzer), and the VM's
+    // onBarcodeDetected handles "different NDC scanned while one is active"
+    // by auto-committing the current one. Pausing here would make that
+    // branch unreachable: once NDC #1 is on the card, no frames would ever
+    // reach the VM to trigger the swap.
     LaunchedEffect(panelState.activeNdc) {
-        if (panelState.activeNdc != null) barcodeAnalyzer.pause() else barcodeAnalyzer.resume()
+        android.util.Log.d("InventoryScreen", "INV_SCAN LaunchedEffect(activeNdc) → ${panelState.activeNdc?.ndc} hazardous=${panelState.activeNdc?.isHazardous}")
+        if (panelState.activeNdc == null) barcodeAnalyzer.resume()
     }
 
     // Surface VM errors as toasts. The VM emits a localized resource id +
@@ -518,18 +522,52 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
                 .fillMaxHeight()
                 .background(androidx.compose.ui.graphics.Color(0xFF2A2A2A))
         ) {
+            // Inventory mode bypasses the legacy idle-pause path. The shared
+            // PillScanningViewModel auto-pauses after ~30s of idle (intended for
+            // the pill-counting flow where it stops the ML pipeline); in
+            // inventory we just want continuous barcode scanning until the user
+            // taps END COUNT or BACK. Forcing isCameraPaused = false also
+            // suppresses the idle overlay so the screen never gets visually
+            // stuck on a black/loader state with no recovery affordance.
+            // Defensive: reset the idle timer on every recomposition so the
+            // legacy VM doesn't flip _cameraPaused = true behind our back.
+            LaunchedEffect(Unit) { cameraVm.pauseIdleTimer() }
+
             CameraPreviewSection(
                 viewModel = cameraVm,
                 pills = cameraUiState.detectedPills,
-                isCameraPaused = cameraVm.cameraPaused.collectAsState().value,
+                isCameraPaused = false,
                 imageFrameWidth = cameraUiState.imageFrameWidth,
                 imageFrameHeight = cameraUiState.imageFrameHeight,
+                showGloveIcon = panelState.activeNdc?.isHazardous == true,
                 onFrame = { imageProxy ->
                     // Forward each frame to the barcode analyzer. We do NOT
                     // call cameraVm.onFrameCaptured here — that path runs the
                     // ML pill detector, which inventory mode keeps disabled.
-                    barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
-                        inventoryVm.onBarcodeDetected(raw)
+                    //
+                    // Inventory mode owns the ImageProxy lifecycle: the analyzer
+                    // synchronously snapshots a Bitmap and never closes the proxy
+                    // itself (the dispense flow relies on the pill VM to close
+                    // it). Without an explicit close here, CameraX's small frame
+                    // pool fills up after the first scan and frameFlow stops
+                    // emitting — symptom: only the first NDC is ever detected.
+                    val n = frameCounter.incrementAndGet()
+                    if (n % 30 == 0L) {
+                        android.util.Log.d("InventoryScreen", "INV_SCAN onFrame tick=$n")
+                    }
+                    try {
+                        barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
+                            android.util.Log.d("InventoryScreen", "INV_SCAN onBarcode callback raw='$raw' → forwarding to VM + resuming analyzer")
+                            inventoryVm.onBarcodeDetected(raw)
+                            // Free the analyzer immediately so a subsequent scan of a
+                            // different NDC can reach the VM's auto-commit branch
+                            // while activeNdc is still populated. The 250ms throttle
+                            // in FrameBarcodeAnalyzer plus the VM's same-NDC guard
+                            // prevent duplicate processing of the same label.
+                            barcodeAnalyzer.resume()
+                        }
+                    } finally {
+                        imageProxy.close()
                     }
                 },
                 onFilteredCountChanged = { /* no-op in inventory mode */ },
@@ -577,8 +615,23 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
                 },
                 onIncrement = inventoryVm::increment,
                 onDecrement = inventoryVm::decrement,
-                onClear = inventoryVm::onClear,
-                onAdd = inventoryVm::onAdd,
+                // Resume the analyzer explicitly on CLEAR / ADD. The
+                // LaunchedEffect(activeNdc) path also resumes, but the analyzer
+                // self-pauses on every successful barcode hit — if a resume
+                // happens before the self-pause lands (due to coroutine ordering
+                // between the suspend lookup and the StateFlow update), the
+                // analyzer ends up paused with no further resume scheduled.
+                // Calling resume() here directly is order-independent.
+                onClear = {
+                    android.util.Log.d("InventoryScreen", "INV_SCAN onClear tapped")
+                    inventoryVm.onClear()
+                    barcodeAnalyzer.resume()
+                },
+                onAdd = {
+                    android.util.Log.d("InventoryScreen", "INV_SCAN onAdd tapped active=${panelState.activeNdc?.ndc}")
+                    inventoryVm.onAdd()
+                    barcodeAnalyzer.resume()
+                },
                 onEndCount = inventoryVm::requestEndCount,
             )
         }

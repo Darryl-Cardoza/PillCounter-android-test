@@ -8,7 +8,10 @@ import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.models.BatchEntity
+import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.feature.dispenseFlow.domain.data.IDrugRepository
+import com.rite.pillcounting.feature.dispenseFlow.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
@@ -66,6 +69,7 @@ class InventoryScanViewModel @Inject constructor(
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
     private val barcodeDecoder: BarcodeDecoder,
+    private val drugRepository: IDrugRepository,
 ) : ViewModel() {
 
     private val logger = AppLogger("InventoryScanViewModel")
@@ -194,6 +198,7 @@ class InventoryScanViewModel @Inject constructor(
      * tapping ADD between bottles.
      */
     fun onBarcodeDetected(rawValue: String) {
+        logger.d("INV_SCAN onBarcodeDetected raw='$rawValue' currentActive=${_activeNdc.value?.ndc}")
         _scannerPaused.value = true
         viewModelScope.launch {
             try {
@@ -201,13 +206,50 @@ class InventoryScanViewModel @Inject constructor(
                 val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
                 val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
                 val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
+                logger.d("INV_SCAN decoded isGs1=$isGs1 extractedGtin=$extractedGtin gtin14=$gtin14")
                 if (gtin14.isNullOrBlank() || gtin14.length != 14 || !gtin14.all { it.isDigit() }) {
+                    logger.w("INV_SCAN invalid label: gtin14=$gtin14")
                     _errorMessage.value = LocalizedError(R.string.batch_stock_count_invalid_label)
                     _scannerPaused.value = false
                     return@launch
                 }
 
-                val drug = drugMasterDao.getDrugByGtin(gtin14) ?: drugMasterDao.getDrugByNdc(gtin14)
+                val localDrug = drugMasterDao.getDrugByGtin(gtin14) ?: drugMasterDao.getDrugByNdc(gtin14)
+                logger.d("INV_SCAN local lookup gtin14=$gtin14 → drug=${localDrug?.ndc} (${localDrug?.drugName}) hazardous=${localDrug?.isHazardous}")
+
+                // Fall back to the server when the drug isn't cached locally.
+                // Matches the dispense flow's behavior — unknown drugs are
+                // fetched on-demand and upserted into drug_master for future
+                // offline lookups.
+                val drug = localDrug ?: run {
+                    val drugInfo = try {
+                        drugRepository.getDrugInfoByNdc(
+                            GetNdcRequestModel(target_ndc = "", scanned_ndc = gtin14)
+                        )
+                    } catch (e: Exception) {
+                        logger.e("server drug lookup failed for gtin14=$gtin14", e)
+                        null
+                    }
+                    logger.d("INV_SCAN server lookup gtin14=$gtin14 → drugInfo=${drugInfo?.ndc} (${drugInfo?.genericName}) hazardous=${drugInfo?.isHazardous}")
+                    if (drugInfo == null) {
+                        _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, gtin14)
+                        _scannerPaused.value = false
+                        return@launch
+                    }
+                    val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug"
+                    drugMasterDao.upsertPreservingId(
+                        DrugMasterEntity(
+                            ndc = drugInfo.ndc,
+                            drugName = displayName,
+                            drugType = drugInfo.drugType,
+                            gtin = gtin14,
+                            packageQty = drugInfo.qty,
+                            isHazardous = drugInfo.isHazardous ?: false,
+                        )
+                    )
+                    // Re-read so we get the row with its assigned drugId.
+                    drugMasterDao.getDrugByNdc(drugInfo.ndc) ?: drugMasterDao.getDrugByGtin(gtin14)
+                }
                 if (drug == null) {
                     _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, gtin14)
                     _scannerPaused.value = false
@@ -229,13 +271,16 @@ class InventoryScanViewModel @Inject constructor(
                 // Skip the commit when the same NDC is rescanned — we'll re-activate
                 // its existing row instead.
                 val currentActive = _activeNdc.value
+                logger.d("INV_SCAN pre-switch currentActive=${currentActive?.ndc} newDrug=${drug.ndc} sameNdc=${currentActive?.ndc == drug.ndc}")
                 if (currentActive != null && currentActive.ndc != drug.ndc) {
+                    logger.d("INV_SCAN auto-committing previous active ndc=${currentActive.ndc} bottles=${currentActive.bottles}")
                     persistActive(currentActive)
                 }
 
                 val lotNo = decoded?.lotNumber
                 val expiry = decoded?.expirationDate?.format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
                 val packageQty = drug.packageQty ?: 0
+                logger.d("INV_SCAN parsed lotNo=$lotNo expiry=$expiry packageQty=$packageQty")
 
                 // Look for an existing sealed txn for this (drug, lot, expiry)
                 // in the current batch — same logic ScanBarcodeViewModel uses.
@@ -249,6 +294,7 @@ class InventoryScanViewModel @Inject constructor(
                     )
                 } else null
 
+                logger.d("INV_SCAN existing-txn lookup batchId=$batchId drugId=${drug.drugId} lot=$lotNo expiry=$expiry → existing=${existing?.localId} prevBottles=${existing?.bottleQty}")
                 val startBottles = (existing?.bottleQty ?: 0).coerceAtLeast(1)
                 _activeNdc.value = ActiveNdc(
                     ndc = drug.ndc,
@@ -258,9 +304,11 @@ class InventoryScanViewModel @Inject constructor(
                     expiry = expiry.orEmpty(),
                     pillsPerBottle = packageQty,
                     bottles = startBottles,
+                    isHazardous = drug.isHazardous,
                 )
+                logger.d("INV_SCAN activeNdc SET ndc=${drug.ndc} drug=${drug.drugName} bottles=$startBottles hazardous=${drug.isHazardous} batchId=${_resolvedBatchId.value}")
             } catch (e: Exception) {
-                logger.e("onBarcodeDetected failed", e)
+                logger.e("INV_SCAN onBarcodeDetected failed", e)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
                 _scannerPaused.value = false
             }
@@ -284,6 +332,7 @@ class InventoryScanViewModel @Inject constructor(
     /* ─────────────────────────  Clear / Add  ───────────────────────── */
 
     fun onClear() {
+        logger.d("INV_SCAN onClear (active=${_activeNdc.value?.ndc})")
         _activeNdc.value = null
         _scannerPaused.value = false
     }
@@ -296,13 +345,17 @@ class InventoryScanViewModel @Inject constructor(
      */
     private suspend fun persistActive(active: ActiveNdc) {
         val batchId = _resolvedBatchId.value
+        logger.d("INV_SCAN persistActive START ndc=${active.ndc} bottles=${active.bottles} batchId=$batchId lot=${active.batchNo} expiry=${active.expiry}")
         if (batchId == 0L) {
+            logger.w("INV_SCAN persistActive ABORT: no batchId")
             _errorMessage.value = LocalizedError(R.string.batch_stock_count_no_active_batch)
             return
         }
         try {
             val drugId = drugMasterDao.getDrugIdByNdc(active.ndc)
+            logger.d("INV_SCAN persistActive drugId lookup ndc=${active.ndc} → drugId=$drugId")
             if (drugId == null) {
+                logger.w("INV_SCAN persistActive ABORT: drugId null for ndc=${active.ndc}")
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, active.ndc)
                 return
             }
@@ -312,6 +365,7 @@ class InventoryScanViewModel @Inject constructor(
                 lotNo = active.batchNo.ifBlank { null },
                 expiry = active.expiry.ifBlank { null },
             )
+            logger.d("INV_SCAN persistActive existing-txn lookup → existing=${existing?.localId} prevBottles=${existing?.bottleQty}")
             if (existing != null) {
                 pillCountTxnDao.update(
                     existing.copy(
@@ -319,6 +373,7 @@ class InventoryScanViewModel @Inject constructor(
                         updatedAt = System.currentTimeMillis(),
                     )
                 )
+                logger.d("INV_SCAN persistActive UPDATED txn localId=${existing.localId} drugId=$drugId bottles=${active.bottles}")
             } else {
                 pillCountTxnDao.upsertPreservingId(
                     PillCountTxnEntity(
@@ -333,21 +388,28 @@ class InventoryScanViewModel @Inject constructor(
                         bucketId = _bucketId.value,
                     )
                 )
+                logger.d("INV_SCAN persistActive INSERTED new txn drugId=$drugId bottles=${active.bottles}")
             }
         } catch (e: Exception) {
-            logger.e("persistActive failed", e)
+            logger.e("INV_SCAN persistActive FAILED", e)
             _errorMessage.value = LocalizedError(R.string.batch_stock_count_save_failed)
         }
     }
 
     fun onAdd() {
-        val active = _activeNdc.value ?: return
+        val active = _activeNdc.value
+        logger.d("INV_SCAN onAdd active=${active?.ndc} bottles=${active?.bottles}")
+        if (active == null) {
+            logger.w("INV_SCAN onAdd ABORT: no active")
+            return
+        }
         viewModelScope.launch {
             try {
                 persistActive(active)
             } finally {
                 _activeNdc.value = null
                 _scannerPaused.value = false
+                logger.d("INV_SCAN onAdd DONE — activeNdc cleared")
             }
         }
     }
