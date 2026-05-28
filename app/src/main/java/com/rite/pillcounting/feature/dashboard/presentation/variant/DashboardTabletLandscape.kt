@@ -160,12 +160,14 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                             .fillMaxHeight(),
                     )
 
+                    Spacer(modifier = Modifier.width(1.dp))
                     VerticalDivider(
                         modifier = Modifier
                             .fillMaxHeight()
                             .width(1.dp),
                         color = Color(0x14000000),
                     )
+                    Spacer(modifier = Modifier.width(1.dp))
 
                     // Column 3 — paged Today's Queue / Recent Activity list.
                     HorizontalPager(
