@@ -476,7 +476,12 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
     val batchEnded by inventoryVm.batchEnded.collectAsState()
 
     val context = LocalContext.current
-    val barcodeAnalyzer = remember { FrameBarcodeAnalyzer(context.applicationContext) }
+    val barcodeAnalyzer = remember {
+        FrameBarcodeAnalyzer(
+            context.applicationContext,
+            enableFocusChangeDebounce = true,
+        )
+    }
     val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
 
     // Resume the analyzer whenever the active NDC card clears. We deliberately
@@ -557,14 +562,11 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
                     }
                     try {
                         barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
-                            android.util.Log.d("InventoryScreen", "INV_SCAN onBarcode callback raw='$raw' → forwarding to VM + resuming analyzer")
+                            android.util.Log.d("InventoryScreen", "INV_SCAN onBarcode callback raw='$raw' → forwarding to VM")
+                            // In focus-change mode the analyzer is not self-paused
+                            // on hits — it gates duplicate fires internally based
+                            // on empty-frame streak. No resume() needed here.
                             inventoryVm.onBarcodeDetected(raw)
-                            // Free the analyzer immediately so a subsequent scan of a
-                            // different NDC can reach the VM's auto-commit branch
-                            // while activeNdc is still populated. The 250ms throttle
-                            // in FrameBarcodeAnalyzer plus the VM's same-NDC guard
-                            // prevent duplicate processing of the same label.
-                            barcodeAnalyzer.resume()
                         }
                     } finally {
                         imageProxy.close()

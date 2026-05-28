@@ -8,7 +8,6 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.UserEntity
-import com.rite.pillcounting.core.room.models.dtos.BatchSummaryDto
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
@@ -192,7 +191,10 @@ class DashboardViewModel @Inject constructor(
                 userLocalId = localId,
                 type = StepState.SCAN,
             )
-            val inventoryFlow = batchDao.getAllInProgress()
+            // Use the summaries query so uniqueNdcCount is populated from the
+            // join. getAllInProgress() returns bare BatchEntity rows with no
+            // txn join, which left the card stuck at "0 NDCs" even after scans.
+            val inventoryFlow = batchDao.observeInProgressBatchSummaries()
 
             dispenseFlow.combine(inventoryFlow) { dispense, batches ->
                 val dispenseItems = dispense.map { txn ->
@@ -204,17 +206,7 @@ class DashboardViewModel @Inject constructor(
                     )
                 }
                 val inventoryItems = batches.map { b ->
-                    QueueItem.Inventory(
-                        batch = BatchSummaryDto(
-                            batchId = b.batchId,
-                            createdAt = b.startDateTime,
-                            // uniqueNdcCount is unavailable from getAllInProgress(); Turn 2 query will provide it.
-                            uniqueNdcCount = 0,
-                            status = b.status.name,
-                            bucketId = b.bucketId,
-                            requestIdFromPMS = b.requestIdFromPMS,
-                        )
-                    )
+                    QueueItem.Inventory(batch = b)
                 }
                 (dispenseItems + inventoryItems).sortedBy { it.createdAt }
             }.collect { combined ->

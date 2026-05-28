@@ -47,6 +47,19 @@ import java.util.concurrent.atomic.AtomicLong
  */
 class FrameBarcodeAnalyzer(
     private val appContext: Context,
+    /**
+     * When true, the analyzer does NOT self-pause on a hit. Instead it tracks
+     * the last fired barcode value and the run of empty frames since. A
+     * subsequent fire of the same value only happens after [EMPTY_STREAK_THRESHOLD]
+     * consecutive empty frames (camera lost focus on the label) and re-acquires
+     * the label. A *different* value fires immediately. This is the inventory
+     * "scan a bottle, move it away, scan the next" UX.
+     *
+     * When false (default), the analyzer self-pauses on every hit and waits for
+     * an external resume() call — the dispense-flow behavior where a bottom
+     * sheet appears and the caller resumes when it's dismissed.
+     */
+    private val enableFocusChangeDebounce: Boolean = false,
 ) {
     private val logger = AppLogger("FrameBarcodeAnalyzer")
     private val scanner: BarcodeScanner by lazy {
@@ -75,7 +88,21 @@ class FrameBarcodeAnalyzer(
         private const val MLKIT_TIMEOUT_MS = 1500L
         /** Minimum gap between MLKit attempts. */
         private const val MIN_INTERVAL_MS = 250L
+        /**
+         * In focus-change mode: how many consecutive empty MLKit frames count as
+         * "label out of view." Once reached, the analyzer is willing to fire the
+         * same barcode value again. At ~4 fps (MIN_INTERVAL_MS=250ms) this is
+         * roughly 0.75s of empty camera — enough for a deliberate bottle swap,
+         * short enough not to feel laggy.
+         */
+        private const val EMPTY_STREAK_THRESHOLD = 3
     }
+
+    /** Last value we fired a callback for (focus-change mode). */
+    private var lastFiredValue: String? = null
+
+    /** Consecutive empty MLKit frames since the last fired value (focus-change mode). */
+    private var emptyStreak: Int = 0
 
     fun pause() {
         logger.d("INV_SCAN analyzer.pause() wasPaused=${isPaused.get()} processing=${isProcessing.get()}")
@@ -91,6 +118,10 @@ class FrameBarcodeAnalyzer(
         watchdogJob?.cancel()
         watchdogJob = null
         lastAttemptAtMs = 0L
+        // Reset focus-change state so the first scan after resume always fires,
+        // even if it matches the last value from before.
+        lastFiredValue = null
+        emptyStreak = 0
     }
 
     @SuppressLint("UnsafeOptInUsageError")
@@ -162,12 +193,64 @@ class FrameBarcodeAnalyzer(
         scanner.process(input)
             .addOnSuccessListener { barcodes ->
                 val barcode = barcodes.firstOrNull()
-                logger.d("INV_SCAN MLKit success token=$token barcodes=${barcodes.size} first='${barcode?.rawValue}' paused=${isPaused.get()}")
-                if (barcode != null && !isPaused.get()) {
-                    // Got a hit — self-pause; the caller resumes us when the
-                    // resulting RX/NDC sheet is dismissed.
-                    isPaused.set(true)
-                    logger.d("INV_SCAN analyzer SELF-PAUSED on hit raw='${barcode.rawValue}'")
+                val rawValue = barcode?.rawValue
+                logger.d("INV_SCAN MLKit success token=$token barcodes=${barcodes.size} first='$rawValue' paused=${isPaused.get()}")
+
+                // Decide whether THIS frame should fire a callback. There are two
+                // policies depending on the analyzer's mode:
+                //
+                //  - Default (dispense flow): self-pause on any hit; the caller
+                //    resumes when its sheet is dismissed. No de-dup needed — the
+                //    pause itself prevents repeats.
+                //
+                //  - Focus-change (inventory): never self-pause. Fire on any new
+                //    value immediately. For a value identical to the last one
+                //    fired, only re-fire after the camera has lost focus on the
+                //    label for [EMPTY_STREAK_THRESHOLD] empty frames (label moved
+                //    away) and then re-acquired it. This is the "scan a bottle,
+                //    move it aside, scan the next" UX.
+                val shouldFire: Boolean = when {
+                    barcode == null || isPaused.get() -> false
+                    !enableFocusChangeDebounce -> true
+                    rawValue != null && rawValue != lastFiredValue -> {
+                        // Different value than last fire — fire immediately. This
+                        // covers the rapid swap-to-different-NDC case.
+                        logger.d("INV_SCAN focus-change: new value '$rawValue' (last='$lastFiredValue') → FIRE")
+                        true
+                    }
+                    emptyStreak >= EMPTY_STREAK_THRESHOLD -> {
+                        // Same value, but we've seen enough empty frames to call
+                        // it a focus change. The user moved the label away and
+                        // brought it (or another bottle of the same NDC) back.
+                        logger.d("INV_SCAN focus-change: same value '$rawValue' after emptyStreak=$emptyStreak → FIRE")
+                        true
+                    }
+                    else -> {
+                        // Same value, no focus change yet — suppress.
+                        logger.d("INV_SCAN focus-change: same value '$rawValue' suppressed (emptyStreak=$emptyStreak)")
+                        false
+                    }
+                }
+
+                // Track empty-streak for focus-change mode. Any non-null barcode
+                // resets the streak (label visible); a null barcode increments.
+                if (enableFocusChangeDebounce) {
+                    if (barcode == null) {
+                        emptyStreak++
+                    } else {
+                        emptyStreak = 0
+                    }
+                }
+
+                if (shouldFire) {
+                    if (enableFocusChangeDebounce) {
+                        lastFiredValue = rawValue
+                        emptyStreak = 0
+                    } else {
+                        // Default mode: self-pause; caller resumes us.
+                        isPaused.set(true)
+                        logger.d("INV_SCAN analyzer SELF-PAUSED on hit raw='$rawValue'")
+                    }
                     ioScope.launch {
                         try {
                             val filePath = try {
@@ -181,7 +264,7 @@ class FrameBarcodeAnalyzer(
                                 null
                             }
                             withContext(Dispatchers.Main) {
-                                onBarcodeDetected(barcode.rawValue.orEmpty(), filePath)
+                                onBarcodeDetected(rawValue.orEmpty(), filePath)
                             }
                         } finally {
                             if (!bitmapCopy.isRecycled) bitmapCopy.recycle()
