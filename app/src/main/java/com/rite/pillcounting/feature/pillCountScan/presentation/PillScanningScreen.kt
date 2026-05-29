@@ -8,6 +8,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -87,8 +88,7 @@ fun PillScanningScreen(
     // Inventory mode lands here directly from Dashboard with the new persistent
     // Batch Stock Count panel. The ML interpreter and tray-detection paths stay
     // disabled until the user taps SCAN PILLS — at which point we'll flip into
-    // the legacy pill-counting UI. Tablet (portrait + landscape) and phone
-    // portrait are wired; phone landscape falls through to legacy until built.
+    // the legacy pill-counting UI. All four form factors are wired.
     if (isInventory) {
         when {
             isTablet && isLandscapeNow -> {
@@ -99,12 +99,17 @@ fun PillScanningScreen(
                 InventoryTabletPortraitShell(navController = navController)
                 return
             }
-            // Phone portrait: draggable bottom sheet over the camera.
-            !isLandscapeNow -> {
+            isLandscapeNow -> {
+                // Phone landscape: camera left + narrower panel right (reuses the
+                // tablet-landscape panel at a phone-sized width).
+                InventoryPhoneLandscapeShell(navController = navController)
+                return
+            }
+            else -> {
+                // Phone portrait: draggable bottom sheet over the camera.
                 InventoryPhonePortraitShell(navController = navController)
                 return
             }
-            // Phone landscape: not yet built — fall through to legacy.
         }
     }
 
@@ -537,6 +542,22 @@ fun PillScanningScreen(
  */
 @Composable
 private fun InventoryTabletLandscapeShell(navController: NavController) {
+    // Tablet uses a wide, full-height stacked-card side panel. Phone landscape is a
+    // different layout (slide-out side sheet) — see InventoryPhoneLandscapeShell.
+    InventoryLandscapeShell(navController = navController, panelWidth = 500.dp)
+}
+
+
+/**
+ * Shared landscape inventory shell — camera on the left, persistent Batch Stock
+ * Count panel on the right. [panelWidth] is the only form-factor difference
+ * (tablet 500dp, phone 340dp); all VM/camera/analyzer wiring is identical.
+ */
+@Composable
+private fun InventoryLandscapeShell(
+    navController: NavController,
+    panelWidth: androidx.compose.ui.unit.Dp,
+) {
     val cameraVm: PillScanningViewModel = hiltViewModel()
     val inventoryVm: com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.InventoryScanViewModel =
         hiltViewModel()
@@ -555,6 +576,26 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
         )
     }
     val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
+
+    // Camera permission — same gate as the phone-portrait shell. Without it
+    // CameraX retries forever and the preview never streams (infinite spinner).
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { hasCameraPermission = it }
+    )
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
 
     // Resume the analyzer whenever the active NDC card clears. We deliberately
     // do NOT pause while activeNdc is non-null — the analyzer self-pauses on
@@ -610,43 +651,57 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
             // legacy VM doesn't flip _cameraPaused = true behind our back.
             LaunchedEffect(Unit) { cameraVm.pauseIdleTimer() }
 
-            CameraPreviewSection(
-                viewModel = cameraVm,
-                pills = cameraUiState.detectedPills,
-                isCameraPaused = false,
-                imageFrameWidth = cameraUiState.imageFrameWidth,
-                imageFrameHeight = cameraUiState.imageFrameHeight,
-                showGloveIcon = panelState.activeNdc?.isHazardous == true,
-                onFrame = { imageProxy ->
-                    // Forward each frame to the barcode analyzer. We do NOT
-                    // call cameraVm.onFrameCaptured here — that path runs the
-                    // ML pill detector, which inventory mode keeps disabled.
-                    //
-                    // Inventory mode owns the ImageProxy lifecycle: the analyzer
-                    // synchronously snapshots a Bitmap and never closes the proxy
-                    // itself (the dispense flow relies on the pill VM to close
-                    // it). Without an explicit close here, CameraX's small frame
-                    // pool fills up after the first scan and frameFlow stops
-                    // emitting — symptom: only the first NDC is ever detected.
-                    val n = frameCounter.incrementAndGet()
-                    if (n % 30 == 0L) {
-                        android.util.Log.d("InventoryScreen", "INV_SCAN onFrame tick=$n")
-                    }
-                    try {
-                        barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
-                            android.util.Log.d("InventoryScreen", "INV_SCAN onBarcode callback raw='$raw' → forwarding to VM")
-                            // In focus-change mode the analyzer is not self-paused
-                            // on hits — it gates duplicate fires internally based
-                            // on empty-frame streak. No resume() needed here.
-                            inventoryVm.onBarcodeDetected(raw)
+            if (hasCameraPermission) {
+                CameraPreviewSection(
+                    viewModel = cameraVm,
+                    pills = cameraUiState.detectedPills,
+                    isCameraPaused = false,
+                    imageFrameWidth = cameraUiState.imageFrameWidth,
+                    imageFrameHeight = cameraUiState.imageFrameHeight,
+                    showGloveIcon = panelState.activeNdc?.isHazardous == true,
+                    onFrame = { imageProxy ->
+                        // Forward each frame to the barcode analyzer. We do NOT
+                        // call cameraVm.onFrameCaptured here — that path runs the
+                        // ML pill detector, which inventory mode keeps disabled.
+                        //
+                        // Inventory mode owns the ImageProxy lifecycle: the analyzer
+                        // synchronously snapshots a Bitmap and never closes the proxy
+                        // itself (the dispense flow relies on the pill VM to close
+                        // it). Without an explicit close here, CameraX's small frame
+                        // pool fills up after the first scan and frameFlow stops
+                        // emitting — symptom: only the first NDC is ever detected.
+                        val n = frameCounter.incrementAndGet()
+                        if (n % 30 == 0L) {
+                            android.util.Log.d("InventoryScreen", "INV_SCAN onFrame tick=$n")
                         }
-                    } finally {
-                        imageProxy.close()
-                    }
-                },
-                onFilteredCountChanged = { /* no-op in inventory mode */ },
-                modifier = Modifier.fillMaxSize(),
-            )
+                        try {
+                            barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
+                                android.util.Log.d("InventoryScreen", "INV_SCAN onBarcode callback raw='$raw' → forwarding to VM")
+                                // In focus-change mode the analyzer is not self-paused
+                                // on hits — it gates duplicate fires internally based
+                                // on empty-frame streak. No resume() needed here.
+                                inventoryVm.onBarcodeDetected(raw)
+                            }
+                        } finally {
+                            imageProxy.close()
+                        }
+                    },
+                    onFilteredCountChanged = { /* no-op in inventory mode */ },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.camera_permission_required),
+                        color = androidx.compose.ui.graphics.Color.White,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(24.dp),
+                    )
+                }
+            }
 
             BackButton(
                 navController = navController,
@@ -660,7 +715,7 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
         // overlaying the camera; right edge stays flush against the screen.
         Box(
             modifier = Modifier
-                .width(500.dp)
+                .width(panelWidth)
                 .fillMaxHeight()
                 .clip(
                     androidx.compose.foundation.shape.RoundedCornerShape(
@@ -708,6 +763,185 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
                     inventoryVm.onRecentRowTapped(row)
                     barcodeAnalyzer.resume()
                 },
+            )
+        }
+    }
+
+    if (showEndCountDialog) {
+        CommonDialog(
+            message = stringResource(R.string.are_you_sure_you_want_to_end_this_count),
+            title = stringResource(R.string.confirmation),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = inventoryVm::confirmEndCount,
+            onCancel = inventoryVm::dismissEndCount,
+        )
+    }
+}
+
+/**
+ * Phone-landscape inventory shell — VM-driven.
+ *
+ * Horizontal analog of the phone-portrait bottom sheet: camera fills the screen;
+ * a right-docked panel shows only the details/summary card when collapsed, and
+ * slides OUTWARD (widens leftward) to reveal the RECENT COUNTS card when dragged.
+ * Same VM/camera/analyzer/permission wiring as the other shells.
+ */
+@Composable
+private fun InventoryPhoneLandscapeShell(navController: NavController) {
+    val cameraVm: PillScanningViewModel = hiltViewModel()
+    val inventoryVm: com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.InventoryScanViewModel =
+        hiltViewModel()
+
+    val cameraUiState by cameraVm.uiState.collectAsState()
+    val panelState by inventoryVm.uiState.collectAsState()
+    val errorMessage by inventoryVm.errorMessage.collectAsState()
+    val showEndCountDialog by inventoryVm.showEndCountDialog.collectAsState()
+    val batchEnded by inventoryVm.batchEnded.collectAsState()
+
+    val context = LocalContext.current
+    val barcodeAnalyzer = remember {
+        FrameBarcodeAnalyzer(context.applicationContext, enableFocusChangeDebounce = true)
+    }
+    val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
+
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context, Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { hasCameraPermission = it }
+    )
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
+    }
+
+    LaunchedEffect(panelState.activeNdc) {
+        if (panelState.activeNdc == null) barcodeAnalyzer.resume()
+    }
+    LaunchedEffect(errorMessage) {
+        errorMessage?.let { err ->
+            val text = if (err.formatArg != null) context.getString(err.messageResId, err.formatArg)
+            else context.getString(err.messageResId)
+            android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+            inventoryVm.clearErrorMessage()
+        }
+    }
+    LaunchedEffect(batchEnded) {
+        if (batchEnded) navController.popBackStack()
+    }
+
+    val canEndCount = panelState.totalNdcs > 0 || panelState.activeNdc != null
+
+    // Collapsed = just the details card; expanded = details + recent-counts card.
+    val detailsCardWidth = 340.dp
+    val collapsedWidth = detailsCardWidth + 28.dp        // + panel horizontal padding
+    val expandedWidth = collapsedWidth + 300.dp          // room for the recent card
+    var expanded by remember { mutableStateOf(false) }
+    val panelWidth by androidx.compose.animation.core.animateDpAsState(
+        targetValue = if (expanded) expandedWidth else collapsedWidth,
+        label = "panelWidth",
+    )
+
+    LaunchedEffect(Unit) { cameraVm.pauseIdleTimer() }
+
+    Box(modifier = Modifier.fillMaxSize()) {
+        // Full-screen camera behind the panel.
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(androidx.compose.ui.graphics.Color(0xFF2A2A2A))
+        ) {
+            if (hasCameraPermission) {
+                CameraPreviewSection(
+                    viewModel = cameraVm,
+                    pills = cameraUiState.detectedPills,
+                    isCameraPaused = false,
+                    imageFrameWidth = cameraUiState.imageFrameWidth,
+                    imageFrameHeight = cameraUiState.imageFrameHeight,
+                    showGloveIcon = panelState.activeNdc?.isHazardous == true,
+                    onFrame = { imageProxy ->
+                        val n = frameCounter.incrementAndGet()
+                        if (n % 30 == 0L) {
+                            android.util.Log.d("InventoryScreen", "INV_SCAN(phone-ls) onFrame tick=$n")
+                        }
+                        try {
+                            barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
+                                inventoryVm.onBarcodeDetected(raw)
+                            }
+                        } finally {
+                            imageProxy.close()
+                        }
+                    },
+                    onFilteredCountChanged = { /* no-op in inventory mode */ },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(
+                        text = stringResource(R.string.camera_permission_required),
+                        color = androidx.compose.ui.graphics.Color.White,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(24.dp),
+                    )
+                }
+            }
+
+            BackButton(navController = navController, showBox = false, onClick = { navController.popBackStack() })
+        }
+
+        // Right-docked panel. A horizontal drag toggles expanded/collapsed:
+        // dragging left (negative) expands to reveal recent counts; right collapses.
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .width(panelWidth)
+                .fillMaxHeight()
+                .clip(
+                    androidx.compose.foundation.shape.RoundedCornerShape(
+                        topStart = 24.dp, bottomStart = 24.dp, topEnd = 0.dp, bottomEnd = 0.dp,
+                    )
+                )
+                .background(androidx.compose.ui.graphics.Color(0xFFF2F2F2))
+                .draggable(
+                    orientation = androidx.compose.foundation.gestures.Orientation.Horizontal,
+                    state = androidx.compose.foundation.gestures.rememberDraggableState { delta ->
+                        // Drag left (delta < 0) → expand; drag right → collapse.
+                        if (delta < -8f) expanded = true
+                        else if (delta > 8f) expanded = false
+                    },
+                )
+        ) {
+            com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountPhoneLandscape(
+                state = panelState,
+                recentVisible = expanded,
+                detailsCardWidth = detailsCardWidth,
+                onScanPills = {
+                    inventoryVm.onScanPillsForActive { batchId ->
+                        navController.navigate(Screen.InventoryPillCount.createRoute(batchId))
+                    }
+                },
+                onIncrement = inventoryVm::increment,
+                onDecrement = inventoryVm::decrement,
+                onClear = {
+                    inventoryVm.onClear()
+                    barcodeAnalyzer.resume()
+                },
+                onAdd = {
+                    inventoryVm.onAdd()
+                    barcodeAnalyzer.resume()
+                },
+                onEndCount = inventoryVm::requestEndCount,
+                endCountEnabled = canEndCount,
+                onRowTapped = { row ->
+                    inventoryVm.onRecentRowTapped(row)
+                    barcodeAnalyzer.resume()
+                },
+                modifier = Modifier.fillMaxHeight(),
             )
         }
     }
@@ -965,13 +1199,11 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
     // guess that clipped the counter. Default until first measure.
     val density = androidx.compose.ui.platform.LocalDensity.current
     var peekHeightPx by remember { mutableStateOf(0) }
-    // sheetPeekHeight is the TOTAL collapsed height, which includes the scaffold's
-    // drag handle + its vertical padding ABOVE our content. Add that allowance to
-    // the measured content height, else the handle eats into the peek and clips
-    // the bottom of the card (CANCEL/ADD). ~48dp covers the default handle block.
-    val sheetHandleAllowance = 48.dp
-    val peekHeight = (with(density) { peekHeightPx.toDp() } + sheetHandleAllowance)
-        .coerceAtLeast(360.dp)
+    // Peek = exactly the measured content height. The drag handle is removed and
+    // the panel's own top + bottom padding are now INSIDE the measured region, so
+    // no extra allowance is needed — adding any leaks the recent-counts header
+    // into the collapsed peek.
+    val peekHeight = with(density) { peekHeightPx.toDp() }.coerceAtLeast(320.dp)
     // The Recent Counts list (revealed on expand) gets the screen height minus the
     // peek so the inner LazyColumn stays bounded.
     val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
@@ -1048,6 +1280,9 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
             // shows the full counter/buttons. Dragging up reveals RECENT COUNTS.
             sheetPeekHeight = peekHeight,
             sheetContainerColor = androidx.compose.ui.graphics.Color(0xFFF2F2F2),
+            // No drag handle — removes the grey pill line at the top and lets the
+            // "Batch Stock Count" header sit higher. The sheet still drags.
+            sheetDragHandle = null,
             // Transparent body so the camera Box behind shows through; the sheet
             // is the only visible scaffold surface.
             containerColor = androidx.compose.ui.graphics.Color.Transparent,

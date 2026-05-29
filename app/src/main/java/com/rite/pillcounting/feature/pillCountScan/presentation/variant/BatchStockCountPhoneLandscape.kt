@@ -4,14 +4,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AddBox
@@ -23,9 +23,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
@@ -38,65 +38,76 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedD
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedSummaryRow
 
 /**
- * Phone-portrait variant of the redesigned Batch Stock Count panel.
+ * Phone-landscape variant of the Batch Stock Count panel — the horizontal analog
+ * of the portrait bottom sheet:
+ *  - Collapsed (normal): only the SCANNED NDC DETAILS / counter card (active) or
+ *    the empty placeholder + SCANNED SUMMARY shows, docked on the right.
+ *  - Expanded (slid outward): a RECENT COUNTS card is revealed to the LEFT of the
+ *    details card.
  *
- * Same data + callbacks as the tablet variants — only the layout differs to fit
- * a narrow phone in a draggable bottom sheet. The caller (the phone shell) hosts
- * this inside a BottomSheetScaffold:
- *  - Collapsed (peek): header + the SCANNED NDC DETAILS card/counter (active) or
- *    the "scan a new bottle" placeholder + SCANNED SUMMARY (empty).
- *  - Expanded (pull up): the RECENT COUNTS list is revealed below the card.
+ * The host (phone-landscape shell) owns the slide gesture and sizes this panel's
+ * width; this composable just lays out the two cards. [recentVisible] controls
+ * whether the recent-counts card is shown (true once expanded).
  *
- * Single column throughout (the tablet side-by-side Row is too cramped on a
- * phone). The card content reuses [ScannedDrugDetailsPhone] / [ScannedSummaryRow]
- * verbatim so styling stays identical to tablet portrait.
+ * Card content reuses [ScannedDrugDetailsPhone] / [ScannedSummaryRow] /
+ * [RecentCountsList] verbatim so styling matches the other variants.
  */
 @Composable
-fun BatchStockCountPhonePortrait(
+fun BatchStockCountPhoneLandscape(
     state: BatchStockCountUiState,
+    recentVisible: Boolean,
+    detailsCardWidth: Dp,
     onScanPills: () -> Unit,
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
     onClear: () -> Unit,
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
-    // END COUNT is disabled until at least one NDC has been scanned.
-    endCountEnabled: Boolean = true,
+    endCountEnabled: Boolean,
     onRowTapped: (RecentBatchRow) -> Unit = {},
-    // Reports the measured height (px) of the always-visible region (header +
-    // card) so the host can size the sheet's peek to exactly show it — no fixed
-    // guess that clips the counter, no dead space above.
-    onPeekHeightChanged: (Int) -> Unit = {},
-    // Max height the list region may take (px) when expanded; keeps the inner
-    // LazyColumn bounded (a fillMaxSize/weight LazyColumn in a wrap-content sheet
-    // crashes with "measured with infinity").
-    listMaxHeight: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
-    // NO own background / rounded surface here — the hosting BottomSheetScaffold
-    // provides the grey sheet container, rounded top corners, and the drag handle.
-    // wrapContentHeight (NOT fillMaxSize) so the sheet sizes to its content rather
-    // than always stretching to max — that stretch is what pushed the header down
-    // and dropped the counter below the peek fold.
-    Column(
+    // Grey sheet surface (rounded left edge — set by the host clip). Row so the
+    // recent card sits to the LEFT of the details card; recent is only laid out
+    // when expanded so the collapsed peek is exactly the details card width.
+    Row(
         modifier = modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
+            .fillMaxHeight()
+            .background(Color(0xFFF2F2F2))
+            .padding(horizontal = 14.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        // Peek region: top padding + header + the details/counter card + a bottom
-        // gap. ALL of it is INSIDE the measured region so the peek height matches
-        // it exactly — no extra space below (which leaked the recent-counts header
-        // into the collapsed peek) and the header gets real space above it.
+        if (recentVisible) {
+            // Recent counts card — fills the slack on the left when expanded.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            ) {
+                val label = if (state.activeNdc != null) {
+                    stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
+                } else {
+                    stringResource(R.string.batch_stock_count_recent_summary)
+                }
+                RecentCountsLabelRow(label = label)
+                Spacer(modifier = Modifier.height(8.dp))
+                RecentCountsList(
+                    rows = state.recentCounts,
+                    onRowTapped = onRowTapped,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+            }
+        }
+
+        // Details / summary card — fixed width = the collapsed peek width, docked
+        // on the right.
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .onSizeChanged { onPeekHeightChanged(it.height) },
+                .width(detailsCardWidth)
+                .fillMaxHeight(),
         ) {
-            // Top breathing room above the header (no drag handle anymore).
-            Spacer(modifier = Modifier.height(20.dp))
             BatchStockCountHeader(onScanPills = onScanPills)
             Spacer(modifier = Modifier.height(14.dp))
-
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -113,7 +124,7 @@ fun BatchStockCountPhonePortrait(
                         onAdd = onAdd,
                     )
                 } else {
-                    EmptyScannedDetailsPhone(
+                    EmptyScannedDetailsLandscape(
                         totalNdcs = state.totalNdcs,
                         totalPills = state.totalPills,
                         onEndCount = onEndCount,
@@ -121,48 +132,16 @@ fun BatchStockCountPhonePortrait(
                     )
                 }
             }
-
-            // Breathing room below the card + clearance for the system navigation
-            // bar so the buttons aren't flush against the bottom edge.
-            Spacer(
-                modifier = Modifier.height(
-                    16.dp + WindowInsets.navigationBars.asPaddingValues()
-                        .calculateBottomPadding()
-                )
-            )
         }
-
-        // Recent counts — revealed once the sheet is dragged up past the peek.
-        Spacer(modifier = Modifier.height(16.dp))
-        val label = if (state.activeNdc != null) {
-            stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
-        } else {
-            stringResource(R.string.batch_stock_count_recent_summary)
-        }
-        RecentCountsLabelRow(label = label)
-        Spacer(modifier = Modifier.height(8.dp))
-        // Bounded height (NOT weight/fillMaxSize) so the LazyColumn measures inside
-        // a wrap-content sheet without crashing.
-        RecentCountsList(
-            rows = state.recentCounts,
-            onRowTapped = onRowTapped,
-            modifier = Modifier.fillMaxWidth().height(listMaxHeight),
-        )
     }
 }
 
-/**
- * Empty-state content for the phone card: a centered "scan a new bottle"
- * placeholder, with the scanned-summary totals + END COUNT below. Mirrors the
- * tablet portrait empty state but without the fill-height weighting (the phone
- * card wraps its content inside the sheet).
- */
 @Composable
-private fun EmptyScannedDetailsPhone(
+private fun EmptyScannedDetailsLandscape(
     totalNdcs: Int,
     totalPills: Int,
     onEndCount: () -> Unit,
-    endCountEnabled: Boolean = true,
+    endCountEnabled: Boolean,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -172,7 +151,7 @@ private fun EmptyScannedDetailsPhone(
             fontWeight = FontWeight.SemiBold,
         )
         Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 24.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
