@@ -12,6 +12,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import org.opencv.android.OpenCVLoader
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -25,6 +26,12 @@ class PillCountingApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         FirebaseApp.initializeApp(this)
+
+        if (!OpenCVLoader.initLocal()) {
+            Log.e("OpenCV", "OpenCV initialization failed")
+        } else {
+            Log.i("OpenCV", "OpenCV initialized successfully")
+        }
 
         Coil.setImageLoader(
             ImageLoader.Builder(this)

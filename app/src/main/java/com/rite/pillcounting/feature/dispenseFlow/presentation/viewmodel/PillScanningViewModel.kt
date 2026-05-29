@@ -42,6 +42,7 @@ import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.CameraHelpe
 import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.Detection
 import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.GloveDetection
 import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.PillAnalyzer
+import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.TrayColor
 import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.TrayDetection
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
@@ -146,6 +147,22 @@ class PillScanningViewModel @Inject constructor(
     val glovesDetected: StateFlow<Boolean> = _glovesDetected.asStateFlow()
 
     var shouldRunGloveDetection = true
+
+    // Tray color detection: true when drug is hazardous (enables OpenCV + DB save).
+    // @Volatile ensures main-thread write is visible to Dispatchers.Default immediately.
+    @Volatile var isTrayColorDetectionEnabled = false
+    // true when drug is hazardous AND global "Hazardous Drug" setting is ON → show popup.
+    private var hazardousTrayPopupEnabled = false
+    // Prevents saving hazardousTrayDetected to DB more than once per transaction.
+    private var hazardousTrayResultSaved = false
+    // Remembered so resetIdleOverlay() can restore detection without re-calling setHazardousTransaction.
+    private var lastHazardousByDrug = false
+    // Tracks colors already prompted this session to avoid repeated popups per color.
+    private val promptedTrayColors = mutableSetOf<TrayColor>()
+    // In-memory cache of the preference lists so we don't hit SharedPreferences every frame.
+    private var cachedHazardousColors: Set<String> = emptySet()
+    private var cachedNonHazardousColors: Set<String> = emptySet()
+
     private var lastPreviewWidth = 0
     private var lastPreviewHeight = 0
     private var gloveTimeoutJob: Job? = null
@@ -284,6 +301,7 @@ class PillScanningViewModel @Inject constructor(
                     gloveInterpreter = models.gloveInterpreter,
                     performanceLogger = performanceLogger,
                     shouldRunGloveDetection = { shouldRunGloveDetection },
+                    shouldDetectTrayColor = { isTrayColorDetectionEnabled },
                     onResult = { count, detections, trayDetections, gloveDetections, bitmap, matrix, imageWidth, imageHeight ->
                         processDetections(
                             count         = count,
@@ -457,6 +475,49 @@ class PillScanningViewModel @Inject constructor(
         _trayDetections.value = trayDets
         _uiState.update { it.copy(gloveDetections = gloveDets) }
 
+        // ── Tray color classification + hazardousTrayDetected DB save ────────
+        // Runs only for hazardous drug transactions. Saves exactly once per txn.
+        //
+        // Scenario 1 (setting OFF): immediate save — true if in hazardous list, false otherwise.
+        // Scenario 2 (setting ON):  true if in hazardous list (immediate), otherwise show popup;
+        //                           user response (yes/no) determines the saved value.
+        android.util.Log.d(
+            "TRAY_COLOR",
+            "Frame: detectionEnabled=$isTrayColorDetectionEnabled popupEnabled=$hazardousTrayPopupEnabled " +
+            "resultSaved=$hazardousTrayResultSaved trays=${trayDets.size} " +
+            "pending=${_uiState.value.pendingTrayColorForClassification?.label}"
+        )
+        if (isTrayColorDetectionEnabled && !hazardousTrayResultSaved) {
+            val trayColor = trayDets.firstOrNull { it.trayColor != TrayColor.UNKNOWN }?.trayColor
+            android.util.Log.d("TRAY_COLOR", "  First known tray color: ${trayColor?.label ?: "none"} " +
+                    "hazardousList=$cachedHazardousColors")
+
+            if (trayColor != null) {
+                when {
+                    trayColor.name in cachedHazardousColors -> {
+                        // Known hazardous tray → save true (both scenarios)
+                        android.util.Log.d("TRAY_COLOR", "  → Tray ${trayColor.label} is in hazardous list → saving true")
+                        saveHazardousTrayDetected(true)
+                    }
+                    !hazardousTrayPopupEnabled -> {
+                        // Scenario 1 (setting OFF): not in hazardous list → save false immediately
+                        android.util.Log.d("TRAY_COLOR", "  → Setting OFF, ${trayColor.label} not in hazardous list → saving false")
+                        saveHazardousTrayDetected(false)
+                    }
+                    _uiState.value.pendingTrayColorForClassification == null && trayColor !in promptedTrayColors -> {
+                        // Scenario 2 (setting ON): show popup, save after user response
+                        promptedTrayColors.add(trayColor)
+                        _uiState.update { it.copy(pendingTrayColorForClassification = trayColor) }
+                        android.util.Log.d("TRAY_COLOR", "  *** POPUP for ${trayColor.label} — awaiting user response ***")
+                        logger.i("Tray color ${trayColor.label} unclassified — showing popup")
+                    }
+                    else -> {
+                        android.util.Log.d("TRAY_COLOR", "  → Popup already pending or already prompted for ${trayColor.label}")
+                    }
+                }
+            }
+        }
+
         // ── Check if gloves detected - if yes, stop running glove detection ──
         // Require a strong detection before locking the session state, otherwise a single
         // weak false positive on the warm-up frame disables glove detection permanently.
@@ -510,8 +571,11 @@ class PillScanningViewModel @Inject constructor(
     private fun pauseAndClearBuffers() {
         _lastTenDetections.value.clear()
         lastDetectedSnapshot = emptyList()
-        _uiState.update { it.copy(showIdleOverlay = true, gloveDetections = emptyList()) }
+        _uiState.update { it.copy(showIdleOverlay = true, gloveDetections = emptyList(), pendingTrayColorForClassification = null) }
         _trayDetections.value = emptyList()
+        isTrayColorDetectionEnabled = false
+        hazardousTrayPopupEnabled = false
+        promptedTrayColors.clear()
         isPaused = true
         _cameraPaused.value = true
         logger.w("Camera paused due to idle timeout. Buffers cleared.")
@@ -561,7 +625,7 @@ class PillScanningViewModel @Inject constructor(
 
     /** Reset idle overlay and resume camera analysis. */
     fun resetIdleOverlay() {
-        _uiState.update { it.copy(showIdleOverlay = false) }
+        _uiState.update { it.copy(showIdleOverlay = false, pendingTrayColorForClassification = null) }
 
         _lastTenDetections.value.clear()
         lastDetectedSnapshot = emptyList()
@@ -569,6 +633,17 @@ class PillScanningViewModel @Inject constructor(
         lastAddedScanSignature = null
         _trayDetections.value = emptyList()
         _uiState.update { it.copy(gloveDetections = emptyList()) }
+
+        // Restore detection flags using the drug flag remembered from setHazardousTransaction().
+        // Do NOT reset hazardousTrayResultSaved — the transaction is the same, result already saved.
+        val globalSettingOn = preferenceHelper.isHazardousDrugEnabled()
+        isTrayColorDetectionEnabled = lastHazardousByDrug
+        hazardousTrayPopupEnabled = lastHazardousByDrug && globalSettingOn
+        if (lastHazardousByDrug) {
+            cachedHazardousColors = preferenceHelper.getHazardousTrayColors()
+            cachedNonHazardousColors = preferenceHelper.getNonHazardousTrayColors()
+            promptedTrayColors.clear()
+        }
 
         // Reset glove detection state
         resetGloveDetection()
@@ -592,6 +667,78 @@ class PillScanningViewModel @Inject constructor(
             return
         }
         _uiState.update { it.copy(filteredPills = filtered) }
+    }
+
+    /**
+     * Called when the COUNTING stage begins. Enables tray color detection and caches
+     * the current hazardous/non-hazardous color lists from preferences.
+     */
+    /**
+     * Called when COUNTING stage begins.
+     *
+     * Scenario 1 — setting OFF + drug hazardous:
+     *   Detection runs, no popup. Result saved immediately based on hazardous-list lookup.
+     * Scenario 2 — setting ON + drug hazardous:
+     *   Detection runs, popup shown if color not in hazardous list. Result saved on user response.
+     * If drug is NOT hazardous: nothing runs, no DB write.
+     */
+    fun setHazardousTransaction(isHazardousByDrug: Boolean) {
+        val globalSettingOn = preferenceHelper.isHazardousDrugEnabled()
+        lastHazardousByDrug = isHazardousByDrug
+        isTrayColorDetectionEnabled = isHazardousByDrug
+        hazardousTrayPopupEnabled = isHazardousByDrug && globalSettingOn
+        hazardousTrayResultSaved = false
+
+        android.util.Log.d("TRAY_COLOR", "=== setHazardousTransaction ===")
+        android.util.Log.d("TRAY_COLOR", "  drugFlag=$isHazardousByDrug  globalSettingOn=$globalSettingOn")
+        android.util.Log.d("TRAY_COLOR", "  detectionEnabled=$isTrayColorDetectionEnabled  popupEnabled=$hazardousTrayPopupEnabled")
+
+        if (isHazardousByDrug) {
+            cachedHazardousColors = preferenceHelper.getHazardousTrayColors()
+            cachedNonHazardousColors = preferenceHelper.getNonHazardousTrayColors()
+            promptedTrayColors.clear()
+            logger.i("Hazardous drug transaction. popupEnabled=$hazardousTrayPopupEnabled")
+            android.util.Log.d("TRAY_COLOR", "  Hazardous list (${cachedHazardousColors.size}): $cachedHazardousColors")
+            android.util.Log.d("TRAY_COLOR", "  Non-hazardous list (${cachedNonHazardousColors.size}): $cachedNonHazardousColors")
+        } else {
+            logger.i("Non-hazardous drug — tray color detection disabled")
+            android.util.Log.d("TRAY_COLOR", "  Drug not hazardous → no detection, no DB write")
+        }
+    }
+
+    /**
+     * Saves the user's classification choice for the pending tray color.
+     * Adds the color to the appropriate preference list and dismisses the popup.
+     */
+    fun classifyTrayColor(color: TrayColor, isHazardous: Boolean) {
+        if (isHazardous) {
+            preferenceHelper.addHazardousTrayColor(color.name)
+            cachedHazardousColors = cachedHazardousColors + color.name
+            logger.i("Tray color ${color.label} classified as HAZARDOUS → saving true to DB")
+            android.util.Log.d("TRAY_COLOR", "=== classifyTrayColor: ${color.label} → HAZARDOUS ===")
+            android.util.Log.d("TRAY_COLOR", "  Updated hazardous list (${cachedHazardousColors.size}): $cachedHazardousColors")
+        } else {
+            preferenceHelper.addNonHazardousTrayColor(color.name)
+            cachedNonHazardousColors = cachedNonHazardousColors + color.name
+            logger.i("Tray color ${color.label} classified as NON-HAZARDOUS → saving false to DB")
+            android.util.Log.d("TRAY_COLOR", "=== classifyTrayColor: ${color.label} → NON-HAZARDOUS ===")
+            android.util.Log.d("TRAY_COLOR", "  Updated non-hazardous list (${cachedNonHazardousColors.size}): $cachedNonHazardousColors")
+        }
+        saveHazardousTrayDetected(isHazardous)
+        _uiState.update { it.copy(pendingTrayColorForClassification = null) }
+    }
+
+    private fun saveHazardousTrayDetected(detected: Boolean) {
+        if (hazardousTrayResultSaved) return
+        hazardousTrayResultSaved = true
+        viewModelScope.launch(Dispatchers.IO) {
+            val txnId = preferenceHelper.getTxnId()
+            if (txnId != 0L) {
+                pillCountTxnDao.updateHazardousTrayDetected(txnId, detected)
+                logger.i("hazardousTrayDetected=$detected saved for txnId=$txnId")
+                android.util.Log.d("TRAY_COLOR", "DB updated: hazardousTrayDetected=$detected txnId=$txnId")
+            }
+        }
     }
 
     /**

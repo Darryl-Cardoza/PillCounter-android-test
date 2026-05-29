@@ -91,6 +91,9 @@ class MainActivityViewModel @Inject constructor(
     private val _isSoundOverride = MutableStateFlow(preferenceHelper.isSoundOverride())
     val isSoundOverride: StateFlow<Boolean> = _isSoundOverride
 
+    private val _isHazardousDrug = MutableStateFlow(preferenceHelper.isHazardousDrugEnabled())
+    val isHazardousDrug: StateFlow<Boolean> = _isHazardousDrug
+
     init {
         // Load cached/fallback theme instantly
         loadCachedOrFallbackTheme()
@@ -466,6 +469,16 @@ class MainActivityViewModel @Inject constructor(
     fun toggleSoundOverride(newValue: Boolean) {
         preferenceHelper.setSoundOverride(newValue)
         _isSoundOverride.value = newValue
+    }
+
+    fun toggleHazardousDrug(newValue: Boolean) {
+        preferenceHelper.setHazardousDrugEnabled(newValue)
+        _isHazardousDrug.value = newValue
+    }
+
+    fun clearTrayColorLists() {
+        preferenceHelper.clearAllTrayColorLists()
+        logger.i("Tray color classification lists cleared from Settings")
     }
 
 }

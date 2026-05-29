@@ -202,4 +202,7 @@ dependencies {
 
     // ADD this — NanoHTTPD with SSL support
     implementation("org.nanohttpd:nanohttpd:2.3.1")
+
+    // OpenCV — tray color detection
+    implementation("org.opencv:opencv:4.10.0")
 }

@@ -26,7 +26,8 @@ data class TrayDetection(
     val rect: RectF,
     val confidence: Float,
     val scaleInfo: Letterbox.ScaleInfo,
-    val maskThreshold: Float
+    val maskThreshold: Float,
+    val trayColor: TrayColor = TrayColor.UNKNOWN
 ) {
     fun containsPoint(x: Int, y: Int): Boolean {
         if (protoMask.isEmpty()) return false
