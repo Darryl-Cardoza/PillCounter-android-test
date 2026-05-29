@@ -139,8 +139,13 @@ class InventoryScanViewModel @Inject constructor(
         recentRows,
         _activeNdc,
     ) { rows, active ->
+        // Hide the active NDC's row from the list — it's already shown in the
+        // bottom card, so duplicating it just clutters the recent list and
+        // invites a confusing tap-to-reactivate on the row that already is
+        // active. Totals still count every txn including the active one.
+        val visibleRows = if (active != null) rows.filterNot { it.ndc == active.ndc } else rows
         BatchStockCountUiState(
-            recentCounts = rows,
+            recentCounts = visibleRows,
             activeNdc = active,
             totalNdcs = rows.size,
             totalPills = rows.sumOf { it.pills },
