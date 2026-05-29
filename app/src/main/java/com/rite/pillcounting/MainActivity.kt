@@ -79,8 +79,8 @@ class MainActivity : ComponentActivity() {
 //        securityViolations = SecurityUtils.getSecurityViolations(this)
 //
 //        if (securityViolations.isEmpty()) {
-//            runtimeUnit.grantClearance()
-//            runtimeUnit.activateIfNeeded()
+            runtimeUnit.grantClearance()
+            runtimeUnit.activateIfNeeded()
 //        } else {
 //            runtimeUnit.revokeClearance()
 //        }

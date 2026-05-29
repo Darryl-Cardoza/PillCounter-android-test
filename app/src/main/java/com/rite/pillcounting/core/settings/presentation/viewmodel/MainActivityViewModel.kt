@@ -164,6 +164,13 @@ class MainActivityViewModel @Inject constructor(
             preferenceHelper.saveThemeColors(it) // persist for next launch
             logger.i("Updated cached theme colors in preferences.")
         }
+
+        // Persist the barcode template so RX scanning can parse the label format
+        // on any subsequent launch without requiring a fresh settings fetch.
+        dto?.hl7Config?.barcodeFormat?.takeIf { it.isNotBlank() }?.let { format ->
+            preferenceHelper.saveBarcodeRegex(format)
+            logger.i("Barcode format saved from settings: $format")
+        }
     }
 
     /**
