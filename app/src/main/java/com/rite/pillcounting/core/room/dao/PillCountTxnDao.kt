@@ -224,6 +224,31 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
+    @Query(
+        """
+        SELECT * FROM pill_count_txn
+        WHERE rxNo = :rxNo
+          AND isDeleted = 1
+        ORDER BY updatedAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getDeletedByRxNo(rxNo: String): PillCountTxnEntity?
+
+    @Query(
+        """
+        UPDATE pill_count_txn
+        SET isDeleted   = 0,
+            status      = 'PARTIAL',
+            updatedAt   = :now
+        WHERE txnId = :txnId
+        """
+    )
+    suspend fun restoreDeletedTxn(
+        txnId: Long,
+        now: Long = System.currentTimeMillis()
+    )
+
     /**
      * Finds the most-recent non-deleted, in-progress (PARTIAL) transaction for a given Rx number.
      *
@@ -238,7 +263,7 @@ interface PillCountTxnDao {
         SELECT * FROM pill_count_txn
         WHERE rxNo    = :rxNo
           AND isDeleted = 0
-          AND status  = 'PARTIAL'
+          AND status  IN ('PARTIAL', 'ON_HOLD')
         ORDER BY createdAt DESC
         LIMIT 1
         """
@@ -262,6 +287,7 @@ interface PillCountTxnDao {
         SET drugId      = :drugId,
             targetCount = :targetCount,
             priority    = :priority,
+            status      = CASE WHEN :status IS NULL THEN status ELSE :status END,
             isSynced    = 0,
             updatedAt   = :now
         WHERE txnId = :txnId
@@ -272,6 +298,7 @@ interface PillCountTxnDao {
         drugId: Long?,
         targetCount: Int?,
         priority: TxnPriority?,
+        status: CountStatus?,
         now: Long = System.currentTimeMillis()
     )
 
