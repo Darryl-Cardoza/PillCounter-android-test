@@ -2,6 +2,7 @@ package com.rite.pillcounting.feature.history.presentation.compose
 
 import android.content.Context
 import android.graphics.Canvas
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -16,6 +17,8 @@ import java.util.Date
 import java.util.Locale
 
 class HistoryPdfExporter(private val context: Context) {
+
+    private val logger = AppLogger("HistoryPdfExporter")
 
     // A4 Dimensions (Points)
     private val pageWidth = 595
@@ -95,10 +98,7 @@ class HistoryPdfExporter(private val context: Context) {
                 // If delete fails, it usually means the file is OPEN in another app.
                 // We will try to overwrite it anyway using the stream below,
                 // but sometimes the OS locks it.
-                android.util.Log.e(
-                    "PDFExporter",
-                    "Could not delete existing file. It might be open."
-                )
+                logger.e("Could not delete existing file. It might be open.")
             }
         }
 

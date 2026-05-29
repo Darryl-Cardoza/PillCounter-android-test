@@ -1,7 +1,7 @@
 package com.rite.pillcounting.core.hl7.mllp.client
 
-import android.util.Log
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsSocketFactory
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,8 +21,9 @@ import javax.net.ssl.SSLSocket
 class MllpClient(
     private val socketFactory: TlsSocketFactory
 ) {
+    private val logger = AppLogger("MllpClient")
+
     companion object {
-        private const val TAG = "MllpClient"
         private const val SB: Byte = 0x0B
         private const val EB: Byte = 0x1C
         private const val CR: Byte = 0x0D
@@ -42,7 +43,7 @@ class MllpClient(
     private val streamGate = Semaphore(permits = 1)
 
     suspend fun connect(ip: String, port: Int) = withContext(Dispatchers.IO) {
-        Log.d(TAG, "connect() — $ip:$port")
+        logger.d("connect() — $ip:$port")
         mutex.withLock {
             closeInternal()
             val sock = socketFactory.createSocket(ip, port)
@@ -51,14 +52,14 @@ class MllpClient(
             socket = sock
             input = sock.inputStream
             output = sock.outputStream
-            Log.i(TAG, "connect() — socket established to $ip:$port")
+            logger.i("connect() — socket established to $ip:$port")
         }
     }
 
     suspend fun send(message: String): String = withContext(Dispatchers.IO) {
         mutex.withLock {
             require(isConnected()) { "Not connected" }
-            Log.d(TAG, "send() — writing ${message.length} chars")
+            logger.d("send() — writing ${message.length} chars")
 
             // Acquire the stream gate — passiveReader will block at its
             // own acquire() call and cannot touch input until we release.
@@ -67,7 +68,7 @@ class MllpClient(
                 output?.write(wrap(message))
                 output?.flush()
                 val response = readResponse()
-                Log.d(TAG, "send() — received response (${response.length} chars)")
+                logger.d("send() — received response (${response.length} chars)")
                 response
             } finally {
                 // Always release — even if readResponse() throws —
@@ -85,10 +86,10 @@ class MllpClient(
         onMessageReceived: (String) -> Unit,
         onDisconnected: () -> Unit
     ): Job = scope.launch(Dispatchers.IO) {
-        Log.d(TAG, "startPassiveReader() — started")
+        logger.d("startPassiveReader() — started")
         try {
             val stream = input ?: run {
-                Log.w(TAG, "startPassiveReader() — input stream is null")
+                logger.w("startPassiveReader() — input stream is null")
                 onDisconnected()
                 return@launch
             }
@@ -104,7 +105,7 @@ class MllpClient(
                         val b = stream.read()
 
                         if (b == -1) {
-                            Log.i(TAG, "startPassiveReader() — clean TCP close (read = -1)")
+                            logger.i("startPassiveReader() — clean TCP close (read = -1)")
                             onDisconnected()
                             return@launch
                         }
@@ -115,7 +116,7 @@ class MllpClient(
                                 stream.read() // consume trailing CR
                                 if (started) {
                                     val msg = buffer.toString(Charsets.UTF_8.name())
-                                    Log.d(TAG, "passiveReader — unsolicited msg (${msg.length} chars)")
+                                    logger.d("passiveReader — unsolicited msg (${msg.length} chars)")
                                     onMessageReceived(msg)
                                 }
                                 started = false
@@ -128,13 +129,13 @@ class MllpClient(
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "startPassiveReader() — exception: ${e.message}")
+            logger.w("startPassiveReader() — exception: ${e.message}")
             onDisconnected()
         }
     }
 
     suspend fun close() = withContext(Dispatchers.IO) {
-        Log.d(TAG, "close() — closing socket")
+        logger.d("close() — closing socket")
         mutex.withLock { closeInternal() }
     }
 
@@ -159,7 +160,7 @@ class MllpClient(
     }
 
     private fun closeInternal() {
-        Log.d(TAG, "closeInternal() — releasing streams and socket")
+        logger.d("closeInternal() — releasing streams and socket")
         try { input?.close() } catch (_: Exception) {}
         try { output?.close() } catch (_: Exception) {}
         try { socket?.close() } catch (_: Exception) {}

@@ -6,7 +6,7 @@ import android.net.nsd.NsdManager
 import android.net.nsd.NsdServiceInfo
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -21,8 +21,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 @Suppress("DEPRECATION")
 class NsdHelper(context: Context) {
 
+    private val logger = AppLogger("AdvancedNsdHelper")
+
     companion object {
-        private const val TAG = "AdvancedNsdHelper"
         private const val PROTOCOL = NsdManager.PROTOCOL_DNS_SD
     }
 
@@ -64,21 +65,21 @@ class NsdHelper(context: Context) {
 
             override fun onServiceRegistered(info: NsdServiceInfo) {
                 isRegistered.set(true)
-                Log.i(TAG, "Service registered: ${info.serviceName}")
+                logger.i("Service registered: ${info.serviceName}")
             }
 
             override fun onServiceUnregistered(info: NsdServiceInfo) {
                 isRegistered.set(false)
-                Log.i(TAG, "Service unregistered")
+                logger.i("Service unregistered")
             }
 
             override fun onRegistrationFailed(info: NsdServiceInfo, errorCode: Int) {
                 isRegistered.set(false)
-                Log.e(TAG, "Registration failed: $errorCode")
+                logger.e("Registration failed: $errorCode")
             }
 
             override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {
-                Log.e(TAG, "Unregister failed: $errorCode")
+                logger.e("Unregister failed: $errorCode")
             }
         }
 
@@ -116,7 +117,7 @@ class NsdHelper(context: Context) {
 
             override fun onDiscoveryStarted(type: String) {
                 isDiscovering.set(true)
-                Log.i(TAG, "Discovery started")
+                logger.i("Discovery started")
             }
 
             override fun onServiceFound(serviceInfo: NsdServiceInfo) {
@@ -136,14 +137,14 @@ class NsdHelper(context: Context) {
                             serviceInfo: NsdServiceInfo,
                             errorCode: Int
                         ) {
-                            Log.e(TAG, "Resolve failed: $errorCode")
+                            logger.e("Resolve failed: $errorCode")
                         }
                     }
                 )
             }
 
             override fun onServiceLost(serviceInfo: NsdServiceInfo) {
-                Log.w(TAG, "Service lost: ${serviceInfo.serviceName}")
+                logger.w("Service lost: ${serviceInfo.serviceName}")
             }
 
             override fun onDiscoveryStopped(type: String) {

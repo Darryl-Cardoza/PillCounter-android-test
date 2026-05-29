@@ -1,11 +1,11 @@
 ﻿package com.rite.pillcounting.feature.dispenseFlow.presentation.logic
 
 import android.graphics.PointF
-import android.util.Log
+import com.rite.pillcounting.core.utils.logger.AppLogger
 
 object CentroidMapper {
 
-    private const val TAG = "PillAnalyzer"
+    private val logger = AppLogger("CentroidMapper")
 
     fun toPreview(
         detection: Detection,
@@ -21,10 +21,9 @@ object CentroidMapper {
         val cxImage = detection.rect.centerX()
         val cyImage = detection.rect.centerY()
 
-        Log.i(
-            TAG,
+        logger.i(
             """
-            📍 [CentroidMapper]
+            [CentroidMapper]
             IMAGE SPACE
             imageSize   = ${imageWidth}x${imageHeight}
             centroidImg = (${cxImage.toInt()}, ${cyImage.toInt()})
@@ -40,10 +39,9 @@ object CentroidMapper {
         val cxPreview = cxImage * scaleX
         val cyPreview = cyImage * scaleY
 
-        Log.i(
-            TAG,
+        logger.i(
             """
-            🖥️ [CentroidMapper]
+            [CentroidMapper]
             PREVIEW SPACE
             previewSize = ${previewWidth}x${previewHeight}
             scaleX      = $scaleX

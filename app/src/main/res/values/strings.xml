@@ -52,6 +52,11 @@
     <string name="are_you_sure_you_want_to_clear_all_data">Are you sure you want to clear all data?</string>
     <string name="select_schedule_codes">Select Schedule Codes</string>
     <string name="voice_feedback">Voice Feedback</string>
+    <string name="setting_hazardous_drug">Hazardous Drug</string>
+    <string name="tray_classification_title">Tray Classification</string>
+    <string name="tray_classification_message">The %s colored tray is not classified. Mark it as a hazardous tray?</string>
+    <string name="clear_tray_color_lists">Clear Tray Color Lists</string>
+    <string name="clear_tray_color_lists_confirm">Are you sure you want to clear all hazardous and non-hazardous tray color classifications?</string>
     <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
     <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
 

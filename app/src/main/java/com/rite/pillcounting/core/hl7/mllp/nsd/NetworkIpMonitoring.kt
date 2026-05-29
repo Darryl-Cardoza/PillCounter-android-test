@@ -3,7 +3,7 @@ package com.rite.pillcounting.core.hl7.mllp.nsd
 
 import android.content.Context
 import android.net.*
-import android.util.Log
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -25,9 +25,7 @@ class NetworkIpMonitor(
     private val onIpChanged: (String) -> Unit
 ) {
 
-    companion object {
-        private const val TAG = "NetworkIpMonitor"
-    }
+    private val logger = AppLogger("NetworkIpMonitor")
 
     private val connectivityManager =
         context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
@@ -40,13 +38,13 @@ class NetworkIpMonitor(
     private val callback = object : ConnectivityManager.NetworkCallback() {
 
         override fun onAvailable(network: Network) {
-            Log.i(TAG, "Wi-Fi available")
+            logger.i("Wi-Fi available")
                     onWifiAvailable()
             checkIp()
         }
 
         override fun onLost(network: Network) {
-            Log.w(TAG, "Wi-Fi lost")
+            logger.w("Wi-Fi lost")
             lastIp = null
             onWifiLost()
         }
@@ -91,7 +89,7 @@ class NetworkIpMonitor(
         val ip = getWifiIpv4() ?: return
 
         if (ip != lastIp) {
-            Log.i(TAG, "IP changed: $lastIp → $ip")
+            logger.i("IP changed: $lastIp → $ip")
             lastIp = ip
             onIpChanged(ip)
         }
