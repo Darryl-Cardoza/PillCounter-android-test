@@ -121,6 +121,26 @@ class DashboardViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Re-read the terminals list from preferences into [uiState] so the top bar
+     * reflects a terminal change made elsewhere (e.g. the Profile screen, which
+     * persists the new selection to prefs but cannot reach this VM's state).
+     * Call this when the dashboard resumes. No network fetch — Profile already
+     * saved the authoritative list.
+     */
+    fun refreshTerminalsFromPrefs() {
+        val terminals = preferenceHelper.getTerminals()
+        _uiState.update { current ->
+            val detail = current.userDetail ?: return@update current
+            // Only update if the active terminal actually changed, to avoid
+            // needless recompositions.
+            val currentActive = detail.terminals?.firstOrNull { it.isActive == true }?.terminalId
+            val newActive = terminals.firstOrNull { it.isActive == true }?.terminalId
+            if (currentActive == newActive) current
+            else current.copy(userDetail = detail.copy(terminals = terminals))
+        }
+    }
+
     fun isHl7Enabled(): Boolean {
         return preferenceHelper.isHl7Enabled()
     }
