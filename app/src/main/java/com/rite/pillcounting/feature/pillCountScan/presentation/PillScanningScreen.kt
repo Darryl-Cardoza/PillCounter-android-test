@@ -82,16 +82,25 @@ fun PillScanningScreen(
     // Inventory mode lands here directly from Dashboard with the new persistent
     // Batch Stock Count panel. The ML interpreter and tray-detection paths stay
     // disabled until the user taps SCAN PILLS — at which point we'll flip into
-    // the legacy pill-counting UI. Tablet landscape and tablet portrait are both
-    // wired; other form factors fall through to the legacy flow until their
-    // Figmas are delivered.
-    if (isInventory && isTablet) {
-        if (isLandscapeNow) {
-            InventoryTabletLandscapeShell(navController = navController)
-        } else {
-            InventoryTabletPortraitShell(navController = navController)
+    // the legacy pill-counting UI. Tablet (portrait + landscape) and phone
+    // portrait are wired; phone landscape falls through to legacy until built.
+    if (isInventory) {
+        when {
+            isTablet && isLandscapeNow -> {
+                InventoryTabletLandscapeShell(navController = navController)
+                return
+            }
+            isTablet -> {
+                InventoryTabletPortraitShell(navController = navController)
+                return
+            }
+            // Phone portrait: draggable bottom sheet over the camera.
+            !isLandscapeNow -> {
+                InventoryPhonePortraitShell(navController = navController)
+                return
+            }
+            // Phone landscape: not yet built — fall through to legacy.
         }
-        return
     }
 
     val context = navController.context
@@ -848,6 +857,166 @@ private fun InventoryTabletPortraitShell(navController: NavController) {
                 },
                 modifier = Modifier.fillMaxHeight(),
             )
+        }
+    }
+
+    if (showEndCountDialog) {
+        CommonDialog(
+            message = stringResource(R.string.are_you_sure_you_want_to_end_this_count),
+            title = stringResource(R.string.confirmation),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = inventoryVm::confirmEndCount,
+            onCancel = inventoryVm::dismissEndCount,
+        )
+    }
+}
+
+/**
+ * Phone-portrait inventory shell — VM-driven.
+ *
+ * Identical data flow and camera/analyzer wiring to the tablet shells; the
+ * layout is a persistent draggable [BottomSheetScaffold] over the camera:
+ *  - Collapsed (peek): header + SCANNED NDC DETAILS card/counter (or the empty
+ *    placeholder + SCANNED SUMMARY).
+ *  - Expanded (pull up): the RECENT COUNTS list is revealed below the card.
+ *
+ * The sheet is non-dismissible (skipHiddenState) so it always shows at least the
+ * peek height — there's no "hidden" state for a persistent scan panel.
+ */
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+@Composable
+private fun InventoryPhonePortraitShell(navController: NavController) {
+    val cameraVm: PillScanningViewModel = hiltViewModel()
+    val inventoryVm: com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.InventoryScanViewModel =
+        hiltViewModel()
+
+    val cameraUiState by cameraVm.uiState.collectAsState()
+    val panelState by inventoryVm.uiState.collectAsState()
+    val errorMessage by inventoryVm.errorMessage.collectAsState()
+    val showEndCountDialog by inventoryVm.showEndCountDialog.collectAsState()
+    val batchEnded by inventoryVm.batchEnded.collectAsState()
+
+    val context = LocalContext.current
+    val barcodeAnalyzer = remember {
+        FrameBarcodeAnalyzer(
+            context.applicationContext,
+            enableFocusChangeDebounce = true,
+        )
+    }
+    val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
+
+    // See landscape shell for the rationale: only resume on activeNdc clearing.
+    LaunchedEffect(panelState.activeNdc) {
+        if (panelState.activeNdc == null) barcodeAnalyzer.resume()
+    }
+
+    LaunchedEffect(errorMessage) {
+        errorMessage?.let { err ->
+            val text = if (err.formatArg != null) {
+                context.getString(err.messageResId, err.formatArg)
+            } else {
+                context.getString(err.messageResId)
+            }
+            android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+            inventoryVm.clearErrorMessage()
+        }
+    }
+
+    LaunchedEffect(batchEnded) {
+        if (batchEnded) navController.popBackStack()
+    }
+
+    val scaffoldState = androidx.compose.material3.rememberBottomSheetScaffoldState(
+        bottomSheetState = androidx.compose.material3.rememberStandardBottomSheetState(
+            initialValue = androidx.compose.material3.SheetValue.PartiallyExpanded,
+            skipHiddenState = true,
+        )
+    )
+
+    LaunchedEffect(Unit) { cameraVm.pauseIdleTimer() }
+
+    // Camera lives in a full-screen Box at the BASE of the stack; the sheet
+    // scaffold is layered ON TOP with a transparent body. Putting the CameraX
+    // PreviewView inside the scaffold's body produced a preview that never
+    // streamed (the surface wasn't laid out) — keeping it as a plain full-screen
+    // child, exactly like the tablet shells, fixes that.
+    Box(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(androidx.compose.ui.graphics.Color(0xFF2A2A2A))
+        ) {
+            CameraPreviewSection(
+                viewModel = cameraVm,
+                pills = cameraUiState.detectedPills,
+                isCameraPaused = false,
+                imageFrameWidth = cameraUiState.imageFrameWidth,
+                imageFrameHeight = cameraUiState.imageFrameHeight,
+                showGloveIcon = panelState.activeNdc?.isHazardous == true,
+                onFrame = { imageProxy ->
+                    val n = frameCounter.incrementAndGet()
+                    if (n % 30 == 0L) {
+                        android.util.Log.d("InventoryScreen", "INV_SCAN(phone) onFrame tick=$n")
+                    }
+                    try {
+                        barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
+                            inventoryVm.onBarcodeDetected(raw)
+                        }
+                    } finally {
+                        imageProxy.close()
+                    }
+                },
+                onFilteredCountChanged = { /* no-op in inventory mode */ },
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            BackButton(
+                navController = navController,
+                showBox = false,
+                onClick = { navController.popBackStack() },
+            )
+        }
+
+        androidx.compose.material3.BottomSheetScaffold(
+            scaffoldState = scaffoldState,
+            // Collapsed height shows the header + the NDC details / counter card.
+            // Dragging up past this reveals the RECENT COUNTS list below.
+            sheetPeekHeight = 380.dp,
+            sheetContainerColor = androidx.compose.ui.graphics.Color(0xFFF2F2F2),
+            // Transparent body so the camera Box behind shows through; the sheet
+            // is the only visible scaffold surface.
+            containerColor = androidx.compose.ui.graphics.Color.Transparent,
+            sheetContent = {
+                com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountPhonePortrait(
+                    state = panelState,
+                    onScanPills = {
+                        inventoryVm.onScanPillsForActive { batchId ->
+                            navController.navigate(Screen.InventoryPillCount.createRoute(batchId))
+                        }
+                    },
+                    onIncrement = inventoryVm::increment,
+                    onDecrement = inventoryVm::decrement,
+                    onClear = {
+                        inventoryVm.onClear()
+                        barcodeAnalyzer.resume()
+                    },
+                    onAdd = {
+                        inventoryVm.onAdd()
+                        barcodeAnalyzer.resume()
+                    },
+                    onEndCount = inventoryVm::requestEndCount,
+                    onRowTapped = { row ->
+                        inventoryVm.onRecentRowTapped(row)
+                        barcodeAnalyzer.resume()
+                    },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            },
+        ) { _ ->
+            // Body intentionally empty — the camera is the full-screen Box behind
+            // this scaffold. Box() keeps the body transparent and zero-content.
+            Box(modifier = Modifier.fillMaxSize())
         }
     }
 
