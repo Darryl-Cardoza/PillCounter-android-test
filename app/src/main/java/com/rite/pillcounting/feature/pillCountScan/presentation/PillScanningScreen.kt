@@ -965,7 +965,13 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
     // guess that clipped the counter. Default until first measure.
     val density = androidx.compose.ui.platform.LocalDensity.current
     var peekHeightPx by remember { mutableStateOf(0) }
-    val peekHeight = with(density) { peekHeightPx.toDp() }.coerceAtLeast(360.dp)
+    // sheetPeekHeight is the TOTAL collapsed height, which includes the scaffold's
+    // drag handle + its vertical padding ABOVE our content. Add that allowance to
+    // the measured content height, else the handle eats into the peek and clips
+    // the bottom of the card (CANCEL/ADD). ~48dp covers the default handle block.
+    val sheetHandleAllowance = 48.dp
+    val peekHeight = (with(density) { peekHeightPx.toDp() } + sheetHandleAllowance)
+        .coerceAtLeast(360.dp)
     // The Recent Counts list (revealed on expand) gets the screen height minus the
     // peek so the inner LazyColumn stays bounded.
     val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
