@@ -31,7 +31,7 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchSto
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentBatchRow
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsLabelRow
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsList
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugDetailsPortrait
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugDetailsPhone
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedSummaryRow
 
 /**
