@@ -3,7 +3,6 @@ package com.rite.pillcounting.feature.pillCountScan.presentation
 import Screen
 import android.widget.Toast
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -104,6 +104,15 @@ fun PillScanningScreen(
             ?.arguments?.getLong(Screen.ScanBarcode.ARG_BATCH_ID) ?: 0L
     }
     val isStockCount = batchId != 0L
+
+    // SCAN PILLS hand-off: a barcode analyzer for the compulsory NDC-scan step.
+    // Frames are routed here only while currentStep == SCAN; otherwise they go to
+    // the ML pill detector. We own the ImageProxy lifecycle on the barcode path
+    // and must close it (the analyzer snapshots the frame and never closes it).
+    val mainContext = LocalContext.current
+    val ndcScanAnalyzer = remember {
+        FrameBarcodeAnalyzer(mainContext.applicationContext, enableFocusChangeDebounce = false)
+    }
 
     // Buffer of last 10 detections
     var lastTenDetections by remember { mutableStateOf<List<Int>>(emptyList()) }
@@ -261,6 +270,12 @@ fun PillScanningScreen(
         // Reset glove detection state when screen loads
         viewModel.resetGloveDetection()
 
+        // SCAN PILLS hand-off: arm the compulsory NDC-scan start BEFORE getDrugInfo
+        // so the screen opens on StepState.SCAN regardless of any staged/active NDC.
+        if (batchIdArg != 0L) {
+            viewModel.enterStockCountScanMode(batchId)
+        }
+
         viewModel.getDrugInfo()
         viewModel.showTxnInfo(countType)
         viewModel.observeTxnDetailsForTxn(stepType)
@@ -311,7 +326,20 @@ fun PillScanningScreen(
                 pills = uiState.detectedPills,
                 isCameraPaused = viewModel.cameraPaused.collectAsState().value,
                 onFrame = { imageProxy ->
-                    viewModel.onFrameCaptured(imageProxy)
+                    // On the compulsory NDC-scan step (SCAN PILLS hand-off), route
+                    // frames to the barcode decoder and close the proxy ourselves.
+                    // Otherwise hand off to the ML pill detector (which closes it).
+                    if (viewModel.isOnNdcScanStep) {
+                        try {
+                            ndcScanAnalyzer.analyze(imageProxy) { raw, _ ->
+                                viewModel.onNdcScannedForStockCount(raw)
+                            }
+                        } finally {
+                            imageProxy.close()
+                        }
+                    } else {
+                        viewModel.onFrameCaptured(imageProxy)
+                    }
                 },
                 onFilteredCountChanged = { count -> filteredPillCount = count },
                 modifier = Modifier.fillMaxSize(),
@@ -391,28 +419,16 @@ fun PillScanningScreen(
                 StepTitleWithSpeech(
                     stepType = stepType,
                     isSoundOverride = isSoundEnabled,
-                    titleResOverride = if (countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null
+                    // On the compulsory NDC-scan step show the NDC prompt; on the
+                    // pill-count step (REGULAR) show "Scan Open Pills".
+                    titleResOverride = when {
+                        stepType == StepState.SCAN -> R.string.scan_ndc_to_count
+                        countType == CountType.REGULAR.toString() -> R.string.scan_open_pills
+                        else -> null
+                    }
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
-
-                // SCAN PILLS hand-off only: an explicit way to switch to a
-                // different NDC. The batch panel owns the NDC scanner; returning
-                // there lets the user scan a new bottle. The current count is
-                // already persisted live into its txn, and the panel auto-commits
-                // the previously-active NDC when a different one is scanned, so a
-                // plain pop-back is a safe "commit current, start new" switch.
-                if (batchIdArg != 0L) {
-                    Text(
-                        text = stringResource(R.string.change_ndc),
-                        color = MaterialTheme.colorScheme.primary,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
-                            .clickable { navController.popBackStack() }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
-                }
             }
         }
         if (showHistory) {
