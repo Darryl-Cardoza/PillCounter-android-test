@@ -330,8 +330,11 @@ private fun DetailField(label: String, value: String, modifier: Modifier = Modif
  * +/- counter with tap = ±1 and long-press = continuous repeat while held.
  * Floor is 1 — the scanned NDC always represents at least one bottle.
  *
- * Visually: large square tiles with a subtle border (no fill), thin cyan icon.
  * Center tile is wider than the buttons (≈ 1.6 : 1).
+ *
+ * @param tileFill optional fill for the +/- side tiles. When null (landscape),
+ *   tiles are border-only on white. The portrait card passes a light grey so the
+ *   tiles read as filled buttons against the white card (matches Figma).
  */
 @Composable
 internal fun CounterRow(
@@ -339,6 +342,7 @@ internal fun CounterRow(
     totalPills: Int,
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
+    tileFill: Color? = null,
 ) {
     val borderColor = Color(0xFFE5E5E5)
     Row(
@@ -352,6 +356,7 @@ internal fun CounterRow(
             icon = false,
             onTick = onDecrement,
             borderColor = borderColor,
+            fill = tileFill,
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
         Column(
@@ -379,6 +384,7 @@ internal fun CounterRow(
             icon = true,
             onTick = onIncrement,
             borderColor = borderColor,
+            fill = tileFill,
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
     }
@@ -395,6 +401,7 @@ private fun CounterButton(
     onTick: () -> Unit,
     borderColor: Color,
     modifier: Modifier = Modifier,
+    fill: Color? = null,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -413,6 +420,7 @@ private fun CounterButton(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
+            .then(if (fill != null) Modifier.background(fill) else Modifier)
             .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .clickable(
                 interactionSource = interactionSource,
@@ -503,6 +511,9 @@ internal fun ScannedDrugDetailsPortrait(
             totalPills = active.totalPills,
             onIncrement = onIncrement,
             onDecrement = onDecrement,
+            // Light grey fill so the +/- tiles read as filled buttons against the
+            // white portrait card (matches Figma).
+            tileFill = Color(0xFFF2F2F2),
         )
         Spacer(modifier = Modifier.height(14.dp))
 
