@@ -24,6 +24,8 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchSto
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentBatchRow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -101,6 +103,14 @@ class InventoryScanViewModel @Inject constructor(
      * whenever the active NDC changes or is cleared.
      */
     private var lastSameNdcIncrementAtMs: Long = 0L
+
+    /**
+     * Debounce for the +/- counter. Each tick updates the in-memory count
+     * instantly (UI stays live) but the DB write is deferred — we cancel any
+     * pending persist and reschedule, so a long-press that fires ~12 ticks/sec
+     * results in ONE DB upsert shortly after the user lets go, instead of dozens.
+     */
+    private var counterPersistJob: Job? = null
 
     /**
      * Internal flag retained for VM-side bookkeeping. No longer exposed —
@@ -365,12 +375,29 @@ class InventoryScanViewModel @Inject constructor(
 
     fun increment() {
         val updated = _activeNdc.updateAndGet { it?.copy(bottles = it.bottles + 1) } ?: return
-        viewModelScope.launch { persistActive(updated) }
+        schedulePersist(updated)
     }
 
     fun decrement() {
         val updated = _activeNdc.updateAndGet { it?.copy(bottles = (it.bottles - 1).coerceAtLeast(1)) } ?: return
-        viewModelScope.launch { persistActive(updated) }
+        schedulePersist(updated)
+    }
+
+    /**
+     * Debounced persist for the +/- counter: cancel any pending write and
+     * schedule a new one after [COUNTER_PERSIST_DEBOUNCE_MS]. Rapid long-press
+     * ticks keep resetting the timer, so only the final value is written once the
+     * user stops — one DB upsert per long-press instead of one per tick.
+     */
+    private fun schedulePersist(active: ActiveNdc) {
+        counterPersistJob?.cancel()
+        counterPersistJob = viewModelScope.launch {
+            delay(COUNTER_PERSIST_DEBOUNCE_MS)
+            // Clear the handle BEFORE persisting so persistActive's own
+            // counterPersistJob?.cancel() doesn't cancel this still-running job.
+            counterPersistJob = null
+            persistActive(active)
+        }
     }
 
     /* ─────────────────────────  Recent-row tap  ───────────────────────── */
@@ -418,6 +445,9 @@ class InventoryScanViewModel @Inject constructor(
 
     fun onClear() {
         logger.d("INV_SCAN onClear (active=${_activeNdc.value?.ndc})")
+        // Drop any pending debounced counter write — the active NDC is going away,
+        // so a late persist of the cleared count must not fire.
+        counterPersistJob?.cancel()
         _activeNdc.value = null
         lastSameNdcIncrementAtMs = 0L
         _scannerPaused.value = false
@@ -430,6 +460,9 @@ class InventoryScanViewModel @Inject constructor(
      * inserts a new one.
      */
     private suspend fun persistActive(active: ActiveNdc) {
+        // Any explicit persist supersedes a pending debounced counter write, so
+        // cancel it to avoid a redundant follow-up upsert of the same row.
+        counterPersistJob?.cancel()
         val batchId = _resolvedBatchId.value
         logger.d("INV_SCAN persistActive START ndc=${active.ndc} bottles=${active.bottles} batchId=$batchId lot=${active.batchNo} expiry=${active.expiry}")
         if (batchId == 0L) {
@@ -640,6 +673,13 @@ data class LocalizedError(
  * camera; tighten if power users complain it's sluggish.
  */
 private const val SAME_NDC_COOLDOWN_MS = 1500L
+
+/**
+ * How long after the last +/- counter tick to wait before persisting. Long-press
+ * ticks repeat every ~80ms; 300ms comfortably outlasts the gap between ticks, so
+ * the write fires once after the user lets go.
+ */
+private const val COUNTER_PERSIST_DEBOUNCE_MS = 300L
 
 /* ─────────────────────────  Helpers  ───────────────────────── */
 
