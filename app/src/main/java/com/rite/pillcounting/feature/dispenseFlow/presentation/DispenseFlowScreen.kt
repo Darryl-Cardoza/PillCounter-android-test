@@ -508,6 +508,7 @@ fun DispenseFlowScreen(
         // the legacy PillScanningScreen behavior so CameraX doesn't rebind on
         // rotation-driven lifecycle restarts behind the history list.
         if (!showHistory) {
+            if (hasCameraPermission) {
             CameraPreviewSection(
                 viewModel = pillVm,
                 pills = pillState.detectedPills,
@@ -549,6 +550,7 @@ fun DispenseFlowScreen(
                     pillVm.initializeInterpreter(retryCount = 2, viewWidth = w, viewHeight = h)
                 }
             )
+            }
 
             // ── Pill count panel ─────────────────────────────────────────────
             // Visible-once-pills-detected is sticky so the panel doesn't
