@@ -117,15 +117,13 @@ fun BatchStockCountTabletPortrait(
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                // Left: recent counts — white card (soft shadow) on the grey sheet.
+                // Left: recent counts — NO white card wrapper (per Figma). The
+                // section header + the individual row-cards sit directly on the
+                // grey sheet; each row supplies its own white card + shadow.
                 Column(
                     modifier = Modifier
                         .weight(1f)
-                        .fillMaxHeight()
-                        .shadow(CARD_ELEVATION, RoundedCornerShape(13.dp))
-                        .clip(RoundedCornerShape(13.dp))
-                        .background(Color.White)
-                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                        .fillMaxHeight(),
                 ) {
                     val label = if (state.activeNdc != null) {
                         stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
@@ -141,7 +139,10 @@ fun BatchStockCountTabletPortrait(
                     )
                 }
 
-                // Right: scanned NDC details / summary — white card (soft shadow) on the grey sheet.
+                // Right: scanned NDC details / summary — white card (soft shadow)
+                // on the grey sheet. Fills the row height; the active-state content
+                // anchors to the top and the empty-state pins END COUNT to the
+                // bottom.
                 Box(
                     modifier = Modifier
                         .weight(1f)

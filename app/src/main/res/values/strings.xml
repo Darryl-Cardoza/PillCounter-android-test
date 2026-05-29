@@ -340,6 +340,7 @@
 <!--    StockCount-->
     <string name="scan_stock_bottle">Scan Stock Bottle</string>
     <string name="scan_open_pills">Scan Open Pills</string>
+    <string name="change_ndc">Change NDC</string>
 
 
 <!--    partial count screen -->
@@ -435,7 +436,7 @@
     <string name="batch_stock_count_scan_pills">SCAN PILLS</string>
     <string name="batch_stock_count_recent_with_count">RECENT BATCH COUNT (%1$d)</string>
     <string name="batch_stock_count_recent_summary">RECENT COUNTS</string>
-    <string name="batch_stock_count_scanned_drug_details">SCANNED DRUG DETAILS</string>
+    <string name="batch_stock_count_scanned_drug_details">SCANNED NDC DETAILS</string>
     <string name="batch_stock_count_scanned_summary">SCANNED SUMMARY</string>
     <string name="batch_stock_count_label_drug_name">Drug Name</string>
     <string name="batch_stock_count_label_bucket">Bucket</string>
@@ -448,6 +449,7 @@
     <string name="batch_stock_count_total_pills">Total Pills</string>
     <string name="batch_stock_count_pills_suffix">%1$d pills</string>
     <string name="batch_stock_count_clear">CLEAR</string>
+    <string name="batch_stock_count_cancel">CANCEL</string>
     <string name="batch_stock_count_add">ADD</string>
     <string name="batch_stock_count_end_count">END COUNT</string>
     <string name="batch_stock_count_unknown_drug">Unknown Drug</string>

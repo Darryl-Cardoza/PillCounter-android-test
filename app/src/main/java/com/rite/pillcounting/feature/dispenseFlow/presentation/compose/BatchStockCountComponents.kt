@@ -162,8 +162,13 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
+            // Card look without shadow(): a real elevation layer forces each row
+            // into its own RenderNode, which churns badly during scroll and causes
+            // jank. The white fill against the grey sheet + a hairline border reads
+            // as a distinct card at no per-frame layer cost.
             .clip(RoundedCornerShape(10.dp))
             .background(Color.White)
+            .border(1.dp, Color(0xFFE3E3E3), RoundedCornerShape(10.dp))
             .clickable(onClick = onTap)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -336,6 +341,9 @@ private fun DetailField(label: String, value: String, modifier: Modifier = Modif
  * @param tileFill optional fill for the +/- side tiles. When null (landscape),
  *   tiles are border-only on white. The portrait card passes a light grey so the
  *   tiles read as filled buttons against the white card (matches Figma).
+ * @param compact when true (portrait, per Figma) the row is shorter with smaller
+ *   icons and value text so the counter reads tight against the detail fields
+ *   instead of dominating the card.
  */
 @Composable
 internal fun CounterRow(
@@ -344,12 +352,16 @@ internal fun CounterRow(
     onIncrement: () -> Unit,
     onDecrement: () -> Unit,
     tileFill: Color? = null,
+    compact: Boolean = false,
 ) {
     val borderColor = Color(0xFFE5E5E5)
+    val rowHeight = if (compact) 56.dp else 76.dp
+    val iconSize = if (compact) 24.dp else 30.dp
+    val valueSize = if (compact) 22.sp else 26.sp
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(76.dp),
+            .height(rowHeight),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -358,6 +370,7 @@ internal fun CounterRow(
             onTick = onDecrement,
             borderColor = borderColor,
             fill = tileFill,
+            iconSize = iconSize,
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
         Column(
@@ -365,14 +378,23 @@ internal fun CounterRow(
                 .weight(1.6f)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(12.dp))
-                .border(1.dp, borderColor, RoundedCornerShape(12.dp)),
+                // When the side tiles are filled (portrait, per Figma) the center
+                // value tile is borderless white; otherwise (landscape) it keeps
+                // the hairline border to stand apart from the white card.
+                .then(
+                    if (tileFill == null) {
+                        Modifier.border(1.dp, borderColor, RoundedCornerShape(12.dp))
+                    } else {
+                        Modifier
+                    }
+                ),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
             Text(
                 text = count.toString(),
                 color = MaterialTheme.colorScheme.secondary,
-                fontSize = 26.sp,
+                fontSize = valueSize,
                 fontWeight = FontWeight.Bold,
             )
             Text(
@@ -385,6 +407,7 @@ internal fun CounterRow(
             icon = true,
             onTick = onIncrement,
             borderColor = borderColor,
+            iconSize = iconSize,
             fill = tileFill,
             modifier = Modifier.weight(1f).fillMaxHeight(),
         )
@@ -403,6 +426,7 @@ private fun CounterButton(
     borderColor: Color,
     modifier: Modifier = Modifier,
     fill: Color? = null,
+    iconSize: Dp = 30.dp,
 ) {
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
@@ -434,7 +458,7 @@ private fun CounterButton(
             imageVector = if (icon) Icons.Default.Add else Icons.Default.Remove,
             contentDescription = null,
             tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(30.dp),
+            modifier = Modifier.size(iconSize),
         )
     }
 }
@@ -515,23 +539,29 @@ internal fun ScannedDrugDetailsPortrait(
             // Light grey fill so the +/- tiles read as filled buttons against the
             // white portrait card (matches Figma).
             tileFill = Color(0xFFF2F2F2),
+            // Compact proportions so the counter sits tight against the fields
+            // rather than dominating the card (matches Figma).
+            compact = true,
         )
         Spacer(modifier = Modifier.height(14.dp))
 
+        // CANCEL / ADD: compact, centered with a gap, NOT stretched to fill the
+        // row (matches Figma — the buttons hug their labels rather than splitting
+        // the full width).
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         ) {
-            Box(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.width(120.dp)) {
                 HollowButton(
-                    text = stringResource(R.string.batch_stock_count_clear),
+                    text = stringResource(R.string.batch_stock_count_cancel),
                     onClick = onClear,
                     color = MaterialTheme.colorScheme.primary,
                     fixedWidth = false,
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            Box(modifier = Modifier.weight(1f)) {
+            Box(modifier = Modifier.width(120.dp)) {
                 ActionButtonPrimary(
                     text = stringResource(R.string.batch_stock_count_add),
                     onClick = onAdd,

@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.pillCountScan.presentation
 import Screen
 import android.widget.Toast
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -394,6 +395,24 @@ fun PillScanningScreen(
                 )
 
                 Spacer(modifier = Modifier.weight(1f))
+
+                // SCAN PILLS hand-off only: an explicit way to switch to a
+                // different NDC. The batch panel owns the NDC scanner; returning
+                // there lets the user scan a new bottle. The current count is
+                // already persisted live into its txn, and the panel auto-commits
+                // the previously-active NDC when a different one is scanned, so a
+                // plain pop-back is a safe "commit current, start new" switch.
+                if (batchIdArg != 0L) {
+                    Text(
+                        text = stringResource(R.string.change_ndc),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(50))
+                            .clickable { navController.popBackStack() }
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
+                }
             }
         }
         if (showHistory) {
@@ -779,11 +798,13 @@ private fun InventoryTabletPortraitShell(navController: NavController) {
             )
         }
 
-        // Bottom: fixed-height batch-stock-count sheet.
+        // Bottom: fixed-height batch-stock-count sheet. Trimmed to ~38% so the
+        // sheet hugs its content (the counter group no longer floats in a tall
+        // card) and the camera preview gets more room — matches Figma proportions.
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.46f)
+                .fillMaxHeight(0.38f)
         ) {
             com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletPortrait(
                 state = panelState,

@@ -522,27 +522,36 @@ class InventoryScanViewModel @Inject constructor(
      * counted pills surface on this NDC's Recent Counts row as loose pills on
      * top of any sealed bottles (toRecentRows sums bottleQty*packageQty + looseQty).
      *
-     * No-op (and emits an error) when there is no active NDC — SCAN PILLS is only
-     * meaningful for a scanned drug.
+     * Works with or without an active NDC. The legacy pill-count flow scans its
+     * own NDC, so SCAN PILLS is always available: with no active NDC we simply
+     * navigate into the batch (creating it if needed) and let that flow establish
+     * its own txn. With an active NDC we additionally stage that NDC's txn so the
+     * counted loose pills accumulate onto its Recent Counts row.
      */
     fun onScanPillsForActive(onReady: (batchId: Long) -> Unit) {
         val active = _activeNdc.value
-        if (active == null) {
-            logger.w("INV_SCAN onScanPillsForActive ABORT: no active NDC")
-            _errorMessage.value = LocalizedError(R.string.batch_stock_count_no_active_batch)
-            return
-        }
         viewModelScope.launch {
             try {
-                // Flush the active bottle count first so it isn't lost while the
-                // user is away counting pills.
-                persistActive(active)
+                // Flush the active bottle count first (if any) so it isn't lost
+                // while the user is away counting pills.
+                if (active != null) persistActive(active)
 
                 val batchId = _resolvedBatchId.value.takeIf { it != 0L } ?: ensureBatchCreated()
                 if (batchId == 0L) {
                     _errorMessage.value = LocalizedError(R.string.batch_stock_count_no_active_batch)
                     return@launch
                 }
+
+                // No active NDC: nothing to stage — the pill-count flow scans its
+                // own NDC and creates its own txn. Clear any stale staged txn id
+                // (the legacy flow treats 0 as "start fresh") and hand off.
+                if (active == null) {
+                    preferenceHelper.saveTxnId(0)
+                    logger.d("INV_SCAN onScanPillsForActive (no active NDC) → batchId=$batchId, cleared staged txn")
+                    onReady(batchId)
+                    return@launch
+                }
+
                 val drugId = drugMasterDao.getDrugIdByNdc(active.ndc)
                 if (drugId == null) {
                     _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, active.ndc)
