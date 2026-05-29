@@ -354,6 +354,14 @@ fun DispenseFlowScreen(
         onDispose { barcodeAnalyzer.pause() }
     }
 
+    // Safety net for process/nav death: if the screen leaves composition with
+    // staged-but-uncommitted loose pills (e.g. an unhandled back path), discard
+    // them. After a successful Done the buffer is already flushed/cleared, so
+    // this is a no-op in that case.
+    DisposableEffect(Unit) {
+        onDispose { pillVm.discardStagedCount() }
+    }
+
     // Pause/resume the barcode analyzer to match the stage. Outside the
     // pre-stages the barcode scanner sits idle; while ANY verification sheet,
     // error dialog, or loading indicator is on top of the camera we don't want
@@ -405,6 +413,9 @@ fun DispenseFlowScreen(
         if (showHistory) {
             showHistory = false
         } else {
+            // Back-out without Done: discard this session's staged (un-committed)
+            // loose-pill ADDs. Earlier committed counts are preserved in the DB.
+            pillVm.discardStagedCount()
             navController.navigate(Screen.Dashboard.route) {
                 popUpTo(0)
                 launchSingleTop = true
@@ -704,6 +715,8 @@ fun DispenseFlowScreen(
                     navController = navController,
                     showBox = false,
                     onClick = {
+                        // Back-out without Done: discard staged loose-pill ADDs.
+                        pillVm.discardStagedCount()
                         navController.navigate(Screen.Dashboard.route) {
                             popUpTo(0)
                             launchSingleTop = true

@@ -188,6 +188,16 @@ class PillScanningViewModel @Inject constructor(
     private var observeTxnDetailsJob: Job? = null
     private var stockCountBaseTotal: Int = -1
 
+    // ── Staging buffer for the legacy loose-pill counting session ────────────
+    // ADDs during a counting session are held here (NOT inserted) and only
+    // flushed to the DB when the user confirms Done. On back-out they are
+    // discarded. Earlier committed rows (sealed bottles + previously-Done loose
+    // pills) live in the DB and are never touched by staging.
+    // Each staged entity has txnDetailsId = 0 (not yet persisted); we assign a
+    // temporary negative id to the derived TxnDetail UI rows for delete-matching.
+    private val stagedDetails = mutableListOf<PillCountTxnDetailsEntity>()
+    private var stagingActive = false
+
     private val _isSoundOverride = MutableStateFlow(preferenceHelper.isSoundOverride())
     val isSoundEnabled: StateFlow<Boolean> = _isSoundOverride.asStateFlow()
 
@@ -245,6 +255,10 @@ class PillScanningViewModel @Inject constructor(
         observeTxnDetailsJob = viewModelScope.launch {
             pillCountTxnDetailsDao.observeAllForTxn(preferenceHelper.getTxnId(), step)
                 .collectLatest { entities ->
+                    // While a counting session is staging in memory, the DB observer
+                    // must NOT overwrite uiState — staging owns the running total and
+                    // history. refreshStagedHistory() keeps uiState populated instead.
+                    if (stagingActive) return@collectLatest
                     val history = entities.map {
                         TxnDetail(
                             txnDetailId = it.txnDetailsId,
@@ -283,6 +297,74 @@ class PillScanningViewModel @Inject constructor(
                     }
                 }
         }
+    }
+
+    /**
+     * Refresh uiState (history + running total) from the in-memory staging
+     * buffer for the given [step]. REPLACES the DB observer while a session is
+     * staging. Since staging starts empty, the running total is the staged sum
+     * directly — prior committed pills are intentionally NOT shown during the
+     * session ("only this session" requirement).
+     *
+     * Staged rows are not persisted yet, so they have no real PK. We assign a
+     * temporary NEGATIVE id (-(index+1)) so the history/delete UI has a stable
+     * key that can never collide with a real (positive) autogen PK.
+     */
+    private fun refreshStagedHistory(step: StepState) {
+        val staged = stagedDetails.filter { it.type == step.toString() }
+        val history = staged.mapIndexed { index, entity ->
+            TxnDetail(
+                txnDetailId = -(index + 1).toLong(),
+                count = entity.pillCount ?: 0,
+                image = entity.imagePath,
+                createdAt = entity.createdAt,
+                type = step
+            )
+        }
+        val sessionTotal = history.sumOf { it.count }
+        _uiState.update { state ->
+            state.copy(txnDetailHistory = history, stockCountSessionTotal = sessionTotal)
+        }
+    }
+
+    /**
+     * Flush all staged details to the DB. Inserts each staged row and, for
+     * REGULAR transactions, increments looseQty ONCE by the total staged sum.
+     * Clears the buffer and ends the staging session. Must be called on a
+     * coroutine. Earlier committed rows are untouched.
+     */
+    private suspend fun flushStagedDetails(txnId: Long) {
+        if (stagedDetails.isEmpty()) {
+            stagingActive = false
+            return
+        }
+        val stagedSum = stagedDetails.sumOf { it.pillCount ?: 0 }
+        stagedDetails.forEach { entity ->
+            pillCountTxnDetailsDao.insert(entity.copy(txnId = txnId))
+        }
+        val txn = pillCountTxnDao.getById(txnId)
+        if (txn?.countType == CountType.REGULAR && stagedSum > 0) {
+            pillCountTxnDao.incrementLooseQty(txnId, stagedSum)
+        }
+        logger.i("Flushed ${stagedDetails.size} staged details to DB. stagedSum=$stagedSum txnId=$txnId")
+        stagedDetails.clear()
+        stagingActive = false
+    }
+
+    /**
+     * Discard the in-memory staged count on back-out (no Done). Earlier
+     * committed rows and looseQty are preserved — only this session's staged
+     * (un-inserted) data is dropped. Image files already written to disk are
+     * left as orphans; they are harmless and not referenced by any DB row.
+     */
+    fun discardStagedCount() {
+        if (stagedDetails.isNotEmpty()) {
+            logger.i("Discarding ${stagedDetails.size} staged details (back-out, no Done).")
+        }
+        stagedDetails.clear()
+        stagingActive = false
+        stockCountBaseTotal = -1
+        _uiState.update { it.copy(txnDetailHistory = emptyList(), stockCountSessionTotal = 0) }
     }
 
     /**
@@ -842,7 +924,12 @@ class PillScanningViewModel @Inject constructor(
                 null
             }
 
-            pillCountTxnDetailsDao.insert(
+            // STAGE in memory instead of writing to the DB. The image file IS
+            // saved to disk above (staging on disk is fine); only the DB row +
+            // looseQty increment are deferred until the user confirms Done.
+            // looseQty for REGULAR is incremented once, on flush, for the whole
+            // staged sum (see handleConfirmDone / handleDone flush blocks).
+            stagedDetails.add(
                 PillCountTxnDetailsEntity(
                     txnId = txnId,
                     pillCount = currentCount,
@@ -852,16 +939,13 @@ class PillScanningViewModel @Inject constructor(
                     type = stepType.toString()
                 )
             )
-
-            if (txn?.countType == CountType.REGULAR) {
-                pillCountTxnDao.incrementLooseQty(txnId, currentCount)
-            }
+            stagingActive = true
 
             if (!workingBitmap.isRecycled) workingBitmap.recycle()
-            observeTxnDetailsForTxn(stepType)
+            refreshStagedHistory(stepType)
             currentFrameBitmap = null
 
-            logger.i("Transaction detail saved. Count=$currentCount, File=$filePath")
+            logger.i("Transaction detail STAGED (in memory). Count=$currentCount, File=$filePath, stagedCount=${stagedDetails.size}")
         }
     }
 
@@ -946,13 +1030,20 @@ class PillScanningViewModel @Inject constructor(
     private fun handleDone() {
         viewModelScope.launch {
             val txnId = preferenceHelper.getTxnId()
-            val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
+            // Staged rows are not in the DB yet, so include the staged sum in the
+            // total==0 guard, otherwise a session that only staged pills would be
+            // wrongly reported as "no transaction".
+            val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId) +
+                    stagedDetails.sumOf { it.pillCount ?: 0 }
             if (total == 0) {
                 _uiState.update { it.copy(showNoTransaction = true) }
                 return@launch
             }
             if (txnInfo.value?.countType == CountType.REGULAR) {
                 val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                // REGULAR skips handleConfirmDone and completes directly here, so
+                // flush staging to the DB BEFORE marking COMPLETED.
+                flushStagedDetails(txnId)
                 pillCountTxnDao.updateTxnStatus(txnId, CountStatus.COMPLETED)
                 _navigationEvent.send(NavigationEvent.NavigateToBatch(txn.batchId ?: 0))
                 return@launch
@@ -985,6 +1076,10 @@ class PillScanningViewModel @Inject constructor(
     private fun handleConfirmDone() {
         viewModelScope.launch {
             val txnId = preferenceHelper.getTxnId()
+            // Flush staged details to the DB BEFORE reading the total / deciding
+            // status, so getTotalPillCountForTxn sees the freshly committed rows
+            // plus any prior committed rows = the correct grand total.
+            flushStagedDetails(txnId)
             val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
             val txn = pillCountTxnDao.getById(txnId) ?: return@launch
             if (total == 0) {
@@ -1011,6 +1106,22 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun handleDeleteTransaction(event: PillScanningEvent.TransactionDetailDeleted) {
+        // While staging, mutate the in-memory buffer instead of the DB. Staged
+        // rows use a temporary negative id (-(index+1)) assigned in
+        // refreshStagedHistory, so a negative id always identifies a staged row.
+        if (stagingActive) {
+            val step = _currentStep.value
+            val staged = stagedDetails.filter { it.type == step.toString() }
+            val index = (-event.txnDetailId - 1).toInt()
+            if (index in staged.indices) {
+                stagedDetails.remove(staged[index])
+                logger.i("Staged detail removed at index=$index (id=${event.txnDetailId})")
+            } else {
+                logger.w("Staged delete ignored: id=${event.txnDetailId} out of range")
+            }
+            refreshStagedHistory(step)
+            return
+        }
         viewModelScope.launch {
             pillCountTxnDetailsDao.softDelete(event.txnDetailId)
             logger.i("Transaction detail deleted. Id=${event.txnDetailId}")
@@ -1019,6 +1130,14 @@ class PillScanningViewModel @Inject constructor(
 
     private fun handleDeleteAllTransactionDetails(event: PillScanningEvent.AllTransactionDetailsDeleted) {
         stockCountBaseTotal = -1
+        // While staging, clear the in-memory buffer instead of soft-deleting DB
+        // rows (which would wrongly remove prior committed counts).
+        if (stagingActive) {
+            stagedDetails.removeAll { it.type == event.stepType.toString() }
+            logger.i("All STAGED details cleared for step=${event.stepType}")
+            refreshStagedHistory(event.stepType)
+            return
+        }
         viewModelScope.launch {
             pillCountTxnDetailsDao.softDeleteAllTransaction(
                 preferenceHelper.getTxnId(), type = event.stepType

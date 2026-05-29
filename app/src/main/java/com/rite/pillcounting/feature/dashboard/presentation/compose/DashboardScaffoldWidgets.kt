@@ -1,7 +1,6 @@
 package com.rite.pillcounting.feature.dashboard.presentation.compose
 
 import androidx.annotation.DrawableRes
-import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -46,7 +45,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -351,10 +349,12 @@ internal fun ScaffoldKpiCard(
     modifier: Modifier = Modifier,
     singleLabelLine: Boolean = false,
 ) {
-    val scale by animateFloatAsState(targetValue = if (isActive) 1.02f else 1f, label = "kpiScale")
+    // Selection is shown by border + elevation only, both strictly keyed on
+    // isActive so deselecting fully reverts. The previous scaleX/scaleY transform
+    // (1.02x) added a subtle, fragile "grow" that could read as a stuck size when
+    // switching cards — removed.
     Card(
         modifier = modifier
-            .graphicsLayer(scaleX = scale, scaleY = scale)
             .clickable { onClick() },
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
