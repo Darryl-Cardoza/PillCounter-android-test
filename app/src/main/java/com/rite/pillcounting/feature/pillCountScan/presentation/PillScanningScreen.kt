@@ -4,6 +4,7 @@ import Screen
 import android.Manifest
 import android.content.pm.PackageManager
 import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
@@ -420,11 +421,19 @@ fun PillScanningScreen(
                             // Inventory SCAN PILLS hand-off: BACK returns to the
                             // batch stock-count list (no end-count dialog here —
                             // that's a batch-level action owned by the list).
-                            batchIdArg != 0L -> navController.popBackStack()
+                            // Back without Done = discard this session's staged
+                            // loose pills (earlier committed counts are preserved).
+                            batchIdArg != 0L -> {
+                                viewModel.discardStagedCount()
+                                navController.popBackStack()
+                            }
                             isStockCount -> viewModel.showEndStockCountDialog()
-                            else -> navController.navigate(Screen.Dashboard.route) {
-                                popUpTo(0)
-                                launchSingleTop = true
+                            else -> {
+                                viewModel.discardStagedCount()
+                                navController.navigate(Screen.Dashboard.route) {
+                                    popUpTo(0)
+                                    launchSingleTop = true
+                                }
                             }
                         }
                     }
@@ -529,6 +538,22 @@ fun PillScanningScreen(
 }
 
 /**
+ * Safe back for the inventory shells. `popBackStack()` silently does NOTHING and
+ * returns false when this screen is the back-stack root (e.g. reached via a
+ * navigation that cleared the stack), which is why BACK sometimes "didn't work".
+ * Fall back to navigating to the Dashboard in that case so BACK always leaves.
+ */
+private fun inventoryBack(navController: NavController) {
+    val popped = navController.popBackStack()
+    if (!popped) {
+        navController.navigate(Screen.Dashboard.route) {
+            popUpTo(0)
+            launchSingleTop = true
+        }
+    }
+}
+
+/**
  * Tablet-landscape inventory shell — VM-driven.
  *
  * Camera runs in NDC-only mode: frames are forwarded to a [FrameBarcodeAnalyzer]
@@ -623,10 +648,12 @@ private fun InventoryLandscapeShell(
         }
     }
 
-    // After END COUNT confirms, pop back to dashboard.
+    // After END COUNT confirms, leave the screen (pop, or fall back to Dashboard).
     LaunchedEffect(batchEnded) {
-        if (batchEnded) navController.popBackStack()
+        if (batchEnded) inventoryBack(navController)
     }
+    // System back gesture: same safe behavior as the on-screen back arrow.
+    BackHandler { inventoryBack(navController) }
 
     Row(
         modifier = Modifier
@@ -706,7 +733,7 @@ private fun InventoryLandscapeShell(
             BackButton(
                 navController = navController,
                 showBox = false,
-                onClick = { navController.popBackStack() },
+                onClick = { inventoryBack(navController) },
             )
         }
 
@@ -832,8 +859,10 @@ private fun InventoryPhoneLandscapeShell(navController: NavController) {
         }
     }
     LaunchedEffect(batchEnded) {
-        if (batchEnded) navController.popBackStack()
+        if (batchEnded) inventoryBack(navController)
     }
+    // System back gesture: same safe behavior as the on-screen back arrow.
+    BackHandler { inventoryBack(navController) }
 
     val canEndCount = panelState.totalNdcs > 0 || panelState.activeNdc != null
 
@@ -891,7 +920,7 @@ private fun InventoryPhoneLandscapeShell(navController: NavController) {
                 }
             }
 
-            BackButton(navController = navController, showBox = false, onClick = { navController.popBackStack() })
+            BackButton(navController = navController, showBox = false, onClick = { inventoryBack(navController) })
         }
 
         // Right-docked panel. A horizontal drag toggles expanded/collapsed:
@@ -1007,8 +1036,10 @@ private fun InventoryTabletPortraitShell(navController: NavController) {
     }
 
     LaunchedEffect(batchEnded) {
-        if (batchEnded) navController.popBackStack()
+        if (batchEnded) inventoryBack(navController)
     }
+    // System back gesture: same safe behavior as the on-screen back arrow.
+    BackHandler { inventoryBack(navController) }
 
     Column(
         modifier = Modifier
@@ -1058,7 +1089,7 @@ private fun InventoryTabletPortraitShell(navController: NavController) {
             BackButton(
                 navController = navController,
                 showBox = false,
-                onClick = { navController.popBackStack() },
+                onClick = { inventoryBack(navController) },
             )
         }
 
@@ -1184,8 +1215,10 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
     }
 
     LaunchedEffect(batchEnded) {
-        if (batchEnded) navController.popBackStack()
+        if (batchEnded) inventoryBack(navController)
     }
+    // System back gesture: same safe behavior as the on-screen back arrow.
+    BackHandler { inventoryBack(navController) }
 
     val scaffoldState = androidx.compose.material3.rememberBottomSheetScaffoldState(
         bottomSheetState = androidx.compose.material3.rememberStandardBottomSheetState(
@@ -1270,7 +1303,7 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
             BackButton(
                 navController = navController,
                 showBox = false,
-                onClick = { navController.popBackStack() },
+                onClick = { inventoryBack(navController) },
             )
         }
 
