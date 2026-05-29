@@ -261,12 +261,14 @@ class Hl7Repository @Inject constructor(
                 ?.field3
         )
 
+        val txnStatus = mapHl7OrderStatus(message.order?.orderStatus) ?: CountStatus.PARTIAL
+
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
             drugId = drugId,
             countType = CountType.FIXED,
             targetCount = targetCount,
-            status = CountStatus.PARTIAL,
+            status = txnStatus,
             isComingFromHL7 = true,
             isSynced = false,
             isNdcVerified = false,
@@ -735,12 +737,22 @@ class Hl7Repository @Inject constructor(
         val rxNo = message.order?.placerOrderId ?: return
         val medication = message.medications.firstOrNull() ?: return
 
-        logger.i("Received ORC|XO for rxNo=$rxNo — looking up existing transaction")
+        val orderStatusRaw = message.order?.orderStatus?.uppercase()
 
-        // 1. Locate the active transaction
-        val existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
+        logger.i("Received ORC|XO for rxNo=$rxNo orderStatus=$orderStatusRaw — looking up existing transaction")
+
+        // 1. Locate the active transaction; if soft-deleted, restore it so the edit can be applied
+        var existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
         if (existingTxn == null) {
-            logger.w("ORC|XO ignored: no active PARTIAL transaction found for rxNo=$rxNo")
+            val deletedTxn = pillCountTxnDao.getDeletedByRxNo(rxNo)
+            if (deletedTxn != null) {
+                logger.i("ORC|XO: restoring deleted txnId=${deletedTxn.txnId} for rxNo=$rxNo before applying status=$orderStatusRaw")
+                pillCountTxnDao.restoreDeletedTxn(deletedTxn.txnId)
+                existingTxn = deletedTxn.copy(isDeleted = false, status = CountStatus.PARTIAL)
+            }
+        }
+        if (existingTxn == null) {
+            logger.w("ORC|XO ignored: no active or restorable transaction found for rxNo=$rxNo")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_edit_rx_title),
                 message = context.getString(R.string.hl7_notification_edit_rx_not_found, rxNo)
@@ -806,18 +818,28 @@ class Hl7Repository @Inject constructor(
                 ?.field3
         )
 
-        // 4. Apply the edit
+        // 4. Map order status and apply the edit
+        val newStatus = mapHl7OrderStatus(orderStatusRaw)
+
         pillCountTxnDao.updateFromHl7Edit(
             txnId = existingTxn.txnId,
             drugId = newDrugId,
             targetCount = newTargetCount,
-            priority = newPriority
+            priority = newPriority,
+            status = newStatus
         )
 
         logger.i(
             "ORC|XO applied: txnId=${existingTxn.txnId}, rxNo=$rxNo, " +
-                "drugId=$newDrugId, targetCount=$newTargetCount, priority=$newPriority"
+                "drugId=$newDrugId, targetCount=$newTargetCount, priority=$newPriority, status=$orderStatusRaw"
         )
+
+        // 5. If status is CA, soft-delete after applying the edit
+        if (orderStatusRaw == "CA") {
+            logger.i("ORC|XO with status=CA — soft-deleting txnId=${existingTxn.txnId} after update")
+            pillCountTxnDao.softDeleteByRxNo(rxNo)
+            return
+        }
 
         notifier.show(
             title = context.getString(R.string.hl7_notification_edit_rx_title),
@@ -828,6 +850,22 @@ class Hl7Repository @Inject constructor(
                 newTargetCount ?: 0
             )
         )
+    }
+
+    /**
+     * Maps an HL7 ORC-5 order status code to the app's [CountStatus].
+     * IP = in-progress/resume → PARTIAL
+     * CM = complete          → COMPLETED
+     * HD = on-hold           → ON_HOLD
+     * CA is handled via soft-delete in [handleOrderCancellation]; returns null here.
+     */
+    private fun mapHl7OrderStatus(orderStatus: String?): CountStatus? {
+        return when (orderStatus?.uppercase()) {
+            "IP" -> CountStatus.PARTIAL
+            "CM" -> CountStatus.COMPLETED
+            "HD" -> CountStatus.ON_HOLD
+            else -> null
+        }
     }
 
     private fun observePendingHl7Transactions() {
