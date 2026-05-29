@@ -340,6 +340,7 @@
 <!--    StockCount-->
     <string name="scan_stock_bottle">Scan Stock Bottle</string>
     <string name="scan_open_pills">Scan Open Pills</string>
+    <string name="camera_permission_required">Camera permission is required to scan. Please allow camera access.</string>
     <string name="scan_ndc_to_count">Scan NDC to count pills</string>
 
 

@@ -602,8 +602,15 @@ class InventoryScanViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val batchId = _resolvedBatchId.value
-                if (batchId != 0L) {
+                // Guard: never complete a batch that has no committed NDC. Even if
+                // END COUNT is somehow enabled with nothing scanned, leave the DB
+                // untouched. We check committed rows (not just batchId) because a
+                // batch row can exist after a scan that was cleared without ADD.
+                val hasCommittedNdc = batchId != 0L && recentRows.value.isNotEmpty()
+                if (hasCommittedNdc) {
                     batchDao.markAsCompleted(batchId)
+                } else {
+                    logger.d("INV_SCAN confirmEndCount: no committed NDC — nothing to persist")
                 }
             } catch (e: Exception) {
                 logger.e("confirmEndCount failed", e)

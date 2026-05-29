@@ -587,6 +587,7 @@ internal fun ScannedSummaryRow(
     totalPills: Int,
     onEndCount: () -> Unit,
     modifier: Modifier = Modifier,
+    endCountEnabled: Boolean = true,
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
@@ -608,6 +609,7 @@ internal fun ScannedSummaryRow(
                 text = stringResource(R.string.batch_stock_count_end_count),
                 onClick = onEndCount,
                 color = MaterialTheme.colorScheme.primary,
+                enabled = endCountEnabled,
                 fixedWidth = false,
                 modifier = Modifier.widthIn(min = 120.dp),
             )

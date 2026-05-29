@@ -5,7 +5,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -21,6 +20,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -57,50 +57,66 @@ fun BatchStockCountPhonePortrait(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
+    // END COUNT is disabled until at least one NDC has been scanned.
+    endCountEnabled: Boolean = true,
     onRowTapped: (RecentBatchRow) -> Unit = {},
+    // Reports the measured height (px) of the always-visible region (header +
+    // card) so the host can size the sheet's peek to exactly show it — no fixed
+    // guess that clips the counter, no dead space above.
+    onPeekHeightChanged: (Int) -> Unit = {},
+    // Max height the list region may take (px) when expanded; keeps the inner
+    // LazyColumn bounded (a fillMaxSize/weight LazyColumn in a wrap-content sheet
+    // crashes with "measured with infinity").
+    listMaxHeight: androidx.compose.ui.unit.Dp,
     modifier: Modifier = Modifier,
 ) {
     // NO own background / rounded surface here — the hosting BottomSheetScaffold
     // provides the grey sheet container, rounded top corners, and the drag handle.
-    // Painting them again here produced a visible "double sheet" (curved scaffold
-    // sheet behind + flat-cornered grey on top). We only lay out content + padding.
+    // wrapContentHeight (NOT fillMaxSize) so the sheet sizes to its content rather
+    // than always stretching to max — that stretch is what pushed the header down
+    // and dropped the counter below the peek fold.
     Column(
         modifier = modifier
-            .fillMaxSize()
+            .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
-        BatchStockCountHeader(onScanPills = onScanPills)
-        Spacer(modifier = Modifier.height(14.dp))
-
-        // White card: scanned NDC details + counter (active) or empty placeholder
-        // + summary. This is the always-visible (collapsed) region.
-        Box(
+        // Peek region: header + the details/counter card. Measured so the host
+        // can set sheetPeekHeight to exactly this, keeping the counter on-screen.
+        Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .clip(RoundedCornerShape(13.dp))
-                .background(Color.White)
-                .padding(horizontal = 16.dp, vertical = 14.dp),
+                .onSizeChanged { onPeekHeightChanged(it.height) },
         ) {
-            if (state.activeNdc != null) {
-                ScannedDrugDetailsPortrait(
-                    active = state.activeNdc,
-                    onIncrement = onIncrement,
-                    onDecrement = onDecrement,
-                    onClear = onClear,
-                    onAdd = onAdd,
-                )
-            } else {
-                EmptyScannedDetailsPhone(
-                    totalNdcs = state.totalNdcs,
-                    totalPills = state.totalPills,
-                    onEndCount = onEndCount,
-                )
+            BatchStockCountHeader(onScanPills = onScanPills)
+            Spacer(modifier = Modifier.height(14.dp))
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(Color.White)
+                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            ) {
+                if (state.activeNdc != null) {
+                    ScannedDrugDetailsPortrait(
+                        active = state.activeNdc,
+                        onIncrement = onIncrement,
+                        onDecrement = onDecrement,
+                        onClear = onClear,
+                        onAdd = onAdd,
+                    )
+                } else {
+                    EmptyScannedDetailsPhone(
+                        totalNdcs = state.totalNdcs,
+                        totalPills = state.totalPills,
+                        onEndCount = onEndCount,
+                        endCountEnabled = endCountEnabled,
+                    )
+                }
             }
         }
 
-        // Recent counts — revealed in the expanded sheet region. The header label
-        // + search icon sit directly on the grey sheet; each row is its own white
-        // card (RecentCountsList supplies the row cards), matching the tablet.
+        // Recent counts — revealed once the sheet is dragged up past the peek.
         Spacer(modifier = Modifier.height(16.dp))
         val label = if (state.activeNdc != null) {
             stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
@@ -109,14 +125,12 @@ fun BatchStockCountPhonePortrait(
         }
         RecentCountsLabelRow(label = label)
         Spacer(modifier = Modifier.height(8.dp))
-        // weight(1f) so the LazyColumn gets a bounded height inside the sheet and
-        // scrolls internally — a LazyColumn with unbounded height inside the
-        // sheet's Column would crash ("measured with infinity"). The list is only
-        // meaningfully visible once the sheet is dragged up past the peek height.
+        // Bounded height (NOT weight/fillMaxSize) so the LazyColumn measures inside
+        // a wrap-content sheet without crashing.
         RecentCountsList(
             rows = state.recentCounts,
             onRowTapped = onRowTapped,
-            modifier = Modifier.fillMaxWidth().weight(1f),
+            modifier = Modifier.fillMaxWidth().height(listMaxHeight),
         )
     }
 }
@@ -132,6 +146,7 @@ private fun EmptyScannedDetailsPhone(
     totalNdcs: Int,
     totalPills: Int,
     onEndCount: () -> Unit,
+    endCountEnabled: Boolean = true,
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
@@ -162,6 +177,7 @@ private fun EmptyScannedDetailsPhone(
             totalNdcs = totalNdcs,
             totalPills = totalPills,
             onEndCount = onEndCount,
+            endCountEnabled = endCountEnabled,
         )
     }
 }

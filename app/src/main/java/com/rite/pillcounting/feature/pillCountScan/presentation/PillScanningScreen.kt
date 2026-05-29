@@ -960,6 +960,21 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
         )
     )
 
+    // Peek height is measured from the panel's always-visible region (header +
+    // card) so the collapsed sheet shows the full card/counter without a fixed
+    // guess that clipped the counter. Default until first measure.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var peekHeightPx by remember { mutableStateOf(0) }
+    val peekHeight = with(density) { peekHeightPx.toDp() }.coerceAtLeast(360.dp)
+    // The Recent Counts list (revealed on expand) gets the screen height minus the
+    // peek so the inner LazyColumn stays bounded.
+    val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+    val listMaxHeight = (screenHeightDp - peekHeight).coerceAtLeast(120.dp)
+
+    // Validation: END COUNT only allowed once at least one NDC has been scanned
+    // (committed row or an active card). Nothing scanned → button disabled.
+    val canEndCount = panelState.totalNdcs > 0 || panelState.activeNdc != null
+
     LaunchedEffect(Unit) { cameraVm.pauseIdleTimer() }
 
     // Camera lives in a full-screen Box at the BASE of the stack; the sheet
@@ -973,29 +988,46 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
                 .fillMaxSize()
                 .background(androidx.compose.ui.graphics.Color(0xFF2A2A2A))
         ) {
-            CameraPreviewSection(
-                viewModel = cameraVm,
-                pills = cameraUiState.detectedPills,
-                isCameraPaused = false,
-                imageFrameWidth = cameraUiState.imageFrameWidth,
-                imageFrameHeight = cameraUiState.imageFrameHeight,
-                showGloveIcon = panelState.activeNdc?.isHazardous == true,
-                onFrame = { imageProxy ->
-                    val n = frameCounter.incrementAndGet()
-                    if (n % 30 == 0L) {
-                        android.util.Log.d("InventoryScreen", "INV_SCAN(phone) onFrame tick=$n")
-                    }
-                    try {
-                        barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
-                            inventoryVm.onBarcodeDetected(raw)
+            // Only mount the camera once permission is granted — otherwise CameraX
+            // retries forever and the preview never streams.
+            if (hasCameraPermission) {
+                CameraPreviewSection(
+                    viewModel = cameraVm,
+                    pills = cameraUiState.detectedPills,
+                    isCameraPaused = false,
+                    imageFrameWidth = cameraUiState.imageFrameWidth,
+                    imageFrameHeight = cameraUiState.imageFrameHeight,
+                    showGloveIcon = panelState.activeNdc?.isHazardous == true,
+                    onFrame = { imageProxy ->
+                        val n = frameCounter.incrementAndGet()
+                        if (n % 30 == 0L) {
+                            android.util.Log.d("InventoryScreen", "INV_SCAN(phone) onFrame tick=$n")
                         }
-                    } finally {
-                        imageProxy.close()
-                    }
-                },
-                onFilteredCountChanged = { /* no-op in inventory mode */ },
-                modifier = Modifier.fillMaxSize(),
-            )
+                        try {
+                            barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
+                                inventoryVm.onBarcodeDetected(raw)
+                            }
+                        } finally {
+                            imageProxy.close()
+                        }
+                    },
+                    onFilteredCountChanged = { /* no-op in inventory mode */ },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                // Permission not yet granted — prompt the user to allow it.
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.camera_permission_required),
+                        color = androidx.compose.ui.graphics.Color.White,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(24.dp),
+                    )
+                }
+            }
 
             BackButton(
                 navController = navController,
@@ -1006,9 +1038,9 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
 
         androidx.compose.material3.BottomSheetScaffold(
             scaffoldState = scaffoldState,
-            // Collapsed height shows the header + the NDC details / counter card.
-            // Dragging up past this reveals the RECENT COUNTS list below.
-            sheetPeekHeight = 380.dp,
+            // Peek = measured header+card height, so the collapsed sheet always
+            // shows the full counter/buttons. Dragging up reveals RECENT COUNTS.
+            sheetPeekHeight = peekHeight,
             sheetContainerColor = androidx.compose.ui.graphics.Color(0xFFF2F2F2),
             // Transparent body so the camera Box behind shows through; the sheet
             // is the only visible scaffold surface.
@@ -1032,11 +1064,13 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
                         barcodeAnalyzer.resume()
                     },
                     onEndCount = inventoryVm::requestEndCount,
+                    endCountEnabled = canEndCount,
                     onRowTapped = { row ->
                         inventoryVm.onRecentRowTapped(row)
                         barcodeAnalyzer.resume()
                     },
-                    modifier = Modifier.fillMaxSize(),
+                    onPeekHeightChanged = { peekHeightPx = it },
+                    listMaxHeight = listMaxHeight,
                 )
             },
         ) { _ ->
