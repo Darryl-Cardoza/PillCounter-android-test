@@ -31,8 +31,11 @@ import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityVi
 import com.rite.pillcounting.feature.dashboard.presentation.compose.FixedCountSection
 import com.rite.pillcounting.feature.dashboard.presentation.compose.RegularCountSection
 import com.rite.pillcounting.feature.dashboard.presentation.viewmodel.DashboardViewModel
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
 import com.rite.pillcounting.ui.theme.AppTheme
+
+private val logger = AppLogger("DashboardScreen")
 
 /**
  * Dashboard screen entry point.
@@ -86,13 +89,13 @@ fun DashboardScreen(
 
         if (!isProfileChecked) {
             if (uiState.navigateToProfile && !preferenceHelper.isDoNotAskAgain()) {
-                println("Navigating to Profile screen")
+                logger.d("Navigating to Profile screen")
                 navController.navigate(Screen.Profile.route)
                 viewModel.resetNavigateToProfile()
                 preferenceHelper.setProfileChecked(true)
             }
         } else {
-            println("Profile check already completed, not navigating.")
+            logger.d("Profile check already completed, not navigating.")
         }
     }
     LaunchedEffect(uiState.logoutUser) {

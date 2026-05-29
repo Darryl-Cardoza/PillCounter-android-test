@@ -1,8 +1,8 @@
 ﻿package com.rite.pillcounting
 
 import android.app.Application
-import android.util.Log
 import coil.Coil
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import coil.ImageLoader
 import com.google.firebase.FirebaseApp
 import com.rite.pillcounting.core.utils.coil.EncryptedImageFetcher
@@ -22,15 +22,16 @@ class PillCountingApplication : Application() {
     lateinit var modelLoader: PillDetectionModelLoader
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val logger = AppLogger("PillCountingApplication")
 
     override fun onCreate() {
         super.onCreate()
         FirebaseApp.initializeApp(this)
 
         if (!OpenCVLoader.initLocal()) {
-            Log.e("OpenCV", "OpenCV initialization failed")
+            logger.e("OpenCV initialization failed")
         } else {
-            Log.i("OpenCV", "OpenCV initialized successfully")
+            logger.i("OpenCV initialized successfully")
         }
 
         Coil.setImageLoader(
@@ -42,12 +43,12 @@ class PillCountingApplication : Application() {
         // Pre-load BOTH models (pill + tray) in parallel on app start.
         // They are cached as singletons so the scanning screen gets them instantly.
         applicationScope.launch {
-            Log.i("LoadModel", "App start: triggering parallel model pre-load…")
+            logger.i("App start: triggering parallel model pre-load…")
             try {
                 modelLoader.getOrLoadInterpreters()
-                Log.i("LoadModel", "App start: both models pre-loaded successfully!")
+                logger.i("App start: both models pre-loaded successfully!")
             } catch (e: Exception) {
-                Log.e("LoadModel", "App start: model pre-load failed", e)
+                logger.e("App start: model pre-load failed", e)
             }
         }
     }

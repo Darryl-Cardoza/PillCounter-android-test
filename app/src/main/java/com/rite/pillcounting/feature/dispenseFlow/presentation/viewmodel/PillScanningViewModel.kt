@@ -481,38 +481,36 @@ class PillScanningViewModel @Inject constructor(
         // Scenario 1 (setting OFF): immediate save — true if in hazardous list, false otherwise.
         // Scenario 2 (setting ON):  true if in hazardous list (immediate), otherwise show popup;
         //                           user response (yes/no) determines the saved value.
-        android.util.Log.d(
-            "TRAY_COLOR",
+        logger.d(
             "Frame: detectionEnabled=$isTrayColorDetectionEnabled popupEnabled=$hazardousTrayPopupEnabled " +
             "resultSaved=$hazardousTrayResultSaved trays=${trayDets.size} " +
             "pending=${_uiState.value.pendingTrayColorForClassification?.label}"
         )
         if (isTrayColorDetectionEnabled && !hazardousTrayResultSaved) {
             val trayColor = trayDets.firstOrNull { it.trayColor != TrayColor.UNKNOWN }?.trayColor
-            android.util.Log.d("TRAY_COLOR", "  First known tray color: ${trayColor?.label ?: "none"} " +
-                    "hazardousList=$cachedHazardousColors")
+            logger.d("  First known tray color: ${trayColor?.label ?: "none"} hazardousList=$cachedHazardousColors")
 
             if (trayColor != null) {
                 when {
                     trayColor.name in cachedHazardousColors -> {
                         // Known hazardous tray → save true (both scenarios)
-                        android.util.Log.d("TRAY_COLOR", "  → Tray ${trayColor.label} is in hazardous list → saving true")
+                        logger.d("  → Tray ${trayColor.label} is in hazardous list → saving true")
                         saveHazardousTrayDetected(true)
                     }
                     !hazardousTrayPopupEnabled -> {
                         // Scenario 1 (setting OFF): not in hazardous list → save false immediately
-                        android.util.Log.d("TRAY_COLOR", "  → Setting OFF, ${trayColor.label} not in hazardous list → saving false")
+                        logger.d("  → Setting OFF, ${trayColor.label} not in hazardous list → saving false")
                         saveHazardousTrayDetected(false)
                     }
                     _uiState.value.pendingTrayColorForClassification == null && trayColor !in promptedTrayColors -> {
                         // Scenario 2 (setting ON): show popup, save after user response
                         promptedTrayColors.add(trayColor)
                         _uiState.update { it.copy(pendingTrayColorForClassification = trayColor) }
-                        android.util.Log.d("TRAY_COLOR", "  *** POPUP for ${trayColor.label} — awaiting user response ***")
+                        logger.d("  *** POPUP for ${trayColor.label} — awaiting user response ***")
                         logger.i("Tray color ${trayColor.label} unclassified — showing popup")
                     }
                     else -> {
-                        android.util.Log.d("TRAY_COLOR", "  → Popup already pending or already prompted for ${trayColor.label}")
+                        logger.d("  → Popup already pending or already prompted for ${trayColor.label}")
                     }
                 }
             }
@@ -689,20 +687,20 @@ class PillScanningViewModel @Inject constructor(
         hazardousTrayPopupEnabled = isHazardousByDrug && globalSettingOn
         hazardousTrayResultSaved = false
 
-        android.util.Log.d("TRAY_COLOR", "=== setHazardousTransaction ===")
-        android.util.Log.d("TRAY_COLOR", "  drugFlag=$isHazardousByDrug  globalSettingOn=$globalSettingOn")
-        android.util.Log.d("TRAY_COLOR", "  detectionEnabled=$isTrayColorDetectionEnabled  popupEnabled=$hazardousTrayPopupEnabled")
+        logger.d("=== setHazardousTransaction ===")
+        logger.d("  drugFlag=$isHazardousByDrug  globalSettingOn=$globalSettingOn")
+        logger.d("  detectionEnabled=$isTrayColorDetectionEnabled  popupEnabled=$hazardousTrayPopupEnabled")
 
         if (isHazardousByDrug) {
             cachedHazardousColors = preferenceHelper.getHazardousTrayColors()
             cachedNonHazardousColors = preferenceHelper.getNonHazardousTrayColors()
             promptedTrayColors.clear()
             logger.i("Hazardous drug transaction. popupEnabled=$hazardousTrayPopupEnabled")
-            android.util.Log.d("TRAY_COLOR", "  Hazardous list (${cachedHazardousColors.size}): $cachedHazardousColors")
-            android.util.Log.d("TRAY_COLOR", "  Non-hazardous list (${cachedNonHazardousColors.size}): $cachedNonHazardousColors")
+            logger.d("  Hazardous list (${cachedHazardousColors.size}): $cachedHazardousColors")
+            logger.d("  Non-hazardous list (${cachedNonHazardousColors.size}): $cachedNonHazardousColors")
         } else {
             logger.i("Non-hazardous drug — tray color detection disabled")
-            android.util.Log.d("TRAY_COLOR", "  Drug not hazardous → no detection, no DB write")
+            logger.d("  Drug not hazardous → no detection, no DB write")
         }
     }
 
@@ -715,14 +713,14 @@ class PillScanningViewModel @Inject constructor(
             preferenceHelper.addHazardousTrayColor(color.name)
             cachedHazardousColors = cachedHazardousColors + color.name
             logger.i("Tray color ${color.label} classified as HAZARDOUS → saving true to DB")
-            android.util.Log.d("TRAY_COLOR", "=== classifyTrayColor: ${color.label} → HAZARDOUS ===")
-            android.util.Log.d("TRAY_COLOR", "  Updated hazardous list (${cachedHazardousColors.size}): $cachedHazardousColors")
+            logger.d("=== classifyTrayColor: ${color.label} → HAZARDOUS ===")
+            logger.d("  Updated hazardous list (${cachedHazardousColors.size}): $cachedHazardousColors")
         } else {
             preferenceHelper.addNonHazardousTrayColor(color.name)
             cachedNonHazardousColors = cachedNonHazardousColors + color.name
             logger.i("Tray color ${color.label} classified as NON-HAZARDOUS → saving false to DB")
-            android.util.Log.d("TRAY_COLOR", "=== classifyTrayColor: ${color.label} → NON-HAZARDOUS ===")
-            android.util.Log.d("TRAY_COLOR", "  Updated non-hazardous list (${cachedNonHazardousColors.size}): $cachedNonHazardousColors")
+            logger.d("=== classifyTrayColor: ${color.label} → NON-HAZARDOUS ===")
+            logger.d("  Updated non-hazardous list (${cachedNonHazardousColors.size}): $cachedNonHazardousColors")
         }
         saveHazardousTrayDetected(isHazardous)
         _uiState.update { it.copy(pendingTrayColorForClassification = null) }
@@ -736,7 +734,7 @@ class PillScanningViewModel @Inject constructor(
             if (txnId != 0L) {
                 pillCountTxnDao.updateHazardousTrayDetected(txnId, detected)
                 logger.i("hazardousTrayDetected=$detected saved for txnId=$txnId")
-                android.util.Log.d("TRAY_COLOR", "DB updated: hazardousTrayDetected=$detected txnId=$txnId")
+                logger.d("DB updated: hazardousTrayDetected=$detected txnId=$txnId")
             }
         }
     }

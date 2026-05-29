@@ -33,11 +33,11 @@ object TrayColorDetector {
     fun detect(bitmap: Bitmap, trayRect: RectF): TrayColor {
         return try {
             val result = detectInternal(bitmap, trayRect)
-            android.util.Log.d("TRAY_COLOR", "TrayColorDetector.detect(): rect=$trayRect → result=${result.label}")
+            logger.d("TrayColorDetector.detect(): rect=$trayRect → result=${result.label}")
             result
         } catch (e: Exception) {
             logger.e("Color detection error", e)
-            android.util.Log.e("TRAY_COLOR", "TrayColorDetector.detect() FAILED: ${e.message}")
+            logger.e("TrayColorDetector.detect() FAILED: ${e.message}")
             TrayColor.UNKNOWN
         }
     }
@@ -152,8 +152,7 @@ object TrayColorDetector {
         val finalColor = if (bestCount >= minPixels) bestColor else TrayColor.UNKNOWN
 
         // Log every candidate's pixel count so we can tune HSV ranges if needed
-        android.util.Log.d(
-            "TRAY_COLOR",
+        logger.d(
             "HSV pixel counts — " +
             "white=$white black=$black gray=$gray yellow=$yellow orange=$orange " +
             "red=$red blue=$blue green=$green purple=$purple | " +

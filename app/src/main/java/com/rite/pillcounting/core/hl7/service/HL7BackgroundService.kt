@@ -11,7 +11,6 @@ import android.os.Binder
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.util.Log
 import androidx.core.app.NotificationCompat
 import com.rite.pillcounting.core.hl7.core.Hl7EventListener
 import com.rite.pillcounting.core.hl7.hl7MessageHandler.builder.HL7MessageBuilder
@@ -49,7 +48,6 @@ import org.rite.hl7.hl7.domain.model.CompleteHL7Message
  */
 class HL7Service : Service() {
     companion object {
-        private const val TAG = "HL7Service"
         private const val CHANNEL_ID = "hl7_bg"
         private const val NOTIFICATION_ID = 7001
     }
@@ -97,7 +95,7 @@ class HL7Service : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        Log.i(TAG, "Service created")
+        logger.i("Service created")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -133,7 +131,7 @@ class HL7Service : Service() {
 
 
     override fun onDestroy() {
-        Log.i(TAG, "Service destroying")
+        logger.i("Service destroying")
         serviceScope.launch { cleanup() }
         super.onDestroy()
     }
@@ -194,7 +192,7 @@ class HL7Service : Service() {
     }
 
     fun updateConfig(newConfig: HL7Config) {
-        Log.i(TAG, "Updating config: $newConfig")
+        logger.i("Updating config: $newConfig")
         this.config = newConfig
     }
 
@@ -220,7 +218,7 @@ class HL7Service : Service() {
             },
 
             onConnected = {
-                Log.i(TAG, "${lastDiscoveredServiceName} CONNECTED")
+                logger.i("${lastDiscoveredServiceName} CONNECTED")
                 listener?.onClientConnected(lastDiscoveredServiceName, 0)
             },
 
@@ -231,7 +229,7 @@ class HL7Service : Service() {
 
         clientManager.startContinuousReconnect()
 
-        Log.d(TAG, "Core components initialized")
+        logger.d("Core components initialized")
     }
 
 
@@ -240,17 +238,17 @@ class HL7Service : Service() {
             context = context,
 
             onWifiAvailable = {
-                Log.i(TAG, "Wi-Fi available → start NSD broadcast")
+                logger.i("Wi-Fi available → start NSD broadcast")
                 startNsdBroadcast()
             },
 
             onWifiLost = {
-                Log.w(TAG, "Wi-Fi lost → stop NSD broadcast")
+                logger.w("Wi-Fi lost → stop NSD broadcast")
                 nsdHelper.stopRegistration()
             },
 
             onIpChanged = { newIp ->
-                Log.w(TAG, "IP changed to $newIp → rebroadcast NSD")
+                logger.w("IP changed to $newIp → rebroadcast NSD")
                 rebroadcastNsd()
             }
         )
@@ -267,7 +265,7 @@ class HL7Service : Service() {
 
         serviceScope.launch {
             server.start()
-            Log.i(TAG, "MLLP server listening on ${config.serverPort}")
+            logger.i("MLLP server listening on ${config.serverPort}")
             listener?.onServerStarted(config.serverPort)
         }
     }
@@ -293,10 +291,7 @@ class HL7Service : Service() {
 
         listener?.onNsdRegistered(config.nsdBroadcastServiceName)
         logger.i("✓ NSD broadcast registered successfully")
-        Log.i(
-            TAG,
-            "NSD broadcast registered: ${config.nsdBroadcastServiceName} ${config.nsdBroadcastType}"
-        )
+        logger.i("NSD broadcast registered: ${config.nsdBroadcastServiceName} ${config.nsdBroadcastType}")
     }
 
     /**
@@ -317,7 +312,7 @@ class HL7Service : Service() {
         logger.w("    • Port: ${config.serverPort}")
         logger.w("  → Step 1: Stopping current NSD registration...")
 
-        Log.w(TAG, "Rebroadcasting NSD service with name: ${config.nsdBroadcastServiceName}")
+        logger.w("Rebroadcasting NSD service with name: ${config.nsdBroadcastServiceName}")
 
         nsdHelper.stopRegistration()
         logger.w("  ✓ NSD registration stopped")
@@ -355,7 +350,7 @@ class HL7Service : Service() {
                 try {
                     clientManager.connect(host, port)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Connect failed", e)
+                    logger.e("Connect failed", e)
                 }
             }
         }
@@ -376,7 +371,7 @@ class HL7Service : Service() {
             AckDecision.Accept
         } catch (e: Exception) {
             listener?.onError("HL7_PARSE", e)
-            Log.e(TAG, "HL7 processing failed", e)
+            logger.e("HL7 processing failed", e)
             AckDecision.Error(e.message ?: "HL7 error")
         }
     }
@@ -433,12 +428,12 @@ class HL7Service : Service() {
 
     fun setListener(listener: Hl7EventListener) {
         this.listener = listener
-        Log.d(TAG, "Listener set")
+        logger.d("Listener set")
     }
 
     fun removeListener() {
         this.listener = null
-        Log.d(TAG, "Listener removed")
+        logger.d("Listener removed")
     }
 
 
@@ -447,6 +442,6 @@ class HL7Service : Service() {
         imageServer.start()
 
         val ip = NetworkUtils.getLocalIpAddress()
-        Log.i(TAG, "Image server running at https://$ip:8443/images/{fileName}")
+        logger.i("Image server running at https://$ip:8443/images/{fileName}")
     }
 }

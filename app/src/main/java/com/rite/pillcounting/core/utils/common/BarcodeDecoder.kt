@@ -1,6 +1,6 @@
 ﻿package com.rite.pillcounting.core.utils.common
 
-import android.util.Log
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.BarcodeData
 import java.time.LocalDate
 import javax.inject.Inject
@@ -13,6 +13,8 @@ import kotlin.math.pow
  */
 @Singleton
 class BarcodeDecoder @Inject constructor() {
+
+    private val logger = AppLogger.create<BarcodeDecoder>()
 
     private val regexPatterns = mapOf(
         "GTIN" to Regex("(?:\\(01\\)|01)(\\d{13,14})"),
@@ -58,7 +60,7 @@ class BarcodeDecoder @Inject constructor() {
             netLb = parseWeight(cleaned, "NetWeightPounds")
             grossLb = parseWeight(cleaned, "GrossWeightPounds")
         } catch (e: Exception) {
-            Log.e("BarcodeDecoder", "Failed to decode GS1: ${e.message}")
+            logger.e("Failed to decode GS1: ${e.message}")
         }
 
         return BarcodeData(

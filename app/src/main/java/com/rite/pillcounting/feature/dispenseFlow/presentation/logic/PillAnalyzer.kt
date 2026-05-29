@@ -157,18 +157,12 @@ class PillAnalyzer(
             // where the flag update from setHazardousTransaction() might not be
             // visible to this Dispatchers.Default coroutine yet.
             // Each tray crop is downsized to 64×64, so this adds < 2 ms per tray.
-            android.util.Log.d(
-                "TRAY_COLOR",
-                "PillAnalyzer step2b: trays=${trayDetections.size} shouldDetectTrayColor=${shouldDetectTrayColor()}"
-            )
+            logger.d("PillAnalyzer step2b: trays=${trayDetections.size} shouldDetectTrayColor=${shouldDetectTrayColor()}")
             if (trayDetections.isNotEmpty()) {
                 trayDetections = trayDetections.map { tray ->
                     tray.copy(trayColor = TrayColorDetector.detect(originalBitmap, tray.rect))
                 }
-                android.util.Log.d(
-                    "TRAY_COLOR",
-                    "Color detection ran → ${trayDetections.map { it.trayColor.label }}"
-                )
+                logger.d("Color detection ran → ${trayDetections.map { it.trayColor.label }}")
             }
 
             // ── STEP 3: Postprocess pill output (only if a tray was found) ────
@@ -208,7 +202,7 @@ class PillAnalyzer(
                 )
                 if (gloveDetections.isNotEmpty()) {
                     val summary = gloveDetections.joinToString { "${it.className}(${(it.confidence * 100).toInt()}%)" }
-                    android.util.Log.e("GLOVE_DETECTION", "🎯 FOUND: $summary")
+                    logger.i("FOUND: $summary")
                 }
             }
 
