@@ -1299,12 +1299,6 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
                     )
                 }
             }
-
-            BackButton(
-                navController = navController,
-                showBox = false,
-                onClick = { inventoryBack(navController) },
-            )
         }
 
         androidx.compose.material3.BottomSheetScaffold(
@@ -1352,6 +1346,16 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
             // this scaffold. Box() keeps the body transparent and zero-content.
             Box(modifier = Modifier.fillMaxSize())
         }
+
+        // Back arrow LAST in the outer Box so it draws ON TOP of the (full-size,
+        // transparent) BottomSheetScaffold and actually receives taps — when it
+        // was inside the camera Box underneath the scaffold, the scaffold's body
+        // intercepted the touch and back appeared to do nothing.
+        BackButton(
+            navController = navController,
+            showBox = false,
+            onClick = { inventoryBack(navController) },
+        )
     }
 
     if (showEndCountDialog) {
