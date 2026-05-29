@@ -911,6 +911,27 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
     }
     val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
 
+    // Camera permission. Without it CameraX silently retries forever and the
+    // preview never streams (infinite spinner). Request it on entry and only
+    // render the camera once granted.
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { hasCameraPermission = it }
+    )
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
     // See landscape shell for the rationale: only resume on activeNdc clearing.
     LaunchedEffect(panelState.activeNdc) {
         if (panelState.activeNdc == null) barcodeAnalyzer.resume()
