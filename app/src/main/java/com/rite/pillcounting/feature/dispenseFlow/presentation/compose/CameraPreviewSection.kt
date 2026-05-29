@@ -60,6 +60,7 @@ import com.rite.pillcounting.core.utils.compose.WorkflowStepper
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DetectedPill
 import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.CameraHelper
 import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.GloveDetector
+import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.TrayColor
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.PillScanningViewModel
 import kotlinx.coroutines.flow.conflate
 
@@ -211,6 +212,7 @@ fun CameraPreviewSection(
     val noGlovesBgPaint = remember {
         android.graphics.Paint().apply { color = android.graphics.Color.argb(200, 180, 0, 0) }
     }
+    val trayLabelBgPaint = remember { android.graphics.Paint() }
     val labelBounds = remember { android.graphics.Rect() }
 
     LaunchedEffect(capturedBitmap) {

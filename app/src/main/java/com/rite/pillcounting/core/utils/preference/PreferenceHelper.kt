@@ -87,6 +87,9 @@ private const val KEY_BUCKET_LIST="key_bucket_list"
 private const val KEY_TERMINALS="key_terminals"
 private const val KEY_SELECTED_TERMINAL_ID="key_selected_terminal_id"
 private const val KEY_SELECTED_TERMINAL_NAME="key_selected_terminal_name"
+private const val KEY_HAZARDOUS_DRUG = "key_hazardous_drug"
+private const val KEY_HAZARDOUS_TRAY_COLORS = "key_hazardous_tray_colors"
+private const val KEY_NON_HAZARDOUS_TRAY_COLORS = "key_non_hazardous_tray_colors"
 
 
 @Singleton
@@ -601,5 +604,45 @@ class PreferenceHelper @Inject constructor(
         return name
     }
 
+    // ─────────────────────────── HAZARDOUS DRUG ───────────────────────────
+
+    fun setHazardousDrugEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean(KEY_HAZARDOUS_DRUG, enabled) }
+        logger.i("Hazardous drug enabled set to: $enabled")
+    }
+
+    fun isHazardousDrugEnabled(): Boolean {
+        val enabled = prefs.getBoolean(KEY_HAZARDOUS_DRUG, true)
+        logger.d("isHazardousDrugEnabled: $enabled")
+        return enabled
+    }
+
+    // ─────────────────────────── TRAY COLOR CLASSIFICATION ───────────────────────────
+
+    fun getHazardousTrayColors(): Set<String> =
+        prefs.getStringSet(KEY_HAZARDOUS_TRAY_COLORS, emptySet()) ?: emptySet()
+
+    fun addHazardousTrayColor(colorName: String) {
+        val updated = getHazardousTrayColors().toMutableSet().apply { add(colorName) }
+        prefs.edit { putStringSet(KEY_HAZARDOUS_TRAY_COLORS, updated) }
+        logger.i("Added hazardous tray color: $colorName")
+    }
+
+    fun getNonHazardousTrayColors(): Set<String> =
+        prefs.getStringSet(KEY_NON_HAZARDOUS_TRAY_COLORS, emptySet()) ?: emptySet()
+
+    fun addNonHazardousTrayColor(colorName: String) {
+        val updated = getNonHazardousTrayColors().toMutableSet().apply { add(colorName) }
+        prefs.edit { putStringSet(KEY_NON_HAZARDOUS_TRAY_COLORS, updated) }
+        logger.i("Added non-hazardous tray color: $colorName")
+    }
+
+    fun clearAllTrayColorLists() {
+        prefs.edit {
+            putStringSet(KEY_HAZARDOUS_TRAY_COLORS, emptySet())
+            putStringSet(KEY_NON_HAZARDOUS_TRAY_COLORS, emptySet())
+        }
+        logger.i("Cleared all tray color classification lists")
+    }
 
 }

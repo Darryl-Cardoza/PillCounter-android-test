@@ -1,7 +1,7 @@
 package com.rite.pillcounting.core.hl7.imageWebService
 
 import android.content.Context
-import android.util.Log
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
@@ -19,7 +19,7 @@ import java.util.Date
 
 object TlsImageKeystoreUtil {
 
-    private const val TAG = "TlsImageKeystoreUtil"
+    private val logger = AppLogger("TlsImageKeystoreUtil")
     private const val KEY_ALIAS = "image_server_tls"
     private const val KEYSTORE_FILE = "image_server.p12"
 
@@ -45,10 +45,10 @@ object TlsImageKeystoreUtil {
         val file = keystoreFile(context)
 
         return if (file.exists()) {
-            Log.d(TAG, "Loading existing keystore from disk")
+            logger.d("Loading existing keystore from disk")
             loadFromDisk(file)
         } else {
-            Log.d(TAG, "No keystore found — generating new self-signed cert")
+            logger.d("No keystore found — generating new self-signed cert")
             val ks = generateAndSave(file)
             ks
         }
@@ -66,7 +66,7 @@ object TlsImageKeystoreUtil {
                 .digest(cert.encoded)
             digest.joinToString(":") { "%02X".format(it) }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to get fingerprint", e)
+            logger.e("Failed to get fingerprint", e)
             "UNKNOWN"
         }
     }
@@ -129,7 +129,7 @@ object TlsImageKeystoreUtil {
             ks.store(fos, KEYSTORE_PASSWORD.toCharArray())
         }
 
-        Log.i(TAG, "New self-signed cert generated and saved")
+        logger.i("New self-signed cert generated and saved")
         return ks
     }
 }

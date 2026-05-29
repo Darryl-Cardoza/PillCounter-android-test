@@ -30,6 +30,7 @@ class PillAnalyzer(
     private val gloveInterpreter: Interpreter?,
     private val performanceLogger: PerformanceLogger? = null,
     private val shouldRunGloveDetection: () -> Boolean,
+    private val shouldDetectTrayColor: () -> Boolean = { false },
     private val onResult: (
         pillCount: Int,
         pills: List<Detection>,
@@ -105,7 +106,7 @@ class PillAnalyzer(
             if (runGloveThisFrame) lastGloveRunMs = now
 
             // ── STEP 2: Run models in parallel ────────────────────────────────
-            val trayDetections: List<TrayDetection>
+            var trayDetections: List<TrayDetection>
             val pillRaw: Array<FloatArray>?
             val gloveDetections: List<GloveDetection>
 
@@ -149,6 +150,21 @@ class PillAnalyzer(
             }
             val parallelMs = System.currentTimeMillis() - parallelStart
 
+            // ── STEP 2b: Detect tray color ────────────────────────────────────────
+            // Always runs when trays are present — the classification popup is gated
+            // in processDetections (isTrayColorDetectionEnabled), not here. Keeping
+            // detection unconditional avoids a main-thread / background-thread race
+            // where the flag update from setHazardousTransaction() might not be
+            // visible to this Dispatchers.Default coroutine yet.
+            // Each tray crop is downsized to 64×64, so this adds < 2 ms per tray.
+            logger.d("PillAnalyzer step2b: trays=${trayDetections.size} shouldDetectTrayColor=${shouldDetectTrayColor()}")
+            if (trayDetections.isNotEmpty()) {
+                trayDetections = trayDetections.map { tray ->
+                    tray.copy(trayColor = TrayColorDetector.detect(originalBitmap, tray.rect))
+                }
+                logger.d("Color detection ran → ${trayDetections.map { it.trayColor.label }}")
+            }
+
             // ── STEP 3: Postprocess pill output (only if a tray was found) ────
             val pillsInTray: List<Detection>
             if (trayDetections.isEmpty() || pillRaw == null) {
@@ -186,7 +202,7 @@ class PillAnalyzer(
                 )
                 if (gloveDetections.isNotEmpty()) {
                     val summary = gloveDetections.joinToString { "${it.className}(${(it.confidence * 100).toInt()}%)" }
-                    android.util.Log.e("GLOVE_DETECTION", "🎯 FOUND: $summary")
+                    logger.i("FOUND: $summary")
                 }
             }
 

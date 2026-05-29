@@ -1,7 +1,7 @@
 ﻿package com.rite.pillcounting.feature.dispenseFlow.presentation.logic
 
 import android.graphics.RectF
-import android.util.Log
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
 import kotlin.math.max
@@ -22,7 +22,7 @@ import kotlin.math.min
  */
 object GloveDetector {
 
-    private const val TAG = "GloveDetector"
+    private val logger = AppLogger("GloveDetector")
 
     const val CLASS_GLOVES = "gloves"
     const val CLASS_NO_GLOVES = "no_gloves"
@@ -73,7 +73,7 @@ object GloveDetector {
             val expected = 4 + nc            // 6
 
             if (channels != expected) {
-                Log.w(TAG, "Unexpected output channels: $channels (expected $expected)")
+                logger.w("Unexpected output channels: $channels (expected $expected)")
                 return emptyList()
             }
 
@@ -127,11 +127,11 @@ object GloveDetector {
             }
 
             val finalDetections = nms(candidates, IOU_THRESHOLD)
-            Log.i(TAG, "Glove Detection Result: ${finalDetections.size} boxes kept after NMS")
+            logger.i("Glove Detection Result: ${finalDetections.size} boxes kept after NMS")
             finalDetections
 
         } catch (e: Exception) {
-            Log.e(TAG, "Glove inference failed", e)
+            logger.e("Glove inference failed", e)
             emptyList()
         }
     }

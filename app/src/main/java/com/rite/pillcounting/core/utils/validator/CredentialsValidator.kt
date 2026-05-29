@@ -62,8 +62,8 @@ class CredentialsValidator @Inject constructor() {
      * @return [ValidationResult] with success if valid,
      * failure if digits are found.
      */
-    fun validateName(name: String): ValidationResult {
-        if (name.isBlank()) return ValidationResult(true)
+    fun validateRequiredName(name: String): ValidationResult {
+        if (name.isBlank()) return ValidationResult(false, R.string.error_name_required)
         if (name.any { it.isDigit() }) {
             return ValidationResult(false, R.string.error_name_invalid)
         }

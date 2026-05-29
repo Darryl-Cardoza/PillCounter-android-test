@@ -52,6 +52,11 @@
     <string name="are_you_sure_you_want_to_clear_all_data">Are you sure you want to clear all data?</string>
     <string name="select_schedule_codes">Select Schedule Codes</string>
     <string name="voice_feedback">Voice Feedback</string>
+    <string name="setting_hazardous_drug">Hazardous Drug</string>
+    <string name="tray_classification_title">Tray Classification</string>
+    <string name="tray_classification_message">The %s colored tray is not classified. Mark it as a hazardous tray?</string>
+    <string name="clear_tray_color_lists">Clear Tray Color Lists</string>
+    <string name="clear_tray_color_lists_confirm">Are you sure you want to clear all hazardous and non-hazardous tray color classifications?</string>
     <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
     <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
 
@@ -84,6 +89,7 @@
     <string name="error_invalid_otp">Invalid Pin entered.</string>
     <string name="error_phone_invalid">Invalid phone number</string>
     <string name="error_name_invalid">Name cannot contain numbers</string>
+    <string name="error_name_required">This field is required</string>
     <string name="error_pharmacy_name_invalid">Pharmacy name too short</string>
     <string name="error_npi_invalid">Invalid NPI number</string>
     <string name="error_no_internet">No internet connection. Please check your network and try again.</string>
@@ -403,6 +409,12 @@
     <string name="hl7_notification_inventory_title">Inventory Request</string>
     <string name="hl7_notification_inventory_no_drugs">No drugs found. Batch could not be created.</string>
     <string name="hl7_notification_inventory_items_count">%1$d items need stock count</string>
+
+    <!-- HL7 Edit/Change order (ORC|XO) -->
+    <string name="hl7_notification_edit_rx_title">RX Updated</string>
+    <string name="hl7_notification_edit_rx_updated">Rx %1$s updated • %2$s • New Qty: %3$d</string>
+    <string name="hl7_notification_edit_rx_not_found">Rx %1$s not found or already completed — update ignored.</string>
+    <string name="hl7_notification_edit_rx_drug_not_found">Rx %1$s update failed: drug NDC %2$s not found.</string>
 
     <!-- ================== GLOVE DETECTION ================== -->
     <string name="glove_class_gloves" translatable="false">gloves</string>

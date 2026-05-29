@@ -2,6 +2,7 @@
 
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.GloveDetection
+import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.TrayColor
 
 /**
  * Represents the UI state for the pill counting process.
@@ -48,4 +49,5 @@ data class PillScanningUiState(
     val showCountMismatchDialog: Boolean = false,
     val showEndStockCountDialog: Boolean = false,
     val stockCountSessionTotal: Int = 0,
+    val pendingTrayColorForClassification: TrayColor? = null,
 )
