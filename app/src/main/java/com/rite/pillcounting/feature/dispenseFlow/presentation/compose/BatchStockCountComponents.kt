@@ -574,6 +574,109 @@ internal fun ScannedDrugDetailsPortrait(
     }
 }
 
+/* ─────────────────────────  PHONE SCANNED-DRUG CARD  ───────────────────────── */
+
+/**
+ * Compact phone layout of the active scanned-NDC details, matching the phone
+ * Figma exactly (two fields per row so the whole card + counter + buttons fit
+ * within the collapsed sheet peek — the full-width-per-field portrait variant
+ * was too tall and pushed CANCEL/ADD below the fold):
+ *  - Drug Name (2x) | Bucket (1x)
+ *  - NDC Number (1.2x) | Batch No. | Expiry Date
+ *  - compact +/- counter (grey tiles)
+ *  - CANCEL / ADD (full-width split)
+ *
+ * Renders inside the caller's padded card surface, so it adds none of its own.
+ */
+@Composable
+internal fun ScannedDrugDetailsPhone(
+    active: ActiveNdc,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit,
+    onClear: () -> Unit,
+    onAdd: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.batch_stock_count_scanned_drug_details),
+            color = Color(0xFF888888),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Row 1: Drug Name (2x) | Bucket (1x).
+        Row(modifier = Modifier.fillMaxWidth()) {
+            DetailField(
+                label = stringResource(R.string.batch_stock_count_label_drug_name),
+                value = active.drugName,
+                modifier = Modifier.weight(2f),
+            )
+            DetailField(
+                label = stringResource(R.string.batch_stock_count_label_bucket),
+                value = active.bucket,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(modifier = Modifier.height(12.dp))
+
+        // Row 2: NDC (1.2x) | Batch No. | Expiry Date.
+        Row(modifier = Modifier.fillMaxWidth()) {
+            DetailField(
+                label = stringResource(R.string.batch_stock_count_label_ndc),
+                value = active.ndc,
+                modifier = Modifier.weight(1.2f),
+            )
+            DetailField(
+                label = stringResource(R.string.batch_stock_count_label_batch_no),
+                value = active.batchNo,
+                modifier = Modifier.weight(1f),
+            )
+            DetailField(
+                label = stringResource(R.string.batch_stock_count_label_expiry),
+                value = active.expiry,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+
+        CounterRow(
+            count = active.bottles,
+            totalPills = active.totalPills,
+            onIncrement = onIncrement,
+            onDecrement = onDecrement,
+            tileFill = Color(0xFFF2F2F2),
+            compact = true,
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                HollowButton(
+                    text = stringResource(R.string.batch_stock_count_cancel),
+                    onClick = onClear,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                ActionButtonPrimary(
+                    text = stringResource(R.string.batch_stock_count_add),
+                    onClick = onAdd,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
 /* ─────────────────────────  SUMMARY CARD  ───────────────────────── */
 
 /**

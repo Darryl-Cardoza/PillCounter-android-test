@@ -98,7 +98,7 @@ fun BatchStockCountPhonePortrait(
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 if (state.activeNdc != null) {
-                    ScannedDrugDetailsPortrait(
+                    ScannedDrugDetailsPhone(
                         active = state.activeNdc,
                         onIncrement = onIncrement,
                         onDecrement = onDecrement,
