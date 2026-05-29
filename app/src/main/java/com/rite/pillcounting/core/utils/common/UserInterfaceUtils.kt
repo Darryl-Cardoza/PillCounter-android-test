@@ -891,7 +891,7 @@ object UserInterfaceUtils {
             shape = RoundedCornerShape(dimens.buttonCornerRadius),
             enabled = enabled
         ) {
-            Text(text = text, fontSize = fontSize.sp)
+            Text(text = text, fontSize = fontSize.sp, maxLines = 1, softWrap = false)
         }
     }
 

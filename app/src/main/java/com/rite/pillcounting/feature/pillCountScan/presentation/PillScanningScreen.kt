@@ -69,6 +69,10 @@ fun PillScanningScreen(
     countType: String,
     viewModel: PillScanningViewModel = hiltViewModel(),
     isInventory: Boolean = false,
+    // When non-zero, scopes this legacy pill-count session to the given batch
+    // (used by the Batch Stock Count SCAN PILLS hand-off). Falls back to the
+    // legacy previousBackStackEntry lookup when 0.
+    batchIdArg: Long = 0L,
 ) {
     val configuration = LocalConfiguration.current
     val isTablet = configuration.smallestScreenWidthDp >= 600
@@ -92,8 +96,12 @@ fun PillScanningScreen(
     val context = navController.context
     val uiState by viewModel.uiState.collectAsState()
     val logger = remember { AppLogger("PillScanningScreen") }
-    val batchId = navController.previousBackStackEntry
-        ?.arguments?.getLong(Screen.ScanBarcode.ARG_BATCH_ID) ?: 0L
+    val batchId = if (batchIdArg != 0L) {
+        batchIdArg
+    } else {
+        navController.previousBackStackEntry
+            ?.arguments?.getLong(Screen.ScanBarcode.ARG_BATCH_ID) ?: 0L
+    }
     val isStockCount = batchId != 0L
 
     // Buffer of last 10 detections
@@ -256,6 +264,14 @@ fun PillScanningScreen(
         viewModel.showTxnInfo(countType)
         viewModel.observeTxnDetailsForTxn(stepType)
         viewModel.navigationEvent.collectLatest { event ->
+            // When launched from the Batch Stock Count SCAN PILLS hand-off
+            // (batchIdArg != 0), DONE must return to the inventory list — not the
+            // legacy BatchScreen / Dashboard. The list refreshes from its Room
+            // flow, so the loose pills just counted appear on the NDC's row.
+            if (batchIdArg != 0L) {
+                navController.popBackStack()
+                return@collectLatest
+            }
             when (event) {
                 is NavigationEvent.NavigateToDashboard -> {
                     navController.navigate(Screen.Dashboard.route)
@@ -352,10 +368,13 @@ fun PillScanningScreen(
                     navController = navController,
                     showBox = false,
                     onClick = {
-                        if (isStockCount) {
-                            viewModel.showEndStockCountDialog()
-                        } else {
-                            navController.navigate(Screen.Dashboard.route) {
+                        when {
+                            // Inventory SCAN PILLS hand-off: BACK returns to the
+                            // batch stock-count list (no end-count dialog here —
+                            // that's a batch-level action owned by the list).
+                            batchIdArg != 0L -> navController.popBackStack()
+                            isStockCount -> viewModel.showEndStockCountDialog()
+                            else -> navController.navigate(Screen.Dashboard.route) {
                                 popUpTo(0)
                                 launchSingleTop = true
                             }
@@ -607,17 +626,14 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
             com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletLandscape(
                 state = panelState,
                 onScanPills = {
-                    // §7c — in-place mode toggle is intentionally deferred.
-                    // Implementation plan documented in BATCH_STOCK_COUNT_REVAMP.md;
-                    // requires:
-                    //   1. mode flag (NDC_ONLY / PILL_COUNT)
-                    //   2. lazy cameraVm.initializeInterpreter(viewWidth, viewHeight)
-                    //   3. swap onFrame target: barcodeAnalyzer.analyze ↔ cameraVm.onFrameCaptured
-                    //   4. swap right panel: BatchStockCountTabletLandscape ↔ InformationPanelSection
-                    //   5. intercept InformationPanelSection's DONE so it returns to NDC_ONLY mode
-                    //      instead of popping the screen.
-                    // No-op until this lands so we don't half-implement a state machine
-                    // that could corrupt the camera lifecycle.
+                    // Hand off to the legacy pill-count flow scoped to this batch:
+                    // stage the active NDC's txn (PreferenceHelper.saveTxnId) then
+                    // navigate. The legacy flow counts loose pills into that txn
+                    // and pops back here on DONE; the recent-counts list refreshes
+                    // from its Room flow.
+                    inventoryVm.onScanPillsForActive { batchId ->
+                        navController.navigate(Screen.InventoryPillCount.createRoute(batchId))
+                    }
                 },
                 onIncrement = inventoryVm::increment,
                 onDecrement = inventoryVm::decrement,
@@ -772,8 +788,11 @@ private fun InventoryTabletPortraitShell(navController: NavController) {
             com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletPortrait(
                 state = panelState,
                 onScanPills = {
-                    // §7c — in-place mode toggle is intentionally deferred (see
-                    // landscape shell). No-op until the mode state machine lands.
+                    // Hand off to the legacy pill-count flow scoped to this batch
+                    // (see landscape shell for the full rationale).
+                    inventoryVm.onScanPillsForActive { batchId ->
+                        navController.navigate(Screen.InventoryPillCount.createRoute(batchId))
+                    }
                 },
                 onIncrement = inventoryVm::increment,
                 onDecrement = inventoryVm::decrement,

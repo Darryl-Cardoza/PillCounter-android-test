@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -569,17 +570,17 @@ internal fun ScannedSummaryRow(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // Stats take their natural width on the left; the END COUNT pill gets
+            // the remaining room and a min width so its label never wraps.
             SummaryStat(label = stringResource(R.string.batch_stock_count_total_ndcs), value = totalNdcs.toString(), modifier = Modifier.weight(1f))
             SummaryStat(label = stringResource(R.string.batch_stock_count_total_pills), value = totalPills.toString(), modifier = Modifier.weight(1f))
-            Box(modifier = Modifier.weight(1f)) {
-                ActionButtonPrimary(
-                    text = stringResource(R.string.batch_stock_count_end_count),
-                    onClick = onEndCount,
-                    color = MaterialTheme.colorScheme.primary,
-                    fixedWidth = false,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            ActionButtonPrimary(
+                text = stringResource(R.string.batch_stock_count_end_count),
+                onClick = onEndCount,
+                color = MaterialTheme.colorScheme.primary,
+                fixedWidth = false,
+                modifier = Modifier.widthIn(min = 120.dp),
+            )
         }
     }
 }

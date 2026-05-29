@@ -111,6 +111,24 @@ fun AppNavGraph(
             )
         }
 
+        // Legacy pill-count flow launched from the Batch Stock Count SCAN PILLS
+        // button. isInventory = false so it runs the full legacy counting UI;
+        // batchIdArg scopes it to the inventory batch (the active NDC's txn was
+        // already staged via PreferenceHelper.saveTxnId before navigating).
+        composable(
+            route = Screen.InventoryPillCount.route,
+            arguments = Screen.InventoryPillCount.navArguments,
+        ) { backStackEntry ->
+            val batchId = backStackEntry.arguments
+                ?.getLong(Screen.InventoryPillCount.ARG_BATCH_ID) ?: 0L
+            PillScanningScreen(
+                navController = navController,
+                countType = com.rite.pillcounting.core.room.models.enums.CountType.REGULAR.toString(),
+                isInventory = false,
+                batchIdArg = batchId,
+            )
+        }
+
         composable(
             route = Screen.Batch.route,
             arguments = Screen.Batch.navArguments

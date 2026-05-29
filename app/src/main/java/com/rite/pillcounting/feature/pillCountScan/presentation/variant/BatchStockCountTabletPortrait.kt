@@ -27,6 +27,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -116,11 +117,12 @@ fun BatchStockCountTabletPortrait(
                     .weight(1f),
                 horizontalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                // Left: recent counts — white card on the grey sheet.
+                // Left: recent counts — white card (soft shadow) on the grey sheet.
                 Column(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
+                        .shadow(CARD_ELEVATION, RoundedCornerShape(13.dp))
                         .clip(RoundedCornerShape(13.dp))
                         .background(Color.White)
                         .padding(horizontal = 16.dp, vertical = 14.dp),
@@ -139,11 +141,12 @@ fun BatchStockCountTabletPortrait(
                     )
                 }
 
-                // Right: scanned NDC details / summary — white card on the grey sheet.
+                // Right: scanned NDC details / summary — white card (soft shadow) on the grey sheet.
                 Box(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
+                        .shadow(CARD_ELEVATION, RoundedCornerShape(13.dp))
                         .clip(RoundedCornerShape(13.dp))
                         .background(Color.White)
                         .padding(horizontal = 16.dp, vertical = 14.dp),
@@ -168,6 +171,9 @@ fun BatchStockCountTabletPortrait(
         }
     }
 }
+
+/** Soft elevation for the white cards sitting on the grey sheet. */
+private val CARD_ELEVATION = 3.dp
 
 /**
  * Empty-state content for the portrait right card: a centered "scan a new

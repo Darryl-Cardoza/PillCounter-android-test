@@ -507,6 +507,78 @@ class InventoryScanViewModel @Inject constructor(
         }
     }
 
+    /* ─────────────────────────  Scan pills hand-off  ───────────────────────── */
+
+    /**
+     * SCAN PILLS hand-off (Path 1): the user has an active scanned NDC and wants
+     * to count loose/open pills for it. We find-or-create a REGULAR transaction
+     * for that drug in the current batch, mark it PARTIAL (loose-counting in
+     * progress), persist its id via [PreferenceHelper.saveTxnId] so the legacy
+     * pill-count screen picks it up, and invoke [onReady] with (batchId) on the
+     * caller so it can navigate.
+     *
+     * The legacy flow then counts loose pills into this same txn (it calls
+     * `incrementLooseQty` on every ADD) and marks it COMPLETED on DONE — the
+     * counted pills surface on this NDC's Recent Counts row as loose pills on
+     * top of any sealed bottles (toRecentRows sums bottleQty*packageQty + looseQty).
+     *
+     * No-op (and emits an error) when there is no active NDC — SCAN PILLS is only
+     * meaningful for a scanned drug.
+     */
+    fun onScanPillsForActive(onReady: (batchId: Long) -> Unit) {
+        val active = _activeNdc.value
+        if (active == null) {
+            logger.w("INV_SCAN onScanPillsForActive ABORT: no active NDC")
+            _errorMessage.value = LocalizedError(R.string.batch_stock_count_no_active_batch)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                // Flush the active bottle count first so it isn't lost while the
+                // user is away counting pills.
+                persistActive(active)
+
+                val batchId = _resolvedBatchId.value.takeIf { it != 0L } ?: ensureBatchCreated()
+                if (batchId == 0L) {
+                    _errorMessage.value = LocalizedError(R.string.batch_stock_count_no_active_batch)
+                    return@launch
+                }
+                val drugId = drugMasterDao.getDrugIdByNdc(active.ndc)
+                if (drugId == null) {
+                    _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, active.ndc)
+                    return@launch
+                }
+                // Reuse the existing txn for this (drug, lot, expiry) so loose
+                // pills accumulate onto the same row; otherwise create one.
+                val existing = pillCountTxnDao.findSealedTxnInBatch(
+                    batchId = batchId,
+                    drugId = drugId.toString(),
+                    lotNo = active.batchNo.ifBlank { null },
+                    expiry = active.expiry.ifBlank { null },
+                )
+                val txnId = existing?.txnId ?: pillCountTxnDao.upsertPreservingId(
+                    PillCountTxnEntity(
+                        localId = preferenceHelper.getLocalId(),
+                        drugId = drugId,
+                        countType = CountType.REGULAR,
+                        status = CountStatus.PARTIAL,
+                        expiry = active.expiry.ifBlank { null },
+                        lotNo = active.batchNo.ifBlank { null },
+                        bottleQty = active.bottles,
+                        batchId = batchId,
+                        bucketId = _bucketId.value,
+                    )
+                )
+                preferenceHelper.saveTxnId(txnId)
+                logger.d("INV_SCAN onScanPillsForActive ndc=${active.ndc} → txnId=$txnId batchId=$batchId")
+                onReady(batchId)
+            } catch (e: Exception) {
+                logger.e("INV_SCAN onScanPillsForActive failed", e)
+                _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
+            }
+        }
+    }
+
     /* ─────────────────────────  End count  ───────────────────────── */
 
     fun requestEndCount() {
