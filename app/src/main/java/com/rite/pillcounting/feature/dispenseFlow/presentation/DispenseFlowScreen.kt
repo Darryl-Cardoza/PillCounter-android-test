@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.zIndex
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -708,6 +709,11 @@ fun DispenseFlowScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    // zIndex above the camera AndroidView so the back arrow's taps
+                    // win — the CameraX PreviewView + its pinch-zoom pointerInput
+                    // were swallowing taps on the arrow (system back worked, the
+                    // on-screen arrow didn't).
+                    .zIndex(1f)
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

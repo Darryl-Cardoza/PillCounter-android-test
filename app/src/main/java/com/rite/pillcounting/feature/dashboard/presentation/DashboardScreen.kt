@@ -218,12 +218,16 @@ fun DashboardScreen(
 
     if (showBucketSelectDialog) {
         val bucketList = viewModel.getBucketList()
+        // Default the selection to "Normal" (case-insensitive); fall back to the
+        // first bucket if there's no Normal. This is the expected default rather
+        // than leaving it unselected or landing on an arbitrary bucket (340B).
+        val defaultBucketIndex = bucketList
+            .indexOfFirst { it.equals("Normal", ignoreCase = true) }
+            .let { if (it >= 0) it else if (bucketList.isNotEmpty()) 0 else null }
         CommonSingleSelectDialog(
             title = stringResource(R.string.select_bucket),
             options = bucketList,
-            // No preselection — the user must deliberately tap a bucket before OK
-            // is enabled. Prevents silently committing the first bucket.
-            selectedIndex = null,
+            selectedIndex = defaultBucketIndex,
             onCancel = { showBucketSelectDialog = false },
             onOk = { index ->
                 if (index in bucketList.indices) {
