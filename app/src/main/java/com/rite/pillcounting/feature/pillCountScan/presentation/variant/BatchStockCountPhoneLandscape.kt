@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -67,9 +68,11 @@ fun BatchStockCountPhoneLandscape(
     onRowTapped: (RecentBatchRow) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
-    // Grey sheet surface (rounded left edge — set by the host clip). Row so the
-    // recent card sits to the LEFT of the details card; recent is only laid out
-    // when expanded so the collapsed peek is exactly the details card width.
+    // Grey sheet surface. The DETAILS card is first (left) at a fixed width; the
+    // RECENT card fills the slack on the RIGHT when expanded. Because the host
+    // docks this panel at the right edge and grows it leftward, the details card
+    // visually slides OUTWARD (left) as the panel widens while the recent list
+    // appears on the right — i.e. the sheet "expands" like the portrait sheet.
     Row(
         modifier = modifier
             .fillMaxHeight()
@@ -77,30 +80,7 @@ fun BatchStockCountPhoneLandscape(
             .padding(horizontal = 14.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
-        if (recentVisible) {
-            // Recent counts card — fills the slack on the left when expanded.
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-            ) {
-                val label = if (state.activeNdc != null) {
-                    stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
-                } else {
-                    stringResource(R.string.batch_stock_count_recent_summary)
-                }
-                RecentCountsLabelRow(label = label)
-                Spacer(modifier = Modifier.height(8.dp))
-                RecentCountsList(
-                    rows = state.recentCounts,
-                    onRowTapped = onRowTapped,
-                    modifier = Modifier.fillMaxWidth().weight(1f),
-                )
-            }
-        }
-
-        // Details / summary card — fixed width = the collapsed peek width, docked
-        // on the right.
+        // Details / summary card — fixed width = the collapsed peek width.
         Column(
             modifier = Modifier
                 .width(detailsCardWidth)
@@ -108,9 +88,13 @@ fun BatchStockCountPhoneLandscape(
         ) {
             BatchStockCountHeader(onScanPills = onScanPills)
             Spacer(modifier = Modifier.height(14.dp))
+            // Card fills the remaining height (weight) so the summary state can
+            // use the full card — placeholder centered, SCANNED SUMMARY pinned to
+            // the bottom — instead of bunching at the top with dead space below.
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .weight(1f)
                     .clip(RoundedCornerShape(13.dp))
                     .background(Color.White)
                     .padding(horizontal = 16.dp, vertical = 14.dp),
@@ -133,6 +117,28 @@ fun BatchStockCountPhoneLandscape(
                 }
             }
         }
+
+        if (recentVisible) {
+            // Recent counts card — fills the slack on the RIGHT when expanded.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            ) {
+                val label = if (state.activeNdc != null) {
+                    stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
+                } else {
+                    stringResource(R.string.batch_stock_count_recent_summary)
+                }
+                RecentCountsLabelRow(label = label)
+                Spacer(modifier = Modifier.height(8.dp))
+                RecentCountsList(
+                    rows = state.recentCounts,
+                    onRowTapped = onRowTapped,
+                    modifier = Modifier.fillMaxWidth().weight(1f),
+                )
+            }
+        }
     }
 }
 
@@ -143,7 +149,10 @@ private fun EmptyScannedDetailsLandscape(
     onEndCount: () -> Unit,
     endCountEnabled: Boolean,
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    // fillMaxSize so the content uses the whole (weighted) card height: header at
+    // top, placeholder centered in the slack (weight), SCANNED SUMMARY pinned to
+    // the bottom — no dead space below the summary.
+    Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
             color = Color(0xFF888888),
@@ -151,7 +160,7 @@ private fun EmptyScannedDetailsLandscape(
             fontWeight = FontWeight.SemiBold,
         )
         Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp),
+            modifier = Modifier.fillMaxWidth().weight(1f),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
