@@ -200,11 +200,12 @@ fun DashboardScreen(
 
     if (showBucketSelectDialog) {
         val bucketList = viewModel.getBucketList()
-        val defaultIndex = bucketList.indices.firstOrNull() ?: -1
         CommonSingleSelectDialog(
             title = stringResource(R.string.select_bucket),
             options = bucketList,
-            selectedIndex = defaultIndex,
+            // No preselection — the user must deliberately tap a bucket before OK
+            // is enabled. Prevents silently committing the first bucket.
+            selectedIndex = null,
             onCancel = { showBucketSelectDialog = false },
             onOk = { index ->
                 if (index in bucketList.indices) {

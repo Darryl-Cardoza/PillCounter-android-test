@@ -623,6 +623,9 @@ object UserInterfaceUtils {
                     ActionButtonPrimary(
                         text = stringResource(R.string.ok).uppercase(),
                         onClick = { currentSelection?.let { onOk(it) } },
+                        // Disabled until the user makes a deliberate selection.
+                        // Callers that want a preselected option pass selectedIndex.
+                        enabled = currentSelection != null,
                         fixedWidth = false,
                         modifier = Modifier.width(dimens.dialogButtonWidth)
                     )

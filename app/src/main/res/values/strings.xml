@@ -457,5 +457,6 @@
     <string name="batch_stock_count_scan_failed">Scan failed</string>
     <string name="batch_stock_count_save_failed">Failed to save</string>
     <string name="batch_stock_count_dash">—</string>
+    <string name="batch_stock_count_scan_new_bottle">Scan a new Stock bottle</string>
 
 </resources>

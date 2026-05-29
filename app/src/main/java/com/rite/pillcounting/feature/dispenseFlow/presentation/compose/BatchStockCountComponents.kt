@@ -433,7 +433,145 @@ private fun CounterButton(
 private const val INITIAL_DELAY_MS = 350L
 private const val REPEAT_INTERVAL_MS = 80L
 
+/* ─────────────────────────  PORTRAIT SCANNED-DRUG CARD  ───────────────────────── */
+
+/**
+ * Portrait layout of the active scanned-NDC details. Same data + callbacks as
+ * [ScannedDrugCard]; only the field placement differs to fit the narrower
+ * right-hand column of the portrait panel:
+ *  - Drug Name (full width)
+ *  - NDC Number (full width)
+ *  - Batch No. | Expiry Date | Bucket (single row)
+ *  - +/- counter
+ *  - CLEAR / ADD
+ *
+ * Renders inside the caller's padded card surface, so it adds none of its own.
+ */
+@Composable
+internal fun ScannedDrugDetailsPortrait(
+    active: ActiveNdc,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit,
+    onClear: () -> Unit,
+    onAdd: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.batch_stock_count_scanned_drug_details),
+            color = Color(0xFF888888),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        DetailField(
+            label = stringResource(R.string.batch_stock_count_label_drug_name),
+            value = active.drugName,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        DetailField(
+            label = stringResource(R.string.batch_stock_count_label_ndc),
+            value = active.ndc,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(modifier = Modifier.fillMaxWidth()) {
+            DetailField(
+                label = stringResource(R.string.batch_stock_count_label_batch_no),
+                value = active.batchNo,
+                modifier = Modifier.weight(1f),
+            )
+            DetailField(
+                label = stringResource(R.string.batch_stock_count_label_expiry),
+                value = active.expiry,
+                modifier = Modifier.weight(1f),
+            )
+            DetailField(
+                label = stringResource(R.string.batch_stock_count_label_bucket),
+                value = active.bucket,
+                modifier = Modifier.weight(1f),
+            )
+        }
+        Spacer(modifier = Modifier.height(14.dp))
+
+        CounterRow(
+            count = active.bottles,
+            totalPills = active.totalPills,
+            onIncrement = onIncrement,
+            onDecrement = onDecrement,
+        )
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                HollowButton(
+                    text = stringResource(R.string.batch_stock_count_clear),
+                    onClick = onClear,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Box(modifier = Modifier.weight(1f)) {
+                ActionButtonPrimary(
+                    text = stringResource(R.string.batch_stock_count_add),
+                    onClick = onAdd,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
+
 /* ─────────────────────────  SUMMARY CARD  ───────────────────────── */
+
+/**
+ * Bare scanned-summary row (Total NDCs | Total Pills | END COUNT) without the
+ * "SCANNED SUMMARY" header — used by the portrait empty-state card which renders
+ * its own placeholder above this row. Identical wiring to [ScannedSummaryCard].
+ */
+@Composable
+internal fun ScannedSummaryRow(
+    totalNdcs: Int,
+    totalPills: Int,
+    onEndCount: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier.fillMaxWidth()) {
+        Text(
+            text = stringResource(R.string.batch_stock_count_scanned_summary),
+            color = Color(0xFF888888),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.SemiBold,
+        )
+        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            SummaryStat(label = stringResource(R.string.batch_stock_count_total_ndcs), value = totalNdcs.toString(), modifier = Modifier.weight(1f))
+            SummaryStat(label = stringResource(R.string.batch_stock_count_total_pills), value = totalPills.toString(), modifier = Modifier.weight(1f))
+            Box(modifier = Modifier.weight(1f)) {
+                ActionButtonPrimary(
+                    text = stringResource(R.string.batch_stock_count_end_count),
+                    onClick = onEndCount,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
+    }
+}
 
 @Composable
 internal fun ScannedSummaryCard(

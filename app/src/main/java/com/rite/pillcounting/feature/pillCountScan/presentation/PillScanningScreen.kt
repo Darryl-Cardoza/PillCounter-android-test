@@ -77,11 +77,15 @@ fun PillScanningScreen(
     // Inventory mode lands here directly from Dashboard with the new persistent
     // Batch Stock Count panel. The ML interpreter and tray-detection paths stay
     // disabled until the user taps SCAN PILLS — at which point we'll flip into
-    // the legacy pill-counting UI. For now (UI-only first pass) only the tablet
-    // landscape variant is wired; other form factors fall through to the legacy
-    // flow until their Figmas are delivered.
-    if (isInventory && isTablet && isLandscapeNow) {
-        InventoryTabletLandscapeShell(navController = navController)
+    // the legacy pill-counting UI. Tablet landscape and tablet portrait are both
+    // wired; other form factors fall through to the legacy flow until their
+    // Figmas are delivered.
+    if (isInventory && isTablet) {
+        if (isLandscapeNow) {
+            InventoryTabletLandscapeShell(navController = navController)
+        } else {
+            InventoryTabletPortraitShell(navController = navController)
+        }
         return
     }
 
@@ -639,6 +643,154 @@ private fun InventoryTabletLandscapeShell(navController: NavController) {
                     inventoryVm.onRecentRowTapped(row)
                     barcodeAnalyzer.resume()
                 },
+            )
+        }
+    }
+
+    if (showEndCountDialog) {
+        CommonDialog(
+            message = stringResource(R.string.are_you_sure_you_want_to_end_this_count),
+            title = stringResource(R.string.confirmation),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = inventoryVm::confirmEndCount,
+            onCancel = inventoryVm::dismissEndCount,
+        )
+    }
+}
+
+/**
+ * Tablet-portrait inventory shell — VM-driven.
+ *
+ * Identical data flow and camera/analyzer wiring to [InventoryTabletLandscapeShell];
+ * only the layout differs (camera on top, panel pinned to the bottom as a
+ * fixed-height sheet) per the portrait Figma. All VM callbacks, the barcode
+ * analyzer lifecycle, error toasts, and the end-count dialog are the same.
+ */
+@Composable
+private fun InventoryTabletPortraitShell(navController: NavController) {
+    val cameraVm: PillScanningViewModel = hiltViewModel()
+    val inventoryVm: com.rite.pillcounting.feature.pillCountScan.presentation.viewmodel.InventoryScanViewModel =
+        hiltViewModel()
+
+    val cameraUiState by cameraVm.uiState.collectAsState()
+    val panelState by inventoryVm.uiState.collectAsState()
+    val errorMessage by inventoryVm.errorMessage.collectAsState()
+    val showEndCountDialog by inventoryVm.showEndCountDialog.collectAsState()
+    val batchEnded by inventoryVm.batchEnded.collectAsState()
+
+    val context = LocalContext.current
+    val barcodeAnalyzer = remember {
+        FrameBarcodeAnalyzer(
+            context.applicationContext,
+            enableFocusChangeDebounce = true,
+        )
+    }
+    val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
+
+    // See landscape shell for the rationale: only resume on activeNdc clearing;
+    // never pause while a card is active, or the auto-swap branch becomes
+    // unreachable.
+    LaunchedEffect(panelState.activeNdc) {
+        if (panelState.activeNdc == null) barcodeAnalyzer.resume()
+    }
+
+    LaunchedEffect(errorMessage) {
+        errorMessage?.let { err ->
+            val text = if (err.formatArg != null) {
+                context.getString(err.messageResId, err.formatArg)
+            } else {
+                context.getString(err.messageResId)
+            }
+            android.widget.Toast.makeText(context, text, android.widget.Toast.LENGTH_SHORT).show()
+            inventoryVm.clearErrorMessage()
+        }
+    }
+
+    LaunchedEffect(batchEnded) {
+        if (batchEnded) navController.popBackStack()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(androidx.compose.ui.graphics.Color(0xFFE5E5E5)),
+    ) {
+        // Top: live CameraX preview takes the remaining space above the sheet.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .background(androidx.compose.ui.graphics.Color(0xFF2A2A2A))
+        ) {
+            // Inventory mode bypasses the legacy idle-pause path (see landscape
+            // shell). Reset the idle timer so the legacy VM never flips the
+            // camera to paused behind our back.
+            LaunchedEffect(Unit) { cameraVm.pauseIdleTimer() }
+
+            CameraPreviewSection(
+                viewModel = cameraVm,
+                pills = cameraUiState.detectedPills,
+                isCameraPaused = false,
+                imageFrameWidth = cameraUiState.imageFrameWidth,
+                imageFrameHeight = cameraUiState.imageFrameHeight,
+                showGloveIcon = panelState.activeNdc?.isHazardous == true,
+                onFrame = { imageProxy ->
+                    // Forward each frame to the barcode analyzer. We own the
+                    // ImageProxy lifecycle here and must close it (see landscape
+                    // shell for the full explanation) or CameraX's frame pool
+                    // fills up after the first scan.
+                    val n = frameCounter.incrementAndGet()
+                    if (n % 30 == 0L) {
+                        android.util.Log.d("InventoryScreen", "INV_SCAN(portrait) onFrame tick=$n")
+                    }
+                    try {
+                        barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
+                            inventoryVm.onBarcodeDetected(raw)
+                        }
+                    } finally {
+                        imageProxy.close()
+                    }
+                },
+                onFilteredCountChanged = { /* no-op in inventory mode */ },
+                modifier = Modifier.fillMaxSize(),
+            )
+
+            BackButton(
+                navController = navController,
+                showBox = false,
+                onClick = { navController.popBackStack() },
+            )
+        }
+
+        // Bottom: fixed-height batch-stock-count sheet.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.46f)
+        ) {
+            com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletPortrait(
+                state = panelState,
+                onScanPills = {
+                    // §7c — in-place mode toggle is intentionally deferred (see
+                    // landscape shell). No-op until the mode state machine lands.
+                },
+                onIncrement = inventoryVm::increment,
+                onDecrement = inventoryVm::decrement,
+                onClear = {
+                    inventoryVm.onClear()
+                    barcodeAnalyzer.resume()
+                },
+                onAdd = {
+                    inventoryVm.onAdd()
+                    barcodeAnalyzer.resume()
+                },
+                onEndCount = inventoryVm::requestEndCount,
+                onRowTapped = { row ->
+                    inventoryVm.onRecentRowTapped(row)
+                    barcodeAnalyzer.resume()
+                },
+                modifier = Modifier.fillMaxHeight(),
             )
         }
     }
