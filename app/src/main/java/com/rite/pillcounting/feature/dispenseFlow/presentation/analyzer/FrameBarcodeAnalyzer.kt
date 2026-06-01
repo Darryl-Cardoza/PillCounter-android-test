@@ -14,6 +14,7 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -62,15 +63,18 @@ class FrameBarcodeAnalyzer(
     private val enableFocusChangeDebounce: Boolean = false,
 ) {
     private val logger = AppLogger("FrameBarcodeAnalyzer")
-    private val scanner: BarcodeScanner by lazy {
+    private val scannerDelegate = lazy {
         val options = BarcodeScannerOptions.Builder()
             .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
             .build()
         BarcodeScanning.getClient(options)
     }
+    private val scanner: BarcodeScanner by scannerDelegate
 
     private val isPaused = AtomicBoolean(false)
     private val isProcessing = AtomicBoolean(false)
+    /** Set once [close] runs; gates [analyze] so no frame touches a closed scanner. */
+    private val released = AtomicBoolean(false)
     private val frameSeen = java.util.concurrent.atomic.AtomicLong(0L)
     private val frameDroppedPaused = java.util.concurrent.atomic.AtomicLong(0L)
     private val frameDroppedThrottle = java.util.concurrent.atomic.AtomicLong(0L)
@@ -124,11 +128,31 @@ class FrameBarcodeAnalyzer(
         emptyStreak = 0
     }
 
+    /**
+     * Release native + coroutine resources. MUST be called when the owning
+     * screen leaves composition (e.g. from a DisposableEffect.onDispose),
+     * otherwise the MLKit [BarcodeScanner] (which holds native resources) and
+     * the [ioScope] leak per screen visit. Idempotent.
+     */
+    fun close() {
+        if (!released.compareAndSet(false, true)) return
+        logger.d("INV_SCAN analyzer.close() — releasing scanner + ioScope")
+        // Stop accepting frames so an in-flight listener doesn't touch a closed scanner.
+        isPaused.set(true)
+        watchdogJob?.cancel()
+        watchdogJob = null
+        ioScope.cancel()
+        // Only close the scanner if it was actually created — `by lazy` means an
+        // analyzer that never saw a frame never built one.
+        if (scannerDelegate.isInitialized()) scanner.close()
+    }
+
     @SuppressLint("UnsafeOptInUsageError")
     fun analyze(
         imageProxy: ImageProxy,
         onBarcodeDetected: (rawValue: String, imagePath: String?) -> Unit,
     ) {
+        if (released.get()) return
         val seen = frameSeen.incrementAndGet()
         if (isPaused.get()) {
             val dropped = frameDroppedPaused.incrementAndGet()

@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -133,6 +134,9 @@ fun PillScanningScreen(
     val ndcScanAnalyzer = remember {
         FrameBarcodeAnalyzer(mainContext.applicationContext, enableFocusChangeDebounce = false)
     }
+    DisposableEffect(Unit) {
+        onDispose { ndcScanAnalyzer.close() }
+    }
 
     // Buffer of last 10 detections
     var lastTenDetections by remember { mutableStateOf<List<Int>>(emptyList()) }
@@ -180,16 +184,27 @@ fun PillScanningScreen(
     val isSoundEnabled = viewModel.isSoundEnabled.collectAsState().value
 
     // === Toasts ===
-    if (uiState.restrictAdd) {
-        UserInterfaceUtils.showToast(context, stringResource(id = R.string.max_count_reached))
-        logger.w("Toast: Max count reached")
-        viewModel.resetRestrictAdd()
+    // These run as one-shot side effects keyed on the flag, NOT in the
+    // composition body: showing a toast and resetting the VM directly during
+    // composition fires on every recomposition until the flag flips and can
+    // trigger a "write during composition" recomposition loop.
+    val maxCountReachedText = stringResource(id = R.string.max_count_reached)
+    val noTransactionText = stringResource(id = R.string.no_transaction_found)
+
+    LaunchedEffect(uiState.restrictAdd) {
+        if (uiState.restrictAdd) {
+            UserInterfaceUtils.showToast(context, maxCountReachedText)
+            logger.w("Toast: Max count reached")
+            viewModel.resetRestrictAdd()
+        }
     }
 
-    if (uiState.showNoTransaction) {
-        UserInterfaceUtils.showToast(context, stringResource(id = R.string.no_transaction_found))
-        logger.w("Toast: No transaction found")
-        viewModel.resetNoTransaction()
+    LaunchedEffect(uiState.showNoTransaction) {
+        if (uiState.showNoTransaction) {
+            UserInterfaceUtils.showToast(context, noTransactionText)
+            logger.w("Toast: No transaction found")
+            viewModel.resetNoTransaction()
+        }
     }
 
     if (uiState.showTargetCountDialog) {
@@ -600,6 +615,9 @@ private fun InventoryLandscapeShell(
             enableFocusChangeDebounce = true,
         )
     }
+    DisposableEffect(Unit) {
+        onDispose { barcodeAnalyzer.close() }
+    }
     val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
 
     // Camera permission — same gate as the phone-portrait shell. Without it
@@ -830,6 +848,9 @@ private fun InventoryPhoneLandscapeShell(navController: NavController) {
     val barcodeAnalyzer = remember {
         FrameBarcodeAnalyzer(context.applicationContext, enableFocusChangeDebounce = true)
     }
+    DisposableEffect(Unit) {
+        onDispose { barcodeAnalyzer.close() }
+    }
     val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
 
     var hasCameraPermission by remember {
@@ -1013,6 +1034,9 @@ private fun InventoryTabletPortraitShell(navController: NavController) {
             context.applicationContext,
             enableFocusChangeDebounce = true,
         )
+    }
+    DisposableEffect(Unit) {
+        onDispose { barcodeAnalyzer.close() }
     }
     val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
 
@@ -1207,6 +1231,9 @@ private fun InventoryPhonePortraitShell(navController: NavController) {
             context.applicationContext,
             enableFocusChangeDebounce = true,
         )
+    }
+    DisposableEffect(Unit) {
+        onDispose { barcodeAnalyzer.close() }
     }
     val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
 
