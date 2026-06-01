@@ -1664,7 +1664,16 @@ class PillScanningViewModel @Inject constructor(
 
         val next = steps[index + 1]
 
-        if (next == StepState.VIAL) pausePillDetection()
+        if (next == StepState.VIAL) {
+            pausePillDetection()
+            // The VIAL step is a still-photo capture: the live counting camera is
+            // intentionally off, so no frames arrive to keep the idle watchdog
+            // alive. Cancel it here, otherwise it fires after ~60s on the photo
+            // screen and leaves the "Counting paused / RESUME" overlay up once the
+            // user finishes the vial photo (the overlay is cleared again in
+            // processCapturedImage when leaving VIAL).
+            pauseIdleTimer()
+        }
         if (next == StepState.CONTAINER_PENDING) {
             redoCaptureImage()
             resetIdleOverlay()
@@ -1743,7 +1752,22 @@ class PillScanningViewModel @Inject constructor(
     private fun processCapturedImage(bitmap: Bitmap) {
         onEvent(PillScanningEvent.AddVialPhotoInTxn(0, bitmap))
         moveNextStep()
+        // Leaving the VIAL still-photo step: fully restore the live camera. We
+        // pause the idle watchdog on VIAL entry (see moveNextStep), but if it had
+        // already fired before this photo was taken the overlay + _cameraPaused
+        // flag are still set. Clear them and restart the watchdog so the next
+        // step shows the live preview instead of the stuck RESUME overlay.
+        // (moveNextStep already calls resetIdleOverlay() when the next step is
+        // CONTAINER_PENDING; this covers every other post-VIAL step too.)
         isPaused = false
+        _cameraPaused.value = false
+        _uiState.update { it.copy(showIdleOverlay = false) }
+        // Drop the captured still so CameraPreviewSection rebinds the live preview
+        // (it resumes the camera when capturedBitmap == null). The CONTAINER_PENDING
+        // path already does this via redoCaptureImage(); clear it here too so the
+        // live preview returns after VIAL regardless of which step follows.
+        _capturedBitmap.value = null
+        resetIdleTimer()
     }
 
     fun pausePillDetection() {

@@ -209,7 +209,14 @@ class DashboardViewModel @Inject constructor(
                 countType = CountType.FIXED,
                 partialStatus = CountStatus.PARTIAL,
                 userLocalId = localId,
-                type = StepState.SCAN,
+                // totalPillCount sums detail rows of THIS step only. FIXED dispense
+                // never writes pill counts to the SCAN step (that's the NDC barcode
+                // scan); the counted pills land in TARGET_VERIFICATION for both the
+                // simple and controlled FIXED flows. Passing SCAN here made every
+                // queue row show "0/target". TARGET_VERIFICATION is also the step
+                // the Partial Counts resume screen (CountsViewModel) reads, so the
+                // queue count now matches the resume screen.
+                type = StepState.TARGET_VERIFICATION,
             )
             // Use the summaries query so uniqueNdcCount is populated from the
             // join. getAllInProgress() returns bare BatchEntity rows with no
@@ -334,9 +341,14 @@ class DashboardViewModel @Inject constructor(
             KpiFilter.DISP_PENDING to dispense.size,
             KpiFilter.DISP_CONTROLLED to dispense.count { it.isControlled },
             KpiFilter.DISP_HAZARDOUS to dispense.count { it.isHazardous },
-            // TODO: split inventory into cycle-count vs pending once BatchEntity has batchType.
-            KpiFilter.INV_CYCLE_COUNT to 0,
-            KpiFilter.INV_PENDING_BATCH to inventory.size,
+            // Cycle Count = PMS-requested inventory counts. A batch carries a PMS
+            // request id (requestIdFromPMS) only when it was created from an INR^U04
+            // inventory request (Hl7Repository.handleInrInventoryRequest); manually
+            // started batches have it null. This is the same discriminator the
+            // history / unsynced lists use to tag a batch as PMS-sourced.
+            KpiFilter.INV_CYCLE_COUNT to inventory.count { it.isCycleCount },
+            // Pending Batch = manually started (non-PMS) inventory batches.
+            KpiFilter.INV_PENDING_BATCH to inventory.count { !it.isCycleCount },
         )
     }
 
@@ -349,8 +361,8 @@ class DashboardViewModel @Inject constructor(
         KpiFilter.DISP_PENDING -> items.filterIsInstance<QueueItem.Dispense>()
         KpiFilter.DISP_CONTROLLED -> items.filter { it is QueueItem.Dispense && it.isControlled }
         KpiFilter.DISP_HAZARDOUS -> items.filter { it is QueueItem.Dispense && it.isHazardous }
-        KpiFilter.INV_CYCLE_COUNT -> emptyList() // see TODO above
-        KpiFilter.INV_PENDING_BATCH -> items.filterIsInstance<QueueItem.Inventory>()
+        KpiFilter.INV_CYCLE_COUNT -> items.filter { it is QueueItem.Inventory && it.isCycleCount }
+        KpiFilter.INV_PENDING_BATCH -> items.filter { it is QueueItem.Inventory && !it.isCycleCount }
     }
 
     /**

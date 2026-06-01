@@ -37,5 +37,13 @@ sealed class QueueItem {
     ) : QueueItem() {
         override val createdAt: Long get() = batch.createdAt
         override val bucketId: String? get() = batch.bucketId
+
+        /**
+         * True when this batch was created from a PMS inventory request
+         * (INR^U04) — those carry a [BatchSummaryDto.requestIdFromPMS]. Manually
+         * started batches have it null. Used to bucket the row under the
+         * "Cycle Count" KPI (PMS-requested counts) vs "Pending Batch" (manual).
+         */
+        val isCycleCount: Boolean get() = !batch.requestIdFromPMS.isNullOrBlank()
     }
 }

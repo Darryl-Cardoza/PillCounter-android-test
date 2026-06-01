@@ -92,6 +92,17 @@ class InventoryScanViewModel @Inject constructor(
     /** Bucket label rendered on the active card. Empty until the batch loads. */
     private val _bucketId = MutableStateFlow<String?>(null)
 
+    /**
+     * Expected NDCs for a PMS-requested (INR^U04) stock count. A PMS batch is
+     * pre-populated with one txn per requested drug (see
+     * Hl7Repository.handleInrInventoryRequest), so the set of NDCs already in the
+     * batch IS the request's expected list. Non-null only when this batch is
+     * PMS-sourced (BatchEntity.requestIdFromPMS != null); null means "no
+     * restriction" (manually started inventory accepts any valid NDC). Loaded
+     * once in init and used by [onBarcodeDetected] to reject off-list scans.
+     */
+    private var expectedNdcs: Set<String>? = null
+
     /** Session-local active NDC. Null when the bottom card shows Summary. */
     private val _activeNdc = MutableStateFlow<ActiveNdc?>(null)
 
@@ -170,7 +181,18 @@ class InventoryScanViewModel @Inject constructor(
         viewModelScope.launch {
             if (argBatchId != 0L) {
                 _resolvedBatchId.value = argBatchId
-                _bucketId.value = batchDao.getById(argBatchId)?.bucketId
+                val batch = batchDao.getById(argBatchId)
+                _bucketId.value = batch?.bucketId
+                // PMS-requested inventory: lock scanning to the requested NDCs.
+                // The batch was pre-populated with a txn per requested drug, so
+                // those NDCs are the allowed set. Manually started batches
+                // (requestIdFromPMS == null) stay unrestricted.
+                if (!batch?.requestIdFromPMS.isNullOrBlank()) {
+                    expectedNdcs = pillCountTxnDao.getTxnsByBatchId(argBatchId)
+                        .mapNotNull { it.ndc?.takeIf { ndc -> ndc.isNotBlank() } }
+                        .toSet()
+                    logger.i("INV_SCAN PMS batch=$argBatchId expectedNdcs=$expectedNdcs")
+                }
             } else {
                 // No batch yet — the user selected a bucket on the dashboard but the
                 // batch row will be created on the first successful NDC scan.
@@ -277,6 +299,20 @@ class InventoryScanViewModel @Inject constructor(
                 }
                 if (drug == null) {
                     _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, gtin14)
+                    _scannerPaused.value = false
+                    return@launch
+                }
+
+                // PMS request validation: when this batch came from an INR^U04
+                // request it carries a fixed set of expected NDCs. Reject a scan
+                // for any drug outside that set so the user can't count an NDC the
+                // PMS never asked for. Manually started batches have
+                // expectedNdcs == null and accept any valid NDC.
+                val allowed = expectedNdcs
+                if (allowed != null && drug.ndc !in allowed) {
+                    logger.w("INV_SCAN ndc=${drug.ndc} not in PMS request $allowed — rejecting scan")
+                    _errorMessage.value =
+                        LocalizedError(R.string.batch_stock_count_ndc_not_in_request, drug.ndc)
                     _scannerPaused.value = false
                     return@launch
                 }
