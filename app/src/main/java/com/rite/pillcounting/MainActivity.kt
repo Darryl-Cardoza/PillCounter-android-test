@@ -68,7 +68,7 @@ class MainActivity : ComponentActivity() {
         // device dim and sleep mid-scan even though they're actively using the
         // screen. This flag is automatically dropped when the activity is no
         // longer visible (home button, app switcher), so it doesn't affect
-        // normal lock behavior.
+        // normal locks behavior.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         fcmService.initFCM()
