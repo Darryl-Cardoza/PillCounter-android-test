@@ -13,10 +13,10 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.rite.pillcounting.core.hl7.core.Hl7EventListener
-import com.rite.pillcounting.core.hl7.hl7MessageHandler.builder.HL7MessageBuilder
-import com.rite.pillcounting.core.hl7.hl7MessageHandler.builder.toTypedHL7String
-import com.rite.pillcounting.core.hl7.hl7MessageHandler.parser.Hl7Parser
-import com.rite.pillcounting.core.hl7.hl7MessageHandler.parser.generateMessageIdempotencyKey
+import org.rite.hl7.builder.HL7MessageBuilder
+import org.rite.hl7.builder.toTypedHL7String
+import org.rite.hl7.parser.Hl7Parser
+import org.rite.hl7.parser.generateMessageIdempotencyKey
 import com.rite.pillcounting.core.hl7.imageWebService.NetworkUtils
 import com.rite.pillcounting.core.hl7.mllp.client.MllpClient
 import com.rite.pillcounting.core.hl7.mllp.client.MllpConnectionManager
@@ -29,8 +29,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import org.rite.hl7.hl7.AckDecision
-import org.rite.hl7.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.AckDecision
+import org.rite.hl7.domain.model.CompleteHL7Message
 
 
 /**
@@ -359,7 +359,7 @@ class HL7Service : Service() {
 
     private fun handleIncomingMessage(raw: String): AckDecision {
         return try {
-            logger.i("HL7 message before parsing | msgId=${raw} ")
+                logger.i("HL7 message before parsing | msgId=${raw} ")
             val message = parser.parse(raw)
             val key = message.generateMessageIdempotencyKey()
 

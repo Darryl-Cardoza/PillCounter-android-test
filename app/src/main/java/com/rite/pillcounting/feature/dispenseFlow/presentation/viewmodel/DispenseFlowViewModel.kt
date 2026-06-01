@@ -563,6 +563,7 @@ class DispenseFlowViewModel @Inject constructor(
                     isNdcVerified = true,
                     isSubstitute = isSubstitute,
                     substitutedDrugId = substitutedDrugId,
+                    barcodeImage = state.barcodeImagePath
                 )
             )
             _uiState.update {
