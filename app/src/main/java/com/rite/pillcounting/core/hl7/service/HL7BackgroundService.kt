@@ -31,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.rite.hl7.AckDecision
 import org.rite.hl7.domain.model.CompleteHL7Message
+import kotlin.math.log
 
 
 /**
@@ -228,7 +229,7 @@ class HL7Service : Service() {
             },
 
             onCertMismatch = {
-                Log.e(TAG, "PMS certificate mismatch — notifying listener")
+                logger.e("PMS certificate mismatch — notifying listener")
                 listener?.onPmsCertMismatch()
             },
         )
@@ -335,7 +336,7 @@ class HL7Service : Service() {
 
 
     fun clearPmsCertPin() {
-        Log.i(TAG, "clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")
+        logger.i("clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")
         tlsFactory.clearServerPin()
         clientManager.unblockCertMismatch()
         discoverPmsAndConnect()
@@ -355,7 +356,7 @@ class HL7Service : Service() {
 
                 if (host.isBlank()) return@launch
 
-                Log.d(TAG, "NSD resolved: serviceName=${info.serviceName} host=$host port=$port")
+                logger.d( "NSD resolved: serviceName=${info.serviceName} host=$host port=$port")
 
                 // Prevent duplicate connect
                 if (lastConnectedHost == "$host:$port" && clientManager.isConnected()) {

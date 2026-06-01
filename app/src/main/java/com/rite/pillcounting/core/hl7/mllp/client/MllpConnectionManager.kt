@@ -143,7 +143,7 @@ class MllpConnectionManager(
                 return  // success
             } catch (e: Exception) {
                 if (isCertMismatch(e)) {
-                    Log.e(TAG, "retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.")
+                    logger.e("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.")
                     certMismatchBlocked = true
                     updateState(ConnectionState.Disconnected)
                     onCertMismatch?.invoke()

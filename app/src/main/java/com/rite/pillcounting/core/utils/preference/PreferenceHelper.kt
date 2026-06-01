@@ -451,7 +451,7 @@ class PreferenceHelper @Inject constructor(
     // ─────────────────────────── HAZARDOUS DRUG ───────────────────────────
 
     fun setHazardousDrugEnabled(enabled: Boolean) {
-        prefs.edit { putBoolean(KEY_HAZARDOUS_DRUG, enabled) }
+        prefs.putBoolean(KEY_HAZARDOUS_DRUG, enabled)
         logger.i("Hazardous drug enabled set to: $enabled")
     }
 
@@ -463,29 +463,31 @@ class PreferenceHelper @Inject constructor(
 
     // ─────────────────────────── TRAY COLOR CLASSIFICATION ───────────────────────────
 
-    fun getHazardousTrayColors(): Set<String> =
-        prefs.getStringSet(KEY_HAZARDOUS_TRAY_COLORS, emptySet()) ?: emptySet()
+    fun getHazardousTrayColors(): Set<String> {
+        val json = prefs.getString(KEY_HAZARDOUS_TRAY_COLORS) ?: return emptySet()
+        return gson.fromJson(json, Array<String>::class.java).toSet()
+    }
 
     fun addHazardousTrayColor(colorName: String) {
         val updated = getHazardousTrayColors().toMutableSet().apply { add(colorName) }
-        prefs.edit { putStringSet(KEY_HAZARDOUS_TRAY_COLORS, updated) }
+        prefs.putString(KEY_HAZARDOUS_TRAY_COLORS, gson.toJson(updated))
         logger.i("Added hazardous tray color: $colorName")
     }
 
-    fun getNonHazardousTrayColors(): Set<String> =
-        prefs.getStringSet(KEY_NON_HAZARDOUS_TRAY_COLORS, emptySet()) ?: emptySet()
+    fun getNonHazardousTrayColors(): Set<String> {
+        val json = prefs.getString(KEY_NON_HAZARDOUS_TRAY_COLORS) ?: return emptySet()
+        return gson.fromJson(json, Array<String>::class.java).toSet()
+    }
 
     fun addNonHazardousTrayColor(colorName: String) {
         val updated = getNonHazardousTrayColors().toMutableSet().apply { add(colorName) }
-        prefs.edit { putStringSet(KEY_NON_HAZARDOUS_TRAY_COLORS, updated) }
+        prefs.putString(KEY_NON_HAZARDOUS_TRAY_COLORS, gson.toJson(updated))
         logger.i("Added non-hazardous tray color: $colorName")
     }
 
     fun clearAllTrayColorLists() {
-        prefs.edit {
-            putStringSet(KEY_HAZARDOUS_TRAY_COLORS, emptySet())
-            putStringSet(KEY_NON_HAZARDOUS_TRAY_COLORS, emptySet())
-        }
+        prefs.putString(KEY_HAZARDOUS_TRAY_COLORS, gson.toJson(emptySet<String>()))
+        prefs.putString(KEY_NON_HAZARDOUS_TRAY_COLORS, gson.toJson(emptySet<String>()))
         logger.i("Cleared all tray color classification lists")
     }
 

@@ -6,7 +6,6 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
 import com.rite.pillcounting.core.utils.logger.AppLogger
-import com.rite.pillcounting.core.utils.logger.AppLogger
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
@@ -35,8 +34,6 @@ object TlsImageKeystoreUtil {
     private const val KEYSTORE_FILE = "image_server.p12"
 //    private const val PREFS_NAME = "tls_image_ks_prefs"
 //    private const val PREF_KEY_PASSWORD = "ks_pw"
-
-    private val logger = AppLogger(TAG)
 
     // ----------------------------------------------------------------
     // Public API

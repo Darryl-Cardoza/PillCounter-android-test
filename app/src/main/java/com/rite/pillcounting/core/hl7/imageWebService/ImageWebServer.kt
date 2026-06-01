@@ -12,8 +12,6 @@ class ImageWebServer(private val context: Context) {
 
     companion object {
         private const val PORT = 8443
-        private const val TAG = "ImageWebServer"
-        private val logger = AppLogger(TlsImageKeystoreUtil.TAG)
     }
 
     private val logger = AppLogger("ImageWebServer")
