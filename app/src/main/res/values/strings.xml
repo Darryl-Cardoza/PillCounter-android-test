@@ -467,7 +467,7 @@
     <string name="batch_stock_count_end_count">END COUNT</string>
     <string name="batch_stock_count_unknown_drug">Unknown Drug</string>
     <string name="batch_stock_count_invalid_label">Invalid label barcode</string>
-    <string name="batch_stock_count_drug_not_found">Drug not found for NDC %1$s</string>
+    <string name="batch_stock_count_drug_not_found">Invalid NDC %1$s</string>
     <string name="batch_stock_count_ndc_not_in_request">NDC %1$s is not part of this inventory request</string>
     <string name="batch_stock_count_no_active_batch">No active batch</string>
     <string name="batch_stock_count_scan_failed">Scan failed</string>

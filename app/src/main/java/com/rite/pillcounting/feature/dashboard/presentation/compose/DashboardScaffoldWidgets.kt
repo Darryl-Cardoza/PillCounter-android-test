@@ -349,16 +349,24 @@ internal fun ScaffoldKpiCard(
     modifier: Modifier = Modifier,
     singleLabelLine: Boolean = false,
 ) {
-    // Selection is shown by border + elevation only, both strictly keyed on
-    // isActive so deselecting fully reverts. The previous scaleX/scaleY transform
-    // (1.02x) added a subtle, fragile "grow" that could read as a stuck size when
-    // switching cards — removed.
+    // Selection is shown by border + a tinted background fill, both strictly
+    // keyed on isActive so deselecting fully reverts. We deliberately do NOT use
+    // elevation for selection: at the tight 8.dp inter-card gap the raised card's
+    // drop shadow bled onto its neighbour, making an adjacent (unselected) card
+    // look raised/selected too. A flat fill is unambiguous — only the actual
+    // selected card changes. (The previous scaleX/scaleY 1.02x "grow" was also
+    // removed earlier for the same fragile-visual reason.)
+    val containerColor = if (isActive) {
+        MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+    } else {
+        Color.White
+    }
     Card(
         modifier = modifier
             .clickable { onClick() },
         shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = if (isActive) 8.dp else 0.dp),
+        colors = CardDefaults.cardColors(containerColor = containerColor),
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
         Box(
