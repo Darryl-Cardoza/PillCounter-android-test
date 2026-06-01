@@ -71,6 +71,7 @@ fun DashboardScreen(
     // Collect dashboard UI state reactively
     val uiState by viewModel.uiState.collectAsState()
     val connected by viewModel.isConnected.collectAsState()
+    val pmsCertMismatch by viewModel.pmsCertMismatch.collectAsState()
     val terminalInfoLoaded by viewModel.terminalInfoLoaded.collectAsState()
 
     // Start HL7 service after terminal info is loaded from auth/me
@@ -168,6 +169,16 @@ fun DashboardScreen(
                 activity?.finishAffinity()
             },
             onCancel = { showLogoutDialog = false }
+        )
+    }
+
+    if (pmsCertMismatch) {
+        CommonDialog(
+            message = stringResource(R.string.pms_cert_mismatch_message),
+            confirmText = stringResource(R.string.pms_cert_mismatch_confirm),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = { viewModel.clearPmsCertPin() },
+            onCancel = { viewModel.clearPmsCertPin() }
         )
     }
 }

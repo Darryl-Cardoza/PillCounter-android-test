@@ -441,4 +441,7 @@
     is unavailable. You can connect manually in Settings.
 </string>
 
+    <string name="pms_cert_mismatch_message">The PMS server certificate has changed. This may happen after a PMS update. Tap Reset to accept the new certificate and reconnect.</string>
+    <string name="pms_cert_mismatch_confirm">Reset &amp; Reconnect</string>
+
 </resources>

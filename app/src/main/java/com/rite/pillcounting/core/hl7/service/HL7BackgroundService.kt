@@ -66,6 +66,7 @@ class HL7Service : Service() {
     private lateinit var server: MllpServer
     private lateinit var clientManager: MllpConnectionManager
     private lateinit var nsdHelper: NsdHelper
+    private lateinit var tlsFactory: TlsSocketFactory
 
     private lateinit var networkIpMonitor: NetworkIpMonitor
 
@@ -206,7 +207,7 @@ class HL7Service : Service() {
         builder = HL7MessageBuilder()
         nsdHelper = NsdHelper(this)
 
-        val tlsFactory = TlsSocketFactory(this)
+        tlsFactory = TlsSocketFactory(this)
         val client = MllpClient(tlsFactory)
 
         clientManager = MllpConnectionManager(
@@ -226,7 +227,12 @@ class HL7Service : Service() {
 
             onDisconnected = {
                 listener?.onClientDisconnected()
-            }
+            },
+
+            onCertMismatch = {
+                Log.e(TAG, "PMS certificate mismatch — notifying listener")
+                listener?.onPmsCertMismatch()
+            },
         )
 
         clientManager.startContinuousReconnect()
@@ -333,14 +339,28 @@ class HL7Service : Service() {
     }
 
 
+    fun clearPmsCertPin() {
+        Log.i(TAG, "clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")
+        tlsFactory.clearServerPin()
+        clientManager.unblockCertMismatch()
+        discoverPmsAndConnect()
+    }
+
     fun discoverPmsAndConnect() {
         listener?.onNsdDiscoveryStarted()
 
         nsdHelper.discover(config.nsdDiscoveryType) { info ->
             serviceScope.launch {
 
-                val host = info.host.hostAddress ?: return@launch
+                // Prefer IPv4 — IPv6 link-local addresses (fe80::) cause TCP
+                // connection failures on Android when the scope ID is present.
+                val rawHost = info.host.hostAddress ?: return@launch
+                val host = rawHost.substringBefore('%')  // strip scope id from fe80::1%wlan0
                 val port = info.port
+
+                if (host.isBlank()) return@launch
+
+                Log.d(TAG, "NSD resolved: serviceName=${info.serviceName} host=$host port=$port")
 
                 // Prevent duplicate connect
                 if (lastConnectedHost == "$host:$port" && clientManager.isConnected()) {
@@ -355,7 +375,7 @@ class HL7Service : Service() {
                 try {
                     clientManager.connect(host, port)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Connect failed", e)
+                    Log.e(TAG, "Connect failed to $host:$port — ${e.message}", e)
                 }
             }
         }

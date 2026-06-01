@@ -10,32 +10,20 @@ object TlsProvider {
     private val TLS_PROTOCOLS = arrayOf("TLSv1.2", "TLSv1.3")
 
     /**
-     * TLS context that encrypts but trusts ANY server certificate.
+     * TLS context that encrypts the connection but trusts ANY server certificate.
+     * Safe for debug/testing against a local PMS with a self-signed or untrusted cert.
+     * Never used in release builds.
      */
-//    fun createInsecureClientContext(): SSLContext {
-//
-//        val trustAllManager = object : X509TrustManager {
-//            override fun checkClientTrusted(
-//                chain: Array<X509Certificate>,
-//                authType: String
-//            ) = Unit
-//
-//            override fun checkServerTrusted(
-//                chain: Array<X509Certificate>,
-//                authType: String
-//            ) = Unit
-//
-//            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
-//        }
-//
-//        return SSLContext.getInstance("TLS").apply {
-//            init(
-//                null, // no client cert
-//                arrayOf<TrustManager>(trustAllManager),
-//                SecureRandom()
-//            )
-//        }
-//    }
+    fun createTrustAllClientContext(): SSLContext {
+        val trustAllManager = object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+            override fun checkServerTrusted(chain: Array<X509Certificate>, authType: String) = Unit
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
+        }
+        return SSLContext.getInstance("TLS").apply {
+            init(null, arrayOf<TrustManager>(trustAllManager), SecureRandom())
+        }
+    }
 
     /**
      * Creates a TLS context that implements Trust-on-First-Use (TOFU).
@@ -57,13 +45,19 @@ object TlsProvider {
         }
     }
 
-    fun configureClientSocket(socket: SSLSocket) {
+    fun configureClientSocket(socket: SSLSocket, debugMode: Boolean = false) {
         socket.enabledProtocols = TLS_PROTOCOLS
 
-        socket.enabledCipherSuites =
-            socket.supportedCipherSuites.filter {
-                it.contains("AES") && it.contains("GCM")
-            }.toTypedArray()
+        if (debugMode) {
+            // Allow all supported ciphers in debug — local PMS servers often use
+            // older CBC suites that the release GCM-only filter would reject.
+            socket.enabledCipherSuites = socket.supportedCipherSuites
+        } else {
+            socket.enabledCipherSuites =
+                socket.supportedCipherSuites.filter {
+                    it.contains("AES") && it.contains("GCM")
+                }.toTypedArray()
+        }
 
         // Disable hostname verification (IP-based HL7)
         socket.sslParameters = socket.sslParameters.apply {

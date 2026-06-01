@@ -18,6 +18,7 @@ import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardUiState
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
+import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -52,7 +53,8 @@ class DashboardViewModel @Inject constructor(
     private val userDao: UserDao,
     private val batchDao: BatchDao,
     private val pillCountTxnDao: PillCountTxnDao,
-    private val hl7EventHandler: Hl7EventHandler
+    private val hl7EventHandler: Hl7EventHandler,
+    private val hl7ServiceManager: Hl7ServiceManager,
 
 ) : ViewModel() {
 
@@ -65,6 +67,11 @@ class DashboardViewModel @Inject constructor(
     /** Public immutable UI state exposed to the UI layer. */
     val uiState = _uiState.asStateFlow()
     val isConnected: StateFlow<Boolean> = hl7EventHandler.connectionState
+    val pmsCertMismatch: StateFlow<Boolean> = hl7EventHandler.pmsCertMismatch
+
+    fun clearPmsCertPin() {
+        hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
+    }
 
     /** StateFlow to signal when terminal info is loaded from auth/me */
     private val _terminalInfoLoaded = MutableStateFlow(false)
