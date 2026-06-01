@@ -1016,6 +1016,26 @@ private fun InventoryTabletPortraitShell(navController: NavController) {
     }
     val frameCounter = remember { java.util.concurrent.atomic.AtomicLong(0L) }
 
+    // Camera permission — same gate as the other inventory shells. Without it
+    // CameraX retries forever and the preview never streams (infinite spinner).
+    var hasCameraPermission by remember {
+        mutableStateOf(
+            ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.CAMERA
+            ) == PackageManager.PERMISSION_GRANTED
+        )
+    }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+        onResult = { hasCameraPermission = it }
+    )
+    LaunchedEffect(Unit) {
+        if (!hasCameraPermission) {
+            permissionLauncher.launch(Manifest.permission.CAMERA)
+        }
+    }
+
     // See landscape shell for the rationale: only resume on activeNdc clearing;
     // never pause while a card is active, or the auto-swap branch becomes
     // unreachable.
@@ -1058,33 +1078,47 @@ private fun InventoryTabletPortraitShell(navController: NavController) {
             // camera to paused behind our back.
             LaunchedEffect(Unit) { cameraVm.pauseIdleTimer() }
 
-            CameraPreviewSection(
-                viewModel = cameraVm,
-                pills = cameraUiState.detectedPills,
-                isCameraPaused = false,
-                imageFrameWidth = cameraUiState.imageFrameWidth,
-                imageFrameHeight = cameraUiState.imageFrameHeight,
-                showGloveIcon = panelState.activeNdc?.isHazardous == true,
-                onFrame = { imageProxy ->
-                    // Forward each frame to the barcode analyzer. We own the
-                    // ImageProxy lifecycle here and must close it (see landscape
-                    // shell for the full explanation) or CameraX's frame pool
-                    // fills up after the first scan.
-                    val n = frameCounter.incrementAndGet()
-                    if (n % 30 == 0L) {
-                        android.util.Log.d("InventoryScreen", "INV_SCAN(portrait) onFrame tick=$n")
-                    }
-                    try {
-                        barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
-                            inventoryVm.onBarcodeDetected(raw)
+            if (hasCameraPermission) {
+                CameraPreviewSection(
+                    viewModel = cameraVm,
+                    pills = cameraUiState.detectedPills,
+                    isCameraPaused = false,
+                    imageFrameWidth = cameraUiState.imageFrameWidth,
+                    imageFrameHeight = cameraUiState.imageFrameHeight,
+                    showGloveIcon = panelState.activeNdc?.isHazardous == true,
+                    onFrame = { imageProxy ->
+                        // Forward each frame to the barcode analyzer. We own the
+                        // ImageProxy lifecycle here and must close it (see landscape
+                        // shell for the full explanation) or CameraX's frame pool
+                        // fills up after the first scan.
+                        val n = frameCounter.incrementAndGet()
+                        if (n % 30 == 0L) {
+                            android.util.Log.d("InventoryScreen", "INV_SCAN(portrait) onFrame tick=$n")
                         }
-                    } finally {
-                        imageProxy.close()
-                    }
-                },
-                onFilteredCountChanged = { /* no-op in inventory mode */ },
-                modifier = Modifier.fillMaxSize(),
-            )
+                        try {
+                            barcodeAnalyzer.analyze(imageProxy) { raw, _ ->
+                                inventoryVm.onBarcodeDetected(raw)
+                            }
+                        } finally {
+                            imageProxy.close()
+                        }
+                    },
+                    onFilteredCountChanged = { /* no-op in inventory mode */ },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            } else {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = stringResource(R.string.camera_permission_required),
+                        color = androidx.compose.ui.graphics.Color.White,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(24.dp),
+                    )
+                }
+            }
 
             BackButton(
                 navController = navController,

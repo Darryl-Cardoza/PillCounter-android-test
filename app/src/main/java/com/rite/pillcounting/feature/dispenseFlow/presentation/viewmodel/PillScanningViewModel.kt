@@ -215,6 +215,14 @@ class PillScanningViewModel @Inject constructor(
     private val stagedDetails = mutableListOf<PillCountTxnDetailsEntity>()
     private var stagingActive = false
 
+    // Staging (defer-to-Done + discard-on-back-out) is ONLY for the inventory
+    // SCAN PILLS hand-off. The regular dispense flow must persist each ADD
+    // immediately so a session backed out before Done is still saved and shows
+    // up under Pending Items. The hand-off is the only caller of
+    // enterStockCountScanMode(), so forceStartOnScan cleanly identifies it.
+    private val stagingEnabled: Boolean
+        get() = forceStartOnScan
+
     private val _isSoundOverride = MutableStateFlow(preferenceHelper.isSoundOverride())
     val isSoundEnabled: StateFlow<Boolean> = _isSoundOverride.asStateFlow()
 
@@ -375,6 +383,14 @@ class PillScanningViewModel @Inject constructor(
      * left as orphans; they are harmless and not referenced by any DB row.
      */
     fun discardStagedCount() {
+        // Only the SCAN PILLS hand-off stages and discards on back-out. In the
+        // regular dispense flow each ADD is already persisted, so there is
+        // nothing to discard — leave the DB rows (and the DB-driven uiState)
+        // intact so the session is saved and resumable under Pending Items.
+        if (!stagingEnabled) {
+            stockCountBaseTotal = -1
+            return
+        }
         if (stagedDetails.isNotEmpty()) {
             logger.i("Discarding ${stagedDetails.size} staged details (back-out, no Done).")
         }
@@ -1069,28 +1085,46 @@ class PillScanningViewModel @Inject constructor(
                 null
             }
 
-            // STAGE in memory instead of writing to the DB. The image file IS
-            // saved to disk above (staging on disk is fine); only the DB row +
-            // looseQty increment are deferred until the user confirms Done.
-            // looseQty for REGULAR is incremented once, on flush, for the whole
-            // staged sum (see handleConfirmDone / handleDone flush blocks).
-            stagedDetails.add(
-                PillCountTxnDetailsEntity(
-                    txnId = txnId,
-                    pillCount = currentCount,
-                    imagePath = filePath,
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis(),
-                    type = stepType.toString()
-                )
+            val detail = PillCountTxnDetailsEntity(
+                txnId = txnId,
+                pillCount = currentCount,
+                imagePath = filePath,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                type = stepType.toString()
             )
-            stagingActive = true
 
-            if (!workingBitmap.isRecycled) workingBitmap.recycle()
-            refreshStagedHistory(stepType)
-            currentFrameBitmap = null
+            if (stagingEnabled) {
+                // SCAN PILLS hand-off: STAGE in memory instead of writing to the
+                // DB. The image file IS saved to disk above (staging on disk is
+                // fine); only the DB row + looseQty increment are deferred until
+                // the user confirms Done. looseQty for REGULAR is incremented
+                // once, on flush, for the whole staged sum (see handleConfirmDone
+                // / handleDone flush blocks). On back-out these are discarded.
+                stagedDetails.add(detail)
+                stagingActive = true
 
-            logger.i("Transaction detail STAGED (in memory). Count=$currentCount, File=$filePath, stagedCount=${stagedDetails.size}")
+                if (!workingBitmap.isRecycled) workingBitmap.recycle()
+                refreshStagedHistory(stepType)
+                currentFrameBitmap = null
+
+                logger.i("Transaction detail STAGED (in memory). Count=$currentCount, File=$filePath, stagedCount=${stagedDetails.size}")
+            } else {
+                // Regular dispense flow: persist each ADD immediately so a session
+                // backed out before Done is still saved (shows under Pending). The
+                // DB observer (observeTxnDetailsForTxn) drives uiState because
+                // stagingActive stays false. looseQty for REGULAR is incremented
+                // per-ADD here to match the per-row insert.
+                pillCountTxnDetailsDao.insert(detail)
+                if (txn?.countType == CountType.REGULAR && currentCount > 0) {
+                    pillCountTxnDao.incrementLooseQty(txnId, currentCount)
+                }
+
+                if (!workingBitmap.isRecycled) workingBitmap.recycle()
+                currentFrameBitmap = null
+
+                logger.i("Transaction detail INSERTED (immediate). Count=$currentCount, File=$filePath")
+            }
         }
     }
 
@@ -1638,7 +1672,21 @@ class PillScanningViewModel @Inject constructor(
         }
 
         _currentStep.value = next
-        _uiState.update { it.copy(showDialogForControl = false) }
+        // Clear the previous step's history/running total BEFORE wiring up the
+        // new step's observer. Each step counts into its own StepState rows, so
+        // on entry the new step starts at 0. observeTxnDetailsForTxn() only
+        // overwrites uiState once its first DB emission lands; without this reset
+        // the panel briefly shows the prior step's count (e.g. "30/30" on the
+        // first TARGET_VERIFICATION entry instead of "0/30"). Re-entering after
+        // BACK looked correct only because discardStagedCount() had already
+        // cleared these fields.
+        _uiState.update {
+            it.copy(
+                showDialogForControl = false,
+                txnDetailHistory = emptyList(),
+                stockCountSessionTotal = 0,
+            )
+        }
         observeTxnDetailsForTxn(next)
 
         viewModelScope.launch(Dispatchers.IO) {

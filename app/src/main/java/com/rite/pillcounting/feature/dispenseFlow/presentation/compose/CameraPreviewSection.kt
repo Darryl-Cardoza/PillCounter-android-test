@@ -14,7 +14,6 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
@@ -31,7 +30,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,7 +43,6 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
@@ -104,10 +101,6 @@ fun CameraPreviewSection(
         onDispose { previewView.previewStreamState.removeObserver(observer) }
     }
 
-    val zoomRatio = remember { mutableFloatStateOf(1f) }
-    val minZoom = 1f
-    val maxZoom = 2f
-
     var showPop by remember { mutableStateOf(false) }
     var popKey by remember { mutableIntStateOf(0) }
     var popText by remember { mutableStateOf("+0") }
@@ -127,11 +120,6 @@ fun CameraPreviewSection(
     // Sticky once the workflow has seen gloves at high confidence; reset only when
     // the workflow resumes from idle (see PillScanningViewModel.resetGloveDetection).
     val glovesDetectedSticky by viewModel.glovesDetected.collectAsState()
-
-    // ── Zoom ──────────────────────────────────────────────────────────────────
-    LaunchedEffect(Unit) {
-        cameraHelper.zoomFlow.collect { zoomRatio.value = it }
-    }
 
     // ── Start camera + begin collecting frames ────────────────────────────────
     LaunchedEffect(cameraHelper) {
@@ -230,6 +218,9 @@ fun CameraPreviewSection(
             if (capturedBitmap == null) {
 
                 // ── CAMERA PREVIEW ────────────────────────────────────────────
+                // Pinch-to-zoom is intentionally NOT wired up: the preview must
+                // stay at the camera's default (1×) framing on every screen, so we
+                // don't attach a detectTransformGestures handler here.
                 AndroidView(
                     factory = { previewView },
                     modifier = Modifier
@@ -237,19 +228,13 @@ fun CameraPreviewSection(
                         .onSizeChanged { size ->
                             onPreviewSizeKnown?.invoke(size.width, size.height)
                         }
-                        .pointerInput(Unit) {
-                            detectTransformGestures { _, _, zoom, _ ->
-                                val current = cameraHelper.getCurrentZoomRatio() ?: 1f
-                                val target = (current * zoom).coerceIn(minZoom, maxZoom)
-                                zoomRatio.floatValue = target
-                                cameraHelper.setZoom(target)
-                            }
-                        }
                 )
 
                 // ── PREVIEW WARM-UP PLACEHOLDER ───────────────────────────────
                 // Covers the black gap between bindToLifecycle() and the first
                 // live frame. Fades out the moment PreviewView reports STREAMING.
+                // No spinner — just a neutral fill so the warm-up reads as a calm
+                // dark screen rather than a "loading" state.
                 androidx.compose.animation.AnimatedVisibility(
                     visible = !isPreviewStreaming,
                     enter = fadeIn(),
@@ -260,13 +245,7 @@ fun CameraPreviewSection(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(Color(0xFF1F1F1F)),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        androidx.compose.material3.CircularProgressIndicator(
-                            color = Color.White,
-                            strokeWidth = 3.dp,
-                        )
-                    }
+                    )
                 }
 
                 // ── COUNT POP ANIMATION ───────────────────────────────────────
