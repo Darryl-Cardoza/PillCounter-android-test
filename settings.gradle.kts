@@ -17,3 +17,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "PillCountingNewModels"
 include(":app")
+include(":hl7Core")

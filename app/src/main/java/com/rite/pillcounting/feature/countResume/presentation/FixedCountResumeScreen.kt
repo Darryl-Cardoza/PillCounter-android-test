@@ -37,6 +37,7 @@ import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBa
 import com.rite.pillcounting.feature.countResume.presentation.compose.PartialListPanel
 import com.rite.pillcounting.feature.countResume.presentation.viewmodel.CountsViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
+import org.rite.hl7.domain.model.CompleteHL7Message
 
 @Composable
 fun FixedCountResumeScreen(

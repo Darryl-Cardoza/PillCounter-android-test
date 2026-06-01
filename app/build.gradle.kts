@@ -194,6 +194,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
 
     implementation("org.json:json:20230227")
+    implementation(project(":hl7Core"))
 
     // Bouncy Castle for TLS Keystore generation
     implementation("org.bouncycastle:bcprov-jdk18on:1.83")
