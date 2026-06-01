@@ -19,13 +19,16 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
+import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.settings.domain.model.enums.ScheduleCode
 import com.rite.pillcounting.core.security.ImageCrypto
 import com.rite.pillcounting.core.utils.common.HelperFunctions.saveBitmapToFile
+import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.common.OverlayUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
@@ -33,8 +36,10 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dispenseFlow.domain.PillDetectionModelLoader
+import com.rite.pillcounting.feature.dispenseFlow.domain.data.IDrugRepository
 import com.rite.pillcounting.feature.dispenseFlow.domain.data.NavigationEvent
 import com.rite.pillcounting.feature.dispenseFlow.domain.data.PillScanningEvent
+import com.rite.pillcounting.feature.dispenseFlow.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DetectedPill
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.PillScanningUiState
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.TxnDetail
@@ -79,7 +84,9 @@ class PillScanningViewModel @Inject constructor(
     private val locationProvider: LocationProvider,
     private val drugMasterDao: DrugMasterDao,
     private val modelLoader: PillDetectionModelLoader,
-    private val performanceLogger: PerformanceLogger
+    private val performanceLogger: PerformanceLogger,
+    private val barcodeDecoder: BarcodeDecoder,
+    private val drugRepository: IDrugRepository,
 ) : AndroidViewModel(app) {
 
     private val logger = AppLogger("PillScanningVM")
@@ -125,6 +132,30 @@ class PillScanningViewModel @Inject constructor(
 
     private val _steps = MutableStateFlow<List<StepState>>(emptyList())
     val steps: StateFlow<List<StepState>> = _steps
+
+    // --- Stock-count (SCAN PILLS hand-off) NDC scan ---
+    // When entered via the Batch Stock Count SCAN PILLS hand-off, the screen must
+    // ALWAYS start on a compulsory NDC-scan step (StepState.SCAN), regardless of
+    // any pre-staged/active NDC. The user scans an NDC there; we stage that NDC's
+    // txn scoped to [stockCountBatchId] and advance to the pill-count step.
+    private var forceStartOnScan = false
+    private var stockCountBatchId = 0L
+    @Volatile private var isStagingNdc = false
+
+    /**
+     * Arm the compulsory NDC-scan start for the SCAN PILLS hand-off. Must be
+     * called before [getDrugInfo] so the resolved start step is forced to SCAN.
+     */
+    fun enterStockCountScanMode(batchId: Long) {
+        forceStartOnScan = true
+        stockCountBatchId = batchId
+        // Keep the ML pill detector idle while on the SCAN step.
+        isPaused = true
+    }
+
+    /** True while the screen should route frames to the barcode decoder. */
+    val isOnNdcScanStep: Boolean
+        get() = forceStartOnScan && _currentStep.value == StepState.SCAN
 
     private val shutterSound = MediaActionSound().apply {
         load(MediaActionSound.SHUTTER_CLICK)
@@ -173,6 +204,24 @@ class PillScanningViewModel @Inject constructor(
 
     private var observeTxnDetailsJob: Job? = null
     private var stockCountBaseTotal: Int = -1
+
+    // ── Staging buffer for the legacy loose-pill counting session ────────────
+    // ADDs during a counting session are held here (NOT inserted) and only
+    // flushed to the DB when the user confirms Done. On back-out they are
+    // discarded. Earlier committed rows (sealed bottles + previously-Done loose
+    // pills) live in the DB and are never touched by staging.
+    // Each staged entity has txnDetailsId = 0 (not yet persisted); we assign a
+    // temporary negative id to the derived TxnDetail UI rows for delete-matching.
+    private val stagedDetails = mutableListOf<PillCountTxnDetailsEntity>()
+    private var stagingActive = false
+
+    // Staging (defer-to-Done + discard-on-back-out) is ONLY for the inventory
+    // SCAN PILLS hand-off. The regular dispense flow must persist each ADD
+    // immediately so a session backed out before Done is still saved and shows
+    // up under Pending Items. The hand-off is the only caller of
+    // enterStockCountScanMode(), so forceStartOnScan cleanly identifies it.
+    private val stagingEnabled: Boolean
+        get() = forceStartOnScan
 
     private val _isSoundOverride = MutableStateFlow(preferenceHelper.isSoundOverride())
     val isSoundEnabled: StateFlow<Boolean> = _isSoundOverride.asStateFlow()
@@ -231,6 +280,10 @@ class PillScanningViewModel @Inject constructor(
         observeTxnDetailsJob = viewModelScope.launch {
             pillCountTxnDetailsDao.observeAllForTxn(preferenceHelper.getTxnId(), step)
                 .collectLatest { entities ->
+                    // While a counting session is staging in memory, the DB observer
+                    // must NOT overwrite uiState — staging owns the running total and
+                    // history. refreshStagedHistory() keeps uiState populated instead.
+                    if (stagingActive) return@collectLatest
                     val history = entities.map {
                         TxnDetail(
                             txnDetailId = it.txnDetailsId,
@@ -269,6 +322,82 @@ class PillScanningViewModel @Inject constructor(
                     }
                 }
         }
+    }
+
+    /**
+     * Refresh uiState (history + running total) from the in-memory staging
+     * buffer for the given [step]. REPLACES the DB observer while a session is
+     * staging. Since staging starts empty, the running total is the staged sum
+     * directly — prior committed pills are intentionally NOT shown during the
+     * session ("only this session" requirement).
+     *
+     * Staged rows are not persisted yet, so they have no real PK. We assign a
+     * temporary NEGATIVE id (-(index+1)) so the history/delete UI has a stable
+     * key that can never collide with a real (positive) autogen PK.
+     */
+    private fun refreshStagedHistory(step: StepState) {
+        val staged = stagedDetails.filter { it.type == step.toString() }
+        val history = staged.mapIndexed { index, entity ->
+            TxnDetail(
+                txnDetailId = -(index + 1).toLong(),
+                count = entity.pillCount ?: 0,
+                image = entity.imagePath,
+                createdAt = entity.createdAt,
+                type = step
+            )
+        }
+        val sessionTotal = history.sumOf { it.count }
+        _uiState.update { state ->
+            state.copy(txnDetailHistory = history, stockCountSessionTotal = sessionTotal)
+        }
+    }
+
+    /**
+     * Flush all staged details to the DB. Inserts each staged row and, for
+     * REGULAR transactions, increments looseQty ONCE by the total staged sum.
+     * Clears the buffer and ends the staging session. Must be called on a
+     * coroutine. Earlier committed rows are untouched.
+     */
+    private suspend fun flushStagedDetails(txnId: Long) {
+        if (stagedDetails.isEmpty()) {
+            stagingActive = false
+            return
+        }
+        val stagedSum = stagedDetails.sumOf { it.pillCount ?: 0 }
+        stagedDetails.forEach { entity ->
+            pillCountTxnDetailsDao.insert(entity.copy(txnId = txnId))
+        }
+        val txn = pillCountTxnDao.getById(txnId)
+        if (txn?.countType == CountType.REGULAR && stagedSum > 0) {
+            pillCountTxnDao.incrementLooseQty(txnId, stagedSum)
+        }
+        logger.i("Flushed ${stagedDetails.size} staged details to DB. stagedSum=$stagedSum txnId=$txnId")
+        stagedDetails.clear()
+        stagingActive = false
+    }
+
+    /**
+     * Discard the in-memory staged count on back-out (no Done). Earlier
+     * committed rows and looseQty are preserved — only this session's staged
+     * (un-inserted) data is dropped. Image files already written to disk are
+     * left as orphans; they are harmless and not referenced by any DB row.
+     */
+    fun discardStagedCount() {
+        // Only the SCAN PILLS hand-off stages and discards on back-out. In the
+        // regular dispense flow each ADD is already persisted, so there is
+        // nothing to discard — leave the DB rows (and the DB-driven uiState)
+        // intact so the session is saved and resumable under Pending Items.
+        if (!stagingEnabled) {
+            stockCountBaseTotal = -1
+            return
+        }
+        if (stagedDetails.isNotEmpty()) {
+            logger.i("Discarding ${stagedDetails.size} staged details (back-out, no Done).")
+        }
+        stagedDetails.clear()
+        stagingActive = false
+        stockCountBaseTotal = -1
+        _uiState.update { it.copy(txnDetailHistory = emptyList(), stockCountSessionTotal = 0) }
     }
 
     /**
@@ -956,26 +1085,46 @@ class PillScanningViewModel @Inject constructor(
                 null
             }
 
-            pillCountTxnDetailsDao.insert(
-                PillCountTxnDetailsEntity(
-                    txnId = txnId,
-                    pillCount = currentCount,
-                    imagePath = filePath,
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis(),
-                    type = stepType.toString()
-                )
+            val detail = PillCountTxnDetailsEntity(
+                txnId = txnId,
+                pillCount = currentCount,
+                imagePath = filePath,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                type = stepType.toString()
             )
 
-            if (txn?.countType == CountType.REGULAR) {
-                pillCountTxnDao.incrementLooseQty(txnId, currentCount)
+            if (stagingEnabled) {
+                // SCAN PILLS hand-off: STAGE in memory instead of writing to the
+                // DB. The image file IS saved to disk above (staging on disk is
+                // fine); only the DB row + looseQty increment are deferred until
+                // the user confirms Done. looseQty for REGULAR is incremented
+                // once, on flush, for the whole staged sum (see handleConfirmDone
+                // / handleDone flush blocks). On back-out these are discarded.
+                stagedDetails.add(detail)
+                stagingActive = true
+
+                if (!workingBitmap.isRecycled) workingBitmap.recycle()
+                refreshStagedHistory(stepType)
+                currentFrameBitmap = null
+
+                logger.i("Transaction detail STAGED (in memory). Count=$currentCount, File=$filePath, stagedCount=${stagedDetails.size}")
+            } else {
+                // Regular dispense flow: persist each ADD immediately so a session
+                // backed out before Done is still saved (shows under Pending). The
+                // DB observer (observeTxnDetailsForTxn) drives uiState because
+                // stagingActive stays false. looseQty for REGULAR is incremented
+                // per-ADD here to match the per-row insert.
+                pillCountTxnDetailsDao.insert(detail)
+                if (txn?.countType == CountType.REGULAR && currentCount > 0) {
+                    pillCountTxnDao.incrementLooseQty(txnId, currentCount)
+                }
+
+                if (!workingBitmap.isRecycled) workingBitmap.recycle()
+                currentFrameBitmap = null
+
+                logger.i("Transaction detail INSERTED (immediate). Count=$currentCount, File=$filePath")
             }
-
-            if (!workingBitmap.isRecycled) workingBitmap.recycle()
-            observeTxnDetailsForTxn(stepType)
-            currentFrameBitmap = null
-
-            logger.i("Transaction detail saved. Count=$currentCount, File=$filePath")
         }
     }
 
@@ -1060,13 +1209,20 @@ class PillScanningViewModel @Inject constructor(
     private fun handleDone() {
         viewModelScope.launch {
             val txnId = preferenceHelper.getTxnId()
-            val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
+            // Staged rows are not in the DB yet, so include the staged sum in the
+            // total==0 guard, otherwise a session that only staged pills would be
+            // wrongly reported as "no transaction".
+            val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId) +
+                    stagedDetails.sumOf { it.pillCount ?: 0 }
             if (total == 0) {
                 _uiState.update { it.copy(showNoTransaction = true) }
                 return@launch
             }
             if (txnInfo.value?.countType == CountType.REGULAR) {
                 val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                // REGULAR skips handleConfirmDone and completes directly here, so
+                // flush staging to the DB BEFORE marking COMPLETED.
+                flushStagedDetails(txnId)
                 pillCountTxnDao.updateTxnStatus(txnId, CountStatus.COMPLETED)
                 _navigationEvent.send(NavigationEvent.NavigateToBatch(txn.batchId ?: 0))
                 return@launch
@@ -1099,6 +1255,10 @@ class PillScanningViewModel @Inject constructor(
     private fun handleConfirmDone() {
         viewModelScope.launch {
             val txnId = preferenceHelper.getTxnId()
+            // Flush staged details to the DB BEFORE reading the total / deciding
+            // status, so getTotalPillCountForTxn sees the freshly committed rows
+            // plus any prior committed rows = the correct grand total.
+            flushStagedDetails(txnId)
             val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
             val txn = pillCountTxnDao.getById(txnId) ?: return@launch
             if (total == 0) {
@@ -1125,6 +1285,22 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun handleDeleteTransaction(event: PillScanningEvent.TransactionDetailDeleted) {
+        // While staging, mutate the in-memory buffer instead of the DB. Staged
+        // rows use a temporary negative id (-(index+1)) assigned in
+        // refreshStagedHistory, so a negative id always identifies a staged row.
+        if (stagingActive) {
+            val step = _currentStep.value
+            val staged = stagedDetails.filter { it.type == step.toString() }
+            val index = (-event.txnDetailId - 1).toInt()
+            if (index in staged.indices) {
+                stagedDetails.remove(staged[index])
+                logger.i("Staged detail removed at index=$index (id=${event.txnDetailId})")
+            } else {
+                logger.w("Staged delete ignored: id=${event.txnDetailId} out of range")
+            }
+            refreshStagedHistory(step)
+            return
+        }
         viewModelScope.launch {
             pillCountTxnDetailsDao.softDelete(event.txnDetailId)
             logger.i("Transaction detail deleted. Id=${event.txnDetailId}")
@@ -1133,6 +1309,14 @@ class PillScanningViewModel @Inject constructor(
 
     private fun handleDeleteAllTransactionDetails(event: PillScanningEvent.AllTransactionDetailsDeleted) {
         stockCountBaseTotal = -1
+        // While staging, clear the in-memory buffer instead of soft-deleting DB
+        // rows (which would wrongly remove prior committed counts).
+        if (stagingActive) {
+            stagedDetails.removeAll { it.type == event.stepType.toString() }
+            logger.i("All STAGED details cleared for step=${event.stepType}")
+            refreshStagedHistory(event.stepType)
+            return
+        }
         viewModelScope.launch {
             pillCountTxnDetailsDao.softDeleteAllTransaction(
                 preferenceHelper.getTxnId(), type = event.stepType
@@ -1205,6 +1389,17 @@ class PillScanningViewModel @Inject constructor(
             _isTxnFromHl7.value = isComingFromHL7
 
             _steps.value = when {
+                // SCAN PILLS hand-off: this is always a 2-step flow
+                // [SCAN, TARGET_VERIFICATION]. Force it regardless of the
+                // pre-staged txn's countType/drugType so the stepper doesn't show
+                // the full 5-step dispense workflow on the NDC-scan step.
+                forceStartOnScan -> buildWorkflowSteps(
+                    isFromHl7 = false,
+                    simpleFlow = true,
+                    drugType = drugInfo?.drugType.orEmpty(),
+                    countType = CountType.REGULAR
+                )
+
                 isComingFromHL7 && drugInfo?.drugType?.let {
                     runCatching { ScheduleCode.valueOf(it) }.getOrNull()
                 } in controlledSchedules -> buildWorkflowSteps(
@@ -1236,6 +1431,9 @@ class PillScanningViewModel @Inject constructor(
                 ?.let { runCatching { StepState.valueOf(it) }.getOrNull() }
 
             val resolvedStep = when {
+                // SCAN PILLS hand-off: always begin on the compulsory NDC-scan
+                // step, ignoring any staged/active NDC's saved workflow step.
+                forceStartOnScan -> StepState.SCAN
                 savedWorkflowStep == null -> {
                     // No saved step yet — fall back to deriving from details history
                     val latestStep = pillCountTxnDetailsDao.getLatestType(preferenceHelper.getTxnId())
@@ -1265,6 +1463,134 @@ class PillScanningViewModel @Inject constructor(
             }
             observeTxnDetailsForTxn(resolvedStep)
         }
+    }
+
+    /**
+     * Compulsory NDC scan for the SCAN PILLS hand-off. Decodes [rawValue] →
+     * GTIN-14 → drug (local, then server fallback), stages a REGULAR PARTIAL txn
+     * for that drug scoped to [stockCountBatchId], makes it the active txn
+     * ([PreferenceHelper.saveTxnId]), then advances SCAN → TARGET_VERIFICATION.
+     *
+     * Ported from [InventoryScanViewModel.onBarcodeDetected]/onScanPillsForActive
+     * so the legacy counting screen can scan its own NDC (it has no scanner of its
+     * own). Runs as one sequential coroutine so the txn load and step advance can't
+     * race / clobber each other.
+     */
+    fun onNdcScannedForStockCount(rawValue: String) {
+        if (!forceStartOnScan || _currentStep.value != StepState.SCAN) return
+        if (isStagingNdc) return
+        isStagingNdc = true
+        viewModelScope.launch {
+            try {
+                val isGs1 = barcodeDecoder.isGs1Barcode(rawValue)
+                val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
+                val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
+                val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
+                if (gtin14.isNullOrBlank() || gtin14.length != 14 || !gtin14.all { it.isDigit() }) {
+                    logger.w("STOCK_SCAN invalid label gtin14=$gtin14")
+                    _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_invalid_label)) }
+                    isStagingNdc = false
+                    return@launch
+                }
+
+                val localDrug = drugMasterDao.getDrugByGtin(gtin14) ?: drugMasterDao.getDrugByNdc(gtin14)
+                val drug = localDrug ?: run {
+                    val drugInfo = try {
+                        drugRepository.getDrugInfoByNdc(
+                            GetNdcRequestModel(target_ndc = "", scanned_ndc = gtin14)
+                        )
+                    } catch (e: Exception) {
+                        logger.e("STOCK_SCAN server lookup failed gtin14=$gtin14", e)
+                        null
+                    }
+                    if (drugInfo == null) {
+                        _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_drug_not_found, gtin14)) }
+                        isStagingNdc = false
+                        return@launch
+                    }
+                    val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug"
+                    drugMasterDao.upsertPreservingId(
+                        DrugMasterEntity(
+                            ndc = drugInfo.ndc,
+                            drugName = displayName,
+                            drugType = drugInfo.drugType,
+                            gtin = gtin14,
+                            packageQty = drugInfo.qty,
+                            isHazardous = drugInfo.isHazardous ?: false,
+                        )
+                    )
+                    drugMasterDao.getDrugByNdc(drugInfo.ndc) ?: drugMasterDao.getDrugByGtin(gtin14)
+                }
+                if (drug == null) {
+                    _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_drug_not_found, gtin14)) }
+                    isStagingNdc = false
+                    return@launch
+                }
+
+                val lotNo = decoded?.lotNumber
+                val expiry = decoded?.expirationDate?.format(
+                    java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
+                )
+
+                // Reuse an existing txn for this (drug, lot, expiry) in the batch so
+                // loose pills accumulate onto the same row; otherwise create one.
+                val drugId = drug.drugId
+                val existing = pillCountTxnDao.findSealedTxnInBatch(
+                    batchId = stockCountBatchId,
+                    drugId = drugId.toString(),
+                    lotNo = lotNo,
+                    expiry = expiry,
+                )
+                val txnId = existing?.txnId ?: pillCountTxnDao.upsertPreservingId(
+                    PillCountTxnEntity(
+                        localId = preferenceHelper.getLocalId(),
+                        drugId = drugId,
+                        countType = CountType.REGULAR,
+                        status = CountStatus.PARTIAL,
+                        expiry = expiry,
+                        lotNo = lotNo,
+                        batchId = stockCountBatchId,
+                    )
+                )
+                preferenceHelper.saveTxnId(txnId)
+                logger.d("STOCK_SCAN staged ndc=${drug.ndc} txnId=$txnId batchId=$stockCountBatchId")
+
+                // Scan satisfied — load the new txn's drug info and advance to the
+                // pill-count step. Clear the force flag FIRST so reloadAfterScan()
+                // does not re-resolve back to SCAN.
+                forceStartOnScan = false
+                isPaused = false
+                reloadStagedTxnAndStartCounting(txnId)
+            } catch (e: Exception) {
+                logger.e("STOCK_SCAN onNdcScannedForStockCount failed", e)
+                _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_scan_failed)) }
+            } finally {
+                isStagingNdc = false
+            }
+        }
+    }
+
+    /**
+     * After an NDC is staged on the SCAN step, refresh the workflow + drug info
+     * for the new txn and land on TARGET_VERIFICATION (the pill-count step).
+     * Sets [_currentStep] last so nothing clobbers it.
+     */
+    private suspend fun reloadStagedTxnAndStartCounting(txnId: Long) {
+        val txnInfo = pillCountTxnDao.getTxnWithDetails(txnId)
+        _txnInfo.value = txnInfo
+        val countType = txnInfo?.countType
+        val drugInfo = drugMasterDao.getDrugById(txnInfo?.drugId)
+        _isTxnFromHl7.value = txnInfo?.isComingFromHL7 ?: false
+        _steps.value = buildWorkflowSteps(
+            isFromHl7 = false,
+            simpleFlow = true,
+            drugType = drugInfo?.drugType.orEmpty(),
+            countType = countType,
+        )
+        showTxnInfo(countType?.name ?: CountType.REGULAR.name)
+        pillCountTxnDao.updateWorkflowStep(txnId, StepState.TARGET_VERIFICATION.name)
+        _currentStep.value = StepState.TARGET_VERIFICATION
+        observeTxnDetailsForTxn(StepState.TARGET_VERIFICATION)
     }
 
     private fun loadExistingVialPhoto(txnId: Long) {
@@ -1338,7 +1664,16 @@ class PillScanningViewModel @Inject constructor(
 
         val next = steps[index + 1]
 
-        if (next == StepState.VIAL) pausePillDetection()
+        if (next == StepState.VIAL) {
+            pausePillDetection()
+            // The VIAL step is a still-photo capture: the live counting camera is
+            // intentionally off, so no frames arrive to keep the idle watchdog
+            // alive. Cancel it here, otherwise it fires after ~60s on the photo
+            // screen and leaves the "Counting paused / RESUME" overlay up once the
+            // user finishes the vial photo (the overlay is cleared again in
+            // processCapturedImage when leaving VIAL).
+            pauseIdleTimer()
+        }
         if (next == StepState.CONTAINER_PENDING) {
             redoCaptureImage()
             resetIdleOverlay()
@@ -1346,7 +1681,21 @@ class PillScanningViewModel @Inject constructor(
         }
 
         _currentStep.value = next
-        _uiState.update { it.copy(showDialogForControl = false) }
+        // Clear the previous step's history/running total BEFORE wiring up the
+        // new step's observer. Each step counts into its own StepState rows, so
+        // on entry the new step starts at 0. observeTxnDetailsForTxn() only
+        // overwrites uiState once its first DB emission lands; without this reset
+        // the panel briefly shows the prior step's count (e.g. "30/30" on the
+        // first TARGET_VERIFICATION entry instead of "0/30"). Re-entering after
+        // BACK looked correct only because discardStagedCount() had already
+        // cleared these fields.
+        _uiState.update {
+            it.copy(
+                showDialogForControl = false,
+                txnDetailHistory = emptyList(),
+                stockCountSessionTotal = 0,
+            )
+        }
         observeTxnDetailsForTxn(next)
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -1403,7 +1752,22 @@ class PillScanningViewModel @Inject constructor(
     private fun processCapturedImage(bitmap: Bitmap) {
         onEvent(PillScanningEvent.AddVialPhotoInTxn(0, bitmap))
         moveNextStep()
+        // Leaving the VIAL still-photo step: fully restore the live camera. We
+        // pause the idle watchdog on VIAL entry (see moveNextStep), but if it had
+        // already fired before this photo was taken the overlay + _cameraPaused
+        // flag are still set. Clear them and restart the watchdog so the next
+        // step shows the live preview instead of the stuck RESUME overlay.
+        // (moveNextStep already calls resetIdleOverlay() when the next step is
+        // CONTAINER_PENDING; this covers every other post-VIAL step too.)
         isPaused = false
+        _cameraPaused.value = false
+        _uiState.update { it.copy(showIdleOverlay = false) }
+        // Drop the captured still so CameraPreviewSection rebinds the live preview
+        // (it resumes the camera when capturedBitmap == null). The CONTAINER_PENDING
+        // path already does this via redoCaptureImage(); clear it here too so the
+        // live preview returns after VIAL regardless of which step follows.
+        _capturedBitmap.value = null
+        resetIdleTimer()
     }
 
     fun pausePillDetection() {

@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.zIndex
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -370,6 +371,14 @@ fun DispenseFlowScreen(
         onDispose { barcodeAnalyzer.pause() }
     }
 
+    // Safety net for process/nav death: if the screen leaves composition with
+    // staged-but-uncommitted loose pills (e.g. an unhandled back path), discard
+    // them. After a successful Done the buffer is already flushed/cleared, so
+    // this is a no-op in that case.
+    DisposableEffect(Unit) {
+        onDispose { pillVm.discardStagedCount() }
+    }
+
     // Pause/resume the barcode analyzer to match the stage. Outside the
     // pre-stages the barcode scanner sits idle; while ANY verification sheet,
     // error dialog, or loading indicator is on top of the camera we don't want
@@ -421,6 +430,9 @@ fun DispenseFlowScreen(
         if (showHistory) {
             showHistory = false
         } else {
+            // Back-out without Done: discard this session's staged (un-committed)
+            // loose-pill ADDs. Earlier committed counts are preserved in the DB.
+            pillVm.discardStagedCount()
             navController.navigate(Screen.Dashboard.route) {
                 popUpTo(0)
                 launchSingleTop = true
@@ -715,6 +727,11 @@ fun DispenseFlowScreen(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    // zIndex above the camera AndroidView so the back arrow's taps
+                    // win — the CameraX PreviewView + its pinch-zoom pointerInput
+                    // were swallowing taps on the arrow (system back worked, the
+                    // on-screen arrow didn't).
+                    .zIndex(1f)
                     .padding(vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -722,6 +739,8 @@ fun DispenseFlowScreen(
                     navController = navController,
                     showBox = false,
                     onClick = {
+                        // Back-out without Done: discard staged loose-pill ADDs.
+                        pillVm.discardStagedCount()
                         navController.navigate(Screen.Dashboard.route) {
                             popUpTo(0)
                             launchSingleTop = true

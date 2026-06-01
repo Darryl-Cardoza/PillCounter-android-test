@@ -6,17 +6,25 @@ import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
-import com.rite.pillcounting.core.room.models.BatchEntity
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.UserEntity
+import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
+import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.HelperFunctions.mapCounts
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
+import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardUiState
+import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
+import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
+import com.rite.pillcounting.feature.dashboard.domain.model.UserProfile
+import com.rite.pillcounting.feature.dashboard.domain.model.UserSettings
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,8 +32,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.time.LocalDate
+import java.time.ZoneId
 import javax.inject.Inject
 
 /**
@@ -61,6 +73,12 @@ class DashboardViewModel @Inject constructor(
     /** Logger instance for this ViewModel. */
     private val logger = AppLogger.create<DashboardViewModel>()
 
+    /**
+     * Unfiltered combined queue, kept separate so KPI filter toggling can re-derive the
+     * visible queue locally without waiting for the upstream DB flow to re-emit.
+     */
+    private val _unfilteredQueue = MutableStateFlow<List<QueueItem>>(emptyList())
+
     /** Backing state flow for the Dashboard UI. */
     private val _uiState = MutableStateFlow(DashboardUiState())
 
@@ -84,8 +102,50 @@ class DashboardViewModel @Inject constructor(
             observeDashboardCounts()
             observeBatchCount()
             observeCompletedBatchCount()
+            observeQueue()
         }
+        hydrateUserDetailFromCache()
         fetchUserDetail()
+    }
+
+    /**
+     * Seed `uiState.userDetail` from the local Room cache (and terminals from prefs) so the
+     * top bar shows last-known pharmacy/user immediately on cold start — before the network
+     * fetch in [fetchUserDetail] returns. The network result later overwrites this.
+     */
+    private fun hydrateUserDetailFromCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val localId = preferenceHelper.getLocalId()
+            if (localId == 0L) return@launch
+            userDao.observeByLocalId(localId).collect { entity ->
+                if (entity == null) return@collect
+                val cached = entity.toCachedUserDetail(preferenceHelper.getTerminals())
+                _uiState.update { current ->
+                    // Don't clobber fresher data from the network fetch.
+                    if (current.userDetail == null) current.copy(userDetail = cached) else current
+                }
+            }
+        }
+    }
+
+    /**
+     * Re-read the terminals list from preferences into [uiState] so the top bar
+     * reflects a terminal change made elsewhere (e.g. the Profile screen, which
+     * persists the new selection to prefs but cannot reach this VM's state).
+     * Call this when the dashboard resumes. No network fetch — Profile already
+     * saved the authoritative list.
+     */
+    fun refreshTerminalsFromPrefs() {
+        val terminals = preferenceHelper.getTerminals()
+        _uiState.update { current ->
+            val detail = current.userDetail ?: return@update current
+            // Only update if the active terminal actually changed, to avoid
+            // needless recompositions.
+            val currentActive = detail.terminals?.firstOrNull { it.isActive == true }?.terminalId
+            val newActive = terminals.firstOrNull { it.isActive == true }?.terminalId
+            if (currentActive == newActive) current
+            else current.copy(userDetail = detail.copy(terminals = terminals))
+        }
     }
 
     fun isHl7Enabled(): Boolean {
@@ -137,6 +197,179 @@ class DashboardViewModel @Inject constructor(
                 }
             }
         }
+    }
+
+    // ─────────────────────────── New dashboard: queue + KPIs ───────────────────────────
+
+    /**
+     * Observes the merged "Today's Queue" — pending dispense transactions plus in-progress
+     * batches — and recomputes KPI card counts whenever either source changes.
+     *
+     * Sources are intentionally limited to **existing DAO queries** in this iteration. Fields
+     * that require new joins (hazardous / controlled / high-priority flags on dispense rows,
+     * batch typing for cycle-count vs pending) are stubbed `false` / `0` here and tracked in
+     * `HOMESCREEN_REDESIGN.md` under "Open questions".
+     */
+    private fun observeQueue(localId: Long = preferenceHelper.getLocalId()) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val dispenseFlow = pillCountTxnDao.observePartialByCountType(
+                countType = CountType.FIXED,
+                partialStatus = CountStatus.PARTIAL,
+                userLocalId = localId,
+                // totalPillCount sums detail rows of THIS step only. FIXED dispense
+                // never writes pill counts to the SCAN step (that's the NDC barcode
+                // scan); the counted pills land in TARGET_VERIFICATION for both the
+                // simple and controlled FIXED flows. Passing SCAN here made every
+                // queue row show "0/target". TARGET_VERIFICATION is also the step
+                // the Partial Counts resume screen (CountsViewModel) reads, so the
+                // queue count now matches the resume screen.
+                type = StepState.TARGET_VERIFICATION,
+            )
+            // Use the summaries query so uniqueNdcCount is populated from the
+            // join. getAllInProgress() returns bare BatchEntity rows with no
+            // txn join, which left the card stuck at "0 NDCs" even after scans.
+            val inventoryFlow = batchDao.observeInProgressBatchSummaries()
+
+            dispenseFlow.combine(inventoryFlow) { dispense, batches ->
+                val dispenseItems = dispense.map { txn ->
+                    QueueItem.Dispense(
+                        txn = txn,
+                        isHazardous = txn.isHazardous,
+                        isHighPriority = txn.priority == TxnPriority.High,
+                        isControlled = isControlledDrugType(txn.drugType),
+                    )
+                }
+                val inventoryItems = batches.map { b ->
+                    QueueItem.Inventory(batch = b)
+                }
+                (dispenseItems + inventoryItems).sortedBy { it.createdAt }
+            }.collect { combined ->
+                _unfilteredQueue.value = combined
+                val counts = computeKpiCounts(combined)
+                _uiState.update { state ->
+                    state.copy(
+                        queue = applyKpiFilter(combined, state.activeKpiFilter),
+                        kpiCounts = counts,
+                    )
+                }
+            }
+        }
+    }
+
+    /** Toggle a KPI filter — tapping the same card clears it. Also switches to Today's Queue, since that's the list the KPIs filter. */
+    fun onKpiFilterTapped(filter: KpiFilter) {
+        _uiState.update { state ->
+            val newFilter = if (state.activeKpiFilter == filter) null else filter
+            state.copy(
+                activeKpiFilter = newFilter,
+                queue = applyKpiFilter(_unfilteredQueue.value, newFilter),
+                activeTab = DashboardTab.TODAYS_QUEUE,
+            )
+        }
+    }
+
+    /** Switch the active tab between Today's Queue and Recent Activity. */
+    fun onTabSelected(tab: DashboardTab) {
+        _uiState.update { it.copy(activeTab = tab) }
+        if (tab == DashboardTab.RECENT_ACTIVITY) {
+            loadRecentActivity()
+        }
+    }
+
+    private var recentActivityJob: Job? = null
+
+    /**
+     * Observes completed dispense transactions + completed batches over the last 30 days,
+     * merged and sorted newest-first. Started lazily the first time the user selects the
+     * Recent Activity tab; re-collecting is a no-op because flows are hot-shared via Room.
+     */
+    private fun loadRecentActivity(localId: Long = preferenceHelper.getLocalId()) {
+        if (recentActivityJob?.isActive == true) return
+        if (localId == 0L) return
+
+        val zone = ZoneId.systemDefault()
+        val endMillis = LocalDate.now().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
+        val startMillis = LocalDate.now().minusDays(RECENT_ACTIVITY_WINDOW_DAYS)
+            .atStartOfDay(zone).toInstant().toEpochMilli()
+
+        recentActivityJob = viewModelScope.launch(Dispatchers.IO) {
+            val completedDispenseFlow = pillCountTxnDao.getTransactionsForDateRange(
+                startDate = startMillis,
+                endDate = endMillis,
+                stepType = StepState.TARGET_VERIFICATION,
+                type = CountType.FIXED,
+                status = CountStatus.COMPLETED,
+                userLocalId = localId,
+            )
+            val completedBatchesFlow = batchDao.getBatchSummaries(
+                startDate = startMillis,
+                endDate = endMillis,
+                userLocalId = localId,
+            )
+
+            completedDispenseFlow.combine(completedBatchesFlow) { dispenses, batches ->
+                val dispenseItems = dispenses.map { t ->
+                    QueueItem.Dispense(
+                        txn = PillCountWithDrugAndTotal(
+                            txnId = t.txnId,
+                            drugName = t.drugName,
+                            ndc = t.ndc,
+                            drugType = t.drugType,
+                            bucketId = t.bucketId,
+                            createdAt = t.createdAt,
+                            targetCount = t.targetCount,
+                            barcodeImage = t.barcodeImage,
+                            totalPillCount = t.pillCount ?: 0,
+                            isComingFromHL7 = false,
+                            isNdcVerified = false,
+                            countType = t.countType,
+                            priority = null,
+                        ),
+                        isHazardous = false,
+                        isHighPriority = false,
+                        isControlled = isControlledDrugType(t.drugType),
+                    )
+                }
+                val inventoryItems = batches
+                    .filter { it.status == BatchStatus.COMPLETED.name }
+                    .map { QueueItem.Inventory(batch = it) }
+                (dispenseItems + inventoryItems).sortedByDescending { it.createdAt }
+            }.collect { combined ->
+                _uiState.update { it.copy(recentActivity = combined) }
+            }
+        }
+    }
+
+    private fun computeKpiCounts(items: List<QueueItem>): Map<KpiFilter, Int> {
+        val dispense = items.filterIsInstance<QueueItem.Dispense>()
+        val inventory = items.filterIsInstance<QueueItem.Inventory>()
+        return mapOf(
+            KpiFilter.DISP_HIGH_PRIORITY to dispense.count { it.isHighPriority },
+            KpiFilter.DISP_PENDING to dispense.size,
+            KpiFilter.DISP_CONTROLLED to dispense.count { it.isControlled },
+            KpiFilter.DISP_HAZARDOUS to dispense.count { it.isHazardous },
+            // Cycle Count = PMS-requested inventory counts. A batch carries a PMS
+            // request id (requestIdFromPMS) only when it was created from an INR^U04
+            // inventory request (Hl7Repository.handleInrInventoryRequest); manually
+            // started batches have it null. This is the same discriminator the
+            // history / unsynced lists use to tag a batch as PMS-sourced.
+            KpiFilter.INV_CYCLE_COUNT to inventory.count { it.isCycleCount },
+            // Pending Batch = manually started (non-PMS) inventory batches.
+            KpiFilter.INV_PENDING_BATCH to inventory.count { !it.isCycleCount },
+        )
+    }
+
+    private fun applyKpiFilter(
+        items: List<QueueItem>,
+        filter: KpiFilter?,
+    ): List<QueueItem> = when (filter) {
+        null -> items
+        KpiFilter.DISP_HIGH_PRIORITY -> items.filter { it is QueueItem.Dispense && it.isHighPriority }
+        KpiFilter.DISP_PENDING -> items.filterIsInstance<QueueItem.Dispense>()
+        KpiFilter.DISP_CONTROLLED -> items.filter { it is QueueItem.Dispense && it.isControlled }
+        KpiFilter.DISP_HAZARDOUS -> items.filter { it is QueueItem.Dispense && it.isHazardous }
+        KpiFilter.INV_CYCLE_COUNT -> items.filter { it is QueueItem.Inventory && it.isCycleCount }
+        KpiFilter.INV_PENDING_BATCH -> items.filter { it is QueueItem.Inventory && !it.isCycleCount }
     }
 
     /**
@@ -209,6 +442,7 @@ class DashboardViewModel @Inject constructor(
                                 observeDashboardCounts(localId)
                                 observeBatchCount()
                                 observeCompletedBatchCount()
+                                observeQueue(localId)
                             }
                             preferenceHelper.saveLocalId(localId)
                             logger.i("User persisted locally with localId=$localId")
@@ -217,9 +451,10 @@ class DashboardViewModel @Inject constructor(
                         // Check if profile is incomplete
                         val isProfileIncomplete = uiUser?.profile?.isProfileCompleted == false
 
-                        _uiState.update {
-                            it.copy(
-                                userDetail = uiUser,
+                        _uiState.update { current ->
+                            current.copy(
+                                // Keep cached userDetail if the server returned null data.
+                                userDetail = uiUser ?: current.userDetail,
                                 isLoadingUserDetail = false,
                                 userDetailError = null,
                                 navigateToProfile = isProfileIncomplete
@@ -245,9 +480,10 @@ class DashboardViewModel @Inject constructor(
                             )
                         }
                     } else {
+                        // Don't null out userDetail on transient network failures — keep the
+                        // cached value hydrated from Room so the top bar stays populated.
                         _uiState.update {
                             it.copy(
-                                userDetail = null,
                                 isLoadingUserDetail = false,
                                 userDetailError = error.message ?: "An unknown error occurred"
                             )
@@ -267,48 +503,39 @@ class DashboardViewModel @Inject constructor(
         preferenceHelper.saveTxnId(0)
     }
 
+    /** Persists the tapped txnId so HistoryDetail can pick it up (mirrors HistoryViewModel.selectCurrentTransaction). */
+    fun selectCurrentTransaction(txnId: Long) {
+        preferenceHelper.saveTxnId(txnId)
+    }
+
+    /**
+     * Stages a stock-count session for the chosen bucket. The BatchEntity is NOT
+     * inserted here — it's created lazily on the first NDC scan inside
+     * InventoryScanViewModel, so a user who enters the inventory screen and leaves
+     * without scanning never produces an empty batch row.
+     */
     fun createBatch(bucketId: String) {
-        viewModelScope.launch {
-            _uiState.update {
-                it.copy(
-                    isLoading = true,
-                    error = null
-                )
-            }
-
-            try {
-                val batch = BatchEntity(
-                    batchId = System.currentTimeMillis(),
-                    startDateTime = System.currentTimeMillis(),
-                    endDateTime = null, // Will be set when batch is completed
-                    status = BatchStatus.INPROGRESS,
-                    isDeleted = false,
-                    note = null, // Can be set later by user
-                    bucketId = bucketId // Can be set later
-                )
-                val batchId = batchDao.insert(batch)
-
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        createdBatchId = batchId
-                    )
-                }
-            } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.message ?: "Failed to create batch"
-                    )
-                }
-            }
-        }
+        _uiState.update { it.copy(pendingStockCountBucketId = bucketId) }
     }
 
     fun clearCreatedBatchId() {
         _uiState.update {
             it.copy(createdBatchId = null)
         }
+    }
+
+    fun clearPendingStockCountBucketId() {
+        _uiState.update { it.copy(pendingStockCountBucketId = null) }
+    }
+
+    private companion object {
+        const val RECENT_ACTIVITY_WINDOW_DAYS = 30L
+
+        /** DEA controlled-substance schedules stored in `drug_master.drugType`. */
+        private val CONTROLLED_DRUG_TYPES = setOf("CI", "CII", "CIII", "CIV", "CV")
+
+        fun isControlledDrugType(drugType: String?): Boolean =
+            drugType?.trim()?.uppercase() in CONTROLLED_DRUG_TYPES
     }
 }
 
@@ -318,6 +545,35 @@ class DashboardViewModel @Inject constructor(
  * Map API payload [UserDetail] to persistence [UserEntity].
  * Uses [jwtUserId] (from JWT) as the Room primary key; falls back to email if missing.
  */
+/**
+ * Reverse of [toUserEntity]: build a [UserDetail] from the locally-cached [UserEntity] plus
+ * the terminals list cached in preferences. Used to hydrate the dashboard top bar on cold
+ * start before the network fetch returns. Fields not persisted locally (role, bucket, etc.)
+ * default to null and are refreshed when the network call lands.
+ */
+private fun UserEntity.toCachedUserDetail(
+    terminals: List<com.rite.pillcounting.feature.dashboard.domain.model.Terminal>,
+): UserDetail {
+    val profile = UserProfile(
+        fName = this.fName,
+        lName = this.lName,
+        email = this.email?.value,
+        phoneNumber = this.phoneNumber?.value,
+        avatarUrl = this.avatarUrl,
+        isProfileCompleted = this.isProfileCompleted,
+        pharmacyName = this.pharmacyName,
+        npiId = this.npiId,
+        userId = this.userId,
+        isVerified = this.isVerified,
+    )
+    val settings = UserSettings(
+        notificationsEnabled = this.notifications,
+        language = this.language,
+        timezone = this.timezone,
+    )
+    return UserDetail(profile = profile, settings = settings, terminals = terminals)
+}
+
 private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
     val pk = jwtUserId ?: this.profile?.email.orEmpty()
     return UserEntity(

@@ -55,8 +55,8 @@ fun PartialCountsScreen(
     var showDeleteDialog by remember { mutableStateOf(false) }
 
     val partialList = uiState.batches
-    val filteredList = partialList.filter {
-        it.batchId.contains(searchQuery, ignoreCase = true)
+    val filteredList = remember(partialList, searchQuery) {
+        partialList.filter { it.batchId.contains(searchQuery, ignoreCase = true) }
     }
 
     val isAllSelected =
@@ -164,7 +164,7 @@ fun PartialCountsScreen(
                     modifier = Modifier.fillMaxSize().padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(14.dp)
                 ) {
-                    items(filteredList) { item ->
+                    items(filteredList, key = { it.batchId }) { item ->
                         BatchHistoryRow(
                             title = "${stringResource(R.string.batch)} ${item.batchId}",
                             dateTime = formatDateToUSFormat(

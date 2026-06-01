@@ -249,6 +249,35 @@ interface BatchDao {
         completedStatus: BatchStatus = BatchStatus.COMPLETED
     ): Flow<List<BatchSummaryDto>>
 
+    /**
+     * In-progress batches with their distinct-NDC count, for Today's Queue
+     * cards on the dashboard. LEFT JOIN keeps freshly-created (no-txn) batches
+     * visible with uniqueNdcCount = 0; soft-deleted txns are excluded from the
+     * count.
+     */
+    @Query(
+        """
+    SELECT
+        b.batchId,
+        b.startDateTime AS createdAt,
+        b.status AS status,
+        b.bucketId AS bucketId,
+        b.requestIdFromPMS AS requestIdFromPMS,
+        COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
+    FROM batch b
+    LEFT JOIN pill_count_txn txn
+        ON b.batchId = txn.batchId
+        AND txn.isDeleted = 0
+    WHERE b.isDeleted = 0
+      AND b.status = :inProgressStatus
+    GROUP BY b.batchId
+    ORDER BY b.startDateTime DESC
+    """
+    )
+    fun observeInProgressBatchSummaries(
+        inProgressStatus: BatchStatus = BatchStatus.INPROGRESS
+    ): Flow<List<BatchSummaryDto>>
+
     @Query(
         """
     SELECT

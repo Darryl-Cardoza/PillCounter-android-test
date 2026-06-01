@@ -21,9 +21,13 @@ import java.util.Locale
  *  A) Pills detected first → "Scan RX to add the pill count"
  *  B) RX scanned first → "Scan the container QR code"
  *  After RX → "Scan the container QR code"
- *  After NDC → "Add the pill count"
+ *  After NDC → "Add the pill count" (spoken ONCE per COUNTING session)
  *
- * Speech is throttled so we never speak the same prompt twice in a row.
+ * Speech is throttled so we never speak the same prompt twice in a row. The
+ * COUNTING "Add the pill count" prompt is additionally latched so it plays only
+ * once when counting begins — without the latch it re-fired every time the pill
+ * detector momentarily lost and re-acquired pills (pillsDetected flickering),
+ * which made it repeat constantly and was reported as annoying.
  */
 @Composable
 fun DispenseVoicePrompt(
@@ -40,6 +44,10 @@ fun DispenseVoicePrompt(
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var isReady by remember { mutableStateOf(false) }
     var lastSpoken by remember { mutableStateOf<String?>(null) }
+    // Latch: true once the COUNTING "Add the pill count" prompt has been spoken
+    // for the current COUNTING session. Reset only when the stage actually leaves
+    // COUNTING, so pillsDetected flicker can't re-trigger it.
+    var countingPromptSpoken by remember { mutableStateOf(false) }
 
     DisposableEffect(context) {
         val instance = TextToSpeech(context) { status ->
@@ -56,12 +64,21 @@ fun DispenseVoicePrompt(
         }
     }
 
+    // Reset the COUNTING latch whenever the stage is NOT counting, so the "Add
+    // the pill count" prompt plays once again the next time counting begins.
+    LaunchedEffect(stage) {
+        if (stage != DispenseStage.COUNTING) countingPromptSpoken = false
+    }
+
     val nextPrompt: String? = when {
         // While the RX bottomsheet or NDC popup is visible, stay quiet.
         isAnyOverlayShowing -> null
         stage == DispenseStage.PRE_RX && pillsDetected -> scanRxPrompt
         stage == DispenseStage.PRE_NDC -> scanContainerPrompt
-        stage == DispenseStage.COUNTING && pillsDetected -> addPillCountPrompt
+        // COUNTING: speak the add-pill prompt only the first time pills are
+        // detected this session. Once latched, stay silent so it doesn't repeat
+        // as the detector flickers between detecting and not.
+        stage == DispenseStage.COUNTING && pillsDetected && !countingPromptSpoken -> addPillCountPrompt
         else -> null
     }
 
@@ -72,10 +89,14 @@ fun DispenseVoicePrompt(
         tts?.stop()
         tts?.speak(prompt, TextToSpeech.QUEUE_FLUSH, null, "dispense_$prompt")
         lastSpoken = prompt
+        // Latch the COUNTING prompt so it never repeats this session.
+        if (prompt == addPillCountPrompt) countingPromptSpoken = true
     }
 
     // Reset the dedupe key whenever the screen leaves a prompt state, so the same
-    // prompt can be re-spoken if we re-enter the same state later.
+    // prompt can be re-spoken if we re-enter the same state later. The COUNTING
+    // prompt has its own session latch (above) and is intentionally NOT revived
+    // by pillsDetected flicker.
     LaunchedEffect(nextPrompt) {
         if (nextPrompt == null) lastSpoken = null
     }

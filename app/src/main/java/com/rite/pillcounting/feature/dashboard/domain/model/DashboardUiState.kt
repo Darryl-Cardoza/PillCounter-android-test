@@ -1,25 +1,18 @@
 package com.rite.pillcounting.feature.dashboard.domain.model
 
 /**
- * Represents the aggregated UI state for the Dashboard screen.
+ * Aggregated UI state for the Dashboard screen.
  *
- * This data class encapsulates both static dashboard metrics and dynamic states such as
- * user detail loading, error handling, navigation flags, and authentication-related feedback.
+ * Carries both the legacy fields (still consumed by the current
+ * FixedCountSection / RegularCountSection on the 3 non-tablet-portrait variants)
+ * and the new dashboard fields (queue, KPI counts, active filter, active tab)
+ * consumed by [com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardTabletPortrait].
  *
- * All count values are [String] because they are intended for direct UI display.
- * The user detail is retrieved from the API and stored as a nullable [UserDetail] object.
- *
- * @property completedFixedCount Number of completed fixed count tasks.
- * @property partialFixedCount Number of in-progress or partial fixed count tasks.
- * @property completedRegularCount Number of completed regular count tasks.
- * @property partialRegularCount Number of in-progress or partial regular count tasks.
- * @property isLoadingUserDetail Whether the user detail API is currently loading.
- * @property userDetailError Error message from user detail fetch operation, if any.
- * @property userDetail Authenticated user's profile detail.
- * @property navigateToProfile Navigation flag to redirect user to profile completion screen
- *                              if their profile is incomplete or missing required fields.
+ * Once all 4 variants are migrated to the new layout the legacy fields can be removed.
  */
 data class DashboardUiState(
+
+    // ──────────────────────── Legacy (used by SplitResponsive variants) ────────────────────────
 
     /** Number of fixed counts that have been fully completed. */
     val completedFixedCount: String = "0",
@@ -32,6 +25,8 @@ data class DashboardUiState(
 
     /** Number of regular counts that are in progress or partially completed. */
     val partialRegularCount: String = "0",
+
+    // ──────────────────────────────────── User / auth ────────────────────────────────────
 
     /** Indicates whether the user detail is currently being loaded from the server. */
     val isLoadingUserDetail: Boolean = false,
@@ -47,6 +42,39 @@ data class DashboardUiState(
     val logoutUser: Boolean = false,
     val isLoading: Boolean = false,
     val error: String? = null,
+
     //set as null because when we set 0 because of observer its consider the Id and redirect to barcode screen
-    val createdBatchId: Long? = null
+    val createdBatchId: Long? = null,
+
+    /**
+     * Bucket selected for a new stock-count session. Set when the user picks a bucket
+     * from the Inventory quick-action dialog; consumed by the screen to navigate into
+     * the inventory scan flow. The BatchEntity is created lazily on the first NDC scan
+     * inside InventoryScanViewModel, not here — so an abandoned session leaves no row.
+     */
+    val pendingStockCountBucketId: String? = null,
+
+    // ────────────────────────────────── New dashboard ──────────────────────────────────
+
+    /**
+     * Merged queue of pending dispense transactions + in-progress inventory batches,
+     * already filtered by [activeKpiFilter] when non-null, sorted ascending by date.
+     */
+    val queue: List<QueueItem> = emptyList(),
+
+    /** Counts displayed on the 6 KPI shortcut cards. Computed from the unfiltered queue. */
+    val kpiCounts: Map<KpiFilter, Int> = emptyMap(),
+
+    /** Currently active KPI filter, or null when "all" is selected. */
+    val activeKpiFilter: KpiFilter? = null,
+
+    /** Which tab is showing — Today's Queue or Recent Activity. */
+    val activeTab: DashboardTab = DashboardTab.TODAYS_QUEUE,
+
+    /**
+     * Recent Activity list (completed dispense txns + completed batches),
+     * sorted descending by date. Loaded only when [activeTab] is RECENT_ACTIVITY
+     * to avoid unnecessary DB work on first paint.
+     */
+    val recentActivity: List<QueueItem> = emptyList(),
 )

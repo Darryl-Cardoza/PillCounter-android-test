@@ -346,6 +346,8 @@
 <!--    StockCount-->
     <string name="scan_stock_bottle">Scan Stock Bottle</string>
     <string name="scan_open_pills">Scan Open Pills</string>
+    <string name="camera_permission_required">Camera permission is required to scan. Please allow camera access.</string>
+    <string name="scan_ndc_to_count">Scan NDC to count pills</string>
 
 
 <!--    partial count screen -->
@@ -441,6 +443,37 @@
     <string name="pdf_page">Page %1$d</string>
     <string name="pdf_open_stock_report">Open Stock Count Report</string>
     <string name="pdf_open_drug_detail_report">Open Drug Detail Report</string>
+
+    <!-- ================== BATCH STOCK COUNT (INVENTORY SCAN) ================== -->
+    <string name="batch_stock_count_title">Batch Stock Count</string>
+    <string name="batch_stock_count_scan_pills">SCAN PILLS</string>
+    <string name="batch_stock_count_recent_with_count">RECENT BATCH COUNT (%1$d)</string>
+    <string name="batch_stock_count_recent_summary">RECENT COUNTS</string>
+    <string name="batch_stock_count_scanned_drug_details">SCANNED NDC DETAILS</string>
+    <string name="batch_stock_count_scanned_summary">SCANNED SUMMARY</string>
+    <string name="batch_stock_count_label_drug_name">Drug Name</string>
+    <string name="batch_stock_count_label_bucket">Bucket</string>
+    <string name="batch_stock_count_label_ndc">NDC Number</string>
+    <string name="batch_stock_count_label_batch_no">Batch No.</string>
+    <string name="batch_stock_count_label_expiry">Expiry Date</string>
+    <string name="batch_stock_count_label_pills">Pills</string>
+    <string name="batch_stock_count_label_bottles">Bottles</string>
+    <string name="batch_stock_count_total_ndcs">Total NDCs</string>
+    <string name="batch_stock_count_total_pills">Total Pills</string>
+    <string name="batch_stock_count_pills_suffix">%1$d pills</string>
+    <string name="batch_stock_count_clear">CLEAR</string>
+    <string name="batch_stock_count_cancel">CANCEL</string>
+    <string name="batch_stock_count_add">ADD</string>
+    <string name="batch_stock_count_end_count">END COUNT</string>
+    <string name="batch_stock_count_unknown_drug">Unknown Drug</string>
+    <string name="batch_stock_count_invalid_label">Invalid label barcode</string>
+    <string name="batch_stock_count_drug_not_found">Invalid NDC %1$s</string>
+    <string name="batch_stock_count_ndc_not_in_request">NDC %1$s is not part of this inventory request</string>
+    <string name="batch_stock_count_no_active_batch">No active batch</string>
+    <string name="batch_stock_count_scan_failed">Scan failed</string>
+    <string name="batch_stock_count_save_failed">Failed to save</string>
+    <string name="batch_stock_count_dash">—</string>
+    <string name="batch_stock_count_scan_new_bottle">Scan a new Stock bottle</string>
 
     <string name="violation_screen_overlay">Screen overlay detected — another app may be intercepting touch input</string>
     <string name="permission_location_rationale">

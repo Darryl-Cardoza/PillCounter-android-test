@@ -142,6 +142,8 @@ interface PillCountTxnDao {
                 THEN subDrug.ndc ELSE drug.ndc END AS ndc,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
                 THEN subDrug.drugType ELSE drug.drugType END AS drugType,
+           IFNULL(CASE WHEN txn.isSubstitute = 1 AND subDrug.isHazardous IS NOT NULL
+                       THEN subDrug.isHazardous ELSE drug.isHazardous END, 0) AS isHazardous,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug
@@ -681,6 +683,22 @@ interface PillCountTxnDao {
     ): PillCountTxnEntity?
 
     /**
+     * Latest sealed txn for a given NDC in a batch — used when the user taps a
+     * recent-counts row to re-activate that NDC. Falls back to the most-recently
+     * updated row when multiple (lot, expiry) variants exist for the same drug.
+     */
+    @Query("""
+        SELECT txn.* FROM pill_count_txn AS txn
+        LEFT JOIN drug_master AS dm ON txn.drugId = dm.drugId
+        WHERE txn.batchId = :batchId
+          AND dm.ndc = :ndc
+          AND txn.isDeleted = 0
+        ORDER BY txn.updatedAt DESC
+        LIMIT 1
+    """)
+    suspend fun findLatestTxnByNdcInBatch(batchId: Long, ndc: String): PillCountTxnEntity?
+
+    /**
      * PMS validation query: finds a pre-loaded PMS transaction in the batch for the given drug.
      *
      * Null-tolerant matching rules:
@@ -796,6 +814,8 @@ interface PillCountTxnDao {
                 THEN subDrug.ndc ELSE drug.ndc END AS ndc,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
                 THEN subDrug.drugType ELSE drug.drugType END AS drugType,
+           IFNULL(CASE WHEN txn.isSubstitute = 1 AND subDrug.isHazardous IS NOT NULL
+                       THEN subDrug.isHazardous ELSE drug.isHazardous END, 0) AS isHazardous,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug

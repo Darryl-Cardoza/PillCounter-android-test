@@ -1,0 +1,295 @@
+package com.rite.pillcounting.feature.pillCountScan.presentation.variant
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.res.stringResource
+import com.rite.pillcounting.R
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import com.rite.pillcounting.ui.theme.ExtendedColors
+import com.rite.pillcounting.ui.theme.LocalExtendedColors
+import com.rite.pillcounting.ui.theme.PrimaryBackground
+import com.rite.pillcounting.ui.theme.PrimaryColor
+import com.rite.pillcounting.ui.theme.SecondaryBackground
+import com.rite.pillcounting.ui.theme.SecondaryColor
+import com.rite.pillcounting.ui.theme.TextColor
+import com.rite.pillcounting.ui.theme.inputBackground
+import com.rite.pillcounting.ui.theme.statusChipBackgroundOnPrimary
+import com.rite.pillcounting.ui.theme.statusChipBackgroundOnSecondary
+import androidx.compose.runtime.CompositionLocalProvider
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ActiveNdc
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountHeader
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountSampleData
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountUiState
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentBatchRow
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsLabelRow
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsList
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugCard
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedSummaryCard
+
+/**
+ * Tablet landscape variant of the redesigned Batch Stock Count panel.
+ *
+ * Persistent right-side panel (NOT a draggable bottom sheet). Caller is
+ * expected to place this as a sibling of the camera preview inside a Row so
+ * the scanner shrinks to give it room rather than being overlaid.
+ *
+ * Two stacked cards:
+ *  - Top: header + Scan Pills + "Recent Batch Count" list (newest first).
+ *  - Bottom: scanned-drug counter card when [BatchStockCountUiState.activeNdc]
+ *    is non-null, otherwise the summary card.
+ */
+@Composable
+fun BatchStockCountTabletLandscape(
+    state: BatchStockCountUiState,
+    onScanPills: () -> Unit,
+    onIncrement: () -> Unit,
+    onDecrement: () -> Unit,
+    onClear: () -> Unit,
+    onAdd: () -> Unit,
+    onEndCount: () -> Unit,
+    onRowTapped: (RecentBatchRow) -> Unit = {},
+    modifier: Modifier = Modifier,
+) {
+    // Bottom card overlaps the top card and carries a soft upward shadow so it
+    // reads as an overlay on the recent-counts card. Box (instead of Column
+    // with spacedBy) lets the bottom child sit at the bottom edge while the
+    // top child fills the rest of the height behind it.
+    //
+    // We measure the bottom card's height at runtime so the top list can
+    // reserve exactly that much bottom padding — otherwise the last list rows
+    // would render BEHIND the overlay and bleed through visibly.
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    var overlayHeightPx by remember { mutableStateOf(0) }
+    val overlayHeightDp = with(density) { overlayHeightPx.toDp() }
+    Box(
+        modifier = modifier
+            .fillMaxHeight(),
+    ) {
+        // Top section: flat-bottom container so the bottom card's rounded top
+        // corners read as the only curve at their meeting point. Top corners
+        // stay square too — the panel sits flush against the screen edge.
+        Box(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .fillMaxHeight()
+                .fillMaxWidth()
+                .background(androidx.compose.ui.graphics.Color(0xFFF2F2F2)),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 18.dp, vertical = 16.dp)
+            ) {
+                BatchStockCountHeader(onScanPills = onScanPills)
+                Spacer(modifier = Modifier.height(16.dp))
+                val label = if (state.activeNdc != null) {
+                    stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
+                } else {
+                    stringResource(R.string.batch_stock_count_recent_summary)
+                }
+                RecentCountsLabelRow(label = label)
+                Spacer(modifier = Modifier.height(8.dp))
+                // Bottom padding clears the overlapping card so the last list
+                // row never hides behind it. Width is measured at runtime via
+                // overlayHeightDp (see overlay column's onSizeChanged below).
+                RecentCountsList(
+                    rows = state.recentCounts,
+                    onRowTapped = onRowTapped,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = overlayHeightDp),
+                )
+            }
+        }
+
+        // Bottom card with a hand-drawn upward gradient shadow. The
+        // Modifier.shadow API on Android often renders too subtly against
+        // white, so we paint our own band above the card with drawBehind.
+        Column(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .onSizeChanged { overlayHeightPx = it.height },
+        ) {
+            // The shadow band sits ABOVE the card and fades upward — gives a
+            // clear "overlay floating on top" cue.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(OVERLAY_SHADOW_HEIGHT)
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
+                            colors = listOf(
+                                androidx.compose.ui.graphics.Color.Transparent,
+                                androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.18f),
+                            )
+                        )
+                    )
+            )
+            // Bottom card: pronounced top corners (so they read clearly against
+            // the shadow band above), flat bottom corners since the card sits
+            // flush against the screen edge.
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(
+                        androidx.compose.foundation.shape.RoundedCornerShape(
+                            topStart = 24.dp,
+                            topEnd = 24.dp,
+                            bottomStart = 0.dp,
+                            bottomEnd = 0.dp,
+                        )
+                    )
+                    .background(androidx.compose.ui.graphics.Color.White)
+            ) {
+                if (state.activeNdc != null) {
+                    ScannedDrugCard(
+                        active = state.activeNdc,
+                        onIncrement = onIncrement,
+                        onDecrement = onDecrement,
+                        onClear = onClear,
+                        onAdd = onAdd,
+                    )
+                } else {
+                    ScannedSummaryCard(
+                        totalNdcs = state.totalNdcs,
+                        totalPills = state.totalPills,
+                        onEndCount = onEndCount,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** Height of the upward gradient shadow band that sits above the bottom overlay card. */
+private val OVERLAY_SHADOW_HEIGHT = 14.dp
+
+/**
+ * Stateful preview host that mimics the Figma: grey camera area on the left,
+ * the new panel pinned to the right ~42% of the screen. Counter +/- mutate the
+ * sample state so the long-press repeat behavior can be exercised in preview
+ * on a real device.
+ */
+@Composable
+fun BatchStockCountTabletLandscapePreviewHost(
+    initialActive: Boolean = true,
+) {
+    var state by remember {
+        mutableStateOf(
+            if (initialActive) BatchStockCountSampleData.activeState
+            else BatchStockCountSampleData.summaryState
+        )
+    }
+
+    fun commitActiveToList(active: ActiveNdc) {
+        val newRow = RecentBatchRow(
+            ndc = active.ndc,
+            drugName = active.drugName,
+            pills = active.totalPills,
+            bottles = active.bottles,
+        )
+        state = state.copy(
+            recentCounts = listOf(newRow) + state.recentCounts,
+            activeNdc = null,
+            totalNdcs = state.totalNdcs + 1,
+            totalPills = state.totalPills + active.totalPills,
+        )
+    }
+
+    Row(modifier = Modifier.fillMaxSize().background(Color(0xFF1F1F1F))) {
+        // Left: camera placeholder.
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight()
+                .background(Color(0xFF6F6F6F)),
+            contentAlignment = Alignment.Center,
+        ) {}
+
+        // Right: the new panel.
+        Box(
+            modifier = Modifier
+                .width(380.dp)
+                .fillMaxHeight()
+        ) {
+            BatchStockCountTabletLandscape(
+                state = state,
+                onScanPills = {
+                    // Toggle to active sample for the preview.
+                    state = state.copy(activeNdc = BatchStockCountSampleData.activeState.activeNdc)
+                },
+                onIncrement = {
+                    state.activeNdc?.let { a ->
+                        state = state.copy(activeNdc = a.copy(bottles = a.bottles + 1))
+                    }
+                },
+                onDecrement = {
+                    state.activeNdc?.let { a ->
+                        val next = (a.bottles - 1).coerceAtLeast(1)
+                        state = state.copy(activeNdc = a.copy(bottles = next))
+                    }
+                },
+                onClear = { state = state.copy(activeNdc = null) },
+                onAdd = { state.activeNdc?.let { commitActiveToList(it) } },
+                onEndCount = {},
+            )
+        }
+    }
+}
+
+@Composable
+private fun PreviewTheme(content: @Composable () -> Unit) {
+    val extended = ExtendedColors(
+        primaryBackground = PrimaryBackground,
+        secondaryBackground = SecondaryBackground,
+        textColor = TextColor,
+        inputBackground = inputBackground,
+        statusChipBackgroundOnPrimary = statusChipBackgroundOnPrimary,
+        statusChipBackgroundOnSecondary = statusChipBackgroundOnSecondary,
+    )
+    CompositionLocalProvider(LocalExtendedColors provides extended) {
+        MaterialTheme(
+            colorScheme = lightColorScheme(primary = PrimaryColor, secondary = SecondaryColor),
+            content = content,
+        )
+    }
+}
+
+@Preview(name = "Tablet Landscape — Active", device = "spec:width=1280dp,height=800dp,dpi=240")
+@Composable
+private fun BatchStockCountTabletLandscape_ActivePreview() {
+    PreviewTheme {
+        BatchStockCountTabletLandscapePreviewHost(initialActive = true)
+    }
+}
+
+@Preview(name = "Tablet Landscape — Summary", device = "spec:width=1280dp,height=800dp,dpi=240")
+@Composable
+private fun BatchStockCountTabletLandscape_SummaryPreview() {
+    PreviewTheme {
+        BatchStockCountTabletLandscapePreviewHost(initialActive = false)
+    }
+}
