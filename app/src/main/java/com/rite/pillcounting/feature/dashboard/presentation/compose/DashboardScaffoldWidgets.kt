@@ -526,6 +526,7 @@ private fun ScaffoldDispenseRow(item: QueueItem.Dispense, onClick: ((Long) -> Un
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, Color(0x14000000)),
     ) {
         Row(
             modifier = Modifier
@@ -659,6 +660,7 @@ private fun ScaffoldInventoryRow(item: QueueItem.Inventory, onClick: ((Long) -> 
         shape = RoundedCornerShape(8.dp),
         colors = CardDefaults.cardColors(containerColor = Color.White),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = BorderStroke(1.dp, Color(0x14000000)),
     ) {
         Row(
             modifier = Modifier

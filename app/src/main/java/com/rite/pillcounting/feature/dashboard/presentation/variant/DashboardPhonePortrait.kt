@@ -140,6 +140,7 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.weight(1f),
+                    pageSpacing = 12.dp,
                 ) { page ->
                     when (DashboardTab.entries[page]) {
                         DashboardTab.TODAYS_QUEUE -> ScaffoldQueueList(
