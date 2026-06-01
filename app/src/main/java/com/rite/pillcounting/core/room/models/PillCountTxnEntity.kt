@@ -111,4 +111,11 @@ data class PillCountTxnEntity(
     val priority: TxnPriority? = null,
 
     val isGlovesPresent: Boolean = false,
+
+    /**
+     * Whether a hazardous tray was confirmed during this transaction.
+     * Null = tray color classification was never run (non-hazardous drug or setting off before
+     * any tray was detected). True/false = set by tray classification logic.
+     */
+    val hazardousTrayDetected: Boolean? = null,
 )

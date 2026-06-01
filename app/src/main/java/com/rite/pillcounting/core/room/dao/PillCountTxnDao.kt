@@ -15,6 +15,7 @@ import com.rite.pillcounting.core.room.models.dtos.StatusTypeCount
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.feature.history.domain.model.TxnWithDrugDto
 import kotlinx.coroutines.flow.Flow
 
@@ -223,6 +224,84 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
+    @Query(
+        """
+        SELECT * FROM pill_count_txn
+        WHERE rxNo = :rxNo
+          AND isDeleted = 1
+        ORDER BY updatedAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getDeletedByRxNo(rxNo: String): PillCountTxnEntity?
+
+    @Query(
+        """
+        UPDATE pill_count_txn
+        SET isDeleted   = 0,
+            status      = 'PARTIAL',
+            updatedAt   = :now
+        WHERE txnId = :txnId
+        """
+    )
+    suspend fun restoreDeletedTxn(
+        txnId: Long,
+        now: Long = System.currentTimeMillis()
+    )
+
+    /**
+     * Finds the most-recent non-deleted, in-progress (PARTIAL) transaction for a given Rx number.
+     *
+     * Used when handling ORC|XO (change-order) messages from PMS so we can update
+     * the existing transaction rather than creating a duplicate.
+     *
+     * @param rxNo The prescription number from the incoming HL7 message.
+     * @return The matching [PillCountTxnEntity] if one exists, or `null`.
+     */
+    @Query(
+        """
+        SELECT * FROM pill_count_txn
+        WHERE rxNo    = :rxNo
+          AND isDeleted = 0
+          AND status  IN ('PARTIAL', 'ON_HOLD')
+        ORDER BY createdAt DESC
+        LIMIT 1
+        """
+    )
+    suspend fun getActiveByRxNo(rxNo: String): PillCountTxnEntity?
+
+    /**
+     * Applies an HL7 change-order (ORC|XO) edit to an existing transaction:
+     * updates drug, target count, and priority, and resets the sync flag so the
+     * updated result is re-sent to PMS after counting completes.
+     *
+     * @param txnId       The transaction to update.
+     * @param drugId      New drug FK (nullable — kept as-is when null is not intended).
+     * @param targetCount New requested quantity.
+     * @param priority    New priority from ZPR segment.
+     * @param now         Timestamp; defaults to [System.currentTimeMillis].
+     */
+    @Query(
+        """
+        UPDATE pill_count_txn
+        SET drugId      = :drugId,
+            targetCount = :targetCount,
+            priority    = :priority,
+            status      = CASE WHEN :status IS NULL THEN status ELSE :status END,
+            isSynced    = 0,
+            updatedAt   = :now
+        WHERE txnId = :txnId
+        """
+    )
+    suspend fun updateFromHl7Edit(
+        txnId: Long,
+        drugId: Long?,
+        targetCount: Int?,
+        priority: TxnPriority?,
+        status: CountStatus?,
+        now: Long = System.currentTimeMillis()
+    )
+
     @Query("DELETE FROM pill_count_txn")
     suspend fun deleteAllTransactions()
 
@@ -326,6 +405,13 @@ interface PillCountTxnDao {
     suspend fun updateGlovesPresent(
         txnId: Long,
         value: Boolean,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query("UPDATE pill_count_txn SET hazardousTrayDetected = :detected, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateHazardousTrayDetected(
+        txnId: Long,
+        detected: Boolean,
         now: Long = System.currentTimeMillis()
     )
 
@@ -475,14 +561,14 @@ interface PillCountTxnDao {
     )
 
     /**
-     * Retrieves all transactions created before a specific cutoff date.
-     *
-     * Useful for archival or cleanup operations.
+     * Retrieves all completed transactions created before a specific cutoff date.
+     * Only returns COMPLETED or FORCE_COMPLETED transactions; partial/in-progress
+     * transactions are excluded from retention-based cleanup.
      *
      * @param cutoff Timestamp before which records will be selected.
      * @return A list of [PillCountTxnEntity].
      */
-    @Query("SELECT * FROM pill_count_txn WHERE createdAt < :cutoff")
+    @Query("SELECT * FROM pill_count_txn WHERE createdAt < :cutoff AND (status = 'COMPLETED' OR status = 'FORCE_COMPLETED')")
     suspend fun getTransactionsBefore(cutoff: Long): List<PillCountTxnEntity>
 
     /**

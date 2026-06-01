@@ -1,3 +1,7 @@
+import com.rite.pillcounting.core.utils.logger.AppLogger
+
+private val logger = AppLogger("ParsedScanData")
+
 data class ParsedScanData(
     val rxNo: String? = null,
     val ndcNo: String? = null,
@@ -33,7 +37,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
             rawMap = mappedData
         )
     } catch (e: Exception) {
-        println("Error parsing scan data: ${e.message}")
+        logger.e("Error parsing scan data: ${e.message}")
         ParsedScanData()
     }
 }

@@ -74,6 +74,13 @@ class MainActivity : ComponentActivity() {
         // ── Block overlays and screen recording on this window ────────────
         window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         window.decorView.filterTouchesWhenObscured = true
+        // Keep the screen on while the app is in the foreground. Users running
+        // the camera-heavy dispense / pill-count flows would otherwise see the
+        // device dim and sleep mid-scan even though they're actively using the
+        // screen. This flag is automatically dropped when the activity is no
+        // longer visible (home button, app switcher), so it doesn't affect
+        // normal locks behavior.
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         // ── Security check — runs once, not on every recomposition ────────────
 //        securityViolations = SecurityUtils.getSecurityViolations(this)

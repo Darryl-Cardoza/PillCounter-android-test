@@ -1,6 +1,6 @@
 package com.rite.pillcounting.core.hl7.core
 
-import org.rite.hl7.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.domain.model.CompleteHL7Message
 
 /**
  * Listener for observing the HL7 runtime lifecycle and message processing events.

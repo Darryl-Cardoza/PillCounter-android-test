@@ -60,6 +60,7 @@ import com.rite.pillcounting.core.utils.compose.WorkflowStepper
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DetectedPill
 import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.CameraHelper
 import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.GloveDetector
+import com.rite.pillcounting.feature.dispenseFlow.presentation.logic.TrayColor
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.PillScanningViewModel
 import kotlinx.coroutines.flow.conflate
 
@@ -198,6 +199,7 @@ fun CameraPreviewSection(
     val noGlovesBgPaint = remember {
         android.graphics.Paint().apply { color = android.graphics.Color.argb(200, 180, 0, 0) }
     }
+    val trayLabelBgPaint = remember { android.graphics.Paint() }
     val labelBounds = remember { android.graphics.Rect() }
 
     LaunchedEffect(capturedBitmap) {
@@ -361,6 +363,28 @@ fun CameraPreviewSection(
                                 end = end,
                                 strokeWidth = cStroke
                             )
+                        }
+
+                        // Color label badge (e.g. "Blue") — top-left of the tray box
+                        if (tray.trayColor != TrayColor.UNKNOWN) {
+                            drawIntoCanvas { canvas ->
+                                val colorLabel = tray.trayColor.label
+                                trayLabelBgPaint.color = tray.trayColor.bgArgb
+                                textPaint.getTextBounds(colorLabel, 0, colorLabel.length, labelBounds)
+                                val lw = labelBounds.width() + 14f
+                                val lh = labelBounds.height() + 8f
+                                val lTop = (sTop - lh).coerceAtLeast(0f)
+                                canvas.nativeCanvas.drawRoundRect(
+                                    sLeft, lTop, sLeft + lw, lTop + lh,
+                                    6f, 6f, trayLabelBgPaint
+                                )
+                                canvas.nativeCanvas.drawText(
+                                    colorLabel,
+                                    sLeft + 7f,
+                                    lTop + lh - 4f,
+                                    textPaint
+                                )
+                            }
                         }
                     }
 

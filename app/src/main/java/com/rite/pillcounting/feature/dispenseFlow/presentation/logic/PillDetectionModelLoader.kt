@@ -1,7 +1,6 @@
 ﻿package com.rite.pillcounting.feature.dispenseFlow.domain
 
 import android.content.Context
-import android.util.Log
 import com.rite.pillcounting.core.security.ModelDecryptor
 import com.rite.pillcounting.core.security.ModelKeyUnit
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -60,7 +59,6 @@ class PillDetectionModelLoader @Inject constructor(
         private const val PILL_MODEL_FILENAME = "pillcountingmodel"
         private const val TRAY_MODEL_FILENAME = "traymodel"
         private const val GLOVE_MODEL_FILENAME = "gloves-detection"
-        private const val TAG = "LoadModel"
 
         private const val MAX_CPU_THREADS = 4
         private const val GPU_DELEGATE_RETRY_COUNT = 3  // Retry GPU creation
@@ -68,7 +66,7 @@ class PillDetectionModelLoader @Inject constructor(
     }
 
     suspend fun getOrLoadInterpreters(includeGlove: Boolean = true): LoadedModels {
-        Log.i(TAG, "getOrLoadInterpreters() called (includeGlove=$includeGlove)")
+        logger.i("getOrLoadInterpreters() called (includeGlove=$includeGlove)")
 
         return mutex.withLock {
             val existingPill  = pillInterpreter
@@ -76,15 +74,15 @@ class PillDetectionModelLoader @Inject constructor(
             val existingGlove = gloveInterpreter
 
             if (!includeGlove && existingPill != null && existingTray != null) {
-                Log.i(TAG, "Pill + tray already loaded, glove skipped — returning cached")
+                logger.i("Pill + tray already loaded, glove skipped — returning cached")
                 return@withLock LoadedModels(existingPill, existingTray, null)
             }
             if (includeGlove && existingPill != null && existingTray != null && existingGlove != null) {
-                Log.i(TAG, "All three models already loaded — returning cached interpreters")
+                logger.i("All three models already loaded — returning cached interpreters")
                 return@withLock LoadedModels(existingPill, existingTray, existingGlove)
             }
 
-            Log.i(TAG, "One or more interpreters missing — loading models")
+            logger.i("One or more interpreters missing — loading models")
             logger.i(if (includeGlove) "Loading pill + tray + glove interpreters" else "Loading pill + tray interpreters (glove deferred)")
 
             // Log initial system state before model loading
@@ -111,13 +109,13 @@ class PillDetectionModelLoader @Inject constructor(
                     val gloveBuffer = gloveBufferDeferred?.await()
                     val gloveBufferTime = System.currentTimeMillis() - pillLoadStart
 
-                    Log.i(TAG, "Model buffers ready (glove=${gloveBuffer != null})")
+                    logger.i("Model buffers ready (glove=${gloveBuffer != null})")
 
                     val gpuSupported = withContext(Dispatchers.Main) {
                         CompatibilityList().isDelegateSupportedOnThisDevice
                     }
 
-                    Log.i(TAG, "GPU supported on device: $gpuSupported")
+                    logger.i("GPU supported on device: $gpuSupported")
 
                     // Each interpreter gets its own GpuDelegate — sharing one across
                     // multiple interpreters silently corrupts outputs (TFLite limitation).
@@ -188,11 +186,11 @@ class PillDetectionModelLoader @Inject constructor(
                     trayInterpreter  = trayHolder.interpreter
 
                     val loadedCount = if (gloveHolder != null) "3" else "2"
-                    Log.i(TAG, "$loadedCount interpreters initialized successfully")
+                    logger.i("$loadedCount interpreters initialized successfully")
                     logger.i(if (gloveHolder != null) "Pill + tray + glove interpreters ready" else "Pill + tray interpreters ready (glove deferred)")
 
                     val gpuCount = listOfNotNull(pillHolder, trayHolder, gloveHolder).count { it.delegate != null }
-                    Log.i(TAG, "GPU delegates active: $gpuCount / ${if (gloveHolder != null) 3 else 2} (one per interpreter)")
+                    logger.i("GPU delegates active: $gpuCount / ${if (gloveHolder != null) 3 else 2} (one per interpreter)")
 
                     // Log post-load system state
                     performanceLogger.logPerformanceSnapshot("POST_MODEL_LOAD")
@@ -219,7 +217,7 @@ class PillDetectionModelLoader @Inject constructor(
                 try {
                     if (attempt > 0) {
                         delay(GPU_DELEGATE_RETRY_DELAY_MS)
-                        Log.i(TAG, "$modelName — GPU delegate retry ${attempt + 1}/$GPU_DELEGATE_RETRY_COUNT")
+                        logger.i("$modelName — GPU delegate retry ${attempt + 1}/$GPU_DELEGATE_RETRY_COUNT")
                     }
 
                     val compatList = CompatibilityList()
@@ -230,16 +228,16 @@ class PillDetectionModelLoader @Inject constructor(
                     }
 
                     val delegate = GpuDelegate(gpuOptions)
-                    Log.i(TAG, "$modelName — GPU delegate created (FP16 enabled, attempt ${attempt + 1})")
+                    logger.i("$modelName — GPU delegate created (FP16 enabled, attempt ${attempt + 1})")
                     return@withContext delegate
 
                 } catch (e: Exception) {
                     lastException = e
-                    Log.w(TAG, "$modelName — GPU delegate attempt ${attempt + 1} failed: ${e.message}")
+                    logger.w("$modelName — GPU delegate attempt ${attempt + 1} failed: ${e.message}")
                 }
             }
 
-            Log.e(TAG, "$modelName — GPU delegate creation failed after $GPU_DELEGATE_RETRY_COUNT attempts", lastException)
+            logger.e("$modelName — GPU delegate creation failed after $GPU_DELEGATE_RETRY_COUNT attempts", lastException)
             logger.w("$modelName GPU delegate creation failed after retries", lastException)
             null
         }
@@ -261,31 +259,31 @@ class PillDetectionModelLoader @Inject constructor(
 
             if (delegate != null) {
                 try {
-                    Log.i(TAG, "$modelName — creating GPU interpreter")
+                    logger.i("$modelName — creating GPU interpreter")
                     val options = buildGpuOptions(delegate)
                     val interpreter = Interpreter(modelBuffer.duplicateAndRewind(), options)
-                    Log.i(TAG, "$modelName — ✅ GPU interpreter initialized successfully")
+                    logger.i("$modelName — GPU interpreter initialized successfully")
                     return InterpreterHolder(interpreter, delegate)
                 } catch (e: Exception) {
-                    Log.e(TAG, "$modelName — GPU interpreter init failed, falling back to CPU", e)
+                    logger.e("$modelName — GPU interpreter init failed, falling back to CPU", e)
                     safelyCloseDelegate(delegate, "$modelName GPU delegate after init failure")
                     delegate = null
                 }
             } else {
-                Log.i(TAG, "$modelName — GPU delegate unavailable, using CPU")
+                logger.i("$modelName — GPU delegate unavailable, using CPU")
             }
         } else {
-            Log.i(TAG, "$modelName — GPU not supported on device, using CPU")
+            logger.i("$modelName — GPU not supported on device, using CPU")
         }
 
         // CPU fallback
         return try {
             val cpuOptions = buildCpuOptions()
             val interpreter = Interpreter(modelBuffer.duplicateAndRewind(), cpuOptions)
-            Log.i(TAG, "$modelName — CPU interpreter initialized successfully")
+            logger.i("$modelName — CPU interpreter initialized successfully")
             InterpreterHolder(interpreter, delegate = null)
         } catch (e: Exception) {
-            Log.e(TAG, "$modelName — CPU interpreter initialization failed", e)
+            logger.e("$modelName — CPU interpreter initialization failed", e)
             throw IllegalStateException("$modelName failed on both GPU and CPU initialization", e)
         }
     }
@@ -293,9 +291,9 @@ class PillDetectionModelLoader @Inject constructor(
     private fun safelyCloseDelegate(delegate: GpuDelegate?, label: String) {
         try {
             delegate?.close()
-            if (delegate != null) Log.i(TAG, "$label closed")
+            if (delegate != null) logger.i("$label closed")
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to close $label", e)
+            logger.e("Failed to close $label", e)
         }
     }
 
@@ -324,21 +322,15 @@ class PillDetectionModelLoader @Inject constructor(
         try {
             for (i in 0 until interpreter.inputTensorCount) {
                 val tensor = interpreter.getInputTensor(i)
-                Log.i(
-                    TAG,
-                    "$modelName input[$i] shape=${tensor.shape().contentToString()} type=${tensor.dataType()}"
-                )
+                logger.i("$modelName input[$i] shape=${tensor.shape().contentToString()} type=${tensor.dataType()}")
             }
 
             for (i in 0 until interpreter.outputTensorCount) {
                 val tensor = interpreter.getOutputTensor(i)
-                Log.i(
-                    TAG,
-                    "$modelName output[$i] shape=${tensor.shape().contentToString()} type=${tensor.dataType()}"
-                )
+                logger.i("$modelName output[$i] shape=${tensor.shape().contentToString()} type=${tensor.dataType()}")
             }
         } catch (e: Exception) {
-            Log.e(TAG, "$modelName — failed to log tensor info", e)
+            logger.e("$modelName — failed to log tensor info", e)
         }
     }
 
@@ -377,32 +369,32 @@ class PillDetectionModelLoader @Inject constructor(
         try {
             gloveInterpreter?.close()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to close gloveInterpreter during unload", e)
+            logger.e("Failed to close gloveInterpreter during unload", e)
         }
         safelyCloseDelegate(gloveGpuDelegate, "gloveGpuDelegate")
         gloveInterpreter = null
         gloveGpuDelegate = null
         logger.i("Glove model unloaded — pill + tray remain cached")
-        Log.i(TAG, "Glove model resources released")
+        logger.i("Glove model resources released")
     }
 
     fun close() {
         try {
             pillInterpreter?.close()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to close pillInterpreter", e)
+            logger.e("Failed to close pillInterpreter", e)
         }
 
         try {
             trayInterpreter?.close()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to close trayInterpreter", e)
+            logger.e("Failed to close trayInterpreter", e)
         }
 
         try {
             gloveInterpreter?.close()
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to close gloveInterpreter", e)
+            logger.e("Failed to close gloveInterpreter", e)
         }
 
         // Close each model's own GPU delegate
@@ -418,6 +410,6 @@ class PillDetectionModelLoader @Inject constructor(
         gloveGpuDelegate  = null
 
         logger.i("All model resources released")
-        Log.i(TAG, "All model resources released and cleared")
+        logger.i("All model resources released and cleared")
     }
 }

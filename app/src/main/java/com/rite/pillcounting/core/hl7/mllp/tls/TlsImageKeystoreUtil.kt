@@ -6,6 +6,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
@@ -29,7 +30,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 object TlsImageKeystoreUtil {
 
-    const val TAG = "TlsImageKeystoreUtil"
+    private val logger = AppLogger("TlsImageKeystoreUtil")
     private const val KEY_ALIAS = "image_server_tls"
     private const val KEYSTORE_FILE = "image_server.p12"
 //    private const val PREFS_NAME = "tls_image_ks_prefs"
@@ -68,7 +69,6 @@ object TlsImageKeystoreUtil {
                 .digest(cert.encoded)
                 .joinToString(":") { "%02X".format(it) }
         } catch (e: Exception) {
-            // FIX 2: Log.e replaced — errors always fire, AppLogger.e is correct here
             logger.e("Failed to get fingerprint", e)
             "UNKNOWN"
         }

@@ -302,6 +302,20 @@ fun DispenseFlowScreen(
         )
     }
 
+    // ── Tray color classification popup ─────────────────────────────────────
+    // Shown when a tray color is detected during a hazardous transaction and has
+    // not been previously classified as hazardous or non-hazardous.
+    pillState.pendingTrayColorForClassification?.let { pendingColor ->
+        CommonDialog(
+            title = stringResource(R.string.tray_classification_title),
+            message = stringResource(R.string.tray_classification_message, pendingColor.label),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = { pillVm.classifyTrayColor(pendingColor, isHazardous = true) },
+            onCancel  = { pillVm.classifyTrayColor(pendingColor, isHazardous = false) },
+        )
+    }
+
     // ── Camera / detector gating ────────────────────────────────────────────
     // Pill detection runs in all three stages. Pre-RX/pre-NDC we use it only as
     // a signal to fire the "scan RX" / "scan container" voice prompt when pills
@@ -314,6 +328,8 @@ fun DispenseFlowScreen(
             pillVm.resumePillDetection()
             pillVm.getDrugInfo()
             pillVm.showTxnInfo(countType)
+            // Enable tray color detection only for hazardous transactions in COUNTING stage.
+            pillVm.setHazardousTransaction(dispenseState.isHazardous)
             // Load glove model only now that RX + NDC are confirmed and drug is hazardous.
             if (dispenseState.isHazardous) {
                 pillVm.loadGloveModelAndRebuildAnalyzer()

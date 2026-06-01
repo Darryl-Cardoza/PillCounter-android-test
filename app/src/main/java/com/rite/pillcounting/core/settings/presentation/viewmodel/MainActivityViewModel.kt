@@ -1,7 +1,6 @@
 package com.rite.pillcounting.core.settings.presentation.viewmodel
 
 import android.os.Build
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.hl7.service.HL7Config
@@ -91,6 +90,9 @@ class MainActivityViewModel @Inject constructor(
 
     private val _isSoundOverride = MutableStateFlow(preferenceHelper.isSoundOverride())
     val isSoundOverride: StateFlow<Boolean> = _isSoundOverride
+
+    private val _isHazardousDrug = MutableStateFlow(preferenceHelper.isHazardousDrugEnabled())
+    val isHazardousDrug: StateFlow<Boolean> = _isHazardousDrug
 
     init {
         // Load cached/fallback theme instantly
@@ -273,12 +275,11 @@ class MainActivityViewModel @Inject constructor(
             val nowUtc = Calendar.getInstance(TimeZone.getTimeZone("UTC"))
             val cutoff = nowUtc.timeInMillis - optionDays * 24 * 60 * 60 * 1000L
 
-            //TODO(Change to the logger)
-            Log.d("DELETE_TXN", "Retention days: $optionDays, cutoff=${Date(cutoff)}")
+            logger.d("Retention days: $optionDays, cutoff=${Date(cutoff)}")
 
             // Get all transactions older than cutoff regardless of isDeleted
             val oldTransactions = txnDao.getTransactionsBefore(cutoff)
-            Log.d("DELETE_TXN", "Found ${oldTransactions.size} transactions to delete")
+            logger.d("Found ${oldTransactions.size} transactions to delete")
 
             oldTransactions.forEach { txn ->
                 val filesToDelete = mutableListOf<String>()
@@ -298,16 +299,16 @@ class MainActivityViewModel @Inject constructor(
                     val file = File(path)
                     if (file.exists()) {
                         if (file.delete()) {
-                            Log.d("DELETE_TXN", "Deleted file: $path")
+                            logger.d("Deleted file: $path")
                         } else {
-                            Log.w("DELETE_TXN", "Failed to delete file: $path")
+                            logger.w("Failed to delete file: $path")
                         }
                     }
                 }
             }
 
         } catch (e: Exception) {
-            Log.e("DELETE_TXN", "Error deleting old transactions", e)
+            logger.e("Error deleting old transactions", e)
         }
     }
 
@@ -503,6 +504,16 @@ class MainActivityViewModel @Inject constructor(
     fun toggleSoundOverride(newValue: Boolean) {
         preferenceHelper.setSoundOverride(newValue)
         _isSoundOverride.value = newValue
+    }
+
+    fun toggleHazardousDrug(newValue: Boolean) {
+        preferenceHelper.setHazardousDrugEnabled(newValue)
+        _isHazardousDrug.value = newValue
+    }
+
+    fun clearTrayColorLists() {
+        preferenceHelper.clearAllTrayColorLists()
+        logger.i("Tray color classification lists cleared from Settings")
     }
 
 }

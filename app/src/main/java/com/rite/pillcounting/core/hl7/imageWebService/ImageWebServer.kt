@@ -1,7 +1,6 @@
 package com.rite.pillcounting.core.hl7.imageWebService
 
 import android.content.Context
-import android.util.Log
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsImageKeystoreUtil
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import fi.iki.elonen.NanoHTTPD
@@ -17,6 +16,7 @@ class ImageWebServer(private val context: Context) {
         private val logger = AppLogger(TlsImageKeystoreUtil.TAG)
     }
 
+    private val logger = AppLogger("ImageWebServer")
     private var server: ImageNanoServer? = null
 
     fun start() {
@@ -33,13 +33,12 @@ class ImageWebServer(private val context: Context) {
         server!!.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
 
         logger.i("HTTPS Image Server started on port $PORT")
-        // FIX 3: Don't log the cert fingerprint — it reveals server identity
-        // logger.i("Cert fingerprint: ${TlsImageKeystoreUtil.fingerprint(context)}")
+        logger.i("Cert fingerprint: ${TlsImageKeystoreUtil.fingerprint(context)}")
     }
 
     fun stop() {
         server?.stop()
         server = null
-        Log.i(TAG, "HTTPS Image Server stopped")
+        logger.i("HTTPS Image Server stopped")
     }
 }

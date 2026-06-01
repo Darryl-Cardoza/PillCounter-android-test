@@ -61,8 +61,10 @@ fun SettingsScreen(
     val isHapticEnable by viewModel.isHapticOn.collectAsState()
     val isRequireBackCountEnable by viewModel.isRequireBackCountEnable.collectAsState()
     var showCLearAllDataConfirmDialog by remember { mutableStateOf(false) }
+    var showClearTrayColorListsDialog by remember { mutableStateOf(false) }
     val selectedSchedules by viewModel.selectedSchedules.collectAsState()
     val isSoundOverrideEnable by viewModel.isSoundOverride.collectAsState()
+    val isHazardousDrug by viewModel.isHazardousDrug.collectAsState()
     val dimens = LocalDimens.current
 
     Column(
@@ -198,6 +200,29 @@ fun SettingsScreen(
 
             HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
+            SettingSwitch(
+                labelRes = R.string.setting_hazardous_drug,
+                checked = isHazardousDrug,
+                onCheckedChange = { newValue ->
+                    viewModel.toggleHazardousDrug(newValue)
+                },
+                checkedTrackColor = MaterialTheme.colorScheme.primary
+            )
+
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+            Text(
+                text = stringResource(R.string.clear_tray_color_lists),
+                fontSize = 16.sp,
+                color = extendedColors.textColor,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showClearTrayColorListsDialog = true }
+                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+            )
+
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
             Text(
                 text = stringResource(R.string.clear_all_local_data),
                 fontSize = 16.sp,
@@ -224,6 +249,19 @@ fun SettingsScreen(
                 showCLearAllDataConfirmDialog = false
             },
             onCancel = { showCLearAllDataConfirmDialog = false }
+        )
+    }
+
+    if (showClearTrayColorListsDialog) {
+        CommonDialog(
+            message = stringResource(R.string.clear_tray_color_lists_confirm),
+            confirmText = stringResource(R.string.ok),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = {
+                viewModel.clearTrayColorLists()
+                showClearTrayColorListsDialog = false
+            },
+            onCancel = { showClearTrayColorListsDialog = false }
         )
     }
 }
