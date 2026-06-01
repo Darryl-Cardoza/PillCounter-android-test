@@ -1,14 +1,13 @@
 package com.rite.pillcounting.feature.pillCountScan.domain
 
-import ai.onnxruntime.OrtEnvironment
-import ai.onnxruntime.OrtSession
 import android.content.Context
+import android.graphics.Bitmap
 import android.util.Log
 import com.rite.pillcounting.core.security.ModelDecryptor
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import com.rite.pillcounting.feature.pillCountScan.presentation.logic.Letterbox
-import com.rite.pillcounting.feature.pillCountScan.presentation.logic.TrayMasksDetector
+import com.rite.pillcounting.feature.pillCountScan.presentation.logic.TraySegmentationDetector
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -27,7 +26,7 @@ import javax.inject.Singleton
 
 data class LoadedModels(
     val pillInterpreter: Interpreter,
-    val trayMasksDetector: TrayMasksDetector?,
+    val traySegDetector: TraySegmentationDetector?,
     val gloveInterpreter: Interpreter?
 )
 
@@ -48,28 +47,44 @@ class PillDetectionModelLoader @Inject constructor(
     private val mutex = Mutex()
 
     private var pillInterpreter: Interpreter? = null
-    private var trayMasksDetector: TrayMasksDetector? = null
+    private var traySegDetector: TraySegmentationDetector? = null
     private var gloveInterpreter: Interpreter? = null
 
     // One delegate per interpreter — TFLite does not support sharing a delegate
     // across multiple Interpreter instances (silent wrong outputs if you try).
     private var pillGpuDelegate: GpuDelegate? = null
+    private var trayGpuDelegate: GpuDelegate? = null
     private var gloveGpuDelegate: GpuDelegate? = null
 
-    private val ortEnv: OrtEnvironment by lazy { OrtEnvironment.getEnvironment() }
-
     companion object {
-        private const val PILL_MODEL_FILENAME = "pills_detector_fp32.tflite"
-        // rtmdet_ins tray (capped: max 10 detections, score_threshold 0.25 in-graph)
-        // → mask tensor peak ~16 MB, down from ~164 MB on the prior export.
-        private const val TRAY_MODEL_FILENAME = "rtmdet_ins_tray_tiny_640.onnx"
-        private const val GLOVE_MODEL_FILENAME = "gloves_detector_fp32.tflite"
+        // PP-YOLOE+s pill detector, HardSwish-activated, FP16 weights.
+        // Retrained for Mali r38p1 compatibility (no SiLU; sigmoid+broadcast-mul
+        // pattern rejected by the M14's OpenCL driver). 100% GPU-delegated:
+        // 79xConv2D + 61xHardSwish + 15xLogistic, no SILU/SWISH/RESIZE_BILINEAR.
+        // ~14 MB encrypted (down from ~28 MB FP32). Best val mAP@0.5:0.95 = 0.596.
+        // Inference is decoded in Postprocessor — DFL softmax + anchor grid + NMS on CPU.
+        private const val PILL_MODEL_FILENAME = "pills_detector_fp16.tflite"
+        // MobileNetV2-UNet semantic seg, FP16 weights, 384x384 input, in-graph
+        // ImageNet normalization. Replaces the prior RTMDet-Ins ONNX tray on
+        // ORT-CPU. Tray now runs on TFLite GPU OpenCL — Mali-friendly op set
+        // (Conv/ReLU6/BN/Add/Concat/Resize-nearest only).
+        private const val TRAY_MODEL_FILENAME = "tray_seg_mbv2_unet_384_float16.tflite"
+        // YOLOX-Nano gloves+hands detector (LeakyReLU, 6x6-Conv stem, 320 input).
+        // Replaces the MobileNetV2 binary classifier — the classifier had no
+        // training signal for empty scenes (every training image contained a
+        // hand or glove) and false-positived on no-hand frames. The detector
+        // restores implicit-negatives: empty scene -> zero boxes above threshold
+        // -> "no gloves" at the app's compliance gate. ~3.5 MB encrypted FP32.
+        // Designed for 100% GPU delegation on Mali r38p1 (validate with
+        // validate_gpu_delegate.py). Inference is decoded in GloveDetector —
+        // sigmoid + box decode + per-class NMS on CPU.
+        // AES-GCM RITE encryption, same scheme as pill + tray.
+        private const val GLOVE_MODEL_FILENAME = "gloves_yolox_nano_lrelu_320_float32.tflite"
         private const val TAG = "LoadModel"
 
         private const val TRAY_MODEL_ENABLED = true
 
         private const val MAX_CPU_THREADS = 4
-        private const val TRAY_ORT_THREADS = 2
         private const val WARMUP_RUNS = 3
     }
 
@@ -78,7 +93,7 @@ class PillDetectionModelLoader @Inject constructor(
 
         return mutex.withLock {
             val existingPill  = pillInterpreter
-            val existingTray  = trayMasksDetector
+            val existingTray  = traySegDetector
             val existingGlove = gloveInterpreter
 
             if (!includeGlove && existingPill != null) {
@@ -107,12 +122,13 @@ class PillDetectionModelLoader @Inject constructor(
                             return@async null
                         }
                         try { loadModelBytes(TRAY_MODEL_FILENAME) } catch (e: Exception) {
-                            Log.w(TAG, "Tray ONNX missing — continuing without tray: ${e.message}")
+                            Log.w(TAG, "Tray TFLite missing — continuing without tray: ${e.message}")
                             null
                         }
                     }
 
                     val gloveBytesDeferred = if (includeGlove) {
+                        // YOLOX-Nano gloves detector — AES-GCM RITE encrypted, same as pill + tray.
                         async { loadModelBytes(GLOVE_MODEL_FILENAME) }
                     } else null
 
@@ -128,6 +144,7 @@ class PillDetectionModelLoader @Inject constructor(
                     Log.i(TAG, "Model bytes decrypted (tray=${trayBytes != null} glove=${gloveBytes != null})")
 
                     val pillBuffer = bytesToDirectBuffer(pillBytes)
+                    val trayBuffer = trayBytes?.let { bytesToDirectBuffer(it) }
                     val gloveBuffer = gloveBytes?.let { bytesToDirectBuffer(it) }
 
                     val pillInterpreterStart = System.currentTimeMillis()
@@ -144,19 +161,37 @@ class PillDetectionModelLoader @Inject constructor(
                         gpuDelegateEnabled = pillHolder.usesGpu
                     )
 
-                    val trayDetector: TrayMasksDetector? = if (trayBytes != null) {
+                    // Tray model: prefer GPU (TFLite OpenCL on Mali) but fall back
+                    // to CPU+XNNPACK if the device doesn't support the GPU delegate.
+                    // The model's op set is universally supported on both backends —
+                    // it'll just be slower on CPU. If init fails entirely we continue
+                    // without tray (pill counting still works, just no spatial filter).
+                    val trayDetector: TraySegmentationDetector? = if (trayBuffer != null) {
                         val trayCreateStart = System.currentTimeMillis()
-                        val detector = try {
-                            createTrayMasksDetector(trayBytes)
-                        } catch (e: Exception) {
-                            Log.e(TAG, "Tray ONNX session init failed — continuing without tray", e)
+                        val holder = try {
+                            createInterpreterWithGpuFallback(trayBuffer, "Tray model")
+                        } catch (t: Throwable) {
+                            Log.e(TAG, "Tray init failed (both GPU and CPU) — continuing without tray", t)
                             null
                         }
                         val trayCreateTime = System.currentTimeMillis() - trayCreateStart
-                        if (detector != null) {
-                            Log.i(TAG, "Tray model — ✅ ONNX session ready (load=${trayBufferTime}ms init=${trayCreateTime}ms size=${trayBytes.size / 1024} KB)")
+                        if (holder != null) {
+                            trayGpuDelegate = holder.gpuDelegate
+                            performanceLogger.logModelLoad(
+                                modelName = "Tray Segmentation Model (MobileNetV2-UNet)",
+                                loadedOn = if (holder.usesGpu) "GPU" else "CPU+XNNPACK",
+                                interpreter = holder.interpreter,
+                                modelSizeBytes = trayBuffer.capacity().toLong(),
+                                loadTimeMs = trayBufferTime + trayCreateTime,
+                                gpuDelegateEnabled = holder.usesGpu
+                            )
+                            logTensorInfo(holder.interpreter, "Tray model")
+                            Log.i(TAG, "Tray model — ✅ TFLite ${if (holder.usesGpu) "GPU" else "CPU+XNNPACK"} ready (load=${trayBufferTime}ms init=${trayCreateTime}ms size=${trayBuffer.capacity() / 1024} KB)")
+                            TraySegmentationDetector(holder.interpreter)
+                        } else {
+                            Log.i(TAG, "Tray skipped (init failed) — pill counting will not be tray-filtered")
+                            null
                         }
-                        detector
                     } else {
                         Log.i(TAG, "Tray skipped (no bytes) — pill counting will not be tray-filtered")
                         null
@@ -182,22 +217,24 @@ class PillDetectionModelLoader @Inject constructor(
 
                     logTensorInfo(pillHolder.interpreter, "Pill model")
 
-                    pillInterpreter      = pillHolder.interpreter
-                    trayMasksDetector    = trayDetector
+                    pillInterpreter   = pillHolder.interpreter
+                    traySegDetector   = trayDetector
 
                     val tfliteHolders = listOfNotNull(pillHolder, gloveHolder)
                     val totalLoaded = tfliteHolders.size + (if (trayDetector != null) 1 else 0)
                     Log.i(TAG, "$totalLoaded model(s) initialized successfully")
                     logger.i("Models ready — pill=✓ tray=${trayDetector != null} glove=${gloveHolder != null}")
 
-                    val gpuCount = tfliteHolders.count { it.gpuDelegate != null }
-                    Log.i(TAG, "📊 TFLite delegates — GPU=$gpuCount / ${tfliteHolders.size}; ONNX tray=${if (trayDetector != null) "loaded" else "absent"}")
+                    val gpuCount = tfliteHolders.count { it.gpuDelegate != null } + (if (trayDetector != null) 1 else 0)
+                    val tfliteTotal = tfliteHolders.size + (if (trayDetector != null) 1 else 0)
+                    Log.i(TAG, "📊 TFLite delegates — GPU=$gpuCount / $tfliteTotal (tray=${if (trayDetector != null) "GPU" else "absent"})")
 
                     performanceLogger.logPerformanceSnapshot("POST_MODEL_LOAD")
 
-                    // Warm-up: shader compile for GPU delegate and ORT kernel
-                    // selection both happen on first inference. Burning them
-                    // here keeps the first user-visible frame fast.
+                    // Warm-up: GPU shader compile happens on first inference for
+                    // each TFLite interpreter. Burning the cost here (with
+                    // serialization-to-disk via `setSerializationParams`) keeps
+                    // the first user-visible frame fast.
                     warmUp(
                         pill = pillHolder.interpreter,
                         glove = gloveHolder?.interpreter,
@@ -205,9 +242,9 @@ class PillDetectionModelLoader @Inject constructor(
                     )
 
                     LoadedModels(
-                        pillInterpreter   = pillHolder.interpreter,
-                        trayMasksDetector = trayDetector,
-                        gloveInterpreter  = gloveHolder?.interpreter
+                        pillInterpreter  = pillHolder.interpreter,
+                        traySegDetector  = trayDetector,
+                        gloveInterpreter = gloveHolder?.interpreter
                     )
                 }
             }
@@ -270,6 +307,7 @@ class PillDetectionModelLoader @Inject constructor(
         InterpreterHolder(interpreter)
     }
 
+
     /**
      * Runs [WARMUP_RUNS] dummy inferences against each loaded model.
      *
@@ -288,7 +326,7 @@ class PillDetectionModelLoader @Inject constructor(
     private fun warmUp(
         pill: Interpreter,
         glove: Interpreter?,
-        tray: TrayMasksDetector?
+        tray: TraySegmentationDetector?
     ) {
         val tStart = System.currentTimeMillis()
         try {
@@ -334,24 +372,27 @@ class PillDetectionModelLoader @Inject constructor(
         }
     }
 
-    private fun warmUpTrayDetector(detector: TrayMasksDetector) {
-        val inputFloats = 3 * TrayMasksDetector.INPUT_SIZE * TrayMasksDetector.INPUT_SIZE
-        val inputBuf = ByteBuffer.allocateDirect(inputFloats * 4)
-            .order(ByteOrder.nativeOrder())
+    private fun warmUpTrayDetector(detector: TraySegmentationDetector) {
+        // Allocate a single 640x640 dummy bitmap for warmup (the detector
+        // expects the same 640 letterbox the per-frame pipeline produces).
+        // Recycle it after warmup to free 1.6 MB immediately.
+        val dummyBitmap = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
         val dummyScaleInfo = Letterbox.ScaleInfo(
-            scale = 1f, padX = 0f, padY = 0f,
-            inputSize = TrayMasksDetector.INPUT_SIZE
+            scale = 1f, padX = 0f, padY = 0f, inputSize = 640
         )
-        repeat(WARMUP_RUNS) { idx ->
-            inputBuf.rewind()
-            val t0 = System.currentTimeMillis()
-            detector.detect(
-                inputBuffer = inputBuf,
-                scaleInfo = dummyScaleInfo,
-                originalWidth = TrayMasksDetector.INPUT_SIZE,
-                originalHeight = TrayMasksDetector.INPUT_SIZE
-            )
-            Log.i(TAG, "Tray warm-up run ${idx + 1}/$WARMUP_RUNS: ${System.currentTimeMillis() - t0}ms")
+        try {
+            repeat(WARMUP_RUNS) { idx ->
+                val t0 = System.currentTimeMillis()
+                detector.detect(
+                    letterboxedBitmap = dummyBitmap,
+                    scaleInfo640 = dummyScaleInfo,
+                    originalWidth = 640,
+                    originalHeight = 640
+                )
+                Log.i(TAG, "Tray warm-up run ${idx + 1}/$WARMUP_RUNS: ${System.currentTimeMillis() - t0}ms")
+            }
+        } finally {
+            try { dummyBitmap.recycle() } catch (_: Throwable) {}
         }
     }
 
@@ -395,7 +436,21 @@ class PillDetectionModelLoader @Inject constructor(
      * Decrypts a model asset and returns the raw bytes. TFLite wraps these in a
      * direct ByteBuffer via [bytesToDirectBuffer]; ONNX Runtime takes the bytes directly.
      */
-    private fun loadModelBytes(modelName: String): ByteArray {
+    /**
+     * Loads model bytes from assets.
+     *
+     * Two paths:
+     *  - `encrypted = true` (default): asset is `<modelName>.enc`, copied to
+     *    filesDir on first use and decrypted via [ModelDecryptor] (AES-GCM
+     *    RITE format). Used for the pill and tray models.
+     *  - `encrypted = false`: asset is `<modelName>` itself, read directly
+     *    into memory. Used for the YOLOX-Nano gloves detector, which ships
+     *    as a raw .tflite.
+     */
+    private fun loadModelBytes(modelName: String, encrypted: Boolean = true): ByteArray {
+        if (!encrypted) {
+            return context.assets.open(modelName).use { it.readBytes() }
+        }
         val encFile = File(context.filesDir, "$modelName.enc")
         if (!encFile.exists()) {
             context.assets.open("$modelName.enc").use { input ->
@@ -403,29 +458,6 @@ class PillDetectionModelLoader @Inject constructor(
             }
         }
         return ModelDecryptor.decryptToBytes(encFile)
-    }
-
-    /**
-     * Creates an OrtSession for the tray masks model.
-     *
-     * NNAPI EP is intentionally NOT registered. ONNX Runtime 1.19 has a known
-     * crash (SIGABRT inside libonnxruntime.so) during session creation on
-     * certain Android devices when the NNAPI EP probes accelerators — the
-     * crash happens in native code and cannot be caught from Java. CPU EP is
-     * stable on all tested devices.
-     */
-    private fun createTrayMasksDetector(modelBytes: ByteArray): TrayMasksDetector {
-        val opts = OrtSession.SessionOptions().apply {
-            // 2 threads, not MAX_CPU_THREADS — tray runs in parallel with pill
-            // (GPU) and glove (TFLite), and pill's GPU dispatch + the pre/post
-            // processing loops are CPU-bound too. Saturating all 4 cores on the
-            // tray model leaves nothing for the rest of the pipeline.
-            setIntraOpNumThreads(TRAY_ORT_THREADS)
-            setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT)
-        }
-        val session = ortEnv.createSession(modelBytes, opts)
-        Log.i(TAG, "Tray ONNX — CPU EP only (NNAPI disabled to avoid native crash on some devices)")
-        return TrayMasksDetector(ortEnv, session)
     }
 
     private fun ByteBuffer.duplicateAndRewind(): ByteBuffer {
@@ -464,21 +496,23 @@ class PillDetectionModelLoader @Inject constructor(
         try { pillInterpreter?.close() } catch (e: Exception) {
             Log.e(TAG, "Failed to close pillInterpreter", e)
         }
-        try { trayMasksDetector?.close() } catch (e: Exception) {
-            Log.e(TAG, "Failed to close trayMasksDetector", e)
+        try { traySegDetector?.close() } catch (e: Exception) {
+            Log.e(TAG, "Failed to close traySegDetector", e)
         }
         try { gloveInterpreter?.close() } catch (e: Exception) {
             Log.e(TAG, "Failed to close gloveInterpreter", e)
         }
 
         safelyCloseDelegate(pillGpuDelegate, "pillGpuDelegate")
+        safelyCloseDelegate(trayGpuDelegate, "trayGpuDelegate")
         safelyCloseDelegate(gloveGpuDelegate, "gloveGpuDelegate")
 
-        pillInterpreter    = null
-        trayMasksDetector  = null
-        gloveInterpreter   = null
-        pillGpuDelegate    = null
-        gloveGpuDelegate   = null
+        pillInterpreter   = null
+        traySegDetector   = null
+        gloveInterpreter  = null
+        pillGpuDelegate   = null
+        trayGpuDelegate   = null
+        gloveGpuDelegate  = null
 
         logger.i("All model resources released")
         Log.i(TAG, "All model resources released and cleared")

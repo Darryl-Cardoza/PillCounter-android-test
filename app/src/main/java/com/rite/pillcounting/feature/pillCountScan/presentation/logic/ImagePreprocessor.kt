@@ -7,13 +7,15 @@ import java.nio.ByteOrder
 
 /**
  * Resizes camera frames to the model 640×640 letterbox input and produces the
- * two float32 buffers the per-frame pipeline needs:
+ * float buffer the per-frame pipeline needs for the TFLite pill + glove models:
  *
- *  - [Preprocessed.rgbNormalized]   NHWC RGB / 255             (pill + glove TFLite)
- *  - [Preprocessed.rgbImageNetNchw] NCHW RGB ImageNet-normalized (tray ONNX)
+ *  - [Preprocessed.rgbNormalized]  NHWC RGB / 255 at 640x640 (pill + glove TFLite)
+ *  - [Preprocessed.letterboxed]    640x640 ARGB_8888 Bitmap (handed to the tray
+ *                                  segmentation detector, which does its own
+ *                                  640->384 downscale + [0, 255] rescale internally)
  *
  * **All scratch is reused across frames.** Each frame writes into the same
- * FloatArrays and direct ByteBuffers (~20 MB total). PillAnalyzer hands out
+ * FloatArray and direct ByteBuffer (~10 MB total). PillAnalyzer hands out
  * `duplicate()` views and `coroutineScope { ... }.await()` guarantees all
  * three parallel inferences complete before `analyze()` returns, so the next
  * frame cannot start until the current frame's reads are done.
@@ -29,27 +31,14 @@ object ImagePreprocessor {
     private const val BYTES_PER_FLOAT = 4
     private const val BUFFER_BYTES = CHANNELS * NUM_PIXELS * BYTES_PER_FLOAT
 
-    // ImageNet normalization (RGB) — used by the tray masks ONNX model.
-    // Constants from MOBILE_INTEGRATION_GUIDE 05_TRAY_MASKS_MODEL.md §4.
-    private const val MEAN_R = 123.675f
-    private const val MEAN_G = 116.28f
-    private const val MEAN_B = 103.53f
-    private const val STD_R = 58.395f
-    private const val STD_G = 57.12f
-    private const val STD_B = 57.375f
-
     // Cached scratch — allocated once, reused every frame.
     private val pixelScratch = IntArray(NUM_PIXELS)
     private val rgbScratch = FloatArray(CHANNELS * NUM_PIXELS)
-    private val nchwScratch = FloatArray(CHANNELS * NUM_PIXELS)
     private val rgbBuf: ByteBuffer =
-        ByteBuffer.allocateDirect(BUFFER_BYTES).order(ByteOrder.nativeOrder())
-    private val nchwBuf: ByteBuffer =
         ByteBuffer.allocateDirect(BUFFER_BYTES).order(ByteOrder.nativeOrder())
 
     data class Preprocessed(
         val rgbNormalized: ByteBuffer,
-        val rgbImageNetNchw: ByteBuffer,
         val letterboxed: Bitmap,
         val original: Bitmap
     )
@@ -61,9 +50,6 @@ object ImagePreprocessor {
         letterboxed.getPixels(pixelScratch, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
 
         val rgb = rgbScratch
-        val nchw = nchwScratch
-        val planeG = NUM_PIXELS
-        val planeB = 2 * NUM_PIXELS
 
         var i = 0
         var j = 0
@@ -73,15 +59,10 @@ object ImagePreprocessor {
             val g = ((p shr 8) and 0xFF).toFloat()
             val b = (p and 0xFF).toFloat()
 
-            // NHWC RGB / 255
+            // NHWC RGB / 255 — what the pill and glove TFLite models expect.
             rgb[j] = r / 255f
             rgb[j + 1] = g / 255f
             rgb[j + 2] = b / 255f
-
-            // NCHW RGB ImageNet
-            nchw[i]          = (r - MEAN_R) / STD_R
-            nchw[planeG + i] = (g - MEAN_G) / STD_G
-            nchw[planeB + i] = (b - MEAN_B) / STD_B
 
             i++
             j += CHANNELS
@@ -90,13 +71,9 @@ object ImagePreprocessor {
         rgbBuf.clear()
         rgbBuf.asFloatBuffer().put(rgb)
         rgbBuf.rewind()
-        nchwBuf.clear()
-        nchwBuf.asFloatBuffer().put(nchw)
-        nchwBuf.rewind()
 
         return Preprocessed(
             rgbNormalized = rgbBuf,
-            rgbImageNetNchw = nchwBuf,
             letterboxed = letterboxed,
             original = original
         )

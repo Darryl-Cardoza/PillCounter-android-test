@@ -183,10 +183,6 @@ dependencies {
     implementation("org.tensorflow:tensorflow-lite-gpu-api:2.17.0")
     implementation("org.tensorflow:tensorflow-lite-support:0.5.0")
 
-    // --- ONNX Runtime (used for the tray segmentation model, which can't be
-    // ---  converted to TFLite — embedded NMS + per-instance dynamic conv).
-    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
-
     //Location
     implementation("com.google.android.gms:play-services-location:21.3.0")
 

@@ -24,9 +24,10 @@ import java.nio.ByteBuffer
  */
 class PillAnalyzer(
     private val pillInterpreter: Interpreter,
-    // Tray is an ONNX masks detector (segmentation). Nullable so the analyzer
-    // can run without it; when null, every detected pill is counted (no filter).
-    private val trayMasksDetector: TrayMasksDetector?,
+    // Tray is a TFLite GPU semantic segmentation detector (MobileNetV2-UNet,
+    // 384 input, 3 classes: bg/chute/tray). Nullable so the analyzer can run
+    // without it; when null, every detected pill is counted (no spatial filter).
+    private val traySegDetector: TraySegmentationDetector?,
     private val gloveInterpreter: Interpreter?,
     private val performanceLogger: PerformanceLogger? = null,
     private val shouldRunGloveDetection: () -> Boolean,
@@ -58,9 +59,10 @@ class PillAnalyzer(
 
     // Reusable inference output buffers. Allocated once via interpreter shape
     // introspection so allocations don't show up as GC pressure on weak devices.
-    // (Tray is ONNX-based — its detector allocates outputs internally per call.)
+    // (Tray is TFLite GPU — its detector allocates outputs internally per call.
+    // Glove is YOLOX-Nano (320 input) — its 3 FPN output tensors are
+    // allocated inside GloveDetector as static scratch on first call.)
     private val pillOutputs by lazy { Postprocessor.allocateOutputs(pillInterpreter) }
-    private val gloveOutputs by lazy { GloveDetector.allocateOutput(gloveInterpreter!!) }
 
     companion object {
         // Run every frame until first glove detection arrives; afterwards only every
@@ -68,14 +70,18 @@ class PillAnalyzer(
         private const val GLOVE_STEADY_INTERVAL_MS = 400L
 
         // Pill confidence hysteresis to kill 19↔20 frame-to-frame flicker.
-        // With the tray-filter re-enabled, non-tray false positives (fingernails,
-        // debris on the desk) are already filtered out spatially, so we can
-        // afford a more permissive STAY threshold for stability on real pills.
-        //   ENTER (0.55): a NEWLY visible pill must clear this in one frame.
-        //   STAY  (0.40): a pill from the previous frame can persist at lower
+        // Tuned for the HardSwish-retrained FP16 PP-YOLOE+s pill model. Webcam
+        // testing on the same .tflite found 0.75 to be the clean operating point;
+        // the on-device tray filter lets us run lower than that without picking
+        // up non-tray noise. Old SiLU model used ENTER=0.55 / STAY=0.40, which
+        // proved too low for the new model — borderline scores in [0.55, 0.65]
+        // were flickering in/out across frames and shifting the count by ±2.
+        //   ENTER (0.65): a NEWLY visible pill must clear this in one frame.
+        //   STAY  (0.50): a pill from the previous frame can persist at lower
         //                 confidence if it spatially overlaps (IoU ≥ 0.40).
-        private const val PILL_CONF_ENTER = 0.55f
-        private const val PILL_CONF_STAY = 0.40f
+        // Hysteresis band width preserved at 0.15.
+        private const val PILL_CONF_ENTER = 0.65f
+        private const val PILL_CONF_STAY = 0.50f
         private const val HYSTERESIS_IOU = 0.40f
         private const val PILL_NMS_IOU = 0.45f
     }
@@ -96,11 +102,11 @@ class PillAnalyzer(
             val originalWidth = imageProxy.width
             val originalHeight = imageProxy.height
 
-            // TFLite pill+glove consume NHWC RGB /255; ONNX tray consumes NCHW
-            // RGB ImageNet-normalized. duplicate() is cheap (no memcpy).
+            // Only pill consumes the NHWC /255 float buffer now.
+            // Tray (semantic seg) and glove (binary classifier) both take the
+            // *letterboxed Bitmap* directly and do their own internal
+            // resize + [0, 255] rescale + in-graph ImageNet normalization.
             val pillBuf = pre.rgbNormalized.duplicateRewound()
-            val gloveBuf = pre.rgbNormalized.duplicateRewound()
-            val trayBuf = pre.rgbImageNetNchw.duplicateRewound()
 
             val now = System.currentTimeMillis()
             val interval = if (hasDetectedAnyGlove) GLOVE_STEADY_INTERVAL_MS else 0L
@@ -122,11 +128,11 @@ class PillAnalyzer(
 
             val parallelStart = System.currentTimeMillis()
             coroutineScope {
-                val trayDeferred = trayMasksDetector?.let { detector ->
+                val trayDeferred = traySegDetector?.let { detector ->
                     async(Dispatchers.Default) {
                         detector.detect(
-                            inputBuffer = trayBuf,
-                            scaleInfo = scaleInfo,
+                            letterboxedBitmap = pre.letterboxed,
+                            scaleInfo640 = scaleInfo,
                             originalWidth = originalWidth,
                             originalHeight = originalHeight
                         )
@@ -140,11 +146,10 @@ class PillAnalyzer(
                 val gloveDeferred = if (runGloveThisFrame) async(Dispatchers.Default) {
                     GloveDetector.detect(
                         interpreter = gloveInterpreter!!,
-                        inputBuffer = gloveBuf,
-                        scaleInfo = scaleInfo,
+                        letterboxedBitmap = pre.letterboxed,
+                        scaleInfo640 = scaleInfo,
                         originalWidth = originalWidth,
                         originalHeight = originalHeight,
-                        outputs = gloveOutputs
                     )
                 } else null
 
@@ -214,7 +219,7 @@ class PillAnalyzer(
 
             if (runGloveThisFrame) {
                 performanceLogger?.logInference(
-                    modelName = "Glove Detection (PP-YOLOE+s)",
+                    modelName = "Glove Detection (YOLOX-Nano LReLU 320)",
                     inferenceTimeMs = parallelMs.toLong(),
                     preprocessTimeMs = 0,
                     postprocessTimeMs = 0,

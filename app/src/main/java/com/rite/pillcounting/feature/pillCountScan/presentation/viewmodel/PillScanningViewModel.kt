@@ -280,7 +280,7 @@ class PillScanningViewModel @Inject constructor(
 
                 val analyzer = PillAnalyzer(
                     pillInterpreter  = models.pillInterpreter,
-                    trayMasksDetector = models.trayMasksDetector,
+                    traySegDetector = models.traySegDetector,
                     gloveInterpreter = models.gloveInterpreter,
                     performanceLogger = performanceLogger,
                     shouldRunGloveDetection = { shouldRunGloveDetection },
@@ -331,7 +331,7 @@ class PillScanningViewModel @Inject constructor(
 
                 val analyzer = PillAnalyzer(
                     pillInterpreter  = models.pillInterpreter,
-                    trayMasksDetector = models.trayMasksDetector,
+                    traySegDetector = models.traySegDetector,
                     gloveInterpreter = models.gloveInterpreter,
                     performanceLogger = performanceLogger,
                     shouldRunGloveDetection = { shouldRunGloveDetection },
@@ -354,17 +354,20 @@ class PillScanningViewModel @Inject constructor(
                 _modelState.value = ModelState.Ready(analyzer)
                 logger.i("Glove model loaded — analyzer rebuilt for hazardous drug.")
 
-                // Start 20-second watchdog: unload glove model if no detection arrives.
+                // Start watchdog: unload glove model if no detection arrives.
+                // TEMP DIAGNOSTIC: bumped 20s -> 300s so we can on-device test the
+                // new classifier without losing the model mid-test. Revert to 20s
+                // once on-device behavior is verified.
                 gloveTimeoutJob?.cancel()
                 gloveTimeoutJob = viewModelScope.launch {
-                    delay(20_000L)
+                    delay(300_000L)
                     if (!_glovesDetected.value) {
                         // Stop new glove inferences immediately so no new frame starts
                         // using the interpreter we are about to close.
                         shouldRunGloveDetection = false
                         // Drain: poll until the in-flight frame analysis (which may still
-                        // be executing GloveDetector.detect() on DefaultDispatcher) fully
-                        // completes. A fixed delay is unreliable because GPU inference can
+                        // be executing GloveDetector.detect() on DefaultDispatcher)
+                        // fully completes. A fixed delay is unreliable because GPU inference can
                         // take longer than any guess. isAnalyzingFrame is @Volatile so the
                         // write on DefaultDispatcher is visible here on Main.
                         var waited = 0
@@ -396,7 +399,7 @@ class PillScanningViewModel @Inject constructor(
         val h = lastPreviewHeight
         val analyzer = PillAnalyzer(
             pillInterpreter  = models.pillInterpreter,
-            trayMasksDetector = models.trayMasksDetector,
+            traySegDetector = models.traySegDetector,
             gloveInterpreter = null,
             performanceLogger = performanceLogger,
             shouldRunGloveDetection = { shouldRunGloveDetection },
