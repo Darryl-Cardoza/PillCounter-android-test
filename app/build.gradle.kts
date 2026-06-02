@@ -14,9 +14,10 @@ plugins {
     alias(libs.plugins.androidx.room)
 }
 
+val keystorePropsFile = rootProject.file("keystore.properties")
+val hasKeystore = keystorePropsFile.exists()
 val keystoreProps = Properties().also { props ->
-    val f = rootProject.file("keystore.properties")
-    if (f.exists()) f.inputStream().use { props.load(it) }
+    if (hasKeystore) keystorePropsFile.inputStream().use { props.load(it) }
 }
 
 android {
@@ -40,16 +41,6 @@ android {
             "BASE_URL",
             "\"https://pill.ccrlindia.com/\""
         )
-
-        externalNativeBuild {
-            cmake {
-                cppFlags += "-std=c++17"
-            }
-        }
-
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-        }
     }
 
     compileOptions {
@@ -57,19 +48,17 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
-    externalNativeBuild {
-        cmake {
-            path = file("src/main/cpp/CMakeLists.txt")
-            version = "3.22.1"
-        }
-    }
-
     signingConfigs {
-        create("release") {
-            storeFile = file(keystoreProps["storeFile"] as String)
-            storePassword = keystoreProps["storePassword"] as String
-            keyAlias = keystoreProps["keyAlias"] as String
-            keyPassword = keystoreProps["keyPassword"] as String
+        // Only configure release signing when keystore.properties is present.
+        // Avoids failing the whole build (incl. debug) on clean checkouts that
+        // lack the keystore file. Behavior is unchanged when the file exists.
+        if (hasKeystore) {
+            create("release") {
+                storeFile = file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
         }
     }
 
@@ -78,7 +67,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
-            signingConfig = signingConfigs.getByName("release")
+            if (hasKeystore) signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

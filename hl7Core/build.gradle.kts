@@ -12,13 +12,16 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_21
-        targetCompatibility = JavaVersion.VERSION_21
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
+}
 
-//    kotlinOptions {
-//        jvmTarget = "17"
-//    }
+// Pin Kotlin + Java to JVM 17 to match the :app module (jvmToolchain(17)) and the
+// project's enforced JDK 17. Previously Java was set to 21 while Kotlin defaulted to
+// 17, which fails the Kotlin/Java JVM-target consistency check.
+kotlin {
+    jvmToolchain(17)
 }
 
 dependencies {
