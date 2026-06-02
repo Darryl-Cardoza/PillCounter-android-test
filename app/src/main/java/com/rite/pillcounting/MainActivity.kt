@@ -71,8 +71,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // ── Block overlays and screen recording on this window ────────────
-        window.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        // ── Block tap-jacking via overlays ────────────────────────────────
+        // NOTE: FLAG_SECURE (which blocked screenshots/screen-recording and
+        // hid the app on non-secure/cast displays) was intentionally removed
+        // to allow screen capture and recording.
         window.decorView.filterTouchesWhenObscured = true
         // Keep the screen on while the app is in the foreground. Users running
         // the camera-heavy dispense / pill-count flows would otherwise see the
