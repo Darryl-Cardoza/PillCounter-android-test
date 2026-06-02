@@ -14,8 +14,8 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * TFLite wrapper for the YOLOX-Nano gloves+hands detector
- * (`gloves_yolox_nano_lrelu_320_fp16.tflite`).
+ * TFLite wrapper for the YOLOX-Nano gloves / no_gloves detector
+ * (`gloves_detector_fp32.tflite`, shipped AES-GCM encrypted).
  *
  * Replaces the previous MobileNetV2 binary classifier. The detector
  * restores the implicit-negatives behavior the classifier lost in the
@@ -42,11 +42,13 @@ import kotlin.math.min
  *
  * Class id contract (LOCKED — matches data/coco_to_yolox.py CLASS_MAP):
  *   0 = gloves
- *   1 = hands     (bare hands, no gloves visible)
+ *   1 = no_gloves   (a hand with no glove on it)
  *
  * Downstream consumers (PillScanningViewModel) keep filtering on
  * `classId == 0 && confidence >= 0.75` for "user is wearing gloves",
  * so the existing 0.75 hysteresis threshold continues to apply.
+ * The class-1 (`no_gloves`) detections are surfaced for the on-screen
+ * overlay (CameraPreviewSection draws them red) but do not trip the gate.
  *
  * NOT thread-safe — scratch buffers are reused across frames. Call
  * `detect` from a single coroutine (PillAnalyzer does this).
@@ -71,7 +73,7 @@ object GloveDetector {
     const val DEFAULT_NMS_IOU = 0.45f
 
     /** Class labels (id-indexed). Order matches the Python CLASS_MAP. */
-    val CLASS_NAMES = arrayOf("gloves", "hands")
+    val CLASS_NAMES = arrayOf("gloves", "no_gloves")
 
     private val STRIDES = intArrayOf(8, 16, 32)
     private val GRID_SIZES = intArrayOf(

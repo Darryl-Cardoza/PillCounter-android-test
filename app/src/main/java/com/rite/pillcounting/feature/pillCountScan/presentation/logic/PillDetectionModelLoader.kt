@@ -69,7 +69,7 @@ class PillDetectionModelLoader @Inject constructor(
         // ORT-CPU. Tray now runs on TFLite GPU OpenCL — Mali-friendly op set
         // (Conv/ReLU6/BN/Add/Concat/Resize-nearest only).
         private const val TRAY_MODEL_FILENAME = "tray_seg_mbv2_unet_384_float16.tflite"
-        // YOLOX-Nano gloves+hands detector (LeakyReLU, 6x6-Conv stem, 320 input).
+        // YOLOX-Nano gloves / no_gloves detector (LeakyReLU, 6x6-Conv stem, 320 input).
         // Replaces the MobileNetV2 binary classifier — the classifier had no
         // training signal for empty scenes (every training image contained a
         // hand or glove) and false-positived on no-hand frames. The detector
@@ -79,7 +79,7 @@ class PillDetectionModelLoader @Inject constructor(
         // validate_gpu_delegate.py). Inference is decoded in GloveDetector —
         // sigmoid + box decode + per-class NMS on CPU.
         // AES-GCM RITE encryption, same scheme as pill + tray.
-        private const val GLOVE_MODEL_FILENAME = "gloves_yolox_nano_lrelu_320_float32.tflite"
+        private const val GLOVE_MODEL_FILENAME = "gloves_detector_fp32.tflite"
         private const val TAG = "LoadModel"
 
         private const val TRAY_MODEL_ENABLED = true
@@ -203,7 +203,7 @@ class PillDetectionModelLoader @Inject constructor(
                         gloveGpuDelegate = holder.gpuDelegate
                         val gloveInterpreterTime = System.currentTimeMillis() - gloveInterpreterStart
                         performanceLogger.logModelLoad(
-                            modelName = "Glove Detection Model (PP-YOLOE+s)",
+                            modelName = "Glove Detection Model (YOLOX-Nano)",
                             loadedOn = if (holder.usesGpu) "GPU" else "CPU+XNNPACK",
                             interpreter = holder.interpreter,
                             modelSizeBytes = gloveBuffer.capacity().toLong(),
