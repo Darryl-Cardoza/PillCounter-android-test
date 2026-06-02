@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.pillCountScan.presentation.compose
+package com.rite.pillcounting.feature.dispenseFlow.presentation.compose
 
 /**
  * UI state for the redesigned Batch Stock Count side panel.

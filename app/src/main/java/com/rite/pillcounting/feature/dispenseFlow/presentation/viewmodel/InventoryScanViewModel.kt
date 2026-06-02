@@ -19,9 +19,9 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ActiveNdc
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountUiState
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentBatchRow
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.ActiveNdc
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BatchStockCountUiState
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.RecentBatchRow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -35,7 +35,6 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter

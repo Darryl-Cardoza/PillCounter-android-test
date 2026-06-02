@@ -161,6 +161,19 @@ class PhoneNumberVisualTransformation : VisualTransformation {
  */
 object UserInterfaceUtils {
 
+    /** smallestScreenWidthDp threshold used to classify a device as a tablet. */
+    const val TABLET_BREAKPOINT_DP = 600
+
+    /** True when the current device's smallest width meets the tablet breakpoint. */
+    @Composable
+    fun isTablet(): Boolean =
+        LocalConfiguration.current.smallestScreenWidthDp >= TABLET_BREAKPOINT_DP
+
+    /** True when the current configuration is landscape. */
+    @Composable
+    fun isLandscape(): Boolean =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
     // ───────────────────────────── Toast Helpers ─────────────────────────────
 
     /** Displays a short Toast with plain text. */

@@ -26,42 +26,35 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.Inventory2
-import androidx.compose.material.icons.outlined.PriorityHigh
-import androidx.compose.material.icons.outlined.Refresh
-import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material.icons.outlined.Task
-import androidx.compose.material.icons.outlined.Warning
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
-import coil.compose.rememberAsyncImagePainter
-import coil.request.ImageRequest
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.MenuButton
+import com.rite.pillcounting.core.utils.compose.DrugCountRow
+import com.rite.pillcounting.core.utils.compose.DrugCountRowData
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardUiState
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
-import java.io.File
+import com.rite.pillcounting.feature.dashboard.presentation.model.DefaultKpiCards
+import com.rite.pillcounting.feature.history.presentation.compose.BatchHistoryRow
+import com.rite.pillcounting.ui.theme.AppTheme
+import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -101,7 +94,7 @@ internal fun ScaffoldTopBar(
     ) {
         Image(
             painter = painterResource(id = R.drawable.ic_launcher_foreground),
-            contentDescription = "Pill Counter",
+            contentDescription = stringResource(R.string.pill_count_app_title),
             modifier = Modifier.size(logoSize),
         )
         Spacer(modifier = Modifier.width(if (compact) 8.dp else 4.dp))
@@ -109,7 +102,7 @@ internal fun ScaffoldTopBar(
             Text(
                 text = pharmacyName ?: "—",
                 style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
-                color = DashboardPrimaryText,
+                color = extendedColors.textColor,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -117,7 +110,7 @@ internal fun ScaffoldTopBar(
             Text(
                 text = terminalAndUserLine,
                 style = MaterialTheme.typography.bodySmall,
-                color = DashboardSubtleText,
+                color = extendedColors.textColor,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
@@ -134,7 +127,9 @@ internal fun ScaffoldTopBar(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = if (isPmsConnected) "PMS Connected" else "PMS Disconnected",
+                    text = stringResource(
+                        if (isPmsConnected) R.string.pms_status_connected else R.string.pms_status_disconnected
+                    ),
                     style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.secondary,
                     maxLines = 1,
@@ -158,7 +153,7 @@ internal fun ScaffoldQuickActionCard(
     Card(
         modifier = modifier.clickable { onClick() },
         shape = RoundedCornerShape(12.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = extendedColors.secondaryBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Row(
@@ -186,7 +181,7 @@ internal fun ScaffoldQuickActionCard(
                 Text(
                     text = subtitle,
                     style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
-                    color = DashboardSubtleText,
+                    color = extendedColors.textColor,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
@@ -195,21 +190,6 @@ internal fun ScaffoldQuickActionCard(
     }
 }
 
-internal data class KpiCardSpec(
-    val filter: KpiFilter,
-    val lineOne: String,
-    val lineTwo: String,
-    val icon: ImageVector,
-)
-
-internal val DefaultKpiCards: List<KpiCardSpec> = listOf(
-    KpiCardSpec(KpiFilter.DISP_HIGH_PRIORITY, "Disp.", "High Priority", Icons.Outlined.PriorityHigh),
-    KpiCardSpec(KpiFilter.DISP_PENDING, "Disp.", "Pending", Icons.Outlined.Refresh),
-    KpiCardSpec(KpiFilter.DISP_CONTROLLED, "Disp.", "Cont. Drugs", Icons.Outlined.Shield),
-    KpiCardSpec(KpiFilter.DISP_HAZARDOUS, "Disp.", "Hazardous", Icons.Outlined.Warning),
-    KpiCardSpec(KpiFilter.INV_CYCLE_COUNT, "Inv.", "Cycle Count", Icons.Outlined.Task),
-    KpiCardSpec(KpiFilter.INV_PENDING_BATCH, "Inv.", "Pending Batch", Icons.Outlined.Inventory2),
-)
 
 @Composable
 internal fun ScaffoldKpiRow(
@@ -225,8 +205,8 @@ internal fun ScaffoldKpiRow(
         DefaultKpiCards.forEach { spec ->
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
-                lineOne = spec.lineOne,
-                lineTwo = spec.lineTwo,
+                lineOne = stringResource(spec.lineOneRes),
+                lineTwo = stringResource(spec.lineTwoRes),
                 icon = spec.icon,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
@@ -257,8 +237,8 @@ internal fun ScaffoldKpiColumn(
         DefaultKpiCards.forEach { spec ->
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
-                lineOne = spec.lineOne,
-                lineTwo = spec.lineTwo,
+                lineOne = stringResource(spec.lineOneRes),
+                lineTwo = stringResource(spec.lineTwoRes),
                 icon = spec.icon,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
@@ -290,8 +270,8 @@ internal fun ScaffoldKpiScrollColumn(
         DefaultKpiCards.forEach { spec ->
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
-                lineOne = spec.lineOne,
-                lineTwo = spec.lineTwo,
+                lineOne = stringResource(spec.lineOneRes),
+                lineTwo = stringResource(spec.lineTwoRes),
                 icon = spec.icon,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
@@ -324,8 +304,8 @@ internal fun ScaffoldKpiScrollRow(
         DefaultKpiCards.forEach { spec ->
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
-                lineOne = spec.lineOne,
-                lineTwo = spec.lineTwo,
+                lineOne = stringResource(spec.lineOneRes),
+                lineTwo = stringResource(spec.lineTwoRes),
                 icon = spec.icon,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
@@ -359,7 +339,7 @@ internal fun ScaffoldKpiCard(
     val containerColor = if (isActive) {
         MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
     } else {
-        Color.White
+        extendedColors.secondaryBackground
     }
     Card(
         modifier = modifier
@@ -393,7 +373,7 @@ internal fun ScaffoldKpiCard(
                     Text(
                         text = lineTwo,
                         style = MaterialTheme.typography.bodySmall,
-                        color = DashboardSubtleText,
+                        color = extendedColors.textColor,
                         maxLines = 1,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     )
@@ -401,12 +381,12 @@ internal fun ScaffoldKpiCard(
                     Text(
                         text = lineOne,
                         style = MaterialTheme.typography.bodySmall,
-                        color = DashboardSubtleText,
+                        color = extendedColors.textColor,
                     )
                     Text(
                         text = lineTwo,
                         style = MaterialTheme.typography.bodySmall,
-                        color = DashboardSubtleText,
+                        color = extendedColors.textColor,
                     )
                 }
             }
@@ -422,13 +402,13 @@ internal fun ScaffoldTabStrip(
 ) {
     Row(modifier = modifier.fillMaxWidth()) {
         ScaffoldTab(
-            label = "TODAY'S QUEUE",
+            label = stringResource(R.string.todays_queue),
             isActive = activeTab == DashboardTab.TODAYS_QUEUE,
             onClick = { onSelect(DashboardTab.TODAYS_QUEUE) },
             modifier = Modifier.weight(1f),
         )
         ScaffoldTab(
-            label = "RECENT ACTIVITY",
+            label = stringResource(R.string.recent_activity),
             isActive = activeTab == DashboardTab.RECENT_ACTIVITY,
             onClick = { onSelect(DashboardTab.RECENT_ACTIVITY) },
             modifier = Modifier.weight(1f),
@@ -454,7 +434,7 @@ private fun ScaffoldTab(
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
-            color = if (isActive) MaterialTheme.colorScheme.secondary else DashboardSubtleText,
+            color = if (isActive) MaterialTheme.colorScheme.secondary else extendedColors.textColor,
             fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
         )
         Spacer(modifier = Modifier.height(4.dp))
@@ -482,9 +462,9 @@ internal fun ScaffoldQueueList(
             contentAlignment = Alignment.Center,
         ) {
             Text(
-                text = "Nothing here yet",
+                text = stringResource(R.string.nothing_here_yet),
                 style = MaterialTheme.typography.bodyMedium,
-                color = DashboardSubtleText,
+                color = extendedColors.textColor,
             )
         }
         return
@@ -502,220 +482,30 @@ internal fun ScaffoldQueueList(
             }
         }) { item ->
             when (item) {
-                is QueueItem.Dispense -> ScaffoldDispenseRow(item, onDispenseClick)
-                is QueueItem.Inventory -> ScaffoldInventoryRow(item, onInventoryClick)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ScaffoldDispenseRow(item: QueueItem.Dispense, onClick: ((Long) -> Unit)?) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (onClick != null) {
-                    Modifier.clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                    ) { onClick(item.txn.txnId) }
-                } else Modifier
-            ),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = BorderStroke(1.dp, Color(0x14000000)),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 72.dp, height = 56.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFFF0F0F0)),
-                contentAlignment = Alignment.Center,
-            ) {
-                val path = item.txn.barcodeImage
-                if (!path.isNullOrEmpty()) {
-                    Image(
-                        painter = rememberAsyncImagePainter(
-                            ImageRequest.Builder(LocalContext.current)
-                                .data(File(path))
-                                .size(216, 168) // 3x the 72x56dp display box; Coil downsamples on decode
-                                .placeholder(R.drawable.prescription_icon)
-                                .error(R.drawable.prescription_icon)
-                                .build()
-                        ),
-                        contentDescription = null,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize(),
-                    )
-                } else {
-                    Icon(
-                        painter = painterResource(id = R.drawable.prescription_icon),
-                        contentDescription = null,
-                        tint = DashboardSubtleText,
-                        modifier = Modifier.size(28.dp),
-                    )
-                }
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = "NDC ${item.txn.ndc ?: "—"}",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.secondary,
-                    fontWeight = FontWeight.SemiBold,
+                is QueueItem.Dispense -> DrugCountRow(
+                    data = DrugCountRowData(
+                        barcodeImage = item.txn.barcodeImage,
+                        ndc = item.txn.ndc,
+                        drugType = item.txn.drugType,
+                        drugName = item.txn.drugName ?: "—",
+                        date = formatDate(item.txn.createdAt),
+                        bucketId = item.txn.bucketId,
+                        pillCount = item.txn.totalPillCount,
+                        targetCount = item.txn.targetCount ?: 0,
+                        countType = item.txn.countType,
+                        isComingFromHL7 = item.txn.isComingFromHL7,
+                    ),
+                    onClick = { onDispenseClick?.invoke(item.txn.txnId) },
                 )
-                Text(
-                    text = item.txn.drugName ?: "—",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = DashboardPrimaryText,
-                )
-                Row {
-                    Text(
-                        text = formatDate(item.txn.createdAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = DashboardSubtleText,
-                    )
-                    if (item.is340B) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "340B",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = DashboardSubtleText,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-            }
-            val target = item.txn.targetCount ?: 0
-            val have = item.txn.totalPillCount
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                if (target > 0) {
-                    ProgressPie(
-                        progress = (have.toFloat() / target.toFloat()).coerceIn(0f, 1f),
-                        color = MaterialTheme.colorScheme.secondary,
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-                Text(
-                    text = if (target > 0) "$have/$target" else "$have",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = DashboardPrimaryText,
-                    fontWeight = FontWeight.SemiBold,
+                is QueueItem.Inventory -> BatchHistoryRow(
+                    title = item.batch.batchId.toString(),
+                    dateTime = formatDate(item.batch.createdAt),
+                    bucketId = item.batch.bucketId,
+                    count = item.batch.uniqueNdcCount.toString(),
+                    isPrescription = item.batch.requestIdFromPMS != null,
+                    onBatchClick = { onInventoryClick?.invoke(item.batch.batchId) },
                 )
             }
-        }
-    }
-}
-
-/**
- * Tiny filled pie indicator showing `progress` (0..1) of a target. Empty arc is rendered as a
- * light grey ring so 0% reads as a hollow circle and 100% as a fully filled disk.
- */
-@Composable
-private fun ProgressPie(
-    progress: Float,
-    color: Color,
-    size: androidx.compose.ui.unit.Dp = 24.dp,
-) {
-    androidx.compose.foundation.Canvas(modifier = Modifier.size(size)) {
-        // Empty backdrop ring so the shape is visible at 0%.
-        drawCircle(color = Color(0xFFE0E0E0))
-        if (progress > 0f) {
-            drawArc(
-                color = color,
-                startAngle = -90f,
-                sweepAngle = 360f * progress,
-                useCenter = true,
-            )
-        }
-    }
-}
-
-@Composable
-private fun ScaffoldInventoryRow(item: QueueItem.Inventory, onClick: ((Long) -> Unit)?) {
-    val interactionSource = remember { MutableInteractionSource() }
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (onClick != null) {
-                    Modifier.clickable(
-                        interactionSource = interactionSource,
-                        indication = null,
-                    ) { onClick(item.batch.batchId) }
-                } else Modifier
-            ),
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = BorderStroke(1.dp, Color(0x14000000)),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 20.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(width = 72.dp, height = 56.dp)
-                    .clip(RoundedCornerShape(6.dp))
-                    .background(Color(0xFFF0F0F0)),
-                contentAlignment = Alignment.Center,
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.stock),
-                    contentDescription = null,
-                    tint = DashboardSubtleText,
-                    modifier = Modifier.size(28.dp),
-                )
-            }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(
-                    text = item.batch.batchId.toString(),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.secondary,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Row {
-                    Text(
-                        text = formatDate(item.batch.createdAt),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = DashboardSubtleText,
-                    )
-                    if (item.is340B) {
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = "340B",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = DashboardSubtleText,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                }
-            }
-            Text(
-                text = "${item.batch.uniqueNdcCount} NDCs",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
-            )
         }
     }
 }
@@ -750,8 +540,3 @@ private fun QuickActionRingIcon(
 private val DATE_FMT = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
 
 internal fun formatDate(epochMillis: Long): String = DATE_FMT.format(Date(epochMillis))
-
-// Single-mode (light) palette per HOMESCREEN_REDESIGN.md.
-internal val DashboardPageBackground = Color(0xFFF2F3F5)
-internal val DashboardPrimaryText = Color(0xFF1F1F1F)
-internal val DashboardSubtleText = Color(0xFF8A8A8A)

@@ -1,5 +1,7 @@
 package com.rite.pillcounting.feature.dashboard.presentation.variant
 
+import com.rite.pillcounting.feature.dashboard.presentation.model.DashboardVariantParams
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,18 +23,18 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
-import com.rite.pillcounting.feature.dashboard.presentation.compose.DashboardPageBackground
-import com.rite.pillcounting.feature.dashboard.presentation.compose.DashboardSubtleText
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldKpiScrollColumn
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldQueueList
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldQuickActionCard
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldTabStrip
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldTopBar
 import com.rite.pillcounting.feature.dashboard.presentation.compose.buildTerminalUserLine
+import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 import kotlinx.coroutines.launch
 
 /**
@@ -54,7 +56,7 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
         modifier = Modifier
             .fillMaxSize()
             .systemBarsPadding()
-            .background(DashboardPageBackground)
+            .background(extendedColors.primaryBackground)
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             ScaffoldTopBar(
@@ -99,9 +101,9 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = "QUICK ACTIONS",
+                        text = stringResource(R.string.quick_actions),
                         style = MaterialTheme.typography.labelSmall,
-                        color = DashboardSubtleText,
+                        color = extendedColors.textColor,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(0.55f),
                     )
@@ -130,8 +132,8 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         ScaffoldQuickActionCard(
-                            title = "Dispense",
-                            subtitle = "Tap to scan Rx Labels",
+                            title = stringResource(R.string.dispense),
+                            subtitle = stringResource(R.string.tap_to_scan_rx_labels),
                             innerIconRes = R.drawable.regular_count_inner,
                             onClick = params.onDispenseQuickAction,
                             modifier = Modifier
@@ -140,8 +142,8 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                             compact = true,
                         )
                         ScaffoldQuickActionCard(
-                            title = "Stock Count",
-                            subtitle = "Start inventory count",
+                            title = stringResource(R.string.stock_count),
+                            subtitle = stringResource(R.string.start_inventory_count),
                             innerIconRes = R.drawable.fixed_count_inner,
                             onClick = params.onInventoryQuickAction,
                             modifier = Modifier

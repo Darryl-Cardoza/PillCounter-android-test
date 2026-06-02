@@ -35,11 +35,11 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ActiveNdc
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.ActiveNdc
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountHeader
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountSampleData
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountUiState
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentBatchRow
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BatchStockCountSampleData
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BatchStockCountUiState
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.RecentBatchRow
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsLabelRow
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugDetailsPortrait

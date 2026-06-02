@@ -13,7 +13,7 @@ import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
-import com.rite.pillcounting.core.utils.common.HelperFunctions.mapCounts
+import com.rite.pillcounting.core.settings.domain.model.enums.ScheduleCode
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -22,6 +22,7 @@ import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardUiState
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
+import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
 import com.rite.pillcounting.feature.dashboard.domain.model.UserProfile
 import com.rite.pillcounting.feature.dashboard.domain.model.UserSettings
@@ -99,31 +100,23 @@ class DashboardViewModel @Inject constructor(
         logger.i("DashboardViewModel initialized.")
         //  To avoid initial observe count call because of absence of localId
         if (preferenceHelper.getLocalId() != 0.toLong()) {
-            observeDashboardCounts()
-            observeBatchCount()
-            observeCompletedBatchCount()
             observeQueue()
         }
-        hydrateUserDetailFromCache()
+        observeUserDetail()
         fetchUserDetail()
     }
 
     /**
-     * Seed `uiState.userDetail` from the local Room cache (and terminals from prefs) so the
-     * top bar shows last-known pharmacy/user immediately on cold start — before the network
-     * fetch in [fetchUserDetail] returns. The network result later overwrites this.
+     * Room is the single source of truth for the top bar: map each cached [UserEntity]
+     * (terminals come from prefs, not Room) into `uiState.userDetail`. [fetchUserDetail]
+     * only writes to Room; its upsert re-emits here. No-ops until `localId` exists.
      */
-    private fun hydrateUserDetailFromCache() {
+    private fun observeUserDetail(localId: Long = preferenceHelper.getLocalId()) {
+        if (localId == 0L) return
         viewModelScope.launch(Dispatchers.IO) {
-            val localId = preferenceHelper.getLocalId()
-            if (localId == 0L) return@launch
             userDao.observeByLocalId(localId).collect { entity ->
-                if (entity == null) return@collect
-                val cached = entity.toCachedUserDetail(preferenceHelper.getTerminals())
-                _uiState.update { current ->
-                    // Don't clobber fresher data from the network fetch.
-                    if (current.userDetail == null) current.copy(userDetail = cached) else current
-                }
+                val detail = entity?.toUserDetail(preferenceHelper.getTerminals()) ?: return@collect
+                _uiState.update { it.copy(userDetail = detail) }
             }
         }
     }
@@ -155,49 +148,6 @@ class DashboardViewModel @Inject constructor(
     fun getBucketList(): List<String> = preferenceHelper.getBucketList()
 
     suspend fun getLastInProgressBatch() = batchDao.getLatest()
-
-    /**
-     * Observe aggregated transaction counts and update the dashboard UI state.
-     *
-     * Counts are grouped by [CountType] and [CountStatus] (Completed/Partial).
-     * Uses [mapCounts] to transform database rows into strongly typed buckets.
-     */
-    private fun observeDashboardCounts(localId: Long = preferenceHelper.getLocalId()) {
-        viewModelScope.launch(Dispatchers.IO) {
-            pillCountTxnDao.observeDashboardCountsGrouped(localId)
-                .collect { rows ->
-                    val counts = mapCounts(rows)
-                    _uiState.update {
-                        it.copy(
-                            completedFixedCount = counts.fixedCompleted.toString(),
-                            partialFixedCount = counts.fixedPartial.toString(),
-//                            completedRegularCount = counts.regularCompleted.toString(),
-//                            partialRegularCount = counts.regularPartial.toString()
-                        )
-                    }
-                }
-        }
-    }
-
-    private fun observeBatchCount() {
-        viewModelScope.launch(Dispatchers.IO) {
-            batchDao.observeActiveInProgressCount().collect { count ->
-                _uiState.update {
-                    it.copy(partialRegularCount = count.toString())
-                }
-            }
-        }
-    }
-
-    private fun observeCompletedBatchCount() {
-        viewModelScope.launch(Dispatchers.IO) {
-            batchDao.observeCompletedBatchCount().collect { count ->
-                _uiState.update {
-                    it.copy(completedRegularCount = count.toString())
-                }
-            }
-        }
-    }
 
     // ─────────────────────────── New dashboard: queue + KPIs ───────────────────────────
 
@@ -437,12 +387,12 @@ class DashboardViewModel @Inject constructor(
                                 logger.i("Terminal info loaded signal sent - HL7 can now start")
                             }
                             
-                            //  To call observe count for first time when localId is 0 (from preference)
+                            //  To call observe count + user detail for the first time when
+                            //  localId is 0 (from preference) — i.e. first-ever launch, where
+                            //  the init-time observers no-opped for lack of a localId.
                             if (preferenceHelper.getLocalId() == 0.toLong()) {
-                                observeDashboardCounts(localId)
-                                observeBatchCount()
-                                observeCompletedBatchCount()
                                 observeQueue(localId)
+                                observeUserDetail(localId)
                             }
                             preferenceHelper.saveLocalId(localId)
                             logger.i("User persisted locally with localId=$localId")
@@ -451,10 +401,12 @@ class DashboardViewModel @Inject constructor(
                         // Check if profile is incomplete
                         val isProfileIncomplete = uiUser?.profile?.isProfileCompleted == false
 
+                        // userDetail is intentionally NOT set here: Room is the single source
+                        // of truth (see [observeUserDetail]). The upsert above re-emits and
+                        // updates the top bar. If the server returned null data, no upsert
+                        // happened, so the observer keeps emitting the last cached value.
                         _uiState.update { current ->
                             current.copy(
-                                // Keep cached userDetail if the server returned null data.
-                                userDetail = uiUser ?: current.userDetail,
                                 isLoadingUserDetail = false,
                                 userDetailError = null,
                                 navigateToProfile = isProfileIncomplete
@@ -530,29 +482,26 @@ class DashboardViewModel @Inject constructor(
 
     private companion object {
         const val RECENT_ACTIVITY_WINDOW_DAYS = 30L
-
-        /** DEA controlled-substance schedules stored in `drug_master.drugType`. */
-        private val CONTROLLED_DRUG_TYPES = setOf("CI", "CII", "CIII", "CIV", "CV")
-
-        fun isControlledDrugType(drugType: String?): Boolean =
-            drugType?.trim()?.uppercase() in CONTROLLED_DRUG_TYPES
     }
+}
+
+/** True when `drug_master.drugType` matches a DEA controlled-substance schedule ([ScheduleCode]). */
+private fun isControlledDrugType(drugType: String?): Boolean {
+    val code = drugType?.trim()?.uppercase() ?: return false
+    return ScheduleCode.entries.any { it.name == code }
 }
 
 /* ───────────────────────────── Mappers ───────────────────────────── */
 
 /**
- * Map API payload [UserDetail] to persistence [UserEntity].
- * Uses [jwtUserId] (from JWT) as the Room primary key; falls back to email if missing.
- */
-/**
  * Reverse of [toUserEntity]: build a [UserDetail] from the locally-cached [UserEntity] plus
- * the terminals list cached in preferences. Used to hydrate the dashboard top bar on cold
- * start before the network fetch returns. Fields not persisted locally (role, bucket, etc.)
- * default to null and are refreshed when the network call lands.
+ * the terminals list from preferences. This is the mapper for the dashboard's single source
+ * of truth (see [DashboardViewModel.observeUserDetail]) — every Room emission flows through it.
+ * Fields not persisted locally (role, bucket, etc.) default to null and are refreshed when the
+ * network call lands.
  */
-private fun UserEntity.toCachedUserDetail(
-    terminals: List<com.rite.pillcounting.feature.dashboard.domain.model.Terminal>,
+private fun UserEntity.toUserDetail(
+    terminals: List<Terminal>,
 ): UserDetail {
     val profile = UserProfile(
         fName = this.fName,
@@ -574,6 +523,10 @@ private fun UserEntity.toCachedUserDetail(
     return UserDetail(profile = profile, settings = settings, terminals = terminals)
 }
 
+/**
+ * Map API payload [UserDetail] to persistence [UserEntity].
+ * Uses [jwtUserId] (from JWT) as the Room primary key; falls back to email if missing.
+ */
 private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
     val pk = jwtUserId ?: this.profile?.email.orEmpty()
     return UserEntity(

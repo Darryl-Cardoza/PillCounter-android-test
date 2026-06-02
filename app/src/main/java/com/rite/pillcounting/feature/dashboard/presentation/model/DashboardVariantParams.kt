@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.dashboard.presentation.variant
+package com.rite.pillcounting.feature.dashboard.presentation.model
 
 import androidx.compose.runtime.Immutable
 import androidx.navigation.NavController

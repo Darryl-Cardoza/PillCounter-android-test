@@ -2,7 +2,6 @@
 
 import Screen
 import android.app.Activity
-import android.content.res.Configuration
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -11,36 +10,31 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
-import android.widget.Toast
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.ui.unit.dp
+import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
-import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
-import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
+import com.rite.pillcounting.feature.dashboard.presentation.model.DashboardVariantParams
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhoneLandscape
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhonePortrait
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardTabletLandscape
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardTabletPortrait
-import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardVariantParams
 import com.rite.pillcounting.feature.dashboard.presentation.viewmodel.DashboardViewModel
-import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
 
 private val logger = AppLogger("DashboardScreen")
@@ -58,9 +52,9 @@ private val logger = AppLogger("DashboardScreen")
  * all accept the same [DashboardVariantParams]. This enforces "same data, different placement"
  * at the type level.
  *
- * Variant selection uses [Configuration.smallestScreenWidthDp] (≥600dp = tablet) plus the current
- * orientation. This avoids pulling in the material3-window-size-class artifact for what is, in
- * practice, a binary form-factor decision.
+ * Variant selection uses [UserInterfaceUtils.isTablet] (smallest-width ≥600dp) plus
+ * [UserInterfaceUtils.isLandscape]. This avoids pulling in the material3-window-size-class
+ * artifact for what is, in practice, a binary form-factor decision.
  */
 @Composable
 fun DashboardScreen(
@@ -151,7 +145,6 @@ fun DashboardScreen(
     // Inventory Quick Action goes straight to bucket-select: clicking Inventory always
     // creates a new batch. (Resume-last is reachable from elsewhere if needed.)
     var showBucketSelectDialog by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
 
     // ── Build the params bag shared by every variant ──
     // Lambdas are remembered so [DashboardVariantParams] is referentially stable across
@@ -177,13 +170,11 @@ fun DashboardScreen(
         { txnId: Long ->
             viewModel.selectCurrentTransaction(txnId)
             navController.navigate(Screen.HistoryDetail.route)
-            Unit
         }
     }
     val onRecentBatchClick = remember(navController) {
         { batchId: Long ->
             navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
-            Unit
         }
     }
     val onQueueDispenseClick = remember(viewModel, navController) {
@@ -195,13 +186,11 @@ fun DashboardScreen(
                     fromResume = true,
                 )
             )
-            Unit
         }
     }
     val onQueueInventoryClick = remember(navController) {
         { batchId: Long ->
             navController.navigate(Screen.InventoryScan.createRoute(batchId))
-            Unit
         }
     }
 
@@ -228,6 +217,7 @@ fun DashboardScreen(
         val defaultBucketIndex = bucketList
             .indexOfFirst { it.equals("Normal", ignoreCase = true) }
             .let { if (it >= 0) it else if (bucketList.isNotEmpty()) 0 else null }
+
         CommonSingleSelectDialog(
             title = stringResource(R.string.select_bucket),
             options = bucketList,
@@ -244,9 +234,8 @@ fun DashboardScreen(
     }
 
     // ── Dispatch to the right variant ──
-    val config = LocalConfiguration.current
-    val isTablet = config.smallestScreenWidthDp >= TABLET_BREAKPOINT_DP
-    val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isTablet = UserInterfaceUtils.isTablet()
+    val isLandscape = UserInterfaceUtils.isLandscape()
 
     when {
         isTablet && !isLandscape -> DashboardTabletPortrait(params)
@@ -278,6 +267,3 @@ fun DashboardScreen(
         )
     }
 }
-
-/** Smallest-width breakpoint that distinguishes tablets from phones (matches Android's `sw600dp` qualifier). */
-private const val TABLET_BREAKPOINT_DP = 600

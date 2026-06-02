@@ -20,11 +20,28 @@
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispense</string>
+    <string name="inventory">Inventory</string>
     <string name="tap_to_scan_rx_labels">Tap to scan Rx Labels</string>
     <string name="stock_count">Stock Count</string>
     <string name="start_a_new_inventory_count">Start a new inventory count</string>
+    <string name="start_inventory_count">Start inventory count</string>
     <string name="completed">Completed</string>
     <string name="partial">Pending</string>
+    <string name="quick_actions">QUICK ACTIONS</string>
+    <string name="todays_queue">TODAY\'S QUEUE</string>
+    <string name="recent_activity">RECENT ACTIVITY</string>
+    <string name="nothing_here_yet">Nothing here yet</string>
+    <string name="pms_status_connected">PMS Connected</string>
+    <string name="pms_status_disconnected">PMS Disconnected</string>
+    <string name="kpi_disp_short">Disp.</string>
+    <string name="kpi_inv_short">Inv.</string>
+    <string name="kpi_high_priority">High Priority</string>
+    <string name="kpi_pending">Pending</string>
+    <string name="kpi_cont_drugs">Cont. Drugs</string>
+    <string name="kpi_hazardous">Hazardous</string>
+    <string name="kpi_cycle_count">Cycle Count</string>
+    <string name="kpi_pending_batch">Pending Batch</string>
+    <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title" translatable="false">SETTINGS</string>
     <string name="setting_ask_to_add_notes">Always ask to add Notes</string>

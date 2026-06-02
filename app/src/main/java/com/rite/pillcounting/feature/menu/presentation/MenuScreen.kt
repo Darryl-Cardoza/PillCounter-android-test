@@ -29,7 +29,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.HistoryRetention
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -120,7 +119,7 @@ fun MenuScreen(
                 onCompletedClick = { navController.navigate(Screen.History.createRoute(HistoryMode.DISPENSE)) },
             )
 
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+            HorizontalDivider(color = extendedColors.primaryBackground)
 
             // Regular Count
             MenuItemRow(

@@ -146,10 +146,6 @@ class MainActivity : ComponentActivity() {
                     )
 
                     PillCountingNewModelsTheme(
-                        // Always render in light mode using the API-driven light
-                        // palette, regardless of the device's system dark setting.
-                        // The app is configured for light theme only (see Theme.kt).
-                        darkTheme = false,
                         lightColors         = lightColorSchemeDynamic,
                         darkColors          = darkColorSchemeDynamic,
                         lightExtendedColors = extendedDynamicLight,

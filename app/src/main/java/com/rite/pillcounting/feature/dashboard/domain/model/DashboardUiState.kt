@@ -2,29 +2,8 @@ package com.rite.pillcounting.feature.dashboard.domain.model
 
 /**
  * Aggregated UI state for the Dashboard screen.
- *
- * Carries both the legacy fields (still consumed by the current
- * FixedCountSection / RegularCountSection on the 3 non-tablet-portrait variants)
- * and the new dashboard fields (queue, KPI counts, active filter, active tab)
- * consumed by [com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardTabletPortrait].
- *
- * Once all 4 variants are migrated to the new layout the legacy fields can be removed.
  */
 data class DashboardUiState(
-
-    // ──────────────────────── Legacy (used by SplitResponsive variants) ────────────────────────
-
-    /** Number of fixed counts that have been fully completed. */
-    val completedFixedCount: String = "0",
-
-    /** Number of fixed counts that are in progress or partially completed. */
-    val partialFixedCount: String = "0",
-
-    /** Number of regular counts that have been fully completed. */
-    val completedRegularCount: String = "0",
-
-    /** Number of regular counts that are in progress or partially completed. */
-    val partialRegularCount: String = "0",
 
     // ──────────────────────────────────── User / auth ────────────────────────────────────
 
