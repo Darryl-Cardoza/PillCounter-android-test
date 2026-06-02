@@ -19,14 +19,6 @@ sealed interface Screen {
         override val route: String = "login"
     }
 
-    data object Register : Screen {
-        override val route: String = "register"
-    }
-
-    data object ForgotPassword : Screen {
-        override val route: String = "forgot_password"
-    }
-
     data object Dashboard : Screen {
         override val route: String = "dashboard"
     }

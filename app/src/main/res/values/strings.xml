@@ -9,11 +9,7 @@
 
     <!-- ================== AUTH / LOGIN / REGISTER ================== -->
     <string name="email">Email</string>
-    <string name="password">Password</string>
     <string name="remember_me">Remember me</string>
-    <string name="register">Register</string>
-    <string name="forgot_password">Forgot Password?</string>
-    <string name="confirm_password">Confirm Password</string>
     <string name="code_sent_to">Security code has been sent to</string>
     <string name="pre_resend_code">Resend code in %1$d s</string>
     <string name="resend_code">Resend code</string>
@@ -22,35 +18,23 @@
     <string name="update_button_text">UPDATE</string>
 
     <!-- ================== FORGOT PASSWORD ================== -->
-    <string name="password_recovery">Password Recovery</string>
-    <string name="password_recovery_desc">Enter your registered email ID and we will send instructions on how to reset it.</string>
-    <string name="your_registered_email">Your registered email</string>
-    <string name="send_otp">Send OTP</string>
-
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispense</string>
     <string name="tap_to_scan_rx_labels">Tap to scan Rx Labels</string>
     <string name="stock_count">Stock Count</string>
     <string name="start_a_new_inventory_count">Start a new inventory count</string>
-    <string name="new_rx">New Rx</string>
     <string name="completed">Completed</string>
-    <string name="ndc_req">NDC Req.</string>
     <string name="partial">Pending</string>
-    <string name="barcode_scan">Scan Code</string>
-
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title" translatable="false">SETTINGS</string>
-    <string name="setting_barcode_scan_first">Always do Barcode Scan first</string>
     <string name="setting_ask_to_add_notes">Always ask to add Notes</string>
     <string name="setting_save_history_for">Save history for</string>
     <string name="pill_counting_sound">Pill Counting Sound</string>
     <string name="require_double_count">Require Double Counts</string>
     <string name="require_back_count">Require Back Counts</string>
-    <string name="require_adjust_resons">Require Adjust Reasons</string>
     <string name="haptic_feedback">Haptic Feedback</string>
     <string name="clear_all_local_data">Clear All Local Data</string>
     <string name="are_you_sure_you_want_to_clear_all_data">Are you sure you want to clear all data?</string>
-    <string name="select_schedule_codes">Select Schedule Codes</string>
     <string name="voice_feedback">Voice Feedback</string>
     <string name="setting_hazardous_drug">Hazardous Drug</string>
     <string name="tray_classification_title">Tray Classification</string>
@@ -70,21 +54,15 @@
 
     <!-- ================== HISTORY ================== -->
     <string name="history_title">HISTORY</string>
-    <string name="counts_label">%d counts</string>
-    <string name="menu_history_duration">3 months</string>
     <string name="no_data_found">No Data Found</string>
     <string name="drug_history_details">Drug History Details</string>
-    <string name="drugs_count">%d drugs</string>
-
     <!-- ================== VALIDATION ERRORS ================== -->
-    <string name="error_email_empty">Email cannot be empty.</string>
     <string name="error_email_invalid">Please enter a valid email address.</string>
     <string name="error_password_too_short">Password must be at least 8 characters long.</string>
     <string name="error_password_no_uppercase">Password must contain at least one uppercase letter.</string>
     <string name="error_password_no_lowercase">Password must contain at least one lowercase letter.</string>
     <string name="error_password_no_digit">Password must contain at least one number.</string>
     <string name="error_password_no_special">Password must contain at least one special character.</string>
-    <string name="error_passwords_do_not_match">Entered password does not match.</string>
     <string name="error_unknown">Something went wrong.</string>
     <string name="error_invalid_otp">Invalid Pin entered.</string>
     <string name="error_phone_invalid">Invalid phone number</string>
@@ -108,18 +86,12 @@
     <string name="fixed_partial_count_title">Pending Dispense Counts</string>
     <string name="regular_partial_count_title">Pending Quick Counts</string>
     <string name="filter_all">All</string>
-    <string name="filter_pms">PMS</string>
-    <string name="filter_non_nms">Non PMS</string>
-
     <!-- ================== COMMON BUTTONS ================== -->
     <string name="redo">Redo</string>
     <string name="skip">Skip</string>
-    <string name="scan">Scan</string>
     <string name="rescane">Rescan</string>
-    <string name="pause">Pause</string>
     <string name="done">Done</string>
     <string name="add">Add</string>
-    <string name="wait">Wait</string>
     <string name="count">Count</string>
     <string name="ok">OK</string>
     <string name="cancel">Cancel</string>
@@ -128,8 +100,6 @@
     <string name="save">SAVE</string>
     <string name="delete">DELETE</string>
     <string name="resume">Resume</string>
-    <string name="manual">Manual</string>
-    <string name="skip_alt">SKIP</string>
     <string name="select_all">Select All</string>
     <string name="deselect_all">Deselect All</string>
     <string name="delete_counts">Delete Counts</string>
@@ -137,7 +107,6 @@
 
     <!-- ================== PILL COUNT ================== -->
     <string name="pill_count_app_title">Pill Counter</string>
-    <string name="pill_info_add_manually">Enter Pill Info Manually</string>
     <string name="drugname">Drug Name</string>
     <string name="ndc">Ndc</string>
     <string name="ndc_gtin14">Ndc/GTIN14</string>
@@ -148,18 +117,14 @@
     <string name="counting_paused">Counting paused due to inactivity.</string>
 
     <!-- ================== TRANSACTIONS ================== -->
-    <string name="txn_detail">Transaction Detail</string>
     <string name="transaction_detail">Transaction Detail</string>
     <string name="total">Total</string>
     <string name="total_count">Total Count</string>
-    <string name="delete_count_title">Delete Count</string>
     <string name="max_count_reached">Total Transaction count exceeds target.</string>
     <string name="no_transaction_found">No Transaction Found, please start counting pills</string>
     <string name="confirm_done">Confirm Completion</string>
     <string name="confirm_done_desc_regular">Are you sure you want to mark this transaction as completed?</string>
     <string name="confirm_done_desc_fixed">Target not reached. This transaction will be marked as Completed.</string>
-    <string name="force_complete">Force Complete</string>
-
     <!-- ================== PROFILE ================== -->
     <string name="profile_title">PROFILE</string>
     <string name="first_name">First Name</string>
@@ -182,13 +147,7 @@
     <string name="menu_unsync_transaction">Unsynced Transactions</string>
 
     <!-- ================== UI CONTENT DESCRIPTIONS ================== -->
-    <string name="back_content_description">Navigate back</string>
-    <string name="export_content_description">Export</string>
     <string name="delete_content_description">Delete</string>
-    <string name="filter_content_description">Filter</string>
-    <string name="search_content_description">Search</string>
-    <string name="cd_close_selection">Close Selection</string>
-    <string name="cd_delete_selected">Delete Selected Items</string>
     <string name="cd_search">Search</string>
     <string name="cd_select_items_to_delete">Select Items to Delete</string>
     <string name="cd_delete">Delete</string>
@@ -201,25 +160,20 @@
     <string name="delete_selected_items_text">Are you sure you want to delete the selected items?</string>
     <string name="confirm_delete_message">Are you sure you want to delete the records for the selected date? This action cannot be undone.</string>
     <string name="confirm_delete_title">Confirm Delete</string>
-    <string name="confirm_delete_txn_detail">Are you sure you want to delete this transaction detail? This action cannot be undone.</string>
     <string name="confirm_force_completed_txn"> Are you sure you want to force complete this transaction?</string>
 
     <!-- ================== TABLE HEADERS / LABELS ================== -->
-    <string name="drug">Drug</string>
     <string name="drugname_two_lines">Drug \nName</string>
     <string name="status">Status</string>
     <string name="count_type_two_lines">Count \nType</string>
     <string name="date">Date</string>
     <string name="time">Time</string>
     <string name="note">Note</string>
-    <string name="select_option">Select Option</string>
     <string name="generated_on">Generated on:</string>
     <string name="searchWithDots">Search…</string>
 
     <!-- ================== PDF & SHARING ================== -->
     <string name="open_pdf_with">Open PDF with</string>
-    <string name="sharePdfVia">Share PDF via</string>
-
     <!-- ================== Security / Environment Protection ================== -->
     <string name="security_alert_title">Security Alert</string>
     <string name="exit_app">Exit</string>
@@ -248,35 +202,24 @@
     <string name="type_here">Type here...</string>
     <string name="save_history_confirmation">Are you sure you want to keep history for</string>>
     <string name="save_history_note">Note: Data older than this period will be permanently deleted.</string>
-    <string name="profile_updated">Profile updated successfully!</string>
     <string name="confirm_logout_title">Confirm Logout</string>
     <string name="confirm_logout_text">Are you sure you want to logout?</string>>
 
     <string name="add_button_wait">Please wait 2 seconds before adding again.</string>
-    <string name="scan_code">Scan Barcode/QR code</string>
     <string name="add_zero_detected">Cannot add — no pills detected.</string>
     <string name="duplicate_scan_ignored">Duplicate scan ignored — no new pills detected.</string>
 
     <!-- For multi-select mode text in PartialListPanel -->
-    <string name="selected_items_count">%1$d items selected</string>
-    <string name="tap_to_delete">Tap delete to remove</string>
     <string name="session_expired">Session Expired!</string>
     <string name="pms_connected">Connected</string>
     <string name="pms_connecting">Connecting...</string>
 
     <!-- Optional: if you want a singular/plural version -->
-    <plurals name="selected_items_count_plural">
-        <item quantity="one">%1$d item selected</item>
-        <item quantity="other">%1$d items selected</item>
-    </plurals>
-
     <!--    PillScanning Screen Constants-->
     <string name="pill_scanning_add_button">Add</string>
     <string name="pill_scanning_wait_button">Wait..</string>
     <string name="pill_scanning_total_count">Total Count</string>
     <string name="pill_scanning_all_done">All Done</string>
-    <string name="confirm_delete_message_on_reset_click">Are you sure you want to delete all the transaction for this current transaction.</string>
-    <string name="cannot_reset_no_pills_detected">Cannot reset no pills detected transactionDetails.</string>
     <string name="no_pill_added_yet">No Pill Added yet</string>
     <string name="count_pills_from_the_container">Count Pills from the container</string>
     <string name="count_prescribed_pills_quantity">Count prescribed Pills quantity</string>
@@ -291,11 +234,7 @@
     <!--    ManualDrugEntry -->
     <string name="ndc_number">NDC Number</string>
     <string name="drug_name">Drug Name</string>
-    <string name="all_fields_are_required">All fields are required</string>
-    <string name="manual_drug_info_cancel">CANCEL</string>
-    <string name="manual_drug_info_ok">OK</string>
     <string name="scan_container_qr_code">Scan container QR Code</string>
-    <string name="do_you_want_to_substitute">Do you want to substitute?</string>
     <string name="scanned_item_is_a_generic_equivalent_to_the_specific_drug">Scanned item is a generic equivalent to \nthe specified drug</string>
     <string name="rescan_require">Rescan Required</string>
     <string name="the_scanned_ndc_does_not_match">The scanned NDC does not match</string>
@@ -317,14 +256,11 @@
     <string name="vial_capture">DISPENSED VIAL</string>
     <string name="remaining_stock_bottle_count">REMAINING STOCK BOTTLE COUNT</string>
     <string name="notes">NOTES</string>
-    <string name="subtituted_drug">Substituted Drug</string>
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
     <string name="stock_count_dialog_title">What would you like to do?</string>
     <string name="stock_count_dialog_option_first">Create a new Batch</string>
     <string name="stock_count_dialog_option_second">Continue last Batch</string>
-    <string name="stock_bottles">Stock Bottles</string>
-    <string name="open_pills">Open Pills</string>
     <string name="partial_stock_counts">Partial Stock Counts</string>
 
     <!--    label scanned -->
@@ -333,16 +269,11 @@
     <string name="container_status_sealed">Sealed</string>
     <string name="container_status_opened">Opened</string>
     <string name="select_bucket">Select Bucket</string>
-    <string name="cd_dropdown">Dropdown</string>
     <string name="rx_number">Rx Number</string>
     <string name="quantity">Quantity</string>
     <string name="proceed">PROCEED</string>
     <string name="scan_rx_label">Scan Rx Label</string>
     <string name="scan_correct_label">Scan Correct Label</string>
-    <string name="inventory_batch_details">Inventory Batch Details</string>
-    <string name="totalNdcCount">Total Ndc Count</string>
-    <string name="total_quantity">Total Quantity</string>
-
 <!--    StockCount-->
     <string name="scan_stock_bottle">Scan Stock Bottle</string>
     <string name="scan_open_pills">Scan Open Pills</string>
@@ -355,7 +286,6 @@
     <string name="no_partial_counts">No partial counts available</string>
     <string name="confirm_delete_batches">Delete selected batch(es)? This action cannot be undone.</string>
     <string name="confirmation">Confirmation</string>
-    <string name="discard_counted_pills_message">You have counted pills but no RX has been scanned yet. Discard the count and exit?</string>
     <string name="voice_scan_rx_to_add_count">Scan RX to add the pill count</string>
     <string name="voice_scan_container_qr">Scan the container QR code</string>
     <string name="voice_add_the_pill_count">Add the pill count</string>
@@ -363,14 +293,11 @@
     <string name="no_items_in_that_batch_yet">No items in this batch yet</string>
     <string name="end_this_batch_it_will_be_mark_as_completed">End this batch? It will be marked as complete.</string>
     <string name="end_batch">End Batch</string>
-    <string name="no_qty_added_title">No Quantity Added</string>
     <string name="no_qty_added_message">Please add at least one item quantity before ending the batch.</string>
     <string name="sealed_bottles">Sealed Bottles</string>
     <string name="opend_bottles">Opened Bottles</string>
     <string name="end_count">END COUNT</string>
     <string name="plus_add">+ ADD</string>
-    <string name="incorrect_ndc">Incorrect NDC</string>
-    <string name="you_have_scan_incorrect_ndc_this_item_does_not_match_the_pms_batch">You have scanned an incorrect NDC. This item does not match the PMS batch.</string>
     <string name="bucket">Bucket</string>
     <string name="batch">Batch</string>
     <string name="no_last_batch_available">No last batch available</string>
@@ -417,8 +344,6 @@
     <string name="hl7_notification_edit_rx_drug_not_found">Rx %1$s update failed: drug NDC %2$s not found.</string>
 
     <!-- ================== GLOVE DETECTION ================== -->
-    <string name="glove_class_gloves" translatable="false">gloves</string>
-    <string name="glove_class_no_gloves" translatable="false">no_gloves</string>
     <string name="cd_gloves_detected">Gloves detected</string>
     <string name="cd_no_gloves_detected">No gloves</string>
 
@@ -465,14 +390,12 @@
     <string name="batch_stock_count_cancel">CANCEL</string>
     <string name="batch_stock_count_add">ADD</string>
     <string name="batch_stock_count_end_count">END COUNT</string>
-    <string name="batch_stock_count_unknown_drug">Unknown Drug</string>
     <string name="batch_stock_count_invalid_label">Invalid label barcode</string>
     <string name="batch_stock_count_drug_not_found">Invalid NDC %1$s</string>
     <string name="batch_stock_count_ndc_not_in_request">NDC %1$s is not part of this inventory request</string>
     <string name="batch_stock_count_no_active_batch">No active batch</string>
     <string name="batch_stock_count_scan_failed">Scan failed</string>
     <string name="batch_stock_count_save_failed">Failed to save</string>
-    <string name="batch_stock_count_dash">—</string>
     <string name="batch_stock_count_scan_new_bottle">Scan a new Stock bottle</string>
 
     <string name="violation_screen_overlay">Screen overlay detected — another app may be intercepting touch input</string>
@@ -481,11 +404,6 @@
     HL7 medical device discovery. Your location is never stored,
     transmitted, or linked to patient data.
 </string>
-    <string name="permission_location_denied">
-    Without location permission, automatic medical device discovery
-    is unavailable. You can connect manually in Settings.
-</string>
-
     <string name="pms_cert_mismatch_message">The PMS server certificate has changed. This may happen after a PMS update. Tap Reset to accept the new certificate and reconnect.</string>
     <string name="pms_cert_mismatch_confirm">Reset &amp; Reconnect</string>
 

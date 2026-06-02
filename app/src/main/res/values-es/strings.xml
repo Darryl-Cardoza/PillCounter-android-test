@@ -6,11 +6,7 @@
 
     <!-- ================== AUTH / LOGIN / REGISTER ================== -->
     <string name="email">Correo electrónico</string>
-    <string name="password">Contraseña</string>
     <string name="remember_me">Recuérdame</string>
-    <string name="register">Registrar</string>
-    <string name="forgot_password">¿Olvidaste tu contraseña?</string>
-    <string name="confirm_password">Confirmar contraseña</string>
     <string name="code_sent_to">Se ha enviado un código de seguridad a</string>
     <string name="pre_resend_code">Reenviar código en %1$d s</string>
     <string name="resend_code">Reenviar código</string>
@@ -19,11 +15,6 @@
     <string name="update_button_text">ACTUALIZAR</string>
 
     <!-- ================== FORGOT PASSWORD ================== -->
-    <string name="password_recovery">Recuperación de Contraseña</string>
-    <string name="password_recovery_desc">Ingresa tu correo electrónico registrado y te enviaremos instrucciones para restablecerla.</string>
-    <string name="your_registered_email">Tu correo electrónico registrado</string>
-    <string name="send_otp">Enviar OTP</string>
-
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Conteo Fijo</string>
     <string name="tap_to_scan_rx_labels">Para contar cantidades fijas</string>
@@ -31,11 +22,8 @@
     <string name="start_a_new_inventory_count">Para conteos regulares diarios</string>
     <string name="completed">completado</string>
     <string name="partial">parcial</string>
-    <string name="barcode_scan">Escanear Código de Barras</string>
-
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title" translatable="false">SETTINGS</string>
-    <string name="setting_barcode_scan_first">Siempre realizar el escaneo de código de barras primero</string>
     <string name="setting_ask_to_add_notes">Siempre preguntar para añadir notas</string>
     <string name="type_here">Escribe aquí...</string>
     <string name="setting_save_history_for">Guardar historial por</string>
@@ -50,20 +38,16 @@
 
     <!-- ================== HISTORY ================== -->
     <string name="history_title">HISTORIAL</string>
-    <string name="counts_label">%d conteos</string>
-    <string name="menu_history_duration">3 meses</string>
     <string name="no_data_found">No se encontraron datos</string>
     <string name="drug_history_details">Detalles del historial del medicamento</string>
 
     <!-- ================== VALIDATION ERRORS ================== -->
-    <string name="error_email_empty">El correo electrónico no puede estar vacío.</string>
     <string name="error_email_invalid">Por favor, introduce una dirección de correo válida.</string>
     <string name="error_password_too_short">La contraseña debe tener al menos 8 caracteres.</string>
     <string name="error_password_no_uppercase">La contraseña debe contener al menos una letra mayúscula.</string>
     <string name="error_password_no_lowercase">La contraseña debe contener al menos una letra minúscula.</string>
     <string name="error_password_no_digit">La contraseña debe contener al menos un número.</string>
     <string name="error_password_no_special">La contraseña debe contener al menos un carácter especial.</string>
-    <string name="error_passwords_do_not_match">Las contraseñas no coinciden.</string>
     <string name="error_unknown">Algo salió mal.</string>
     <string name="error_invalid_otp">PIN inválido.</string>
     <string name="error_phone_invalid">Número de teléfono inválido</string>
@@ -78,9 +62,7 @@
     <!-- ================== COMMON BUTTONS ================== -->
     <string name="redo">Rehacer</string>
     <string name="skip">Omitir</string>
-    <string name="scan">Escanear</string>
     <string name="rescane">Reescanear</string>
-    <string name="pause">Pausar</string>
     <string name="done">Hecho</string>
     <string name="add">Agregar</string>
     <string name="count">Contar</string>
@@ -91,11 +73,7 @@
     <string name="save">GUARDAR</string>
     <string name="delete">ELIMINAR</string>
     <string name="resume">Reanudar</string>
-    <string name="manual">Manual</string>
-    <string name="skip_alt">OMITIR</string>
-
     <!-- ================== PILL COUNT ================== -->
-    <string name="pill_info_add_manually">Ingresar información de la pastilla manualmente</string>
     <string name="drugname">Nombre del medicamento</string>
     <string name="ndc">Ndc</string>
     <string name="expiry">Caducidad</string>
@@ -104,7 +82,6 @@
     <string name="pill_required">Pastillas requeridas</string>
 
     <!-- ================== TRANSACTIONS ================== -->
-    <string name="txn_detail">Detalle de Transacción</string>
     <string name="transaction_detail">Detalle de Transacción</string>
     <string name="total">Total</string>
     <string name="total_count">Conteo Total</string>
@@ -113,8 +90,6 @@
     <string name="confirm_done">Confirmar Finalización</string>
     <string name="confirm_done_desc_regular">¿Está seguro de que desea marcar esta transacción como completada?</string>
     <string name="confirm_done_desc_fixed">Objetivo no alcanzado. Esta transacción se marcará como PARCIAL.</string>
-    <string name="force_complete">Forzar Finalización</string>
-
     <!-- ================== PROFILE ================== -->
     <string name="profile_title">PERFIL</string>
     <string name="first_name">Nombre</string>
@@ -134,13 +109,7 @@
     <string name="menu_partial">%1$d parciales</string>
 
     <!-- ================== UI CONTENT DESCRIPTIONS ================== -->
-    <string name="back_content_description">Navegar atrás</string>
-    <string name="export_content_description">Exportar</string>
     <string name="delete_content_description">Eliminar</string>
-    <string name="filter_content_description">Filtrar</string>
-    <string name="search_content_description">Buscar</string>
-    <string name="cd_close_selection">Cerrar selección</string>
-    <string name="cd_delete_selected">Eliminar elementos seleccionados</string>
     <string name="cd_search">Buscar</string>
     <string name="cd_select_items_to_delete">Seleccionar elementos para eliminar</string>
     <string name="cd_delete">Eliminar</string>
@@ -153,25 +122,20 @@
     <string name="delete_selected_items_text">¿Está seguro de que desea eliminar los elementos seleccionados?</string>
     <string name="confirm_delete_message">¿Está seguro de que desea eliminar los registros de la fecha seleccionada? Esta acción no se puede deshacer.</string>
     <string name="confirm_delete_title">Confirmar Eliminación</string>
-    <string name="confirm_delete_txn_detail">Are you sure you want to delete this transaction detail? This action cannot be undone.</string>
     <string name="confirm_force_completed_txn"> Are you sure you want to force complete this transaction?</string>
 
     <!-- ================== TABLE HEADERS / LABELS ================== -->
-    <string name="drug">Medicamento</string>
     <string name="drugname_two_lines">Nombre \\nMedicamento</string>
     <string name="status">Estado</string>
     <string name="count_type_two_lines">Tipo \\nConteo</string>
     <string name="date">Fecha</string>
     <string name="time">Hora</string>
     <string name="note">Nota</string>
-    <string name="select_option">Select Option</string>
     <string name="generated_on">Generado el:</string>
     <string name="searchWithDots">Buscar…</string>
 
     <!-- ================== PDF & SHARING ================== -->
     <string name="open_pdf_with">Abrir PDF con</string>
-    <string name="sharePdfVia">Compartir PDF vía</string>
-
     <!-- ================== SYSTEM NOTICES ================== -->
     <string name="suspecious_activity_text">Nuestro sistema detectó una sospechosa \'doble dosis\' desde otro dispositivo. Es hora de \nverificar con un nuevo inicio de sesión.</string>
     <string name="maintenance_text">El contador está en el mostrador del farmacéutico para una rápida revisión. ¡Volveremos pronto\ncon conteos precisos!</string>
@@ -191,23 +155,17 @@
     <string name="vial_capture">DISPENSED VIAL</string>
     <string name="remaining_stock_bottle_count">REMAINING STOCK BOTTLE COUNT</string>
     <string name="notes">NOTES</string>
-    <string name="subtituted_drug">Substituted Drug</string>
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
     <string name="stock_count_dialog_title">What would you like to do?</string>
     <string name="stock_count_dialog_option_first">Create a new Batch</string>
     <string name="stock_count_dialog_option_second">Continue with last Batch count</string>
-    <string name="stock_bottles">Stock Bottles</string>
-    <string name="open_pills">Open Pills</string>
     <string name="partial_stock_counts">Partial Stock Counts</string>
 
     <!--    label scanned -->
     <string name="proceed">PROCEED</string>
     <string name="scan_rx_label">Scan Rx Label</string>
     <string name="scan_correct_label">Scan Correct Label</string>
-    <string name="inventory_batch_details">Inventory Batch Details</string>
-    <string name="totalNdcCount">Total Ndc Count</string>
-    <string name="total_quantity">Total Quantity</string>
     <string name="no_results_found">no result found</string>
     <string name="no_partial_counts">no partial counts</string>
     <string name="confirmation">Confirmation</string>
@@ -219,8 +177,6 @@
     <string name="opend_bottles">Opened Bottles</string>
     <string name="end_count">END COUNT</string>
     <string name="plus_add">+ ADD</string>
-    <string name="incorrect_ndc">Incorrect NDC</string>
-    <string name="you_have_scan_incorrect_ndc_this_item_does_not_match_the_pms_batch">You have scanned an incorrect NDC. This item does not match the PMS batch.</string>
     <string name="bucket">Bucket</string>
     <string name="batch">Batch</string>
     <string name="no_last_batch_available">No last batch available</string>
@@ -231,6 +187,4 @@
 
     <string name="violation_screen_overlay">Superposición de pantalla detectada — otra aplicación podría estar interceptando la entrada táctil</string>
     <string name="permission_location_rationale">El acceso a la ubicación se utiliza únicamente para identificar su red Wi-Fi para el descubrimiento de dispositivos médicos HL7. Su ubicación nunca se almacena, transmite ni vincula a datos de pacientes.</string>
-    <string name="permission_location_denied">Sin permiso de ubicación, el descubrimiento automático de dispositivos médicos no está disponible. Puede conectarse manualmente en Configuración.</string>
-
 </resources>
