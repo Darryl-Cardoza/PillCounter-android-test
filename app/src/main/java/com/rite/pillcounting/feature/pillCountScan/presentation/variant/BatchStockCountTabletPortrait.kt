@@ -37,7 +37,6 @@ import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.ActiveNdc
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountHeader
-import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BatchStockCountSampleData
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BatchStockCountUiState
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.RecentBatchRow
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsLabelRow
@@ -225,10 +224,12 @@ private fun EmptyScannedDetailsPortrait(
 
 @Composable
 private fun BatchStockCountTabletPortraitPreviewHost(initialActive: Boolean) {
+    val sampleRow = RecentBatchRow(ndc = "234-345-654-2343", drugName = "Levothyroxidfrfgfne 250mg", pills = 1800, bottles = 20)
+    val sampleActiveNdc = ActiveNdc(ndc = "234-345-654-2343", drugName = "Levothyroxine Disulphide 50mg", bucket = "Normal", batchNo = "4324534547", expiry = "05-23-2026", pillsPerBottle = 9, bottles = 20)
     var state by remember {
         mutableStateOf(
-            if (initialActive) BatchStockCountSampleData.activeState
-            else BatchStockCountSampleData.summaryState
+            if (initialActive) BatchStockCountUiState(recentCounts = List(5) { sampleRow }, activeNdc = sampleActiveNdc, totalNdcs = 25, totalPills = 5648)
+            else BatchStockCountUiState(recentCounts = List(8) { sampleRow }, activeNdc = null, totalNdcs = 150, totalPills = 5648)
         )
     }
 
@@ -256,7 +257,7 @@ private fun BatchStockCountTabletPortraitPreviewHost(initialActive: Boolean) {
             BatchStockCountTabletPortrait(
                 state = state,
                 onScanPills = {
-                    state = state.copy(activeNdc = BatchStockCountSampleData.activeState.activeNdc)
+                    state = state.copy(activeNdc = sampleActiveNdc)
                 },
                 onIncrement = {
                     state.activeNdc?.let { a -> state = state.copy(activeNdc = a.copy(bottles = a.bottles + 1)) }

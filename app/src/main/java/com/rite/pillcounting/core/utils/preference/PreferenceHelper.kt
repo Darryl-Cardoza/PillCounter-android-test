@@ -3,7 +3,7 @@ package com.rite.pillcounting.core.utils.preference
 import android.annotation.SuppressLint
 import android.content.Context
 import com.google.gson.Gson
-import com.rite.pillcounting.core.settings.domain.model.ColorSettings
+import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import dagger.hilt.android.qualifiers.ApplicationContext

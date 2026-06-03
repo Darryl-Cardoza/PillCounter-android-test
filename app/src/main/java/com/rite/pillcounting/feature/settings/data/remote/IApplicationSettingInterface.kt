@@ -1,9 +1,9 @@
-package com.rite.pillcounting.core.settings.data.remote
+package com.rite.pillcounting.feature.settings.data.remote
 
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenResponse
-import com.rite.pillcounting.core.settings.domain.model.SettingsDataDto
+import com.rite.pillcounting.feature.settings.domain.model.SettingsDataDto
 import com.rite.pillcounting.core.utils.constants.URLConstant
 import retrofit2.Response
 import retrofit2.http.Body

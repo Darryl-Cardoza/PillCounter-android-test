@@ -25,7 +25,7 @@ import com.rite.pillcounting.core.security.RuntimeUnit
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
+import com.rite.pillcounting.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.rite.pillcounting.core.utils.common.HelperFunctions.getStartDestination
 import com.rite.pillcounting.core.utils.common.HelperFunctions.openPlayStore

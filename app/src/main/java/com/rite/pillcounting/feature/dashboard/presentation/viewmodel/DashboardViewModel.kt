@@ -13,7 +13,7 @@ import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
-import com.rite.pillcounting.core.settings.domain.model.enums.ScheduleCode
+import com.rite.pillcounting.feature.settings.domain.model.enums.ScheduleCode
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -37,8 +37,6 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.time.LocalDate
-import java.time.ZoneId
 import javax.inject.Inject
 
 /**
@@ -220,7 +218,13 @@ class DashboardViewModel @Inject constructor(
 
     /** Switch the active tab between Today's Queue and Recent Activity. */
     fun onTabSelected(tab: DashboardTab) {
-        _uiState.update { it.copy(activeTab = tab) }
+        _uiState.update { state ->
+            state.copy(
+                activeTab = tab,
+                activeKpiFilter = if (tab == DashboardTab.RECENT_ACTIVITY) null else state.activeKpiFilter,
+                queue = if (tab == DashboardTab.RECENT_ACTIVITY) applyKpiFilter(_unfilteredQueue.value, null) else state.queue,
+            )
+        }
         if (tab == DashboardTab.RECENT_ACTIVITY) {
             loadRecentActivity()
         }
@@ -237,23 +241,18 @@ class DashboardViewModel @Inject constructor(
         if (recentActivityJob?.isActive == true) return
         if (localId == 0L) return
 
-        val zone = ZoneId.systemDefault()
-        val endMillis = LocalDate.now().plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli()
-        val startMillis = LocalDate.now().minusDays(RECENT_ACTIVITY_WINDOW_DAYS)
-            .atStartOfDay(zone).toInstant().toEpochMilli()
-
         recentActivityJob = viewModelScope.launch(Dispatchers.IO) {
             val completedDispenseFlow = pillCountTxnDao.getTransactionsForDateRange(
-                startDate = startMillis,
-                endDate = endMillis,
+                startDate = 0L,
+                endDate = Long.MAX_VALUE,
                 stepType = StepState.TARGET_VERIFICATION,
                 type = CountType.FIXED,
                 status = CountStatus.COMPLETED,
                 userLocalId = localId,
             )
             val completedBatchesFlow = batchDao.getBatchSummaries(
-                startDate = startMillis,
-                endDate = endMillis,
+                startDate = 0L,
+                endDate = Long.MAX_VALUE,
                 userLocalId = localId,
             )
 
@@ -480,9 +479,6 @@ class DashboardViewModel @Inject constructor(
         _uiState.update { it.copy(pendingStockCountBucketId = null) }
     }
 
-    private companion object {
-        const val RECENT_ACTIVITY_WINDOW_DAYS = 30L
-    }
 }
 
 /** True when `drug_master.drugType` matches a DEA controlled-substance schedule ([ScheduleCode]). */

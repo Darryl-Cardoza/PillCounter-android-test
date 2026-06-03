@@ -1,4 +1,4 @@
-package com.rite.pillcounting.core.settings.domain.model
+package com.rite.pillcounting.feature.settings.domain.model
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass

@@ -4,7 +4,7 @@ import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.refreshToken.domain.model.UserDetailRequest
-import com.rite.pillcounting.core.settings.data.remote.IApplicationSettingInterface
+import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.data.remote.IUserDetailAPI

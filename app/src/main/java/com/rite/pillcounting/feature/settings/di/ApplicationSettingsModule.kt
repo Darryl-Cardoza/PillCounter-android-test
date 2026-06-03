@@ -1,8 +1,8 @@
-package com.rite.pillcounting.core.settings.di
+package com.rite.pillcounting.feature.settings.di
 
-import com.rite.pillcounting.core.settings.data.ApplicationSettingsRepository
-import com.rite.pillcounting.core.settings.data.remote.IApplicationSettingInterface
-import com.rite.pillcounting.core.settings.domain.data.IApplicationSettingsRepository
+import com.rite.pillcounting.feature.settings.data.ApplicationSettingsRepository
+import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
+import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsRepository
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import dagger.Module
 import dagger.Provides

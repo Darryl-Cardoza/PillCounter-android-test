@@ -1,4 +1,4 @@
-package com.rite.pillcounting.core.settings.domain.model
+package com.rite.pillcounting.feature.settings.domain.model
 
 /**
  * Static mDNS service type constants for HL7 local network discovery.

@@ -1,4 +1,4 @@
-package com.rite.pillcounting.core.settings.domain.model
+package com.rite.pillcounting.feature.settings.domain.model
 
 /**
  * Represents the UI state for the Application Settings screen.

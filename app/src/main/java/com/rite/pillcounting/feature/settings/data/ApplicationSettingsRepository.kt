@@ -1,9 +1,9 @@
-package com.rite.pillcounting.core.settings.data
+package com.rite.pillcounting.feature.settings.data
 
 import com.rite.pillcounting.core.models.ApiResponse
-import com.rite.pillcounting.core.settings.data.remote.IApplicationSettingInterface
-import com.rite.pillcounting.core.settings.domain.data.IApplicationSettingsRepository
-import com.rite.pillcounting.core.settings.domain.model.SettingsDataDto
+import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
+import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsRepository
+import com.rite.pillcounting.feature.settings.domain.model.SettingsDataDto
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import retrofit2.HttpException

@@ -1,7 +1,7 @@
-package com.rite.pillcounting.core.settings.domain.data
+package com.rite.pillcounting.feature.settings.domain.data
 
 import com.rite.pillcounting.core.models.ApiResponse
-import com.rite.pillcounting.core.settings.domain.model.SettingsDataDto
+import com.rite.pillcounting.feature.settings.domain.model.SettingsDataDto
 
 /**
  * Defines the contract for the Application Settings repository.

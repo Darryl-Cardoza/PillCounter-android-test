@@ -496,7 +496,7 @@ class DispenseFlowViewModel @Inject constructor(
         // COUNTING so the user can count pills.
         if (countType == CountType.REGULAR && txnId == 0L) {
             viewModelScope.launch {
-                val isSealed = state.selectedContainerStatus == com.rite.pillcounting.core.utils.compose.ContainerStatus.SEALED
+                val isSealed = state.selectedContainerStatus == ContainerStatus.SEALED
                 val ndc = state.ndcScannedValue.ifBlank { state.ndc }
                 val drugId = drugMasterDao.upsertPreservingId(
                     DrugMasterEntity(

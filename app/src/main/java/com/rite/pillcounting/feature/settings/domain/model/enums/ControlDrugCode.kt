@@ -1,4 +1,4 @@
-package com.rite.pillcounting.core.settings.domain.model.enums
+package com.rite.pillcounting.feature.settings.domain.model.enums
 
 enum class ScheduleCode {
     CII,

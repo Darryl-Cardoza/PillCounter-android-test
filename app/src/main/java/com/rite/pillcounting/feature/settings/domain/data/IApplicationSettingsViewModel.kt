@@ -1,6 +1,6 @@
-package com.rite.pillcounting.core.settings.domain.data
+package com.rite.pillcounting.feature.settings.domain.data
 
-import com.rite.pillcounting.core.settings.domain.model.ApplicationSettingsUiState
+import com.rite.pillcounting.feature.settings.domain.model.ApplicationSettingsUiState
 import kotlinx.coroutines.flow.StateFlow
 
 /**
