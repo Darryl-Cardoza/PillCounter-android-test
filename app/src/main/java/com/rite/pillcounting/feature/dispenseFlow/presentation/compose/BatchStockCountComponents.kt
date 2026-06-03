@@ -3,8 +3,7 @@ package com.rite.pillcounting.feature.pillCountScan.presentation.compose
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,13 +27,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,6 +46,7 @@ import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.ActiveNdc
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.RecentBatchRow
 import com.rite.pillcounting.ui.theme.AppTheme
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 /* ─────────────────────────  CARD CONTAINER  ───────────────────────── */
 
@@ -59,14 +58,12 @@ internal fun StockCountCard(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(CARD_RADIUS))
+            .clip(RoundedCornerShape(13.dp))
             .background(AppTheme.extendedColors.secondaryBackground)
     ) {
         content()
     }
 }
-
-internal val CARD_RADIUS: Dp = 13.dp
 
 /* ─────────────────────────  RECENT COUNTS LIST  ───────────────────────── */
 
@@ -425,8 +422,10 @@ internal fun CounterRow(
 
 /**
  * Press-and-hold repeating counter button. First tick fires immediately on
- * press; while held, ticks repeat every [REPEAT_INTERVAL_MS] after an initial
- * [INITIAL_DELAY_MS] hold.
+ * touch-down; while held, ticks repeat every [REPEAT_INTERVAL_MS] after an
+ * initial [INITIAL_DELAY_MS] hold. Uses [detectTapGestures] rather than
+ * [clickable]'s press state, which is delayed inside scrollable containers
+ * and misses quick taps.
  */
 @Composable
 private fun CounterButton(
@@ -437,30 +436,29 @@ private fun CounterButton(
     fill: Color? = null,
     iconSize: Dp = 30.dp,
 ) {
-    val interactionSource = remember { MutableInteractionSource() }
-    val isPressed by interactionSource.collectIsPressedAsState()
-
-    LaunchedEffect(isPressed) {
-        if (isPressed) {
-            onTick()
-            delay(INITIAL_DELAY_MS)
-            while (isPressed) {
-                onTick()
-                delay(REPEAT_INTERVAL_MS)
-            }
-        }
-    }
+    val scope = rememberCoroutineScope()
 
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(12.dp))
             .then(if (fill != null) Modifier.background(fill) else Modifier)
             .border(1.dp, borderColor, RoundedCornerShape(12.dp))
-            .clickable(
-                interactionSource = interactionSource,
-                indication = null,
-                onClick = {},
-            ),
+            .pointerInput(onTick) {
+                detectTapGestures(
+                    onPress = {
+                        onTick()
+                        val repeater = scope.launch {
+                            delay(INITIAL_DELAY_MS)
+                            while (true) {
+                                onTick()
+                                delay(REPEAT_INTERVAL_MS)
+                            }
+                        }
+                        tryAwaitRelease()
+                        repeater.cancel()
+                    },
+                )
+            },
         contentAlignment = Alignment.Center,
     ) {
         Icon(

@@ -75,6 +75,7 @@ import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.TargetPil
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.dimens
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
 
@@ -102,6 +103,11 @@ import java.util.Locale
  * Voice guidance is provided via [DispenseVoicePrompt]. The step-title speech
  * component (StepTitleWithSpeech) is only rendered during COUNTING.
  */
+
+// Grace period before hiding the count circle after detections drop to 0,
+// so momentary empty frames don't flicker the circle off and on.
+private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
+
 @Composable
 fun DispenseFlowScreen(
     navController: NavController,
@@ -581,23 +587,26 @@ fun DispenseFlowScreen(
             }
 
             // ── Pill count panel ─────────────────────────────────────────────
-            // Visible-once-pills-detected is sticky so the panel doesn't
-            // flicker on every momentary 0-count frame.
+            // Pre-COUNTING the circle tracks live detection: it appears when
+            // pills are detected and hides again once the count drops to 0.
+            // The hide is debounced so momentary 0-count frames don't flicker.
             //
             // In COUNTING the panel is shown immediately (no detection
             // required): RX + NDC are confirmed, counting is the only step
             // left, so the panel is the primary affordance. Hiding it would
             // leave the screen looking empty and the user with no Done button.
-            // Pre-COUNTING the panel still waits for pill detection — it's
-            // pure detection feedback there, not the primary action.
-            var pillsEverDetected by remember { mutableStateOf(false) }
-            LaunchedEffect(filteredPillCount, pillState.detectedPills.size) {
-                if (filteredPillCount > 0 || pillState.detectedPills.isNotEmpty()) {
-                    pillsEverDetected = true
+            val pillsLive = filteredPillCount > 0 || pillState.detectedPills.isNotEmpty()
+            var showCountCircle by remember { mutableStateOf(false) }
+            LaunchedEffect(pillsLive) {
+                if (pillsLive) {
+                    showCountCircle = true
+                } else {
+                    delay(COUNT_CIRCLE_HIDE_GRACE_MS)
+                    showCountCircle = false
                 }
             }
             val showPillPanel = dispenseState.stage == DispenseStage.COUNTING ||
-                    pillsEverDetected
+                    showCountCircle
             if (showPillPanel) {
                 if (dispenseState.stage == DispenseStage.COUNTING) {
                     // Full pill panel — total / target / circle / Add / Done.
