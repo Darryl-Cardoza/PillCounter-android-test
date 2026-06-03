@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -83,9 +84,10 @@ fun InventoryTabletLandscapeShell(navController: NavController) = InventoryScanH
  */
 @Composable
 fun InventoryPhoneLandscapeShell(navController: NavController) = InventoryScanHost(navController) {
-    val detailsCardWidth = 340.dp
+    val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
+    val detailsCardWidth = 300.dp
     val collapsedWidth = detailsCardWidth + 28.dp        // + panel horizontal padding
-    val expandedWidth = collapsedWidth + 300.dp          // room for the recent card
+    val expandedWidth = screenWidthDp * 0.9f             // 90% of screen width when expanded
     var expanded by remember { mutableStateOf(false) }
     val panelWidth by animateDpAsState(
         targetValue = if (expanded) expandedWidth else collapsedWidth,
@@ -196,22 +198,26 @@ fun InventoryPhonePortraitShell(navController: NavController) = InventoryScanHos
             sheetDragHandle = null,
             containerColor = Color.Transparent,
             sheetContent = {
-                BatchStockCountPhonePortrait(
-                    state = state,
-                    onScanPills = onScanPills,
-                    onIncrement = onIncrement,
-                    onDecrement = onDecrement,
-                    onClear = onClear,
-                    onAdd = onAdd,
-                    onEndCount = onEndCount,
-                    endCountEnabled = canEndCount,
-                    onRowTapped = onRowTapped,
-                    onPeekHeightChanged = { heightPx ->
-                        val measured: Dp = with(density) { heightPx.toDp() }
-                        if (measured > 0.dp) peekHeight = measured
-                    },
-                    listMaxHeight = listMaxHeight,
-                )
+                // Cap the sheet at 90% of screen height so it never covers the
+                // full screen when dragged to the top.
+                Box(modifier = Modifier.heightIn(max = screenHeightDp * 0.9f)) {
+                    BatchStockCountPhonePortrait(
+                        state = state,
+                        onScanPills = onScanPills,
+                        onIncrement = onIncrement,
+                        onDecrement = onDecrement,
+                        onClear = onClear,
+                        onAdd = onAdd,
+                        onEndCount = onEndCount,
+                        endCountEnabled = canEndCount,
+                        onRowTapped = onRowTapped,
+                        onPeekHeightChanged = { heightPx ->
+                            val measured: Dp = with(density) { heightPx.toDp() }
+                            if (measured > 0.dp) peekHeight = measured
+                        },
+                        listMaxHeight = listMaxHeight,
+                    )
+                }
             },
         ) { _ ->
             Box(modifier = Modifier.fillMaxSize())

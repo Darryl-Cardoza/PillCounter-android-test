@@ -13,9 +13,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AddBox
 import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -35,6 +34,7 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCo
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugDetailsPortrait
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedSummaryRow
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 import com.rite.pillcounting.ui.theme.AppTheme
 
 /**
@@ -182,10 +182,10 @@ private fun EmptyScannedDetailsPortrait(
             verticalArrangement = Arrangement.Center,
         ) {
             Icon(
-                imageVector = Icons.Outlined.AddBox,
+                painter = painterResource(R.drawable.fixed_count_inner),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.size(32.dp),
+                modifier = Modifier.size(UserInterfaceUtils.responsiveDp(42.dp)),
             )
             Spacer(modifier = Modifier.height(10.dp))
             Text(
