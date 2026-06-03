@@ -62,19 +62,19 @@ import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsSheet
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleSheet
 import com.rite.pillcounting.core.models.StepState
-import com.rite.pillcounting.feature.dispenseFlow.presentation.analyzer.FrameBarcodeAnalyzer
+import com.rite.pillcounting.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
-import com.rite.pillcounting.feature.dispenseFlow.domain.data.NavigationEvent as PillNavigationEvent
-import com.rite.pillcounting.feature.dispenseFlow.domain.data.PillScanningEvent
-import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.AddNoteDialog
-import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.CameraPreviewSection
+import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
+import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
+import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
+import com.rite.pillcounting.core.scanning.presentation.compose.CameraPreviewSection
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModePortrait
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.InformationPanelSection
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.StepTitleWithSpeech
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.TargetPillsCountDialog
-import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.dimens
 import kotlinx.coroutines.delay
@@ -197,7 +197,7 @@ fun DispenseFlowScreen(
 
     // History toggle. When true, the camera + pill panel are hidden and the
     // history list takes over the screen — same toggle the legacy
-    // PillScanningScreen used. Tapping the Total Count on the pill panel sets
+    // InventoryFlowScreen used. Tapping the Total Count on the pill panel sets
     // this to true.
     var showHistory by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(showHistory) {
@@ -527,7 +527,7 @@ fun DispenseFlowScreen(
 
     Box(modifier = Modifier.fillMaxSize()) {
         // Camera + pill panel are hidden while the history view is up — matches
-        // the legacy PillScanningScreen behavior so CameraX doesn't rebind on
+        // the legacy InventoryFlowScreen behavior so CameraX doesn't rebind on
         // rotation-driven lifecycle restarts behind the history list.
         if (!showHistory) {
             if (hasCameraPermission) {

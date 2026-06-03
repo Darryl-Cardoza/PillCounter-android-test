@@ -21,9 +21,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.feature.dispenseFlow.domain.data.PillScanningEvent
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.PillScanningUiState
-import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
+import com.rite.pillcounting.core.scanning.domain.model.PillScanningUiState
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable

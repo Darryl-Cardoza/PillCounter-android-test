@@ -5,7 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.DetectedPill
+import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale

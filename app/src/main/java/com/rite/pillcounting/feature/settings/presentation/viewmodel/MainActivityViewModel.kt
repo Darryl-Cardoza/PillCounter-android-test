@@ -14,7 +14,7 @@ import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.feature.settings.domain.model.Hl7ServiceConfig
 import com.rite.pillcounting.feature.settings.domain.model.SettingsDataDto
 import com.rite.pillcounting.feature.settings.domain.model.ThemeColors
-import com.rite.pillcounting.feature.settings.domain.model.enums.ScheduleCode
+import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler

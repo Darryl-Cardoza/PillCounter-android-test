@@ -56,7 +56,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.TxnDetail
+import com.rite.pillcounting.core.scanning.domain.model.TxnDetail
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
 

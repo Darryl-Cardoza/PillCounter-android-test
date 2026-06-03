@@ -12,9 +12,9 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.compose.ContainerStatus
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
-import com.rite.pillcounting.feature.dispenseFlow.domain.data.IDrugRepository
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.DrugInfo
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.GetNdcRequestModel
+import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
+import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
+import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseFlowUiState
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
 import dagger.hilt.android.lifecycle.HiltViewModel
