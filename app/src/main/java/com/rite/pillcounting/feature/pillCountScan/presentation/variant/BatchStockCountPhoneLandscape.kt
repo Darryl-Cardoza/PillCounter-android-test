@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.MaterialTheme
@@ -65,8 +66,8 @@ fun BatchStockCountPhoneLandscape(
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
     endCountEnabled: Boolean,
-    onRowTapped: (RecentBatchRow) -> Unit = {},
     modifier: Modifier = Modifier,
+    onRowTapped: (RecentBatchRow) -> Unit = {},
 ) {
     // Grey sheet surface. The DETAILS card is first (left) at a fixed width; the
     // RECENT card fills the slack on the RIGHT when expanded. Because the host
@@ -125,8 +126,7 @@ fun BatchStockCountPhoneLandscape(
                     .weight(1f)
                     .fillMaxHeight(),
             ) {
-                Spacer(modifier = Modifier.height(14.dp))
-                val label = if (state.activeNdc != null) {
+                val label = if (state.recentCounts.isNotEmpty()) {
                     stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
                 } else {
                     stringResource(R.string.batch_stock_count_recent_summary)
@@ -169,15 +169,18 @@ private fun EmptyScannedDetailsLandscape(
                 painter = painterResource(R.drawable.fixed_count_inner),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.size(UserInterfaceUtils.responsiveDp(42.dp)),
+                modifier = Modifier.size(UserInterfaceUtils.responsiveDp(75.dp)),
             )
-            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
-                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                fontSize = 12.sp,
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.9f),
+                fontSize = 14.sp,
             )
         }
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
         ScannedSummaryRow(
             totalNdcs = totalNdcs,
             totalPills = totalPills,

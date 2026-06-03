@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.ui.res.painterResource
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
@@ -57,6 +59,11 @@ fun BatchStockCountPhonePortrait(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
+    // Max height the list region may take (px) when expanded; keeps the inner
+    // LazyColumn bounded (a fillMaxSize/weight LazyColumn in a wrap-content sheet
+    // crashes with "measured with infinity").
+    listMaxHeight: Dp,
+    modifier: Modifier = Modifier,
     // END COUNT is disabled until at least one NDC has been scanned.
     endCountEnabled: Boolean = true,
     onRowTapped: (RecentBatchRow) -> Unit = {},
@@ -64,11 +71,6 @@ fun BatchStockCountPhonePortrait(
     // card) so the host can size the sheet's peek to exactly show it — no fixed
     // guess that clips the counter, no dead space above.
     onPeekHeightChanged: (Int) -> Unit = {},
-    // Max height the list region may take (px) when expanded; keeps the inner
-    // LazyColumn bounded (a fillMaxSize/weight LazyColumn in a wrap-content sheet
-    // crashes with "measured with infinity").
-    listMaxHeight: androidx.compose.ui.unit.Dp,
-    modifier: Modifier = Modifier,
 ) {
     // NO own background / rounded surface here — the hosting BottomSheetScaffold
     // provides the grey sheet container, rounded top corners, and the drag handle.
@@ -125,7 +127,7 @@ fun BatchStockCountPhonePortrait(
 
         // Recent counts — revealed once the sheet is dragged up past the peek.
         Spacer(modifier = Modifier.height(16.dp))
-        val label = if (state.activeNdc != null) {
+        val label = if (state.recentCounts.isNotEmpty()) {
             stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
         } else {
             stringResource(R.string.batch_stock_count_recent_summary)
@@ -171,15 +173,18 @@ private fun EmptyScannedDetailsPhone(
                 painter = painterResource(R.drawable.fixed_count_inner),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.size(UserInterfaceUtils.responsiveDp(42.dp)),
+                modifier = Modifier.size(UserInterfaceUtils.responsiveDp(75.dp)),
             )
-            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
-                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                fontSize = 12.sp,
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.9f),
+                fontSize = 14.sp,
             )
         }
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
         ScannedSummaryRow(
             totalNdcs = totalNdcs,
             totalPills = totalPills,

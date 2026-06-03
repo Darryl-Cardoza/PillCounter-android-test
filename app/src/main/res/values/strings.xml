@@ -393,7 +393,7 @@
     <!-- ================== BATCH STOCK COUNT (INVENTORY SCAN) ================== -->
     <string name="batch_stock_count_title">Batch Stock Count</string>
     <string name="batch_stock_count_scan_pills">SCAN PILLS</string>
-    <string name="batch_stock_count_recent_with_count">RECENT BATCH COUNT (%1$d)</string>
+    <string name="batch_stock_count_recent_with_count">RECENT COUNTS (%1$d)</string>
     <string name="batch_stock_count_recent_summary">RECENT COUNTS</string>
     <string name="batch_stock_count_scanned_drug_details">SCANNED NDC DETAILS</string>
     <string name="batch_stock_count_scanned_summary">SCANNED SUMMARY</string>

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -52,8 +53,8 @@ fun BatchStockCountTabletLandscape(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
-    onRowTapped: (RecentBatchRow) -> Unit = {},
     modifier: Modifier = Modifier,
+    onRowTapped: (RecentBatchRow) -> Unit = {},
 ) {
     // Bottom card overlaps the top card and carries a soft upward shadow so it
     // reads as an overlay on the recent-counts card. Box (instead of Column
@@ -64,7 +65,7 @@ fun BatchStockCountTabletLandscape(
     // reserve exactly that much bottom padding — otherwise the last list rows
     // would render BEHIND the overlay and bleed through visibly.
     val density = androidx.compose.ui.platform.LocalDensity.current
-    var overlayHeightPx by remember { mutableStateOf(0) }
+    var overlayHeightPx by remember { mutableIntStateOf(0) }
     val overlayHeightDp = with(density) { overlayHeightPx.toDp() }
 
     Box(
@@ -88,7 +89,7 @@ fun BatchStockCountTabletLandscape(
             ) {
                 BatchStockCountHeader(onScanPills = onScanPills)
                 Spacer(modifier = Modifier.height(16.dp))
-                val label = if (state.activeNdc != null) {
+                val label = if (state.recentCounts.isNotEmpty()) {
                     stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
                 } else {
                     stringResource(R.string.batch_stock_count_recent_summary)
@@ -115,7 +116,7 @@ fun BatchStockCountTabletLandscape(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .onSizeChanged { overlayHeightPx = it.height },
+                .onSizeChanged { },
         ) {
             // The shadow band sits ABOVE the card and fades upward — gives a
             // clear "overlay floating on top" cue.

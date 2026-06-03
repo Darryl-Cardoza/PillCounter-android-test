@@ -22,7 +22,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -112,24 +112,13 @@ internal fun RecentCountsLabelRow(
     label: String,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    Text(
+        text = label,
+        color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+        fontSize = 13.sp,
+        fontWeight = FontWeight.SemiBold,
         modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f)
-        )
-        Icon(
-            imageVector = Icons.Default.Search,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(16.dp)
-        )
-    }
+    )
 }
 
 /**
@@ -176,7 +165,7 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
             Text(
                 text = row.drugName,
                 color = AppTheme.extendedColors.textColor,
-                fontSize = 13.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -184,8 +173,8 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = row.ndc,
-                color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
-                fontSize = 11.sp,
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+                fontSize = 13.sp,
                 maxLines = 1,
             )
         }
@@ -201,21 +190,20 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
     }
 }
 
-/** Number on top in magenta, label below in grey caption. Right-aligned. */
+/** Number on top in magenta, label below in grey caption. */
 @Composable
 private fun UnitColumn(value: String, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value,
             color = MaterialTheme.colorScheme.secondary,
-            fontSize = 14.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = label,
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
-            fontSize = 10.sp,
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+            fontSize = 12.sp,
         )
     }
 }
@@ -257,7 +245,10 @@ internal fun ScannedDrugCard(
                 modifier = Modifier.weight(1f),
             )
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
 
         // Row 2: NDC (1.2x — wider so the formatted number never wraps) | Batch | Expiry.
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -277,15 +268,26 @@ internal fun ScannedDrugCard(
                 modifier = Modifier.weight(1f),
             )
         }
-        Spacer(modifier = Modifier.height(14.dp))
+        // Flush against the counter top — only the gap above the divider is kept.
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(top = 12.dp),
+        )
 
         CounterRow(
             count = active.bottles,
             totalPills = active.totalPills,
             onIncrement = onIncrement,
             onDecrement = onDecrement,
+            // Grey tiles so the +/- buttons read as filled (matches the other
+            // form factors and the Figma design).
+            tileFill = AppTheme.extendedColors.primaryBackground,
         )
-        Spacer(modifier = Modifier.height(14.dp))
+        // Flush against the counter bottom — only the gap below the divider is kept.
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
 
         // CLEAR / ADD: smaller, centered with a gap, NOT stretched to fill.
         Row(
@@ -294,7 +296,7 @@ internal fun ScannedDrugCard(
         ) {
             Box(modifier = Modifier.width(120.dp)) {
                 HollowButton(
-                    text = stringResource(R.string.batch_stock_count_clear),
+                    text = stringResource(R.string.batch_stock_count_cancel),
                     onClick = onClear,
                     color = MaterialTheme.colorScheme.primary,
                     fixedWidth = false,
@@ -514,14 +516,20 @@ internal fun ScannedDrugDetailsPortrait(
             value = active.drugName,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
 
         DetailField(
             label = stringResource(R.string.batch_stock_count_label_ndc),
             value = active.ndc,
             modifier = Modifier.fillMaxWidth(),
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
 
         Row(modifier = Modifier.fillMaxWidth()) {
             DetailField(
@@ -540,7 +548,11 @@ internal fun ScannedDrugDetailsPortrait(
                 modifier = Modifier.weight(1f),
             )
         }
-        Spacer(modifier = Modifier.height(14.dp))
+        // Flush against the counter top — only the gap above the divider is kept.
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(top = 12.dp),
+        )
 
         CounterRow(
             count = active.bottles,
@@ -554,7 +566,11 @@ internal fun ScannedDrugDetailsPortrait(
             // rather than dominating the card (matches Figma).
             compact = true,
         )
-        Spacer(modifier = Modifier.height(14.dp))
+        // Flush against the counter bottom — only the gap below the divider is kept.
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
 
         // CANCEL / ADD: compact, centered with a gap, NOT stretched to fill the
         // row (matches Figma — the buttons hug their labels rather than splitting
@@ -630,7 +646,10 @@ internal fun ScannedDrugDetailsPhone(
                 modifier = Modifier.weight(1f),
             )
         }
-        Spacer(modifier = Modifier.height(12.dp))
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(vertical = 12.dp),
+        )
 
         // Row 2: NDC (1.2x) | Batch No. | Expiry Date.
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -650,7 +669,11 @@ internal fun ScannedDrugDetailsPhone(
                 modifier = Modifier.weight(1f),
             )
         }
-        Spacer(modifier = Modifier.height(14.dp))
+        // Flush against the counter top — only the gap above the divider is kept.
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(top = 12.dp),
+        )
 
         CounterRow(
             count = active.bottles,
@@ -660,7 +683,11 @@ internal fun ScannedDrugDetailsPhone(
             tileFill = AppTheme.extendedColors.primaryBackground,
             compact = true,
         )
-        Spacer(modifier = Modifier.height(14.dp))
+        // Flush against the counter bottom — only the gap below the divider is kept.
+        HorizontalDivider(
+            color = AppTheme.extendedColors.primaryBackground,
+            modifier = Modifier.padding(bottom = 12.dp),
+        )
 
         Row(
             modifier = Modifier.fillMaxWidth(),

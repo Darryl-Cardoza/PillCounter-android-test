@@ -17,6 +17,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -836,13 +837,13 @@ object UserInterfaceUtils {
             Modifier.height(dimens.buttonHeight)
         Button(
             onClick = onClick,
-            modifier = sizeModifier
-                .then(modifier)
-                .border(
-                    width = 1.dp,
-                    color = color,
-                    shape = RoundedCornerShape(dimens.buttonCornerRadius)
-                ),
+            modifier = sizeModifier.then(modifier),
+            // Border + shape on the Button itself so the outline is drawn at the
+            // surface bounds — a .border() modifier sits outside the Button's
+            // 48dp minimum-touch-target node and renders taller than the fill
+            // when the button is height-constrained (e.g. landscape).
+            shape = RoundedCornerShape(dimens.buttonCornerRadius),
+            border = BorderStroke(1.dp, color),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color.Transparent,
                 contentColor = color,
