@@ -46,11 +46,12 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPr
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.ActiveNdc
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.RecentBatchRow
+import com.rite.pillcounting.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 
 /* ─────────────────────────  CARD CONTAINER  ───────────────────────── */
 
-/** Rounded white card used as the surface for both the top and bottom sections. */
+/** Rounded card used as the surface for both the top and bottom sections. */
 @Composable
 internal fun StockCountCard(
     modifier: Modifier = Modifier,
@@ -59,7 +60,7 @@ internal fun StockCountCard(
     Box(
         modifier = modifier
             .clip(RoundedCornerShape(CARD_RADIUS))
-            .background(Color.White)
+            .background(AppTheme.extendedColors.secondaryBackground)
     ) {
         content()
     }
@@ -80,7 +81,7 @@ internal fun BatchStockCountHeader(
     ) {
         Text(
             text = stringResource(R.string.batch_stock_count_title),
-            color = Color(0xFF222222),
+            color = AppTheme.extendedColors.textColor,
             fontSize = 18.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f)
@@ -120,7 +121,7 @@ internal fun RecentCountsLabelRow(
     ) {
         Text(
             text = label,
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f)
@@ -168,8 +169,8 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
             // jank. The white fill against the grey sheet + a hairline border reads
             // as a distinct card at no per-frame layer cost.
             .clip(RoundedCornerShape(10.dp))
-            .background(Color.White)
-            .border(1.dp, Color(0xFFE3E3E3), RoundedCornerShape(10.dp))
+            .background(AppTheme.extendedColors.secondaryBackground)
+            .border(1.dp, AppTheme.extendedColors.primaryBackground, RoundedCornerShape(10.dp))
             .clickable(onClick = onTap)
             .padding(horizontal = 12.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -177,7 +178,7 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = row.drugName,
-                color = Color(0xFF222222),
+                color = AppTheme.extendedColors.textColor,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -186,14 +187,20 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = row.ndc,
-                color = Color(0xFFAAAAAA),
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
                 fontSize = 11.sp,
                 maxLines = 1,
             )
         }
-        UnitColumn(value = row.pills.toString(), label = stringResource(R.string.batch_stock_count_label_pills))
+        UnitColumn(
+            value = row.pills.toString(),
+            label = stringResource(R.string.batch_stock_count_label_pills)
+        )
         Spacer(modifier = Modifier.width(14.dp))
-        UnitColumn(value = row.bottles.toString(), label = stringResource(R.string.batch_stock_count_label_bottles))
+        UnitColumn(
+            value = row.bottles.toString(),
+            label = stringResource(R.string.batch_stock_count_label_bottles)
+        )
     }
 }
 
@@ -210,7 +217,7 @@ private fun UnitColumn(value: String, label: String) {
         Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = label,
-            color = Color(0xFFAAAAAA),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
             fontSize = 10.sp,
         )
     }
@@ -234,7 +241,7 @@ internal fun ScannedDrugCard(
     ) {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -288,24 +295,21 @@ internal fun ScannedDrugCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         ) {
-            Box(modifier = Modifier.width(120.dp)) {
-                HollowButton(
-                    text = stringResource(R.string.batch_stock_count_clear),
-                    onClick = onClear,
-                    color = MaterialTheme.colorScheme.primary,
-                    fixedWidth = false,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-            Box(modifier = Modifier.width(120.dp)) {
-                ActionButtonPrimary(
-                    text = stringResource(R.string.batch_stock_count_add),
-                    onClick = onAdd,
-                    color = MaterialTheme.colorScheme.primary,
-                    fixedWidth = false,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+            HollowButton(
+                text = stringResource(R.string.batch_stock_count_clear),
+                onClick = onClear,
+                color = MaterialTheme.colorScheme.primary,
+                fixedWidth = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            ActionButtonPrimary(
+                text = stringResource(R.string.batch_stock_count_add),
+                onClick = onAdd,
+                color = MaterialTheme.colorScheme.primary,
+                fixedWidth = false,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
         }
     }
 }
@@ -315,7 +319,7 @@ private fun DetailField(label: String, value: String, modifier: Modifier = Modif
     Column(modifier = modifier) {
         Text(
             text = label,
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 11.sp,
         )
         Spacer(modifier = Modifier.height(2.dp))
@@ -355,7 +359,7 @@ internal fun CounterRow(
     tileFill: Color? = null,
     compact: Boolean = false,
 ) {
-    val borderColor = Color(0xFFE5E5E5)
+    val borderColor = AppTheme.extendedColors.primaryBackground
     val rowHeight = if (compact) 56.dp else 76.dp
     val iconSize = if (compact) 24.dp else 30.dp
     val valueSize = if (compact) 22.sp else 26.sp
@@ -372,7 +376,9 @@ internal fun CounterRow(
             borderColor = borderColor,
             fill = tileFill,
             iconSize = iconSize,
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
         )
         Column(
             modifier = Modifier
@@ -400,7 +406,7 @@ internal fun CounterRow(
             )
             Text(
                 text = stringResource(R.string.batch_stock_count_pills_suffix, totalPills),
-                color = Color(0xFFAAAAAA),
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
                 fontSize = 11.sp,
             )
         }
@@ -410,7 +416,9 @@ internal fun CounterRow(
             borderColor = borderColor,
             iconSize = iconSize,
             fill = tileFill,
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxHeight(),
         )
     }
 }
@@ -493,7 +501,7 @@ internal fun ScannedDrugDetailsPortrait(
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -539,7 +547,7 @@ internal fun ScannedDrugDetailsPortrait(
             onDecrement = onDecrement,
             // Light grey fill so the +/- tiles read as filled buttons against the
             // white portrait card (matches Figma).
-            tileFill = Color(0xFFF2F2F2),
+            tileFill = AppTheme.extendedColors.primaryBackground,
             // Compact proportions so the counter sits tight against the fields
             // rather than dominating the card (matches Figma).
             compact = true,
@@ -601,7 +609,7 @@ internal fun ScannedDrugDetailsPhone(
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -647,7 +655,7 @@ internal fun ScannedDrugDetailsPhone(
             totalPills = active.totalPills,
             onIncrement = onIncrement,
             onDecrement = onDecrement,
-            tileFill = Color(0xFFF2F2F2),
+            tileFill = AppTheme.extendedColors.primaryBackground,
             compact = true,
         )
         Spacer(modifier = Modifier.height(14.dp))
@@ -696,7 +704,7 @@ internal fun ScannedSummaryRow(
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_summary),
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -707,8 +715,16 @@ internal fun ScannedSummaryRow(
         ) {
             // Stats take their natural width on the left; the END COUNT pill gets
             // the remaining room and a min width so its label never wraps.
-            SummaryStat(label = stringResource(R.string.batch_stock_count_total_ndcs), value = totalNdcs.toString(), modifier = Modifier.weight(1f))
-            SummaryStat(label = stringResource(R.string.batch_stock_count_total_pills), value = totalPills.toString(), modifier = Modifier.weight(1f))
+            SummaryStat(
+                label = stringResource(R.string.batch_stock_count_total_ndcs),
+                value = totalNdcs.toString(),
+                modifier = Modifier.weight(1f)
+            )
+            SummaryStat(
+                label = stringResource(R.string.batch_stock_count_total_pills),
+                value = totalPills.toString(),
+                modifier = Modifier.weight(1f)
+            )
             ActionButtonPrimary(
                 text = stringResource(R.string.batch_stock_count_end_count),
                 onClick = onEndCount,
@@ -735,7 +751,7 @@ internal fun ScannedSummaryCard(
     ) {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_summary),
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -744,8 +760,16 @@ internal fun ScannedSummaryCard(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            SummaryStat(label = stringResource(R.string.batch_stock_count_total_ndcs), value = totalNdcs.toString(), modifier = Modifier.weight(1f))
-            SummaryStat(label = stringResource(R.string.batch_stock_count_total_pills), value = totalPills.toString(), modifier = Modifier.weight(1f))
+            SummaryStat(
+                label = stringResource(R.string.batch_stock_count_total_ndcs),
+                value = totalNdcs.toString(),
+                modifier = Modifier.weight(1f)
+            )
+            SummaryStat(
+                label = stringResource(R.string.batch_stock_count_total_pills),
+                value = totalPills.toString(),
+                modifier = Modifier.weight(1f)
+            )
             Box(modifier = Modifier.width(130.dp)) {
                 ActionButtonPrimary(
                     text = stringResource(R.string.batch_stock_count_end_count),
@@ -764,7 +788,7 @@ private fun SummaryStat(label: String, value: String, modifier: Modifier = Modif
     Column(modifier = modifier) {
         Text(
             text = label,
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 11.sp,
         )
         Spacer(modifier = Modifier.height(2.dp))

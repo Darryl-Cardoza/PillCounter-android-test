@@ -43,6 +43,7 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCo
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugDetailsPortrait
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedSummaryRow
+import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.ExtendedColors
 import com.rite.pillcounting.ui.theme.LocalExtendedColors
 import com.rite.pillcounting.ui.theme.PrimaryBackground
@@ -100,7 +101,7 @@ fun BatchStockCountTabletPortrait(
                     bottomEnd = 0.dp,
                 )
             )
-            .background(Color(0xFFF2F2F2)),
+            .background(AppTheme.extendedColors.primaryBackground),
     ) {
         Column(
             modifier = Modifier
@@ -148,7 +149,7 @@ fun BatchStockCountTabletPortrait(
                         .fillMaxHeight()
                         .shadow(CARD_ELEVATION, RoundedCornerShape(13.dp))
                         .clip(RoundedCornerShape(13.dp))
-                        .background(Color.White)
+                        .background(AppTheme.extendedColors.secondaryBackground)
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                 ) {
                     if (state.activeNdc != null) {
@@ -189,7 +190,7 @@ private fun EmptyScannedDetailsPortrait(
     Column(modifier = Modifier.fillMaxSize()) {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -208,7 +209,7 @@ private fun EmptyScannedDetailsPortrait(
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
-                color = Color(0xFF888888),
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
                 fontSize = 12.sp,
             )
         }

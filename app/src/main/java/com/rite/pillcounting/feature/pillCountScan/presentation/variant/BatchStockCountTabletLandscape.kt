@@ -29,6 +29,7 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCo
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugCard
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedSummaryCard
+import com.rite.pillcounting.ui.theme.AppTheme
 
 /**
  * Tablet landscape variant of the redesigned Batch Stock Count panel.
@@ -78,7 +79,7 @@ fun BatchStockCountTabletLandscape(
                 .align(Alignment.TopCenter)
                 .fillMaxHeight()
                 .fillMaxWidth()
-                .background(Color(0xFFF2F2F2)),
+                .background(AppTheme.extendedColors.primaryBackground),
         ) {
             Column(
                 modifier = Modifier
@@ -145,7 +146,7 @@ fun BatchStockCountTabletLandscape(
                             bottomEnd = 0.dp,
                         )
                     )
-                    .background(androidx.compose.ui.graphics.Color.White)
+                    .background(AppTheme.extendedColors.secondaryBackground)
             ) {
                 if (state.activeNdc != null) {
                     ScannedDrugCard(

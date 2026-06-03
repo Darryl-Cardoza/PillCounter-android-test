@@ -22,7 +22,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -36,6 +35,7 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCo
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugDetailsPhone
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedSummaryRow
+import com.rite.pillcounting.ui.theme.AppTheme
 
 /**
  * Phone-portrait variant of the redesigned Batch Stock Count panel.
@@ -101,7 +101,7 @@ fun BatchStockCountPhonePortrait(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(13.dp))
-                    .background(Color.White)
+                    .background(AppTheme.extendedColors.secondaryBackground)
                     .padding(horizontal = 16.dp, vertical = 14.dp),
             ) {
                 if (state.activeNdc != null) {
@@ -167,7 +167,7 @@ private fun EmptyScannedDetailsPhone(
     Column(modifier = Modifier.fillMaxWidth()) {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
-            color = Color(0xFF888888),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
@@ -185,7 +185,7 @@ private fun EmptyScannedDetailsPhone(
             Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
-                color = Color(0xFF888888),
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
                 fontSize = 12.sp,
             )
         }
