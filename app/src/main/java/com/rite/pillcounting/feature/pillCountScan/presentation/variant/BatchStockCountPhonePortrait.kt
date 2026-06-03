@@ -22,6 +22,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
@@ -57,6 +58,11 @@ fun BatchStockCountPhonePortrait(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
+    // Max height the list region may take (px) when expanded; keeps the inner
+    // LazyColumn bounded (a fillMaxSize/weight LazyColumn in a wrap-content sheet
+    // crashes with "measured with infinity").
+    listMaxHeight: Dp,
+    modifier: Modifier = Modifier,
     // END COUNT is disabled until at least one NDC has been scanned.
     endCountEnabled: Boolean = true,
     onRowTapped: (RecentBatchRow) -> Unit = {},
@@ -64,11 +70,6 @@ fun BatchStockCountPhonePortrait(
     // card) so the host can size the sheet's peek to exactly show it — no fixed
     // guess that clips the counter, no dead space above.
     onPeekHeightChanged: (Int) -> Unit = {},
-    // Max height the list region may take (px) when expanded; keeps the inner
-    // LazyColumn bounded (a fillMaxSize/weight LazyColumn in a wrap-content sheet
-    // crashes with "measured with infinity").
-    listMaxHeight: androidx.compose.ui.unit.Dp,
-    modifier: Modifier = Modifier,
 ) {
     // NO own background / rounded surface here — the hosting BottomSheetScaffold
     // provides the grey sheet container, rounded top corners, and the drag handle.

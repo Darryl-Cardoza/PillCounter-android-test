@@ -64,8 +64,8 @@ fun BatchStockCountTabletPortrait(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
-    onRowTapped: (RecentBatchRow) -> Unit = {},
     modifier: Modifier = Modifier,
+    onRowTapped: (RecentBatchRow) -> Unit = {},
 ) {
     // Grey sheet surface (matches Figma + the landscape variant). The two
     // inner sections (Recent Counts, Scanned NDC Details) are white cards that

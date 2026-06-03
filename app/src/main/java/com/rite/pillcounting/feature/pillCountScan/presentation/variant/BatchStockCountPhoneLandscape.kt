@@ -65,8 +65,8 @@ fun BatchStockCountPhoneLandscape(
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
     endCountEnabled: Boolean,
-    onRowTapped: (RecentBatchRow) -> Unit = {},
     modifier: Modifier = Modifier,
+    onRowTapped: (RecentBatchRow) -> Unit = {},
 ) {
     // Grey sheet surface. The DETAILS card is first (left) at a fixed width; the
     // RECENT card fills the slack on the RIGHT when expanded. Because the host
