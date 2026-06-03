@@ -243,8 +243,17 @@ class InventoryScanViewModel @Inject constructor(
      * NDC takes the active slot — this lets the user scan continuously without
      * tapping ADD between bottles.
      */
-    fun onBarcodeDetected(rawValue: String) {
-        logger.d("INV_SCAN onBarcodeDetected raw='$rawValue' currentActive=${_activeNdc.value?.ndc}")
+    /**
+     * Entry point for a Bluetooth HID barcode scanner. Same as [onBarcodeDetected]
+     * but skips the same-NDC cooldown — each BT trigger is a deliberate user action,
+     * unlike camera frames where the same barcode can appear dozens of times per second.
+     */
+    fun onBtBarcodeDetected(rawValue: String) = onBarcodeDetected(rawValue, bypassCooldown = true)
+
+    fun onBarcodeDetected(rawValue: String) = onBarcodeDetected(rawValue, bypassCooldown = false)
+
+    private fun onBarcodeDetected(rawValue: String, bypassCooldown: Boolean) {
+        logger.d("INV_SCAN onBarcodeDetected raw='$rawValue' bypassCooldown=$bypassCooldown currentActive=${_activeNdc.value?.ndc}")
         _scannerPaused.value = true
         viewModelScope.launch {
             try {
@@ -360,7 +369,7 @@ class InventoryScanViewModel @Inject constructor(
                 // (or a switch back to an NDC that was previously committed): seed
                 // from the existing committed bottleQty, defaulting to 1.
                 val sameAsActive = currentActive != null && currentActive.ndc == drug.ndc
-                if (sameAsActive) {
+                if (sameAsActive && !bypassCooldown) {
                     val now = System.currentTimeMillis()
                     val sinceLast = now - lastSameNdcIncrementAtMs
                     if (sinceLast < SAME_NDC_COOLDOWN_MS) {
