@@ -125,6 +125,7 @@ fun BatchStockCountPhoneLandscape(
                     .weight(1f)
                     .fillMaxHeight(),
             ) {
+                Spacer(modifier = Modifier.height(14.dp))
                 val label = if (state.activeNdc != null) {
                     stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
                 } else {
