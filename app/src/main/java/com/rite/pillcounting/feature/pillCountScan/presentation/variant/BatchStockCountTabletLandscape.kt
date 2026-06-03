@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -64,7 +65,7 @@ fun BatchStockCountTabletLandscape(
     // reserve exactly that much bottom padding — otherwise the last list rows
     // would render BEHIND the overlay and bleed through visibly.
     val density = androidx.compose.ui.platform.LocalDensity.current
-    var overlayHeightPx by remember { mutableStateOf(0) }
+    var overlayHeightPx by remember { mutableIntStateOf(0) }
     val overlayHeightDp = with(density) { overlayHeightPx.toDp() }
 
     Box(
