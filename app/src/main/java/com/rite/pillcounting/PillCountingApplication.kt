@@ -8,7 +8,7 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import coil.ImageLoader
 import com.google.firebase.FirebaseApp
 import com.rite.pillcounting.core.utils.coil.EncryptedImageFetcher
-import com.rite.pillcounting.feature.dispenseFlow.domain.PillDetectionModelLoader
+import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

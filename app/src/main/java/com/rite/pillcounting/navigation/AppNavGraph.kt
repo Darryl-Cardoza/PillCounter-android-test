@@ -11,7 +11,7 @@ import com.rite.pillcounting.feature.countResume.presentation.PartialCountsScree
 import com.rite.pillcounting.feature.countResume.presentation.RegularCountResumeScreen
 import com.rite.pillcounting.feature.dashboard.presentation.DashboardScreen
 import com.rite.pillcounting.feature.dispenseFlow.presentation.DispenseFlowScreen
-import com.rite.pillcounting.feature.pillCountScan.presentation.PillScanningScreen
+import com.rite.pillcounting.feature.inventoryFlow.presentation.InventoryFlowScreen
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.history.presentation.BatchHistoryDetailScreen
 import com.rite.pillcounting.feature.history.presentation.HistoryDetailScreen
@@ -71,7 +71,7 @@ fun AppNavGraph(
 //            route = Screen.PillCount.route, arguments = Screen.PillCount.navArguments
 //        ) { backStackEntry ->
 //            val countType = backStackEntry.arguments?.getString(Screen.PillCount.ARG_TYPE) ?: ""
-//            PillScanningScreen(navController, countType)
+//            InventoryFlowScreen(navController, countType)
 //        }
 
         // Merged dispense flow (RX + NDC + pill counting on one screen).
@@ -104,29 +104,7 @@ fun AppNavGraph(
             route = Screen.InventoryScan.route,
             arguments = Screen.InventoryScan.navArguments,
         ) {
-            PillScanningScreen(
-                navController = navController,
-                countType = com.rite.pillcounting.core.room.models.enums.CountType.REGULAR.toString(),
-                isInventory = true,
-            )
-        }
-
-        // Legacy pill-count flow launched from the Batch Stock Count SCAN PILLS
-        // button. isInventory = false so it runs the full legacy counting UI;
-        // batchIdArg scopes it to the inventory batch (the active NDC's txn was
-        // already staged via PreferenceHelper.saveTxnId before navigating).
-        composable(
-            route = Screen.InventoryPillCount.route,
-            arguments = Screen.InventoryPillCount.navArguments,
-        ) { backStackEntry ->
-            val batchId = backStackEntry.arguments
-                ?.getLong(Screen.InventoryPillCount.ARG_BATCH_ID) ?: 0L
-            PillScanningScreen(
-                navController = navController,
-                countType = com.rite.pillcounting.core.room.models.enums.CountType.REGULAR.toString(),
-                isInventory = false,
-                batchIdArg = batchId,
-            )
+            InventoryFlowScreen(navController = navController)
         }
 
         composable(

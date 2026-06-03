@@ -22,8 +22,8 @@ picture see [`/docs/architecture.md`](../../../../../../../docs/architecture.md)
 | `verifyPin` | OTP / PIN verification after login | `OtpVerify` | `VerifyPinViewModel` | `IVerifyPinAPI` |
 | `dashboard` | Home: counts, KPIs, terminal/user config | `Dashboard` | `DashboardViewModel` | `IUserDetailAPI`, `ITerminalApi` |
 | `menu` | Navigation hub + quick stats | `Menu` | `MenuViewModel` | — (reads DB) |
-| `dispenseFlow` | Core: RX/NDC scan → pill count → persist → HL7 | `DispenseFlow` | `DispenseFlowViewModel`, `InventoryScanViewModel`, `PillScanningViewModel` | `IDrugAPI` |
-| `pillCountScan` | Legacy/inventory pill-scan screen + stock-count variants | `InventoryScan`, `InventoryPillCount` | (shares `dispenseFlow` VMs) | — |
+| `dispenseFlow` | RX/NDC scan → pill count → persist → HL7 (orchestration only) | `DispenseFlow` | `DispenseFlowViewModel` | `IDrugAPI` (via `core/scanning`) |
+| `inventoryFlow` | Batch stock-count scan screen + stock-count variants | `InventoryScan` | `InventoryScanViewModel` (+ shared `PillScanningViewModel`) | — |
 | `batchCount` | Batch / stock-count grouping by NDC | `Batch` | `BatchViewModel` | — (reads DB) |
 | `countResume` | Resume partial/fixed/regular counts | `ResumeFixedCounts`, `ResumeRegularCounts`, `PartialCountsScreen` | `CountsViewModel`, `PartialCountsViewModel` | — |
 | `history` | Transaction & batch history, PDF export | `History`, `HistoryDetail`, `BatchHistoryDetail` | `HistoryViewModel`, `HistoryDetailsViewModel` | — (reads DB) |
@@ -36,30 +36,57 @@ picture see [`/docs/architecture.md`](../../../../../../../docs/architecture.md)
 
 ## Detailed notes
 
-### `dispenseFlow` (the core feature)
+### `core/scanning` (shared scanning engine)
 
-- **Purpose.** Single-screen merged flow combining RX scan, NDC scan, and
-  on-device pill counting for a dispense or stock-count transaction.
+Not a feature — the cross-cutting scanning/counting core that both `dispenseFlow`
+and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/).
+
+- **Holds.** On-device ML pill detection (`logic/`: `PillAnalyzer`,
+  `PillDetectionModelLoader`, `GloveDetector`, `TrayColorDetector`, `NMS`,
+  `Postprocessor`, `CameraHelper`), the `FrameBarcodeAnalyzer`, the shared
+  `PillScanningViewModel`, the drug data/repo/DI layer (`IDrugRepository`/
+  `IDrugAPI`, `DrugModule`), scanning models/events (`DrugInfo`, `DetectedPill`,
+  `PillScanningUiState`, `TxnDetail`, `NavigationEvent`, `PillScanningEvent`),
+  and the three genuinely shared composables (`CameraPreviewSection`,
+  `AddNoteDialog`, `AddCountBubble`).
+- **Rule.** `core/scanning` depends on **nothing** in `feature/*` (acyclic). Both
+  flows depend on it; never the reverse.
+- **Dependencies.** CameraX, ML Kit barcode, TensorFlow Lite (+GPU), OpenCV.
+
+### `dispenseFlow`
+
+- **Purpose.** Orchestration of the merged dispense/stock-count flow: RX scan →
+  NDC scan → on-device pill count → persist → optional HL7. The scanning/count
+  engine itself is in `core/scanning`; this feature owns the screen, its
+  ViewModel, and the count-mode UI.
 - **User flow.** Scan RX → scan/confirm NDC → CameraX preview → TFLite counts
-  pills (with glove + tray detection) → user ADDs counts → DONE persists a
+  pills (glove + tray detection) → user ADDs counts → DONE persists a
   `PillCountTxn` (+ details) to the encrypted DB → optional HL7 RXD/INV emitted.
 - **Entry points.** `Screen.DispenseFlow.createRoute(scanType, fromHl7, fromResume,
-  batchId, bucketId)`. The `from_hl7` flag hydrates the screen from a
-  PMS-created transaction (drug/NDC/target prefilled, RX scan skipped). Also
-  entered from resume screens and (for stock count) with a `batchId`.
+  batchId, bucketId)`. `from_hl7` hydrates from a PMS-created transaction
+  (drug/NDC/target prefilled, RX scan skipped). Also entered from resume screens,
+  and from `inventoryFlow`'s SCAN PILLS hand-off (with a `batchId`).
 - **Key classes.** `DispenseFlowScreen`, `DispenseFlowViewModel`,
-  `PillScanningViewModel`, `InventoryScanViewModel`; logic in
-  `presentation/logic/` (`PillAnalyzer`, `PillDetectionModelLoader` [in
-  `domain/`], `GloveDetector`, `TrayColorDetector`, `NMS`, `Postprocessor`,
-  `CameraHelper`, `FrameBarcodeAnalyzer`).
-- **Data sources.** `IDrugRepository`/`IDrugAPI` (NDC→drug lookup),
-  `DrugMasterDao`, `PillCountTxnDao`, `PillCountTxnDetailsDao`, `PreferenceHelper`.
-- **Dependencies.** CameraX, ML Kit barcode, TensorFlow Lite (+GPU), OpenCV.
-- **Known risks.** `Screen.PillCount`/`Screen.ScanBarcode` referenced here/in
-  resume screens are **not wired** in the nav graph (latent crash) — see
+  `DispenseFlowUiState`; count-mode UI in `presentation/compose/`
+  (`InformationPanelSection`, `CountModePortrait/Landscape`, `CameraActionBar`,
+  `HistoryMode*`, `TargetPillsCountDialog`, …). Shared engine via `core/scanning`.
+- **Known risks.** `Screen.PillCount`/`Screen.ScanBarcode` referenced in resume
+  screens are **not wired** in the nav graph (latent crash) — see
   [`/cleanup_report.md`](../../../../../../../cleanup_report.md) §4. Heavy
-  on-device ML; resource cleanup of the camera analyzer on screen dispose is
-  important.
+  on-device ML; resource cleanup of the camera analyzer on screen dispose matters.
+
+### `inventoryFlow`
+
+- **Purpose.** Batch Stock Count: scan NDCs and tally bottles/pills per batch.
+  `InventoryFlowScreen` is a thin per-form-factor dispatcher over `shell/`
+  (camera + bottom-sheet host) wrapping the `variant/` panels.
+- **Entry / hand-off.** Entered via `Screen.InventoryScan` from the dashboard.
+  Tapping SCAN PILLS stages the active bottle's txn and navigates to
+  `DispenseFlowScreen` (stock-count mode) for the actual pill count — inventory
+  does **not** run its own counting UI.
+- **Key classes.** `InventoryFlowScreen`, `InventoryScanViewModel`, the four
+  `BatchStockCount{Phone,Tablet}{Portrait,Landscape}` variants, the
+  `InventoryScan*` shells, and `domain/model/BatchStockCountUiState`.
 
 ### `login` + `verifyPin`
 

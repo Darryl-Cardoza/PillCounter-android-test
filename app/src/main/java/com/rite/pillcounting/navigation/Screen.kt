@@ -78,29 +78,6 @@ sealed interface Screen {
             "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}"
     }
 
-    /**
-     * Legacy pill-counting flow launched from the Batch Stock Count panel's
-     * SCAN PILLS button. Runs the full legacy [PillScanningScreen] (NDC scan →
-     * ML pill count → ADD to accumulate → DONE) scoped to [batchId]; counted
-     * loose pills are written into that batch. On finish it pops back to the
-     * inventory list, which auto-refreshes from its Room-backed flow.
-     */
-    data object InventoryPillCount : Screen {
-        private const val ROUTE_PREFIX = "inventory_pill_count"
-        const val ARG_BATCH_ID = "batch_id"
-
-        override val route: String = "$ROUTE_PREFIX?$ARG_BATCH_ID={$ARG_BATCH_ID}"
-
-        val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_BATCH_ID) {
-                type = NavType.LongType
-                defaultValue = 0L
-            }
-        )
-
-        fun createRoute(batchId: Long): String = "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId"
-    }
-
     data object HistoryDetail : Screen {
         override val route: String = "history_detail"
     }
