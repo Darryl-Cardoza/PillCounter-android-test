@@ -212,6 +212,13 @@ fun DispenseFlowScreen(
     val pillStepType by pillVm.currentStep.collectAsState()
     val isTxnFromHl7 by pillVm.isTxnFromHl7.collectAsState()
 
+    // Once a hazardous drug is identified, keep the gloves icon visible for the
+    // rest of this screen session — even if the user cancels the RX sheet and
+    // the dispenseState.isHazardous flag momentarily resets. The icon only clears
+    // when the user leaves the screen entirely (remember, not rememberSaveable).
+    var sessionHazardous by remember { mutableStateOf(false) }
+    if (dispenseState.isHazardous) sessionHazardous = true
+
     // === Pill-VM toasts ===
     if (pillState.restrictAdd) {
         UserInterfaceUtils.showToast(context, stringResource(id = R.string.max_count_reached))
@@ -483,6 +490,38 @@ fun DispenseFlowScreen(
         }
     }
 
+    // RX already has a PARTIAL transaction: ask the user whether to continue it.
+    // "Yes" advances to PRE_NDC to scan the container; "No" goes to Dashboard.
+    if (dispenseState.showContinueRxDialog) {
+        CommonDialog(
+            title = stringResource(R.string.rx_already_exists_title),
+            message = stringResource(R.string.rx_already_exists_message),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = { dispenseVm.confirmContinueRx() },
+            onCancel = {
+                dispenseVm.dismissContinueRxDialog()
+                navController.navigate(Screen.Dashboard.route) {
+                    popUpTo(0)
+                    launchSingleTop = true
+                }
+            },
+        )
+    }
+
+    // RX transaction is ON_HOLD: block the user with an informational dialog.
+    if (dispenseState.showOnHoldDialog) {
+        CommonDialog(
+            title = stringResource(R.string.rx_on_hold_title),
+            message = stringResource(R.string.rx_on_hold_message),
+            confirmText = stringResource(R.string.ok),
+            cancelText = "",
+            onConfirm = { dispenseVm.dismissOnHoldDialog() },
+            onCancel = {},
+            isSingleButton = true,
+        )
+    }
+
     // Substitute drug confirmation: surfaces when the scanned NDC is reported
     // by the server as a generic equivalent of the HL7-expected NDC.
     if (dispenseState.showNdcEquivalenceDialog) {
@@ -535,7 +574,7 @@ fun DispenseFlowScreen(
                 viewModel = pillVm,
                 pills = pillState.detectedPills,
                 isCameraPaused = pillVm.cameraPaused.collectAsState().value,
-                showGloveIcon = dispenseState.isHazardous,
+                showGloveIcon = sessionHazardous,
                 onFrame = { imageProxy ->
                     // Only the barcode analyzer reads the frame metadata before the
                     // frame is forwarded to the pill VM (which always closes it). When

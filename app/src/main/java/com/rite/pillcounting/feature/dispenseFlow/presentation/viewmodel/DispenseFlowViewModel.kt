@@ -206,6 +206,30 @@ class DispenseFlowViewModel @Inject constructor(
                     _uiState.update { it.copy(selectedBucketId = bucket) }
                 }
 
+                // Check if this RX already has an active transaction (PARTIAL or ON_HOLD).
+                val existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
+                if (existingTxn != null) {
+                    when (existingTxn.status) {
+                        CountStatus.ON_HOLD -> {
+                            _uiState.update { it.copy(isLoading = false, showOnHoldDialog = true) }
+                            return@launch
+                        }
+                        CountStatus.PARTIAL -> {
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    showContinueRxDialog = true,
+                                    txnId = existingTxn.txnId,
+                                    rxNo = rxNo,
+                                    qty = qty,
+                                )
+                            }
+                            return@launch
+                        }
+                        else -> { /* proceed with fresh drug lookup */ }
+                    }
+                }
+
                 val localDrug = drugMasterDao.getDrugByNdc(parsedNdc)
                 if (localDrug != null) {
                     _uiState.update {
@@ -539,6 +563,47 @@ class DispenseFlowViewModel @Inject constructor(
         )
         _uiState.update { it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false) }
         logger.i("NDC auto-confirmed, txn=$txnId substitute=$isSubstitute, advancing to COUNTING")
+    }
+
+    /** User confirmed they want to continue the existing PARTIAL transaction. */
+    fun confirmContinueRx() {
+        val txnId = _uiState.value.txnId
+        viewModelScope.launch {
+            val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+            val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
+            pillCountTxnDao.updateGlovesPresent(txnId, false)
+            // Persist so pillVm.getDrugInfo() picks up the correct txn and restores
+            // the saved workflow step (workflowStep column) from the DB.
+            preferenceHelper.saveTxnId(txnId)
+            // If NDC was already verified the user was mid-count: jump to COUNTING so
+            // the pill-scanning VM can restore the exact workflow step from the DB.
+            // If NDC was never verified: go to PRE_NDC so the user scans the container.
+            val targetStage = if (txn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
+            _uiState.update {
+                it.copy(
+                    showContinueRxDialog = false,
+                    stage = targetStage,
+                    txnId = txnId,
+                    drugName = drug?.drugName ?: it.drugName,
+                    ndc = drug?.ndc ?: it.ndc,
+                    hl7ExpectedNdc = drug?.ndc,
+                    rxNo = txn.rxNo,
+                    qty = txn.targetCount?.toString(),
+                    isHazardous = drug?.isHazardous ?: false,
+                )
+            }
+            logger.i("Continuing txn=$txnId isNdcVerified=${txn.isNdcVerified} workflowStep=${txn.workflowStep} → $targetStage")
+        }
+    }
+
+    /** User declined to continue the existing transaction; screen navigates to Dashboard. */
+    fun dismissContinueRxDialog() {
+        _uiState.update { it.copy(showContinueRxDialog = false, txnId = 0L) }
+    }
+
+    /** Dismiss the ON_HOLD blocking dialog; user stays on scan screen to try a different RX. */
+    fun dismissOnHoldDialog() {
+        _uiState.update { it.copy(showOnHoldDialog = false) }
     }
 
     fun dismissNdcEquivalenceDialog() {

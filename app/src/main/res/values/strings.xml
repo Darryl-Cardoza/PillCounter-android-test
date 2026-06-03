@@ -142,6 +142,10 @@
     <string name="confirm_done">Confirm Completion</string>
     <string name="confirm_done_desc_regular">Are you sure you want to mark this transaction as completed?</string>
     <string name="confirm_done_desc_fixed">Target not reached. This transaction will be marked as Completed.</string>
+    <string name="rx_already_exists_title">RX Already Exists</string>
+    <string name="rx_already_exists_message">This RX is already present in your transactions. Do you want to continue with it?</string>
+    <string name="rx_on_hold_title">Transaction On Hold</string>
+    <string name="rx_on_hold_message">This transaction is currently on hold. You cannot continue with it.</string>
     <!-- ================== PROFILE ================== -->
     <string name="profile_title">PROFILE</string>
     <string name="first_name">First Name</string>

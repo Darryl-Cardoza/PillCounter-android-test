@@ -128,7 +128,7 @@ fun BatchStockCountTabletPortrait(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxHeight()
-                        .shadow(CARD_ELEVATION, RoundedCornerShape(13.dp))
+                        .shadow(3.dp, RoundedCornerShape(13.dp))
                         .clip(RoundedCornerShape(13.dp))
                         .background(AppTheme.extendedColors.secondaryBackground)
                         .padding(horizontal = 16.dp, vertical = 14.dp),
@@ -153,9 +153,6 @@ fun BatchStockCountTabletPortrait(
         }
     }
 }
-
-/** Soft elevation for the white cards sitting on the grey sheet. */
-private val CARD_ELEVATION = 3.dp
 
 /**
  * Empty-state content for the portrait right card: a centered "scan a new
