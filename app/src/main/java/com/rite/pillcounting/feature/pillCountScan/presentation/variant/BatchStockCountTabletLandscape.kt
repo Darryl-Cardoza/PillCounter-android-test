@@ -88,7 +88,7 @@ fun BatchStockCountTabletLandscape(
             ) {
                 BatchStockCountHeader(onScanPills = onScanPills)
                 Spacer(modifier = Modifier.height(16.dp))
-                val label = if (state.activeNdc != null) {
+                val label = if (state.recentCounts.isNotEmpty()) {
                     stringResource(R.string.batch_stock_count_recent_with_count, state.totalNdcs)
                 } else {
                     stringResource(R.string.batch_stock_count_recent_summary)

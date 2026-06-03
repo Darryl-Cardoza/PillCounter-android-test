@@ -114,7 +114,7 @@ internal fun RecentCountsLabelRow(
     Text(
         text = label,
         color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-        fontSize = 10.sp,
+        fontSize = 13.sp,
         fontWeight = FontWeight.SemiBold,
         modifier = modifier.fillMaxWidth(),
     )
