@@ -268,10 +268,9 @@ internal fun ScannedDrugCard(
                 modifier = Modifier.weight(1f),
             )
         }
-        // Flush against the counter top — only the gap above the divider is kept.
         HorizontalDivider(
-            color = AppTheme.extendedColors.primaryBackground,
-            modifier = Modifier.padding(top = 12.dp),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
+            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
         )
 
         CounterRow(
@@ -369,7 +368,9 @@ internal fun CounterRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .height(rowHeight),
+            .height(rowHeight)
+            .clip(RoundedCornerShape(12.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp)),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -548,10 +549,9 @@ internal fun ScannedDrugDetailsPortrait(
                 modifier = Modifier.weight(1f),
             )
         }
-        // Flush against the counter top — only the gap above the divider is kept.
         HorizontalDivider(
-            color = AppTheme.extendedColors.primaryBackground,
-            modifier = Modifier.padding(top = 12.dp),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
+            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
         )
 
         CounterRow(
@@ -671,8 +671,8 @@ internal fun ScannedDrugDetailsPhone(
         }
         // Flush against the counter top — only the gap above the divider is kept.
         HorizontalDivider(
-            color = AppTheme.extendedColors.primaryBackground,
-            modifier = Modifier.padding(top = 12.dp),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
+            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
         )
 
         CounterRow(
@@ -682,11 +682,6 @@ internal fun ScannedDrugDetailsPhone(
             onDecrement = onDecrement,
             tileFill = AppTheme.extendedColors.primaryBackground,
             compact = true,
-        )
-        // Flush against the counter bottom — only the gap below the divider is kept.
-        HorizontalDivider(
-            color = AppTheme.extendedColors.primaryBackground,
-            modifier = Modifier.padding(bottom = 12.dp),
         )
 
         Row(
@@ -829,3 +824,4 @@ private fun SummaryStat(label: String, value: String, modifier: Modifier = Modif
         )
     }
 }
+
