@@ -623,7 +623,14 @@ internal fun ScannedDrugDetailsPhone(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
+    // Phone landscape has far less vertical room than the portrait bottom sheet;
+    // [dense] tightens the inter-field spacing so the counter + CANCEL/ADD fit
+    // without being clipped at the panel's bottom edge.
+    dense: Boolean = false,
 ) {
+    val fieldGap = if (dense) 6.dp else 12.dp
+    val dividerGap = if (dense) 6.dp else 12.dp
+    val buttonGap = if (dense) 10.dp else 16.dp
     Column(modifier = modifier.fillMaxWidth()) {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
@@ -631,7 +638,7 @@ internal fun ScannedDrugDetailsPhone(
             fontSize = 10.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(fieldGap))
 
         // Row 1: Drug Name (2x) | Bucket (1x).
         Row(modifier = Modifier.fillMaxWidth()) {
@@ -648,7 +655,7 @@ internal fun ScannedDrugDetailsPhone(
         }
         HorizontalDivider(
             color = AppTheme.extendedColors.primaryBackground,
-            modifier = Modifier.padding(vertical = 12.dp),
+            modifier = Modifier.padding(vertical = dividerGap),
         )
 
         // Row 2: NDC (1.2x) | Batch No. | Expiry Date.
@@ -672,7 +679,7 @@ internal fun ScannedDrugDetailsPhone(
         // Flush against the counter top — only the gap above the divider is kept.
         HorizontalDivider(
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
-            modifier = Modifier.padding(top = 12.dp, bottom = 8.dp),
+            modifier = Modifier.padding(top = dividerGap, bottom = if (dense) 6.dp else 8.dp),
         )
 
         CounterRow(
@@ -683,6 +690,9 @@ internal fun ScannedDrugDetailsPhone(
             tileFill = AppTheme.extendedColors.primaryBackground,
             compact = true,
         )
+
+        // Gap so CANCEL/ADD don't sit flush against the counter (matches Figma).
+        Spacer(modifier = Modifier.height(buttonGap))
 
         Row(
             modifier = Modifier.fillMaxWidth(),

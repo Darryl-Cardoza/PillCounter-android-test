@@ -107,6 +107,9 @@ fun BatchStockCountPhoneLandscape(
                         onDecrement = onDecrement,
                         onClear = onClear,
                         onAdd = onAdd,
+                        // Compact spacing — landscape panel is short and would
+                        // otherwise clip CANCEL/ADD at the bottom edge.
+                        dense = true,
                     )
                 } else {
                     EmptyScannedDetailsLandscape(
