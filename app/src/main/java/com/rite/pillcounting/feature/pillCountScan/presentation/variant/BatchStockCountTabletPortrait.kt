@@ -19,42 +19,23 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
-import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.ActiveNdc
-import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountHeader
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BatchStockCountUiState
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.RecentBatchRow
+import com.rite.pillcounting.feature.pillCountScan.presentation.compose.BatchStockCountHeader
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsLabelRow
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedDrugDetailsPortrait
 import com.rite.pillcounting.feature.pillCountScan.presentation.compose.ScannedSummaryRow
 import com.rite.pillcounting.ui.theme.AppTheme
-import com.rite.pillcounting.ui.theme.ExtendedColors
-import com.rite.pillcounting.ui.theme.LocalExtendedColors
-import com.rite.pillcounting.ui.theme.PrimaryBackground
-import com.rite.pillcounting.ui.theme.PrimaryColor
-import com.rite.pillcounting.ui.theme.SecondaryBackground
-import com.rite.pillcounting.ui.theme.SecondaryColor
-import com.rite.pillcounting.ui.theme.TextColor
-import com.rite.pillcounting.ui.theme.inputBackground
-import com.rite.pillcounting.ui.theme.statusChipBackgroundOnPrimary
-import com.rite.pillcounting.ui.theme.statusChipBackgroundOnSecondary
-import androidx.compose.material3.lightColorScheme
 
 /**
  * Tablet portrait variant of the redesigned Batch Stock Count panel.
@@ -221,89 +202,3 @@ private fun EmptyScannedDetailsPortrait(
     }
 }
 
-/* ─────────────────────────  PREVIEW  ───────────────────────── */
-
-@Composable
-private fun BatchStockCountTabletPortraitPreviewHost(initialActive: Boolean) {
-    val sampleRow = RecentBatchRow(ndc = "234-345-654-2343", drugName = "Levothyroxidfrfgfne 250mg", pills = 1800, bottles = 20)
-    val sampleActiveNdc = ActiveNdc(ndc = "234-345-654-2343", drugName = "Levothyroxine Disulphide 50mg", bucket = "Normal", batchNo = "4324534547", expiry = "05-23-2026", pillsPerBottle = 9, bottles = 20)
-    var state by remember {
-        mutableStateOf(
-            if (initialActive) BatchStockCountUiState(recentCounts = List(5) { sampleRow }, activeNdc = sampleActiveNdc, totalNdcs = 25, totalPills = 5648)
-            else BatchStockCountUiState(recentCounts = List(8) { sampleRow }, activeNdc = null, totalNdcs = 150, totalPills = 5648)
-        )
-    }
-
-    fun commitActiveToList(active: ActiveNdc) {
-        val newRow = RecentBatchRow(
-            ndc = active.ndc,
-            drugName = active.drugName,
-            pills = active.totalPills,
-            bottles = active.bottles,
-        )
-        state = state.copy(
-            recentCounts = listOf(newRow) + state.recentCounts,
-            activeNdc = null,
-            totalNdcs = state.totalNdcs + 1,
-            totalPills = state.totalPills + active.totalPills,
-        )
-    }
-
-    // Camera placeholder on top, panel pinned to the bottom ~42%.
-    Column(modifier = Modifier.fillMaxSize().background(Color(0xFFE5E5E5))) {
-        Box(
-            modifier = Modifier.fillMaxWidth().weight(1f).background(Color(0xFF6F6F6F)),
-        )
-        Box(modifier = Modifier.fillMaxWidth().weight(0.85f)) {
-            BatchStockCountTabletPortrait(
-                state = state,
-                onScanPills = {
-                    state = state.copy(activeNdc = sampleActiveNdc)
-                },
-                onIncrement = {
-                    state.activeNdc?.let { a -> state = state.copy(activeNdc = a.copy(bottles = a.bottles + 1)) }
-                },
-                onDecrement = {
-                    state.activeNdc?.let { a ->
-                        val next = (a.bottles - 1).coerceAtLeast(1)
-                        state = state.copy(activeNdc = a.copy(bottles = next))
-                    }
-                },
-                onClear = { state = state.copy(activeNdc = null) },
-                onAdd = { state.activeNdc?.let { commitActiveToList(it) } },
-                onEndCount = {},
-                modifier = Modifier.fillMaxHeight(),
-            )
-        }
-    }
-}
-
-@Composable
-private fun PreviewTheme(content: @Composable () -> Unit) {
-    val extended = ExtendedColors(
-        primaryBackground = PrimaryBackground,
-        secondaryBackground = SecondaryBackground,
-        textColor = TextColor,
-        inputBackground = inputBackground,
-        statusChipBackgroundOnPrimary = statusChipBackgroundOnPrimary,
-        statusChipBackgroundOnSecondary = statusChipBackgroundOnSecondary,
-    )
-    CompositionLocalProvider(LocalExtendedColors provides extended) {
-        MaterialTheme(
-            colorScheme = lightColorScheme(primary = PrimaryColor, secondary = SecondaryColor),
-            content = content,
-        )
-    }
-}
-
-@Preview(name = "Tablet Portrait — Active", device = "spec:width=800dp,height=1280dp,dpi=240")
-@Composable
-private fun BatchStockCountTabletPortrait_ActivePreview() {
-    PreviewTheme { BatchStockCountTabletPortraitPreviewHost(initialActive = true) }
-}
-
-@Preview(name = "Tablet Portrait — Summary", device = "spec:width=800dp,height=1280dp,dpi=240")
-@Composable
-private fun BatchStockCountTabletPortrait_SummaryPreview() {
-    PreviewTheme { BatchStockCountTabletPortraitPreviewHost(initialActive = false) }
-}

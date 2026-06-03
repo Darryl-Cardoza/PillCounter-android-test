@@ -280,20 +280,24 @@ internal fun ScannedDrugCard(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
         ) {
-            HollowButton(
-                text = stringResource(R.string.batch_stock_count_clear),
-                onClick = onClear,
-                color = MaterialTheme.colorScheme.primary,
-                fixedWidth = false,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            ActionButtonPrimary(
-                text = stringResource(R.string.batch_stock_count_add),
-                onClick = onAdd,
-                color = MaterialTheme.colorScheme.primary,
-                fixedWidth = false,
-                modifier = Modifier.fillMaxWidth(),
-            )
+            Box(modifier = Modifier.width(120.dp)) {
+                HollowButton(
+                    text = stringResource(R.string.batch_stock_count_clear),
+                    onClick = onClear,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            Box(modifier = Modifier.width(120.dp)) {
+                ActionButtonPrimary(
+                    text = stringResource(R.string.batch_stock_count_add),
+                    onClick = onAdd,
+                    color = MaterialTheme.colorScheme.primary,
+                    fixedWidth = false,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
 
         }
     }

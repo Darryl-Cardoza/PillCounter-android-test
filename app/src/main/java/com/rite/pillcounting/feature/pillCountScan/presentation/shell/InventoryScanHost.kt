@@ -21,6 +21,7 @@ import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -139,11 +140,18 @@ fun InventoryScanHost(
         state = panelState,
         canEndCount = panelState.totalNdcs > 0 || panelState.activeNdc != null,
         onScanPills = {
-            // Hand off to the legacy pill-count flow scoped to this batch: stage the
-            // active NDC's txn then navigate. It counts loose pills into that txn and
-            // pops back on DONE; the recent-counts list refreshes from its Room flow.
+            // Stage the active bottle's txn (or clear staged txn if none), then hand
+            // off to the merged dispense flow in stock-count mode. fromResume=true so
+            // DispenseFlowScreen skips RX and loads the drug/txn from preferences,
+            // landing at PRE_NDC ready for the container barcode scan.
             inventoryVm.onScanPillsForActive { batchId ->
-                navController.navigate(Screen.InventoryPillCount.createRoute(batchId))
+                navController.navigate(
+                    Screen.DispenseFlow.createRoute(
+                        scanType = CountType.REGULAR.toString(),
+                        fromResume = true,
+                        batchId = batchId,
+                    )
+                )
             }
         },
         onIncrement = inventoryVm::increment,

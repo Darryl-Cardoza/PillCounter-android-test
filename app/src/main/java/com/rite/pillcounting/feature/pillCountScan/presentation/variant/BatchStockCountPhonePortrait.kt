@@ -5,11 +5,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -122,14 +119,8 @@ fun BatchStockCountPhonePortrait(
                 }
             }
 
-            // Breathing room below the card + clearance for the system navigation
-            // bar so the buttons aren't flush against the bottom edge.
-            Spacer(
-                modifier = Modifier.height(
-                    16.dp + WindowInsets.navigationBars.asPaddingValues()
-                        .calculateBottomPadding()
-                )
-            )
+            // Breathing room below the card before the recent-counts section.
+            Spacer(modifier = Modifier.height(24.dp))
         }
 
         // Recent counts — revealed once the sheet is dragged up past the peek.

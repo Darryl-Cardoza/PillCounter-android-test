@@ -28,6 +28,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavController
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
@@ -173,10 +175,12 @@ fun InventoryPhonePortraitShell(navController: NavController) = InventoryScanHos
             skipHiddenState = true,
         )
     )
-    val peekHeight = 320.dp
-    // Recent Counts list (revealed on expand) gets the screen minus the peek so the
-    // inner LazyColumn stays bounded.
+    val density = LocalDensity.current
     val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
+    // Peek height is driven by the measured content height so the sheet always
+    // shows the full header + card without clipping. Starts at 320dp while the
+    // first measurement arrives, then updates to the real content height.
+    var peekHeight by remember { mutableStateOf(320.dp) }
     val listMaxHeight = (screenHeightDp - peekHeight).coerceAtLeast(120.dp)
 
     // Camera is the full-screen base; the scaffold layers on top with a transparent
@@ -202,7 +206,10 @@ fun InventoryPhonePortraitShell(navController: NavController) = InventoryScanHos
                     onEndCount = onEndCount,
                     endCountEnabled = canEndCount,
                     onRowTapped = onRowTapped,
-                    onPeekHeightChanged = { },
+                    onPeekHeightChanged = { heightPx ->
+                        val measured: Dp = with(density) { heightPx.toDp() }
+                        if (measured > 0.dp) peekHeight = measured
+                    },
                     listMaxHeight = listMaxHeight,
                 )
             },
