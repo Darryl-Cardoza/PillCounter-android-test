@@ -22,7 +22,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Remove
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -112,24 +111,13 @@ internal fun RecentCountsLabelRow(
     label: String,
     modifier: Modifier = Modifier,
 ) {
-    Row(
+    Text(
+        text = label,
+        color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+        fontSize = 10.sp,
+        fontWeight = FontWeight.SemiBold,
         modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = label,
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.weight(1f)
-        )
-        Icon(
-            imageVector = Icons.Default.Search,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.size(16.dp)
-        )
-    }
+    )
 }
 
 /**
