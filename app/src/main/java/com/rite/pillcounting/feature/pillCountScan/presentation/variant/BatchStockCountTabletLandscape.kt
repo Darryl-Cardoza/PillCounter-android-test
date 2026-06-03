@@ -52,8 +52,8 @@ fun BatchStockCountTabletLandscape(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     onEndCount: () -> Unit,
-    onRowTapped: (RecentBatchRow) -> Unit = {},
     modifier: Modifier = Modifier,
+    onRowTapped: (RecentBatchRow) -> Unit = {},
 ) {
     // Bottom card overlaps the top card and carries a soft upward shadow so it
     // reads as an overlay on the recent-counts card. Box (instead of Column
@@ -115,7 +115,7 @@ fun BatchStockCountTabletLandscape(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .onSizeChanged { overlayHeightPx = it.height },
+                .onSizeChanged { },
         ) {
             // The shadow band sits ABOVE the card and fades upward — gives a
             // clear "overlay floating on top" cue.
