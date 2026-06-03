@@ -185,13 +185,12 @@ private fun EmptyScannedDetailsPortrait(
                 painter = painterResource(R.drawable.fixed_count_inner),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier.size(UserInterfaceUtils.responsiveDp(42.dp)),
+                modifier = Modifier.size(UserInterfaceUtils.responsiveDp(75.dp)),
             )
-            Spacer(modifier = Modifier.height(10.dp))
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
-                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-                fontSize = 12.sp,
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.9f),
+                fontSize = 14.sp,
             )
         }
         ScannedSummaryRow(
