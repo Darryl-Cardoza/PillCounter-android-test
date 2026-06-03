@@ -57,9 +57,6 @@ private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
 private const val KEY_HL7_PILLCOUNTER_HOST = "key_hl7_pillcounter_host"
 private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
 
-// FCM
-private const val KEY_LAST_SENT_FCM_TOKEN = "last_sent_fcm_token"
-
 @Singleton
 class PreferenceHelper @Inject constructor(
     @ApplicationContext private val context: Context
@@ -500,25 +497,4 @@ class PreferenceHelper @Inject constructor(
         prefs.putBoolean(KEY_HL7_CONFIG_FETCHED, false)
         logger.w("Cleared HL7 config from prefs")
     }
-
-    // ─────────────────────────── FCM TOKEN ───────────────────────────
-
-    fun saveLastSentFcmToken(token: String) {
-        prefs.putString(KEY_LAST_SENT_FCM_TOKEN, token)
-    }
-
-    fun getLastSentFcmToken(): String? =
-        prefs.getString(KEY_LAST_SENT_FCM_TOKEN)
-
-    fun clearLastSentFcmToken() {
-        prefs.remove(KEY_LAST_SENT_FCM_TOKEN)
-    }
-
-    // ─────────────────────────── GENERIC ───────────────────────────
-
-    fun getInt(key: String, default: Int = 0): Int =
-        prefs.getInt(key, default)
-
-    fun putInt(key: String, value: Int) =
-        prefs.putInt(key, value)
 }

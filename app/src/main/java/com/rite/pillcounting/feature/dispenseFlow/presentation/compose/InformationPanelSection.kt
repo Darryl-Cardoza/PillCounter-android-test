@@ -13,6 +13,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -49,7 +50,9 @@ fun InformationPanelSection(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.5f))
+            // Always black (theme-independent); kept translucent so the camera
+            // feed still shows through behind the panel.
+            .background(Color.Black.copy(alpha = 0.5f))
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         if (stepType != StepState.VIAL && !isLandscape) {
