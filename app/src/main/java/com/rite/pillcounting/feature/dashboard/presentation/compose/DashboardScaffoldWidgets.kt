@@ -35,6 +35,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
@@ -329,25 +330,29 @@ internal fun ScaffoldKpiCard(
     modifier: Modifier = Modifier,
     singleLabelLine: Boolean = false,
 ) {
-    // Selection is shown by border + a tinted background fill, both strictly
-    // keyed on isActive so deselecting fully reverts. We deliberately do NOT use
-    // elevation for selection: at the tight 8.dp inter-card gap the raised card's
-    // drop shadow bled onto its neighbour, making an adjacent (unselected) card
-    // look raised/selected too. A flat fill is unambiguous — only the actual
-    // selected card changes. (The previous scaleX/scaleY 1.02x "grow" was also
-    // removed earlier for the same fragile-visual reason.)
-    val containerColor = if (isActive) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
-    } else {
-        extendedColors.secondaryBackground
-    }
+    // Selection is shown by a primary border plus an all-around primary-tinted
+    // shadow, both strictly keyed on isActive so deselecting fully reverts.
+    // Background fill stays the same for selected and unselected cards.
+    val shape = RoundedCornerShape(8.dp)
     Card(
         modifier = modifier
+            .then(
+                if (isActive) {
+                    Modifier.shadow(
+                        elevation = 6.dp,
+                        shape = shape,
+                        ambientColor = MaterialTheme.colorScheme.primary,
+                        spotColor = MaterialTheme.colorScheme.primary,
+                    )
+                } else {
+                    Modifier
+                },
+            )
             .clickable { onClick() },
-        shape = RoundedCornerShape(8.dp),
-        colors = CardDefaults.cardColors(containerColor = containerColor),
+        shape = shape,
+        colors = CardDefaults.cardColors(containerColor = extendedColors.secondaryBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = if (isActive) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
+        border = if (isActive) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
     ) {
         Box(
             modifier = Modifier
