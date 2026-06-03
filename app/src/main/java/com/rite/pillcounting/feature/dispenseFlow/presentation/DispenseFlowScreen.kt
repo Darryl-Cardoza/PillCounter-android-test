@@ -34,6 +34,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -210,7 +211,6 @@ fun DispenseFlowScreen(
 
     val pillStepType by pillVm.currentStep.collectAsState()
     val isTxnFromHl7 by pillVm.isTxnFromHl7.collectAsState()
-    val glovesDetected by pillVm.glovesDetected.collectAsState()
 
     // === Pill-VM toasts ===
     if (pillState.restrictAdd) {
@@ -691,7 +691,7 @@ fun DispenseFlowScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.5f)),
+                    .background(Color.Black.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
@@ -720,7 +720,7 @@ fun DispenseFlowScreen(
         }
 
         if (!showHistory) {
-            Row(
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
@@ -730,11 +730,11 @@ fun DispenseFlowScreen(
                     // on-screen arrow didn't).
                     .zIndex(1f)
                     .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
                 BackButton(
                     navController = navController,
                     showBox = false,
+                    modifier = Modifier.align(Alignment.CenterStart),
                     onClick = {
                         // Back-out without Done: discard staged loose-pill ADDs.
                         pillVm.discardStagedCount()
@@ -744,22 +744,18 @@ fun DispenseFlowScreen(
                         }
                     },
                 )
-                if (isLandscape) {
-                    Spacer(modifier = Modifier.weight(0.3f))
-                } else {
-                    Spacer(modifier = Modifier.weight(0.6f))
-                }
                 val headerStepType = when (dispenseState.stage) {
                     DispenseStage.PRE_RX -> StepState.RX_LABEL
                     DispenseStage.PRE_NDC -> StepState.SCAN
                     DispenseStage.COUNTING -> pillStepType
                 }
-                StepTitleWithSpeech(
-                    stepType = headerStepType,
-                    isSoundOverride = isSoundEnabled,
-                    titleResOverride = if (dispenseState.stage == DispenseStage.COUNTING && countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null,
-                )
-                Spacer(modifier = Modifier.weight(1f))
+                Box(modifier = Modifier.align(Alignment.Center)) {
+                    StepTitleWithSpeech(
+                        stepType = headerStepType,
+                        isSoundOverride = isSoundEnabled,
+                        titleResOverride = if (dispenseState.stage == DispenseStage.COUNTING && countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null,
+                    )
+                }
             }
         }
 
