@@ -164,7 +164,7 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
             Text(
                 text = row.drugName,
                 color = AppTheme.extendedColors.textColor,
-                fontSize = 13.sp,
+                fontSize = 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -172,8 +172,8 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
             Spacer(modifier = Modifier.height(2.dp))
             Text(
                 text = row.ndc,
-                color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
-                fontSize = 11.sp,
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+                fontSize = 13.sp,
                 maxLines = 1,
             )
         }
@@ -189,21 +189,20 @@ private fun RecentCountRow(row: RecentBatchRow, onTap: () -> Unit) {
     }
 }
 
-/** Number on top in magenta, label below in grey caption. Right-aligned. */
+/** Number on top in magenta, label below in grey caption. */
 @Composable
 private fun UnitColumn(value: String, label: String) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(
             text = value,
             color = MaterialTheme.colorScheme.secondary,
-            fontSize = 14.sp,
+            fontSize = 16.sp,
             fontWeight = FontWeight.SemiBold,
         )
-        Spacer(modifier = Modifier.width(4.dp))
         Text(
             text = label,
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
-            fontSize = 10.sp,
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+            fontSize = 12.sp,
         )
     }
 }
