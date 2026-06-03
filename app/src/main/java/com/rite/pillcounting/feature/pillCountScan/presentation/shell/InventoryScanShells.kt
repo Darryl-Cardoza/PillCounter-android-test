@@ -7,11 +7,11 @@ import androidx.compose.foundation.gestures.draggable
 import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.BottomSheetScaffold
@@ -20,6 +20,8 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,13 +29,22 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
+import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
+import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseFlowUiState
+import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BtScannerInputBar
+import com.rite.pillcounting.feature.dispenseFlow.presentation.handleBarcode
+import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountPhoneLandscape
 import com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountPhonePortrait
 import com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletLandscape
@@ -41,11 +52,77 @@ import com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchSto
 import com.rite.pillcounting.ui.theme.AppTheme
 
 // Each shell is layout-only: all VM/camera/analyzer/permission wiring lives in
-// [InventoryScanHost], which supplies a fully-wired InventoryScanScope receiver.
+// [InventoryScanHost], which supplies a fully-wired [InventoryScanScope].
+//
+// BT scanner pattern (uniform across all four shells):
+//   - Each shell injects its own [DispenseFlowViewModel] for dispense-stage /
+//     overlay state — the same instance the screen would use for RX+NDC flow.
+//   - [btScannerOverlayActive] is derived from [DispenseFlowViewModel.uiState]
+//     so the invisible input field re-focuses after every modal dismissal.
+//   - Barcode dispatch goes through the shared [BarcodeDispatcher], which
+//     mirrors the identical routing logic in [DispenseFlowScreen].
+//   - The field is not rendered once the stage reaches COUNTING — barcode
+//     scanning is finished at that point.
+
+// ── Shared helpers ───────────────────────────────────────────────────────────
+
+/**
+ * True when any modal overlay is active in the dispense flow. Extracted so the
+ * identical 7-boolean predicate is not copy-pasted across four shells.
+ */
+private fun dispenseOverlayActive(state: DispenseFlowUiState): Boolean =
+    state.showRxDetails ||
+            state.showNdcDetails ||
+            state.showNdcNotFoundDialog ||
+            state.showInvalidScanDialog ||
+            state.showNdcEquivalenceDialog ||
+            state.showRxScannedInStockCountDialog ||
+            state.isLoading
+
+
+private fun InventoryScanScope.dispatchBtBarcode(
+    barcode: String,
+    stage: DispenseStage,
+    dispenseVm: DispenseFlowViewModel,
+) {
+    val dispatched = handleBarcode(
+        value = barcode,
+        imagePath = null,
+        stage = stage,
+        countType = CountType.REGULAR.toString(),
+        onRx = dispenseVm::onRxBarcodeRead,
+        onNdc = dispenseVm::onNdcBarcodeRead,
+        onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
+        onRxInStockCount = dispenseVm::onRxScannedInStockCount,
+    )
+    if (!dispatched) analyzer.resume()
+}
+
+// ── Shells ───────────────────────────────────────────────────────────────────
 
 /** Tablet landscape: camera on the left, full-height stacked-card panel on the right. */
 @Composable
-fun InventoryTabletLandscapeShell(navController: NavController) = InventoryScanHost(navController) {
+fun InventoryTabletLandscapeShell(
+    navController: NavController,
+    dispenseVm: DispenseFlowViewModel = hiltViewModel(),
+) = InventoryScanHost(navController) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val dispenseState by dispenseVm.uiState.collectAsState()
+    val btScannerOverlayActive = dispenseOverlayActive(dispenseState)
+
+    var btScannerInput by remember { mutableStateOf("") }
+    val btFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
+        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
+            btScannerInput = ""
+            try {
+                btFocusRequester.requestFocus()
+                keyboardController?.hide()
+            } catch (_: Exception) {}
+        }
+    }
+
     Row(
         modifier = Modifier
             .fillMaxSize()
@@ -54,6 +131,22 @@ fun InventoryTabletLandscapeShell(navController: NavController) = InventoryScanH
         Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
             CameraPreview(frameTag = "tablet-ls", modifier = Modifier.fillMaxSize())
             BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
+
+            if (dispenseState.stage != DispenseStage.COUNTING && !btScannerOverlayActive) {
+                BtScannerInputBar(
+                    input = btScannerInput,
+                    onInputChange = { btScannerInput = it },
+                    onSubmit = {
+                        val barcode = btScannerInput.trim()
+                        btScannerInput = ""
+                        if (barcode.isNotBlank()) {
+                            dispatchBtBarcode(barcode, dispenseState.stage, dispenseVm)
+                        }
+                    },
+                    focusRequester = btFocusRequester,
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
+            }
         }
         // Left edge rounded (24dp) so the panel reads as a curved sheet over the camera.
         Box(
@@ -83,11 +176,31 @@ fun InventoryTabletLandscapeShell(navController: NavController) = InventoryScanH
  * RECENT COUNTS. Drag left to expand, right to collapse.
  */
 @Composable
-fun InventoryPhoneLandscapeShell(navController: NavController) = InventoryScanHost(navController) {
+fun InventoryPhoneLandscapeShell(
+    navController: NavController,
+    dispenseVm: DispenseFlowViewModel = hiltViewModel(),
+) = InventoryScanHost(navController) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val dispenseState by dispenseVm.uiState.collectAsState()
+    val btScannerOverlayActive = dispenseOverlayActive(dispenseState)
+
+    var btScannerInput by remember { mutableStateOf("") }
+    val btFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
+        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
+            btScannerInput = ""
+            try {
+                btFocusRequester.requestFocus()
+                keyboardController?.hide()
+            } catch (_: Exception) {}
+        }
+    }
+
     val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
     val detailsCardWidth = 300.dp
-    val collapsedWidth = detailsCardWidth + 28.dp        // + panel horizontal padding
-    val expandedWidth = screenWidthDp * 0.9f             // 90% of screen width when expanded
+    val collapsedWidth = detailsCardWidth + 28.dp
+    val expandedWidth = screenWidthDp * 0.9f
     var expanded by remember { mutableStateOf(false) }
     val panelWidth by animateDpAsState(
         targetValue = if (expanded) expandedWidth else collapsedWidth,
@@ -97,6 +210,22 @@ fun InventoryPhoneLandscapeShell(navController: NavController) = InventoryScanHo
     Box(modifier = Modifier.fillMaxSize()) {
         CameraPreview(frameTag = "phone-ls", modifier = Modifier.fillMaxSize())
         BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
+
+        if (dispenseState.stage != DispenseStage.COUNTING && !btScannerOverlayActive) {
+            BtScannerInputBar(
+                input = btScannerInput,
+                onInputChange = { btScannerInput = it },
+                onSubmit = {
+                    val barcode = btScannerInput.trim()
+                    btScannerInput = ""
+                    if (barcode.isNotBlank()) {
+                        dispatchBtBarcode(barcode, dispenseState.stage, dispenseVm)
+                    }
+                },
+                focusRequester = btFocusRequester,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
+        }
 
         Box(
             modifier = Modifier
@@ -133,7 +262,27 @@ fun InventoryPhoneLandscapeShell(navController: NavController) = InventoryScanHo
 
 /** Tablet portrait: camera on top, fixed-height (~38%) panel pinned to the bottom. */
 @Composable
-fun InventoryTabletPortraitShell(navController: NavController) = InventoryScanHost(navController) {
+fun InventoryTabletPortraitShell(
+    navController: NavController,
+    dispenseVm: DispenseFlowViewModel = hiltViewModel(),
+) = InventoryScanHost(navController) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val dispenseState by dispenseVm.uiState.collectAsState()
+    val btScannerOverlayActive = dispenseOverlayActive(dispenseState)
+
+    var btScannerInput by remember { mutableStateOf("") }
+    val btFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
+        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
+            btScannerInput = ""
+            try {
+                btFocusRequester.requestFocus()
+                keyboardController?.hide()
+            } catch (_: Exception) {}
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -142,6 +291,22 @@ fun InventoryTabletPortraitShell(navController: NavController) = InventoryScanHo
         Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
             CameraPreview(frameTag = "tablet-pt", modifier = Modifier.fillMaxSize())
             BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
+
+            if (dispenseState.stage != DispenseStage.COUNTING && !btScannerOverlayActive) {
+                BtScannerInputBar(
+                    input = btScannerInput,
+                    onInputChange = { btScannerInput = it },
+                    onSubmit = {
+                        val barcode = btScannerInput.trim()
+                        btScannerInput = ""
+                        if (barcode.isNotBlank()) {
+                            dispatchBtBarcode(barcode, dispenseState.stage, dispenseVm)
+                        }
+                    },
+                    focusRequester = btFocusRequester,
+                    modifier = Modifier.align(Alignment.TopStart),
+                )
+            }
         }
         Box(
             modifier = Modifier
@@ -170,7 +335,27 @@ fun InventoryTabletPortraitShell(navController: NavController) = InventoryScanHo
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun InventoryPhonePortraitShell(navController: NavController) = InventoryScanHost(navController) {
+fun InventoryPhonePortraitShell(
+    navController: NavController,
+    dispenseVm: DispenseFlowViewModel = hiltViewModel(),
+) = InventoryScanHost(navController) {
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val dispenseState by dispenseVm.uiState.collectAsState()
+    val btScannerOverlayActive = dispenseOverlayActive(dispenseState)
+
+    var btScannerInput by remember { mutableStateOf("") }
+    val btFocusRequester = remember { FocusRequester() }
+
+    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
+        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
+            btScannerInput = ""
+            try {
+                btFocusRequester.requestFocus()
+                keyboardController?.hide()
+            } catch (_: Exception) {}
+        }
+    }
+
     val scaffoldState = rememberBottomSheetScaffoldState(
         bottomSheetState = rememberStandardBottomSheetState(
             initialValue = SheetValue.PartiallyExpanded,
@@ -179,15 +364,9 @@ fun InventoryPhonePortraitShell(navController: NavController) = InventoryScanHos
     )
     val density = LocalDensity.current
     val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
-    // Peek height is driven by the measured content height so the sheet always
-    // shows the full header + card without clipping. Starts at 320dp while the
-    // first measurement arrives, then updates to the real content height.
     var peekHeight by remember { mutableStateOf(320.dp) }
     val listMaxHeight = (screenHeightDp - peekHeight).coerceAtLeast(120.dp)
 
-    // Camera is the full-screen base; the scaffold layers on top with a transparent
-    // body so the camera shows through. The back arrow is drawn LAST so it sits on
-    // top of the scaffold and actually receives taps.
     Box(modifier = Modifier.fillMaxSize()) {
         CameraPreview(frameTag = "phone", modifier = Modifier.fillMaxSize())
 
@@ -223,6 +402,26 @@ fun InventoryPhonePortraitShell(navController: NavController) = InventoryScanHos
             Box(modifier = Modifier.fillMaxSize())
         }
 
+        // BT scanner sits above the scaffold so it doesn't compete with the sheet
+        // drag handle hit area. Must remain in composition between scans to hold
+        // focus — visibility is controlled by the stage/overlay guard.
+        if (dispenseState.stage != DispenseStage.COUNTING && !btScannerOverlayActive) {
+            BtScannerInputBar(
+                input = btScannerInput,
+                onInputChange = { btScannerInput = it },
+                onSubmit = {
+                    val barcode = btScannerInput.trim()
+                    btScannerInput = ""
+                    if (barcode.isNotBlank()) {
+                        dispatchBtBarcode(barcode, dispenseState.stage, dispenseVm)
+                    }
+                },
+                focusRequester = btFocusRequester,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
+        }
+
+        // BackButton drawn last so it sits above the scaffold and receives taps.
         BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
     }
 }

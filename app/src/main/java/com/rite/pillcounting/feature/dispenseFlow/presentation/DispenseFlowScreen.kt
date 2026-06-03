@@ -34,9 +34,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -68,6 +70,7 @@ import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
 import com.rite.pillcounting.feature.dispenseFlow.domain.data.NavigationEvent as PillNavigationEvent
 import com.rite.pillcounting.feature.dispenseFlow.domain.data.PillScanningEvent
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.AddNoteDialog
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BtScannerInputBar
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.CameraPreviewSection
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModePortrait
@@ -124,6 +127,14 @@ fun DispenseFlowScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val isSoundEnabled by pillVm.isSoundEnabled.collectAsState()
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    // ── BT scanner input ────────────────────────────────────────────────────
+    // Tracks the text typed by a Bluetooth HID barcode scanner into the overlay
+    // text field. Cleared after each submission so the field is ready for the
+    // next scan.
+    var btScannerInput by remember { mutableStateOf("") }
+    val btFocusRequester = remember { FocusRequester() }
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -525,6 +536,25 @@ fun DispenseFlowScreen(
         }
     }
 
+    // Re-focus the BT scanner field whenever all overlays dismiss so the next
+    // scan is captured without the user tapping the field.
+    val btScannerOverlayActive = dispenseState.showRxDetails ||
+            dispenseState.showNdcDetails ||
+            dispenseState.showNdcNotFoundDialog ||
+            dispenseState.showInvalidScanDialog ||
+            dispenseState.showNdcEquivalenceDialog ||
+            dispenseState.showRxScannedInStockCountDialog ||
+            dispenseState.isLoading
+    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
+        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
+            btScannerInput = ""
+            try {
+                btFocusRequester.requestFocus()
+                keyboardController?.hide()
+            } catch (_: Exception) {}
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Camera + pill panel are hidden while the history view is up — matches
         // the legacy PillScanningScreen behavior so CameraX doesn't rebind on
@@ -759,6 +789,40 @@ fun DispenseFlowScreen(
             }
         }
 
+        // BT scanner input bar — visible during PRE_RX and PRE_NDC while no modal
+        // overlay is active. Positioned just below the back-button row so it
+        // doesn't obstruct the camera detection area. The field auto-focuses on
+        // composition and re-focuses whenever a dialog/sheet dismisses, so the
+        // Bluetooth HID scanner can type directly into it without any tap.
+        if (!showHistory &&
+            dispenseState.stage != DispenseStage.COUNTING &&
+            !btScannerOverlayActive
+        ) {
+            BtScannerInputBar(
+                input = btScannerInput,
+                onInputChange = { btScannerInput = it },
+                onSubmit = {
+                    val barcode = btScannerInput.trim()
+                    btScannerInput = ""
+                    if (barcode.isNotBlank()) {
+                        val dispatched = handleBarcode(
+                            value = barcode,
+                            imagePath = null,
+                            stage = dispenseState.stage,
+                            countType = countType,
+                            onRx = dispenseVm::onRxBarcodeRead,
+                            onNdc = dispenseVm::onNdcBarcodeRead,
+                            onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
+                            onRxInStockCount = dispenseVm::onRxScannedInStockCount,
+                        )
+                        if (!dispatched) barcodeAnalyzer.resume()
+                    }
+                },
+                focusRequester = btFocusRequester,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
+        }
+
         if (dispenseState.isLoading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
         }
@@ -914,7 +978,7 @@ fun DispenseFlowScreen(
  * caller uses the return to decide whether to resume the analyzer — without
  * that, a single dropped read leaves the analyzer self-paused forever.
  */
-private fun handleBarcode(
+internal fun handleBarcode(
     value: String,
     imagePath: String?,
     stage: DispenseStage,
