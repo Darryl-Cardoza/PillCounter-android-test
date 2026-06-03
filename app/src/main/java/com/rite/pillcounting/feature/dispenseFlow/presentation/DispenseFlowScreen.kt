@@ -60,6 +60,7 @@ import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsSheet
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleSheet
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.feature.dispenseFlow.presentation.analyzer.FrameBarcodeAnalyzer
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
@@ -99,8 +100,6 @@ import java.util.Locale
  * (not stopped) whenever a verification sheet, error dialog, or loading indicator
  * is visible — this avoids stale detections and saves CPU/GPU while the user is
  * looking at modal UI.
- *
- * Voice guidance is provided via [DispenseVoicePrompt]. The step-title speech
  * component (StepTitleWithSpeech) is only rendered during COUNTING.
  */
 
@@ -167,7 +166,16 @@ fun DispenseFlowScreen(
                     navController.navigate(Screen.Dashboard.route)
                 }
                 is PillNavigationEvent.NavigateToBatch -> {
-                    navController.navigate(Screen.Batch.createRoute(event.batchId))
+                    // Pop back to the inventory/batch screen that launched this flow
+                    // (the Batch Stock Count screen for the "Scan Pills" hand-off).
+                    // If nothing can be popped (root entry), fall back to Dashboard.
+                    val popped = navController.popBackStack()
+                    if (!popped) {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(0)
+                            launchSingleTop = true
+                        }
+                    }
                 }
             }
         }
@@ -333,7 +341,11 @@ fun DispenseFlowScreen(
     LaunchedEffect(dispenseState.stage) {
         if (dispenseState.stage == DispenseStage.COUNTING) {
             pillVm.resumePillDetection()
-            pillVm.getDrugInfo()
+            // For stock count (REGULAR) the NDC scan already happened in PRE_NDC,
+            // so skip the SCAN workflow step and start at pill counting directly.
+            pillVm.getDrugInfo(
+                forceStartStep = if (countType == CountType.REGULAR.toString()) StepState.TARGET_VERIFICATION else null
+            )
             pillVm.showTxnInfo(countType)
             // Enable tray color detection only for hazardous transactions in COUNTING stage.
             pillVm.setHazardousTransaction(dispenseState.isHazardous)
@@ -416,15 +428,6 @@ fun DispenseFlowScreen(
     // Track in-flight pill count from the detector (only meaningful in COUNTING).
     var filteredPillCount by remember { mutableStateOf(0) }
 
-    // ── Voice prompts ───────────────────────────────────────────────────────
-    val pillsDetected = pillState.detectedPills.isNotEmpty() || filteredPillCount > 0
-    DispenseVoicePrompt(
-        stage = dispenseState.stage,
-        pillsDetected = pillsDetected,
-        isSoundEnabled = isSoundEnabled,
-        isAnyOverlayShowing = dispenseState.showRxDetails || dispenseState.showNdcDetails,
-    )
-
     // ── Back handling ───────────────────────────────────────────────────────
     // Device-back priority order:
     //  1. If the history view is open, dismiss it (return to camera + pill panel).
@@ -464,28 +467,20 @@ fun DispenseFlowScreen(
         }
     }
 
-    if (dispenseState.showInvalidScanDialog) {
-        CommonDialog(
-            title = stringResource(R.string.rescan_require),
-            message = stringResource(R.string.scan_correct_label),
-            confirmText = stringResource(R.string.rescane),
-            cancelText = "",
-            onConfirm = { dispenseVm.dismissInvalidScanDialog() },
-            onCancel = {},
-            isSingleButton = true,
-        )
+    val invalidScanToastText = stringResource(R.string.scan_correct_label)
+    LaunchedEffect(dispenseState.showInvalidScanDialog) {
+        if (dispenseState.showInvalidScanDialog) {
+            showToast(context, invalidScanToastText, Toast.LENGTH_SHORT)
+            dispenseVm.dismissInvalidScanDialog()
+        }
     }
 
-    if (dispenseState.showNdcNotFoundDialog) {
-        CommonDialog(
-            title = stringResource(R.string.rescan_require),
-            message = stringResource(R.string.the_scanned_ndc_does_not_match),
-            confirmText = stringResource(R.string.rescane),
-            cancelText = "",
-            onConfirm = { dispenseVm.dismissNdcNotFoundDialog() },
-            onCancel = {},
-            isSingleButton = true,
-        )
+    val ndcNotFoundToastText = stringResource(R.string.the_scanned_ndc_does_not_match)
+    LaunchedEffect(dispenseState.showNdcNotFoundDialog) {
+        if (dispenseState.showNdcNotFoundDialog) {
+            showToast(context, ndcNotFoundToastText, Toast.LENGTH_SHORT)
+            dispenseVm.dismissNdcNotFoundDialog()
+        }
     }
 
     // Substitute drug confirmation: surfaces when the scanned NDC is reported
@@ -501,19 +496,12 @@ fun DispenseFlowScreen(
         )
     }
 
-    // Stock-count flow: user scanned an RX label instead of the NDC container.
-    // A blocking dialog is used here (rather than a toast) because stock count
-    // never accepts RX labels — the user must always rescan the container.
-    if (dispenseState.showRxScannedInStockCountDialog) {
-        CommonDialog(
-            title = stringResource(R.string.rescan_require),
-            message = stringResource(R.string.scan_correct_label),
-            confirmText = stringResource(R.string.rescane),
-            cancelText = "",
-            onConfirm = { dispenseVm.dismissRxScannedInStockCountDialog() },
-            onCancel = {},
-            isSingleButton = true,
-        )
+    val rxScannedInStockCountToastText = stringResource(R.string.scan_correct_label)
+    LaunchedEffect(dispenseState.showRxScannedInStockCountDialog) {
+        if (dispenseState.showRxScannedInStockCountDialog) {
+            showToast(context, rxScannedInStockCountToastText, Toast.LENGTH_SHORT)
+            dispenseVm.dismissRxScannedInStockCountDialog()
+        }
     }
 
     // Hard PMS NDC mismatch (scanned NDC doesn't match HL7 and isn't a
@@ -761,13 +749,16 @@ fun DispenseFlowScreen(
                 } else {
                     Spacer(modifier = Modifier.weight(0.6f))
                 }
-                if (dispenseState.stage == DispenseStage.COUNTING) {
-                    StepTitleWithSpeech(
-                        stepType = pillStepType,
-                        isSoundOverride = isSoundEnabled,
-                        titleResOverride = if (countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null,
-                    )
+                val headerStepType = when (dispenseState.stage) {
+                    DispenseStage.PRE_RX -> StepState.RX_LABEL
+                    DispenseStage.PRE_NDC -> StepState.SCAN
+                    DispenseStage.COUNTING -> pillStepType
                 }
+                StepTitleWithSpeech(
+                    stepType = headerStepType,
+                    isSoundOverride = isSoundEnabled,
+                    titleResOverride = if (dispenseState.stage == DispenseStage.COUNTING && countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null,
+                )
                 Spacer(modifier = Modifier.weight(1f))
             }
         }

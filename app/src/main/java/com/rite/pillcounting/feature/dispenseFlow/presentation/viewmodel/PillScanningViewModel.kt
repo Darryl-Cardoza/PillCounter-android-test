@@ -1224,7 +1224,12 @@ class PillScanningViewModel @Inject constructor(
                 // flush staging to the DB BEFORE marking COMPLETED.
                 flushStagedDetails(txnId)
                 pillCountTxnDao.updateTxnStatus(txnId, CountStatus.COMPLETED)
-                _navigationEvent.send(NavigationEvent.NavigateToBatch(txn.batchId ?: 0))
+                val batchId = txn.batchId
+                if (batchId != null && batchId != 0L) {
+                    _navigationEvent.send(NavigationEvent.NavigateToBatch(batchId))
+                } else {
+                    _navigationEvent.send(NavigationEvent.NavigateToDashboard)
+                }
                 return@launch
             }
             val remainingCount =
@@ -1370,7 +1375,7 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
-    fun getDrugInfo() {
+    fun getDrugInfo(forceStartStep: StepState? = null) {
         viewModelScope.launch {
             val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
             _txnInfo.value = txnInfo
@@ -1434,6 +1439,10 @@ class PillScanningViewModel @Inject constructor(
                 // SCAN PILLS hand-off: always begin on the compulsory NDC-scan
                 // step, ignoring any staged/active NDC's saved workflow step.
                 forceStartOnScan -> StepState.SCAN
+                // Caller explicitly overrides the start step (e.g. DispenseFlowScreen
+                // entering COUNTING after NDC was already scanned in PRE_NDC, so we
+                // skip straight to the pill-count step).
+                forceStartStep != null -> forceStartStep
                 savedWorkflowStep == null -> {
                     // No saved step yet — fall back to deriving from details history
                     val latestStep = pillCountTxnDetailsDao.getLatestType(preferenceHelper.getTxnId())
