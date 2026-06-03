@@ -801,9 +801,7 @@ fun DispenseFlowScreen(
             BtScannerInputBar(
                 input = btScannerInput,
                 onInputChange = { btScannerInput = it },
-                onSubmit = {
-                    val barcode = btScannerInput.trim()
-                    btScannerInput = ""
+                onSubmit = { barcode ->
                     if (barcode.isNotBlank()) {
                         val dispatched = handleBarcode(
                             value = barcode,

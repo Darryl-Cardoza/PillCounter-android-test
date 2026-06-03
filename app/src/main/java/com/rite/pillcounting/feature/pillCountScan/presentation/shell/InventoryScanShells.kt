@@ -20,8 +20,6 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -33,18 +31,11 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseFlowUiState
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BtScannerInputBar
-import com.rite.pillcounting.feature.dispenseFlow.presentation.handleBarcode
-import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountPhoneLandscape
 import com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountPhonePortrait
 import com.rite.pillcounting.feature.pillCountScan.presentation.variant.BatchStockCountTabletLandscape
@@ -55,48 +46,12 @@ import com.rite.pillcounting.ui.theme.AppTheme
 // [InventoryScanHost], which supplies a fully-wired [InventoryScanScope].
 //
 // BT scanner pattern (uniform across all four shells):
-//   - Each shell injects its own [DispenseFlowViewModel] for dispense-stage /
-//     overlay state — the same instance the screen would use for RX+NDC flow.
-//   - [btScannerOverlayActive] is derived from [DispenseFlowViewModel.uiState]
-//     so the invisible input field re-focuses after every modal dismissal.
-//   - Barcode dispatch goes through the shared [BarcodeDispatcher], which
-//     mirrors the identical routing logic in [DispenseFlowScreen].
-//   - The field is not rendered once the stage reaches COUNTING — barcode
-//     scanning is finished at that point.
-
-// ── Shared helpers ───────────────────────────────────────────────────────────
-
-/**
- * True when any modal overlay is active in the dispense flow. Extracted so the
- * identical 7-boolean predicate is not copy-pasted across four shells.
- */
-private fun dispenseOverlayActive(state: DispenseFlowUiState): Boolean =
-    state.showRxDetails ||
-            state.showNdcDetails ||
-            state.showNdcNotFoundDialog ||
-            state.showInvalidScanDialog ||
-            state.showNdcEquivalenceDialog ||
-            state.showRxScannedInStockCountDialog ||
-            state.isLoading
-
-
-private fun InventoryScanScope.dispatchBtBarcode(
-    barcode: String,
-    stage: DispenseStage,
-    dispenseVm: DispenseFlowViewModel,
-) {
-    val dispatched = handleBarcode(
-        value = barcode,
-        imagePath = null,
-        stage = stage,
-        countType = CountType.REGULAR.toString(),
-        onRx = dispenseVm::onRxBarcodeRead,
-        onNdc = dispenseVm::onNdcBarcodeRead,
-        onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
-        onRxInStockCount = dispenseVm::onRxScannedInStockCount,
-    )
-    if (!dispatched) analyzer.resume()
-}
+//   - An invisible 1×1 dp focusable [BtScannerInputBar] captures HID keyboard
+//     events from a Bluetooth scanner without triggering the soft IME.
+//   - On Enter the accumulated barcode is dispatched via [InventoryScanScope.onBarcode],
+//     which routes to [InventoryScanViewModel.onBarcodeDetected].
+//   - The field auto-focuses on composition; [BtScannerInputBar] re-focuses on
+//     every recomposition so focus is not lost after a scan.
 
 // ── Shells ───────────────────────────────────────────────────────────────────
 
@@ -104,24 +59,9 @@ private fun InventoryScanScope.dispatchBtBarcode(
 @Composable
 fun InventoryTabletLandscapeShell(
     navController: NavController,
-    dispenseVm: DispenseFlowViewModel = hiltViewModel(),
 ) = InventoryScanHost(navController) {
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val dispenseState by dispenseVm.uiState.collectAsState()
-    val btScannerOverlayActive = dispenseOverlayActive(dispenseState)
-
     var btScannerInput by remember { mutableStateOf("") }
     val btFocusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
-        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
-            btScannerInput = ""
-            try {
-                btFocusRequester.requestFocus()
-                keyboardController?.hide()
-            } catch (_: Exception) {}
-        }
-    }
 
     Row(
         modifier = Modifier
@@ -132,21 +72,16 @@ fun InventoryTabletLandscapeShell(
             CameraPreview(frameTag = "tablet-ls", modifier = Modifier.fillMaxSize())
             BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
 
-            if (dispenseState.stage != DispenseStage.COUNTING && !btScannerOverlayActive) {
-                BtScannerInputBar(
-                    input = btScannerInput,
-                    onInputChange = { btScannerInput = it },
-                    onSubmit = {
-                        val barcode = btScannerInput.trim()
-                        btScannerInput = ""
-                        if (barcode.isNotBlank()) {
-                            dispatchBtBarcode(barcode, dispenseState.stage, dispenseVm)
-                        }
-                    },
-                    focusRequester = btFocusRequester,
-                    modifier = Modifier.align(Alignment.TopStart),
-                )
-            }
+            BtScannerInputBar(
+                input = btScannerInput,
+                onInputChange = { btScannerInput = it },
+                onSubmit = { barcode ->
+                    btScannerInput = ""
+                    onBtBarcode(barcode)
+                },
+                focusRequester = btFocusRequester,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
         }
         // Left edge rounded (24dp) so the panel reads as a curved sheet over the camera.
         Box(
@@ -178,24 +113,9 @@ fun InventoryTabletLandscapeShell(
 @Composable
 fun InventoryPhoneLandscapeShell(
     navController: NavController,
-    dispenseVm: DispenseFlowViewModel = hiltViewModel(),
 ) = InventoryScanHost(navController) {
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val dispenseState by dispenseVm.uiState.collectAsState()
-    val btScannerOverlayActive = dispenseOverlayActive(dispenseState)
-
     var btScannerInput by remember { mutableStateOf("") }
     val btFocusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
-        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
-            btScannerInput = ""
-            try {
-                btFocusRequester.requestFocus()
-                keyboardController?.hide()
-            } catch (_: Exception) {}
-        }
-    }
 
     val screenWidthDp = LocalConfiguration.current.screenWidthDp.dp
     val detailsCardWidth = 300.dp
@@ -211,21 +131,16 @@ fun InventoryPhoneLandscapeShell(
         CameraPreview(frameTag = "phone-ls", modifier = Modifier.fillMaxSize())
         BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
 
-        if (dispenseState.stage != DispenseStage.COUNTING && !btScannerOverlayActive) {
-            BtScannerInputBar(
-                input = btScannerInput,
-                onInputChange = { btScannerInput = it },
-                onSubmit = {
-                    val barcode = btScannerInput.trim()
-                    btScannerInput = ""
-                    if (barcode.isNotBlank()) {
-                        dispatchBtBarcode(barcode, dispenseState.stage, dispenseVm)
-                    }
-                },
-                focusRequester = btFocusRequester,
-                modifier = Modifier.align(Alignment.TopStart),
-            )
-        }
+        BtScannerInputBar(
+            input = btScannerInput,
+            onInputChange = { btScannerInput = it },
+            onSubmit = { barcode ->
+                btScannerInput = ""
+                onBtBarcode(barcode)
+            },
+            focusRequester = btFocusRequester,
+            modifier = Modifier.align(Alignment.TopStart),
+        )
 
         Box(
             modifier = Modifier
@@ -264,24 +179,9 @@ fun InventoryPhoneLandscapeShell(
 @Composable
 fun InventoryTabletPortraitShell(
     navController: NavController,
-    dispenseVm: DispenseFlowViewModel = hiltViewModel(),
 ) = InventoryScanHost(navController) {
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val dispenseState by dispenseVm.uiState.collectAsState()
-    val btScannerOverlayActive = dispenseOverlayActive(dispenseState)
-
     var btScannerInput by remember { mutableStateOf("") }
     val btFocusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
-        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
-            btScannerInput = ""
-            try {
-                btFocusRequester.requestFocus()
-                keyboardController?.hide()
-            } catch (_: Exception) {}
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -292,21 +192,16 @@ fun InventoryTabletPortraitShell(
             CameraPreview(frameTag = "tablet-pt", modifier = Modifier.fillMaxSize())
             BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })
 
-            if (dispenseState.stage != DispenseStage.COUNTING && !btScannerOverlayActive) {
-                BtScannerInputBar(
-                    input = btScannerInput,
-                    onInputChange = { btScannerInput = it },
-                    onSubmit = {
-                        val barcode = btScannerInput.trim()
-                        btScannerInput = ""
-                        if (barcode.isNotBlank()) {
-                            dispatchBtBarcode(barcode, dispenseState.stage, dispenseVm)
-                        }
-                    },
-                    focusRequester = btFocusRequester,
-                    modifier = Modifier.align(Alignment.TopStart),
-                )
-            }
+            BtScannerInputBar(
+                input = btScannerInput,
+                onInputChange = { btScannerInput = it },
+                onSubmit = { barcode ->
+                    btScannerInput = ""
+                    onBtBarcode(barcode)
+                },
+                focusRequester = btFocusRequester,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
         }
         Box(
             modifier = Modifier
@@ -337,24 +232,9 @@ fun InventoryTabletPortraitShell(
 @Composable
 fun InventoryPhonePortraitShell(
     navController: NavController,
-    dispenseVm: DispenseFlowViewModel = hiltViewModel(),
 ) = InventoryScanHost(navController) {
-    val keyboardController = LocalSoftwareKeyboardController.current
-    val dispenseState by dispenseVm.uiState.collectAsState()
-    val btScannerOverlayActive = dispenseOverlayActive(dispenseState)
-
     var btScannerInput by remember { mutableStateOf("") }
     val btFocusRequester = remember { FocusRequester() }
-
-    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
-        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
-            btScannerInput = ""
-            try {
-                btFocusRequester.requestFocus()
-                keyboardController?.hide()
-            } catch (_: Exception) {}
-        }
-    }
 
     val scaffoldState = rememberBottomSheetScaffoldState(
         bottomSheetState = rememberStandardBottomSheetState(
@@ -405,21 +285,16 @@ fun InventoryPhonePortraitShell(
         // BT scanner sits above the scaffold so it doesn't compete with the sheet
         // drag handle hit area. Must remain in composition between scans to hold
         // focus — visibility is controlled by the stage/overlay guard.
-        if (dispenseState.stage != DispenseStage.COUNTING && !btScannerOverlayActive) {
-            BtScannerInputBar(
-                input = btScannerInput,
-                onInputChange = { btScannerInput = it },
-                onSubmit = {
-                    val barcode = btScannerInput.trim()
-                    btScannerInput = ""
-                    if (barcode.isNotBlank()) {
-                        dispatchBtBarcode(barcode, dispenseState.stage, dispenseVm)
-                    }
-                },
-                focusRequester = btFocusRequester,
-                modifier = Modifier.align(Alignment.TopStart),
-            )
-        }
+        BtScannerInputBar(
+            input = btScannerInput,
+            onInputChange = { btScannerInput = it },
+            onSubmit = { barcode ->
+                btScannerInput = ""
+                onBtBarcode(barcode)
+            },
+            focusRequester = btFocusRequester,
+            modifier = Modifier.align(Alignment.TopStart),
+        )
 
         // BackButton drawn last so it sits above the scaffold and receives taps.
         BackButton(navController, showBox = false, onClick = { inventoryBack(navController) })

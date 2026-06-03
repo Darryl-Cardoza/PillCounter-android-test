@@ -86,7 +86,16 @@ fun BtScannerInputBar(
                     else -> {
                         val codePoint = event.utf16CodePoint
                         if (codePoint > 0 && !codePoint.toChar().isISOControl()) {
-                            buffer.append(codePoint.toChar())
+                            val char = codePoint.toChar()
+                            // Normalize Unicode digits (e.g. Arabic-Indic ٠١٢…, Devanagari ०१२…)
+                            // to ASCII equivalents so barcodes are always in 0-9 regardless of
+                            // device locale or scanner keyboard layout.
+                            val normalized = if (char.isDigit() && char !in '0'..'9') {
+                                '0' + Character.getNumericValue(char)
+                            } else {
+                                char
+                            }
+                            buffer.append(normalized)
                             onInputChange(buffer.toString())
                         }
                         true

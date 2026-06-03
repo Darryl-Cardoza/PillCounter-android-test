@@ -52,6 +52,7 @@ class InventoryScanScope(
     internal val logger: AppLogger,
     internal val hasCameraPermission: Boolean,
     internal val onBarcode: (String) -> Unit,
+    internal val onBtBarcode: (String) -> Unit,
 )
 
 /**
@@ -180,6 +181,7 @@ fun InventoryScanHost(
         logger = logger,
         hasCameraPermission = hasCameraPermission,
         onBarcode = inventoryVm::onBarcodeDetected,
+        onBtBarcode = inventoryVm::onBtBarcodeDetected,
     )
 
     scope.content()
