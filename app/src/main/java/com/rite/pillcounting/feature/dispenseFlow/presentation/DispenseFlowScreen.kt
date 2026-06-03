@@ -565,7 +565,7 @@ fun DispenseFlowScreen(
                 viewModel = pillVm,
                 pills = pillState.detectedPills,
                 isCameraPaused = pillVm.cameraPaused.collectAsState().value,
-                showGloveIcon = dispenseState.isHazardous,
+                showGloveIcon = dispenseState.isHazardous && dispenseState.stage == DispenseStage.COUNTING,
                 onFrame = { imageProxy ->
                     // Only the barcode analyzer reads the frame metadata before the
                     // frame is forwarded to the pill VM (which always closes it). When
@@ -1023,3 +1023,4 @@ internal fun handleBarcode(
         DispenseStage.COUNTING -> false
     }
 }
+
