@@ -23,7 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.TxnDetail
+import com.rite.pillcounting.core.scanning.domain.model.TxnDetail
 import com.rite.pillcounting.ui.theme.AppTheme
 
 /**

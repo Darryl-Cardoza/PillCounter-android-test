@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.ui.zIndex
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -33,8 +34,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -59,21 +63,24 @@ import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsSheet
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleSheet
-import com.rite.pillcounting.feature.dispenseFlow.presentation.analyzer.FrameBarcodeAnalyzer
+import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
-import com.rite.pillcounting.feature.dispenseFlow.domain.data.NavigationEvent as PillNavigationEvent
-import com.rite.pillcounting.feature.dispenseFlow.domain.data.PillScanningEvent
-import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.AddNoteDialog
-import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.CameraPreviewSection
+import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
+import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
+import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BtScannerInputBar
+import com.rite.pillcounting.core.scanning.presentation.compose.CameraPreviewSection
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModePortrait
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.InformationPanelSection
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.StepTitleWithSpeech
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.TargetPillsCountDialog
-import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.dimens
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
 
@@ -97,10 +104,13 @@ import java.util.Locale
  * (not stopped) whenever a verification sheet, error dialog, or loading indicator
  * is visible — this avoids stale detections and saves CPU/GPU while the user is
  * looking at modal UI.
- *
- * Voice guidance is provided via [DispenseVoicePrompt]. The step-title speech
  * component (StepTitleWithSpeech) is only rendered during COUNTING.
  */
+
+// Grace period before hiding the count circle after detections drop to 0,
+// so momentary empty frames don't flicker the circle off and on.
+private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
+
 @Composable
 fun DispenseFlowScreen(
     navController: NavController,
@@ -117,6 +127,14 @@ fun DispenseFlowScreen(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val isSoundEnabled by pillVm.isSoundEnabled.collectAsState()
+    val keyboardController = LocalSoftwareKeyboardController.current
+
+    // ── BT scanner input ────────────────────────────────────────────────────
+    // Tracks the text typed by a Bluetooth HID barcode scanner into the overlay
+    // text field. Cleared after each submission so the field is ready for the
+    // next scan.
+    var btScannerInput by remember { mutableStateOf("") }
+    val btFocusRequester = remember { FocusRequester() }
 
     var hasCameraPermission by remember {
         mutableStateOf(
@@ -160,7 +178,16 @@ fun DispenseFlowScreen(
                     navController.navigate(Screen.Dashboard.route)
                 }
                 is PillNavigationEvent.NavigateToBatch -> {
-                    navController.navigate(Screen.Batch.createRoute(event.batchId))
+                    // Pop back to the inventory/batch screen that launched this flow
+                    // (the Batch Stock Count screen for the "Scan Pills" hand-off).
+                    // If nothing can be popped (root entry), fall back to Dashboard.
+                    val popped = navController.popBackStack()
+                    if (!popped) {
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(0)
+                            launchSingleTop = true
+                        }
+                    }
                 }
             }
         }
@@ -181,7 +208,7 @@ fun DispenseFlowScreen(
 
     // History toggle. When true, the camera + pill panel are hidden and the
     // history list takes over the screen — same toggle the legacy
-    // PillScanningScreen used. Tapping the Total Count on the pill panel sets
+    // InventoryFlowScreen used. Tapping the Total Count on the pill panel sets
     // this to true.
     var showHistory by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(showHistory) {
@@ -195,7 +222,13 @@ fun DispenseFlowScreen(
 
     val pillStepType by pillVm.currentStep.collectAsState()
     val isTxnFromHl7 by pillVm.isTxnFromHl7.collectAsState()
-    val glovesDetected by pillVm.glovesDetected.collectAsState()
+
+    // Once a hazardous drug is identified, keep the gloves icon visible for the
+    // rest of this screen session — even if the user cancels the RX sheet and
+    // the dispenseState.isHazardous flag momentarily resets. The icon only clears
+    // when the user leaves the screen entirely (remember, not rememberSaveable).
+    var sessionHazardous by remember { mutableStateOf(false) }
+    if (dispenseState.isHazardous) sessionHazardous = true
 
     // === Pill-VM toasts ===
     if (pillState.restrictAdd) {
@@ -326,7 +359,11 @@ fun DispenseFlowScreen(
     LaunchedEffect(dispenseState.stage) {
         if (dispenseState.stage == DispenseStage.COUNTING) {
             pillVm.resumePillDetection()
-            pillVm.getDrugInfo()
+            // For stock count (REGULAR) the NDC scan already happened in PRE_NDC,
+            // so skip the SCAN workflow step and start at pill counting directly.
+            pillVm.getDrugInfo(
+                forceStartStep = if (countType == CountType.REGULAR.toString()) StepState.TARGET_VERIFICATION else null
+            )
             pillVm.showTxnInfo(countType)
             // Enable tray color detection only for hazardous transactions in COUNTING stage.
             pillVm.setHazardousTransaction(dispenseState.isHazardous)
@@ -370,6 +407,14 @@ fun DispenseFlowScreen(
         onDispose { barcodeAnalyzer.pause() }
     }
 
+    // Safety net for process/nav death: if the screen leaves composition with
+    // staged-but-uncommitted loose pills (e.g. an unhandled back path), discard
+    // them. After a successful Done the buffer is already flushed/cleared, so
+    // this is a no-op in that case.
+    DisposableEffect(Unit) {
+        onDispose { pillVm.discardStagedCount() }
+    }
+
     // Pause/resume the barcode analyzer to match the stage. Outside the
     // pre-stages the barcode scanner sits idle; while ANY verification sheet,
     // error dialog, or loading indicator is on top of the camera we don't want
@@ -401,15 +446,6 @@ fun DispenseFlowScreen(
     // Track in-flight pill count from the detector (only meaningful in COUNTING).
     var filteredPillCount by remember { mutableStateOf(0) }
 
-    // ── Voice prompts ───────────────────────────────────────────────────────
-    val pillsDetected = pillState.detectedPills.isNotEmpty() || filteredPillCount > 0
-    DispenseVoicePrompt(
-        stage = dispenseState.stage,
-        pillsDetected = pillsDetected,
-        isSoundEnabled = isSoundEnabled,
-        isAnyOverlayShowing = dispenseState.showRxDetails || dispenseState.showNdcDetails,
-    )
-
     // ── Back handling ───────────────────────────────────────────────────────
     // Device-back priority order:
     //  1. If the history view is open, dismiss it (return to camera + pill panel).
@@ -421,6 +457,9 @@ fun DispenseFlowScreen(
         if (showHistory) {
             showHistory = false
         } else {
+            // Back-out without Done: discard this session's staged (un-committed)
+            // loose-pill ADDs. Earlier committed counts are preserved in the DB.
+            pillVm.discardStagedCount()
             navController.navigate(Screen.Dashboard.route) {
                 popUpTo(0)
                 launchSingleTop = true
@@ -446,25 +485,49 @@ fun DispenseFlowScreen(
         }
     }
 
-    if (dispenseState.showInvalidScanDialog) {
+    val invalidScanToastText = stringResource(R.string.scan_correct_label)
+    LaunchedEffect(dispenseState.showInvalidScanDialog) {
+        if (dispenseState.showInvalidScanDialog) {
+            showToast(context, invalidScanToastText, Toast.LENGTH_SHORT)
+            dispenseVm.dismissInvalidScanDialog()
+        }
+    }
+
+    val ndcNotFoundToastText = stringResource(R.string.the_scanned_ndc_does_not_match)
+    LaunchedEffect(dispenseState.showNdcNotFoundDialog) {
+        if (dispenseState.showNdcNotFoundDialog) {
+            showToast(context, ndcNotFoundToastText, Toast.LENGTH_SHORT)
+            dispenseVm.dismissNdcNotFoundDialog()
+        }
+    }
+
+    // RX already has a PARTIAL transaction: ask the user whether to continue it.
+    // "Yes" advances to PRE_NDC to scan the container; "No" goes to Dashboard.
+    if (dispenseState.showContinueRxDialog) {
         CommonDialog(
-            title = stringResource(R.string.rescan_require),
-            message = stringResource(R.string.scan_correct_label),
-            confirmText = stringResource(R.string.rescane),
-            cancelText = "",
-            onConfirm = { dispenseVm.dismissInvalidScanDialog() },
-            onCancel = {},
-            isSingleButton = true,
+            title = stringResource(R.string.rx_already_exists_title),
+            message = stringResource(R.string.rx_already_exists_message),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = { dispenseVm.confirmContinueRx() },
+            onCancel = {
+                dispenseVm.dismissContinueRxDialog()
+                navController.navigate(Screen.Dashboard.route) {
+                    popUpTo(0)
+                    launchSingleTop = true
+                }
+            },
         )
     }
 
-    if (dispenseState.showNdcNotFoundDialog) {
+    // RX transaction is ON_HOLD: block the user with an informational dialog.
+    if (dispenseState.showOnHoldDialog) {
         CommonDialog(
-            title = stringResource(R.string.rescan_require),
-            message = stringResource(R.string.the_scanned_ndc_does_not_match),
-            confirmText = stringResource(R.string.rescane),
+            title = stringResource(R.string.rx_on_hold_title),
+            message = stringResource(R.string.rx_on_hold_message),
+            confirmText = stringResource(R.string.ok),
             cancelText = "",
-            onConfirm = { dispenseVm.dismissNdcNotFoundDialog() },
+            onConfirm = { dispenseVm.dismissOnHoldDialog() },
             onCancel = {},
             isSingleButton = true,
         )
@@ -483,19 +546,12 @@ fun DispenseFlowScreen(
         )
     }
 
-    // Stock-count flow: user scanned an RX label instead of the NDC container.
-    // A blocking dialog is used here (rather than a toast) because stock count
-    // never accepts RX labels — the user must always rescan the container.
-    if (dispenseState.showRxScannedInStockCountDialog) {
-        CommonDialog(
-            title = stringResource(R.string.rescan_require),
-            message = stringResource(R.string.scan_correct_label),
-            confirmText = stringResource(R.string.rescane),
-            cancelText = "",
-            onConfirm = { dispenseVm.dismissRxScannedInStockCountDialog() },
-            onCancel = {},
-            isSingleButton = true,
-        )
+    val rxScannedInStockCountToastText = stringResource(R.string.scan_correct_label)
+    LaunchedEffect(dispenseState.showRxScannedInStockCountDialog) {
+        if (dispenseState.showRxScannedInStockCountDialog) {
+            showToast(context, rxScannedInStockCountToastText, Toast.LENGTH_SHORT)
+            dispenseVm.dismissRxScannedInStockCountDialog()
+        }
     }
 
     // Hard PMS NDC mismatch (scanned NDC doesn't match HL7 and isn't a
@@ -519,16 +575,36 @@ fun DispenseFlowScreen(
         }
     }
 
+    // Re-focus the BT scanner field whenever all overlays dismiss so the next
+    // scan is captured without the user tapping the field.
+    val btScannerOverlayActive = dispenseState.showRxDetails ||
+            dispenseState.showNdcDetails ||
+            dispenseState.showNdcNotFoundDialog ||
+            dispenseState.showInvalidScanDialog ||
+            dispenseState.showNdcEquivalenceDialog ||
+            dispenseState.showRxScannedInStockCountDialog ||
+            dispenseState.isLoading
+    LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
+        if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
+            btScannerInput = ""
+            try {
+                btFocusRequester.requestFocus()
+                keyboardController?.hide()
+            } catch (_: Exception) {}
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         // Camera + pill panel are hidden while the history view is up — matches
-        // the legacy PillScanningScreen behavior so CameraX doesn't rebind on
+        // the legacy InventoryFlowScreen behavior so CameraX doesn't rebind on
         // rotation-driven lifecycle restarts behind the history list.
         if (!showHistory) {
+            if (hasCameraPermission) {
             CameraPreviewSection(
                 viewModel = pillVm,
                 pills = pillState.detectedPills,
                 isCameraPaused = pillVm.cameraPaused.collectAsState().value,
-                showGloveIcon = dispenseState.isHazardous,
+                showGloveIcon = sessionHazardous,
                 onFrame = { imageProxy ->
                     // Only the barcode analyzer reads the frame metadata before the
                     // frame is forwarded to the pill VM (which always closes it). When
@@ -565,25 +641,29 @@ fun DispenseFlowScreen(
                     pillVm.initializeInterpreter(retryCount = 2, viewWidth = w, viewHeight = h)
                 }
             )
+            }
 
             // ── Pill count panel ─────────────────────────────────────────────
-            // Visible-once-pills-detected is sticky so the panel doesn't
-            // flicker on every momentary 0-count frame.
+            // Pre-COUNTING the circle tracks live detection: it appears when
+            // pills are detected and hides again once the count drops to 0.
+            // The hide is debounced so momentary 0-count frames don't flicker.
             //
             // In COUNTING the panel is shown immediately (no detection
             // required): RX + NDC are confirmed, counting is the only step
             // left, so the panel is the primary affordance. Hiding it would
             // leave the screen looking empty and the user with no Done button.
-            // Pre-COUNTING the panel still waits for pill detection — it's
-            // pure detection feedback there, not the primary action.
-            var pillsEverDetected by remember { mutableStateOf(false) }
-            LaunchedEffect(filteredPillCount, pillState.detectedPills.size) {
-                if (filteredPillCount > 0 || pillState.detectedPills.isNotEmpty()) {
-                    pillsEverDetected = true
+            val pillsLive = filteredPillCount > 0 || pillState.detectedPills.isNotEmpty()
+            var showCountCircle by remember { mutableStateOf(false) }
+            LaunchedEffect(pillsLive) {
+                if (pillsLive) {
+                    showCountCircle = true
+                } else {
+                    delay(COUNT_CIRCLE_HIDE_GRACE_MS)
+                    showCountCircle = false
                 }
             }
             val showPillPanel = dispenseState.stage == DispenseStage.COUNTING ||
-                    pillsEverDetected
+                    showCountCircle
             if (showPillPanel) {
                 if (dispenseState.stage == DispenseStage.COUNTING) {
                     // Full pill panel — total / target / circle / Add / Done.
@@ -680,7 +760,7 @@ fun DispenseFlowScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.5f)),
+                    .background(Color.Black.copy(alpha = 0.5f)),
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
@@ -709,37 +789,75 @@ fun DispenseFlowScreen(
         }
 
         if (!showHistory) {
-            Row(
+            Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
                     .fillMaxWidth()
+                    // zIndex above the camera AndroidView so the back arrow's taps
+                    // win — the CameraX PreviewView + its pinch-zoom pointerInput
+                    // were swallowing taps on the arrow (system back worked, the
+                    // on-screen arrow didn't).
+                    .zIndex(1f)
                     .padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
             ) {
                 BackButton(
                     navController = navController,
                     showBox = false,
+                    modifier = Modifier.align(Alignment.CenterStart),
                     onClick = {
+                        // Back-out without Done: discard staged loose-pill ADDs.
+                        pillVm.discardStagedCount()
                         navController.navigate(Screen.Dashboard.route) {
                             popUpTo(0)
                             launchSingleTop = true
                         }
                     },
                 )
-                if (isLandscape) {
-                    Spacer(modifier = Modifier.weight(0.3f))
-                } else {
-                    Spacer(modifier = Modifier.weight(0.6f))
+                val headerStepType = when (dispenseState.stage) {
+                    DispenseStage.PRE_RX -> StepState.RX_LABEL
+                    DispenseStage.PRE_NDC -> StepState.SCAN
+                    DispenseStage.COUNTING -> pillStepType
                 }
-                if (dispenseState.stage == DispenseStage.COUNTING) {
+                Box(modifier = Modifier.align(Alignment.Center)) {
                     StepTitleWithSpeech(
-                        stepType = pillStepType,
+                        stepType = headerStepType,
                         isSoundOverride = isSoundEnabled,
-                        titleResOverride = if (countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null,
+                        titleResOverride = if (dispenseState.stage == DispenseStage.COUNTING && countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null,
                     )
                 }
-                Spacer(modifier = Modifier.weight(1f))
             }
+        }
+
+        // BT scanner input bar — visible during PRE_RX and PRE_NDC while no modal
+        // overlay is active. Positioned just below the back-button row so it
+        // doesn't obstruct the camera detection area. The field auto-focuses on
+        // composition and re-focuses whenever a dialog/sheet dismisses, so the
+        // Bluetooth HID scanner can type directly into it without any tap.
+        if (!showHistory &&
+            dispenseState.stage != DispenseStage.COUNTING &&
+            !btScannerOverlayActive
+        ) {
+            BtScannerInputBar(
+                input = btScannerInput,
+                onInputChange = { btScannerInput = it },
+                onSubmit = { barcode ->
+                    if (barcode.isNotBlank()) {
+                        val dispatched = handleBarcode(
+                            value = barcode,
+                            imagePath = null,
+                            stage = dispenseState.stage,
+                            countType = countType,
+                            onRx = dispenseVm::onRxBarcodeRead,
+                            onNdc = dispenseVm::onNdcBarcodeRead,
+                            onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
+                            onRxInStockCount = dispenseVm::onRxScannedInStockCount,
+                        )
+                        if (!dispatched) barcodeAnalyzer.resume()
+                    }
+                },
+                focusRequester = btFocusRequester,
+                modifier = Modifier.align(Alignment.TopStart),
+            )
         }
 
         if (dispenseState.isLoading) {
@@ -897,7 +1015,7 @@ fun DispenseFlowScreen(
  * caller uses the return to decide whether to resume the analyzer — without
  * that, a single dropped read leaves the analyzer self-paused forever.
  */
-private fun handleBarcode(
+internal fun handleBarcode(
     value: String,
     imagePath: String?,
     stage: DispenseStage,
@@ -944,3 +1062,4 @@ private fun handleBarcode(
         DispenseStage.COUNTING -> false
     }
 }
+

@@ -1,6 +1,6 @@
 package com.rite.pillcounting.core.hl7.service
 
-import ImageWebServer
+import com.rite.pillcounting.core.hl7.imageWebService.ImageWebServer
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -31,6 +31,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.rite.hl7.AckDecision
 import org.rite.hl7.domain.model.CompleteHL7Message
+import kotlin.math.log
 
 
 /**
@@ -64,6 +65,7 @@ class HL7Service : Service() {
     private lateinit var server: MllpServer
     private lateinit var clientManager: MllpConnectionManager
     private lateinit var nsdHelper: NsdHelper
+    private lateinit var tlsFactory: TlsSocketFactory
 
     private lateinit var networkIpMonitor: NetworkIpMonitor
 
@@ -204,7 +206,7 @@ class HL7Service : Service() {
         builder = HL7MessageBuilder()
         nsdHelper = NsdHelper(this)
 
-        val tlsFactory = TlsSocketFactory()
+        tlsFactory = TlsSocketFactory(this)
         val client = MllpClient(tlsFactory)
 
         clientManager = MllpConnectionManager(
@@ -224,7 +226,12 @@ class HL7Service : Service() {
 
             onDisconnected = {
                 listener?.onClientDisconnected()
-            }
+            },
+
+            onCertMismatch = {
+                logger.e("PMS certificate mismatch — notifying listener")
+                listener?.onPmsCertMismatch()
+            },
         )
 
         clientManager.startContinuousReconnect()
@@ -328,14 +335,28 @@ class HL7Service : Service() {
     }
 
 
+    fun clearPmsCertPin() {
+        logger.i("clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")
+        tlsFactory.clearServerPin()
+        clientManager.unblockCertMismatch()
+        discoverPmsAndConnect()
+    }
+
     fun discoverPmsAndConnect() {
         listener?.onNsdDiscoveryStarted()
 
         nsdHelper.discover(config.nsdDiscoveryType) { info ->
             serviceScope.launch {
 
-                val host = info.host.hostAddress ?: return@launch
+                // Prefer IPv4 — IPv6 link-local addresses (fe80::) cause TCP
+                // connection failures on Android when the scope ID is present.
+                val rawHost = info.host.hostAddress ?: return@launch
+                val host = rawHost.substringBefore('%')  // strip scope id from fe80::1%wlan0
                 val port = info.port
+
+                if (host.isBlank()) return@launch
+
+                logger.d( "NSD resolved: serviceName=${info.serviceName} host=$host port=$port")
 
                 // Prevent duplicate connect
                 if (lastConnectedHost == "$host:$port" && clientManager.isConnected()) {

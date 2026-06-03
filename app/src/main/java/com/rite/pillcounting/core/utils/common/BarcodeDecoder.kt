@@ -1,7 +1,7 @@
 ﻿package com.rite.pillcounting.core.utils.common
 
 import com.rite.pillcounting.core.utils.logger.AppLogger
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.BarcodeData
+import com.rite.pillcounting.core.scanning.domain.model.BarcodeData
 import java.time.LocalDate
 import javax.inject.Inject
 import javax.inject.Singleton

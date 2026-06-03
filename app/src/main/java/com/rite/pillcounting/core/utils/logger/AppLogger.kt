@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.utils.logger
 
 import android.util.Log
+import com.rite.pillcounting.BuildConfig
 
 /**
  * A standalone logger class to handle logging throughout the application.
@@ -20,7 +21,7 @@ class AppLogger(private val tag: String) {
      * @param throwable An optional throwable to log with the message.
      */
     fun d(message: String, throwable: Throwable? = null) {
-        Log.d(tag, message, throwable)
+        if (BuildConfig.DEBUG) Log.d(tag, message, throwable)
     }
 
     /**
@@ -31,7 +32,7 @@ class AppLogger(private val tag: String) {
      * @param throwable An optional throwable to log with the message.
      */
     fun i(message: String, throwable: Throwable? = null) {
-        Log.i(tag, message, throwable)
+        if (BuildConfig.DEBUG) Log.i(tag, message, throwable)
     }
 
     /**

@@ -1,6 +1,8 @@
+package com.rite.pillcounting.core.hl7.imageWebService
+
 import android.content.Context
 import android.util.Base64
-import com.rite.pillcounting.core.hl7.imageWebService.TlsImageKeystoreUtil
+import com.rite.pillcounting.core.hl7.mllp.tls.TlsImageKeystoreUtil
 import com.rite.pillcounting.core.security.ImageCrypto
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import fi.iki.elonen.NanoHTTPD
@@ -18,6 +20,7 @@ class ImageNanoServer(
     init {
         // Attach the SSL factory — this makes NanoHTTPD use HTTPS
         makeSecure(sslFactory, null)
+        setTempFileManagerFactory { PrivateTempFileManager(context) }
     }
 
     override fun serve(session: IHTTPSession): Response {

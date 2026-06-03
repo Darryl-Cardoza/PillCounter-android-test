@@ -4,13 +4,12 @@
     <string name="rite_title">RITE TECHNOLOGIES</string>
     <string name="version">Versión</string>
 
+    <!--    Common   -->
+    <string name="pms">PMS</string>
+
     <!-- ================== AUTH / LOGIN / REGISTER ================== -->
     <string name="email">Correo electrónico</string>
-    <string name="password">Contraseña</string>
     <string name="remember_me">Recuérdame</string>
-    <string name="register">Registrar</string>
-    <string name="forgot_password">¿Olvidaste tu contraseña?</string>
-    <string name="confirm_password">Confirmar contraseña</string>
     <string name="code_sent_to">Se ha enviado un código de seguridad a</string>
     <string name="pre_resend_code">Reenviar código en %1$d s</string>
     <string name="resend_code">Reenviar código</string>
@@ -19,26 +18,45 @@
     <string name="update_button_text">ACTUALIZAR</string>
 
     <!-- ================== FORGOT PASSWORD ================== -->
-    <string name="password_recovery">Recuperación de Contraseña</string>
-    <string name="password_recovery_desc">Ingresa tu correo electrónico registrado y te enviaremos instrucciones para restablecerla.</string>
-    <string name="your_registered_email">Tu correo electrónico registrado</string>
-    <string name="send_otp">Enviar OTP</string>
-
     <!-- ================== DASHBOARD ================== -->
-    <string name="dispense">Conteo Fijo</string>
-    <string name="tap_to_scan_rx_labels">Para contar cantidades fijas</string>
-    <string name="stock_count">Conteo Regular</string>
-    <string name="start_a_new_inventory_count">Para conteos regulares diarios</string>
-    <string name="completed">completado</string>
-    <string name="partial">parcial</string>
-    <string name="barcode_scan">Escanear Código de Barras</string>
-
+    <string name="dispense">Dispensar</string>
+    <string name="inventory">Inventario</string>
+    <string name="tap_to_scan_rx_labels">Toca para escanear etiquetas Rx</string>
+    <string name="stock_count">Conteo de Stock</string>
+    <string name="start_a_new_inventory_count">Iniciar un nuevo conteo de inventario</string>
+    <string name="start_inventory_count">Iniciar conteo de inventario</string>
+    <string name="completed">Completado</string>
+    <string name="partial">Pendiente</string>
+    <string name="quick_actions">ACCIONES RÁPIDAS</string>
+    <string name="todays_queue">COLA DE HOY</string>
+    <string name="recent_activity">ACTIVIDAD RECIENTE</string>
+    <string name="nothing_here_yet">Aún no hay nada aquí</string>
+    <string name="pms_status_connected">PMS conectado</string>
+    <string name="pms_status_disconnected">PMS desconectado</string>
+    <string name="kpi_disp_short">Disp.</string>
+    <string name="kpi_inv_short">Inv.</string>
+    <string name="kpi_high_priority">Alta prioridad</string>
+    <string name="kpi_pending">Pendiente</string>
+    <string name="kpi_cont_drugs">Med. controlados</string>
+    <string name="kpi_hazardous">Peligrosos</string>
+    <string name="kpi_cycle_count">Conteo cíclico</string>
+    <string name="kpi_pending_batch">Lote pendiente</string>
+    <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
-    <string name="settings_title" translatable="false">SETTINGS</string>
-    <string name="setting_barcode_scan_first">Siempre realizar el escaneo de código de barras primero</string>
     <string name="setting_ask_to_add_notes">Siempre preguntar para añadir notas</string>
-    <string name="type_here">Escribe aquí...</string>
     <string name="setting_save_history_for">Guardar historial por</string>
+    <string name="pill_counting_sound">Sonido de conteo de pastillas</string>
+    <string name="require_double_count">Requerir conteos dobles</string>
+    <string name="require_back_count">Requerir conteos de verificación</string>
+    <string name="haptic_feedback">Respuesta háptica</string>
+    <string name="clear_all_local_data">Borrar todos los datos locales</string>
+    <string name="are_you_sure_you_want_to_clear_all_data">¿Está seguro de que desea borrar todos los datos?</string>
+    <string name="voice_feedback">Respuesta de voz</string>
+    <string name="setting_hazardous_drug">Medicamento peligroso</string>
+    <string name="tray_classification_title">Clasificación de bandejas</string>
+    <string name="tray_classification_message">La bandeja de color %s no está clasificada. ¿Marcarla como bandeja peligrosa?</string>
+    <string name="clear_tray_color_lists">Borrar listas de colores de bandejas</string>
+    <string name="clear_tray_color_lists_confirm">¿Está seguro de que desea borrar todas las clasificaciones de colores de bandejas peligrosas y no peligrosas?</string>
 
     <string-array name="history_options">
         <item>1 semana (predeterminado)</item>
@@ -50,37 +68,42 @@
 
     <!-- ================== HISTORY ================== -->
     <string name="history_title">HISTORIAL</string>
-    <string name="counts_label">%d conteos</string>
-    <string name="menu_history_duration">3 meses</string>
     <string name="no_data_found">No se encontraron datos</string>
     <string name="drug_history_details">Detalles del historial del medicamento</string>
-
     <!-- ================== VALIDATION ERRORS ================== -->
-    <string name="error_email_empty">El correo electrónico no puede estar vacío.</string>
     <string name="error_email_invalid">Por favor, introduce una dirección de correo válida.</string>
     <string name="error_password_too_short">La contraseña debe tener al menos 8 caracteres.</string>
     <string name="error_password_no_uppercase">La contraseña debe contener al menos una letra mayúscula.</string>
     <string name="error_password_no_lowercase">La contraseña debe contener al menos una letra minúscula.</string>
     <string name="error_password_no_digit">La contraseña debe contener al menos un número.</string>
     <string name="error_password_no_special">La contraseña debe contener al menos un carácter especial.</string>
-    <string name="error_passwords_do_not_match">Las contraseñas no coinciden.</string>
     <string name="error_unknown">Algo salió mal.</string>
     <string name="error_invalid_otp">PIN inválido.</string>
     <string name="error_phone_invalid">Número de teléfono inválido</string>
     <string name="error_name_invalid">El nombre no puede contener números</string>
+    <string name="error_name_required">Este campo es obligatorio</string>
     <string name="error_pharmacy_name_invalid">El nombre de la farmacia es demasiado corto</string>
     <string name="error_npi_invalid">Número NPI inválido</string>
+    <string name="error_no_internet">Sin conexión a internet. Verifique su red e intente de nuevo.</string>
+    <string name="error_timeout">La solicitud tardó demasiado. Inténtelo de nuevo más tarde.</string>
+    <string name="error_server_unavailable">El servidor no está disponible temporalmente. Inténtelo de nuevo más tarde.</string>
+    <string name="error_generic">Algo salió mal. Inténtelo de nuevo.</string>
+    <string name="error_invalid_email">Por favor, introduce una dirección de correo válida.</string>
+    <string name="error_empty_email">Por favor, introduce tu dirección de correo.</string>
+    <string name="error_server_down">El servidor no está disponible temporalmente. Inténtelo de nuevo más tarde.</string>
+    <string name="error_unauthorized">Su sesión ha expirado. Inicie sesión de nuevo.</string>
+    <string name="error_invalid_input">Entrada inválida. Verifique sus datos.</string>
+    <string name="error_not_found">Recurso solicitado no encontrado.</string>
+
 
     <!-- ================== PARTIAL COUNTS ================== -->
-    <string name="fixed_partial_count_title">Conteos Fijos Parciales</string>
-    <string name="regular_partial_count_title">Conteos Regulares Parciales</string>
-
+    <string name="fixed_partial_count_title">Conteos de dispensación pendientes</string>
+    <string name="regular_partial_count_title">Conteos rápidos pendientes</string>
+    <string name="filter_all">Todos</string>
     <!-- ================== COMMON BUTTONS ================== -->
     <string name="redo">Rehacer</string>
     <string name="skip">Omitir</string>
-    <string name="scan">Escanear</string>
     <string name="rescane">Reescanear</string>
-    <string name="pause">Pausar</string>
     <string name="done">Hecho</string>
     <string name="add">Agregar</string>
     <string name="count">Contar</string>
@@ -91,30 +114,31 @@
     <string name="save">GUARDAR</string>
     <string name="delete">ELIMINAR</string>
     <string name="resume">Reanudar</string>
-    <string name="manual">Manual</string>
-    <string name="skip_alt">OMITIR</string>
+    <string name="select_all">Seleccionar todo</string>
+    <string name="deselect_all">Deseleccionar todo</string>
+    <string name="delete_counts">Eliminar conteos</string>
+
 
     <!-- ================== PILL COUNT ================== -->
-    <string name="pill_info_add_manually">Ingresar información de la pastilla manualmente</string>
+    <string name="pill_count_app_title">Contador de Pastillas</string>
     <string name="drugname">Nombre del medicamento</string>
     <string name="ndc">Ndc</string>
+    <string name="ndc_gtin14">Ndc/GTIN14</string>
     <string name="expiry">Caducidad</string>
     <string name="lotNo">Lote</string>
     <string name="pills_count">Conteo de pastillas</string>
     <string name="pill_required">Pastillas requeridas</string>
+    <string name="counting_paused">Conteo pausado por inactividad.</string>
 
     <!-- ================== TRANSACTIONS ================== -->
-    <string name="txn_detail">Detalle de Transacción</string>
     <string name="transaction_detail">Detalle de Transacción</string>
     <string name="total">Total</string>
     <string name="total_count">Conteo Total</string>
-    <string name="max_count_reached">El total de detalles de transacción excede el objetivo.</string>
+    <string name="max_count_reached">El conteo total de la transacción excede el objetivo.</string>
     <string name="no_transaction_found">No se encontró ninguna transacción, por favor comience a contar pastillas</string>
     <string name="confirm_done">Confirmar Finalización</string>
     <string name="confirm_done_desc_regular">¿Está seguro de que desea marcar esta transacción como completada?</string>
-    <string name="confirm_done_desc_fixed">Objetivo no alcanzado. Esta transacción se marcará como PARCIAL.</string>
-    <string name="force_complete">Forzar Finalización</string>
-
+    <string name="confirm_done_desc_fixed">Objetivo no alcanzado. Esta transacción se marcará como completada.</string>
     <!-- ================== PROFILE ================== -->
     <string name="profile_title">PERFIL</string>
     <string name="first_name">Nombre</string>
@@ -124,6 +148,8 @@
     <string name="npi_number">NPI No.</string>
     <string name="do_not_ask">No volver a preguntar</string>
     <string name="confirm_delete_profile">¿Está seguro de que desea eliminar su perfil? Esta acción no se puede deshacer.</string>
+    <string name="logging_out">Cerrando sesión…</string>
+    <string name="profile_updated_successfully">Perfil actualizado correctamente</string>
 
     <!-- ================== MENUS ================== -->
     <string name="menu_profile">Perfil</string>
@@ -131,16 +157,11 @@
     <string name="menu_settings">Configuración</string>
     <string name="menu_logout">Cerrar sesión</string>
     <string name="menu_completed">%1$d completados</string>
-    <string name="menu_partial">%1$d parciales</string>
+    <string name="menu_partial">%1$d pendientes</string>
+    <string name="menu_unsync_transaction">Transacciones no sincronizadas</string>
 
     <!-- ================== UI CONTENT DESCRIPTIONS ================== -->
-    <string name="back_content_description">Navegar atrás</string>
-    <string name="export_content_description">Exportar</string>
     <string name="delete_content_description">Eliminar</string>
-    <string name="filter_content_description">Filtrar</string>
-    <string name="search_content_description">Buscar</string>
-    <string name="cd_close_selection">Cerrar selección</string>
-    <string name="cd_delete_selected">Eliminar elementos seleccionados</string>
     <string name="cd_search">Buscar</string>
     <string name="cd_select_items_to_delete">Seleccionar elementos para eliminar</string>
     <string name="cd_delete">Eliminar</string>
@@ -153,81 +174,245 @@
     <string name="delete_selected_items_text">¿Está seguro de que desea eliminar los elementos seleccionados?</string>
     <string name="confirm_delete_message">¿Está seguro de que desea eliminar los registros de la fecha seleccionada? Esta acción no se puede deshacer.</string>
     <string name="confirm_delete_title">Confirmar Eliminación</string>
-    <string name="confirm_delete_txn_detail">Are you sure you want to delete this transaction detail? This action cannot be undone.</string>
-    <string name="confirm_force_completed_txn"> Are you sure you want to force complete this transaction?</string>
+    <string name="confirm_force_completed_txn">¿Está seguro de que desea forzar la finalización de esta transacción?</string>
 
     <!-- ================== TABLE HEADERS / LABELS ================== -->
-    <string name="drug">Medicamento</string>
-    <string name="drugname_two_lines">Nombre \\nMedicamento</string>
+    <string name="drugname_two_lines">Nombre del \nmedicamento</string>
     <string name="status">Estado</string>
-    <string name="count_type_two_lines">Tipo \\nConteo</string>
+    <string name="count_type_two_lines">Tipo de \nconteo</string>
     <string name="date">Fecha</string>
     <string name="time">Hora</string>
     <string name="note">Nota</string>
-    <string name="select_option">Select Option</string>
     <string name="generated_on">Generado el:</string>
     <string name="searchWithDots">Buscar…</string>
 
     <!-- ================== PDF & SHARING ================== -->
     <string name="open_pdf_with">Abrir PDF con</string>
-    <string name="sharePdfVia">Compartir PDF vía</string>
+    <!-- ================== Security / Environment Protection ================== -->
+    <string name="security_alert_title">Alerta de seguridad</string>
+    <string name="exit_app">Salir</string>
+    <string name="close_app">Cerrar</string>
+    <string name="security_violation_intro">
+        La aplicación no puede ejecutarse en este dispositivo debido a las siguientes violaciones de seguridad:
+    </string>
+
+    <!-- ================== Security violation messages ================== -->
+    <string name="violation_adb_enabled">Las opciones de desarrollador o la depuración ADB están habilitadas</string>
+    <string name="violation_rooted">El dispositivo está rooteado o con jailbreak</string>
+    <string name="violation_debugger_attached">Un depurador está actualmente conectado a la aplicación</string>
+    <string name="violation_emulator">La aplicación se está ejecutando en un emulador</string>
+    <string name="violation_debuggable_build">La aplicación está compilada como versión depurable</string>
+    <string name="violation_signature_mismatch">La firma de la aplicación no coincide con la firma oficial de lanzamiento</string>
+    <string name="violation_not_from_playstore">La aplicación no se instaló desde Google Play Store</string>
+
 
     <!-- ================== SYSTEM NOTICES ================== -->
     <string name="suspecious_activity_text">Nuestro sistema detectó una sospechosa \'doble dosis\' desde otro dispositivo. Es hora de \nverificar con un nuevo inicio de sesión.</string>
     <string name="maintenance_text">El contador está en el mostrador del farmacéutico para una rápida revisión. ¡Volveremos pronto\ncon conteos precisos!</string>
     <string name="update_version_text">Tu versión actual ha expirado - es hora de obtener una nueva receta. ¡Actualiza ahora para \nla dosis correcta de funciones!</string>
-    <string name="session_expired">Session Expired!</string>
+
+    <string name="add_note">Añadir nota</string>
+    <string name="add_note_error">Por favor, escriba una nota o toque Omitir</string>
+    <string name="type_here">Escribe aquí...</string>
+    <string name="save_history_confirmation">¿Está seguro de que desea conservar el historial por</string>
+    <string name="save_history_note">Nota: Los datos anteriores a este período se eliminarán permanentemente.</string>
+    <string name="confirm_logout_title">Confirmar cierre de sesión</string>
+    <string name="confirm_logout_text">¿Está seguro de que desea cerrar sesión?</string>
+
+    <string name="add_button_wait">Espere 2 segundos antes de agregar de nuevo.</string>
+    <string name="add_zero_detected">No se puede agregar — no se detectaron pastillas.</string>
+    <string name="duplicate_scan_ignored">Escaneo duplicado ignorado — no se detectaron pastillas nuevas.</string>
+
+    <!-- For multi-select mode text in PartialListPanel -->
+    <string name="session_expired">¡Sesión expirada!</string>
+    <string name="pms_connected">Conectado</string>
+    <string name="pms_connecting">Conectando...</string>
 
     <!--    PillScanning Screen Constants-->
     <string name="pill_scanning_add_button">Agregar</string>
+    <string name="pill_scanning_wait_button">Espere..</string>
     <string name="pill_scanning_total_count">Recuento total</string>
     <string name="pill_scanning_all_done">Todo hecho</string>
-    <string name="pills_count_should_be_greater_than_target_count">Pills count should be greater than target count</string>
-    <string name="pill_count">PILL COUNT</string>
-    <string name="initial_stock_bottle_count">INITIAL STOCK BOTTLE COUNT</string>
-    <string name="substitute_drug_details">SUBSTITUTE DRUG DETAILS</string>
-    <string name="dispense_drug_details">DISPENSE DRUG DETAILS</string>
-    <string name="pill_recount">PILL RECOUNT</string>
-    <string name="vial_capture">DISPENSED VIAL</string>
-    <string name="remaining_stock_bottle_count">REMAINING STOCK BOTTLE COUNT</string>
-    <string name="notes">NOTES</string>
-    <string name="subtituted_drug">Substituted Drug</string>
-    <string name="total_re_count">TOTAL RECOUNT</string>
-    <string name="no_batches_recorded">No batches recorded</string>
-    <string name="stock_count_dialog_title">What would you like to do?</string>
-    <string name="stock_count_dialog_option_first">Create a new Batch</string>
-    <string name="stock_count_dialog_option_second">Continue with last Batch count</string>
-    <string name="stock_bottles">Stock Bottles</string>
-    <string name="open_pills">Open Pills</string>
-    <string name="partial_stock_counts">Partial Stock Counts</string>
+    <string name="no_pill_added_yet">Aún no se han añadido pastillas</string>
+    <string name="count_pills_from_the_container">Cuente las pastillas del contenedor</string>
+    <string name="count_prescribed_pills_quantity">Cuente la cantidad de pastillas recetadas</string>
+    <string name="recount_prescribed_quantity">Vuelva a contar la cantidad recetada</string>
+    <string name="capture_photo_of_counted_pills_vial">Capture una foto del frasco de pastillas contadas</string>
+    <string name="are_you_sure_you_want_to_complete_this_step">¿Está seguro de que desea completar este paso?</string>
+    <string name="confirm_steps_completion">Confirmar finalización de pasos</string>
+    <string name="the_counted_quantity_does_not_match_the_target_count">La cantidad contada no coincide con el conteo objetivo. ¿Desea continuar?</string>
+    <string name="count_mismatch">Discrepancia en el conteo</string>
+
+    <!--    ManualDrugEntry -->
+    <string name="ndc_number">Número NDC</string>
+    <string name="drug_name">Nombre del medicamento</string>
+    <string name="scan_container_qr_code">Escanee el código QR del contenedor</string>
+    <string name="scanned_item_is_a_generic_equivalent_to_the_specific_drug">El artículo escaneado es un equivalente genérico del \nmedicamento especificado</string>
+    <string name="rescan_require">Reescaneo requerido</string>
+    <string name="the_scanned_ndc_does_not_match">El NDC escaneado no coincide</string>
+    <string name="substitute">Sustituir</string>
+    <string name="scan_ndc_toast">Escanear NDC</string>
+    <string name="rescan_ndc_does_not_match_toast">Reescanear — el NDC no coincide</string>
+
+    <!-- Unsynced Transaction-->
+    <string name="unsynced_transaction">TRANSACCIONES NO SINCRONIZADAS</string>
+    <string name="sync_all">SINCRONIZAR TODO</string>
+    <string name="no_unsynced_transactions">No hay transacciones sin sincronizar</string>
+    <string name="pills_count_should_be_greater_than_target_count">El conteo de pastillas debe ser mayor que el conteo objetivo</string>
+    <string name="pill_count">CONTEO DE PASTILLAS</string>
+    <string name="initial_stock_bottle_count">CONTEO INICIAL DEL FRASCO DE STOCK</string>
+    <string name="substitute_drug_details">DETALLES DEL MEDICAMENTO SUSTITUTO</string>
+    <string name="requested_drug_details">DETALLES DEL MEDICAMENTO SOLICITADO</string>
+    <string name="dispense_drug_details">DETALLES DEL MEDICAMENTO DISPENSADO</string>
+    <string name="pill_recount">RECONTEO DE PASTILLAS</string>
+    <string name="vial_capture">FRASCO DISPENSADO</string>
+    <string name="remaining_stock_bottle_count">CONTEO RESTANTE DEL FRASCO DE STOCK</string>
+    <string name="notes">NOTAS</string>
+    <string name="total_re_count">RECONTEO TOTAL</string>
+    <string name="no_batches_recorded">No hay lotes registrados</string>
+    <string name="stock_count_dialog_title">¿Qué le gustaría hacer?</string>
+    <string name="stock_count_dialog_option_first">Crear un nuevo lote</string>
+    <string name="stock_count_dialog_option_second">Continuar el último lote</string>
+    <string name="partial_stock_counts">Conteos de stock parciales</string>
 
     <!--    label scanned -->
-    <string name="proceed">PROCEED</string>
-    <string name="scan_rx_label">Scan Rx Label</string>
-    <string name="scan_correct_label">Scan Correct Label</string>
-    <string name="inventory_batch_details">Inventory Batch Details</string>
-    <string name="totalNdcCount">Total Ndc Count</string>
-    <string name="total_quantity">Total Quantity</string>
-    <string name="no_results_found">no result found</string>
-    <string name="no_partial_counts">no partial counts</string>
-    <string name="confirmation">Confirmation</string>
-    <string name="are_you_sure_you_want_to_end_this_count">Are you sure you want to end this Count?</string>
-    <string name="no_items_in_that_batch_yet">No items in this batch yet</string>
-    <string name="end_this_batch_it_will_be_mark_as_completed">End this batch? It will be marked as complete.</string>
-    <string name="end_batch">End Batch</string>
-    <string name="sealed_bottles">Sealed Bottles</string>
-    <string name="opend_bottles">Opened Bottles</string>
-    <string name="end_count">END COUNT</string>
-    <string name="plus_add">+ ADD</string>
-    <string name="incorrect_ndc">Incorrect NDC</string>
-    <string name="you_have_scan_incorrect_ndc_this_item_does_not_match_the_pms_batch">You have scanned an incorrect NDC. This item does not match the PMS batch.</string>
-    <string name="bucket">Bucket</string>
-    <string name="batch">Batch</string>
-    <string name="no_last_batch_available">No last batch available</string>
-    <string name="lot_No">Lot Number</string>
-    <string name="expiry_date">Expiry Date</string>
-    <string name="pills">Pills</string>
-    <string name="total_pills">Total Pills</string>
+    <string name="label_scanned_successfully">Etiqueta escaneada correctamente</string>
+    <string name="select_container_status">Seleccione el estado del contenedor</string>
+    <string name="container_status_sealed">Sellado</string>
+    <string name="container_status_opened">Abierto</string>
+    <string name="select_bucket">Seleccionar cubeta</string>
+    <string name="rx_number">Número Rx</string>
+    <string name="quantity">Cantidad</string>
+    <string name="proceed">CONTINUAR</string>
+    <string name="scan_rx_label">Escanear etiqueta Rx</string>
+    <string name="scan_correct_label">Escanee la etiqueta correcta</string>
+<!--    StockCount-->
+    <string name="scan_stock_bottle">Escanear frasco de stock</string>
+    <string name="scan_open_pills">Escanear pastillas sueltas</string>
+    <string name="camera_permission_required">Se requiere permiso de cámara para escanear. Permita el acceso a la cámara.</string>
+    <string name="scan_ndc_to_count">Escanee el NDC para contar pastillas</string>
 
+
+<!--    partial count screen -->
+    <string name="no_results_found">No se encontraron resultados</string>
+    <string name="no_partial_counts">No hay conteos parciales disponibles</string>
+    <string name="confirm_delete_batches">¿Eliminar los lotes seleccionados? Esta acción no se puede deshacer.</string>
+    <string name="confirmation">Confirmación</string>
+    <string name="voice_scan_rx_to_add_count">Escanee la RX para añadir el conteo de pastillas</string>
+    <string name="voice_scan_container_qr">Escanee el código QR del contenedor</string>
+    <string name="voice_add_the_pill_count">Añada el conteo de pastillas</string>
+    <string name="are_you_sure_you_want_to_end_this_count">¿Está seguro de que desea finalizar este conteo?</string>
+    <string name="no_items_in_that_batch_yet">Aún no hay artículos en este lote</string>
+    <string name="end_this_batch_it_will_be_mark_as_completed">¿Finalizar este lote? Se marcará como completado.</string>
+    <string name="end_batch">Finalizar lote</string>
+    <string name="no_qty_added_message">Por favor, añada al menos una cantidad de artículo antes de finalizar el lote.</string>
+    <string name="sealed_bottles">Frascos sellados</string>
+    <string name="opend_bottles">Frascos abiertos</string>
+    <string name="end_count">FINALIZAR CONTEO</string>
+    <string name="plus_add">+ AGREGAR</string>
+    <string name="bucket">Cubeta</string>
+    <string name="batch">Lote</string>
+    <string name="no_last_batch_available">No hay último lote disponible</string>
+
+<!--count Section-->
+    <string name="toggle_with_count">%1$s (%2$d)</string>
+    <string name="dispensed">Dispensado</string>
+    <string name="stock">Stock</string>
+    <string name="ndcs_label">NDCs</string>
+    <string name="stock_count_label">Conteo de stock</string>
+    <string name="total_ndc_count">CONTEO TOTAL DE NDC</string>
+    <string name="completed_on">Completado el </string>
+    <string name="lot_No">Número de lote</string>
+    <string name="expiry_date">Fecha de caducidad</string>
+    <string name="pills">Pastillas</string>
+    <string name="total_pills">Total de pastillas</string>
+
+    <!-- ================== TERMINAL & PROFILE ================== -->
+    <string name="terminal">Terminal</string>
+    <string name="select_terminal">Seleccionar terminal</string>
+    <string name="unknown">Desconocido</string>
+
+    <string name="verify_rx_details">Verificar detalles de Rx</string>
+    <string name="verify_stock_bottle_details">Verificar detalles del frasco de stock</string>
+    <string name="hazardous_drug_warning">Medicamento peligroso</string>
+    <string name="form">Forma</string>
+    <!-- ================== HL7 NOTIFICATIONS ================== -->
+    <string name="hl7_notification_device_connected_title">Dispositivo conectado</string>
+    <string name="hl7_notification_device_connected_message">Conectado a %1$s correctamente</string>
+    <string name="hl7_notification_drug_not_found_title">Medicamento no encontrado</string>
+    <string name="hl7_notification_drug_not_found_api_failed">No se pudo resolver el NDC %1$s. La solicitud a la API falló.</string>
+    <string name="hl7_notification_drug_not_found_no_drug">No se encontró ningún medicamento para el NDC %1$s.</string>
+    <string name="hl7_notification_new_rx_title">Nueva solicitud de RX</string>
+    <string name="hl7_notification_new_rx_single">Rx %1$s • %2$s • Cant.: %3$d</string>
+    <string name="hl7_notification_new_rx_multiple">Rx %1$s • %2$d artículos por surtir</string>
+    <string name="hl7_notification_inventory_title">Solicitud de inventario</string>
+    <string name="hl7_notification_inventory_no_drugs">No se encontraron medicamentos. No se pudo crear el lote.</string>
+    <string name="hl7_notification_inventory_items_count">%1$d artículos necesitan conteo de stock</string>
+
+    <!-- HL7 Edit/Change order (ORC|XO) -->
+    <string name="hl7_notification_edit_rx_title">RX actualizada</string>
+    <string name="hl7_notification_edit_rx_updated">Rx %1$s actualizada • %2$s • Nueva cant.: %3$d</string>
+    <string name="hl7_notification_edit_rx_not_found">Rx %1$s no encontrada o ya completada — actualización ignorada.</string>
+    <string name="hl7_notification_edit_rx_drug_not_found">Falló la actualización de Rx %1$s: NDC %2$s del medicamento no encontrado.</string>
+
+    <!-- ================== GLOVE DETECTION ================== -->
+    <string name="cd_gloves_detected">Guantes detectados</string>
+    <string name="cd_no_gloves_detected">Sin guantes</string>
+
+    <!-- ================== PDF EXPORT ================== -->
+    <string name="pdf_developer_credit">Desarrollado por Rite Technologies</string>
+    <string name="pdf_stock_count_report_title">INFORME DE CONTEO DE STOCK</string>
+    <string name="pdf_drug_detail_report_title">INFORME DE DETALLE DE MEDICAMENTO</string>
+    <string name="pdf_generated_label">Generado:</string>
+    <string name="pdf_prepared_by_label">PREPARADO POR</string>
+    <string name="pdf_prepared_by">Preparado por:</string>
+    <string name="pdf_batch_id">Lote  #%1$d</string>
+    <string name="pdf_status_completed">Completado</string>
+    <string name="pdf_status_in_progress">En progreso</string>
+    <string name="pdf_counted_label">CONTADO</string>
+    <string name="pdf_target_label">OBJETIVO</string>
+    <string name="pdf_total_count_label">CONTEO TOTAL</string>
+    <string name="pdf_ndc_label">NDC</string>
+    <string name="pdf_batch_entry">Lote %1$d</string>
+    <string name="pdf_images_captured">%1$d imagen(es) capturada(s)</string>
+    <string name="pdf_footer_stock_count">PillCounter  |  Informe de Conteo de Stock  |  Desarrollado por Rite Technologies</string>
+    <string name="pdf_footer_drug_detail">PillCounter  |  Informe de Detalle de Medicamento  |  Desarrollado por Rite Technologies</string>
+    <string name="pdf_page">Página %1$d</string>
+    <string name="pdf_open_stock_report">Abrir informe de conteo de stock</string>
+    <string name="pdf_open_drug_detail_report">Abrir informe de detalle de medicamento</string>
+
+    <!-- ================== BATCH STOCK COUNT (INVENTORY SCAN) ================== -->
+    <string name="batch_stock_count_title">Conteo de Stock por Lote</string>
+    <string name="batch_stock_count_scan_pills">ESCANEAR PASTILLAS</string>
+    <string name="batch_stock_count_recent_with_count">CONTEOS RECIENTES (%1$d)</string>
+    <string name="batch_stock_count_recent_summary">CONTEOS RECIENTES</string>
+    <string name="batch_stock_count_scanned_drug_details">DETALLES DEL NDC ESCANEADO</string>
+    <string name="batch_stock_count_scanned_summary">RESUMEN ESCANEADO</string>
+    <string name="batch_stock_count_label_drug_name">Nombre del medicamento</string>
+    <string name="batch_stock_count_label_bucket">Cubeta</string>
+    <string name="batch_stock_count_label_ndc">Número NDC</string>
+    <string name="batch_stock_count_label_batch_no">N.º de lote</string>
+    <string name="batch_stock_count_label_expiry">Fecha de caducidad</string>
+    <string name="batch_stock_count_label_pills">Pastillas</string>
+    <string name="batch_stock_count_label_bottles">Frascos</string>
+    <string name="batch_stock_count_total_ndcs">Total de NDCs</string>
+    <string name="batch_stock_count_total_pills">Total de pastillas</string>
+    <string name="batch_stock_count_pills_suffix">%1$d pastillas</string>
+    <string name="batch_stock_count_clear">BORRAR</string>
+    <string name="batch_stock_count_cancel">CANCELAR</string>
+    <string name="batch_stock_count_add">AGREGAR</string>
+    <string name="batch_stock_count_end_count">FINALIZAR CONTEO</string>
+    <string name="batch_stock_count_invalid_label">Código de barras de etiqueta inválido</string>
+    <string name="batch_stock_count_drug_not_found">NDC inválido %1$s</string>
+    <string name="batch_stock_count_ndc_not_in_request">El NDC %1$s no forma parte de esta solicitud de inventario</string>
+    <string name="batch_stock_count_no_active_batch">No hay lote activo</string>
+    <string name="batch_stock_count_scan_failed">Error de escaneo</string>
+    <string name="batch_stock_count_save_failed">Error al guardar</string>
+    <string name="batch_stock_count_scan_new_bottle">Escanee un nuevo frasco de stock</string>
+
+    <string name="violation_screen_overlay">Superposición de pantalla detectada — otra aplicación podría estar interceptando la entrada táctil</string>
+    <string name="permission_location_rationale">El acceso a la ubicación se utiliza únicamente para identificar su red Wi-Fi para el descubrimiento de dispositivos médicos HL7. Su ubicación nunca se almacena, transmite ni vincula a datos de pacientes.</string>
+    <string name="pms_cert_mismatch_message">El certificado del servidor PMS ha cambiado. Esto puede ocurrir tras una actualización del PMS. Toque Restablecer para aceptar el nuevo certificado y reconectar.</string>
+    <string name="pms_cert_mismatch_confirm">Restablecer y reconectar</string>
 
 </resources>

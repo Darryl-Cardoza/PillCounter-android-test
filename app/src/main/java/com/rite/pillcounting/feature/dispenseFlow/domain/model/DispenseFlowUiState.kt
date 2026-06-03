@@ -50,6 +50,11 @@ data class DispenseFlowUiState(
     // Stock-count only: shown when the user scans an RX label instead of an NDC container.
     val showRxScannedInStockCountDialog: Boolean = false,
 
+    // RX duplicate check: shown when a scanned RX already has a PARTIAL txn in the DB.
+    val showContinueRxDialog: Boolean = false,
+    // RX on-hold check: shown when the found txn is in ON_HOLD status.
+    val showOnHoldDialog: Boolean = false,
+
     // Stock-count batch association. 0L means no batch (dispense flow or stock count
     // started without a batch context).
     val batchId: Long = 0L,

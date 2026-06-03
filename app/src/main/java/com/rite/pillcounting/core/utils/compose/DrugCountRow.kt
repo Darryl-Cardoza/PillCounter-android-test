@@ -111,6 +111,7 @@ fun DrugCountRow(
                             painter = rememberAsyncImagePainter(
                                 ImageRequest.Builder(LocalContext.current)
                                     .data(File(data.barcodeImage ?: ""))
+                                    .size(240, 192) // 3x the 80x64dp display box; Coil downsamples on decode
                                     .placeholder(R.drawable.prescription_icon)
                                     .error(R.drawable.prescription_icon)
                                     .build()
@@ -146,17 +147,17 @@ fun DrugCountRow(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false)
                             )
-                            if (!data.drugType.isNullOrBlank() && data.drugType != "null") {
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = data.drugType,
-                                    fontSize = 14.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = AppTheme.extendedColors.textColor,
-                                    maxLines = 1,
-                                    softWrap = false
-                                )
-                            }
+//                            if (!data.drugType.isNullOrBlank() && data.drugType != "null") {
+//                                Spacer(modifier = Modifier.width(8.dp))
+//                                Text(
+//                                    text = data.drugType,
+//                                    fontSize = 14.sp,
+//                                    fontWeight = FontWeight.SemiBold,
+//                                    color = AppTheme.extendedColors.textColor,
+//                                    maxLines = 1,
+//                                    softWrap = false
+//                                )
+//                            }
                         }
                     }
                     Text(
@@ -187,16 +188,16 @@ fun DrugCountRow(
                                 softWrap = false
                             )
                         }
-                        if (data.isComingFromHL7) {
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = stringResource(R.string.pms),
-                                fontSize = 12.sp,
-                                color = MaterialTheme.colorScheme.primary,
-                                maxLines = 1,
-                                softWrap = false
-                            )
-                        }
+//                        if (data.isComingFromHL7) {
+//                            Spacer(modifier = Modifier.width(8.dp))
+//                            Text(
+//                                text = stringResource(R.string.pms),
+//                                fontSize = 12.sp,
+//                                color = MaterialTheme.colorScheme.primary,
+//                                maxLines = 1,
+//                                softWrap = false
+//                            )
+//                        }
                     }
                 }
 

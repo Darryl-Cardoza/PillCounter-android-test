@@ -1,10 +1,23 @@
+@file:OptIn(KspExperimental::class)
+
+import com.google.devtools.ksp.KspExperimental
+import java.util.Properties
+
 plugins {
     id("com.android.application")
+    id("org.jetbrains.kotlin.plugin.compose")
     id("org.jetbrains.kotlin.android")
+    id("com.google.devtools.ksp")
     id("com.google.dagger.hilt.android")
-    id("kotlin-kapt")
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.gms.google-services")
+    alias(libs.plugins.androidx.room)
+}
+
+val keystorePropsFile = rootProject.file("keystore.properties")
+val hasKeystore = keystorePropsFile.exists()
+val keystoreProps = Properties().also { props ->
+    if (hasKeystore) keystorePropsFile.inputStream().use { props.load(it) }
 }
 
 android {
@@ -13,8 +26,8 @@ android {
 
     defaultConfig {
         applicationId = "com.rite.pillcounting"
-        minSdk = 26
-        targetSdk = 34
+        minSdk = 29
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0.0"
 
@@ -25,20 +38,36 @@ android {
         resValue("string", "app_version_name", versionName ?: "")
         buildConfigField(
             "String",
-            "SERVER_KEY",
-            "\"d1ff4797acb7147205bb249cce918f23a4f8e54a8d56488d79e83abcdf1b24f6f1ccc9af5dea3c1a1b5e2b6aa247ff55ac8e12f165974f8cfce41328f7ea447e\""
-        )
-        buildConfigField(
-            "String",
             "BASE_URL",
             "\"https://pill.ccrlindia.com/\""
         )
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    signingConfigs {
+        // Only configure release signing when keystore.properties is present.
+        // Avoids failing the whole build (incl. debug) on clean checkouts that
+        // lack the keystore file. Behavior is unchanged when the file exists.
+        if (hasKeystore) {
+            create("release") {
+                storeFile = file(keystoreProps["storeFile"] as String)
+                storePassword = keystoreProps["storePassword"] as String
+                keyAlias = keystoreProps["keyAlias"] as String
+                keyPassword = keystoreProps["keyPassword"] as String
+            }
+        }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
             isShrinkResources = true
+            isDebuggable = false
+            if (hasKeystore) signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -54,23 +83,10 @@ android {
         }
     }
 
-
-    compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
-    }
-
-    kotlinOptions {
-        jvmTarget = "11"
-    }
-
     buildFeatures {
         compose = true
         buildConfig = true
-    }
-
-    composeOptions {
-        kotlinCompilerExtensionVersion = "1.5.3"
+        resValues = true
     }
 
     packaging {
@@ -84,126 +100,107 @@ android {
                 "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
             )
         }
+
+        jniLibs {
+            useLegacyPackaging = false
+        }
     }
 }
 
-kapt {
-    correctErrorTypes = true
-    javacOptions {
-        // Avoids module access errors on JDK 17+
-        option("-Xadd-exports", "jdk.compiler/com.sun.tools.javac.main=ALL-UNNAMED")
-        option("-Xadd-exports", "jdk.compiler/com.sun.tools.javac.util=ALL-UNNAMED")
-    }
+kotlin {
+    jvmToolchain(17)
+}
+
+room {
+    schemaDirectory("$projectDir/schemas")
+}
+
+ksp {
+    arg("dagger.hilt.android.internal.disableAndroidSuperclassValidation", "true")
+}
+
+configurations.configureEach {
+    exclude(group = "androidx.profileinstaller", module = "profileinstaller")
+}
+
+configurations.all {
+    exclude(group = "org.jetbrains.kotlinx", module = "kotlinx-coroutines-debug")
 }
 
 dependencies {
     // --- Compose BOM ---
-    implementation(platform("androidx.compose:compose-bom:2024.06.00"))
-    androidTestImplementation(platform("androidx.compose:compose-bom:2024.06.00"))
+    implementation(platform(libs.compose.bom))
+    androidTestImplementation(platform(libs.compose.bom))
 
     // --- Core & Compose UI ---
-    implementation("androidx.core:core-ktx:1.12.0")
-    implementation("androidx.activity:activity-compose:1.10.1")
-    implementation("androidx.compose.ui:ui")
-    implementation("androidx.compose.ui:ui-graphics")
-    implementation("androidx.compose.ui:ui-tooling-preview")
-    implementation("androidx.compose.material3:material3:1.3.2")
-    implementation("androidx.compose.material:material-icons-extended:1.7.8")
-    implementation("androidx.compose.material:material:1.7.0")
-    debugImplementation("androidx.compose.ui:ui-tooling")
-    debugImplementation("androidx.compose.ui:ui-test-manifest")
+    implementation(libs.androidx.core.ktx)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.graphics.path)
+    implementation(libs.bundles.compose.ui)
+    debugImplementation(libs.compose.ui.tooling)
+    releaseImplementation(libs.compose.ui.tooling.preview)
+    debugImplementation(libs.compose.ui.test.manifest)
 
     // --- Lifecycle & ViewModel ---
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.2")
-    implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.2")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.2")
+    implementation(libs.bundles.lifecycle)
 
-    // --- Kotlin & Coroutines ---
-    implementation("org.jetbrains.kotlin:kotlin-stdlib:1.9.10")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.8.0")
+    // --- Coroutines ---
+    // NOTE: Remove libs.kotlin.stdlib — Kotlin 2.x adds it automatically
+    implementation(libs.bundles.coroutines)
 
     // --- Hilt DI ---
-    implementation("com.google.dagger:hilt-android:2.51")
-    kapt("com.google.dagger:hilt-compiler:2.51")
-    implementation("androidx.hilt:hilt-navigation-compose:1.2.0")
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.hilt.navigation.compose)
 
     // --- Room Database ---
-    implementation("androidx.room:room-runtime:2.6.1")
-    kapt("androidx.room:room-compiler:2.6.1")
-    implementation("androidx.room:room-ktx:2.6.1")
+    implementation(libs.bundles.room)
+    ksp(libs.room.compiler)
 
     // --- Retrofit & Networking ---
-    implementation("com.squareup.retrofit2:retrofit:2.9.0")
-    implementation("com.squareup.retrofit2:converter-moshi:2.9.0")
-    implementation("com.squareup.moshi:moshi-kotlin:1.15.0")
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
-    debugImplementation("com.github.chuckerteam.chucker:library:4.0.0")
-    releaseImplementation("com.github.chuckerteam.chucker:library-no-op:4.0.0")
+    implementation(libs.bundles.networking)
+    debugImplementation(libs.chucker.library)
+    releaseImplementation(libs.chucker.library.no.op)
 
     // --- Firebase ---
-    implementation(platform("com.google.firebase:firebase-bom:33.2.0"))
-    implementation("com.google.firebase:firebase-messaging")
-    implementation("com.google.firebase:firebase-analytics")
+    implementation(platform(libs.firebase.bom))
+    implementation(libs.firebase.messaging)
+    implementation(libs.firebase.analytics)
 
-    // --- ML Kit & CameraX ---
-    val cameraXVersion = "1.4.0"
-    implementation("androidx.camera:camera-core:$cameraXVersion")
-    implementation("androidx.camera:camera-camera2:$cameraXVersion")
-    implementation("androidx.camera:camera-lifecycle:$cameraXVersion")
-    implementation("androidx.camera:camera-view:$cameraXVersion")
-    implementation("com.google.mlkit:barcode-scanning:17.2.0")
+    // --- CameraX ---
+    implementation(libs.bundles.camerax)
 
-    // --- Utilities ---
-    implementation("com.google.code.gson:gson:2.10.1")
-    implementation("io.coil-kt:coil-compose:2.7.0")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3")
-    implementation("com.jakewharton.retrofit:retrofit2-kotlinx-serialization-converter:1.0.0")
-    implementation("io.nerdythings:okhttp-profiler:1.1.1")
-    implementation("androidx.security:security-crypto:1.1.0-alpha06")
-    implementation("com.kizitonwose.calendar:compose:2.5.0")
-    implementation("com.google.accompanist:accompanist-permissions:0.28.0")
+    // --- ML Kit ---
+    implementation(libs.mlkit.barcode.scanning)
 
     // --- TensorFlow Lite ---
-    implementation("org.tensorflow:tensorflow-lite:2.17.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.17.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu-api:2.17.0")
-    implementation("org.tensorflow:tensorflow-lite-support:0.5.0")
+    implementation(libs.bundles.tensorflow)
 
-    //Location
-    implementation("com.google.android.gms:play-services-location:21.3.0")
+    // --- Location ---
+    implementation(libs.play.services.location)
+
+    // --- Utilities ---
+    implementation(libs.gson)
+    implementation(libs.coil.compose)
+    implementation(libs.kotlinx.serialization.json)
+    implementation(libs.retrofit.serialization.converter)
+    implementation(libs.okhttp.profiler)
+    implementation(libs.security.crypto)
+    implementation(libs.calendar.compose)
+    implementation(libs.accompanist.permissions)
+    implementation(libs.json)
+
+    // --- TLS / Local Server ---
+    implementation(libs.bundles.bouncycastle)
+    implementation(libs.nanohttpd)
 
     // --- Testing ---
-    testImplementation("junit:junit:4.13.2")
-    testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.8.0")
-    testImplementation("org.mockito:mockito-core:5.17.0")
-    testImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
-    testImplementation("app.cash.turbine:turbine:1.1.0")
-    testImplementation("io.mockk:mockk:1.13.8")
-
-    androidTestImplementation("androidx.test.ext:junit:1.1.5")
-    androidTestImplementation("androidx.compose.ui:ui-test-junit4")
-    androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
-    androidTestImplementation("androidx.navigation:navigation-testing:2.9.4")
-    androidTestImplementation("org.mockito:mockito-android:5.4.0")
-    androidTestImplementation("org.mockito.kotlin:mockito-kotlin:5.2.1")
-
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
-    implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
-
-    implementation("org.json:json:20230227")
-    implementation(project(":hl7Core"))
-
-    // Bouncy Castle for TLS Keystore generation
-    implementation("org.bouncycastle:bcprov-jdk18on:1.83")
-    implementation("org.bouncycastle:bcpkix-jdk18on:1.83")
-
-
-    // ADD this — NanoHTTPD with SSL support
-    implementation("org.nanohttpd:nanohttpd:2.3.1")
+    testImplementation(libs.bundles.test.unit)
+    androidTestImplementation(libs.bundles.test.android)
+    androidTestImplementation(libs.compose.ui.test.junit4)
 
     // OpenCV — tray color detection
     implementation("org.opencv:opencv:4.10.0")
+
+    implementation(project(":hl7Core"))
 }

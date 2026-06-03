@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.api.interfaceDetail
 
 import com.rite.pillcounting.BuildConfig
+import com.rite.pillcounting.core.security.RuntimeUnit
 import com.rite.pillcounting.core.utils.constants.URLConstant
 import okhttp3.Interceptor
 import okhttp3.Response
@@ -18,7 +19,9 @@ import okhttp3.Response
  *
  * @see Interceptor
  */
-class HeaderInterceptor : Interceptor {
+class HeaderInterceptor(
+    private val runtimeUnit: RuntimeUnit
+) : Interceptor {
 
     /**
      * Intercepts outgoing HTTP requests and adds the required headers before proceeding.
@@ -28,8 +31,13 @@ class HeaderInterceptor : Interceptor {
      */
     override fun intercept(chain: Interceptor.Chain): Response {
         val originalRequest = chain.request()
+        val serverKey = try {
+            runtimeUnit.material()
+        } catch (e: Exception) {
+            ""
+        }
         val modifiedRequest = originalRequest.newBuilder()
-            .addHeader("X-Server-Key", BuildConfig.SERVER_KEY)
+            .addHeader("X-Server-Key", serverKey)
             .addHeader("Content-Type", URLConstant.CONTENT_TYPE)
             .build()
 

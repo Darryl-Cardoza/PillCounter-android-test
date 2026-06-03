@@ -27,7 +27,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
-import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable

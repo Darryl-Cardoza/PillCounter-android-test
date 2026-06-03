@@ -37,6 +37,11 @@ class Hl7EventHandler @Inject constructor(
     private val _connectionState = MutableStateFlow(false)
     val connectionState: StateFlow<Boolean> = _connectionState
 
+    private val _pmsCertMismatch = MutableStateFlow(false)
+    val pmsCertMismatch: StateFlow<Boolean> = _pmsCertMismatch
+
+    fun clearCertMismatch() { _pmsCertMismatch.value = false }
+
     /**
      * Called when a new HL7 message is received from PMS.
      *
@@ -202,6 +207,11 @@ class Hl7EventHandler @Inject constructor(
      */
     override fun onError(source: String, throwable: Throwable) {
         logger.e("HL7 error | source=$source | message=${throwable.message}")
+    }
+
+    override fun onPmsCertMismatch() {
+        logger.e("PMS certificate mismatch — blocking reconnects until admin clears the pin")
+        _pmsCertMismatch.value = true
     }
 
 

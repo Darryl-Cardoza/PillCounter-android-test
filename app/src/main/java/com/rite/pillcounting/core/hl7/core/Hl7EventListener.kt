@@ -117,4 +117,10 @@ interface Hl7EventListener {
      * @param throwable Associated exception
      */
     fun onError(source: String, throwable: Throwable) {}
+
+    /**
+     * Called when the PMS TLS certificate no longer matches the pinned fingerprint.
+     * The connection is halted until an admin clears the stored pin.
+     */
+    fun onPmsCertMismatch() {}
 }

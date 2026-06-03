@@ -1,5 +1,7 @@
+package com.rite.pillcounting.core.hl7.imageWebService
+
 import android.content.Context
-import com.rite.pillcounting.core.hl7.imageWebService.TlsImageKeystoreUtil
+import com.rite.pillcounting.core.hl7.mllp.tls.TlsImageKeystoreUtil
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import fi.iki.elonen.NanoHTTPD
 import java.security.SecureRandom
@@ -18,23 +20,14 @@ class ImageWebServer(private val context: Context) {
     fun start() {
         if (server != null) return
 
-        // Build SSLServerSocketFactory from PKCS12 keystore
         val keyStore = TlsImageKeystoreUtil.ensureKeystore(context)
-
-        val kmf = KeyManagerFactory.getInstance(
-            KeyManagerFactory.getDefaultAlgorithm()
-        )
-        kmf.init(keyStore, TlsImageKeystoreUtil.password())
+        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+        kmf.init(keyStore, TlsImageKeystoreUtil.password(context))  // Pass context
 
         val sslContext = SSLContext.getInstance("TLS")
         sslContext.init(kmf.keyManagers, null, SecureRandom())
 
-        server = ImageNanoServer(
-            context = context,
-            port = PORT,
-            sslFactory = sslContext.serverSocketFactory
-        )
-
+        server = ImageNanoServer(context, PORT, sslContext.serverSocketFactory)
         server!!.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
 
         logger.i("HTTPS Image Server started on port $PORT")

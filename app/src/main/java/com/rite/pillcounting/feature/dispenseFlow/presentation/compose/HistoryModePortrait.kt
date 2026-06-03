@@ -55,8 +55,8 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpFo
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.core.utils.compose.cardSelectionShadow
 import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBar
-import com.rite.pillcounting.feature.dispenseFlow.domain.model.TxnDetail
-import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.scanning.domain.model.TxnDetail
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.dimens
 import java.io.File

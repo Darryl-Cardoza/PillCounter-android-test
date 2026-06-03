@@ -21,11 +21,16 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import com.rite.pillcounting.core.settings.presentation.viewmodel.MainActivityViewModel
+import com.rite.pillcounting.core.security.RuntimeUnit
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import com.rite.pillcounting.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.rite.pillcounting.core.utils.common.HelperFunctions.getStartDestination
 import com.rite.pillcounting.core.utils.common.HelperFunctions.openPlayStore
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.SecurityErrorDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toColor
 import com.rite.pillcounting.core.utils.compose.MaintenanceScreen
 import com.rite.pillcounting.core.utils.compose.UpdateScreen
@@ -54,15 +59,23 @@ class MainActivity : ComponentActivity() {
     @Inject
     lateinit var fcmService: FCMService
 
+    @Inject lateinit var runtimeUnit: RuntimeUnit
 
     @Inject
     lateinit var preferenceHelper: PreferenceHelper
 
     private lateinit var navController: NavController
 
+    private var securityViolations: List<String> = emptyList()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // ── Block tap-jacking via overlays ────────────────────────────────
+        // NOTE: FLAG_SECURE (which blocked screenshots/screen-recording and
+        // hid the app on non-secure/cast displays) was intentionally removed
+        // to allow screen capture and recording.
+        window.decorView.filterTouchesWhenObscured = true
         // Keep the screen on while the app is in the foreground. Users running
         // the camera-heavy dispense / pill-count flows would otherwise see the
         // device dim and sleep mid-scan even though they're actively using the
@@ -71,8 +84,21 @@ class MainActivity : ComponentActivity() {
         // normal locks behavior.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        fcmService.initFCM()
-        fcmService.subscribeToTopic("global_updates")
+        // ── Security check — runs once, not on every recomposition ────────────
+//        securityViolations = SecurityUtils.getSecurityViolations(this)
+//
+//        if (securityViolations.isEmpty()) {
+            runtimeUnit.grantClearance()
+            runtimeUnit.activateIfNeeded()
+//        } else {
+//            runtimeUnit.revokeClearance()
+//        }
+
+        lifecycleScope.launch {
+            delay(1500)
+            fcmService.initFCM()
+            fcmService.subscribeToTopic("global_updates")
+        }
 
 
 
@@ -122,31 +148,31 @@ class MainActivity : ComponentActivity() {
                     )
 
                     PillCountingNewModelsTheme(
-                        lightColors = lightColorSchemeDynamic,
-                        darkColors = darkColorSchemeDynamic,
+                        lightColors         = lightColorSchemeDynamic,
+                        darkColors          = darkColorSchemeDynamic,
                         lightExtendedColors = extendedDynamicLight,
-                        darkExtendedColors = extendedDynamicDark
+                        darkExtendedColors  = extendedDynamicDark
                     ) {
                         navController = rememberNavController()
                         val preferenceHelper = remember { PreferenceHelper(this) }
                         val startDestination = remember { getStartDestination(preferenceHelper) }
 
-                        // Decide which screen to show
-                        when {
-                            settingsState.isMaintenanceMode -> {
-                                MaintenanceScreen()
-                            }
+                        // ── Security dialog shown once over all other content ──
+                        if (securityViolations.isNotEmpty()) {
+                            SecurityErrorDialog(securityViolations)
+                        } else {
+                            when {
+                                settingsState.isMaintenanceMode -> MaintenanceScreen()
 
-                            settingsState.isUpdateRequired -> {
-                                UpdateScreen(onUpdateClick = { openPlayStore(this) })
-                            }
+                                settingsState.isUpdateRequired  -> UpdateScreen(
+                                    onUpdateClick = { openPlayStore(this) }
+                                )
 
-                            else -> {
-                                AppNavGraph(
-                                    navController = navController as NavHostController,
+                                else -> AppNavGraph(
+                                    navController    = navController as NavHostController,
                                     startDestination = startDestination,
-                                    onLogin = { settingsViewModel.onUserLoginOrLogOut() },
-                                    onLogOut = { settingsViewModel.onUserLoginOrLogOut() }
+                                    onLogin          = { settingsViewModel.onUserLoginOrLogOut() },
+                                    onLogOut         = { settingsViewModel.onUserLoginOrLogOut() }
                                 )
                             }
                         }
@@ -172,23 +198,35 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun requestLocationPermission() {
-
         val permissions = mutableListOf<String>()
 
         // Location permission
         if (ContextCompat.checkSelfPermission(
-                this,
-                Manifest.permission.ACCESS_FINE_LOCATION
+                this, Manifest.permission.ACCESS_COARSE_LOCATION
             ) != PackageManager.PERMISSION_GRANTED
         ) {
-            permissions.add(Manifest.permission.ACCESS_FINE_LOCATION)
+            // Show rationale if the user has previously denied
+            if (ActivityCompat.shouldShowRequestPermissionRationale(
+                    this, Manifest.permission.ACCESS_COARSE_LOCATION)
+            ) {
+                androidx.appcompat.app.AlertDialog.Builder(this)
+                    .setTitle("Location Access")
+                    .setMessage(getString(R.string.permission_location_rationale))
+                    .setPositiveButton("Continue") { _, _ ->
+                        permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
+                        requestPermissions(permissions)
+                    }
+                    .setNegativeButton("Not now", null)
+                    .show()
+                return
+            }
+            permissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
         }
 
         // Notification permission (Android 13+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
-                    this,
-                    Manifest.permission.POST_NOTIFICATIONS
+                    this, Manifest.permission.POST_NOTIFICATIONS
                 ) != PackageManager.PERMISSION_GRANTED
             ) {
                 permissions.add(Manifest.permission.POST_NOTIFICATIONS)
@@ -196,12 +234,12 @@ class MainActivity : ComponentActivity() {
         }
 
         if (permissions.isNotEmpty()) {
-            ActivityCompat.requestPermissions(
-                this,
-                permissions.toTypedArray(),
-                1001
-            )
+            ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 1001)
         }
+    }
+
+    private fun requestPermissions(permissions: List<String>) {
+        ActivityCompat.requestPermissions(this, permissions.toTypedArray(), 1001)
     }
 
     private fun handleNavigationIntent(intent: Intent) {

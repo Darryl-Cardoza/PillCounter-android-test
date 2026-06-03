@@ -56,7 +56,10 @@ fun TransactionDetailsList(
         LazyColumn(
             verticalArrangement = arrangement
         ) {
-            items(transactionDetails) { detail ->
+            items(
+                items = transactionDetails,
+                key = { detail -> "${detail.txnId}-${detail.imagePath ?: ""}-${detail.type}" }
+            ) { detail ->
                 TransactionDetailItem(detail, itemModifier, circleSize)
             }
         }
@@ -64,7 +67,10 @@ fun TransactionDetailsList(
         LazyRow(
             horizontalArrangement = arrangement
         ) {
-            items(transactionDetails) { detail ->
+            items(
+                items = transactionDetails,
+                key = { detail -> "${detail.txnId}-${detail.imagePath ?: ""}-${detail.type}" }
+            ) { detail ->
                 TransactionDetailItem(detail, itemModifier, circleSize)
             }
         }
@@ -83,6 +89,7 @@ private fun TransactionDetailItem(
             rememberAsyncImagePainter(
                 ImageRequest.Builder(LocalContext.current)
                     .data(file)
+                    .size(420, 330) // 3x the ~140x110dp item box; Coil downsamples on decode
                     .placeholder(R.drawable.bottle)
                     .error(R.drawable.bottle)
                     .build()

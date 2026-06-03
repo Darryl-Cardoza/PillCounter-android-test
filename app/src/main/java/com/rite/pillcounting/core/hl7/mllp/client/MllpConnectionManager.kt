@@ -8,6 +8,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.IOException
+import java.security.cert.CertificateException
 
 /**
  * High-level MLLP connection manager.
@@ -25,7 +26,8 @@ class MllpConnectionManager(
     private val scope: CoroutineScope,
     private val onFirstConnected: (() -> Unit)? = null,
     private val onConnected: (() -> Unit)? = null,
-    private val onDisconnected: (() -> Unit)? = null
+    private val onDisconnected: (() -> Unit)? = null,
+    private val onCertMismatch: (() -> Unit)? = null,
 ) {
     private val logger = AppLogger("MllpConnectionManager")
 
@@ -41,6 +43,8 @@ class MllpConnectionManager(
     private var port: Int = 0
     private var isShutdown = false
     private var hasEverConnected = false
+
+    @Volatile private var certMismatchBlocked = false
 
     private var readerJob: Job? = null       // passive reader — detects disconnect
     private var reconnectJob: Job? = null
@@ -87,7 +91,7 @@ class MllpConnectionManager(
         reconnectJob?.cancel()
         reconnectJob = scope.launch {
             while (!isShutdown) {
-                if (state == ConnectionState.Disconnected && ip.isNotEmpty()) {
+                if (!certMismatchBlocked && state == ConnectionState.Disconnected && ip.isNotEmpty()) {
                     logger.d("reconnect loop — disconnected, attempting retryConnect()")
                     try { retryConnect() } catch (e: Exception) {
                         logger.e("reconnect loop — retryConnect() threw: ${e.message}", e)
@@ -97,6 +101,10 @@ class MllpConnectionManager(
             }
             logger.d("reconnect loop — exiting (shutdown)")
         }
+    }
+
+    fun unblockCertMismatch() {
+        certMismatchBlocked = false
     }
 
     fun shutdown() {
@@ -134,6 +142,13 @@ class MllpConnectionManager(
                 onConnectionEstablished()
                 return  // success
             } catch (e: Exception) {
+                if (isCertMismatch(e)) {
+                    logger.e("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.")
+                    certMismatchBlocked = true
+                    updateState(ConnectionState.Disconnected)
+                    onCertMismatch?.invoke()
+                    return
+                }
                 attempt++
                 val delay = minOf(RETRY_DELAY_MS * attempt, MAX_RETRY_DELAY_MS)
                 logger.w("retryConnect() — attempt $attempt failed: ${e.message}. Retrying in ${delay}ms")
@@ -142,6 +157,10 @@ class MllpConnectionManager(
             }
         }
     }
+
+    private fun isCertMismatch(e: Exception): Boolean =
+        generateSequence<Throwable>(e) { it.cause }
+            .any { it is CertificateException && it.message?.contains("fingerprint mismatch") == true }
 
     private fun onConnectionEstablished() {
         updateState(ConnectionState.Connected)

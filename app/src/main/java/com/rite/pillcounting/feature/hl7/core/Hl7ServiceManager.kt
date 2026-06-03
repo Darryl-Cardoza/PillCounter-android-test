@@ -151,6 +151,15 @@ class Hl7ServiceManager @Inject constructor(
     }
 
     /**
+     * Clear the stored TOFU certificate pin and resume PMS connection.
+     * Call this when the PMS server certificate is legitimately rotated.
+     */
+    fun clearPmsCertPin(hl7EventHandler: Hl7EventHandler) {
+        hl7EventHandler.clearCertMismatch()
+        serviceManager.getService()?.clearPmsCertPin()
+    }
+
+    /**
      * Update HL7 configuration and rebroadcast NSD.
      * Called when terminal name changes.
      */

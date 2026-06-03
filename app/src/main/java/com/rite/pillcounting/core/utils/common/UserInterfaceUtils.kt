@@ -17,6 +17,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -160,6 +161,19 @@ class PhoneNumberVisualTransformation : VisualTransformation {
  * Centralizes shared UI logic to maintain consistent look and behavior across screens.
  */
 object UserInterfaceUtils {
+
+    /** smallestScreenWidthDp threshold used to classify a device as a tablet. */
+    const val TABLET_BREAKPOINT_DP = 600
+
+    /** True when the current device's smallest width meets the tablet breakpoint. */
+    @Composable
+    fun isTablet(): Boolean =
+        LocalConfiguration.current.smallestScreenWidthDp >= TABLET_BREAKPOINT_DP
+
+    /** True when the current configuration is landscape. */
+    @Composable
+    fun isLandscape(): Boolean =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // ───────────────────────────── Toast Helpers ─────────────────────────────
 
@@ -623,6 +637,9 @@ object UserInterfaceUtils {
                     ActionButtonPrimary(
                         text = stringResource(R.string.ok).uppercase(),
                         onClick = { currentSelection?.let { onOk(it) } },
+                        // Disabled until the user makes a deliberate selection.
+                        // Callers that want a preselected option pass selectedIndex.
+                        enabled = currentSelection != null,
                         fixedWidth = false,
                         modifier = Modifier.width(dimens.dialogButtonWidth)
                     )
@@ -820,13 +837,13 @@ object UserInterfaceUtils {
             Modifier.height(dimens.buttonHeight)
         Button(
             onClick = onClick,
-            modifier = sizeModifier
-                .then(modifier)
-                .border(
-                    width = 1.dp,
-                    color = color,
-                    shape = RoundedCornerShape(dimens.buttonCornerRadius)
-                ),
+            modifier = sizeModifier.then(modifier),
+            // Border + shape on the Button itself so the outline is drawn at the
+            // surface bounds — a .border() modifier sits outside the Button's
+            // 48dp minimum-touch-target node and renders taller than the fill
+            // when the button is height-constrained (e.g. landscape).
+            shape = RoundedCornerShape(dimens.buttonCornerRadius),
+            border = BorderStroke(1.dp, color),
             colors = ButtonDefaults.buttonColors(
                 containerColor = Color.Transparent,
                 contentColor = color,
@@ -888,7 +905,7 @@ object UserInterfaceUtils {
             shape = RoundedCornerShape(dimens.buttonCornerRadius),
             enabled = enabled
         ) {
-            Text(text = text, fontSize = fontSize.sp)
+            Text(text = text, fontSize = fontSize.sp, maxLines = 1, softWrap = false)
         }
     }
 
