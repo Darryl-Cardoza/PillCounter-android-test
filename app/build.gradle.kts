@@ -108,6 +108,7 @@ android {
             useLegacyPackaging = false
         }
     }
+
 }
 
 kotlin {
@@ -177,6 +178,9 @@ dependencies {
     implementation(libs.mlkit.barcode.scanning)
 
     // --- TensorFlow Lite ---
+    // org.tensorflow:tensorflow-lite-* maxes out at 2.17.0 — after that, Google
+    // rebranded the artifact as LiteRT (com.google.ai.edge.litert:litert:1.0.x+).
+    // Migration to LiteRT is a separate task (package renames, API tweaks).
     implementation(libs.bundles.tensorflow)
 
     // --- Location ---

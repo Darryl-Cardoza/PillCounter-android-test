@@ -6,72 +6,76 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Resizes camera frames to the model's 640×640 letterbox input and converts to a
- * normalized float ByteBuffer that TFLite can consume directly.
+ * Resizes camera frames to the model 640×640 letterbox input and produces the
+ * float buffer the per-frame pipeline needs for the TFLite pill + glove models:
  *
- * Hot path: called once per analyzed frame. The output ByteBuffer must be
- * allocated fresh each call — [PillAnalyzer] hands out three duplicate() views
- * of the same backing memory to run inference in parallel, so reusing the
- * buffer across frames would race with in-flight inference. The IntArray pixel
- * scratch IS safe to reuse: it's fully consumed before this function returns,
- * before any duplicate() view is taken.
+ *  - [Preprocessed.rgbNormalized]  NHWC RGB / 255 at 640x640 (pill + glove TFLite)
+ *  - [Preprocessed.letterboxed]    640x640 ARGB_8888 Bitmap (handed to the tray
+ *                                  segmentation detector, which does its own
+ *                                  640->384 downscale + [0, 255] rescale internally)
+ *
+ * **All scratch is reused across frames.** Each frame writes into the same
+ * FloatArray and direct ByteBuffer (~10 MB total). PillAnalyzer hands out
+ * `duplicate()` views and `coroutineScope { ... }.await()` guarantees all
+ * three parallel inferences complete before `analyze()` returns, so the next
+ * frame cannot start until the current frame's reads are done.
+ *
+ * NOT thread-safe across concurrent callers — CameraX's ImageAnalysis use
+ * case delivers frames sequentially, which is what makes this safe.
  */
 object ImagePreprocessor {
 
     private const val INPUT_SIZE = 640
-    private const val FLOATS_PER_PIXEL = 3
+    private const val NUM_PIXELS = INPUT_SIZE * INPUT_SIZE
+    private const val CHANNELS = 3
     private const val BYTES_PER_FLOAT = 4
+    private const val BUFFER_BYTES = CHANNELS * NUM_PIXELS * BYTES_PER_FLOAT
 
-    // Lazy-init reusable pixel scratch. Safe to reuse: it's only read while
-    // bitmapToFloatBuffer is running. Saves ~1.6 MB allocation per frame.
-    private val pixelScratch: IntArray by lazy { IntArray(INPUT_SIZE * INPUT_SIZE) }
+    // Cached scratch — allocated once, reused every frame.
+    private val pixelScratch = IntArray(NUM_PIXELS)
+    private val rgbScratch = FloatArray(CHANNELS * NUM_PIXELS)
+    private val rgbBuf: ByteBuffer =
+        ByteBuffer.allocateDirect(BUFFER_BYTES).order(ByteOrder.nativeOrder())
 
-    fun preprocess(
-        image: ImageProxy
-    ): Triple<ByteBuffer, Bitmap, Bitmap> {
+    data class Preprocessed(
+        val rgbNormalized: ByteBuffer,
+        val letterboxed: Bitmap,
+        val original: Bitmap
+    )
 
-        val bitmap = image.toBitmap()
-        val letterboxed = Letterbox.preprocess(bitmap, INPUT_SIZE)
+    fun preprocess(image: ImageProxy): Preprocessed {
+        val original = image.toBitmap()
+        val letterboxed = Letterbox.preprocess(original, INPUT_SIZE)
 
-        val buffer = bitmapToFloatBuffer(letterboxed)
+        letterboxed.getPixels(pixelScratch, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
 
-        return Triple(buffer, letterboxed, bitmap)
-    }
+        val rgb = rgbScratch
 
-    private fun bitmapToFloatBuffer(bitmap: Bitmap): ByteBuffer {
-        val buffer = ByteBuffer
-            .allocateDirect(INPUT_SIZE * INPUT_SIZE * FLOATS_PER_PIXEL * BYTES_PER_FLOAT)
-            .order(ByteOrder.nativeOrder())
-
-        val pixels = pixelScratch
-        bitmap.getPixels(
-            pixels,
-            0,
-            INPUT_SIZE,
-            0,
-            0,
-            INPUT_SIZE,
-            INPUT_SIZE
-        )
-
-        // Bulk-fill a FloatArray then put() it via the FloatBuffer view in one
-        // call. Measurably faster than 409k individual putFloat() calls on weak
-        // ARM devices because the JIT can hoist bounds checks across the loop.
-        val n = pixels.size
-        val rgb = FloatArray(FLOATS_PER_PIXEL * n)
         var i = 0
         var j = 0
-        while (i < n) {
-            val p = pixels[i]
-            rgb[j] = ((p shr 16) and 0xFF) / 255f
-            rgb[j + 1] = ((p shr 8) and 0xFF) / 255f
-            rgb[j + 2] = (p and 0xFF) / 255f
-            i++
-            j += FLOATS_PER_PIXEL
-        }
-        buffer.asFloatBuffer().put(rgb)
+        while (i < NUM_PIXELS) {
+            val p = pixelScratch[i]
+            val r = ((p shr 16) and 0xFF).toFloat()
+            val g = ((p shr 8) and 0xFF).toFloat()
+            val b = (p and 0xFF).toFloat()
 
-        buffer.rewind()
-        return buffer
+            // NHWC RGB / 255 — what the pill and glove TFLite models expect.
+            rgb[j] = r / 255f
+            rgb[j + 1] = g / 255f
+            rgb[j + 2] = b / 255f
+
+            i++
+            j += CHANNELS
+        }
+
+        rgbBuf.clear()
+        rgbBuf.asFloatBuffer().put(rgb)
+        rgbBuf.rewind()
+
+        return Preprocessed(
+            rgbNormalized = rgbBuf,
+            letterboxed = letterboxed,
+            original = original
+        )
     }
 }

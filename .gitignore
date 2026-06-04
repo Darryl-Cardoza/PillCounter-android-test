@@ -54,4 +54,5 @@ _cleanup_archive/
 
 # Local files
 local.properties
+.claude/settings.local.json
 keystore.properties
