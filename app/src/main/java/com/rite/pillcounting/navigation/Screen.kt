@@ -242,28 +242,6 @@ sealed interface Screen {
         ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}"
     }
 
-    data object ResumeFixedCounts : Screen {
-        private const val ROUTE_PREFIX = "resume_fixed_counts"
-        const val ARG_TYPE = "type"
-
-        override val route: String = "$ROUTE_PREFIX/{$ARG_TYPE}"
-
-        fun createRoute(type: String) = "$ROUTE_PREFIX/$type"
-    }
-
-    data object ResumeRegularCounts : Screen {
-        private const val ROUTE_PREFIX = "resume_regular_counts"
-        const val ARG_TYPE = "type"
-
-        override val route: String = "$ROUTE_PREFIX/{$ARG_TYPE}"
-
-        fun createRoute(type: String) = "$ROUTE_PREFIX/$type"
-    }
-
-    data object PartialCountsScreen : Screen {
-        override val route: String = "partial_count_screen"
-    }
-
     data object SaveHistoryFor : Screen {
         override val route: String = "save_history_for"
     }

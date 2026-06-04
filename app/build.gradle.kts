@@ -41,6 +41,9 @@ android {
             "BASE_URL",
             "\"https://pill.ccrlindia.com/\""
         )
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     compileOptions {
@@ -207,7 +210,7 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
 
     // OpenCV — tray color detection
-    implementation("org.opencv:opencv:4.10.0")
+    implementation(libs.opencv)
 
     implementation(project(":hl7Core"))
 }

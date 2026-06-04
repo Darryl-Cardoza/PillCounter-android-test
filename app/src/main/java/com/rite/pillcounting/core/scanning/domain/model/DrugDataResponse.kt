@@ -21,19 +21,19 @@ data class DrugComparisonData(
 
 @Serializable
 data class NdcDrugInfo(
-    val package_ndc: String? = null,
-    val product_ndc: String? = null,
+    val drug_code: String? = null,
+    val brand_name: String? = null,
+    val generic_name: String? = null,
     val splittable: Boolean? = null,
     val standard_name: String? = null,
     val active_ingredients: List<ActiveIngredient>? = null,
-    val dea_schedule: String? = null,
-    val dosage_form: String? = null,
+    val regulatory: DrugRegulatory? = null,
+    val dosage_form: List<String>? = null,
     val lookup_name: String? = null,
     val manufacturer: String? = null,
     val route: List<String>? = null,
-    val therapeutic_rxclass: TherapeuticRxClass? = null,
-    val therapeutic_fda: TherapeuticFda? = null,
-    val image: DrugImage? = null,
+    val therapeutic: DrugTherapeutic? = null,
+    val images: DrugImages? = null,
     val updated_at: String? = null,
     val `package`: Package? = null,
     val is_hazardous: Boolean? = null
@@ -42,24 +42,41 @@ data class NdcDrugInfo(
 @Serializable
 data class ActiveIngredient(
     val name: String? = null,
-    val strength: String? = null
+    val strength: String? = null,
+    val strength_raw: String? = null,
+    val strength_value: Double? = null,
+    val strength_unit: String? = null,
+    val ingredient_code: String? = null
 )
 
 @Serializable
-data class TherapeuticRxClass(
+data class DrugRegulatory(
+    val schedule: String? = null,
+    val is_controlled: Boolean? = null,
+    val status: String? = null,
+    val status_date: String? = null
+)
+
+@Serializable
+data class DrugTherapeutic(
     val primary_class: String? = null,
     val secondary_classes: List<String>? = null,
-    val source: String? = null
+    val rxclass_source: String? = null,
+    val fda_note: String? = null,
+    val atc_codes: List<String>? = null
 )
 
 @Serializable
-data class TherapeuticFda(
-    val note: String? = null
+data class DrugImages(
+    val total: Int? = null,
+    val primary: String? = null,
+    val all: List<DrugImageItem>? = null
 )
 
 @Serializable
-data class DrugImage(
-    val link: String? = null
+data class DrugImageItem(
+    val url: String? = null,
+    val filename: String? = null
 )
 
 /**
@@ -71,8 +88,8 @@ data class DrugImage(
  */
 @Serializable
 data class Package(
-    val ndc: String? = null,
     val description: String? = null,
+    val sizes: List<String>? = null,
     val levels: List<PackageLevel>? = null
 )
 
