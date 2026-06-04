@@ -66,6 +66,9 @@ calendar = "2.10.1"
 accompanist-permissions = "0.37.3"
 json = "20251224"
 
+# --- OpenCV ---
+opencv = "4.10.0"
+
 # --- TLS / Local Server ---
 bouncycastle = "1.84"
 nanohttpd = "2.3.1"
@@ -173,6 +176,9 @@ security-crypto = { group = "androidx.security", name = "security-crypto", versi
 calendar-compose = { group = "com.kizitonwose.calendar", name = "compose", version.ref = "calendar" }
 accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanist-permissions" }
 json = { group = "org.json", name = "json", version.ref = "json" }
+
+# --- OpenCV ---
+opencv = { group = "org.opencv", name = "opencv", version.ref = "opencv" }
 
 # --- TLS / Local Server ---
 bouncycastle-provider = { group = "org.bouncycastle", name = "bcprov-jdk18on", version.ref = "bouncycastle" }
