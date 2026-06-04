@@ -453,7 +453,10 @@ object UserInterfaceUtils {
         onClick: (() -> Unit)? = null
     ) {
         val dimens = AppTheme.dimens
-        val clickAction = { onClick?.invoke() ?: navController.popBackStack() }
+        val clickAction = {
+            if (onClick != null) onClick.invoke()
+            else navController.popBackStackSafely()
+        }
 
         if (showBox) {
             // ---- Circle background version ----
@@ -474,7 +477,7 @@ object UserInterfaceUtils {
         } else {
             // ---- Normal version without background ----
             IconButton(
-                onClick = { onClick?.invoke() ?: navController.popBackStack() },
+                onClick = { clickAction() },
                 modifier = modifier
                     .padding(dimens.small)
                     .size(responsiveDp(36.dp))

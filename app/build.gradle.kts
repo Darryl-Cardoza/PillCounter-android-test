@@ -41,6 +41,9 @@ android {
             "BASE_URL",
             "\"https://pill.ccrlindia.com/\""
         )
+        ndk {
+            abiFilters += listOf("arm64-v8a", "armeabi-v7a")
+        }
     }
 
     compileOptions {
@@ -178,10 +181,7 @@ dependencies {
     // org.tensorflow:tensorflow-lite-* maxes out at 2.17.0 — after that, Google
     // rebranded the artifact as LiteRT (com.google.ai.edge.litert:litert:1.0.x+).
     // Migration to LiteRT is a separate task (package renames, API tweaks).
-    implementation("org.tensorflow:tensorflow-lite:2.17.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu:2.17.0")
-    implementation("org.tensorflow:tensorflow-lite-gpu-api:2.17.0")
-    implementation("org.tensorflow:tensorflow-lite-support:0.5.0")
+    implementation(libs.bundles.tensorflow)
 
     // --- Location ---
     implementation(libs.play.services.location)
@@ -207,7 +207,7 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
 
     // OpenCV — tray color detection
-    implementation("org.opencv:opencv:4.10.0")
+    implementation(libs.opencv)
 
     implementation(project(":hl7Core"))
 }
