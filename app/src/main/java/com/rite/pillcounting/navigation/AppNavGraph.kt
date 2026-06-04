@@ -6,9 +6,6 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.rite.pillcounting.feature.batchCount.presentation.BatchScreen
-import com.rite.pillcounting.feature.countResume.presentation.FixedCountResumeScreen
-import com.rite.pillcounting.feature.countResume.presentation.PartialCountsScreen
-import com.rite.pillcounting.feature.countResume.presentation.RegularCountResumeScreen
 import com.rite.pillcounting.feature.dashboard.presentation.DashboardScreen
 import com.rite.pillcounting.feature.dispenseFlow.presentation.DispenseFlowScreen
 import com.rite.pillcounting.feature.inventoryFlow.presentation.InventoryFlowScreen
@@ -115,24 +112,8 @@ fun AppNavGraph(
             BatchScreen(
                 navController = navController,
                 onBackClick = {
-                    if (previousRoute == Screen.PartialCountsScreen.route) {
-                        navController.popBackStack(Screen.PartialCountsScreen.route, inclusive = false)
-                    } else {
-                        navController.popBackStack(Screen.Dashboard.route, inclusive = false)
-                    }
+                    navController.popBackStack(Screen.Dashboard.route, inclusive = false)
                 }
-            )
-        }
-
-        composable(route = Screen.ResumeFixedCounts.route) { backStackEntry ->
-            FixedCountResumeScreen(
-                navController = navController
-            )
-        }
-
-        composable(route = Screen.ResumeRegularCounts.route) { backStackEntry ->
-            RegularCountResumeScreen(
-                navController = navController,
             )
         }
 
@@ -177,10 +158,6 @@ fun AppNavGraph(
             ProfileScreen(
                 navController = navController
             )
-        }
-
-        composable(route = Screen.PartialCountsScreen.route) {
-            PartialCountsScreen(navController = navController)
         }
 
         composable(route = Screen.SaveHistoryFor.route) {
