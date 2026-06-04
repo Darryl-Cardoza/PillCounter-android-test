@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.menu.presentation
+﻿package com.rite.pillcounting.feature.menu.presentation
 
 import Screen
 import android.widget.Toast
@@ -29,7 +29,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.room.models.enums.ScanType
 import com.rite.pillcounting.core.utils.common.HistoryRetention
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -106,7 +105,7 @@ fun MenuScreen(
                 mainClick = {
                     // Merged dispense flow: one screen for RX + NDC + pill count.
                     navController.navigate(
-                        Screen.DispenseScan.createRoute(CountType.FIXED.toString())
+                        Screen.DispenseFlow.createRoute(CountType.FIXED.toString())
                     )
                 },
                 onPartialClick = {
@@ -120,7 +119,7 @@ fun MenuScreen(
                 onCompletedClick = { navController.navigate(Screen.History.createRoute(HistoryMode.DISPENSE)) },
             )
 
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+            HorizontalDivider(color = extendedColors.primaryBackground)
 
             // Regular Count
             MenuItemRow(
@@ -330,12 +329,13 @@ fun MenuScreen(
 
     if (showBucketSelectDialog) {
         val bucketList = viewModel.getBucketList()
-        val defaultIndex = bucketList.indices.firstOrNull() ?: -1
 
         CommonSingleSelectDialog(
             title = stringResource(R.string.select_bucket),
             options = bucketList,
-            selectedIndex = defaultIndex,
+            // No preselection — the user must deliberately tap a bucket before OK
+            // is enabled. Prevents silently committing the first bucket.
+            selectedIndex = null,
             onCancel = { showBucketSelectDialog = false },
             onOk = { index ->
                 if (index in bucketList.indices) {

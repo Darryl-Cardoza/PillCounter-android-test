@@ -7,7 +7,6 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Debug
-import android.util.Log
 import org.tensorflow.lite.Interpreter
 import java.io.BufferedWriter
 import java.io.File
@@ -50,8 +49,9 @@ class PerformanceLogger @Inject constructor(
         context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
     }
 
+    private val logger = AppLogger("PerformanceLogger")
+
     companion object {
-        private const val TAG = "PerformanceLogger"
         private val LOG_SEPARATOR = "=".repeat(80)
         private val SECTION_SEPARATOR = "-".repeat(80)
     }
@@ -286,11 +286,11 @@ class PerformanceLogger @Inject constructor(
                 writer.newLine()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to write to log file", e)
+            logger.e("Failed to write to log file", e)
         }
 
         // Also log to Logcat for debugging
-        Log.d(TAG, message)
+        logger.d(message)
     }
 
     private fun getCurrentTimestamp(): String {
@@ -444,7 +444,7 @@ class PerformanceLogger @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Could not read thermal zone", e)
+            logger.w("Could not read thermal zone", e)
         }
 
         val thermalStatus = if (cpuTemp > 80) {
@@ -513,7 +513,7 @@ class PerformanceLogger @Inject constructor(
                 }
             } catch (e: Exception) {
                 // /proc/self/stat also restricted or not available
-                Log.d(TAG, "/proc/self/stat not accessible: ${e.message}")
+                logger.d("/proc/self/stat not accessible: ${e.message}")
             }
 
             // Method 2: Use Debug API for thread CPU time (app-level only)
@@ -539,7 +539,7 @@ class PerformanceLogger @Inject constructor(
             return 0f
 
         } catch (e: Exception) {
-            Log.w(TAG, "Could not calculate CPU usage: ${e.message}")
+            logger.w("Could not calculate CPU usage: ${e.message}")
             return 0f
         }
     }
@@ -561,11 +561,11 @@ class PerformanceLogger @Inject constructor(
             logDir.listFiles()?.forEach { file ->
                 if (file.lastModified() < cutoff) {
                     file.delete()
-                    Log.d(TAG, "Deleted old log: ${file.name}")
+                    logger.d("Deleted old log: ${file.name}")
                 }
             }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to clear old logs", e)
+            logger.e("Failed to clear old logs", e)
         }
     }
 }

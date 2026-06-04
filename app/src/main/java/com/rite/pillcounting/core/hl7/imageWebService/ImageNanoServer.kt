@@ -1,8 +1,10 @@
+package com.rite.pillcounting.core.hl7.imageWebService
+
 import android.content.Context
 import android.util.Base64
-import android.util.Log
-import com.rite.pillcounting.core.hl7.imageWebService.TlsImageKeystoreUtil
+import com.rite.pillcounting.core.hl7.mllp.tls.TlsImageKeystoreUtil
 import com.rite.pillcounting.core.security.ImageCrypto
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import fi.iki.elonen.NanoHTTPD
 import org.json.JSONObject
 import javax.net.ssl.SSLServerSocketFactory
@@ -13,17 +15,16 @@ class ImageNanoServer(
     sslFactory: SSLServerSocketFactory
 ) : NanoHTTPD(port) {
 
-    companion object {
-        private const val TAG = "ImageNanoServer"
-    }
+    private val logger = AppLogger("ImageNanoServer")
 
     init {
         // Attach the SSL factory — this makes NanoHTTPD use HTTPS
         makeSecure(sslFactory, null)
+        setTempFileManagerFactory { PrivateTempFileManager(context) }
     }
 
     override fun serve(session: IHTTPSession): Response {
-        Log.d(TAG, "Request: ${session.method} ${session.uri}")
+        logger.d("Request: ${session.method} ${session.uri}")
 
         return when {
             session.uri == "/health"      -> handleHealth()
@@ -95,7 +96,7 @@ class ImageNanoServer(
                     .toString()
             )
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to read image: $fileName", e)
+            logger.e("Failed to read image: $fileName", e)
             errorResponse(
                 status = Response.Status.INTERNAL_ERROR,
                 message = "Failed to read image"

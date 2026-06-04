@@ -59,7 +59,7 @@ class LoginRepository @Inject constructor(
     override suspend fun logout(refreshToken: String): Result<LogoutResponse> =
         withContext(ioDispatcher) {
             try {
-                logger.i("Logging out with refresh token: $refreshToken")
+                logger.i("Logging out (refresh token present: ${refreshToken.isNotBlank()})")
                 val request = LogoutRequest(refreshToken = refreshToken)
                 val response = loginApi.logout(request)
                 logger.i("Logout successful.")

@@ -19,14 +19,6 @@ sealed interface Screen {
         override val route: String = "login"
     }
 
-    data object Register : Screen {
-        override val route: String = "register"
-    }
-
-    data object ForgotPassword : Screen {
-        override val route: String = "forgot_password"
-    }
-
     data object Dashboard : Screen {
         override val route: String = "dashboard"
     }
@@ -54,6 +46,36 @@ sealed interface Screen {
 
         /** Navigate to a specific batch; batchId = 0 means "resolve latest batch". */
         fun createRoute(batchId: Long = 0L): String = "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId"
+    }
+
+    data object InventoryScan : Screen {
+        private const val ROUTE_PREFIX = "inventory_scan"
+        const val ARG_BATCH_ID = "batch_id"
+        const val ARG_BUCKET_ID = "bucket_id"
+
+        override val route: String =
+            "$ROUTE_PREFIX?$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}"
+
+        val navArguments: List<NamedNavArgument> = listOf(
+            navArgument(ARG_BATCH_ID) {
+                type = NavType.LongType
+                defaultValue = 0L
+            },
+            navArgument(ARG_BUCKET_ID) {
+                type = NavType.StringType
+                defaultValue = ""
+                nullable = true
+            }
+        )
+
+        /**
+         * Entry-point route. Supply either:
+         *  - [batchId] to resume an existing batch, OR
+         *  - [bucketId] from the Inventory quick-action; the batch is created
+         *    lazily on the first NDC scan inside `InventoryScanViewModel`.
+         */
+        fun createRoute(batchId: Long = 0L, bucketId: String? = null): String =
+            "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}"
     }
 
     data object HistoryDetail : Screen {
@@ -176,14 +198,19 @@ sealed interface Screen {
     // and hydrate from the existing PMS-created transaction (drugName,
     // hl7-expected NDC, targetCount, rxNo are all pre-populated, RX scan is
     // skipped entirely).
-    data object DispenseScan : Screen {
-        private const val ROUTE_PREFIX = "dispense_scan"
+    //
+    // The optional `batch_id` is used in the stock count (REGULAR) flow to
+    // associate the new transaction with the active batch.
+    data object DispenseFlow : Screen {
+        private const val ROUTE_PREFIX = "dispense_flow"
         const val ARG_TYPE = "type"
         const val ARG_FROM_HL7 = "from_hl7"
         const val ARG_FROM_RESUME = "from_resume"
+        const val ARG_BATCH_ID = "batch_id"
+        const val ARG_BUCKET_ID = "bucket_id"
 
         override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}"
+            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}"
 
         val navArguments: List<NamedNavArgument> = listOf(
             navArgument(ARG_TYPE) { type = NavType.StringType },
@@ -195,10 +222,24 @@ sealed interface Screen {
                 type = NavType.BoolType
                 defaultValue = false
             },
+            navArgument(ARG_BATCH_ID) {
+                type = NavType.LongType
+                defaultValue = 0L
+            },
+            navArgument(ARG_BUCKET_ID) {
+                type = NavType.StringType
+                nullable = true
+                defaultValue = null
+            },
         )
 
-        fun createRoute(scanType: String, fromHl7: Boolean = false, fromResume: Boolean = false) =
-            "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume"
+        fun createRoute(
+            scanType: String,
+            fromHl7: Boolean = false,
+            fromResume: Boolean = false,
+            batchId: Long = 0L,
+            bucketId: String? = null,
+        ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}"
     }
 
     data object ResumeFixedCounts : Screen {

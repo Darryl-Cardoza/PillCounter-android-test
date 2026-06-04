@@ -4,7 +4,7 @@ package com.rite.pillcounting.feature.hl7.core
 import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.hl7.service.Hl7serviceHandler
 import com.rite.pillcounting.core.utils.logger.AppLogger
-import org.rite.hl7.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.domain.model.CompleteHL7Message
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -148,6 +148,15 @@ class Hl7ServiceManager @Inject constructor(
      */
     fun discoverAndConnect() {
         serviceManager.getService()?.discoverPmsAndConnect()
+    }
+
+    /**
+     * Clear the stored TOFU certificate pin and resume PMS connection.
+     * Call this when the PMS server certificate is legitimately rotated.
+     */
+    fun clearPmsCertPin(hl7EventHandler: Hl7EventHandler) {
+        hl7EventHandler.clearCertMismatch()
+        serviceManager.getService()?.clearPmsCertPin()
     }
 
     /**

@@ -2,18 +2,20 @@ package com.rite.pillcounting.feature.hl7.util
 
 
 import android.os.Build
-import com.rite.pillcounting.core.hl7.hl7MessageHandler.domain.model.ObservationData
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
-import org.rite.hl7.hl7.domain.model.CompleteHL7Message
-import org.rite.hl7.hl7.domain.model.DispenseData
-import org.rite.hl7.hl7.domain.model.MessageHeaderData
-import org.rite.hl7.hl7.domain.model.NoteData
-import org.rite.hl7.hl7.domain.model.OrderData
-import org.rite.hl7.hl7.domain.model.PatientData
+import org.rite.hl7.builder.HL7MessageBuilder as Hl7Builder
+import org.rite.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.domain.model.CustomSegmentData
+import org.rite.hl7.domain.model.DispenseData
+import org.rite.hl7.domain.model.MessageHeaderData
+import org.rite.hl7.domain.model.NoteData
+import org.rite.hl7.domain.model.ObservationData
+import org.rite.hl7.domain.model.OrderData
+import org.rite.hl7.domain.model.PatientData
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -115,108 +117,89 @@ object HL7MessageBuilder {
         orderId: String = batch.bucketId.orEmpty()
     ): String {
 
-        data class Key(
-            val ndc: String,
-            val name: String,
-            val lot: String,
-            val expiry: String
-        )
-
-        data class Qty(
-            var opened: Int = 0,
-            var sealed: Int = 0
-        )
+        data class Key(val ndc: String, val name: String, val lot: String, val expiry: String)
+        data class Qty(var opened: Int = 0, var sealed: Int = 0)
 
         val now = System.currentTimeMillis()
-        val messageId = "RES${System.currentTimeMillis() / 1000}"
+        val messageId = "RES${now / 1000}"
 
         val grouped = linkedMapOf<Key, Qty>()
-
         txns.forEach { txn ->
-            val ndc = txn.ndc.orEmpty()
-            val name = txn.drugName.orEmpty()
-            val lot = txn.lotNo.orEmpty()
-            val expiry = txn.expiry.orEmpty()
-
-            val packageQty = txn.packageQty ?: 0
-            val opened = txn.looseQty ?: 0
-            val sealed = (txn.bottleQty ?: 0) * packageQty
-
             val key = Key(
-                ndc = ndc,
-                name = name,
-                lot = lot,
-                expiry = expiry
+                ndc = txn.ndc.orEmpty(),
+                name = txn.drugName.orEmpty(),
+                lot = txn.lotNo.orEmpty(),
+                expiry = txn.expiry.orEmpty()
             )
-
+            val packageQty = txn.packageQty ?: 0
             val existing = grouped.getOrPut(key) { Qty() }
-            existing.opened += opened
-            existing.sealed += sealed
+            existing.opened += txn.looseQty ?: 0
+            existing.sealed += (txn.bottleQty ?: 0) * packageQty
         }
 
-        val hl7 = StringBuilder()
+        val segments = mutableListOf<CustomSegmentData>()
 
-        // Header
-        hl7.append("MSH|^~\\&|PILLCOUNTER|STORE|PMS|PHARMACY|")
-            .append(now)
-            .append("||INR^U05|")
-            .append(messageId)
-            .append("|P|2.5\n")
+        segments.add(CustomSegmentData(
+            segmentType = "MSA",
+            allFields = mapOf(1 to "AA", 2 to requestId)
+        ))
+        segments.add(CustomSegmentData(
+            segmentType = "ORC",
+            allFields = mapOf(1 to "RE", 2 to orderId)
+        ))
 
-        hl7.append("MSA|AA|").append(requestId).append("\n")
-        hl7.append("ORC|RE|").append(orderId).append("\n")
+        grouped.entries.forEachIndexed { idx, (key, value) ->
+            val setId = (idx + 1).toString()
+            val total = (value.opened + value.sealed).toString()
 
-        var index = 1
+            segments.add(CustomSegmentData(
+                segmentType = "INV",
+                allFields = mapOf(
+                    1 to setId,
+                    2 to "${key.ndc}^${key.name}",
+                    3 to "", 4 to "", 5 to "", 6 to "",
+                    7 to "", 8 to "", 9 to "", 10 to "",
+                    11 to total,
+                    12 to "", 13 to "", 14 to "", 15 to ""
+                )
+            ))
 
-        grouped.forEach { (key, value) ->
-            val total = value.opened + value.sealed
-
-            // INV
-            hl7.append("INV|")
-                .append(index)
-                .append("|")
-                .append(key.ndc)
-                .append("^")
-                .append(key.name)
-                .append("|||||||||")
-                .append(total)
-                .append("|||||\n")
-
-            // ZIN
             if (value.opened == 0 && value.sealed == 0) {
-                hl7.append("ZIN|")
-                    .append(index)
-                    .append("|NA|0||\n")
+                segments.add(CustomSegmentData(segmentType = "ZIN", field1 = setId, field2 = "NA", field3 = "0", field4 = "", field5 = ""))
             } else {
                 if (value.opened > 0) {
-                    hl7.append("ZIN|")
-                        .append(index)
-                        .append("|OPENED|")
-                        .append(value.opened)
-                        .append("|")
-                        .append(key.lot)
-                        .append("|")
-                        .append(key.expiry)
-                        .append("\n")
+                    segments.add(CustomSegmentData(segmentType = "ZIN", field1 = setId, field2 = "OPENED", field3 = value.opened.toString(), field4 = key.lot, field5 = key.expiry))
                 }
-
                 if (value.sealed > 0) {
-                    hl7.append("ZIN|")
-                        .append(index)
-                        .append("|SEALED|")
-                        .append(value.sealed)
-                        .append("|")
-                        .append(key.lot)
-                        .append("|")
-                        .append(key.expiry)
-                        .append("\n")
+                    segments.add(CustomSegmentData(segmentType = "ZIN", field1 = setId, field2 = "SEALED", field3 = value.sealed.toString(), field4 = key.lot, field5 = key.expiry))
                 }
             }
-
-            index++
         }
 
-        return hl7.toString()
+        val message = CompleteHL7Message(
+            messageId = messageId,
+            messageType = "INR",
+            triggerEvent = "U05",
+            timestamp = now.toString(),
+            sendingFacility = "STORE",
+            header = MessageHeaderData(
+                fieldSeparator = "|",
+                encodingCharacters = "^~\\&",
+                sendingApplication = "PILLCOUNTER",
+                sendingFacility = "STORE",
+                receivingApplication = "PMS",
+                receivingFacility = "PHARMACY",
+                messageType = "INR",
+                triggerEvent = "U05",
+                messageControlId = messageId,
+                processingId = "P",
+                versionId = "2.5",
+                messageDateTime = now.toString()
+            ),
+            customSegments = segments
+        )
+
+        return Hl7Builder().build(message)
     }
 
     private fun buildImageObx(

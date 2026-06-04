@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.countResume.presentation
+﻿package com.rite.pillcounting.feature.countResume.presentation
 
 import Screen
 import androidx.compose.foundation.background
@@ -37,6 +37,7 @@ import com.rite.pillcounting.feature.countResume.presentation.compose.HeadlineBa
 import com.rite.pillcounting.feature.countResume.presentation.compose.PartialListPanel
 import com.rite.pillcounting.feature.countResume.presentation.viewmodel.CountsViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
+import org.rite.hl7.domain.model.CompleteHL7Message
 
 @Composable
 fun FixedCountResumeScreen(
@@ -56,8 +57,8 @@ fun FixedCountResumeScreen(
                     navController.navigate(Screen.PillCount.createRoute(event.countType.toString())) {}
 
                 NavigationEvent.NavigateBack -> navController.popBackStack()
-                is NavigationEvent.NavigateToDispenseScan -> navController.navigate(
-                    Screen.DispenseScan.createRoute(event.countType.toString(), fromResume = event.fromResume)
+                is NavigationEvent.NavigateToDispenseFlow -> navController.navigate(
+                    Screen.DispenseFlow.createRoute(event.countType.toString(), fromResume = event.fromResume)
                 )
             }
         }

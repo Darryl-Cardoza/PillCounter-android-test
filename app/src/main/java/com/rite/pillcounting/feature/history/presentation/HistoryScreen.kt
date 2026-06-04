@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -66,7 +67,7 @@ fun HistoryScreen(
         firstVisibleMonth = currentMonth,
         firstDayOfWeek = DayOfWeek.SUNDAY
     )
-    var selectedOption by remember(historyMode) {
+    var selectedOption by rememberSaveable(historyMode) {
         mutableStateOf(
             if (historyMode == HistoryMode.REGULAR) ToggleOption.STOCK else ToggleOption.DISPENSED
         )

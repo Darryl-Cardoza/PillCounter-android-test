@@ -4,4 +4,5 @@ enum class CountStatus {
     PARTIAL,
     COMPLETED,
     FORCE_COMPLETED,
+    ON_HOLD,
 }

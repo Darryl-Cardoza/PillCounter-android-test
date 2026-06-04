@@ -150,10 +150,10 @@ class CountsViewModel @Inject constructor(
     private fun resumeTransaction(countType: CountType, item: CountItem) {
         viewModelScope.launch {
             preferenceHelper.saveTxnId(item.id)
-            // Always resume via DispenseScanScreen; initializeFromResumedTxn() will
+            // Always resume via DispenseFlowScreen; initializeFromResumedTxn() will
             // land at PRE_NDC (container scan pending) or COUNTING (both verified).
             _navigationEvent.send(
-                NavigationEvent.NavigateToDispenseScan(
+                NavigationEvent.NavigateToDispenseFlow(
                     countType = countType,
                     fromResume = true,
                 )
@@ -181,7 +181,8 @@ class CountsViewModel @Inject constructor(
                             barcodeImage = it.barcodeImage,
                             date = it.createdAt.toFormattedDate(),
                             isComingFromHL7 = it.isComingFromHL7,
-                            isNdcVerified = it.isNdcVerified
+                            isNdcVerified = it.isNdcVerified,
+                            priority = it.priority
                         )
                     }
                 }

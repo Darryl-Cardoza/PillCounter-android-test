@@ -476,7 +476,10 @@ private fun CountSectionContent(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 2.dp)
             ) {
-                itemsIndexed(batches) { _, batch ->
+                itemsIndexed(
+                    items = batches,
+                    key = { index, batch -> batch.imagePath ?: "idx-$index" },
+                ) { _, batch ->
                     if (isVial) {
                         VialBatchCard(
                             imagePath = batch.imagePath,

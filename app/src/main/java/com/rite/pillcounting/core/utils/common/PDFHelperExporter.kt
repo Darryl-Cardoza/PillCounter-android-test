@@ -9,8 +9,8 @@ import android.graphics.pdf.PdfDocument
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.util.Log
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -19,6 +19,8 @@ import java.util.Date
 import java.util.Locale
 
 class PDFHelperExporter(private val context: Context) {
+
+    private val logger = AppLogger("PDFHelperExporter")
 
     // A4 Dimensions
     private val pageWidth = 595
@@ -113,16 +115,16 @@ class PDFHelperExporter(private val context: Context) {
         val file = File(directory, fileName)
 
         // Print this to Logcat
-        Log.d("PDF_DEBUG", "File Path: ${file.absolutePath}")
-        Log.d("PDF_DEBUG", "File Size: ${file.length()}")
-        Log.d("PDF_DEBUG", "Last Modified: ${Date(file.lastModified())}")
+        logger.d("File Path: ${file.absolutePath}")
+        logger.d("File Size: ${file.length()}")
+        logger.d("Last Modified: ${Date(file.lastModified())}")
 
         // 4. STRICT CLEANUP: Delete existing file to ensure we write a fresh one
         if (file.exists()) {
             val deleted = file.delete()
             if (!deleted) {
                 // Log warning: file might be locked by viewer, but we will try to overwrite anyway
-                Log.w("PDFExporter", "Failed to delete existing file: $fileName")
+                logger.w("Failed to delete existing file: $fileName")
             }
         }
 

@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.hl7.notification
+﻿package com.rite.pillcounting.feature.hl7.notification
 
 
 import Screen
@@ -50,11 +50,11 @@ class Hl7Notifier @Inject constructor(
         message: String
     ) {
         print("notification show")
-        // PMS-originated dispense: deep-link into the merged DispenseScanScreen
+        // PMS-originated dispense: deep-link into the merged DispenseFlowScreen
         // with fromHl7=true so it hydrates from the pre-created txn and starts
         // at the NDC scan step (the RX info is already in the HL7 payload).
         // PMS dispense is always FIXED-count (driven by `targetCount` from HL7).
-        val route = Screen.DispenseScan.createRoute(
+        val route = Screen.DispenseFlow.createRoute(
             scanType = CountType.FIXED.toString(),
             fromHl7 = true,
         )
@@ -84,7 +84,10 @@ class Hl7Notifier @Inject constructor(
             }
         }
 
-        val contentView = RemoteViews(context.packageName, com.rite.pillcounting.R.layout.notification_hl7_content).apply {
+        val contentView = RemoteViews(
+            context.packageName,
+            com.rite.pillcounting.R.layout.notification_hl7_content
+        ).apply {
             setTextViewText(com.rite.pillcounting.R.id.tv_notification_title, title)
             setTextViewText(com.rite.pillcounting.R.id.tv_notification_body, message)
         }
@@ -104,11 +107,6 @@ class Hl7Notifier @Inject constructor(
         NotificationManagerCompat.from(context)
             .notify(System.currentTimeMillis().toInt(), notification)
     }
-
-
-
-
-
 }
 
 
