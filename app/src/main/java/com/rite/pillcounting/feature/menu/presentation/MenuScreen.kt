@@ -1,7 +1,6 @@
 ﻿package com.rite.pillcounting.feature.menu.presentation
 
 import Screen
-import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
@@ -17,37 +16,28 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.HistoryRetention
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.common.navigateSafely
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
 import com.rite.pillcounting.feature.login.viewmodel.LoginViewModel
-import com.rite.pillcounting.feature.menu.presentation.compose.MenuItemRow
 import com.rite.pillcounting.feature.menu.presentation.compose.SimpleMenuRow
 import com.rite.pillcounting.feature.menu.presentation.viewmodel.MenuViewModel
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * Renders the **Menu Screen**, which serves as the main navigation hub for the application's
@@ -57,7 +47,6 @@ import kotlinx.coroutines.withContext
  * @param viewModel The [MenuViewModel] managing count-related data displayed in the menu.
  * @param loginViewModel The [LoginViewModel] used to handle logout API requests and state.
  *
- * @see MenuItemRow For menu items with completion/partial count indicators.
  * @see SimpleMenuRow For single-action menu rows like Profile, History, and Logout.
  */
 @Composable
@@ -70,12 +59,8 @@ fun MenuScreen(
     val dimens = AppTheme.dimens
     val uiState by viewModel.uiState.collectAsState()
     val logoutState by loginViewModel.logoutUiState.collectAsState()
-    val scope = rememberCoroutineScope()
-    val context = LocalContext.current
     var showLogoutLoading by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
-    var showStockCountDialog by remember { mutableStateOf(false) }
-    var showBucketSelectDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -91,58 +76,6 @@ fun MenuScreen(
                 .padding(start = dimens.medium, end = dimens.medium)
                 .background(extendedColors.secondaryBackground)
         ) {
-            // Fixed Count
-            MenuItemRow(
-                icon = R.drawable.pilliconformenuscreen,
-                title = stringResource(R.string.dispense),
-                completed = stringResource(R.string.menu_completed, uiState.fixedCompleted),
-                partial = stringResource(R.string.menu_partial, uiState.fixedPartial),
-                iconTint = MaterialTheme.colorScheme.primary,
-                completedTint = MaterialTheme.colorScheme.primary,
-                partialTint = MaterialTheme.colorScheme.primary,
-                completedIcon = R.drawable.complete,
-                partialIcon = R.drawable.partial,
-                mainClick = {
-                    // Merged dispense flow: one screen for RX + NDC + pill count.
-                    navController.navigate(
-                        Screen.DispenseFlow.createRoute(CountType.FIXED.toString())
-                    )
-                },
-                onPartialClick = {
-//                    if (uiState.fixedPartial > 0)
-                    navController.navigate(
-                        Screen.ResumeFixedCounts.createRoute(
-                            CountType.FIXED.toString()
-                        )
-                    )
-                },
-                onCompletedClick = { navController.navigate(Screen.History.createRoute(HistoryMode.DISPENSE)) },
-            )
-
-            HorizontalDivider(color = extendedColors.primaryBackground)
-
-            // Regular Count
-            MenuItemRow(
-                icon = R.drawable.medicationconformenuscreen,
-                title = stringResource(R.string.stock_count),
-                completed = stringResource(R.string.menu_completed, uiState.regularCompleted),
-                partial = stringResource(R.string.menu_partial, uiState.regularPartial),
-                iconTint = MaterialTheme.colorScheme.primary,
-                completedTint = MaterialTheme.colorScheme.primary,
-                partialTint = MaterialTheme.colorScheme.primary,
-                completedIcon = R.drawable.complete,
-                partialIcon = R.drawable.partial,
-                mainClick = { showStockCountDialog = true },
-                onPartialClick = {
-                    navController.navigateSafely(
-                        Screen.PartialCountsScreen.route
-                    )
-                },
-                onCompletedClick = { navController.navigate(Screen.History.createRoute(HistoryMode.REGULAR)) },
-            )
-
-            HorizontalDivider(color = extendedColors.primaryBackground)
-
             // Load options from strings.xml
             val historyOptions = stringArrayResource(R.array.history_options).toList()
 
@@ -289,68 +222,4 @@ fun MenuScreen(
         }
     }
 
-    if (showStockCountDialog) {
-        val options = listOf(
-            stringResource(R.string.stock_count_dialog_option_first),
-            stringResource(R.string.stock_count_dialog_option_second),
-        )
-        val noLastBatchMessage = stringResource(R.string.no_last_batch_available)
-
-        CommonSingleSelectDialog(
-            title = stringResource(R.string.stock_count_dialog_title),
-            options = options,
-            selectedIndex = 0,
-            onCancel = { showStockCountDialog = false },
-            onOk = { index ->
-                when (index) {
-                    0 -> showBucketSelectDialog = true
-                    1 -> {
-                        scope.launch {
-                            val batch = withContext(Dispatchers.IO) {
-                                viewModel.getLastInProgressBatch()
-                            }
-                            if (batch != null) {
-                                navController.navigate(Screen.Batch.createRoute(batch.batchId))
-                            } else {
-                                showToast(
-                                    context = context,
-                                    message = noLastBatchMessage,
-                                    duration = Toast.LENGTH_SHORT
-                                )
-                            }
-                        }
-                    }
-                }
-                showStockCountDialog = false
-            },
-            distanceBetweenOptions = 2.dp
-        )
-    }
-
-    if (showBucketSelectDialog) {
-        val bucketList = viewModel.getBucketList()
-
-        CommonSingleSelectDialog(
-            title = stringResource(R.string.select_bucket),
-            options = bucketList,
-            // No preselection — the user must deliberately tap a bucket before OK
-            // is enabled. Prevents silently committing the first bucket.
-            selectedIndex = null,
-            onCancel = { showBucketSelectDialog = false },
-            onOk = { index ->
-                if (index in bucketList.indices) {
-                    scope.launch {
-                        val batchId = withContext(Dispatchers.IO) {
-                            viewModel.createBatch(bucketList[index])
-                        }
-                        if (batchId != null) {
-                            navController.navigate(Screen.Batch.createRoute(batchId))
-                        }
-                    }
-                }
-                showBucketSelectDialog = false
-            },
-            distanceBetweenOptions = 2.dp
-        )
-    }
 }
