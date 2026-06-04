@@ -196,7 +196,6 @@ class PillScanningViewModel @Inject constructor(
 
     private var lastPreviewWidth = 0
     private var lastPreviewHeight = 0
-    private var gloveTimeoutJob: Job? = null
 
     // ── NEW: expose tray detections so the UI can draw the tray boundary ──────
     private val _trayDetections = MutableStateFlow<List<TrayDetection>>(emptyList())
@@ -500,35 +499,6 @@ class PillScanningViewModel @Inject constructor(
 
                 _modelState.value = ModelState.Ready(analyzer)
                 logger.i("Glove model loaded — analyzer rebuilt for hazardous drug.")
-
-                // Start watchdog: unload glove model if no detection arrives.
-                // TEMP DIAGNOSTIC: bumped 20s -> 300s so we can on-device test the
-                // new classifier without losing the model mid-test. Revert to 20s
-                // once on-device behavior is verified.
-                gloveTimeoutJob?.cancel()
-                gloveTimeoutJob = viewModelScope.launch {
-                    delay(300_000L)
-                    if (!_glovesDetected.value) {
-                        // Stop new glove inferences immediately so no new frame starts
-                        // using the interpreter we are about to close.
-                        shouldRunGloveDetection = false
-                        // Drain: poll until the in-flight frame analysis (which may still
-                        // be executing GloveDetector.detect() on DefaultDispatcher)
-                        // fully completes. A fixed delay is unreliable because GPU inference can
-                        // take longer than any guess. isAnalyzingFrame is @Volatile so the
-                        // write on DefaultDispatcher is visible here on Main.
-                        var waited = 0
-                        while (isAnalyzingFrame && waited < 2000) {
-                            delay(50L)
-                            waited += 50
-                        }
-                        // Re-check: a detection could have arrived during the drain window.
-                        if (!_glovesDetected.value) {
-                            logger.i("Glove detection timeout — no gloves detected in 20s, unloading model")
-                            unloadGloveAndRebuildAnalyzer()
-                        }
-                    }
-                }
             } catch (e: Exception) {
                 logger.e("Glove model load failed", e)
             }
@@ -654,8 +624,6 @@ class PillScanningViewModel @Inject constructor(
         if (!_glovesDetected.value && gloveDets.any { it.classId == 0 && it.confidence >= 0.60f }) {
             _glovesDetected.value = true
             shouldRunGloveDetection = false
-            gloveTimeoutJob?.cancel()
-            gloveTimeoutJob = null
             logger.i("GLOVES DETECTED - Unloading glove model and saving DB flag")
             viewModelScope.launch {
                 unloadGloveAndRebuildAnalyzer()
@@ -887,7 +855,6 @@ class PillScanningViewModel @Inject constructor(
     override fun onCleared() {
         super.onCleared()
 
-        gloveTimeoutJob?.cancel()
         // Stop performance monitoring
         performanceMonitorJob?.cancel()
 
