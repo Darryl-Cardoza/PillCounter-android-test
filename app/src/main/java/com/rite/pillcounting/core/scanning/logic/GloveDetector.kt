@@ -5,7 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
-import android.util.Log
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -56,6 +56,7 @@ import kotlin.math.min
 object GloveDetector {
 
     private const val TAG = "GloveDetector"
+    private val logger = AppLogger(TAG)
 
     /** Model input spatial resolution. MUST match the exported .tflite. */
     const val INPUT_SIZE = 320
@@ -177,12 +178,12 @@ object GloveDetector {
             }
 
             if (result.isNotEmpty()) {
-                Log.d(TAG, "detections=${result.size}  " +
+                logger.d("detections=${result.size}  " +
                         result.joinToString { "${it.className}(${"%.2f".format(it.confidence)})" })
             }
             result
         } catch (e: Exception) {
-            Log.e(TAG, "Glove detector inference failed", e)
+            logger.e("Glove detector inference failed", e)
             emptyList()
         }
     }
