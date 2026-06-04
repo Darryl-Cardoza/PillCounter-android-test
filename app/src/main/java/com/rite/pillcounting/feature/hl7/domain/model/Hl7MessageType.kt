@@ -6,5 +6,3 @@ enum class MessageType {
     INVENTORY_REQUEST,       // INR^U06
     CANCEL_ORDER             // ORC|CA  - order cancellation
 }
-
-

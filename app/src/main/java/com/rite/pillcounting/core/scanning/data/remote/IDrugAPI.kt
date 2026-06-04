@@ -20,7 +20,7 @@ interface IDrugAPI {
      * @param ndc National Drug Code.
      * @return A [DrugDataResponse] containing the search results.
      */
-    @POST("drugs/ndc/new")
+    @POST("drugs/ndc")
     suspend fun getDrugInfoByNdc(
         @Header("Authorization") authorization: String,
         @Body getNdcRequestModel: GetNdcRequestModel,

@@ -130,7 +130,9 @@ fun AppNavGraph(
             HistoryScreen(
                 navController = navController,
                 historyMode = historyMode,
-                onBackClick = { navController.popBackStack() }
+                onBackClick = {
+                    if (navController.previousBackStackEntry != null) navController.popBackStack()
+                }
             )
         }
 
