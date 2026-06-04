@@ -141,7 +141,7 @@ fun MenuScreen(
                 onCompletedClick = { navController.navigate(Screen.History.createRoute(HistoryMode.REGULAR)) },
             )
 
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+            HorizontalDivider(color = extendedColors.primaryBackground)
 
             // Load options from strings.xml
             val historyOptions = stringArrayResource(R.array.history_options).toList()
