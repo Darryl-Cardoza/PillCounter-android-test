@@ -200,7 +200,7 @@ dependencies {
     androidTestImplementation(libs.compose.ui.test.junit4)
 
     // OpenCV — tray color detection
-    implementation("org.opencv:opencv:4.10.0")
+    implementation("org.opencv:opencv:4.13.0")
 
     implementation(project(":hl7Core"))
 }
