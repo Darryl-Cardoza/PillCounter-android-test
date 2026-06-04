@@ -201,14 +201,16 @@ object GloveDetector {
 
         // NHWC float32 in raw [0, 255]. YOLOX does NOT bake in ImageNet
         // normalization — it trains directly on raw pixel values.
+        // Channel order is BGR (NOT RGB): the model was trained on BGR input,
+        // so feeding RGB here caused the bare-hand→"gloves" false positives.
         inputBuffer.clear()
         val fv = inputBuffer.asFloatBuffer()
         var i = 0
         while (i < pixelScratch.size) {
             val p = pixelScratch[i]
-            fv.put(((p shr 16) and 0xFF).toFloat())   // R
-            fv.put(((p shr 8) and 0xFF).toFloat())    // G
             fv.put((p and 0xFF).toFloat())            // B
+            fv.put(((p shr 8) and 0xFF).toFloat())    // G
+            fv.put(((p shr 16) and 0xFF).toFloat())   // R
             i++
         }
         inputBuffer.rewind()

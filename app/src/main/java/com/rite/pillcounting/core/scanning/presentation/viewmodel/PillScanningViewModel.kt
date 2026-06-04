@@ -651,7 +651,7 @@ class PillScanningViewModel @Inject constructor(
         // ── Check if gloves detected - if yes, stop running glove detection ──
         // Require a strong detection before locking the session state, otherwise a single
         // weak false positive on the warm-up frame disables glove detection permanently.
-        if (!_glovesDetected.value && gloveDets.any { it.classId == 0 && it.confidence >= 0.50f }) {
+        if (!_glovesDetected.value && gloveDets.any { it.classId == 0 && it.confidence >= 0.60f }) {
             _glovesDetected.value = true
             shouldRunGloveDetection = false
             gloveTimeoutJob?.cancel()
