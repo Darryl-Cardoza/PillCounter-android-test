@@ -106,8 +106,8 @@
 -keepattributes RuntimeVisibleParameterAnnotations
 -keepattributes AnnotationDefault
 
-# Keep ONLY Retrofit API interfaces
--keep interface com.rite.pillcounting.data.remote.api.** { *; }
+# Keep Retrofit API interfaces (corrected package path)
+-keep interface com.rite.pillcounting.core.scanning.data.remote.** { *; }
 
 -dontwarn retrofit2.**
 
@@ -119,6 +119,21 @@
 -keep @com.squareup.moshi.JsonClass class * { *; }
 
 -dontwarn com.squareup.moshi.**
+
+
+############################################
+# DRUG API MODELS
+############################################
+
+# GetNdcRequestModel — plain data class, no Moshi annotation.
+# Moshi uses KotlinJsonAdapterFactory (reflection) to serialize it.
+# R8 must not rename fields (target_ndc / scanned_ndc) or the server
+# receives {"a":"","b":"..."} and returns null → NDC-not-found toast.
+#
+# DrugDataResponse and all nested classes use @Serializable (Kotlinx) but
+# the Retrofit converter is Moshi, so Kotlinx annotations don't protect
+# field names from R8. Same obfuscation risk for the response payload.
+-keep class com.rite.pillcounting.core.scanning.domain.model.** { *; }
 
 
 ############################################
