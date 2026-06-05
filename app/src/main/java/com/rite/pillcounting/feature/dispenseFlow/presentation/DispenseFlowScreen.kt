@@ -575,6 +575,13 @@ fun DispenseFlowScreen(
         }
     }
 
+    val txnNotFoundToastText = stringResource(R.string.transaction_not_found_toast)
+    LaunchedEffect(dispenseState.txnNotFoundToastTick) {
+        if (dispenseState.txnNotFoundToastTick > 0) {
+            showToast(context, txnNotFoundToastText, Toast.LENGTH_SHORT)
+        }
+    }
+
     // Re-focus the BT scanner field whenever all overlays dismiss so the next
     // scan is captured without the user tapping the field.
     val btScannerOverlayActive = dispenseState.showRxDetails ||
@@ -583,6 +590,7 @@ fun DispenseFlowScreen(
             dispenseState.showInvalidScanDialog ||
             dispenseState.showNdcEquivalenceDialog ||
             dispenseState.showRxScannedInStockCountDialog ||
+            dispenseState.showOnHoldDialog ||
             dispenseState.isLoading
     LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
         if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {

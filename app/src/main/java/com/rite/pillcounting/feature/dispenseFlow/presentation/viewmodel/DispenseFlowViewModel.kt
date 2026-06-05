@@ -206,79 +206,43 @@ class DispenseFlowViewModel @Inject constructor(
                     _uiState.update { it.copy(selectedBucketId = bucket) }
                 }
 
-                // Check if this RX already has an active transaction (PARTIAL or ON_HOLD).
+                // Check if this RX has an active local transaction (PARTIAL or ON_HOLD).
                 val existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
-                if (existingTxn != null) {
-                    when (existingTxn.status) {
-                        CountStatus.ON_HOLD -> {
-                            _uiState.update { it.copy(isLoading = false, showOnHoldDialog = true) }
-                            return@launch
-                        }
-                        CountStatus.PARTIAL -> {
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    showContinueRxDialog = true,
-                                    txnId = existingTxn.txnId,
-                                    rxNo = rxNo,
-                                    qty = qty,
-                                )
-                            }
-                            return@launch
-                        }
-                        else -> { /* proceed with fresh drug lookup */ }
-                    }
-                }
-
-                val localDrug = drugMasterDao.getDrugByNdc(parsedNdc)
-                if (localDrug != null) {
+                if (existingTxn == null) {
                     _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            drugName = localDrug.drugName ?: "Unknown Drug",
-                            ndc = localDrug.ndc,
-                            barcodeImagePath = imagePath,
-                            rxNo = rxNo,
-                            qty = qty,
-                            showRxDetails = true,
-                            isHazardous = localDrug.isHazardous,
-                        )
+                        it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1)
                     }
                     return@launch
                 }
 
-                val drugInfo: DrugInfo? = drugRepository.getDrugInfoByNdc(
-                    GetNdcRequestModel(target_ndc = "", scanned_ndc = parsedNdc)
-                )
-                if (drugInfo != null) {
-                    val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() }
-                        ?: "Unknown Drug"
-                    drugMasterDao.upsertPreservingId(
-                        DrugMasterEntity(
-                            ndc = drugInfo.ndc,
-                            drugName = displayName,
-                            drugType = drugInfo.drugType,
-                            gtin = parsedNdc,
-                            packageQty = drugInfo.qty,
-                            isHazardous = drugInfo.isHazardous ?: false,
-                        )
-                    )
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            drugName = displayName,
-                            ndc = drugInfo.ndc,
-                            barcodeImagePath = imagePath,
-                            rxNo = rxNo,
-                            qty = qty,
-                            showRxDetails = true,
-                            isHazardous = drugInfo.isHazardous ?: false,
-                        )
+                when (existingTxn.status) {
+                    CountStatus.ON_HOLD -> {
+                        _uiState.update { it.copy(isLoading = false, showOnHoldDialog = true) }
+                        return@launch
                     }
-                } else {
-                    _uiState.update {
-                        it.copy(isLoading = false, showNdcNotFoundDialog = true)
+                    CountStatus.PARTIAL -> {
+                        val txnId = existingTxn.txnId
+                        val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
+                        pillCountTxnDao.updateGlovesPresent(txnId, false)
+                        preferenceHelper.saveTxnId(txnId)
+                        val targetStage = if (existingTxn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                stage = targetStage,
+                                txnId = txnId,
+                                drugName = drug?.drugName ?: it.drugName,
+                                ndc = drug?.ndc ?: it.ndc,
+                                hl7ExpectedNdc = drug?.ndc,
+                                rxNo = existingTxn.rxNo,
+                                qty = existingTxn.targetCount?.toString(),
+                                isHazardous = drug?.isHazardous ?: false,
+                            )
+                        }
+                        logger.i("Auto-continuing txn=$txnId isNdcVerified=${existingTxn.isNdcVerified} → $targetStage")
+                        return@launch
                     }
+                    else -> { /* no other active status expected */ }
                 }
             } catch (e: Exception) {
                 logger.e("RX barcode processing failed", e)
