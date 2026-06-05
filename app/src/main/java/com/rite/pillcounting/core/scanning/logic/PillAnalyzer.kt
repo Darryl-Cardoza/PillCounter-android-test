@@ -79,31 +79,33 @@ class PillAnalyzer(
         private const val GLOVE_STEADY_INTERVAL_MS = 400L
 
         // Pill confidence hysteresis to kill 19↔20 frame-to-frame flicker.
-        // Tuned for the HardSwish-retrained FP16 PP-YOLOE+s pill model. Webcam
-        // testing on the same .tflite found 0.75 to be the clean operating point;
-        // the on-device tray filter lets us run lower than that without picking
-        // up non-tray noise. Old SiLU model used ENTER=0.55 / STAY=0.40, which
-        // proved too low for the new model — borderline scores in [0.55, 0.65]
-        // were flickering in/out across frames and shifting the count by ±2.
-        //   ENTER (0.65): a NEWLY visible pill must clear this in one frame.
-        //   STAY  (0.50): a pill from the previous frame can persist at lower
-        //                 confidence if it spatially overlaps (IoU ≥ 0.40).
-        // Hysteresis band width preserved at 0.15.
-        private const val PILL_CONF_ENTER = 0.75f
-        private const val PILL_CONF_STAY = 0.60f
+        //   ENTER: a newly visible pill must clear this in one frame.
+        //   STAY : a pill from the previous frame persists at lower confidence
+        //          if it spatially overlaps a prior pill (IoU ≥ HYSTERESIS_IOU).
+        // The decoder runs at STAY so borderline pills remain candidates; ENTER
+        // decides which actually count.
+        private const val PILL_CONF_ENTER = 0.50f
+        private const val PILL_CONF_STAY = 0.35f
         private const val HYSTERESIS_IOU = 0.40f
         private const val PILL_NMS_IOU = 0.45f
 
         // ── Anti-flicker smoothing ──────────────────────────────────────────
-        // Reuse the last good tray for up to this many consecutive missed frames
-        // so a single dropped detection doesn't blink the overlay / slam the gate
-        // (which was snapping the count to 0). After this many misses the tray
-        // clears, so it still vanishes ~1.5 s after you move the camera away.
-        private const val TRAY_HOLD_FRAMES = 3
+        // Bridge a single dropped tray detection so the overlay doesn't blink on
+        // a stable scene. Kept at 1 frame so the stale tray box (and the pill
+        // centroids gated by it) clear almost immediately when the camera moves
+        // away — a longer hold left a visible ~0.5 s ghost of the old box. The
+        // count is separately protected from a one-frame drop by the median over
+        // PILL_COUNT_SMOOTH_WINDOW, so a short hold is enough.
+        private const val TRAY_HOLD_FRAMES = 1
         // Report the median pill count over this many recent frames so the shown
         // number doesn't jitter ±1–2 on a static scene. Median (not mean) ignores
         // the occasional outlier spike.
         private const val PILL_COUNT_SMOOTH_WINDOW = 5
+
+        // Reject a "tray" whose bbox covers at least this fraction of the frame —
+        // a background surface (green table) fills the frame; a real tray is a
+        // bounded object. Tunable from the on-device "TrayGate coverage=" logs.
+        private const val TRAY_MAX_FRAME_COVERAGE = 0.75f
     }
 
     suspend fun analyze(imageProxy: ImageProxy) {
@@ -216,6 +218,28 @@ class PillAnalyzer(
                 logger.d("Color detection ran → ${trayDetections.map { it.trayColor.label }}")
             }
 
+            // ── "Complete product" gate ───────────────────────────────────────
+            // A valid tray = BOTH a tray AND a chute detected in the frame.
+            // Anything less (tray-only, chute-only, or neither) is NOT a tray at
+            // all: no pill count AND no tray/chute overlay surfaced to the UI.
+            // This is why a blank/chute-less scene shows nothing — a lone "tray"
+            // detection without its chute is not a complete product.
+            val trayCount = trayDetections.count { it.cls == TrayClass.TRAY }
+            val chuteCount = trayDetections.count { it.cls == TrayClass.CHUTE }
+
+            // Geometric guard: a background surface fills the frame, whereas a
+            // real tray is a bounded object inside it. Reject a "tray" whose bbox
+            // covers too much of the frame — that's the surface, not a tray.
+            val frameArea = (originalWidth.toFloat() * originalHeight.toFloat()).coerceAtLeast(1f)
+            val trayCoverage = trayDetections
+                .filter { it.cls == TrayClass.TRAY }
+                .maxOfOrNull { (it.rect.width() * it.rect.height()) / frameArea } ?: 0f
+            val trayFillsFrame = trayCoverage >= TRAY_MAX_FRAME_COVERAGE
+
+            val isCompleteTray = trayCount > 0 && chuteCount > 0 && !trayFillsFrame
+            val displayTrayDetections = if (isCompleteTray) trayDetections else emptyList()
+            logger.i("TrayGate — trayCount=$trayCount chuteCount=$chuteCount coverage=${"%.2f".format(trayCoverage)} fillsFrame=$trayFillsFrame complete=$isCompleteTray")
+
             // ── STEP 3: Postprocess pill output ───────────────────────────────
             val pillsInTray: List<Detection>
             if (!pillSucceeded) {
@@ -231,8 +255,6 @@ class PillAnalyzer(
                 )
                 val pillsAfterNms = NMS.run(allPills, iouThreshold = PILL_NMS_IOU)
                 val pillsAfterHysteresis = applyHysteresis(pillsAfterNms)
-                val trayCount = trayDetections.count { it.cls == TrayClass.TRAY }
-                val chuteCount = trayDetections.count { it.cls == TrayClass.CHUTE }
                 logger.i("PillFilter — decoded=${allPills.size} afterNMS=${pillsAfterNms.size} afterHyst=${pillsAfterHysteresis.size} trayDets=$trayCount chuteDets=$chuteCount")
 
                 // Pill counting GATE — only count once BOTH a tray AND a chute
@@ -240,7 +262,7 @@ class PillAnalyzer(
                 // keep running every frame; this gates only the pill RESULT, not
                 // inference. Any partial scene (tray-only, chute-only, or neither)
                 // is treated as "not ready" → zero pills, no markers drawn.
-                val gateOpen = trayCount > 0 && chuteCount > 0
+                val gateOpen = isCompleteTray
                 val inScene = if (!gateOpen) {
                     emptyList()
                 } else {
@@ -294,7 +316,7 @@ class PillAnalyzer(
             onResult(
                 countedPills,
                 pillsInTray,
-                trayDetections,
+                displayTrayDetections,
                 gloveDetections,
                 originalBitmap,
                 Matrix(),
@@ -341,6 +363,10 @@ class PillAnalyzer(
             buf.rewind()
             val outMap = HashMap<Int, Any>(6)
             for (i in pillOutputs.clsIdx.indices) {
+                // Output buffers are direct ByteBuffers reused across frames —
+                // rewind so TFLite writes from position 0 each call.
+                pillOutputs.clsBuffers[i].rewind()
+                pillOutputs.regBuffers[i].rewind()
                 outMap[pillOutputs.clsIdx[i]] = pillOutputs.clsBuffers[i]
                 outMap[pillOutputs.regIdx[i]] = pillOutputs.regBuffers[i]
             }

@@ -67,10 +67,12 @@ object GloveDetector {
     private const val LETTERBOX_SIZE = 640                  // pipeline's standard letterbox size
 
     /**
-     * Default deployment thresholds. Match `deploy_conf` / `deploy_nms_iou`
-     * in `yolox_nano_gloves.py` so what we trained against is what we run.
+     * Default deployment thresholds. NMS IoU matches `deploy_nms_iou` in
+     * `yolox_nano_gloves.py`. The confidence threshold is set above the training
+     * default so only clearly-confident gloves count and weak/borderline
+     * detections are dropped.
      */
-    const val DEFAULT_CONF_THRESHOLD = 0.35f
+    const val DEFAULT_CONF_THRESHOLD = 0.80f
     const val DEFAULT_NMS_IOU = 0.45f
 
     // Public class-label constants (consumed by CameraPreviewSection to colour
