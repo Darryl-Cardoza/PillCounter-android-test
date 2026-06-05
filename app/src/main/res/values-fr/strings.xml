@@ -55,8 +55,10 @@
     <string name="setting_hazardous_drug">Médicament dangereux</string>
     <string name="tray_classification_title">Classification des plateaux</string>
     <string name="tray_classification_message">Le plateau de couleur %s n\'est pas classifié. Le marquer comme plateau dangereux ?</string>
+    <string name="hazardous_tray_warning">Avertissement : Vous utilisez un plateau dangereux. Veuillez utiliser un plateau non dangereux.</string>
+    <string name="non_hazardous_tray_warning">Ce plateau n’est pas le plateau dangereux. Veuillez utiliser le plateau dangereux.</string>
     <string name="clear_tray_color_lists">Effacer les listes de couleurs de plateaux</string>
-    <string name="clear_tray_color_lists_confirm">Êtes-vous sûr de vouloir effacer toutes les classifications de couleurs de plateaux dangereux et non dangereux ?</string>
+    <string name="clear_tray_color_lists_confirm">Êtes-vous sûr de vouloir effacer la classification de couleur de plateau dangereux ?</string>
 
     <string-array name="history_options">
         <item>1 semaine (par défaut)</item>
