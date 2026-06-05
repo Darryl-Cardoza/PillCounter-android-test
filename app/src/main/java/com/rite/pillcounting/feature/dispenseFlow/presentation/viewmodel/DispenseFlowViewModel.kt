@@ -113,7 +113,7 @@ class DispenseFlowViewModel @Inject constructor(
                     isHazardous = drug?.isHazardous ?: false,
                 )
             }
-            logger.i("HL7 init: txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc}")
+            logger.i("[HAZARDOUS] HL7 init: txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
         }
     }
 
@@ -151,7 +151,7 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drug?.isHazardous ?: false,
                     )
                 }
-                logger.i("Resume init (NDC verified): txn=$txnId — jumping to COUNTING")
+                logger.i("[HAZARDOUS] Resume init (NDC verified): txn=$txnId drug=${drug?.drugName} isHazardous=${drug?.isHazardous ?: false} — jumping to COUNTING")
             } else {
                 // Container not yet scanned — land in PRE_NDC so the user only scans the container.
                 _uiState.update {
@@ -166,7 +166,7 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drug?.isHazardous ?: false,
                     )
                 }
-                logger.i("Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc}")
+                logger.i("[HAZARDOUS] Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
             }
         }
     }
@@ -244,6 +244,7 @@ class DispenseFlowViewModel @Inject constructor(
                             isHazardous = localDrug.isHazardous,
                         )
                     }
+                    logger.i("[HAZARDOUS] RX scan → local DB: ndc=${localDrug.ndc} drug=${localDrug.drugName} isHazardous=${localDrug.isHazardous} rxNo=$rxNo qty=$qty")
                     return@launch
                 }
 
@@ -275,6 +276,7 @@ class DispenseFlowViewModel @Inject constructor(
                             isHazardous = drugInfo.isHazardous ?: false,
                         )
                     }
+                    logger.i("[HAZARDOUS] RX scan → server: ndc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false} rxNo=$rxNo qty=$qty")
                 } else {
                     _uiState.update {
                         it.copy(isLoading = false, showNdcNotFoundDialog = true)
@@ -349,6 +351,7 @@ class DispenseFlowViewModel @Inject constructor(
                             isHazardous = localDrug.isHazardous,
                         )
                     }
+                    logger.i("[HAZARDOUS] NDC scan → local DB: ndc=${localDrug!!.ndc} drug=${localDrug.drugName} isHazardous=${localDrug.isHazardous} needsSheet=$needsSheet")
                     if (!needsSheet) advanceToCountingStage()
                     return@launch
                 }
@@ -394,6 +397,7 @@ class DispenseFlowViewModel @Inject constructor(
                             isHazardous = drugInfo.isHazardous ?: false,
                         )
                     }
+                    logger.i("[HAZARDOUS] NDC scan → substitute: scanned=$gtin14 serverNdc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}")
                     return@launch
                 }
 
@@ -402,6 +406,7 @@ class DispenseFlowViewModel @Inject constructor(
                 // substitute. Surface a non-blocking toast and let the user
                 // rescan — the popup-style dialog was too heavy for this case.
                 if (!expectedNdc.isNullOrBlank() && drugInfo.ndc != expectedNdc) {
+                    logger.w("[HAZARDOUS] NDC scan → mismatch: scanned=$gtin14 serverNdc=${drugInfo.ndc} expectedNdc=$expectedNdc isHazardous=${drugInfo.isHazardous ?: false}")
                     _uiState.update {
                         it.copy(
                             isLoading = false,
@@ -425,6 +430,7 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drugInfo.isHazardous ?: false,
                     )
                 }
+                logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false} needsSheet=$needsSheet")
                 if (!needsSheet) advanceToCountingStage()
             } catch (e: Exception) {
                 logger.e("NDC barcode processing failed", e)
@@ -468,7 +474,7 @@ class DispenseFlowViewModel @Inject constructor(
                     txnId = newTxnId,
                 )
             }
-            logger.i("RX confirmed, txn=$newTxnId, advancing to PRE_NDC")
+            logger.i("[HAZARDOUS] RX confirmed: ndc=${state.ndc} drug=${state.drugName} isHazardous=${state.isHazardous} txn=$newTxnId → PRE_NDC")
         }
     }
 
@@ -539,7 +545,7 @@ class DispenseFlowViewModel @Inject constructor(
             _uiState.update {
                 it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, txnId = newTxnId)
             }
-            logger.i("NDC auto-confirmed (batch, no pre-txn), created txn=$newTxnId batchId=${state.batchId}")
+            logger.i("[HAZARDOUS] NDC auto-confirmed (batch): isHazardous=${state.isHazardous} txn=$newTxnId batchId=${state.batchId} → COUNTING")
             return
         }
 
@@ -562,7 +568,7 @@ class DispenseFlowViewModel @Inject constructor(
             )
         )
         _uiState.update { it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false) }
-        logger.i("NDC auto-confirmed, txn=$txnId substitute=$isSubstitute, advancing to COUNTING")
+        logger.i("[HAZARDOUS] NDC auto-confirmed: txn=$txnId substitute=$isSubstitute isHazardous=${state.isHazardous} → COUNTING")
     }
 
     /** User confirmed they want to continue the existing PARTIAL transaction. */
@@ -592,7 +598,7 @@ class DispenseFlowViewModel @Inject constructor(
                     isHazardous = drug?.isHazardous ?: false,
                 )
             }
-            logger.i("Continuing txn=$txnId isNdcVerified=${txn.isNdcVerified} workflowStep=${txn.workflowStep} → $targetStage")
+            logger.i("[HAZARDOUS] Continue RX: txn=$txnId isNdcVerified=${txn.isNdcVerified} isHazardous=${drug?.isHazardous ?: false} → $targetStage")
         }
     }
 
@@ -671,12 +677,12 @@ class DispenseFlowViewModel @Inject constructor(
                             navigateToBatchId = state.batchId.takeIf { it != 0L } ?: newTxnId,
                         )
                     }
-                    logger.i("Stock count SEALED confirmed, txn=$newTxnId batchId=${state.batchId}")
+                    logger.i("[HAZARDOUS] Stock count SEALED: isHazardous=${state.isHazardous} txn=$newTxnId batchId=${state.batchId}")
                 } else {
                     _uiState.update {
                         it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, txnId = newTxnId)
                     }
-                    logger.i("Stock count OPENED confirmed, txn=$newTxnId batchId=${state.batchId}, advancing to COUNTING")
+                    logger.i("[HAZARDOUS] Stock count OPENED: isHazardous=${state.isHazardous} txn=$newTxnId batchId=${state.batchId} → COUNTING")
                 }
             }
             return
@@ -710,7 +716,7 @@ class DispenseFlowViewModel @Inject constructor(
             _uiState.update {
                 it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false)
             }
-            logger.i("NDC confirmed, txn=$txnId substitute=$isSubstitute, advancing to COUNTING")
+            logger.i("[HAZARDOUS] NDC confirmed (sheet): txn=$txnId substitute=$isSubstitute isHazardous=${state.isHazardous} → COUNTING")
         }
     }
 
