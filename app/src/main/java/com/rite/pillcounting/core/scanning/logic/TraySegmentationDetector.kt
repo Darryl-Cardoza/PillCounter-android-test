@@ -16,7 +16,7 @@ import kotlin.math.min
 
 /**
  * TFLite wrapper for the MobileNetV2-UNet tray semantic segmentation model
- * (`tray_seg_mbv2_unet_384_float16.tflite`).
+ * (`tray_detector_fp16.tflite`).
  *
  * Replaces the legacy RTMDet-Ins instance-segmentation tray detector. The
  * graph is locked to TFLite GPU (Mali OpenCL on the A14 target); see the
@@ -60,10 +60,15 @@ class TraySegmentationDetector(
         .allocateDirect(INPUT_SIZE * INPUT_SIZE * NUM_CHANNELS * BYTES_PER_FLOAT)
         .order(ByteOrder.nativeOrder())
 
-    // Output tensor scratch: (1, 384, 384, 3) float32 — TFLite hands it back
-    // as a 4D float array.
-    private val outputScratch: Array<Array<Array<FloatArray>>> =
-        Array(1) { Array(INPUT_SIZE) { Array(INPUT_SIZE) { FloatArray(NUM_CLASSES) } } }
+    // Output tensor scratch: (1, 384, 384, 3) float32 = ~442k floats. Bound as a
+    // direct ByteBuffer (one bulk memcpy out of native) instead of a boxed 4D
+    // Array, which TFLite would copy out element-by-element across JNI every
+    // frame. After inference we bulk-copy it once into [outputFlat] and index
+    // that flat array in the decode loop (NHWC row-major).
+    private val outputBuffer: ByteBuffer = ByteBuffer
+        .allocateDirect(INPUT_SIZE * INPUT_SIZE * NUM_CLASSES * BYTES_PER_FLOAT)
+        .order(ByteOrder.nativeOrder())
+    private val outputFlat = FloatArray(INPUT_SIZE * INPUT_SIZE * NUM_CLASSES)
 
     // Per-class mask scratch. Cloned on output so callers can hold references.
     private val chuteMaskScratch = BitSet(INPUT_SIZE * INPUT_SIZE)
@@ -89,7 +94,12 @@ class TraySegmentationDetector(
     ): List<TrayDetection> {
         return try {
             preprocessTo384(letterboxedBitmap)
-            interpreter.run(inputBuffer, outputScratch)
+            outputBuffer.rewind()
+            interpreter.run(inputBuffer, outputBuffer)
+            // Bulk-copy the raw output into the flat scratch once; the decode
+            // loop reads outputFlat with plain array indexing (no JNI per pixel).
+            outputBuffer.rewind()
+            outputBuffer.asFloatBuffer().get(outputFlat)
 
             // Derive 384-space scaleInfo by composing the 640 scaleInfo with
             // the 640->384 downscale. Mathematically:
@@ -152,8 +162,6 @@ class TraySegmentationDetector(
         chuteMaskScratch.clear()
         trayMaskScratch.clear()
 
-        val plane = outputScratch[0]   // [384][384][3]
-
         var chuteMinX = INPUT_SIZE; var chuteMinY = INPUT_SIZE
         var chuteMaxX = -1; var chuteMaxY = -1
         var trayMinX = INPUT_SIZE; var trayMinY = INPUT_SIZE
@@ -163,13 +171,13 @@ class TraySegmentationDetector(
         var trayPixelCount = 0
 
         for (y in 0 until INPUT_SIZE) {
-            val row = plane[y]
             val rowBase = y * INPUT_SIZE
             for (x in 0 until INPUT_SIZE) {
-                val logits = row[x]
-                val bg = logits[CLASS_BG]
-                val ch = logits[CLASS_CHUTE]
-                val tr = logits[CLASS_TRAY]
+                // NHWC row-major: pixel (y,x) occupies NUM_CLASSES contiguous floats.
+                val base = (rowBase + x) * NUM_CLASSES
+                val bg = outputFlat[base + CLASS_BG]
+                val ch = outputFlat[base + CLASS_CHUTE]
+                val tr = outputFlat[base + CLASS_TRAY]
                 // Pick the winning foreground class (or background) by argmax.
                 val cls = when {
                     bg >= ch && bg >= tr -> CLASS_BG
@@ -303,7 +311,7 @@ class TraySegmentationDetector(
          * gate pills incorrectly. Bump higher to be stricter; never below
          * ~300 or you'll start rejecting real chutes seen at oblique angles.
          */
-        const val MIN_CLASS_PIXELS = 800
+        const val MIN_CLASS_PIXELS = 400
 
         /**
          * Confidence margin between the winning foreground class's logit and
@@ -317,6 +325,6 @@ class TraySegmentationDetector(
          * Raise this if you see false-positive tray pixels in real frames;
          * lower it if the model misses real chute boundaries.
          */
-        const val FG_LOGIT_MARGIN = 2.0f
+        const val FG_LOGIT_MARGIN = 1.5f
     }
 }
