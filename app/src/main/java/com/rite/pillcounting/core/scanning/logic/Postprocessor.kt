@@ -2,6 +2,8 @@
 
 import android.graphics.RectF
 import org.tensorflow.lite.Interpreter
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
 import kotlin.math.exp
 
 /**
@@ -31,19 +33,31 @@ object Postprocessor {
      * Pre-allocated output buffers + the TFLite tensor indices each maps to.
      * Allocated once at model-load via [allocateOutputs] and reused across frames.
      *
-     *   clsBuffers[level]  shape [1, grid, grid, 1]
-     *   regBuffers[level]  shape [1, grid, grid, 68]
+     * The model outputs are bound to **direct [ByteBuffer]s** rather than boxed
+     * `Array<Array<Array<FloatArray>>>` tensors. The reg level alone is
+     * grid²×68 ≈ 571k floats; copied out of native into a nested Java array
+     * TFLite touches every element across JNI each frame. A direct ByteBuffer is
+     * a single bulk memcpy. [decode] then copies each level's buffer into a flat
+     * [clsFlat]/[regFlat] scratch float[] once (bulk) and indexes that — no
+     * per-element JNI reads in the hot loop.
+     *
+     *   clsBuffers[level]  raw [1, grid, grid, 1]  float32, NHWC row-major
+     *   regBuffers[level]  raw [1, grid, grid, 68] float32, NHWC row-major
      */
     class PillOutputs(
-        val clsBuffers: Array<Array<Array<Array<FloatArray>>>>,
-        val regBuffers: Array<Array<Array<Array<FloatArray>>>>,
+        val clsBuffers: Array<ByteBuffer>,
+        val regBuffers: Array<ByteBuffer>,
+        val clsFlat: Array<FloatArray>,
+        val regFlat: Array<FloatArray>,
         val clsIdx: IntArray,
         val regIdx: IntArray
     )
 
     fun allocateOutputs(interpreter: Interpreter): PillOutputs {
-        val cls = arrayOfNulls<Array<Array<Array<FloatArray>>>>(FPN_STRIDES.size)
-        val reg = arrayOfNulls<Array<Array<Array<FloatArray>>>>(FPN_STRIDES.size)
+        val cls = arrayOfNulls<ByteBuffer>(FPN_STRIDES.size)
+        val reg = arrayOfNulls<ByteBuffer>(FPN_STRIDES.size)
+        val clsFlat = arrayOfNulls<FloatArray>(FPN_STRIDES.size)
+        val regFlat = arrayOfNulls<FloatArray>(FPN_STRIDES.size)
         val clsIdx = IntArray(FPN_STRIDES.size) { -1 }
         val regIdx = IntArray(FPN_STRIDES.size) { -1 }
 
@@ -58,11 +72,15 @@ object Postprocessor {
             when (shape[3]) {
                 1 -> {
                     clsIdx[levelIdx] = i
-                    cls[levelIdx] = Array(1) { Array(grid) { Array(grid) { FloatArray(1) } } }
+                    val n = grid * grid * 1
+                    cls[levelIdx] = ByteBuffer.allocateDirect(n * 4).order(ByteOrder.nativeOrder())
+                    clsFlat[levelIdx] = FloatArray(n)
                 }
                 REG_CHANNELS -> {
                     regIdx[levelIdx] = i
-                    reg[levelIdx] = Array(1) { Array(grid) { Array(grid) { FloatArray(REG_CHANNELS) } } }
+                    val n = grid * grid * REG_CHANNELS
+                    reg[levelIdx] = ByteBuffer.allocateDirect(n * 4).order(ByteOrder.nativeOrder())
+                    regFlat[levelIdx] = FloatArray(n)
                 }
             }
         }
@@ -76,8 +94,10 @@ object Postprocessor {
 
         @Suppress("UNCHECKED_CAST")
         return PillOutputs(
-            clsBuffers = cls as Array<Array<Array<Array<FloatArray>>>>,
-            regBuffers = reg as Array<Array<Array<Array<FloatArray>>>>,
+            clsBuffers = cls as Array<ByteBuffer>,
+            regBuffers = reg as Array<ByteBuffer>,
+            clsFlat = clsFlat as Array<FloatArray>,
+            regFlat = regFlat as Array<FloatArray>,
             clsIdx = clsIdx,
             regIdx = regIdx
         )
@@ -106,21 +126,32 @@ object Postprocessor {
         for (level in FPN_STRIDES.indices) {
             val stride = FPN_STRIDES[level].toFloat()
             val grid = FPN_GRIDS[level]
-            val cls = outputs.clsBuffers[level]
-            val reg = outputs.regBuffers[level]
+
+            // Bulk-copy this level's raw output out of the direct buffer into a
+            // flat float[] once, then index it below — avoids per-element JNI reads.
+            val clsFlat = outputs.clsFlat[level]
+            val regFlat = outputs.regFlat[level]
+            outputs.clsBuffers[level].rewind()
+            outputs.clsBuffers[level].asFloatBuffer().get(clsFlat)
+            outputs.regBuffers[level].rewind()
+            outputs.regBuffers[level].asFloatBuffer().get(regFlat)
 
             for (row in 0 until grid) {
+                val rowBase = row * grid
                 for (col in 0 until grid) {
-                    val score = cls[0][row][col][0]
+                    val cellIdx = rowBase + col
+                    val score = clsFlat[cellIdx]   // NHWC, 1 channel → flat index = row*grid+col
                     if (score < confThreshold) continue
 
-                    val regVec = reg[0][row][col]
+                    // NHWC: reg cell (row,col) starts at (row*grid+col)*68; each
+                    // side is a contiguous 17-bin slice within that cell.
+                    val regBase = cellIdx * REG_CHANNELS
                     // DFL projection: softmax over each 17-bin slice, then dot with [0..16],
                     // then multiply by stride to get pixel distance per side.
-                    val dLeft   = dflProject(regVec, 0 * DFL_BINS) * stride
-                    val dTop    = dflProject(regVec, 1 * DFL_BINS) * stride
-                    val dRight  = dflProject(regVec, 2 * DFL_BINS) * stride
-                    val dBottom = dflProject(regVec, 3 * DFL_BINS) * stride
+                    val dLeft   = dflProject(regFlat, regBase + 0 * DFL_BINS) * stride
+                    val dTop    = dflProject(regFlat, regBase + 1 * DFL_BINS) * stride
+                    val dRight  = dflProject(regFlat, regBase + 2 * DFL_BINS) * stride
+                    val dBottom = dflProject(regFlat, regBase + 3 * DFL_BINS) * stride
 
                     val cx = (col + 0.5f) * stride
                     val cy = (row + 0.5f) * stride
