@@ -51,8 +51,7 @@ private const val KEY_TERMINALS="key_terminals"
 private const val KEY_SELECTED_TERMINAL_ID="key_selected_terminal_id"
 private const val KEY_SELECTED_TERMINAL_NAME="key_selected_terminal_name"
 private const val KEY_HAZARDOUS_DRUG = "key_hazardous_drug"
-private const val KEY_HAZARDOUS_TRAY_COLORS = "key_hazardous_tray_colors"
-private const val KEY_NON_HAZARDOUS_TRAY_COLORS = "key_non_hazardous_tray_colors"
+private const val KEY_HAZARDOUS_TRAY_COLOR = "key_hazardous_tray_color"
 private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
 private const val KEY_HL7_PILLCOUNTER_HOST = "key_hl7_pillcounter_host"
 private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
@@ -460,32 +459,20 @@ class PreferenceHelper @Inject constructor(
 
     // ─────────────────────────── TRAY COLOR CLASSIFICATION ───────────────────────────
 
-    fun getHazardousTrayColors(): Set<String> {
-        val json = prefs.getString(KEY_HAZARDOUS_TRAY_COLORS) ?: return emptySet()
-        return gson.fromJson(json, Array<String>::class.java).toSet()
+    fun getHazardousTrayColor(): String? {
+        val color = prefs.getString(KEY_HAZARDOUS_TRAY_COLOR)
+        logger.d("getHazardousTrayColor: $color")
+        return color
     }
 
-    fun addHazardousTrayColor(colorName: String) {
-        val updated = getHazardousTrayColors().toMutableSet().apply { add(colorName) }
-        prefs.putString(KEY_HAZARDOUS_TRAY_COLORS, gson.toJson(updated))
-        logger.i("Added hazardous tray color: $colorName")
-    }
-
-    fun getNonHazardousTrayColors(): Set<String> {
-        val json = prefs.getString(KEY_NON_HAZARDOUS_TRAY_COLORS) ?: return emptySet()
-        return gson.fromJson(json, Array<String>::class.java).toSet()
-    }
-
-    fun addNonHazardousTrayColor(colorName: String) {
-        val updated = getNonHazardousTrayColors().toMutableSet().apply { add(colorName) }
-        prefs.putString(KEY_NON_HAZARDOUS_TRAY_COLORS, gson.toJson(updated))
-        logger.i("Added non-hazardous tray color: $colorName")
+    fun setHazardousTrayColor(colorName: String) {
+        prefs.putString(KEY_HAZARDOUS_TRAY_COLOR, colorName)
+        logger.i("Set hazardous tray color: $colorName")
     }
 
     fun clearAllTrayColorLists() {
-        prefs.putString(KEY_HAZARDOUS_TRAY_COLORS, gson.toJson(emptySet<String>()))
-        prefs.putString(KEY_NON_HAZARDOUS_TRAY_COLORS, gson.toJson(emptySet<String>()))
-        logger.i("Cleared all tray color classification lists")
+        prefs.remove(KEY_HAZARDOUS_TRAY_COLOR)
+        logger.i("Cleared hazardous tray color classification")
     }
 
     fun isHl7ConfigFetched(): Boolean =

@@ -3,6 +3,7 @@
 import Screen
 import android.Manifest
 import android.content.pm.PackageManager
+import android.util.Log
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -111,6 +112,8 @@ import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNa
 // Grace period before hiding the count circle after detections drop to 0,
 // so momentary empty frames don't flicker the circle off and on.
 private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
+
+private const val HAZARDOUS_TAG = "HazardousFlow"
 
 @Composable
 fun DispenseFlowScreen(
@@ -368,13 +371,20 @@ fun DispenseFlowScreen(
     // Shown when a tray color is detected during a hazardous transaction and has
     // not been previously classified as hazardous or non-hazardous.
     pillState.pendingTrayColorForClassification?.let { pendingColor ->
+        Log.i(HAZARDOUS_TAG, "Tray classification popup shown | color=${pendingColor.label} | isHazardousTxn=${dispenseState.isHazardous}")
         CommonDialog(
             title = stringResource(R.string.tray_classification_title),
             message = stringResource(R.string.tray_classification_message, pendingColor.label),
             confirmText = stringResource(R.string.yes),
             cancelText = stringResource(R.string.no),
-            onConfirm = { pillVm.classifyTrayColor(pendingColor, isHazardous = true) },
-            onCancel = { pillVm.classifyTrayColor(pendingColor, isHazardous = false) },
+            onConfirm = {
+                Log.i(HAZARDOUS_TAG, "Tray classification: user confirmed ${pendingColor.label} as HAZARDOUS → saving")
+                pillVm.classifyTrayColor(pendingColor, isHazardous = true)
+            },
+            onCancel = {
+                Log.i(HAZARDOUS_TAG, "Tray classification: user rejected ${pendingColor.label} as hazardous → saving false")
+                pillVm.classifyTrayColor(pendingColor, isHazardous = false)
+            },
         )
     }
 
@@ -387,6 +397,7 @@ fun DispenseFlowScreen(
     // LaunchedEffect below).
     LaunchedEffect(dispenseState.stage) {
         if (dispenseState.stage == DispenseStage.COUNTING) {
+            Log.i(HAZARDOUS_TAG, "Stage → COUNTING | countType=$countType | txnId=${dispenseState.txnId} | drug=${dispenseState.drugName} | isHazardous=${dispenseState.isHazardous}")
             pillVm.resumePillDetection()
             // For stock count (REGULAR) the NDC scan already happened in PRE_NDC,
             // so skip the SCAN workflow step and start at pill counting directly.
@@ -394,10 +405,12 @@ fun DispenseFlowScreen(
                 forceStartStep = if (countType == CountType.REGULAR.toString()) StepState.TARGET_VERIFICATION else null
             )
             pillVm.showTxnInfo(countType)
-            // Enable tray color detection only for hazardous transactions in COUNTING stage.
+            // Enable tray color detection for all transactions (hazardous and non-hazardous).
+            Log.i(HAZARDOUS_TAG, "Calling setHazardousTransaction(isHazardous=${dispenseState.isHazardous})")
             pillVm.setHazardousTransaction(dispenseState.isHazardous)
             // Load glove model only now that RX + NDC are confirmed and drug is hazardous.
             if (dispenseState.isHazardous) {
+                Log.i(HAZARDOUS_TAG, "Hazardous drug — loading glove model")
                 pillVm.loadGloveModelAndRebuildAnalyzer()
             }
         } else {
@@ -636,6 +649,13 @@ fun DispenseFlowScreen(
         }
     }
 
+    val txnNotFoundToastText = stringResource(R.string.transaction_not_found_toast)
+    LaunchedEffect(dispenseState.txnNotFoundToastTick) {
+        if (dispenseState.txnNotFoundToastTick > 0) {
+            showToast(context, txnNotFoundToastText, Toast.LENGTH_SHORT)
+        }
+    }
+
     // Re-focus the BT scanner field whenever all overlays dismiss so the next
     // scan is captured without the user tapping the field.
     val btScannerOverlayActive = dispenseState.showRxDetails ||
@@ -644,6 +664,7 @@ fun DispenseFlowScreen(
             dispenseState.showInvalidScanDialog ||
             dispenseState.showNdcEquivalenceDialog ||
             dispenseState.showRxScannedInStockCountDialog ||
+            dispenseState.showOnHoldDialog ||
             dispenseState.isLoading
     LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
         if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {

@@ -35,6 +35,7 @@ data class DispenseFlowUiState(
     // Transient toast signals — bumped to trigger a one-shot toast in the UI.
     val scanNdcToastTick: Int = 0,
     val ndcMismatchToastTick: Int = 0,
+    val txnNotFoundToastTick: Int = 0,
 
     val isLoading: Boolean = false,
     val error: String? = null,

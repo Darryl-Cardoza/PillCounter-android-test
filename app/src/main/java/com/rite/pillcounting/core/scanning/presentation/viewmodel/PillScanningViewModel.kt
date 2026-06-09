@@ -179,7 +179,7 @@ class PillScanningViewModel @Inject constructor(
 
     var shouldRunGloveDetection = true
 
-    // Tray color detection: true when drug is hazardous (enables OpenCV + DB save).
+    // Tray color detection: always enabled during COUNTING stage.
     // @Volatile ensures main-thread write is visible to Dispatchers.Default immediately.
     @Volatile var isTrayColorDetectionEnabled = false
     // true when drug is hazardous AND global "Hazardous Drug" setting is ON → show popup.
@@ -190,9 +190,12 @@ class PillScanningViewModel @Inject constructor(
     private var lastHazardousByDrug = false
     // Tracks colors already prompted this session to avoid repeated popups per color.
     private val promptedTrayColors = mutableSetOf<TrayColor>()
-    // In-memory cache of the preference lists so we don't hit SharedPreferences every frame.
-    private var cachedHazardousColors: Set<String> = emptySet()
-    private var cachedNonHazardousColors: Set<String> = emptySet()
+    // In-memory cache of the single saved hazardous tray color (null if none saved yet).
+    private var cachedHazardousColor: String? = null
+    // Whether the current transaction is for a hazardous drug.
+    private var isHazardousTxn = false
+    // Prevents the "using hazardous tray" toast from firing on every frame for non-hazardous txns.
+    private var hazardousTrayToastShown = false
 
     private var lastPreviewWidth = 0
     private var lastPreviewHeight = 0
@@ -588,31 +591,55 @@ class PillScanningViewModel @Inject constructor(
             "resultSaved=$hazardousTrayResultSaved trays=${trayDets.size} " +
             "pending=${_uiState.value.pendingTrayColorForClassification?.label}"
         )
-        if (isTrayColorDetectionEnabled && !hazardousTrayResultSaved) {
+        if (isTrayColorDetectionEnabled) {
             val trayColor = trayDets.firstOrNull { it.trayColor != TrayColor.UNKNOWN }?.trayColor
-            logger.d("  First known tray color: ${trayColor?.label ?: "none"} hazardousList=$cachedHazardousColors")
+            logger.d("  First known tray color: ${trayColor?.label ?: "none"} hazardousColor=$cachedHazardousColor isHazardousTxn=$isHazardousTxn")
 
             if (trayColor != null) {
-                when {
-                    trayColor.name in cachedHazardousColors -> {
-                        // Known hazardous tray → save true (both scenarios)
-                        logger.d("  → Tray ${trayColor.label} is in hazardous list → saving true")
-                        saveHazardousTrayDetected(true)
+                if (isHazardousTxn && !hazardousTrayResultSaved) {
+                    when {
+                        cachedHazardousColor == null -> {
+                            // No hazardous color saved yet — first hazardous transaction.
+                            // Show prompt so the user can designate this tray (setting must be ON).
+                            if (hazardousTrayPopupEnabled &&
+                                _uiState.value.pendingTrayColorForClassification == null &&
+                                trayColor !in promptedTrayColors) {
+                                promptedTrayColors.add(trayColor)
+                                _uiState.update { it.copy(pendingTrayColorForClassification = trayColor) }
+                                logger.i("[HAZARDOUS] First hazardous txn — showing tray classification popup for ${trayColor.label}")
+                            } else if (!hazardousTrayPopupEnabled) {
+                                // Global setting OFF — nothing to classify, save false.
+                                logger.i("[HAZARDOUS] No saved color, setting OFF — saving false for ${trayColor.label}")
+                                saveHazardousTrayDetected(false)
+                            }
+                        }
+                        trayColor.name == cachedHazardousColor -> {
+                            // Correct hazardous tray detected — save true.
+                            logger.i("[HAZARDOUS] Tray ${trayColor.label} matches hazardous color — saving true")
+                            saveHazardousTrayDetected(true)
+                        }
+                        else -> {
+                            // A hazardous color is saved but this tray does not match it.
+                            if (!hazardousTrayPopupEnabled) {
+                                // Global setting OFF — save false silently.
+                                logger.i("[HAZARDOUS] Setting OFF, tray ${trayColor.label} != hazardous color — saving false")
+                                saveHazardousTrayDetected(false)
+                            } else if (!hazardousTrayToastShown) {
+                                // Setting ON — warn user to swap to the correct hazardous tray.
+                                hazardousTrayToastShown = true
+                                logger.i("[HAZARDOUS] Tray ${trayColor.label} is NOT the hazardous tray — showing warning toast")
+                                viewModelScope.launch(Dispatchers.Main) {
+                                    showToast(context, context.getString(R.string.non_hazardous_tray_warning))
+                                }
+                            }
+                        }
                     }
-                    !hazardousTrayPopupEnabled -> {
-                        // Scenario 1 (setting OFF): not in hazardous list → save false immediately
-                        logger.d("  → Setting OFF, ${trayColor.label} not in hazardous list → saving false")
-                        saveHazardousTrayDetected(false)
-                    }
-                    _uiState.value.pendingTrayColorForClassification == null && trayColor !in promptedTrayColors -> {
-                        // Scenario 2 (setting ON): show popup, save after user response
-                        promptedTrayColors.add(trayColor)
-                        _uiState.update { it.copy(pendingTrayColorForClassification = trayColor) }
-                        logger.d("  *** POPUP for ${trayColor.label} — awaiting user response ***")
-                        logger.i("Tray color ${trayColor.label} unclassified — showing popup")
-                    }
-                    else -> {
-                        logger.d("  → Popup already pending or already prompted for ${trayColor.label}")
+                } else if (!isHazardousTxn && !hazardousTrayToastShown && trayColor.name == cachedHazardousColor) {
+                    // Non-hazardous transaction using the hazardous tray — warn the user.
+                    hazardousTrayToastShown = true
+                    logger.i("[HAZARDOUS] Hazardous tray ${trayColor.label} detected in non-hazardous transaction — showing toast")
+                    viewModelScope.launch(Dispatchers.Main) {
+                        showToast(context, context.getString(R.string.hazardous_tray_warning))
                     }
                 }
             }
@@ -674,6 +701,8 @@ class PillScanningViewModel @Inject constructor(
         isTrayColorDetectionEnabled = false
         hazardousTrayPopupEnabled = false
         promptedTrayColors.clear()
+        isHazardousTxn = false
+        hazardousTrayToastShown = false
         isPaused = true
         _cameraPaused.value = true
         logger.w("Camera paused due to idle timeout. Buffers cleared.")
@@ -735,11 +764,12 @@ class PillScanningViewModel @Inject constructor(
         // Restore detection flags using the drug flag remembered from setHazardousTransaction().
         // Do NOT reset hazardousTrayResultSaved — the transaction is the same, result already saved.
         val globalSettingOn = preferenceHelper.isHazardousDrugEnabled()
-        isTrayColorDetectionEnabled = lastHazardousByDrug
+        isTrayColorDetectionEnabled = true
+        isHazardousTxn = lastHazardousByDrug
         hazardousTrayPopupEnabled = lastHazardousByDrug && globalSettingOn
+        hazardousTrayToastShown = false
+        cachedHazardousColor = preferenceHelper.getHazardousTrayColor()
         if (lastHazardousByDrug) {
-            cachedHazardousColors = preferenceHelper.getHazardousTrayColors()
-            cachedNonHazardousColors = preferenceHelper.getNonHazardousTrayColors()
             promptedTrayColors.clear()
         }
 
@@ -783,24 +813,22 @@ class PillScanningViewModel @Inject constructor(
     fun setHazardousTransaction(isHazardousByDrug: Boolean) {
         val globalSettingOn = preferenceHelper.isHazardousDrugEnabled()
         lastHazardousByDrug = isHazardousByDrug
-        isTrayColorDetectionEnabled = isHazardousByDrug
+        isHazardousTxn = isHazardousByDrug
+        isTrayColorDetectionEnabled = true
         hazardousTrayPopupEnabled = isHazardousByDrug && globalSettingOn
         hazardousTrayResultSaved = false
+        hazardousTrayToastShown = false
+        cachedHazardousColor = preferenceHelper.getHazardousTrayColor()
 
         logger.d("=== setHazardousTransaction ===")
         logger.d("  drugFlag=$isHazardousByDrug  globalSettingOn=$globalSettingOn")
-        logger.d("  detectionEnabled=$isTrayColorDetectionEnabled  popupEnabled=$hazardousTrayPopupEnabled")
+        logger.d("  detectionEnabled=$isTrayColorDetectionEnabled  popupEnabled=$hazardousTrayPopupEnabled  hazardousColor=$cachedHazardousColor")
 
         if (isHazardousByDrug) {
-            cachedHazardousColors = preferenceHelper.getHazardousTrayColors()
-            cachedNonHazardousColors = preferenceHelper.getNonHazardousTrayColors()
             promptedTrayColors.clear()
-            logger.i("Hazardous drug transaction. popupEnabled=$hazardousTrayPopupEnabled")
-            logger.d("  Hazardous list (${cachedHazardousColors.size}): $cachedHazardousColors")
-            logger.d("  Non-hazardous list (${cachedNonHazardousColors.size}): $cachedNonHazardousColors")
+            logger.i("Hazardous drug transaction. popupEnabled=$hazardousTrayPopupEnabled hazardousColor=$cachedHazardousColor")
         } else {
-            logger.i("Non-hazardous drug — tray color detection disabled")
-            logger.d("  Drug not hazardous → no detection, no DB write")
+            logger.i("Non-hazardous drug — tray detection active for hazardous tray warning. hazardousColor=$cachedHazardousColor")
         }
     }
 
@@ -810,17 +838,11 @@ class PillScanningViewModel @Inject constructor(
      */
     fun classifyTrayColor(color: TrayColor, isHazardous: Boolean) {
         if (isHazardous) {
-            preferenceHelper.addHazardousTrayColor(color.name)
-            cachedHazardousColors = cachedHazardousColors + color.name
-            logger.i("Tray color ${color.label} classified as HAZARDOUS → saving true to DB")
-            logger.d("=== classifyTrayColor: ${color.label} → HAZARDOUS ===")
-            logger.d("  Updated hazardous list (${cachedHazardousColors.size}): $cachedHazardousColors")
+            preferenceHelper.setHazardousTrayColor(color.name)
+            cachedHazardousColor = color.name
+            logger.i("Tray color ${color.label} saved as hazardous color → saving true to DB")
         } else {
-            preferenceHelper.addNonHazardousTrayColor(color.name)
-            cachedNonHazardousColors = cachedNonHazardousColors + color.name
-            logger.i("Tray color ${color.label} classified as NON-HAZARDOUS → saving false to DB")
-            logger.d("=== classifyTrayColor: ${color.label} → NON-HAZARDOUS ===")
-            logger.d("  Updated non-hazardous list (${cachedNonHazardousColors.size}): $cachedNonHazardousColors")
+            logger.i("Tray color ${color.label} not classified as hazardous → saving false to DB")
         }
         saveHazardousTrayDetected(isHazardous)
         _uiState.update { it.copy(pendingTrayColorForClassification = null) }

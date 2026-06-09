@@ -61,8 +61,10 @@
     <string name="setting_hazardous_drug">Hazardous Drug</string>
     <string name="tray_classification_title">Tray Classification</string>
     <string name="tray_classification_message">The %s colored tray is not classified. Mark it as a hazardous tray?</string>
+    <string name="hazardous_tray_warning">Warning: You are using a hazardous tray. Please use a non-hazardous tray.</string>
+    <string name="non_hazardous_tray_warning">This is not the hazardous tray. Please use the hazardous tray.</string>
     <string name="clear_tray_color_lists">Clear Tray Color Lists</string>
-    <string name="clear_tray_color_lists_confirm">Are you sure you want to clear all hazardous and non-hazardous tray color classifications?</string>
+    <string name="clear_tray_color_lists_confirm">Are you sure you want to clear the hazardous tray color classification?</string>
     <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
     <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
 
@@ -267,6 +269,7 @@
     <string name="substitute">Substitute</string>
     <string name="scan_ndc_toast">Scan NDC</string>
     <string name="rescan_ndc_does_not_match_toast">Rescan — NDC does not match</string>
+    <string name="transaction_not_found_toast">Transaction not found</string>
 
     <!-- Unsynced Transaction-->
     <string name="unsynced_transaction">UNSYNCED TRANSACTIONS</string>
