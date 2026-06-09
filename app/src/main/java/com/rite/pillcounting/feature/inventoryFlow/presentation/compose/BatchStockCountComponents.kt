@@ -777,6 +777,7 @@ internal fun ScannedSummaryCard(
     totalPills: Int,
     onEndCount: () -> Unit,
     modifier: Modifier = Modifier,
+    endCountEnabled: Boolean = true,
 ) {
     Column(
         modifier = modifier
@@ -809,6 +810,7 @@ internal fun ScannedSummaryCard(
                     text = stringResource(R.string.batch_stock_count_end_count),
                     onClick = onEndCount,
                     color = MaterialTheme.colorScheme.primary,
+                    enabled = endCountEnabled,
                     fixedWidth = false,
                     modifier = Modifier.fillMaxWidth(),
                 )
