@@ -79,12 +79,14 @@ fun AppNavGraph(
             val fromHl7 = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_HL7) ?: false
             val fromResume = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_RESUME) ?: false
             val batchId = backStackEntry.arguments?.getLong(Screen.DispenseFlow.ARG_BATCH_ID) ?: 0L
+            val fromQueue = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_QUEUE) ?: false
             DispenseFlowScreen(
                 navController = navController,
                 countType = countType,
                 fromHl7 = fromHl7,
                 fromResume = fromResume,
                 batchId = batchId,
+                fromQueue = fromQueue,
             )
         }
 

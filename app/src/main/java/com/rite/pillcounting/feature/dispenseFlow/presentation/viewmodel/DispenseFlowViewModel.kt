@@ -3,22 +3,29 @@
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rite.pillcounting.core.models.ScheduleCode
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.compose.ContainerStatus
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
+import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
+import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseFlowUiState
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -64,6 +71,7 @@ class DispenseFlowViewModel @Inject constructor(
     val uiState: StateFlow<DispenseFlowUiState> = _uiState.asStateFlow()
 
     private var countType: CountType = CountType.FIXED
+    private var queueObserverJob: Job? = null
 
     fun setCountType(type: String) {
         countType = runCatching { CountType.valueOf(type) }.getOrDefault(CountType.FIXED)
@@ -177,7 +185,12 @@ class DispenseFlowViewModel @Inject constructor(
      * first and falls back to the server. On success surfaces the RX bottomsheet.
      */
     fun onRxBarcodeRead(gtin14: String, imagePath: String?) {
-        if (_uiState.value.stage != DispenseStage.PRE_RX) return
+        if (_uiState.value.stage != DispenseStage.PRE_RX &&
+            _uiState.value.stage != DispenseStage.QUEUE) return
+        // Advance from QUEUE to PRE_RX so the rest of the RX logic works normally.
+        if (_uiState.value.stage == DispenseStage.QUEUE) {
+            _uiState.update { it.copy(stage = DispenseStage.PRE_RX) }
+        }
         if (_uiState.value.isLoading) return
         if (gtin14.isBlank()) {
             _uiState.update { it.copy(showInvalidScanDialog = true) }
@@ -215,13 +228,23 @@ class DispenseFlowViewModel @Inject constructor(
                             return@launch
                         }
                         CountStatus.PARTIAL -> {
+                            // Auto-resume the existing transaction without asking.
+                            val txnId = existingTxn.txnId
+                            val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
+                            pillCountTxnDao.updateGlovesPresent(txnId, false)
+                            preferenceHelper.saveTxnId(txnId)
+                            val targetStage = if (existingTxn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
                             _uiState.update {
                                 it.copy(
                                     isLoading = false,
-                                    showContinueRxDialog = true,
-                                    txnId = existingTxn.txnId,
-                                    rxNo = rxNo,
-                                    qty = qty,
+                                    stage = targetStage,
+                                    txnId = txnId,
+                                    drugName = drug?.drugName ?: it.drugName,
+                                    ndc = drug?.ndc ?: it.ndc,
+                                    hl7ExpectedNdc = drug?.ndc,
+                                    rxNo = existingTxn.rxNo ?: rxNo,
+                                    qty = existingTxn.targetCount?.toString() ?: qty,
+                                    isHazardous = drug?.isHazardous ?: false,
                                 )
                             }
                             return@launch
@@ -773,4 +796,111 @@ class DispenseFlowViewModel @Inject constructor(
     fun clearError() {
         _uiState.update { it.copy(error = null) }
     }
+
+    // ─────────────────────────── Queue mode ───────────────────────────
+
+    fun enterQueueMode() {
+        observeDispenseQueue()
+        _uiState.update {
+            DispenseFlowUiState(
+                stage = DispenseStage.QUEUE,
+                scanType = CountType.FIXED.name,
+                queueItems = it.queueItems,
+                selectedQueueFilter = it.selectedQueueFilter ?: KpiFilter.DISP_PENDING,
+            )
+        }
+    }
+
+    fun resetToQueue() {
+        observeDispenseQueue()
+        _uiState.update {
+            DispenseFlowUiState(
+                stage = DispenseStage.QUEUE,
+                scanType = CountType.FIXED.name,
+                queueItems = it.queueItems,
+                selectedQueueFilter = it.selectedQueueFilter ?: KpiFilter.DISP_PENDING,
+            )
+        }
+    }
+
+    private suspend fun hasPendingDispenseItems(): Boolean {
+        val localId = preferenceHelper.getLocalId()
+        return pillCountTxnDao.countPartialByCountType(
+            countType = CountType.FIXED,
+            partialStatus = CountStatus.PARTIAL,
+            userLocalId = localId,
+        ) > 0
+    }
+
+    fun resetToQueueOrNavigateDashboard() {
+        viewModelScope.launch {
+            if (hasPendingDispenseItems()) {
+                resetToQueue()
+            } else {
+                _uiState.update { it.copy(navigateToDashboard = true) }
+            }
+        }
+    }
+
+    fun clearNavigateToDashboard() {
+        _uiState.update { it.copy(navigateToDashboard = false) }
+    }
+
+    fun setQueueFilter(filter: KpiFilter?) {
+        // Tabs always have one selection — clicking the active tab keeps it selected.
+        if (filter != null) {
+            _uiState.update { it.copy(selectedQueueFilter = filter) }
+        }
+    }
+
+    fun resumeFromQueue(txnId: Long) {
+        viewModelScope.launch {
+            val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+            preferenceHelper.saveTxnId(txnId)
+            pillCountTxnDao.updateGlovesPresent(txnId, false)
+            val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
+            val targetStage = if (txn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
+            _uiState.update {
+                it.copy(
+                    stage = targetStage,
+                    txnId = txnId,
+                    drugName = drug?.drugName ?: it.drugName,
+                    ndc = drug?.ndc ?: it.ndc,
+                    hl7ExpectedNdc = drug?.ndc,
+                    rxNo = txn.rxNo,
+                    qty = txn.targetCount?.toString(),
+                    isHazardous = drug?.isHazardous ?: false,
+                )
+            }
+        }
+    }
+
+    private fun observeDispenseQueue() {
+        queueObserverJob?.cancel()
+        queueObserverJob = viewModelScope.launch(Dispatchers.IO) {
+            val localId = preferenceHelper.getLocalId()
+            pillCountTxnDao.observePartialByCountType(
+                countType = CountType.FIXED,
+                partialStatus = CountStatus.PARTIAL,
+                userLocalId = localId,
+                type = StepState.TARGET_VERIFICATION,
+            ).collect { txns ->
+                val items = txns.map { txn ->
+                    QueueItem.Dispense(
+                        txn = txn,
+                        isHazardous = txn.isHazardous,
+                        isHighPriority = txn.priority == TxnPriority.High,
+                        isControlled = isControlledDrugType(txn.drugType),
+                    )
+                }
+                _uiState.update { it.copy(queueItems = items) }
+            }
+        }
+    }
 }
+
+private fun isControlledDrugType(drugType: String?): Boolean {
+    val code = drugType?.trim()?.uppercase() ?: return false
+    return ScheduleCode.entries.any { it.name == code }
+}
+

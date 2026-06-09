@@ -208,9 +208,10 @@ sealed interface Screen {
         const val ARG_FROM_RESUME = "from_resume"
         const val ARG_BATCH_ID = "batch_id"
         const val ARG_BUCKET_ID = "bucket_id"
+        const val ARG_FROM_QUEUE = "from_queue"
 
         override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}"
+            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}"
 
         val navArguments: List<NamedNavArgument> = listOf(
             navArgument(ARG_TYPE) { type = NavType.StringType },
@@ -231,6 +232,10 @@ sealed interface Screen {
                 nullable = true
                 defaultValue = null
             },
+            navArgument(ARG_FROM_QUEUE) {
+                type = NavType.BoolType
+                defaultValue = false
+            },
         )
 
         fun createRoute(
@@ -239,7 +244,8 @@ sealed interface Screen {
             fromResume: Boolean = false,
             batchId: Long = 0L,
             bucketId: String? = null,
-        ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}"
+            fromQueue: Boolean = false,
+        ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}&$ARG_FROM_QUEUE=$fromQueue"
     }
 
     data object SaveHistoryFor : Screen {

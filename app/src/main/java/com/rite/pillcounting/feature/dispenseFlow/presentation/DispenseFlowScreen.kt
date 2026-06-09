@@ -6,20 +6,18 @@ import android.content.pm.PackageManager
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.ui.zIndex
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -34,6 +32,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -45,11 +44,18 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.scanning.analyzer.FrameBarcodeAnalyzer
+import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
+import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
+import com.rite.pillcounting.core.scanning.presentation.compose.CameraPreviewSection
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -63,26 +69,21 @@ import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsSheet
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleSheet
-import com.rite.pillcounting.core.models.StepState
-import com.rite.pillcounting.core.scanning.analyzer.FrameBarcodeAnalyzer
-import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
-import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
-import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
-import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BtScannerInputBar
-import com.rite.pillcounting.core.scanning.presentation.compose.CameraPreviewSection
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.DispenseQueuePanel
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModePortrait
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.InformationPanelSection
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.StepTitleWithSpeech
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.TargetPillsCountDialog
-import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.dimens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
+import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
 
 /**
  * Merged dispense flow screen.
@@ -118,6 +119,7 @@ fun DispenseFlowScreen(
     fromHl7: Boolean = false,
     fromResume: Boolean = false,
     batchId: Long = 0L,
+    fromQueue: Boolean = false,
     dispenseVm: DispenseFlowViewModel = hiltViewModel(),
     pillVm: PillScanningViewModel = hiltViewModel(),
 ) {
@@ -126,6 +128,7 @@ fun DispenseFlowScreen(
     val pillState by pillVm.uiState.collectAsState()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val isTabletDevice = configuration.smallestScreenWidthDp >= 600
     val isSoundEnabled by pillVm.isSoundEnabled.collectAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
 
@@ -175,8 +178,18 @@ fun DispenseFlowScreen(
         pillVm.navigationEvent.collectLatest { event ->
             when (event) {
                 is PillNavigationEvent.NavigateToDashboard -> {
-                    navController.navigate(Screen.Dashboard.route)
+                    if (fromQueue) {
+                        pillVm.discardStagedCount()
+                        pillVm.resetGloveDetection()
+                        // Do NOT reset workflow steps here — that changes pillStepType
+                        // while still on COUNTING stage and triggers unwanted TTS speech.
+                        // Steps are reset via LaunchedEffect(stage) when stage becomes QUEUE.
+                        dispenseVm.resetToQueueOrNavigateDashboard()
+                    } else {
+                        navController.navigate(Screen.Dashboard.route)
+                    }
                 }
+
                 is PillNavigationEvent.NavigateToBatch -> {
                     // Pop back to the inventory/batch screen that launched this flow
                     // (the Batch Stock Count screen for the "Scan Pills" hand-off).
@@ -191,6 +204,13 @@ fun DispenseFlowScreen(
                 }
             }
         }
+    }
+
+    // Queue mode: initialize the QUEUE stage and start observing dispense transactions.
+    // Skip when resuming a specific transaction to avoid the QUEUE stage flash
+    // before initializeFromResumedTxn() advances the stage.
+    LaunchedEffect(fromQueue) {
+        if (fromQueue && !fromResume) dispenseVm.enterQueueMode()
     }
 
     // PMS/HL7 entry: hydrate from the pre-existing transaction and skip RX.
@@ -228,7 +248,11 @@ fun DispenseFlowScreen(
     // the dispenseState.isHazardous flag momentarily resets. The icon only clears
     // when the user leaves the screen entirely (remember, not rememberSaveable).
     var sessionHazardous by remember { mutableStateOf(false) }
-    if (dispenseState.isHazardous) sessionHazardous = true
+    if (dispenseState.stage == DispenseStage.COUNTING && dispenseState.isHazardous) {
+        sessionHazardous = true
+    } else if (dispenseState.stage != DispenseStage.COUNTING) {
+        sessionHazardous = false
+    }
 
     // === Pill-VM toasts ===
     if (pillState.restrictAdd) {
@@ -251,8 +275,13 @@ fun DispenseFlowScreen(
         TargetPillsCountDialog(
             onDismiss = {
                 pillVm.setTargetCountDialogShown(false)
-                navController.navigate(Screen.Dashboard.route) {
-                    popUpTo(Screen.Dashboard.route) { inclusive = true }
+                if (fromQueue) {
+                    pillVm.resetWorkflowSteps()
+                    dispenseVm.resetToQueue()
+                } else {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(Screen.Dashboard.route) { inclusive = true }
+                    }
                 }
             },
             onOkay = { count ->
@@ -276,7 +305,7 @@ fun DispenseFlowScreen(
     // message text is the "did you mean to stop short?" warning.
     if (pillState.showConfirmDialog) {
         val warningText = if (
-            countType == CountType.FIXED.toString() &&
+            countType == CountType.FIXED.toString() && pillStepType.equals(StepState.CONTAINER_PENDING) &&
             pillState.txnDetailHistory.sumOf { it.count } < pillState.targetCount
         ) {
             stringResource(R.string.confirm_done_desc_fixed)
@@ -345,7 +374,7 @@ fun DispenseFlowScreen(
             confirmText = stringResource(R.string.yes),
             cancelText = stringResource(R.string.no),
             onConfirm = { pillVm.classifyTrayColor(pendingColor, isHazardous = true) },
-            onCancel  = { pillVm.classifyTrayColor(pendingColor, isHazardous = false) },
+            onCancel = { pillVm.classifyTrayColor(pendingColor, isHazardous = false) },
         )
     }
 
@@ -372,9 +401,16 @@ fun DispenseFlowScreen(
                 pillVm.loadGloveModelAndRebuildAnalyzer()
             }
         } else {
-            // PRE_RX / PRE_NDC — run the detector so the voice prompt can react
+            // PRE_RX / PRE_NDC / QUEUE — run the detector so the voice prompt can react
             // to pills-in-frame, but keep CPU/GPU off when an overlay is active.
             pillVm.resumePillDetection()
+            if (dispenseState.stage == DispenseStage.QUEUE) {
+                // Clear workflow step icons when returning to queue so COUNTING steps
+                // don't linger. Done here (not in the NavigateToDashboard handler) to
+                // avoid changing pillStepType while still on COUNTING stage, which
+                // would trigger unwanted TTS speech.
+                pillVm.resetWorkflowSteps()
+            }
         }
     }
 
@@ -431,7 +467,8 @@ fun DispenseFlowScreen(
         dispenseState.showRxScannedInStockCountDialog,
         dispenseState.isLoading,
     ) {
-        val shouldRun = (dispenseState.stage == DispenseStage.PRE_RX ||
+        val shouldRun = (dispenseState.stage == DispenseStage.QUEUE ||
+                dispenseState.stage == DispenseStage.PRE_RX ||
                 dispenseState.stage == DispenseStage.PRE_NDC) &&
                 !dispenseState.showRxDetails &&
                 !dispenseState.showNdcDetails &&
@@ -449,16 +486,25 @@ fun DispenseFlowScreen(
     // ── Back handling ───────────────────────────────────────────────────────
     // Device-back priority order:
     //  1. If the history view is open, dismiss it (return to camera + pill panel).
-    //  2. Otherwise, exit the dispense flow to the Dashboard.
-    // This matches the on-screen back arrows: the history view has its own
-    // HeadlineBar back arrow wired to dismiss history; we keep behavior
-    // consistent across both entry points.
+    //  2. In QUEUE stage: back navigates to Dashboard (queue is the home for dispense).
+    //  3. In non-QUEUE stage with fromQueue=true: cancel current scan, return to QUEUE.
+    //  4. Otherwise: exit the dispense flow to the Dashboard.
     BackHandler {
         if (showHistory) {
             showHistory = false
+        } else if (dispenseState.stage == DispenseStage.QUEUE) {
+            navController.navigate(Screen.Dashboard.route) {
+                popUpTo(0)
+                launchSingleTop = true
+            }
+        } else if (fromQueue && dispenseState.stage == DispenseStage.PRE_RX) {
+            // Cancel RX scan before any transaction is created → return to queue list.
+            pillVm.discardStagedCount()
+            pillVm.resetGloveDetection()
+            pillVm.resetWorkflowSteps()
+            dispenseVm.resetToQueue()
         } else {
-            // Back-out without Done: discard this session's staged (un-committed)
-            // loose-pill ADDs. Earlier committed counts are preserved in the DB.
+            // PRE_NDC / COUNTING (transaction already exists) or fromQueue=false → Dashboard.
             pillVm.discardStagedCount()
             navController.navigate(Screen.Dashboard.route) {
                 popUpTo(0)
@@ -480,6 +526,16 @@ fun DispenseFlowScreen(
             dispenseVm.clearNavigateToBatch()
             navController.navigate(Screen.Batch.createRoute(targetBatchId)) {
                 popUpTo(Screen.Batch.route) { inclusive = true }
+                launchSingleTop = true
+            }
+        }
+    }
+
+    LaunchedEffect(dispenseState.navigateToDashboard) {
+        if (dispenseState.navigateToDashboard) {
+            dispenseVm.clearNavigateToDashboard()
+            navController.navigate(Screen.Dashboard.route) {
+                popUpTo(0)
                 launchSingleTop = true
             }
         }
@@ -512,9 +568,14 @@ fun DispenseFlowScreen(
             onConfirm = { dispenseVm.confirmContinueRx() },
             onCancel = {
                 dispenseVm.dismissContinueRxDialog()
-                navController.navigate(Screen.Dashboard.route) {
-                    popUpTo(0)
-                    launchSingleTop = true
+                if (fromQueue) {
+                    pillVm.resetWorkflowSteps()
+                    dispenseVm.resetToQueue()
+                } else {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(0)
+                        launchSingleTop = true
+                    }
                 }
             },
         )
@@ -600,47 +661,47 @@ fun DispenseFlowScreen(
         // rotation-driven lifecycle restarts behind the history list.
         if (!showHistory) {
             if (hasCameraPermission) {
-            CameraPreviewSection(
-                viewModel = pillVm,
-                pills = pillState.detectedPills,
-                isCameraPaused = pillVm.cameraPaused.collectAsState().value,
-                showGloveIcon = sessionHazardous,
-                onFrame = { imageProxy ->
-                    // Only the barcode analyzer reads the frame metadata before the
-                    // frame is forwarded to the pill VM (which always closes it). When
-                    // pill detection is paused, the VM still closes the frame on the
-                    // pause-fast-path inside onFrameCaptured — no leak.
-                    if (dispenseState.stage != DispenseStage.COUNTING) {
-                        barcodeAnalyzer.analyze(imageProxy) { value, imagePath ->
-                            val dispatched = handleBarcode(
-                                value = value,
-                                imagePath = imagePath,
-                                stage = dispenseState.stage,
-                                countType = countType,
-                                onRx = dispenseVm::onRxBarcodeRead,
-                                onNdc = dispenseVm::onNdcBarcodeRead,
-                                onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
-                                onRxInStockCount = dispenseVm::onRxScannedInStockCount,
-                            )
-                            // The analyzer self-pauses on every MLKit hit. If we
-                            // dropped the read (false positive, wrong format, or
-                            // the COUNTING stage no-op) without surfacing a sheet,
-                            // resume immediately — otherwise barcode scanning
-                            // would be dead until the user dismissed something
-                            // that never appeared.
-                            if (!dispatched) barcodeAnalyzer.resume()
+                CameraPreviewSection(
+                    viewModel = pillVm,
+                    pills = pillState.detectedPills,
+                    isCameraPaused = pillVm.cameraPaused.collectAsState().value,
+                    showGloveIcon = sessionHazardous,
+                    onFrame = { imageProxy ->
+                        // Only the barcode analyzer reads the frame metadata before the
+                        // frame is forwarded to the pill VM (which always closes it). When
+                        // pill detection is paused, the VM still closes the frame on the
+                        // pause-fast-path inside onFrameCaptured — no leak.
+                        if (dispenseState.stage != DispenseStage.COUNTING) {
+                            barcodeAnalyzer.analyze(imageProxy) { value, imagePath ->
+                                val dispatched = handleBarcode(
+                                    value = value,
+                                    imagePath = imagePath,
+                                    stage = dispenseState.stage,
+                                    countType = countType,
+                                    onRx = dispenseVm::onRxBarcodeRead,
+                                    onNdc = dispenseVm::onNdcBarcodeRead,
+                                    onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
+                                    onRxInStockCount = dispenseVm::onRxScannedInStockCount,
+                                )
+                                // The analyzer self-pauses on every MLKit hit. If we
+                                // dropped the read (false positive, wrong format, or
+                                // the COUNTING stage no-op) without surfacing a sheet,
+                                // resume immediately — otherwise barcode scanning
+                                // would be dead until the user dismissed something
+                                // that never appeared.
+                                if (!dispatched) barcodeAnalyzer.resume()
+                            }
                         }
+                        pillVm.onFrameCaptured(imageProxy)
+                    },
+                    onFilteredCountChanged = { filteredPillCount = it },
+                    modifier = Modifier.fillMaxSize(),
+                    imageFrameWidth = pillState.imageFrameWidth,
+                    imageFrameHeight = pillState.imageFrameHeight,
+                    onPreviewSizeKnown = { w, h ->
+                        pillVm.initializeInterpreter(retryCount = 2, viewWidth = w, viewHeight = h)
                     }
-                    pillVm.onFrameCaptured(imageProxy)
-                },
-                onFilteredCountChanged = { filteredPillCount = it },
-                modifier = Modifier.fillMaxSize(),
-                imageFrameWidth = pillState.imageFrameWidth,
-                imageFrameHeight = pillState.imageFrameHeight,
-                onPreviewSizeKnown = { w, h ->
-                    pillVm.initializeInterpreter(retryCount = 2, viewWidth = w, viewHeight = h)
-                }
-            )
+                )
             }
 
             // ── Pill count panel ─────────────────────────────────────────────
@@ -662,8 +723,7 @@ fun DispenseFlowScreen(
                     showCountCircle = false
                 }
             }
-            val showPillPanel = dispenseState.stage == DispenseStage.COUNTING ||
-                    showCountCircle
+            val showPillPanel = dispenseState.stage == DispenseStage.COUNTING || showCountCircle
             if (showPillPanel) {
                 if (dispenseState.stage == DispenseStage.COUNTING) {
                     // Full pill panel — total / target / circle / Add / Done.
@@ -711,6 +771,83 @@ fun DispenseFlowScreen(
                             viewModel = pillVm,
                         )
                     }
+                }
+            }
+        }
+
+        // ── QUEUE stage overlay ───────────────────────────────────────────────
+        // Shows the dispense transaction list on top of the camera preview.
+        // Layout adapts per device form factor and orientation.
+        if (dispenseState.stage == DispenseStage.QUEUE && !showHistory) {
+            if (isLandscape) {
+                // Landscape (tablet or phone): panel on the right side.
+                val queuePanelWidth = if (isTabletDevice) 0.4f else 0.45f
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .fillMaxWidth(queuePanelWidth)
+                        .clip(RoundedCornerShape(topStart = 16.dp, bottomStart = 16.dp))
+                        .background(AppTheme.extendedColors.secondaryBackground)
+                ) {
+                    DispenseQueuePanel(
+                        items = dispenseState.queueItems,
+                        selectedFilter = dispenseState.selectedQueueFilter,
+                        onFilterSelected = { dispenseVm.setQueueFilter(it) },
+                        onItemClick = { txnId -> dispenseVm.resumeFromQueue(txnId) },
+                        onHomeClick = {
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(0); launchSingleTop = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            } else if (isTabletDevice) {
+                // Tablet portrait: panel anchored at bottom half.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.5f)
+                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                        .background(AppTheme.extendedColors.secondaryBackground)
+                ) {
+                    DispenseQueuePanel(
+                        items = dispenseState.queueItems,
+                        selectedFilter = dispenseState.selectedQueueFilter,
+                        onFilterSelected = { dispenseVm.setQueueFilter(it) },
+                        onItemClick = { txnId -> dispenseVm.resumeFromQueue(txnId) },
+                        onHomeClick = {
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(0); launchSingleTop = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
+                }
+            } else {
+                // Phone portrait: bottom sheet anchored at bottom half.
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .fillMaxHeight(0.55f)
+                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                        .background(AppTheme.extendedColors.secondaryBackground)
+                ) {
+                    DispenseQueuePanel(
+                        items = dispenseState.queueItems,
+                        selectedFilter = dispenseState.selectedQueueFilter,
+                        onFilterSelected = { dispenseVm.setQueueFilter(it) },
+                        onItemClick = { txnId -> dispenseVm.resumeFromQueue(txnId) },
+                        onHomeClick = {
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(0); launchSingleTop = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
             }
         }
@@ -789,6 +926,17 @@ fun DispenseFlowScreen(
         }
 
         if (!showHistory) {
+            // In landscape the right side is occupied by a panel (pill count / queue).
+            // Pad the header end by the same fraction so Alignment.Center lands in
+            // the middle of the visible camera area rather than the full screen width.
+            val headerEndPadding = if (isLandscape) {
+                val screenW = configuration.screenWidthDp.dp
+                when (dispenseState.stage) {
+                    DispenseStage.COUNTING -> screenW * 0.3f
+                    DispenseStage.QUEUE -> screenW * if (isTabletDevice) 0.4f else 0.45f
+                    else -> 0.dp
+                }
+            } else 0.dp
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -798,22 +946,28 @@ fun DispenseFlowScreen(
                     // were swallowing taps on the arrow (system back worked, the
                     // on-screen arrow didn't).
                     .zIndex(1f)
-                    .padding(vertical = 8.dp),
+                    .padding(top = 8.dp, bottom = 8.dp, end = headerEndPadding),
             ) {
                 BackButton(
                     navController = navController,
                     showBox = false,
                     modifier = Modifier.align(Alignment.CenterStart),
                     onClick = {
-                        // Back-out without Done: discard staged loose-pill ADDs.
                         pillVm.discardStagedCount()
-                        navController.navigate(Screen.Dashboard.route) {
-                            popUpTo(0)
-                            launchSingleTop = true
+                        if (fromQueue && dispenseState.stage == DispenseStage.PRE_RX) {
+                            pillVm.resetGloveDetection()
+                            pillVm.resetWorkflowSteps()
+                            dispenseVm.resetToQueue()
+                        } else {
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(0)
+                                launchSingleTop = true
+                            }
                         }
                     },
                 )
                 val headerStepType = when (dispenseState.stage) {
+                    DispenseStage.QUEUE -> StepState.RX_LABEL
                     DispenseStage.PRE_RX -> StepState.RX_LABEL
                     DispenseStage.PRE_NDC -> StepState.SCAN
                     DispenseStage.COUNTING -> pillStepType
@@ -828,11 +982,8 @@ fun DispenseFlowScreen(
             }
         }
 
-        // BT scanner input bar — visible during PRE_RX and PRE_NDC while no modal
-        // overlay is active. Positioned just below the back-button row so it
-        // doesn't obstruct the camera detection area. The field auto-focuses on
-        // composition and re-focuses whenever a dialog/sheet dismisses, so the
-        // Bluetooth HID scanner can type directly into it without any tap.
+        // BT scanner input bar — visible during QUEUE, PRE_RX and PRE_NDC while no modal
+        // overlay is active.
         if (!showHistory &&
             dispenseState.stage != DispenseStage.COUNTING &&
             !btScannerOverlayActive
@@ -868,7 +1019,6 @@ fun DispenseFlowScreen(
         // formula: 30% of screen width clamped to a sensible min/max per device
         // class. Without the clamp the panel becomes uselessly narrow on small
         // phones and excessively wide on large tablets.
-        val isTabletDevice = configuration.smallestScreenWidthDp >= 600
         val inlinePanelWidth = (configuration.screenWidthDp.dp * 0.3f).coerceIn(
             if (isTabletDevice) 320.dp else 280.dp,
             if (isTabletDevice) 440.dp else 340.dp,
@@ -1027,6 +1177,7 @@ internal fun handleBarcode(
 ): Boolean {
     if (value.isBlank()) return false
     return when (stage) {
+        DispenseStage.QUEUE,
         DispenseStage.PRE_RX -> {
             onRx(value, imagePath)
             true

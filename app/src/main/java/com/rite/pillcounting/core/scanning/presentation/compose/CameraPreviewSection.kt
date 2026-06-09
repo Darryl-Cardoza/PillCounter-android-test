@@ -203,8 +203,15 @@ fun CameraPreviewSection(
     val trayLabelBgPaint = remember { android.graphics.Paint() }
     val labelBounds = remember { android.graphics.Rect() }
 
-    LaunchedEffect(capturedBitmap) {
-        if (capturedBitmap == null) cameraHelper.resumeCamera(previewView)
+    // Resume live camera when the captured still is cleared, but NOT while the
+    // confirm-completion dialog is open — processCapturedImage() nulls the bitmap
+    // just before the dialog appears, which would restart the camera underneath it.
+    // When the dialog is dismissed (cancel), showConfirmDialog flips back to false
+    // and this effect re-fires, restoring the live preview correctly.
+    LaunchedEffect(capturedBitmap, uiState.showConfirmDialog) {
+        if (capturedBitmap == null && !uiState.showConfirmDialog) {
+            cameraHelper.resumeCamera(previewView)
+        }
     }
 
     val glovesDetectedDesc = stringResource(R.string.cd_gloves_detected)

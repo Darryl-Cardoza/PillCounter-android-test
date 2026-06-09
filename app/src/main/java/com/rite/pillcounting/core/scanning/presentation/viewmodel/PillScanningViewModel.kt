@@ -839,6 +839,12 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    /** Clear the workflow step list so the WorkflowStepper hides when returning to QUEUE/PRE_RX. */
+    fun resetWorkflowSteps() {
+        _steps.value = emptyList()
+        _currentStep.value = StepState.TARGET_VERIFICATION
+    }
+
     /**
      * Reset glove detection state.
      * Called when the pill scanning screen is loaded or when resuming from idle.
@@ -1249,12 +1255,17 @@ class PillScanningViewModel @Inject constructor(
                 pillCountTxnDao.updateTxnStatus(txnId, status)
             }
 
+            _capturedBitmap.value = null
+            _uiState.update { it.copy(showConfirmDialog = false) }
             _navigationEvent.send(NavigationEvent.NavigateToDashboard)
             logger.i("Transaction completed. Status=$status")
         }
     }
 
     private fun handleCancelDone() {
+        // Clear the captured still so the VIAL step returns to the live camera view,
+        // allowing the user to capture a new photo or click Done again.
+        _capturedBitmap.value = null
         _uiState.update { it.copy(showConfirmDialog = false) }
         logger.i("Confirm dialog cancelled.")
     }
@@ -1595,6 +1606,10 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun showConfirmDialogAfterDone() {
+        // Do NOT clear capturedBitmap here. The confirm dialog is shown on top of
+        // the captured still, so the user never sees the live camera underneath.
+        // capturedBitmap is cleared in handleCancelDone (returns user to live VIAL
+        // camera) and is irrelevant on confirm (navigation destroys the screen).
         _uiState.update { it.copy(showConfirmDialog = true) }
     }
 
@@ -1731,21 +1746,19 @@ class PillScanningViewModel @Inject constructor(
     private fun processCapturedImage(bitmap: Bitmap) {
         onEvent(PillScanningEvent.AddVialPhotoInTxn(0, bitmap))
         moveNextStep()
-        // Leaving the VIAL still-photo step: fully restore the live camera. We
-        // pause the idle watchdog on VIAL entry (see moveNextStep), but if it had
-        // already fired before this photo was taken the overlay + _cameraPaused
-        // flag are still set. Clear them and restart the watchdog so the next
-        // step shows the live preview instead of the stuck RESUME overlay.
-        // (moveNextStep already calls resetIdleOverlay() when the next step is
-        // CONTAINER_PENDING; this covers every other post-VIAL step too.)
         isPaused = false
         _cameraPaused.value = false
         _uiState.update { it.copy(showIdleOverlay = false) }
-        // Drop the captured still so CameraPreviewSection rebinds the live preview
-        // (it resumes the camera when capturedBitmap == null). The CONTAINER_PENDING
-        // path already does this via redoCaptureImage(); clear it here too so the
-        // live preview returns after VIAL regardless of which step follows.
-        _capturedBitmap.value = null
+        // Clear the captured still only when the step has actually advanced beyond
+        // VIAL (i.e. moveNextStep moved to CONTAINER_PENDING or similar). When the
+        // step is still VIAL it means handleDone() was called and its coroutine
+        // will finish with showConfirmDialogAfterDone(), which clears capturedBitmap
+        // and sets showConfirmDialog in the same synchronous dispatch — preventing
+        // CameraPreviewSection from briefly resuming the live camera in the window
+        // between the image disappearing and the dialog appearing.
+        if (_currentStep.value != StepState.VIAL) {
+            _capturedBitmap.value = null
+        }
         resetIdleTimer()
     }
 
