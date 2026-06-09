@@ -261,6 +261,15 @@ class InventoryScanViewModel @Inject constructor(
                 val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
                 val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
                 val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
+                logger.i(
+                    "SCAN_DECODED isGs1=$isGs1 | " +
+                    "gtin14=$gtin14 | " +
+                    "lot=${decoded?.lotNumber} | " +
+                    "expiry=${decoded?.expirationDate} | " +
+                    "serial=${decoded?.serialNumber} | " +
+                    "prodDate=${decoded?.productionDate} | " +
+                    "sellBy=${decoded?.sellByDate}"
+                )
                 logger.d("INV_SCAN decoded isGs1=$isGs1 extractedGtin=$extractedGtin gtin14=$gtin14")
                 if (gtin14.isNullOrBlank() || gtin14.length != 14 || !gtin14.all { it.isDigit() }) {
                     logger.w("INV_SCAN invalid label: gtin14=$gtin14")
