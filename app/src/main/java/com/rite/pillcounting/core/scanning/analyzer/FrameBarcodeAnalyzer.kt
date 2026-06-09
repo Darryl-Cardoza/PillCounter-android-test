@@ -64,8 +64,25 @@ class FrameBarcodeAnalyzer(
 ) {
     private val logger = AppLogger("FrameBarcodeAnalyzer")
     private val scannerDelegate = lazy {
+        // FORMAT_ALL_FORMATS = 0 is treated by ML Kit as an empty bitmask (no formats),
+        // not "all formats". Listing formats explicitly is the only reliable way to
+        // ensure QR codes and all 1D/2D symbologies are detected.
         val options = BarcodeScannerOptions.Builder()
-            .setBarcodeFormats(Barcode.FORMAT_ALL_FORMATS)
+            .setBarcodeFormats(
+                Barcode.FORMAT_QR_CODE,
+                Barcode.FORMAT_DATA_MATRIX,
+                Barcode.FORMAT_PDF417,
+                Barcode.FORMAT_AZTEC,
+                Barcode.FORMAT_CODE_128,
+                Barcode.FORMAT_CODE_39,
+                Barcode.FORMAT_CODE_93,
+                Barcode.FORMAT_CODABAR,
+                Barcode.FORMAT_EAN_13,
+                Barcode.FORMAT_EAN_8,
+                Barcode.FORMAT_ITF,
+                Barcode.FORMAT_UPC_A,
+                Barcode.FORMAT_UPC_E,
+            )
             .build()
         BarcodeScanning.getClient(options)
     }
@@ -223,11 +240,33 @@ class FrameBarcodeAnalyzer(
                 // frame, which defeats the focus-change debouncer downstream
                 // (alternating A→B→A reads each look "new"). Filtering here
                 // means we only ever surface the product barcode.
-                val barcode = barcodes.firstOrNull { it.rawValue?.isGtinLike() == true }
+                // Priority order:
+                //  1. 2D code (DataMatrix / QR / PDF417 / Aztec) — these carry the full
+                //     GS1 payload: GTIN + lot + expiry + serial number. Drug labels always
+                //     encode all fields in the 2D symbol; the 1D barcode alongside it
+                //     carries only the bare GTIN.
+                //  2. Any GTIN-shaped 1D barcode as fallback.
+                //  3. Whatever MLKit found first.
+                val is2D = { b: com.google.mlkit.vision.barcode.common.Barcode ->
+                    b.format == Barcode.FORMAT_QR_CODE ||
+                    b.format == Barcode.FORMAT_DATA_MATRIX ||
+                    b.format == Barcode.FORMAT_PDF417 ||
+                    b.format == Barcode.FORMAT_AZTEC
+                }
+                val barcode = barcodes.firstOrNull(is2D)
+                    ?: barcodes.firstOrNull { it.rawValue?.isGtinLike() == true }
                     ?: barcodes.firstOrNull()
                 val rawValue = barcode?.rawValue
                 val isProductBarcode = rawValue?.isGtinLike() == true
                 logger.d("INV_SCAN MLKit success token=$token barcodes=${barcodes.size} first='$rawValue' gtinLike=$isProductBarcode paused=${isPaused.get()}")
+
+                // Log every detected barcode so scan results are visible in logcat.
+                if (barcodes.isNotEmpty()) {
+                    barcodes.forEach { b ->
+                        val formatName = barcodeFormatName(b.format)
+                        logger.i("SCAN_DATA format=$formatName raw='${b.rawValue}'")
+                    }
+                }
 
                 // Decide whether THIS frame should fire a callback. There are two
                 // policies depending on the analyzer's mode:
@@ -245,10 +284,13 @@ class FrameBarcodeAnalyzer(
                 val shouldFire: Boolean = when {
                     barcode == null || isPaused.get() -> false
                     // In focus-change (inventory) mode, ignore non-product
-                    // barcodes outright so the lot/serial DataMatrix never
-                    // reaches the VM and never spams "invalid label" toasts.
-                    enableFocusChangeDebounce && !isProductBarcode -> {
-                        logger.d("INV_SCAN focus-change: non-GTIN '$rawValue' filtered")
+                    // barcodes outright so stray 1D lot/serial codes never
+                    // reach the VM and spam "invalid label" toasts.
+                    // 2D codes (DataMatrix, QR, PDF417, Aztec) are always passed
+                    // through — they carry the full GS1 payload and the ViewModel
+                    // validates the content.
+                    enableFocusChangeDebounce && !isProductBarcode && !is2D(barcode) -> {
+                        logger.d("INV_SCAN focus-change: non-GTIN 1D '$rawValue' filtered")
                         false
                     }
                     !enableFocusChangeDebounce -> true
@@ -276,9 +318,11 @@ class FrameBarcodeAnalyzer(
                 // resets the streak (label visible); a null barcode increments.
                 if (enableFocusChangeDebounce) {
                     // Frames where the only visible barcode is a non-product
-                    // (lot/serial) one count as "empty" for the focus-change
-                    // debouncer — they mean the product label isn't in view.
-                    if (barcode == null || !isProductBarcode) {
+                    // 1D code count as "empty" for the focus-change debouncer.
+                    // Any 2D code (DataMatrix, QR, etc.) counts as visible — it
+                    // carries the full GS1 payload regardless of GTIN shape.
+                    val isVisibleLabel = barcode != null && (isProductBarcode || is2D(barcode))
+                    if (!isVisibleLabel) {
                         emptyStreak++
                     } else {
                         emptyStreak = 0
@@ -338,4 +382,21 @@ class FrameBarcodeAnalyzer(
 private fun String.isGtinLike(): Boolean {
     if (startsWith("01") && length >= 16 && substring(2, 16).all { it.isDigit() }) return true
     return length in 12..14 && all { it.isDigit() }
+}
+
+private fun barcodeFormatName(format: Int): String = when (format) {
+    Barcode.FORMAT_QR_CODE      -> "QR_CODE"
+    Barcode.FORMAT_DATA_MATRIX  -> "DATA_MATRIX"
+    Barcode.FORMAT_PDF417       -> "PDF417"
+    Barcode.FORMAT_AZTEC        -> "AZTEC"
+    Barcode.FORMAT_CODE_128     -> "CODE_128"
+    Barcode.FORMAT_CODE_39      -> "CODE_39"
+    Barcode.FORMAT_CODE_93      -> "CODE_93"
+    Barcode.FORMAT_EAN_13       -> "EAN_13"
+    Barcode.FORMAT_EAN_8        -> "EAN_8"
+    Barcode.FORMAT_UPC_A        -> "UPC_A"
+    Barcode.FORMAT_UPC_E        -> "UPC_E"
+    Barcode.FORMAT_ITF          -> "ITF"
+    Barcode.FORMAT_CODABAR      -> "CODABAR"
+    else                        -> "UNKNOWN($format)"
 }
