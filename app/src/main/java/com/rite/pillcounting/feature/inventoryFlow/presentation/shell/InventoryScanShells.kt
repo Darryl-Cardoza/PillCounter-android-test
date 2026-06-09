@@ -99,6 +99,7 @@ fun InventoryTabletLandscapeShell(
                 onClear = onClear,
                 onAdd = onAdd,
                 onEndCount = onEndCount,
+                endCountEnabled = canEndCount,
                 onRowTapped = onRowTapped,
             )
         }
