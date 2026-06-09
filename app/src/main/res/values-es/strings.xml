@@ -55,8 +55,10 @@
     <string name="setting_hazardous_drug">Medicamento peligroso</string>
     <string name="tray_classification_title">Clasificación de bandejas</string>
     <string name="tray_classification_message">La bandeja de color %s no está clasificada. ¿Marcarla como bandeja peligrosa?</string>
+    <string name="hazardous_tray_warning">Advertencia: Está utilizando una bandeja peligrosa. Utilice una bandeja no peligrosa.</string>
+    <string name="non_hazardous_tray_warning">Esta no es la bandeja peligrosa. Utilice la bandeja peligrosa.</string>
     <string name="clear_tray_color_lists">Borrar listas de colores de bandejas</string>
-    <string name="clear_tray_color_lists_confirm">¿Está seguro de que desea borrar todas las clasificaciones de colores de bandejas peligrosas y no peligrosas?</string>
+    <string name="clear_tray_color_lists_confirm">¿Está seguro de que desea borrar la clasificación de color de bandeja peligrosa?</string>
 
     <string-array name="history_options">
         <item>1 semana (predeterminado)</item>
