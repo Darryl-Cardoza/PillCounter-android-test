@@ -1205,6 +1205,7 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun handleDone() {
+        _uiState.update { it.copy(showCountMismatchDialog = false) }
         viewModelScope.launch {
             val txnId = preferenceHelper.getTxnId()
             // Staged rows are not in the DB yet, so include the staged sum in the

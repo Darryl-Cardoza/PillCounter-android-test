@@ -23,6 +23,7 @@ data class DispenseFlowUiState(
     val ndcScannedValue: String = "",
     val ndcDrugName: String = "",
     val ndcPackageQty: Int? = null,
+    val ndcDrugType: String? = null,
 
     val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
 

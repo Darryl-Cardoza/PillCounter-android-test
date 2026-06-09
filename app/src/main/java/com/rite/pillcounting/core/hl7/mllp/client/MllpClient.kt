@@ -85,10 +85,15 @@ class MllpClient(
         scope: CoroutineScope,
         onMessageReceived: (String) -> Unit,
         onDisconnected: () -> Unit
-    ): Job = scope.launch(Dispatchers.IO) {
+    ): Job {
+        // Capture input under mutex before launching coroutine to avoid a race where
+        // a concurrent connect() call invokes closeInternal() and nulls the stream
+        // between when we succeed here and when the coroutine body actually runs.
+        val capturedInput = input
+        return scope.launch(Dispatchers.IO) {
         logger.d("startPassiveReader() — started")
         try {
-            val stream = input ?: run {
+            val stream = capturedInput ?: run {
                 logger.w("startPassiveReader() — input stream is null")
                 onDisconnected()
                 return@launch
@@ -131,6 +136,7 @@ class MllpClient(
         } catch (e: Exception) {
             logger.w("startPassiveReader() — exception: ${e.message}")
             onDisconnected()
+        }
         }
     }
 

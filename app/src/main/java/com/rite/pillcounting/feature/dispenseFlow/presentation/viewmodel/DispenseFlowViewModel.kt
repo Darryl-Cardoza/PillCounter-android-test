@@ -367,6 +367,7 @@ class DispenseFlowViewModel @Inject constructor(
                             ndcScannedValue = drugInfo.ndc,
                             ndcDrugName = displayName,
                             ndcPackageQty = drugInfo.qty,
+                            ndcDrugType = drugInfo.drugType,
                             barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcEquivalenceDialog = true,
                             isHazardous = drugInfo.isHazardous ?: false,
@@ -531,6 +532,9 @@ class DispenseFlowViewModel @Inject constructor(
                 DrugMasterEntity(
                     ndc = state.ndcScannedValue,
                     drugName = state.ndcDrugName.ifBlank { state.drugName },
+                    drugType = state.ndcDrugType,
+                    packageQty = state.ndcPackageQty,
+                    isHazardous = state.isHazardous,
                 )
             )
         } else null
@@ -593,6 +597,8 @@ class DispenseFlowViewModel @Inject constructor(
                 showNdcEquivalenceDialog = false,
                 ndcScannedValue = "",
                 ndcDrugName = "",
+                ndcPackageQty = null,
+                ndcDrugType = null,
             )
         }
     }
@@ -676,6 +682,9 @@ class DispenseFlowViewModel @Inject constructor(
                     DrugMasterEntity(
                         ndc = state.ndcScannedValue,
                         drugName = state.ndcDrugName.ifBlank { state.drugName },
+                        drugType = state.ndcDrugType,
+                        packageQty = state.ndcPackageQty,
+                        isHazardous = state.isHazardous,
                     )
                 )
             } else null
@@ -703,6 +712,7 @@ class DispenseFlowViewModel @Inject constructor(
                 ndcScannedValue = "",
                 ndcDrugName = "",
                 ndcPackageQty = null,
+                ndcDrugType = null,
                 isSubstituteConfirmed = false,
             )
         }
