@@ -10,6 +10,7 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.security.DatabaseKeyProvider
+import com.rite.pillcounting.BuildConfig
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -28,25 +29,22 @@ object DatabaseModule {
         @ApplicationContext context: Context
     ): AppDatabase {
 
-        // IMPORTANT
-        System.loadLibrary("sqlcipher")
-
-        val dbKey = DatabaseKeyProvider.getOrCreateDatabaseKey(context)
-
-        val passphrase = Base64.encodeToString(
-            dbKey,
-            Base64.NO_WRAP
-        ).toByteArray(Charsets.UTF_8)
-
-        val factory = SupportOpenHelperFactory(passphrase)
-
-        return Room.databaseBuilder(
+        val builder = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
             "pill_counting_db"
         )
-            .openHelperFactory(factory)
-            .build()
+
+        if (!BuildConfig.DEBUG) {
+            // IMPORTANT
+            System.loadLibrary("sqlcipher")
+
+            val dbKey = DatabaseKeyProvider.getOrCreateDatabaseKey(context)
+            val passphrase = Base64.encodeToString(dbKey, Base64.NO_WRAP).toByteArray(Charsets.UTF_8)
+            builder.openHelperFactory(SupportOpenHelperFactory(passphrase))
+        }
+
+        return builder.build()
     }
 
     /** Provides the [UserDao]. */

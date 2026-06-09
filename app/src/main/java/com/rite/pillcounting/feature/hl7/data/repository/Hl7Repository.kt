@@ -18,6 +18,8 @@ import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.scanning.data.DrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.feature.hl7.core.Hl7MessageSender
@@ -277,6 +279,7 @@ class Hl7Repository @Inject constructor(
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
         preferenceHelper.saveTxnId(txnId)
+        insertZinContainerDetails(txnId, message)
 
         val meds = message.medications
         val notifBody = if (meds.size == 1) {
@@ -441,6 +444,30 @@ class Hl7Repository @Inject constructor(
             title = context.getString(R.string.hl7_notification_inventory_title),
             message = context.getString(R.string.hl7_notification_inventory_items_count, resolvedItems.size)
         )
+    }
+
+    private suspend fun insertZinContainerDetails(txnId: Long, message: CompleteHL7Message) {
+        val zinSegments = message.customSegments.filter {
+            it.segmentType == "ZIN" && it.field2 == "EXPECTED_ON_HAND"
+        }
+        var inserted = false
+        for (segment in zinSegments) {
+            val pillCount = segment.field3?.toIntOrNull() ?: continue
+            txnDetailsDao.insert(
+                PillCountTxnDetailsEntity(
+                    txnId = txnId,
+                    pillCount = pillCount,
+                    type = StepState.CONTAINER_INITIATE.name,
+                    isManual = false
+                )
+            )
+            logger.i("ZIN EXPECTED_ON_HAND: inserted detail txnId=$txnId pillCount=$pillCount")
+            inserted = true
+        }
+        if (inserted) {
+            pillCountTxnDao.updateWorkflowStep(txnId, StepState.TARGET_VERIFICATION.name)
+            logger.i("ZIN: workflowStep updated to TARGET_VERIFICATION for txnId=$txnId")
+        }
     }
 
     private fun classifyInboundMessage(
