@@ -262,6 +262,7 @@
     <string name="substitute">Substitute</string>
     <string name="scan_ndc_toast">Scan NDC</string>
     <string name="rescan_ndc_does_not_match_toast">Rescan — NDC does not match</string>
+    <string name="transaction_not_found_toast">Transaction not found</string>
 
     <!-- Unsynced Transaction-->
     <string name="unsynced_transaction">UNSYNCED TRANSACTIONS</string>
