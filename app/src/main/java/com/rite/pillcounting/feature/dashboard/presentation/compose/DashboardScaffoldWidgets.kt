@@ -69,7 +69,7 @@ internal fun buildTerminalUserLine(uiState: DashboardUiState): String {
         ?.firstOrNull { it.isActive == true }
         ?.terminalName
         ?.takeIf { it.isNotBlank() }
-    val terminal = activeTerminalName?.let { "Terminal $it" }
+    val terminal = activeTerminalName
     val user = listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }

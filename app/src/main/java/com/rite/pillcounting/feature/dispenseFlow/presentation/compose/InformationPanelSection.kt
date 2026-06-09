@@ -63,7 +63,7 @@ fun InformationPanelSection(
             ) {
                 Text(
                     text = drugName,
-                    color = AppTheme.extendedColors.textColor,
+                    color = Color.White,
                     fontSize = 18.sp,
                     modifier = Modifier.weight(1f),
                     textAlign = TextAlign.Center,

@@ -21,14 +21,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
-import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
-import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable
 fun CircularCountIndicator(
@@ -96,7 +96,7 @@ fun CircularCountIndicator(
         ) {
             Text(
                 text = count.toString(),
-                color = AppTheme.extendedColors.textColor,
+                color = Color.White,
                 fontSize = responsiveSp(32.sp)
             )
         }

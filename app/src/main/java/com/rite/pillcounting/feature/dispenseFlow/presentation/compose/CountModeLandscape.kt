@@ -64,7 +64,7 @@ fun CountModeLandscape(
             // Row: Circle + Add (center)
             Text(
                 text = drugName,
-                color = AppTheme.extendedColors.textColor,
+                color = Color.White,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Medium,
                 modifier = Modifier.fillMaxWidth(),
@@ -162,7 +162,7 @@ fun CountModeLandscape(
                         }
                         Text(
                             text = stringResource(R.string.pill_scanning_total_count),
-                            color = AppTheme.extendedColors.textColor,
+                            color = Color.White,
                             fontSize = 14.sp
                         )
                     }
@@ -189,7 +189,7 @@ fun CountModeLandscape(
                         Spacer(modifier = Modifier.height(responsiveDp(20.dp)))
                         Text(
                             text = stringResource(R.string.pill_scanning_all_done),
-                            color = AppTheme.extendedColors.textColor,
+                            color = Color.White,
                             fontSize = 15.sp
                         )
                     }

@@ -705,7 +705,7 @@ class InventoryScanViewModel @Inject constructor(
         _showEndCountDialog.value = false
     }
 
-    fun confirmEndCount() {
+    fun confirmEndCount(note: String? = null) {
         viewModelScope.launch {
             try {
                 val batchId = _resolvedBatchId.value
@@ -716,6 +716,9 @@ class InventoryScanViewModel @Inject constructor(
                 val hasCommittedNdc = batchId != 0L && recentRows.value.isNotEmpty()
                 if (hasCommittedNdc) {
                     batchDao.markAsCompleted(batchId)
+                    if (!note.isNullOrBlank()) {
+                        batchDao.updateNote(batchId, note)
+                    }
                 } else {
                     logger.d("INV_SCAN confirmEndCount: no committed NDC — nothing to persist")
                 }

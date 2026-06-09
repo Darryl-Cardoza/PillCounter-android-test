@@ -221,88 +221,40 @@ class DispenseFlowViewModel @Inject constructor(
 
                 // Check if this RX has an active local transaction (PARTIAL or ON_HOLD).
                 val existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
-                if (existingTxn != null) {
-                    when (existingTxn.status) {
-                        CountStatus.ON_HOLD -> {
-                            _uiState.update { it.copy(isLoading = false, showOnHoldDialog = true) }
-                            return@launch
-                        }
-                        CountStatus.PARTIAL -> {
-                            // Auto-resume the existing transaction without asking.
-                            val txnId = existingTxn.txnId
-                            val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
-                            pillCountTxnDao.updateGlovesPresent(txnId, false)
-                            preferenceHelper.saveTxnId(txnId)
-                            val targetStage = if (existingTxn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    stage = targetStage,
-                                    txnId = txnId,
-                                    drugName = drug?.drugName ?: it.drugName,
-                                    ndc = drug?.ndc ?: it.ndc,
-                                    hl7ExpectedNdc = drug?.ndc,
-                                    rxNo = existingTxn.rxNo ?: rxNo,
-                                    qty = existingTxn.targetCount?.toString() ?: qty,
-                                    isHazardous = drug?.isHazardous ?: false,
-                                )
-                            }
-                            return@launch
-                        }
-                        else -> { /* proceed with fresh drug lookup */ }
-                    }
-                }
-
-                val localDrug = drugMasterDao.getDrugByNdc(parsedNdc)
-                if (localDrug != null) {
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            drugName = localDrug.drugName ?: "Unknown Drug",
-                            ndc = localDrug.ndc,
-                            barcodeImagePath = imagePath,
-                            rxNo = rxNo,
-                            qty = qty,
-                            showRxDetails = true,
-                            isHazardous = localDrug.isHazardous,
-                        )
-                    }
-                    logger.i("[HAZARDOUS] RX scan → local DB: ndc=${localDrug.ndc} drug=${localDrug.drugName} isHazardous=${localDrug.isHazardous} rxNo=$rxNo qty=$qty")
+                if (existingTxn == null) {
+                    _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
                     return@launch
                 }
-
-                val drugInfo: DrugInfo? = drugRepository.getDrugInfoByNdc(
-                    GetNdcRequestModel(target_ndc = "", scanned_ndc = parsedNdc)
-                )
-                if (drugInfo != null) {
-                    val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() }
-                        ?: "Unknown Drug"
-                    drugMasterDao.upsertPreservingId(
-                        DrugMasterEntity(
-                            ndc = drugInfo.ndc,
-                            drugName = displayName,
-                            drugType = drugInfo.drugType,
-                            gtin = parsedNdc,
-                            packageQty = drugInfo.qty,
-                            isHazardous = drugInfo.isHazardous ?: false,
-                        )
-                    )
-                    _uiState.update {
-                        it.copy(
-                            isLoading = false,
-                            drugName = displayName,
-                            ndc = drugInfo.ndc,
-                            barcodeImagePath = imagePath,
-                            rxNo = rxNo,
-                            qty = qty,
-                            showRxDetails = true,
-                            isHazardous = drugInfo.isHazardous ?: false,
-                        )
+                when (existingTxn.status) {
+                    CountStatus.ON_HOLD -> {
+                        _uiState.update { it.copy(isLoading = false, showOnHoldDialog = true) }
+                        return@launch
                     }
-                    logger.i("[HAZARDOUS] RX scan → server: ndc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false} rxNo=$rxNo qty=$qty")
-                } else {
-                    _uiState.update {
-                        it.copy(isLoading = false, showNdcNotFoundDialog = true)
+                    CountStatus.PARTIAL -> {
+                        // Auto-resume the existing transaction without asking.
+                        val txnId = existingTxn.txnId
+                        val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
+                        pillCountTxnDao.updateGlovesPresent(txnId, false)
+                        preferenceHelper.saveTxnId(txnId)
+                        val targetStage = if (existingTxn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                stage = targetStage,
+                                txnId = txnId,
+                                drugName = drug?.drugName ?: it.drugName,
+                                ndc = drug?.ndc ?: it.ndc,
+                                hl7ExpectedNdc = drug?.ndc,
+                                rxNo = existingTxn.rxNo ?: rxNo,
+                                qty = existingTxn.targetCount?.toString() ?: qty,
+                                isHazardous = drug?.isHazardous ?: false,
+                            )
+                        }
+                        return@launch
+                    }
+                    else -> {
+                        _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
+                        return@launch
                     }
                 }
             } catch (e: Exception) {
