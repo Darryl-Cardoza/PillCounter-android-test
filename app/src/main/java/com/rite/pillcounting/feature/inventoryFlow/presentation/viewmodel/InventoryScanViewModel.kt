@@ -257,12 +257,18 @@ class InventoryScanViewModel @Inject constructor(
         _scannerPaused.value = true
         viewModelScope.launch {
             try {
+                logger.i(
+                    "INV_SCAN RAW rawValue='$rawValue' | " +
+                    "length=${rawValue.length} | " +
+                    "bypassCooldown=$bypassCooldown"
+                )
                 val isGs1 = barcodeDecoder.isGs1Barcode(rawValue)
                 val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
                 val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
                 val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
                 logger.i(
-                    "SCAN_DECODED isGs1=$isGs1 | " +
+                    "INV_SCAN DECODED isGs1=$isGs1 | " +
+                    "extractedGtin=$extractedGtin | " +
                     "gtin14=$gtin14 | " +
                     "lot=${decoded?.lotNumber} | " +
                     "expiry=${decoded?.expirationDate} | " +
@@ -271,15 +277,30 @@ class InventoryScanViewModel @Inject constructor(
                     "sellBy=${decoded?.sellByDate}"
                 )
                 logger.d("INV_SCAN decoded isGs1=$isGs1 extractedGtin=$extractedGtin gtin14=$gtin14")
-                if (gtin14.isNullOrBlank() || gtin14.length != 14 || !gtin14.all { it.isDigit() }) {
-                    logger.w("INV_SCAN invalid label: gtin14=$gtin14")
-                    _errorMessage.value = LocalizedError(R.string.batch_stock_count_invalid_label)
-                    _scannerPaused.value = false
-                    return@launch
+
+                // Determine the lookup key for the drug database.
+                // Primary path: GTIN-14 produced by the GS1 decoder.
+                // Fallback: strip non-digits from the raw value — BT-scanner QR
+                // codes often encode a plain NDC (10-11 digits) that toGtin14
+                // rejects, but the drug_master table can resolve it via getDrugByNdc.
+                val scanKey: String
+                if (!gtin14.isNullOrBlank() && gtin14.length == 14 && gtin14.all { it.isDigit() }) {
+                    scanKey = gtin14
+                } else {
+                    val rawDigits = rawValue.filter { it.isDigit() }
+                    if (rawDigits.length in 10..14) {
+                        scanKey = rawDigits
+                        logger.i("INV_SCAN GTIN-14 extraction failed, falling back to raw NDC: $scanKey")
+                    } else {
+                        logger.w("INV_SCAN invalid label: gtin14=$gtin14 rawValue=$rawValue")
+                        _errorMessage.value = LocalizedError(R.string.batch_stock_count_invalid_label)
+                        _scannerPaused.value = false
+                        return@launch
+                    }
                 }
 
-                val localDrug = drugMasterDao.getDrugByGtin(gtin14) ?: drugMasterDao.getDrugByNdc(gtin14)
-                logger.d("INV_SCAN local lookup gtin14=$gtin14 → drug=${localDrug?.ndc} (${localDrug?.drugName}) hazardous=${localDrug?.isHazardous}")
+                val localDrug = drugMasterDao.getDrugByGtin(scanKey) ?: drugMasterDao.getDrugByNdc(scanKey)
+                logger.d("INV_SCAN local lookup scanKey=$scanKey → drug=${localDrug?.ndc} (${localDrug?.drugName}) hazardous=${localDrug?.isHazardous}")
 
                 // Fall back to the server when the drug isn't cached locally.
                 // Matches the dispense flow's behavior — unknown drugs are
@@ -288,15 +309,15 @@ class InventoryScanViewModel @Inject constructor(
                 val drug = localDrug ?: run {
                     val drugInfo = try {
                         drugRepository.getDrugInfoByNdc(
-                            GetNdcRequestModel(target_ndc = "", scanned_ndc = gtin14)
+                            GetNdcRequestModel(target_ndc = "", scanned_ndc = scanKey)
                         )
                     } catch (e: Exception) {
-                        logger.e("server drug lookup failed for gtin14=$gtin14", e)
+                        logger.e("server drug lookup failed for scanKey=$scanKey", e)
                         null
                     }
-                    logger.d("INV_SCAN server lookup gtin14=$gtin14 → drugInfo=${drugInfo?.ndc} (${drugInfo?.genericName}) hazardous=${drugInfo?.isHazardous}")
+                    logger.d("INV_SCAN server lookup scanKey=$scanKey → drugInfo=${drugInfo?.ndc} (${drugInfo?.genericName}) hazardous=${drugInfo?.isHazardous}")
                     if (drugInfo == null) {
-                        _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, gtin14)
+                        _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, scanKey)
                         _scannerPaused.value = false
                         return@launch
                     }
@@ -312,10 +333,10 @@ class InventoryScanViewModel @Inject constructor(
                         )
                     )
                     // Re-read so we get the row with its assigned drugId.
-                    drugMasterDao.getDrugByNdc(drugInfo.ndc) ?: drugMasterDao.getDrugByGtin(gtin14)
+                    drugMasterDao.getDrugByNdc(drugInfo.ndc) ?: drugMasterDao.getDrugByGtin(scanKey)
                 }
                 if (drug == null) {
-                    _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, gtin14)
+                    _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, scanKey)
                     _scannerPaused.value = false
                     return@launch
                 }

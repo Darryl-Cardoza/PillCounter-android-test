@@ -107,6 +107,14 @@ class BarcodeDecoder @Inject constructor() {
         // Application identifiers expressed with parentheses: (01), (17), (10), etc.
         if (Regex("\\(\\d{2,4}\\)").containsMatchIn(rawBarcode)) return true
 
+        // Bare GS1 format: BT scanners often strip the symbology identifier, producing
+        // a raw string that starts with AI "01" immediately followed by a 14-digit GTIN.
+        // e.g. "010034354768910021<serial>..." — the decode() regex handles bare "01" AIs.
+        if (rawBarcode.length >= 16 &&
+            rawBarcode.startsWith("01") &&
+            rawBarcode.substring(2, 16).all { it.isDigit() }
+        ) return true
+
         return false
     }
 
