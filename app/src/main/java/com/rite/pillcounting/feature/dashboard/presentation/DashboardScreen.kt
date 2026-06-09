@@ -155,7 +155,9 @@ fun DashboardScreen(
         {
             viewModel.saveTxnId()
             navController.navigate(
-                Screen.DispenseFlow.createRoute(scanType = CountType.FIXED.toString())
+                Screen.DispenseFlow.createRoute(
+                    scanType = CountType.FIXED.toString(),
+                )
             )
         }
     }
@@ -183,6 +185,7 @@ fun DashboardScreen(
                 Screen.DispenseFlow.createRoute(
                     scanType = CountType.FIXED.toString(),
                     fromResume = true,
+                    fromQueue = true,
                 )
             )
         }

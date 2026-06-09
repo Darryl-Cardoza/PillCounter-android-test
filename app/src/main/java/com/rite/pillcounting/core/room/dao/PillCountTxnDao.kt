@@ -856,4 +856,19 @@ interface PillCountTxnDao {
         forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED
     ): Flow<Int>
 
+    @Query(
+        """
+    SELECT COUNT(*) FROM pill_count_txn
+    WHERE isDeleted = 0
+      AND status = :partialStatus
+      AND countType = :countType
+      AND localId = :userLocalId
+    """
+    )
+    suspend fun countPartialByCountType(
+        countType: CountType,
+        partialStatus: CountStatus = CountStatus.PARTIAL,
+        userLocalId: Long,
+    ): Int
+
 }

@@ -1,4 +1,4 @@
-<resources>
+﻿<resources>
     <!-- ================== APP INFO ================== -->
     <string name="app_name">Pill Counting</string>
     <string name="rite_title">RITE TECHNOLOGIES</string>
@@ -29,6 +29,11 @@
     <string name="partial">Pending</string>
     <string name="quick_actions">QUICK ACTIONS</string>
     <string name="todays_queue">TODAY\'S QUEUE</string>
+    <string name="queue_tab_pending">PENDING</string>
+    <string name="queue_tab_priority">PRIORITY</string>
+    <string name="queue_tab_controlled">CONTROLLED</string>
+    <string name="queue_tab_hazardous">HAZARDOUS</string>
+    <string name="queue_empty_dispense">No pending dispense transactions</string>
     <string name="recent_activity">RECENT ACTIVITY</string>
     <string name="nothing_here_yet">Nothing here yet</string>
     <string name="pms_status_connected">PMS Connected</string>

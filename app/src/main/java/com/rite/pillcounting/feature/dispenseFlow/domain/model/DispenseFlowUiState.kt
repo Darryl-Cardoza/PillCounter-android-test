@@ -2,11 +2,15 @@
 
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.compose.ContainerStatus
+import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
+import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 
-enum class DispenseStage { PRE_RX, PRE_NDC, COUNTING }
+enum class DispenseStage { QUEUE, PRE_RX, PRE_NDC, COUNTING }
 
 data class DispenseFlowUiState(
     val stage: DispenseStage = DispenseStage.PRE_RX,
+    val queueItems: List<QueueItem.Dispense> = emptyList(),
+    val selectedQueueFilter: KpiFilter? = null,
     val scanType: String = CountType.FIXED.toString(),
 
     val drugName: String = "",
@@ -63,4 +67,7 @@ data class DispenseFlowUiState(
     // One-shot navigation signal: non-null after a SEALED stock bottle is confirmed.
     // The screen observes this and navigates back to the batch, then clears it.
     val navigateToBatchId: Long? = null,
+
+    // One-shot signal: set true when a transaction completes and the queue is empty.
+    val navigateToDashboard: Boolean = false,
 )
