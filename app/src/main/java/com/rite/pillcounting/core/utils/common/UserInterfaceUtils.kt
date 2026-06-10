@@ -917,7 +917,7 @@ object UserInterfaceUtils {
     fun MenuButton(
         navController: NavController,
         modifier: Modifier = Modifier,
-        backIcon: Int = R.drawable.menu,
+        backIcon: Int = R.drawable.menuiconnew,
     ) {
         val dimens = AppTheme.dimens
         IconButton(
@@ -925,7 +925,6 @@ object UserInterfaceUtils {
                 navController.navigateSafely(Screen.Menu.route)
             },
             modifier = modifier
-                .padding(dimens.small)
                 .size(responsiveDp(40.dp))
         ) {
             Icon(

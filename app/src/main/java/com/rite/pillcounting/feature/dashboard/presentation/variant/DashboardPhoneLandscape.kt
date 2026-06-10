@@ -161,6 +161,7 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                         modifier = Modifier
                             .weight(0.20f)
                             .fillMaxHeight(),
+                        cardHeight = 72.dp,
                     )
 
                     // Column 3 — paged Today's Queue / Recent Activity list.

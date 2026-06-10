@@ -104,6 +104,8 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     counts = uiState.kpiCounts,
                     activeFilter = uiState.activeKpiFilter,
                     onTap = params.onKpiFilterTapped,
+                    cardWidth = 108.dp,
+                    cardHeight = 96.dp,
                 )
 
                 HorizontalDivider(

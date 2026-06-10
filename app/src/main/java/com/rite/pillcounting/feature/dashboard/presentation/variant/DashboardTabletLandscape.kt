@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldKpiColumn
@@ -97,8 +98,6 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 16.dp),
             ) {
-                Spacer(modifier = Modifier.height(8.dp))
-
                 // Sub-header: left half holds the section label that captions the Quick Action +
                 // KPI columns; right half holds the tab strip that captions the queue column.
                 Row(
@@ -107,9 +106,9 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                 ) {
                     Text(
                         text = stringResource(R.string.quick_actions),
-                        style = MaterialTheme.typography.labelSmall,
                         color = extendedColors.textColor,
                         fontWeight = FontWeight.SemiBold,
+                        fontSize = 16.sp,
                         modifier = Modifier.weight(0.52f),
                     )
                     ScaffoldTabStrip(
@@ -132,7 +131,7 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                     // Column 1 — Quick Actions stacked vertically.
                     Column(
                         modifier = Modifier
-                            .weight(0.30f)
+                            .weight(0.35f)
                             .fillMaxHeight(),
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
@@ -141,6 +140,9 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                             subtitle = stringResource(R.string.tap_to_scan_rx_labels),
                             innerIconRes = R.drawable.regular_count_inner,
                             onClick = params.onDispenseQuickAction,
+                            centered = true,
+                            ringSize = 140.dp,
+                            iconSize = 100.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
@@ -150,6 +152,9 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                             subtitle = stringResource(R.string.start_inventory_count),
                             innerIconRes = R.drawable.fixed_count_inner,
                             onClick = params.onInventoryQuickAction,
+                            centered = true,
+                            ringSize = 140.dp,
+                            iconSize = 100.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .weight(1f),
@@ -166,22 +171,24 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                         modifier = Modifier
                             .weight(0.16f)
                             .fillMaxHeight(),
+                        cardHeight = 115.dp,
+                        cardWidth = 200.dp
                     )
 
-                    Spacer(modifier = Modifier.width(1.dp))
-                    VerticalDivider(
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .width(1.dp),
-                        color = Color(0x14000000),
-                    )
-                    Spacer(modifier = Modifier.width(1.dp))
+//                    Spacer(modifier = Modifier.width(1.dp))
+//                    VerticalDivider(
+//                        modifier = Modifier
+//                            .fillMaxHeight()
+//                            .width(1.dp),
+//                        color = Color(0x14000000),
+//                    )
+//                    Spacer(modifier = Modifier.width(1.dp))
 
                     // Column 3 — paged Today's Queue / Recent Activity list.
                     HorizontalPager(
                         state = pagerState,
                         modifier = Modifier
-                            .weight(0.54f)
+                            .weight(0.50f)
                             .fillMaxHeight(),
                     ) { page ->
                         when (DashboardTab.entries[page]) {

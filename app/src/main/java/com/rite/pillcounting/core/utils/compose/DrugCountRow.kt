@@ -81,12 +81,12 @@ fun DrugCountRow(
             .cardSelectionShadow(isActive = isActive, selectionColor = selectionColor)
             .background(
                 color = AppTheme.extendedColors.secondaryBackground,
-                shape = RoundedCornerShape(dimens.small)
+                shape = RoundedCornerShape(dimens.extraSmall)
             )
             .clickable { if (multiSelectMode) onSelectChange() else onClick() }
     ) {
         Card(
-            shape = RoundedCornerShape(dimens.small),
+            shape = RoundedCornerShape(dimens.extraSmall),
             colors = CardDefaults.cardColors(containerColor = Color.Transparent),
             elevation = CardDefaults.cardElevation(0.dp)
         ) {
