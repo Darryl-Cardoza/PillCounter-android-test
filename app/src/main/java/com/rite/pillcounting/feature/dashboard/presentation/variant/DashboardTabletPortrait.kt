@@ -86,6 +86,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                         modifier = Modifier
                             .weight(1f)
                             .height(240.dp),
+                        iconSize = 110.dp
                     )
                     ScaffoldQuickActionCard(
                         title = stringResource(R.string.inventory),
@@ -95,6 +96,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                         modifier = Modifier
                             .weight(1f)
                             .height(240.dp),
+                        iconSize = 110.dp
                     )
                 }
 

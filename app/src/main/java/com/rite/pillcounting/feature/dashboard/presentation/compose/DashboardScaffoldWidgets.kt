@@ -154,8 +154,8 @@ internal fun ScaffoldQuickActionCard(
     modifier: Modifier = Modifier,
     compact: Boolean = false,
     centered: Boolean = false,
-    ringSize: androidx.compose.ui.unit.Dp? = null,
-    iconSize: androidx.compose.ui.unit.Dp? = null,
+    ringSize: Dp? = null,
+    iconSize: Dp? = null,
 ) {
     val cardShape = RoundedCornerShape(12.dp)
     Card(
@@ -521,14 +521,32 @@ internal fun ScaffoldQueueList(
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(32.dp),
+                .padding(vertical = 48.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = stringResource(R.string.nothing_here_yet),
-                style = MaterialTheme.typography.bodyMedium,
-                color = extendedColors.textColor,
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.complete),
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = stringResource(R.string.all_caught_up),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = stringResource(R.string.no_pending_tasks),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = extendedColors.textColor,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
         return
     }
@@ -579,8 +597,8 @@ private fun QuickActionRingIcon(
     @DrawableRes innerIconRes: Int,
     contentDescription: String?,
     compact: Boolean = false,
-    overrideRingSize: androidx.compose.ui.unit.Dp? = null,
-    overrideIconSize: androidx.compose.ui.unit.Dp? = null,
+    overrideRingSize: Dp? = null,
+    overrideIconSize: Dp? = null,
 ) {
     val ringSize = overrideRingSize ?: if (compact) 64.dp else 110.dp
     val iconSize = overrideIconSize ?: if (compact) 32.dp else 56.dp

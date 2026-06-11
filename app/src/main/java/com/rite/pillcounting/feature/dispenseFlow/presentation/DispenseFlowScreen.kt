@@ -181,16 +181,14 @@ fun DispenseFlowScreen(
         pillVm.navigationEvent.collectLatest { event ->
             when (event) {
                 is PillNavigationEvent.NavigateToDashboard -> {
-                    if (fromQueue) {
-                        pillVm.discardStagedCount()
-                        pillVm.resetGloveDetection()
-                        // Do NOT reset workflow steps here — that changes pillStepType
-                        // while still on COUNTING stage and triggers unwanted TTS speech.
-                        // Steps are reset via LaunchedEffect(stage) when stage becomes QUEUE.
-                        dispenseVm.resetToQueueOrNavigateDashboard()
-                    } else {
-                        navController.navigate(Screen.Dashboard.route)
-                    }
+                    pillVm.discardStagedCount()
+                    pillVm.resetGloveDetection()
+                    // Do NOT reset workflow steps here — that changes pillStepType
+                    // while still on COUNTING stage and triggers unwanted TTS speech.
+                    // Steps are reset via LaunchedEffect(stage) when stage becomes QUEUE.
+                    // Always check for pending dispense items after completing a transaction;
+                    // show the queue if any exist, otherwise navigate to Dashboard.
+                    dispenseVm.resetToQueueOrNavigateDashboard()
                 }
 
                 is PillNavigationEvent.NavigateToBatch -> {
