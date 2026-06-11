@@ -335,20 +335,6 @@ fun DispenseFlowScreen(
         )
     }
 
-    // "Confirm Step Completion" — surfaced on All Done at intermediate workflow
-    // steps (CONTAINER_INITIATE / TARGET_VERIFICATION etc.). Advances the
-    // workflow on confirm.
-    if (pillState.showDialogForControl) {
-        CommonDialog(
-            message = stringResource(R.string.are_you_sure_you_want_to_complete_this_step),
-            title = stringResource(R.string.confirm_steps_completion),
-            confirmText = stringResource(R.string.ok),
-            cancelText = stringResource(R.string.cancel),
-            onConfirm = { pillVm.moveNextStep() },
-            onCancel = { pillVm.handleDismissDialog() },
-        )
-    }
-
     if (pillState.showCountMismatchDialog) {
         CommonDialog(
             message = stringResource(R.string.the_counted_quantity_does_not_match_the_target_count),
