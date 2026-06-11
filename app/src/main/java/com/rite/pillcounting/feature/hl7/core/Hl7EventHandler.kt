@@ -147,6 +147,7 @@ class Hl7EventHandler @Inject constructor(
         logger.i("HL7 client connected | $host:$port")
         _connectionState.value = true
         hl7Repository.resendPendingHl7Transactions()
+        hl7Repository.resendPendingHl7BatchTransactions()
         notifier.show(
             title = context.getString(R.string.hl7_notification_device_connected_title),
             message = context.getString(R.string.hl7_notification_device_connected_message, host)

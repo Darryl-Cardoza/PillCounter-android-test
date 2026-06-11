@@ -209,9 +209,10 @@ sealed interface Screen {
         const val ARG_BATCH_ID = "batch_id"
         const val ARG_BUCKET_ID = "bucket_id"
         const val ARG_FROM_QUEUE = "from_queue"
+        const val ARG_ALLOWED_NDCS = "allowed_ndcs"
 
         override val route: String =
-            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}"
+            "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}&$ARG_ALLOWED_NDCS={$ARG_ALLOWED_NDCS}"
 
         val navArguments: List<NamedNavArgument> = listOf(
             navArgument(ARG_TYPE) { type = NavType.StringType },
@@ -236,6 +237,10 @@ sealed interface Screen {
                 type = NavType.BoolType
                 defaultValue = false
             },
+            navArgument(ARG_ALLOWED_NDCS) {
+                type = NavType.StringType
+                defaultValue = ""
+            },
         )
 
         fun createRoute(
@@ -245,7 +250,8 @@ sealed interface Screen {
             batchId: Long = 0L,
             bucketId: String? = null,
             fromQueue: Boolean = false,
-        ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}&$ARG_FROM_QUEUE=$fromQueue"
+            allowedNdcs: Set<String> = emptySet(),
+        ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}&$ARG_FROM_QUEUE=$fromQueue&$ARG_ALLOWED_NDCS=${allowedNdcs.joinToString(",")}"
     }
 
     data object SaveHistoryFor : Screen {

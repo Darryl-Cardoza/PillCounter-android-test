@@ -80,6 +80,7 @@ fun AppNavGraph(
             val fromResume = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_RESUME) ?: false
             val batchId = backStackEntry.arguments?.getLong(Screen.DispenseFlow.ARG_BATCH_ID) ?: 0L
             val fromQueue = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_QUEUE) ?: false
+            val allowedNdcs = backStackEntry.arguments?.getString(Screen.DispenseFlow.ARG_ALLOWED_NDCS) ?: ""
             DispenseFlowScreen(
                 navController = navController,
                 countType = countType,
@@ -87,6 +88,7 @@ fun AppNavGraph(
                 fromResume = fromResume,
                 batchId = batchId,
                 fromQueue = fromQueue,
+                allowedNdcs = allowedNdcs,
             )
         }
 

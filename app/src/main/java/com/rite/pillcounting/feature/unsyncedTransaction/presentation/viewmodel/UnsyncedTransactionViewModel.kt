@@ -11,12 +11,15 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.feature.countResume.domain.model.CountItem
 import com.rite.pillcounting.feature.history.domain.model.BatchSummary
+import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
+import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.unsyncedTransaction.domain.model.UnsyncedTransactionUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.filter
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
@@ -25,7 +28,9 @@ import javax.inject.Inject
 @HiltViewModel
 class UnsyncedTransactionViewModel @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
-    private val batchDao: BatchDao
+    private val batchDao: BatchDao,
+    private val hl7Repository: Hl7Repository,
+    private val hl7EventHandler: Hl7EventHandler,
 ) : ViewModel() {
 
     private val _unsyncedTransactionUiState = MutableStateFlow(UnsyncedTransactionUiState())
@@ -36,6 +41,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
     init {
         observeUnsyncedDispense()
         observeUnsyncedBatches()
+        syncBatchesWhenConnected()
     }
 
     private fun observeUnsyncedDispense() {
@@ -70,6 +76,16 @@ class UnsyncedTransactionViewModel @Inject constructor(
                 .catch { e -> e.printStackTrace() }
                 .collect { batches ->
                     _unsyncedTransactionUiState.update { it.copy(batchList = batches) }
+                }
+        }
+    }
+
+    private fun syncBatchesWhenConnected() {
+        viewModelScope.launch {
+            hl7EventHandler.connectionState
+                .filter { it }
+                .collect {
+                    hl7Repository.resendPendingHl7BatchTransactions()
                 }
         }
     }

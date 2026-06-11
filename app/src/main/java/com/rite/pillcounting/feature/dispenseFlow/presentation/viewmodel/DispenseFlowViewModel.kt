@@ -289,6 +289,28 @@ class DispenseFlowViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
+                // Batch PMS restriction: if an NDC allowlist is set, reject the
+                // scan immediately before doing any DB/server lookup.
+                val allowedNdcs = _uiState.value.allowedNdcs
+                if (allowedNdcs.isNotEmpty()) {
+                    // Resolve the NDC from the scanned GTIN-14 for comparison.
+                    // Try local DB first; if not found, the raw value may already be an NDC.
+                    val localForCheck = drugMasterDao.getDrugByGtin(gtin14)
+                        ?: drugMasterDao.getDrugByNdc(gtin14)
+                    val scannedNdc = localForCheck?.ndc ?: gtin14
+                    if (scannedNdc !in allowedNdcs) {
+                        logger.w("NDC scan rejected by allowlist: scanned=$gtin14 resolvedNdc=$scannedNdc allowed=$allowedNdcs")
+                        _uiState.update {
+                            it.copy(
+                                isLoading = false,
+                                ndcNotAllowedToastTick = it.ndcNotAllowedToastTick + 1,
+                                ndcNotAllowedValue = scannedNdc,
+                            )
+                        }
+                        return@launch
+                    }
+                }
+
                 // Expected NDC comes from HL7 in the PMS flow, and from the RX
                 // label the user just scanned in the manual flow. Either way,
                 // the container scan has to match it (or be a server-flagged
@@ -755,6 +777,16 @@ class DispenseFlowViewModel @Inject constructor(
 
     fun dismissRxScannedInStockCountDialog() {
         _uiState.update { it.copy(showRxScannedInStockCountDialog = false) }
+    }
+
+    /**
+     * Called from the batch "Scan Pills" hand-off to restrict NDC scanning to
+     * the provided set. [onNdcBarcodeRead] will reject any scanned NDC that
+     * isn't in this set (same mismatch-toast path as the HL7 flow).
+     * Pass an empty set to remove the restriction (non-PMS / plain dispense).
+     */
+    fun setAllowedNdcs(ndcs: Set<String>) {
+        _uiState.update { it.copy(allowedNdcs = ndcs) }
     }
 
     fun clearNavigateToBatch() {

@@ -37,6 +37,9 @@ data class DispenseFlowUiState(
     val scanNdcToastTick: Int = 0,
     val ndcMismatchToastTick: Int = 0,
     val txnNotFoundToastTick: Int = 0,
+    // Fired when a scanned NDC is rejected by the batch PMS allowlist.
+    val ndcNotAllowedToastTick: Int = 0,
+    val ndcNotAllowedValue: String = "",
 
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -64,6 +67,12 @@ data class DispenseFlowUiState(
     // Stock-count batch association. 0L means no batch (dispense flow or stock count
     // started without a batch context).
     val batchId: Long = 0L,
+
+    // NDC allowlist for batch Scan-Pills from a PMS batch. Non-empty only when the
+    // batch was PMS-sourced (or the user had a specific active NDC on the card).
+    // onNdcBarcodeRead rejects any scanned NDC that isn't in this set.
+    // Empty = no restriction (manually-started batch or plain dispense flow).
+    val allowedNdcs: Set<String> = emptySet(),
 
     // One-shot navigation signal: non-null after a SEALED stock bottle is confirmed.
     // The screen observes this and navigates back to the batch, then clears it.

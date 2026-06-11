@@ -123,6 +123,9 @@ fun DispenseFlowScreen(
     fromResume: Boolean = false,
     batchId: Long = 0L,
     fromQueue: Boolean = false,
+    // Comma-separated NDC allowlist from a PMS batch Scan-Pills hand-off.
+    // Empty string = no restriction (plain dispense / non-PMS batch).
+    allowedNdcs: String = "",
     dispenseVm: DispenseFlowViewModel = hiltViewModel(),
     pillVm: PillScanningViewModel = hiltViewModel(),
 ) {
@@ -169,6 +172,15 @@ fun DispenseFlowScreen(
 
     LaunchedEffect(batchId) {
         dispenseVm.setBatchId(batchId)
+    }
+
+    LaunchedEffect(allowedNdcs) {
+        val ndcSet = allowedNdcs
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+        dispenseVm.setAllowedNdcs(ndcSet)
     }
 
     // One-time init for the pill counting workflow side: reset glove state and
@@ -452,6 +464,22 @@ fun DispenseFlowScreen(
     val barcodeAnalyzer = remember { FrameBarcodeAnalyzer(context.applicationContext) }
     DisposableEffect(Unit) {
         onDispose { barcodeAnalyzer.pause() }
+    }
+
+    // NDC not in PMS allowlist — show the correct toast and explicitly resume
+    // the barcode analyzer. Without the explicit resume here the analyzer stays
+    // self-paused (from the MLKit hit) because the isLoading true→false
+    // transition can be batched away by Compose and the generic LaunchedEffect
+    // below never fires the resume.
+    val ndcNotAllowedToastText = stringResource(
+        R.string.batch_stock_count_ndc_not_in_request,
+        dispenseState.ndcNotAllowedValue,
+    )
+    LaunchedEffect(dispenseState.ndcNotAllowedToastTick) {
+        if (dispenseState.ndcNotAllowedToastTick > 0) {
+            showToast(context, ndcNotAllowedToastText, Toast.LENGTH_SHORT)
+            barcodeAnalyzer.resume()
+        }
     }
 
     // Safety net for process/nav death: if the screen leaves composition with

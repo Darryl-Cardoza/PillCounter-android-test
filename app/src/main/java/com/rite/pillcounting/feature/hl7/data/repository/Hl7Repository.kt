@@ -57,7 +57,6 @@ class Hl7Repository @Inject constructor(
         scope.launch {
             if (preferenceHelper.isHl7Enabled()) {
                 observePendingHl7Transactions()
-                observePendingHl7BatchTransactions()
             }
         }
     }
