@@ -452,6 +452,10 @@ class Hl7Repository @Inject constructor(
         var inserted = false
         for (segment in zinSegments) {
             val pillCount = segment.field3?.toIntOrNull() ?: continue
+            if (pillCount == 0) {
+                logger.i("ZIN EXPECTED_ON_HAND: skipping detail insert for txnId=$txnId because pillCount=0")
+                continue
+            }
             txnDetailsDao.insert(
                 PillCountTxnDetailsEntity(
                     txnId = txnId,
