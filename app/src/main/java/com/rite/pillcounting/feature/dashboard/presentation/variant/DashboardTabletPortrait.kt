@@ -25,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldKpiRow
@@ -71,7 +72,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
 
                 Text(
                     text = stringResource(R.string.quick_actions),
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = 16.sp,
                     color = extendedColors.textColor,
                     fontWeight = FontWeight.SemiBold,
                 )
@@ -85,6 +86,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                         modifier = Modifier
                             .weight(1f)
                             .height(240.dp),
+                        iconSize = 110.dp
                     )
                     ScaffoldQuickActionCard(
                         title = stringResource(R.string.inventory),
@@ -94,6 +96,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                         modifier = Modifier
                             .weight(1f)
                             .height(240.dp),
+                        iconSize = 110.dp
                     )
                 }
 
@@ -101,7 +104,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                     counts = uiState.kpiCounts,
                     activeFilter = uiState.activeKpiFilter,
                     onTap = params.onKpiFilterTapped,
-                    modifier = Modifier.height(96.dp),
+                    cardHeight = 150.dp,
                 )
 
                 HorizontalDivider(

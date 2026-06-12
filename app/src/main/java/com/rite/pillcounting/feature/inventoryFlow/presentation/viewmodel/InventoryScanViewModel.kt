@@ -410,7 +410,7 @@ class InventoryScanViewModel @Inject constructor(
                 }
                 val startBottles = when {
                     sameAsActive -> currentActive!!.bottles + 1
-                    existing != null -> (existing.bottleQty ?: 0).coerceAtLeast(1) + 1
+                    existing != null -> (existing.bottleQty ?: 0) + 1
                     else -> 1
                 }
                 logger.d("INV_SCAN startBottles=$startBottles sameAsActive=$sameAsActive")
@@ -652,41 +652,15 @@ class InventoryScanViewModel @Inject constructor(
                 // No active NDC: nothing to stage — the pill-count flow scans its
                 // own NDC and creates its own txn. Clear any stale staged txn id
                 // (the legacy flow treats 0 as "start fresh") and hand off.
+                // Always clear the staged txnId so the dispense flow starts at
+                // PRE_NDC and the user scans the container themselves — regardless
+                // of whether there is an active NDC on the card.
+                preferenceHelper.saveTxnId(0)
                 if (active == null) {
-                    preferenceHelper.saveTxnId(0)
-                    logger.d("INV_SCAN onScanPillsForActive (no active NDC) → batchId=$batchId, cleared staged txn")
-                    onReady(batchId)
-                    return@launch
+                    logger.d("INV_SCAN onScanPillsForActive (no active NDC) → batchId=$batchId")
+                } else {
+                    logger.d("INV_SCAN onScanPillsForActive ndc=${active.ndc} → batchId=$batchId, bottle count persisted, txnId not staged")
                 }
-
-                val drugId = drugMasterDao.getDrugIdByNdc(active.ndc)
-                if (drugId == null) {
-                    _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, active.ndc)
-                    return@launch
-                }
-                // Reuse the existing txn for this (drug, lot, expiry) so loose
-                // pills accumulate onto the same row; otherwise create one.
-                val existing = pillCountTxnDao.findSealedTxnInBatch(
-                    batchId = batchId,
-                    drugId = drugId.toString(),
-                    lotNo = active.batchNo.ifBlank { null },
-                    expiry = active.expiry.ifBlank { null },
-                )
-                val txnId = existing?.txnId ?: pillCountTxnDao.upsertPreservingId(
-                    PillCountTxnEntity(
-                        localId = preferenceHelper.getLocalId(),
-                        drugId = drugId,
-                        countType = CountType.REGULAR,
-                        status = CountStatus.PARTIAL,
-                        expiry = active.expiry.ifBlank { null },
-                        lotNo = active.batchNo.ifBlank { null },
-                        bottleQty = active.bottles,
-                        batchId = batchId,
-                        bucketId = _bucketId.value,
-                    )
-                )
-                preferenceHelper.saveTxnId(txnId)
-                logger.d("INV_SCAN onScanPillsForActive ndc=${active.ndc} → txnId=$txnId batchId=$batchId")
                 onReady(batchId)
             } catch (e: Exception) {
                 logger.e("INV_SCAN onScanPillsForActive failed", e)
@@ -705,7 +679,7 @@ class InventoryScanViewModel @Inject constructor(
         _showEndCountDialog.value = false
     }
 
-    fun confirmEndCount() {
+    fun confirmEndCount(note: String? = null) {
         viewModelScope.launch {
             try {
                 val batchId = _resolvedBatchId.value
@@ -716,6 +690,9 @@ class InventoryScanViewModel @Inject constructor(
                 val hasCommittedNdc = batchId != 0L && recentRows.value.isNotEmpty()
                 if (hasCommittedNdc) {
                     batchDao.markAsCompleted(batchId)
+                    if (!note.isNullOrBlank()) {
+                        batchDao.updateNote(batchId, note)
+                    }
                 } else {
                     logger.d("INV_SCAN confirmEndCount: no committed NDC — nothing to persist")
                 }

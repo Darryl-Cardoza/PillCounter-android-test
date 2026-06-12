@@ -36,6 +36,8 @@
     <string name="queue_empty_dispense">No pending dispense transactions</string>
     <string name="recent_activity">RECENT ACTIVITY</string>
     <string name="nothing_here_yet">Nothing here yet</string>
+    <string name="all_caught_up">You are all caught up!</string>
+    <string name="no_pending_tasks">No pending tasks right now</string>
     <string name="pms_status_connected">PMS Connected</string>
     <string name="pms_status_disconnected">PMS Disconnected</string>
     <string name="kpi_disp_short">Disp.</string>

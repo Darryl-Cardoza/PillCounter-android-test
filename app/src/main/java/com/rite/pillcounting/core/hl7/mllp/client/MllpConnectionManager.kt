@@ -39,6 +39,10 @@ class MllpConnectionManager(
     }
 
     private val mutex = Mutex()
+    // Separate mutex that serializes concurrent connect() / retryConnect() calls.
+    // Without this, two NSD callbacks for different IPs can both enter retryConnect()
+    // simultaneously, leading to closeInternal() races in MllpClient.
+    private val connectMutex = Mutex()
     private var ip: String = ""
     private var port: Int = 0
     private var isShutdown = false
@@ -131,30 +135,41 @@ class MllpConnectionManager(
 
     private suspend fun retryConnect() {
         if (isShutdown || ip.isEmpty()) return
-        logger.d("retryConnect() — connecting to $ip:$port")
-        updateState(ConnectionState.Connecting)
-
         var attempt = 0
+        // Retry loop lives OUTSIDE connectMutex so the delay doesn't hold the lock.
+        // This lets NSD callbacks trigger an immediate reconnect even while we're
+        // waiting between failed attempts.
         while (!isShutdown) {
-            try {
-                client.connect(ip, port)
-                logger.i("retryConnect() — connected to $ip:$port after $attempt attempt(s)")
-                onConnectionEstablished()
-                return  // success
-            } catch (e: Exception) {
-                if (isCertMismatch(e)) {
-                    logger.e("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.")
-                    certMismatchBlocked = true
-                    updateState(ConnectionState.Disconnected)
-                    onCertMismatch?.invoke()
+            val delayMs = connectMutex.withLock {
+                if (isShutdown || ip.isEmpty()) return
+                // A concurrent retryConnect() already succeeded — nothing to do.
+                if (state == ConnectionState.Connected && client.isConnected()) {
+                    logger.d("retryConnect() — already connected, skipping duplicate attempt")
                     return
                 }
-                attempt++
-                val delay = minOf(RETRY_DELAY_MS * attempt, MAX_RETRY_DELAY_MS)
-                logger.w("retryConnect() — attempt $attempt failed: ${e.message}. Retrying in ${delay}ms")
-                updateState(ConnectionState.Disconnected)
-                delay(delay)
+                logger.d("retryConnect() — connecting to $ip:$port")
+                updateState(ConnectionState.Connecting)
+                try {
+                    client.connect(ip, port)
+                    logger.i("retryConnect() — connected to $ip:$port after $attempt attempt(s)")
+                    onConnectionEstablished()
+                    return  // success — exits retryConnect()
+                } catch (e: Exception) {
+                    if (isCertMismatch(e)) {
+                        logger.e("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.")
+                        certMismatchBlocked = true
+                        updateState(ConnectionState.Disconnected)
+                        onCertMismatch?.invoke()
+                        return  // no retry on cert mismatch
+                    }
+                    attempt++
+                    val d = minOf(RETRY_DELAY_MS * attempt, MAX_RETRY_DELAY_MS)
+                    logger.w("retryConnect() — attempt $attempt failed: ${e.message}. Retrying in ${d}ms")
+                    updateState(ConnectionState.Disconnected)
+                    d  // returned from withLock, used for delay below
+                }
             }
+            delay(delayMs)  // delay OUTSIDE the mutex — lock is free during backoff
         }
     }
 

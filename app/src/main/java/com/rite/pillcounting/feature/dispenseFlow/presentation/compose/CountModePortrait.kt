@@ -100,7 +100,7 @@ fun CountModePortrait(
 
                     Text(
                         text = stringResource(R.string.pill_scanning_total_count),
-                        color = AppTheme.extendedColors.textColor,
+                        color = Color.White,
                         fontSize = 15.sp
                     )
 
@@ -171,7 +171,7 @@ fun CountModePortrait(
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = stringResource(R.string.pill_scanning_all_done),
-                    color = AppTheme.extendedColors.textColor,
+                    color = Color.White,
                     fontSize = 15.sp
                 )
             }

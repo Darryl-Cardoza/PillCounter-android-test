@@ -22,6 +22,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -78,8 +79,11 @@ fun InventoryScanHost(
 
     val panelState by inventoryVm.uiState.collectAsState()
     val errorMessage by inventoryVm.errorMessage.collectAsState()
-    val showEndCountDialog by inventoryVm.showEndCountDialog.collectAsState()
     val batchEnded by inventoryVm.batchEnded.collectAsState()
+
+    var showNoteDialog by remember { mutableStateOf(false) }
+    var showEndCountConfirmDialog by remember { mutableStateOf(false) }
+    var pendingNote by remember { mutableStateOf<String?>(null) }
 
     val context = LocalContext.current
     val analyzer = remember {
@@ -171,7 +175,7 @@ fun InventoryScanHost(
             inventoryVm.onAdd()
             analyzer.resume()
         },
-        onEndCount = inventoryVm::requestEndCount,
+        onEndCount = { showNoteDialog = true },
         onRowTapped = { row ->
             inventoryVm.onRecentRowTapped(row)
             analyzer.resume()
@@ -186,14 +190,38 @@ fun InventoryScanHost(
 
     scope.content()
 
-    if (showEndCountDialog) {
+    if (showNoteDialog) {
+        AddNoteDialog(
+            onDismiss = { showNoteDialog = false },
+            onSkip = {
+                showNoteDialog = false
+                pendingNote = null
+                showEndCountConfirmDialog = true
+            },
+            onSave = { note ->
+                showNoteDialog = false
+                pendingNote = note
+                showEndCountConfirmDialog = true
+            },
+            showSkip = true,
+        )
+    }
+
+    if (showEndCountConfirmDialog) {
         CommonDialog(
             message = stringResource(R.string.are_you_sure_you_want_to_end_this_count),
             title = stringResource(R.string.confirmation),
             confirmText = stringResource(R.string.yes),
             cancelText = stringResource(R.string.no),
-            onConfirm = inventoryVm::confirmEndCount,
-            onCancel = inventoryVm::dismissEndCount,
+            onConfirm = {
+                inventoryVm.confirmEndCount(pendingNote)
+                showEndCountConfirmDialog = false
+                pendingNote = null
+            },
+            onCancel = {
+                showEndCountConfirmDialog = false
+                pendingNote = null
+            },
         )
     }
 }

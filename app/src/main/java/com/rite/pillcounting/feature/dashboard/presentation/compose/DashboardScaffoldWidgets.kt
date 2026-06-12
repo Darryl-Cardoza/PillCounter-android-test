@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.dashboard.presentation.compose
+﻿package com.rite.pillcounting.feature.dashboard.presentation.compose
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
@@ -36,16 +36,19 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.MenuButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.core.utils.compose.DrugCountRow
 import com.rite.pillcounting.core.utils.compose.DrugCountRowData
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
@@ -69,7 +72,7 @@ internal fun buildTerminalUserLine(uiState: DashboardUiState): String {
         ?.firstOrNull { it.isActive == true }
         ?.terminalName
         ?.takeIf { it.isNotBlank() }
-    val terminal = activeTerminalName?.let { "Terminal $it" }
+    val terminal = activeTerminalName
     val user = listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }
@@ -83,21 +86,22 @@ internal fun ScaffoldTopBar(
     navController: NavController,
     compact: Boolean = false,
 ) {
-    val logoSize = if (compact) 40.dp else 80.dp
+    val logoSize = if (compact) 30.dp else 40.dp
     val horizontalPadding = if (compact) 12.dp else 16.dp
     val verticalPadding = if (compact) 8.dp else 12.dp
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding, vertical = verticalPadding),
+            .padding(horizontal = horizontalPadding)
+            .padding(top = verticalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Image(
-            painter = painterResource(id = R.drawable.ic_launcher_foreground),
+            painter = painterResource(id = R.drawable.redsaillogo),
             contentDescription = stringResource(R.string.pill_count_app_title),
             modifier = Modifier.size(logoSize),
         )
-        Spacer(modifier = Modifier.width(if (compact) 8.dp else 4.dp))
+        Spacer(modifier = Modifier.width(if (compact) 8.dp else 14.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = pharmacyName ?: "—",
@@ -149,42 +153,86 @@ internal fun ScaffoldQuickActionCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     compact: Boolean = false,
+    centered: Boolean = false,
+    ringSize: Dp? = null,
+    iconSize: Dp? = null,
 ) {
+    val cardShape = RoundedCornerShape(12.dp)
     Card(
-        modifier = modifier.clickable { onClick() },
-        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+            .clickable { onClick() },
+        shape = cardShape,
         colors = CardDefaults.cardColors(containerColor = extendedColors.secondaryBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(if (compact) 16.dp else 24.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            QuickActionRingIcon(
-                innerIconRes = innerIconRes,
-                contentDescription = title,
-                compact = compact,
-            )
-            Spacer(modifier = Modifier.width(if (compact) 14.dp else 20.dp))
-            Column(modifier = Modifier.weight(1f)) {
+        if (centered) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(if (compact) 16.dp else 24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                QuickActionRingIcon(
+                    innerIconRes = innerIconRes,
+                    contentDescription = title,
+                    compact = compact,
+                    overrideRingSize = ringSize,
+                    overrideIconSize = iconSize,
+                )
+                Spacer(modifier = Modifier.height(if (compact) 12.dp else 20.dp))
                 Text(
                     text = title,
                     fontSize = if (compact) 20.sp else 28.sp,
                     color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.SemiBold,
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = subtitle,
                     style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
                     color = extendedColors.textColor,
+                    textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(if (compact) 16.dp else 24.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                QuickActionRingIcon(
+                    innerIconRes = innerIconRes,
+                    contentDescription = title,
+                    compact = compact,
+                    overrideRingSize = ringSize,
+                    overrideIconSize = iconSize,
+                )
+                Spacer(modifier = Modifier.width(if (compact) 14.dp else 20.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = title,
+                        fontSize = if (compact) 20.sp else 28.sp,
+                        color = MaterialTheme.colorScheme.secondary,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = subtitle,
+                        style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                        color = extendedColors.textColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -197,20 +245,25 @@ internal fun ScaffoldKpiRow(
     activeFilter: KpiFilter?,
     onTap: (KpiFilter) -> Unit,
     modifier: Modifier = Modifier,
+    cardWidth: Dp? = null,
+    cardHeight: Dp? = null,
 ) {
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DefaultKpiCards.forEach { spec ->
+            var cardModifier = Modifier.weight(1f)
+            if (cardWidth != null) cardModifier = cardModifier.width(cardWidth)
+            if (cardHeight != null) cardModifier = cardModifier.height(cardHeight)
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
                 lineOne = stringResource(spec.lineOneRes),
                 lineTwo = stringResource(spec.lineTwoRes),
-                icon = spec.icon,
+                iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
-                modifier = Modifier.weight(1f),
+                modifier = cardModifier,
             )
         }
     }
@@ -226,6 +279,8 @@ internal fun ScaffoldKpiColumn(
     activeFilter: KpiFilter?,
     onTap: (KpiFilter) -> Unit,
     modifier: Modifier = Modifier,
+    cardWidth: Dp? = null,
+    cardHeight: Dp? = null,
 ) {
     // Each card claims an equal vertical share. This bounds the height every card sees,
     // which is required because ScaffoldKpiCard's inner Box uses fillMaxSize() — without a
@@ -235,16 +290,16 @@ internal fun ScaffoldKpiColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DefaultKpiCards.forEach { spec ->
+            var cardModifier: Modifier = if (cardWidth != null) Modifier.width(cardWidth) else Modifier.fillMaxWidth()
+            cardModifier = if (cardHeight != null) cardModifier.height(cardHeight) else cardModifier.weight(1f)
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
                 lineOne = stringResource(spec.lineOneRes),
                 lineTwo = stringResource(spec.lineTwoRes),
-                icon = spec.icon,
+                iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
+                modifier = cardModifier,
             )
         }
     }
@@ -261,6 +316,8 @@ internal fun ScaffoldKpiScrollColumn(
     activeFilter: KpiFilter?,
     onTap: (KpiFilter) -> Unit,
     modifier: Modifier = Modifier,
+    cardWidth: Dp? = null,
+    cardHeight: Dp = 72.dp,
 ) {
     val scrollState = androidx.compose.foundation.rememberScrollState()
     Column(
@@ -268,16 +325,16 @@ internal fun ScaffoldKpiScrollColumn(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DefaultKpiCards.forEach { spec ->
+            var cardModifier: Modifier = if (cardWidth != null) Modifier.width(cardWidth) else Modifier.fillMaxWidth()
+            cardModifier = cardModifier.height(cardHeight)
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
                 lineOne = stringResource(spec.lineOneRes),
                 lineTwo = stringResource(spec.lineTwoRes),
-                icon = spec.icon,
+                iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(72.dp),
+                modifier = cardModifier,
                 singleLabelLine = true,
             )
         }
@@ -295,6 +352,8 @@ internal fun ScaffoldKpiScrollRow(
     activeFilter: KpiFilter?,
     onTap: (KpiFilter) -> Unit,
     modifier: Modifier = Modifier,
+    cardWidth: Dp = 108.dp,
+    cardHeight: Dp = 96.dp,
 ) {
     val scrollState = androidx.compose.foundation.rememberScrollState()
     Row(
@@ -306,12 +365,12 @@ internal fun ScaffoldKpiScrollRow(
                 count = counts[spec.filter] ?: 0,
                 lineOne = stringResource(spec.lineOneRes),
                 lineTwo = stringResource(spec.lineTwoRes),
-                icon = spec.icon,
+                iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
                 onClick = { onTap(spec.filter) },
                 modifier = Modifier
-                    .width(108.dp)
-                    .height(96.dp),
+                    .width(cardWidth)
+                    .height(cardHeight),
                 singleLabelLine = true,
             )
         }
@@ -323,11 +382,11 @@ internal fun ScaffoldKpiCard(
     count: Int,
     lineOne: String,
     lineTwo: String,
-    icon: ImageVector,
+    @DrawableRes iconRes: Int,
     isActive: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    singleLabelLine: Boolean = false,
+    singleLabelLine: Boolean = false
 ) {
     // Selection is shown by a primary border plus an all-around primary-tinted
     // shadow, both strictly keyed on isActive so deselecting fully reverts.
@@ -359,12 +418,12 @@ internal fun ScaffoldKpiCard(
                 .padding(12.dp),
         ) {
             Icon(
-                imageVector = icon,
+                painter = painterResource(id = iconRes),
                 contentDescription = null,
                 tint = MaterialTheme.colorScheme.secondary,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .size(16.dp),
+                    .size(responsiveDp(14.dp)),
             )
             Column(modifier = Modifier.align(Alignment.BottomStart)) {
                 Text(
@@ -437,7 +496,7 @@ private fun ScaffoldTab(
     ) {
         Text(
             text = label,
-            style = MaterialTheme.typography.labelMedium,
+            fontSize = responsiveSp(8.sp),
             color = if (isActive) MaterialTheme.colorScheme.secondary else extendedColors.textColor,
             fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
         )
@@ -462,21 +521,39 @@ internal fun ScaffoldQueueList(
         Box(
             modifier = modifier
                 .fillMaxWidth()
-                .padding(32.dp),
+                .padding(vertical = 48.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = stringResource(R.string.nothing_here_yet),
-                style = MaterialTheme.typography.bodyMedium,
-                color = extendedColors.textColor,
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.complete),
+                    contentDescription = null,
+                    modifier = Modifier.size(64.dp),
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = stringResource(R.string.all_caught_up),
+                    style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                    color = MaterialTheme.colorScheme.primary,
+                    textAlign = TextAlign.Center,
+                )
+                Text(
+                    text = stringResource(R.string.no_pending_tasks),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = extendedColors.textColor,
+                    textAlign = TextAlign.Center,
+                )
+            }
         }
         return
     }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
         contentPadding = PaddingValues(vertical = 4.dp),
     ) {
         items(items, key = { item ->
@@ -501,6 +578,7 @@ internal fun ScaffoldQueueList(
                     ),
                     onClick = { onDispenseClick?.invoke(item.txn.txnId) },
                 )
+
                 is QueueItem.Inventory -> BatchHistoryRow(
                     title = item.batch.batchId.toString(),
                     dateTime = formatDate(item.batch.createdAt),
@@ -519,9 +597,11 @@ private fun QuickActionRingIcon(
     @DrawableRes innerIconRes: Int,
     contentDescription: String?,
     compact: Boolean = false,
+    overrideRingSize: Dp? = null,
+    overrideIconSize: Dp? = null,
 ) {
-    val ringSize = if (compact) 64.dp else 110.dp
-    val iconSize = if (compact) 32.dp else 56.dp
+    val ringSize = overrideRingSize ?: if (compact) 64.dp else 110.dp
+    val iconSize = overrideIconSize ?: if (compact) 32.dp else 56.dp
     Box(
         modifier = Modifier
             .size(ringSize)
