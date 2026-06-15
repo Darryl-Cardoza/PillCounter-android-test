@@ -1,6 +1,5 @@
 package com.rite.pillcounting.feature.inventoryFlow.presentation.shell
 
-import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -123,10 +122,7 @@ fun InventoryPhoneLandscapeShell(
     val collapsedWidth = detailsCardWidth + 28.dp
     val expandedWidth = screenWidthDp * 0.9f
     var expanded by remember { mutableStateOf(false) }
-    val panelWidth by animateDpAsState(
-        targetValue = if (expanded) expandedWidth else collapsedWidth,
-        label = "panelWidth",
-    )
+    val panelWidth = if (expanded) expandedWidth else collapsedWidth
 
     Box(modifier = Modifier.fillMaxSize()) {
         CameraPreview(frameTag = "phone-ls", modifier = Modifier.fillMaxSize())

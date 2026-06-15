@@ -529,11 +529,20 @@ fun DispenseFlowScreen(
             pillVm.resetWorkflowSteps()
             dispenseVm.resetToQueue()
         } else {
-            // PRE_NDC / COUNTING (transaction already exists) or fromQueue=false → Dashboard.
             pillVm.discardStagedCount()
-            navController.navigate(Screen.Dashboard.route) {
-                popUpTo(0)
-                launchSingleTop = true
+            if (batchId > 0L) {
+                val popped = navController.popBackStack()
+                if (!popped) {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(0)
+                        launchSingleTop = true
+                    }
+                }
+            } else {
+                navController.navigate(Screen.Dashboard.route) {
+                    popUpTo(0)
+                    launchSingleTop = true
+                }
             }
         }
     }
@@ -991,6 +1000,14 @@ fun DispenseFlowScreen(
                             pillVm.resetGloveDetection()
                             pillVm.resetWorkflowSteps()
                             dispenseVm.resetToQueue()
+                        } else if (batchId > 0L) {
+                            val popped = navController.popBackStack()
+                            if (!popped) {
+                                navController.navigate(Screen.Dashboard.route) {
+                                    popUpTo(0)
+                                    launchSingleTop = true
+                                }
+                            }
                         } else {
                             navController.navigate(Screen.Dashboard.route) {
                                 popUpTo(0)

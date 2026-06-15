@@ -17,17 +17,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -42,8 +41,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -149,23 +146,26 @@ fun ProfileScreen(
             Spacer(Modifier.height(10.dp))
 
             // Checkbox
-            if (fromRoute?.contains(Screen.Dashboard.route, ignoreCase = true) == true) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                ) {
-                    Checkbox(
-                        checked = viewModel.doNotAskAgain,
-                        onCheckedChange = { checked -> viewModel.toggleDoNotAskAgain(checked) }
-                    )
-                    Text(
-                        stringResource(R.string.do_not_ask),
-                        color = AppTheme.extendedColors.textColor
-                    )
-                }
-
-                Spacer(Modifier.height(20.dp))
-            }
+            //need to discuss this feature then after remove this commented code or keep it
+//            if (fromRoute?.contains(Screen.Dashboard.route, ignoreCase = true) == true &&
+//                updateUiState !is ProfileUpdateUiState.Loading &&
+//                updateUiState !is ProfileUpdateUiState.Success) {
+//                Row(
+//                    verticalAlignment = Alignment.CenterVertically,
+//                    modifier = Modifier.padding(horizontal = 16.dp)
+//                ) {
+//                    Checkbox(
+//                        checked = viewModel.doNotAskAgain,
+//                        onCheckedChange = { checked -> viewModel.toggleDoNotAskAgain(checked) }
+//                    )
+//                    Text(
+//                        stringResource(R.string.do_not_ask),
+//                        color = AppTheme.extendedColors.textColor
+//                    )
+//                }
+//
+//                Spacer(Modifier.height(20.dp))
+//            }
 
             // -------------------- STATE FEEDBACK --------------------
             when (updateUiState) {
@@ -464,59 +464,60 @@ private fun TerminalDropdown(
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    Column(modifier = modifier) {
-        ExposedDropdownMenuBox(
-            expanded = expanded,
-            onExpandedChange = { expanded = !expanded }
+    ExposedDropdownMenuBox(
+        expanded = expanded,
+        onExpandedChange = { expanded = !expanded },
+        modifier = modifier,
+    ) {
+        Box(
+            modifier = Modifier
+                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                .fillMaxWidth()
+                .height(AppTheme.dimens.profileTextFieldHeight)
+                .background(AppTheme.extendedColors.inputBackground, RoundedCornerShape(8.dp))
+                .padding(horizontal = 15.dp),
         ) {
-            OutlinedTextField(
-                value = selectedTerminal?.terminalName ?: stringResource(R.string.select_terminal),
-                onValueChange = {},
-                readOnly = true,
-                label = { Text(stringResource(R.string.terminal)) },
+            Text(
+                text = stringResource(R.string.terminal),
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+                fontSize = 12.sp,
                 modifier = Modifier
-                    .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
-                    .fillMaxWidth(),
-                textStyle = MaterialTheme.typography.bodyMedium.copy(
-                    color = AppTheme.extendedColors.textColor
-                ),
-                shape = RoundedCornerShape(10.dp),
-                colors = ExposedDropdownMenuDefaults.outlinedTextFieldColors(
-                    unfocusedBorderColor = AppTheme.extendedColors.secondaryBackground,
-                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                    unfocusedContainerColor = AppTheme.extendedColors.secondaryBackground,
-                    focusedContainerColor = AppTheme.extendedColors.secondaryBackground,
-                    cursorColor = MaterialTheme.colorScheme.primary,
-                    unfocusedLabelColor = AppTheme.extendedColors.textColor,
-                    focusedLabelColor = MaterialTheme.colorScheme.primary
-                ),
-                trailingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.ArrowDropDown,
-                        contentDescription = "Dropdown",
-                        tint = AppTheme.extendedColors.textColor
-                    )
-                }
+                    .align(Alignment.TopStart)
+                    .padding(top = 6.dp),
             )
+            Text(
+                text = selectedTerminal?.terminalName ?: stringResource(R.string.select_terminal),
+                color = AppTheme.extendedColors.textColor,
+                fontSize = 16.sp,
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(bottom = 10.dp),
+            )
+            Icon(
+                imageVector = Icons.Default.ArrowDropDown,
+                contentDescription = null,
+                tint = AppTheme.extendedColors.textColor,
+                modifier = Modifier.align(Alignment.CenterEnd),
+            )
+        }
 
-            ExposedDropdownMenu(
-                expanded = expanded,
-                onDismissRequest = { expanded = false }
-            ) {
-                terminals.forEach { terminal ->
-                    DropdownMenuItem(
-                        text = {
-                            Text(
-                                text = terminal.terminalName ?: stringResource(R.string.unknown),
-                                color = AppTheme.extendedColors.textColor
-                            )
-                        },
-                        onClick = {
-                            onTerminalSelected(terminal)
-                            expanded = false
-                        }
-                    )
-                }
+        ExposedDropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            terminals.forEach { terminal ->
+                DropdownMenuItem(
+                    text = {
+                        Text(
+                            text = terminal.terminalName ?: stringResource(R.string.unknown),
+                            color = AppTheme.extendedColors.textColor,
+                        )
+                    },
+                    onClick = {
+                        onTerminalSelected(terminal)
+                        expanded = false
+                    },
+                )
             }
         }
     }
