@@ -123,6 +123,9 @@ fun DispenseFlowScreen(
     fromResume: Boolean = false,
     batchId: Long = 0L,
     fromQueue: Boolean = false,
+    // Comma-separated NDC allowlist from a PMS batch Scan-Pills hand-off.
+    // Empty string = no restriction (plain dispense / non-PMS batch).
+    allowedNdcs: String = "",
     dispenseVm: DispenseFlowViewModel = hiltViewModel(),
     pillVm: PillScanningViewModel = hiltViewModel(),
 ) {
@@ -169,6 +172,15 @@ fun DispenseFlowScreen(
 
     LaunchedEffect(batchId) {
         dispenseVm.setBatchId(batchId)
+    }
+
+    LaunchedEffect(allowedNdcs) {
+        val ndcSet = allowedNdcs
+            .split(",")
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .toSet()
+        dispenseVm.setAllowedNdcs(ndcSet)
     }
 
     // One-time init for the pill counting workflow side: reset glove state and
@@ -323,20 +335,6 @@ fun DispenseFlowScreen(
         )
     }
 
-    // "Confirm Step Completion" — surfaced on All Done at intermediate workflow
-    // steps (CONTAINER_INITIATE / TARGET_VERIFICATION etc.). Advances the
-    // workflow on confirm.
-    if (pillState.showDialogForControl) {
-        CommonDialog(
-            message = stringResource(R.string.are_you_sure_you_want_to_complete_this_step),
-            title = stringResource(R.string.confirm_steps_completion),
-            confirmText = stringResource(R.string.ok),
-            cancelText = stringResource(R.string.cancel),
-            onConfirm = { pillVm.moveNextStep() },
-            onCancel = { pillVm.handleDismissDialog() },
-        )
-    }
-
     if (pillState.showCountMismatchDialog) {
         CommonDialog(
             message = stringResource(R.string.the_counted_quantity_does_not_match_the_target_count),
@@ -454,6 +452,22 @@ fun DispenseFlowScreen(
         onDispose { barcodeAnalyzer.pause() }
     }
 
+    // NDC not in PMS allowlist — show the correct toast and explicitly resume
+    // the barcode analyzer. Without the explicit resume here the analyzer stays
+    // self-paused (from the MLKit hit) because the isLoading true→false
+    // transition can be batched away by Compose and the generic LaunchedEffect
+    // below never fires the resume.
+    val ndcNotAllowedToastText = stringResource(
+        R.string.batch_stock_count_ndc_not_in_request,
+        dispenseState.ndcNotAllowedValue,
+    )
+    LaunchedEffect(dispenseState.ndcNotAllowedToastTick) {
+        if (dispenseState.ndcNotAllowedToastTick > 0) {
+            showToast(context, ndcNotAllowedToastText, Toast.LENGTH_SHORT)
+            barcodeAnalyzer.resume()
+        }
+    }
+
     // Safety net for process/nav death: if the screen leaves composition with
     // staged-but-uncommitted loose pills (e.g. an unhandled back path), discard
     // them. After a successful Done the buffer is already flushed/cleared, so
@@ -515,11 +529,20 @@ fun DispenseFlowScreen(
             pillVm.resetWorkflowSteps()
             dispenseVm.resetToQueue()
         } else {
-            // PRE_NDC / COUNTING (transaction already exists) or fromQueue=false → Dashboard.
             pillVm.discardStagedCount()
-            navController.navigate(Screen.Dashboard.route) {
-                popUpTo(0)
-                launchSingleTop = true
+            if (batchId > 0L) {
+                val popped = navController.popBackStack()
+                if (!popped) {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(0)
+                        launchSingleTop = true
+                    }
+                }
+            } else {
+                navController.navigate(Screen.Dashboard.route) {
+                    popUpTo(0)
+                    launchSingleTop = true
+                }
             }
         }
     }
@@ -977,6 +1000,14 @@ fun DispenseFlowScreen(
                             pillVm.resetGloveDetection()
                             pillVm.resetWorkflowSteps()
                             dispenseVm.resetToQueue()
+                        } else if (batchId > 0L) {
+                            val popped = navController.popBackStack()
+                            if (!popped) {
+                                navController.navigate(Screen.Dashboard.route) {
+                                    popUpTo(0)
+                                    launchSingleTop = true
+                                }
+                            }
                         } else {
                             navController.navigate(Screen.Dashboard.route) {
                                 popUpTo(0)

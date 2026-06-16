@@ -19,6 +19,8 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
+import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.ActiveNdc
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.BatchStockCountUiState
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.RecentBatchRow
@@ -72,6 +74,8 @@ class InventoryScanViewModel @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
     private val barcodeDecoder: BarcodeDecoder,
     private val drugRepository: IDrugRepository,
+    private val hl7Repository: Hl7Repository,
+    private val hl7EventHandler: Hl7EventHandler,
 ) : ViewModel() {
 
     private val logger = AppLogger("InventoryScanViewModel")
@@ -635,7 +639,14 @@ class InventoryScanViewModel @Inject constructor(
      * its own txn. With an active NDC we additionally stage that NDC's txn so the
      * counted loose pills accumulate onto its Recent Counts row.
      */
-    fun onScanPillsForActive(onReady: (batchId: Long) -> Unit) {
+    /**
+     * @param onReady Called with (batchId, allowedNdcs) when ready to navigate.
+     *   allowedNdcs is the set of NDCs the dispense flow is permitted to accept:
+     *   - Active NDC on card → restrict to just that one NDC.
+     *   - No active NDC, PMS batch → restrict to the full PMS-requested NDC set.
+     *   - No active NDC, manual batch → empty set (no restriction).
+     */
+    fun onScanPillsForActive(onReady: (batchId: Long, allowedNdcs: Set<String>) -> Unit) {
         val active = _activeNdc.value
         viewModelScope.launch {
             try {
@@ -649,19 +660,22 @@ class InventoryScanViewModel @Inject constructor(
                     return@launch
                 }
 
-                // No active NDC: nothing to stage — the pill-count flow scans its
-                // own NDC and creates its own txn. Clear any stale staged txn id
-                // (the legacy flow treats 0 as "start fresh") and hand off.
                 // Always clear the staged txnId so the dispense flow starts at
-                // PRE_NDC and the user scans the container themselves — regardless
-                // of whether there is an active NDC on the card.
+                // PRE_NDC and the user scans the container themselves.
                 preferenceHelper.saveTxnId(0)
-                if (active == null) {
-                    logger.d("INV_SCAN onScanPillsForActive (no active NDC) → batchId=$batchId")
-                } else {
-                    logger.d("INV_SCAN onScanPillsForActive ndc=${active.ndc} → batchId=$batchId, bottle count persisted, txnId not staged")
+
+                // Build the NDC allowlist for the dispense flow.
+                // Active card NDC takes priority (user was working on that drug).
+                // For PMS batches with no active NDC, pass the full expected set.
+                // Manual batches have no restriction.
+                val allowedNdcs: Set<String> = when {
+                    active != null -> setOf(active.ndc)
+                    expectedNdcs != null -> expectedNdcs!!
+                    else -> emptySet()
                 }
-                onReady(batchId)
+
+                logger.d("INV_SCAN onScanPillsForActive active=${active?.ndc} batchId=$batchId allowedNdcs=$allowedNdcs")
+                onReady(batchId, allowedNdcs)
             } catch (e: Exception) {
                 logger.e("INV_SCAN onScanPillsForActive failed", e)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
@@ -692,6 +706,9 @@ class InventoryScanViewModel @Inject constructor(
                     batchDao.markAsCompleted(batchId)
                     if (!note.isNullOrBlank()) {
                         batchDao.updateNote(batchId, note)
+                    }
+                    if (hl7EventHandler.connectionState.value) {
+                        hl7Repository.resendPendingHl7BatchTransactions()
                     }
                 } else {
                     logger.d("INV_SCAN confirmEndCount: no committed NDC — nothing to persist")

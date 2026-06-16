@@ -526,7 +526,7 @@ fun CameraPreviewSection(
                     bitmap = capturedBitmap!!.asImageBitmap(),
                     contentDescription = null,
                     modifier = Modifier.fillMaxSize(),
-                    contentScale = ContentScale.FillHeight
+                    contentScale = ContentScale.Crop
                 )
                 if (showCaptureEffect) {
                     Box(

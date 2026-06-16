@@ -100,17 +100,21 @@ fun MenuScreen(
                 }
             )
 
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+            HorizontalDivider(color = extendedColors.primaryBackground)
             SimpleMenuRow(
                 navController = navController,
                 icon = R.drawable.unsynced_transaction_icon,
                 iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.menu_unsync_transaction),
                 trailingText = uiState.unsyncedTransactionCount.toString(),
-                onClick = { navController.navigate(Screen.UnsyncedTransactionScreen.route) }
+                onClick = {
+                    navController.navigateSafely(
+                        Screen.UnsyncedTransactionScreen.route
+                    )
+                }
             )
 
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+            HorizontalDivider(color = extendedColors.primaryBackground)
 
             // Settings
             SimpleMenuRow(
@@ -121,7 +125,7 @@ fun MenuScreen(
                 onClick = { navController.navigate(Screen.Settings.route) }
             )
 
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+            HorizontalDivider(color = extendedColors.primaryBackground)
 
             SimpleMenuRow(
                 navController = navController,
@@ -130,7 +134,7 @@ fun MenuScreen(
                 title = stringResource(R.string.menu_profile),
                 onClick = { navController.navigate(Screen.Profile.route) }
             )
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+            HorizontalDivider(color = extendedColors.primaryBackground)
             // Logout
             SimpleMenuRow(
                 navController = navController,

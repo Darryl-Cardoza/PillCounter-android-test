@@ -1150,7 +1150,7 @@ class PillScanningViewModel @Inject constructor(
             StepState.CONTAINER_INITIATE -> {
                 val target = _txnInfo.value?.targetCount ?: return
                 if (target <= event.totalCount) {
-                    _uiState.update { it.copy(showDialogForControl = true) }
+                    moveNextStep()
                 } else {
                     _uiState.update {
                         it.copy(showErrorMessage = context.getString(R.string.pills_count_should_be_greater_than_target_count))
@@ -1171,7 +1171,7 @@ class PillScanningViewModel @Inject constructor(
 
             StepState.TARGET_VERIFICATION -> {
                 if (_txnInfo.value?.countType == CountType.FIXED && _uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }) {
-                    _uiState.update { it.copy(showDialogForControl = true) }
+                    moveNextStep()
                 } else if (_txnInfo.value?.countType == CountType.REGULAR) {
                     handleDone()
                 } else {
@@ -1182,7 +1182,7 @@ class PillScanningViewModel @Inject constructor(
 
             StepState.TARGET_REVERIFICATION -> {
                 if (_uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }) {
-                    _uiState.update { it.copy(showDialogForControl = true) }
+                    moveNextStep()
                 } else {
                     _uiState.update {
                         it.copy(showErrorMessage = context.getString(R.string.pills_count_should_be_greater_than_target_count))
@@ -1190,7 +1190,7 @@ class PillScanningViewModel @Inject constructor(
                 }
             }
 
-            else -> _uiState.update { it.copy(showDialogForControl = true) }
+            else -> moveNextStep()
         }
     }
 

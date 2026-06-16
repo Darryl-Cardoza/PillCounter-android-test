@@ -149,12 +149,12 @@ fun InventoryScanHost(
             // off to the merged dispense flow in stock-count mode. fromResume=true so
             // DispenseFlowScreen skips RX and loads the drug/txn from preferences,
             // landing at PRE_NDC ready for the container barcode scan.
-            inventoryVm.onScanPillsForActive { batchId ->
+            inventoryVm.onScanPillsForActive { batchId, allowedNdcs ->
                 navController.navigate(
                     Screen.DispenseFlow.createRoute(
                         scanType = CountType.REGULAR.toString(),
-                        fromResume = true,
                         batchId = batchId,
+                        allowedNdcs = allowedNdcs,
                     )
                 )
             }
