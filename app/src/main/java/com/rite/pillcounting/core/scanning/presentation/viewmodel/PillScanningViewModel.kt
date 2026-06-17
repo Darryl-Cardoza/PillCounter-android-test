@@ -1752,7 +1752,7 @@ class PillScanningViewModel @Inject constructor(
     fun captureImage() {
         viewModelScope.launch {
             _showFlash.value = true
-            delay(1300)
+            delay(350)
             _showFlash.value = false
         }
         cameraHelper?.captureImage { bitmap -> _capturedBitmap.value = bitmap }
