@@ -38,6 +38,8 @@ data class ActiveNdc(
     val pillsPerBottle: Int,
     val bottles: Int,
     val isHazardous: Boolean = false,
+    /** GS1 serial number (AI 21) of the scanned unit, if the label carried one. */
+    val serialNo: String? = null,
 ) {
     val totalPills: Int get() = pillsPerBottle * bottles
 }

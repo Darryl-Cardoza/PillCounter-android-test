@@ -381,9 +381,10 @@ class InventoryScanViewModel @Inject constructor(
                 }
 
                 val lotNo = decoded?.lotNumber
+                val serialNo = decoded?.serialNumber
                 val expiry = decoded?.expirationDate?.format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
                 val packageQty = drug.packageQty ?: 0
-                logger.d("INV_SCAN parsed lotNo=$lotNo expiry=$expiry packageQty=$packageQty")
+                logger.d("INV_SCAN parsed lotNo=$lotNo serialNo=$serialNo expiry=$expiry packageQty=$packageQty")
 
                 // Look for an existing sealed txn for this (drug, lot, expiry)
                 // in the current batch — same logic ScanBarcodeViewModel uses.
@@ -427,6 +428,7 @@ class InventoryScanViewModel @Inject constructor(
                     pillsPerBottle = packageQty,
                     bottles = startBottles,
                     isHazardous = drug.isHazardous,
+                    serialNo = serialNo,
                 )
                 _activeNdc.value = newActive
                 lastSameNdcIncrementAtMs = System.currentTimeMillis()
@@ -567,6 +569,7 @@ class InventoryScanViewModel @Inject constructor(
                 pillCountTxnDao.update(
                     existing.copy(
                         bottleQty = active.bottles,
+                        serialNo = active.serialNo ?: existing.serialNo,
                         updatedAt = System.currentTimeMillis(),
                     )
                 )
@@ -580,6 +583,7 @@ class InventoryScanViewModel @Inject constructor(
                         status = CountStatus.COMPLETED,
                         expiry = active.expiry.ifBlank { null },
                         lotNo = active.batchNo.ifBlank { null },
+                        serialNo = active.serialNo,
                         bottleQty = active.bottles,
                         batchId = batchId,
                         bucketId = _bucketId.value,
