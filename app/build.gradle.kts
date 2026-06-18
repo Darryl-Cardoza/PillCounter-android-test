@@ -89,6 +89,16 @@ android {
     testOptions {
         unitTests {
             isReturnDefaultValues = true
+            all {
+                // JDK 17+ strongly encapsulates java.base internals. Unit tests that must
+                // override JVM-internal/static-final fields (e.g. Build.VERSION.SDK_INT via a
+                // trusted MethodHandles.Lookup) need these packages opened. Scoped to unit
+                // tests only; does not affect app runtime.
+                it.jvmArgs(
+                    "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
+                    "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
+                )
+            }
         }
     }
 

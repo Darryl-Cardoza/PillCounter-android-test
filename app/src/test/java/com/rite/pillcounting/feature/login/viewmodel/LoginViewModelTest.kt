@@ -1,77 +1,189 @@
 package com.rite.pillcounting.feature.login.viewmodel
 
 import android.content.Context
+import android.util.Log
 import app.cash.turbine.test
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.hl7.service.Hl7serviceHandler
+import com.rite.pillcounting.core.models.ValidationResult
 import com.rite.pillcounting.core.utils.common.NetworkUtils
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.validator.CredentialsValidator
-import com.rite.pillcounting.core.models.ValidationResult
 import com.rite.pillcounting.feature.login.data.LoginRepository
 import com.rite.pillcounting.feature.login.domain.model.LoginResponse
 import com.rite.pillcounting.feature.login.domain.model.LoginUiState
 import com.rite.pillcounting.feature.login.domain.model.LogoutResponse
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
-import com.rite.pillcounting.util.MainDispatcherRule
+import com.rite.pillcounting.feature.login.presentation.viewmodel.LoginViewModel
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
-import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkObject
-import io.mockk.Runs
+import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
+/**
+ * Unit tests for [com.rite.pillcounting.feature.login.presentation.viewmodel.LoginViewModel].
+ *
+ * Targets 100% line + method coverage including every branch of the private
+ * getFriendlyErrorMessage(...) reached through login()/logout() onFailure.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class LoginViewModelTest {
 
-    @get:Rule
-    val mainDispatcherRule = MainDispatcherRule()
-
-    private val repository: LoginRepository = mockk()
-    private val validator: CredentialsValidator = mockk()
-    private val context: Context = mockk(relaxed = true)
-    private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    private val serviceManager: Hl7serviceHandler = mockk(relaxed = true)
-
+    private lateinit var repository: LoginRepository
+    private lateinit var validator: CredentialsValidator
+    private lateinit var context: Context
+    private lateinit var preferenceHelper: PreferenceHelper
+    private lateinit var serviceManager: Hl7serviceHandler
     private lateinit var viewModel: LoginViewModel
+
+    private val email = "user@test.com"
 
     @Before
     fun setup() {
+        // AppLogger wraps android.util.Log, which is not available on the JVM.
+        mockkStatic(Log::class)
+        every { Log.d(any(), any()) } returns 0
+        every { Log.d(any(), any(), any()) } returns 0
+        every { Log.i(any(), any()) } returns 0
+        every { Log.i(any(), any(), any()) } returns 0
+        every { Log.w(any(), any<String>()) } returns 0
+        every { Log.w(any(), any<String>(), any()) } returns 0
+        every { Log.e(any(), any()) } returns 0
+        every { Log.e(any(), any(), any()) } returns 0
+
+        Dispatchers.setMain(StandardTestDispatcher())
+
         mockkObject(NetworkUtils)
+        every { NetworkUtils.isNetworkAvailable(any()) } returns true
+
+        repository = mockk()
+        validator = mockk()
+        context = mockk()
+        preferenceHelper = mockk(relaxed = true)
+        serviceManager = mockk(relaxed = true)
+
+        every { context.getString(any()) } returns "msg"
+
         viewModel = LoginViewModel(repository, validator, context, preferenceHelper, serviceManager)
     }
 
     @After
     fun tearDown() {
+        Dispatchers.resetMain()
         unmockkAll()
     }
 
-    // -------------------------------------------------------------------------
-    // login()
-    // -------------------------------------------------------------------------
+    private fun httpException(code: Int, jsonBody: String): HttpException {
+        val body = jsonBody.toResponseBody("application/json".toMediaTypeOrNull())
+        return HttpException(Response.error<Any>(code, body))
+    }
 
-    // LOG_VM_001
+    /** Parseable JSON that Gson maps to ErrorResponse.message = "parsed-msg". */
+    private val validErrorJson =
+        """{"status":400,"is_success":false,"message":"parsed-msg","token":null,"data":{}}"""
+
+    /** Body that fails Gson parse -> parsedMessage == null (catch branch). */
+    private val invalidJson = "<<not-json>>"
+
+    // ───────────────────────────── login: validation branches ─────────────────────────────
+
     @Test
-    fun `login emits Loading then Success when email valid and repo succeeds`() = runTest {
-        val email = "user@pharmacy.com"
+    fun `login with invalid email and errorMessageResId set uses resId string`() = runTest {
+        every { validator.validateEmail(email) } returns
+            ValidationResult(false, R.string.error_email_invalid)
+        every { context.getString(R.string.error_email_invalid) } returns "bad-email"
+
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state is LoginUiState.Error)
+        assertEquals("bad-email", (state as LoginUiState.Error).message)
+        coVerify(exactly = 0) { repository.login(any()) }
+    }
+
+    @Test
+    fun `login with invalid email and null resId falls back to default invalid email string`() =
+        runTest {
+            every { validator.validateEmail(email) } returns ValidationResult(false, null)
+            every { context.getString(R.string.error_invalid_email) } returns "default-invalid"
+
+            viewModel.login(email)
+            advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertTrue(state is LoginUiState.Error)
+            assertEquals("default-invalid", (state as LoginUiState.Error).message)
+        }
+
+    // ───────────────────────────── login: already-loading guard ─────────────────────────────
+
+    @Test
+    fun `login returns early when already loading`() = runTest {
         every { validator.validateEmail(email) } returns ValidationResult(true)
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
+        // Suspend the first call so the VM stays in Loading while the second call runs.
+        val gate = CompletableDeferred<Result<LoginResponse>>()
+        coEvery { repository.login(email) } coAnswers { gate.await() }
+
+        viewModel.login(email) // schedules coroutine #1
+        advanceUntilIdle()     // coroutine #1 sets Loading, suspends on gate
+        assertEquals(LoginUiState.Loading, viewModel.uiState.value)
+
+        viewModel.login(email) // state is Loading -> guard hit, returns early
+        advanceUntilIdle()
+
+        gate.complete(Result.success(LoginResponse()))
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.login(email) }
+        verify(exactly = 1) { serviceManager.startService() }
+    }
+
+    // ───────────────────────────── login: no internet ─────────────────────────────
+
+    @Test
+    fun `login with no internet sets Error`() = runTest {
+        every { validator.validateEmail(email) } returns ValidationResult(true)
+        every { NetworkUtils.isNetworkAvailable(any()) } returns false
+        every { context.getString(R.string.error_no_internet) } returns "no-internet"
+
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state is LoginUiState.Error)
+        assertEquals("no-internet", (state as LoginUiState.Error).message)
+        coVerify(exactly = 0) { repository.login(any()) }
+    }
+
+    // ───────────────────────────── login: success ─────────────────────────────
+
+    @Test
+    fun `login success emits Loading then Success and starts service`() = runTest {
+        every { validator.validateEmail(email) } returns ValidationResult(true)
         coEvery { repository.login(email) } returns Result.success(LoginResponse())
 
         viewModel.uiState.test {
@@ -81,253 +193,238 @@ class LoginViewModelTest {
             assertEquals(LoginUiState.Success, awaitItem())
             cancelAndIgnoreRemainingEvents()
         }
+        advanceUntilIdle()
+
+        verify(exactly = 1) { serviceManager.startService() }
     }
 
-    // LOG_VM_002
-    @Test
-    fun `login emits Error immediately when email validation fails`() = runTest {
-        val email = "bad-email"
-        every { validator.validateEmail(email) } returns ValidationResult(false, 0)
-        every { context.getString(0) } returns "Invalid email"
+    // ───────────────── login failure: getFriendlyErrorMessage branches ─────────────────
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.login(email)
-            val state = awaitItem()
-            assertTrue(state is LoginUiState.Error)
-            coVerify(exactly = 0) { repository.login(any()) }
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    // LOG_VM_003
     @Test
-    fun `login emits Error when network is unavailable`() = runTest {
-        val email = "user@pharmacy.com"
+    fun `login failure HttpException 400 with parsed message`() = runTest {
         every { validator.validateEmail(email) } returns ValidationResult(true)
-        every { NetworkUtils.isNetworkAvailable(context) } returns false
-        every { context.getString(any()) } returns "No internet"
+        coEvery { repository.login(email) } returns
+            Result.failure(httpException(400, validErrorJson))
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.login(email)
-            val state = awaitItem()
-            assertTrue(state is LoginUiState.Error)
-            coVerify(exactly = 0) { repository.login(any()) }
-            cancelAndIgnoreRemainingEvents()
-        }
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        assertEquals("parsed-msg", (viewModel.uiState.value as LoginUiState.Error).message)
     }
 
-    // LOG_VM_004
     @Test
-    fun `login emits Error when repository throws HttpException 401`() = runTest {
-        val email = "user@pharmacy.com"
-        val exception = HttpException(Response.error<Any>(401, "".toResponseBody(null)))
+    fun `login failure HttpException 400 with unparseable body falls back`() = runTest {
         every { validator.validateEmail(email) } returns ValidationResult(true)
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        every { context.getString(any()) } returns "Unauthorized"
-        coEvery { repository.login(email) } returns Result.failure(exception)
+        coEvery { repository.login(email) } returns
+            Result.failure(httpException(400, invalidJson))
+        every { context.getString(R.string.error_invalid_email) } returns "fallback-400"
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        assertEquals("fallback-400", (viewModel.uiState.value as LoginUiState.Error).message)
+    }
+
+    @Test
+    fun `login failure HttpException 401`() = runTest {
+        every { validator.validateEmail(email) } returns ValidationResult(true)
+        coEvery { repository.login(email) } returns
+            Result.failure(httpException(401, invalidJson))
+        every { context.getString(R.string.error_unauthorized) } returns "unauthorized"
+
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        assertEquals("unauthorized", (viewModel.uiState.value as LoginUiState.Error).message)
+    }
+
+    @Test
+    fun `login failure HttpException 500`() = runTest {
+        every { validator.validateEmail(email) } returns ValidationResult(true)
+        coEvery { repository.login(email) } returns
+            Result.failure(httpException(500, invalidJson))
+        every { context.getString(R.string.error_server_unavailable) } returns "server-unavailable"
+
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        assertEquals("server-unavailable", (viewModel.uiState.value as LoginUiState.Error).message)
+    }
+
+    @Test
+    fun `login failure HttpException else-code with parsed message`() = runTest {
+        every { validator.validateEmail(email) } returns ValidationResult(true)
+        coEvery { repository.login(email) } returns
+            Result.failure(httpException(418, validErrorJson))
+
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        assertEquals("parsed-msg", (viewModel.uiState.value as LoginUiState.Error).message)
+    }
+
+    @Test
+    fun `login failure HttpException else-code with null parsed message falls back to generic`() =
+        runTest {
+            every { validator.validateEmail(email) } returns ValidationResult(true)
+            coEvery { repository.login(email) } returns
+                Result.failure(httpException(418, invalidJson))
+            every { context.getString(R.string.error_generic) } returns "generic"
+
             viewModel.login(email)
             advanceUntilIdle()
-            awaitItem() // Loading
-            val error = awaitItem()
-            assertTrue(error is LoginUiState.Error)
-            cancelAndIgnoreRemainingEvents()
+
+            assertEquals("generic", (viewModel.uiState.value as LoginUiState.Error).message)
         }
-    }
 
-    // LOG_VM_005
     @Test
-    fun `login emits Error when repository throws HttpException 500`() = runTest {
-        val email = "user@pharmacy.com"
-        val exception = HttpException(Response.error<Any>(500, "".toResponseBody(null)))
+    fun `login failure UnknownHostException`() = runTest {
         every { validator.validateEmail(email) } returns ValidationResult(true)
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        every { context.getString(any()) } returns "Server error"
-        coEvery { repository.login(email) } returns Result.failure(exception)
-
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.login(email)
-            advanceUntilIdle()
-            awaitItem() // Loading
-            val error = awaitItem()
-            assertTrue(error is LoginUiState.Error)
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    // LOG_VM_006
-    @Test
-    fun `login emits Error when repository throws UnknownHostException`() = runTest {
-        val email = "user@pharmacy.com"
-        every { validator.validateEmail(email) } returns ValidationResult(true)
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        every { context.getString(any()) } returns "No internet"
         coEvery { repository.login(email) } returns Result.failure(UnknownHostException("no host"))
+        every { context.getString(R.string.error_no_internet) } returns "no-internet"
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.login(email)
-            advanceUntilIdle()
-            awaitItem() // Loading
-            val error = awaitItem()
-            assertTrue(error is LoginUiState.Error)
-            cancelAndIgnoreRemainingEvents()
-        }
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        assertEquals("no-internet", (viewModel.uiState.value as LoginUiState.Error).message)
     }
 
-    // LOG_VM_007
     @Test
-    fun `login emits Error when repository throws SocketTimeoutException`() = runTest {
-        val email = "user@pharmacy.com"
+    fun `login failure SocketTimeoutException`() = runTest {
         every { validator.validateEmail(email) } returns ValidationResult(true)
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        every { context.getString(any()) } returns "Timeout"
         coEvery { repository.login(email) } returns Result.failure(SocketTimeoutException("timeout"))
+        every { context.getString(R.string.error_timeout) } returns "timeout"
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.login(email)
-            advanceUntilIdle()
-            awaitItem() // Loading
-            val error = awaitItem()
-            assertTrue(error is LoginUiState.Error)
-            cancelAndIgnoreRemainingEvents()
-        }
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        assertEquals("timeout", (viewModel.uiState.value as LoginUiState.Error).message)
     }
 
-    // LOG_VM_008 — second call while Loading is silently dropped
     @Test
-    fun `login does not start second call while Loading state is active`() = runTest {
-        val email = "user@pharmacy.com"
+    fun `login failure generic exception with non-blank message uses message`() = runTest {
         every { validator.validateEmail(email) } returns ValidationResult(true)
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        coEvery { repository.login(email) } returns Result.success(LoginResponse())
+        coEvery { repository.login(email) } returns Result.failure(RuntimeException("boom"))
 
-        viewModel.login(email)           // first call → sets Loading
-        advanceUntilIdle()               // let it reach Loading internally
-        viewModel.login(email)           // second call while Loading → dropped
+        viewModel.login(email)
+        advanceUntilIdle()
 
-        // Repository should be called exactly once
-        coVerify(exactly = 1) { repository.login(email) }
+        assertEquals("boom", (viewModel.uiState.value as LoginUiState.Error).message)
     }
 
-    // LOG_VM_009 — on Success, Hl7serviceHandler.startService() is called
     @Test
-    fun `login calls serviceManager startService on success`() = runTest {
-        val email = "user@pharmacy.com"
+    fun `login failure generic exception with blank message falls back to generic`() = runTest {
         every { validator.validateEmail(email) } returns ValidationResult(true)
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        coEvery { repository.login(email) } returns Result.success(LoginResponse())
+        coEvery { repository.login(email) } returns Result.failure(RuntimeException("   "))
+        every { context.getString(R.string.error_generic) } returns "generic"
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.login(email)
-            advanceUntilIdle()
-            awaitItem() // Loading
-            awaitItem() // Success
-            verify(exactly = 1) { serviceManager.startService() }
-            cancelAndIgnoreRemainingEvents()
-        }
+        viewModel.login(email)
+        advanceUntilIdle()
+
+        assertEquals("generic", (viewModel.uiState.value as LoginUiState.Error).message)
     }
 
-    // -------------------------------------------------------------------------
-    // logout()
-    // -------------------------------------------------------------------------
+    // ───────────────────────────── logout ─────────────────────────────
 
-    // LOG_VM_010
     @Test
-    fun `logout emits Loading then Success and calls clearHl7Config`() = runTest {
-        val token = "refresh_token_abc"
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        coEvery { repository.logout(token) } returns Result.success(LogoutResponse())
+    fun `logout returns early when already loading`() = runTest {
+        val gate = CompletableDeferred<Result<LogoutResponse>>()
+        coEvery { repository.logout("refresh") } coAnswers { gate.await() }
+
+        viewModel.logout("refresh") // schedules coroutine #1
+        advanceUntilIdle()          // coroutine #1 sets Loading, suspends on gate
+        assertEquals(LogoutUiState.Loading, viewModel.logoutUiState.value)
+
+        viewModel.logout("refresh") // guard hit, returns early
+        advanceUntilIdle()
+
+        gate.complete(Result.success(LogoutResponse()))
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.logout("refresh") }
+        verify(exactly = 1) { preferenceHelper.clearHl7Config() }
+    }
+
+    @Test
+    fun `logout with no internet sets Error`() = runTest {
+        every { NetworkUtils.isNetworkAvailable(any()) } returns false
+        every { context.getString(R.string.error_no_internet) } returns "no-internet"
+
+        viewModel.logout("refresh")
+        advanceUntilIdle()
+
+        val state = viewModel.logoutUiState.value
+        assertTrue(state is LogoutUiState.Error)
+        assertEquals("no-internet", (state as LogoutUiState.Error).message)
+        coVerify(exactly = 0) { repository.logout(any()) }
+    }
+
+    @Test
+    fun `logout success emits Loading then Success and clears hl7 config`() = runTest {
+        coEvery { repository.logout("refresh") } returns Result.success(LogoutResponse())
 
         viewModel.logoutUiState.test {
             assertEquals(LogoutUiState.Idle, awaitItem())
-            viewModel.logout(token)
+            viewModel.logout("refresh")
             assertEquals(LogoutUiState.Loading, awaitItem())
             assertEquals(LogoutUiState.Success, awaitItem())
-            verify { preferenceHelper.clearHl7Config() }
             cancelAndIgnoreRemainingEvents()
         }
+        advanceUntilIdle()
+
+        verify(exactly = 1) { preferenceHelper.clearHl7Config() }
     }
 
-    // LOG_VM_011
     @Test
-    fun `logout emits Error when repository fails`() = runTest {
-        val token = "refresh_token_abc"
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        every { context.getString(any()) } returns "Logout failed"
-        coEvery { repository.logout(token) } returns Result.failure(Exception("error"))
+    fun `logout failure sets Error using friendly message`() = runTest {
+        coEvery { repository.logout("refresh") } returns
+            Result.failure(httpException(401, invalidJson))
+        every { context.getString(R.string.error_unauthorized) } returns "unauthorized"
 
-        viewModel.logoutUiState.test {
-            awaitItem() // Idle
-            viewModel.logout(token)
-            advanceUntilIdle()
-            awaitItem() // Loading
-            val error = awaitItem()
-            assertTrue(error is LogoutUiState.Error)
-            cancelAndIgnoreRemainingEvents()
-        }
+        viewModel.logout("refresh")
+        advanceUntilIdle()
+
+        val state = viewModel.logoutUiState.value
+        assertTrue(state is LogoutUiState.Error)
+        assertEquals("unauthorized", (state as LogoutUiState.Error).message)
     }
 
-    // LOG_VM_012
-    @Test
-    fun `logout emits Error when network is unavailable`() = runTest {
-        every { NetworkUtils.isNetworkAvailable(context) } returns false
-        every { context.getString(any()) } returns "No internet"
+    // ───────────────────────────── state reset helpers ─────────────────────────────
 
-        viewModel.logoutUiState.test {
-            awaitItem() // Idle
-            viewModel.logout("token")
-            val error = awaitItem()
-            assertTrue(error is LogoutUiState.Error)
-            coVerify(exactly = 0) { repository.logout(any()) }
-            cancelAndIgnoreRemainingEvents()
-        }
+    @Test
+    fun `resetLoginState resets to Idle when not idle`() = runTest {
+        every { validator.validateEmail(email) } returns ValidationResult(false, null)
+        every { context.getString(R.string.error_invalid_email) } returns "x"
+        viewModel.login(email) // -> Error (non-idle)
+
+        viewModel.resetLoginState()
+
+        assertEquals(LoginUiState.Idle, viewModel.uiState.value)
     }
 
-    // -------------------------------------------------------------------------
-    // resetLoginState / clearSession / clearAllStates
-    // -------------------------------------------------------------------------
-
-    // LOG_VM_013
     @Test
-    fun `resetLoginState sets uiState to Idle from Error`() = runTest {
-        // Drive state to Error first (validation fails synchronously)
-        every { validator.validateEmail("x") } returns ValidationResult(false, 0)
-        every { context.getString(0) } returns "err"
-        viewModel.login("x")
-
+    fun `resetLoginState no-op when already idle`() = runTest {
         viewModel.resetLoginState()
         assertEquals(LoginUiState.Idle, viewModel.uiState.value)
     }
 
-    // LOG_VM_014
     @Test
-    fun `resetLoginState is a no-op when already Idle`() = runTest {
-        assertEquals(LoginUiState.Idle, viewModel.uiState.value)
-        viewModel.resetLoginState()
-        assertEquals(LoginUiState.Idle, viewModel.uiState.value)
-    }
-
-    // LOG_VM_015
-    @Test
-    fun `clearSession calls clearTokens setUserLoggedIn and saveLocalId on preferenceHelper`() {
+    fun `clearSession clears tokens, sets logged out and resets local id`() = runTest {
         viewModel.clearSession()
-        verify { preferenceHelper.clearTokens() }
-        verify { preferenceHelper.setUserLoggedIn(false) }
-        verify { preferenceHelper.saveLocalId(0) }
+
+        verify(exactly = 1) { preferenceHelper.clearTokens() }
+        verify(exactly = 1) { preferenceHelper.setUserLoggedIn(false) }
+        verify(exactly = 1) { preferenceHelper.saveLocalId(0) }
     }
 
-    // LOG_VM_016
     @Test
-    fun `clearAllStates resets both uiState and logoutUiState to Idle`() = runTest {
+    fun `clearAllStates resets both states to idle`() = runTest {
+        every { validator.validateEmail(email) } returns ValidationResult(false, null)
+        every { context.getString(R.string.error_invalid_email) } returns "x"
+        viewModel.login(email) // drive uiState to Error
+
         viewModel.clearAllStates()
+
         assertEquals(LoginUiState.Idle, viewModel.uiState.value)
         assertEquals(LogoutUiState.Idle, viewModel.logoutUiState.value)
     }

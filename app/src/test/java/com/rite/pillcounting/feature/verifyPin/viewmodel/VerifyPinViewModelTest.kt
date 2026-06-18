@@ -1,283 +1,350 @@
 package com.rite.pillcounting.feature.verifyPin.viewmodel
 
 import android.content.Context
+import android.util.Log
 import app.cash.turbine.test
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.NetworkUtils
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.otp.data.VerifyPinRepository
+import com.rite.pillcounting.feature.verifyPin.domain.model.VerifiedUser
 import com.rite.pillcounting.feature.verifyPin.domain.model.VerifyPinData
 import com.rite.pillcounting.feature.verifyPin.domain.model.VerifyPinResponse
 import com.rite.pillcounting.feature.verifyPin.domain.model.VerifyPinUiState
 import com.rite.pillcounting.feature.verifyPin.presentation.viewmodel.VerifyPinViewModel
-import com.rite.pillcounting.util.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.setMain
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
-import org.junit.Rule
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
-import okhttp3.ResponseBody.Companion.toResponseBody
 import java.io.IOException
 
+/**
+ * Unit tests for [VerifyPinViewModel].
+ *
+ * Targets 100% line + method coverage including every branch of the private
+ * mapExceptionToUserMessage(...) reached through verifyPin() onFailure.
+ */
 @OptIn(ExperimentalCoroutinesApi::class)
 class VerifyPinViewModelTest {
 
-    @get:Rule
-    val mainDispatcherRule = MainDispatcherRule()
-
-    private val repository: VerifyPinRepository = mockk()
-    private val context: Context = mockk(relaxed = true)
-    private val prefs: PreferenceHelper = mockk(relaxed = true)
-
+    private lateinit var repository: VerifyPinRepository
+    private lateinit var context: Context
+    private lateinit var prefs: PreferenceHelper
     private lateinit var viewModel: VerifyPinViewModel
+
+    private val email = "user@test.com"
+    private val otp = "1234"
 
     @Before
     fun setup() {
+        mockkStatic(Log::class)
+        every { Log.d(any(), any()) } returns 0
+        every { Log.d(any(), any(), any()) } returns 0
+        every { Log.i(any(), any()) } returns 0
+        every { Log.i(any(), any(), any()) } returns 0
+        every { Log.w(any(), any<String>()) } returns 0
+        every { Log.w(any(), any<String>(), any()) } returns 0
+        every { Log.e(any(), any()) } returns 0
+        every { Log.e(any(), any(), any()) } returns 0
+
+        Dispatchers.setMain(StandardTestDispatcher())
+
         mockkObject(NetworkUtils)
+        every { NetworkUtils.isNetworkAvailable(any()) } returns true
+
+        repository = mockk()
+        context = mockk()
+        prefs = mockk(relaxed = true)
+
+        every { context.getString(any()) } returns "msg"
+
         viewModel = VerifyPinViewModel(repository, context, prefs)
     }
 
     @After
     fun tearDown() {
+        Dispatchers.resetMain()
         unmockkAll()
     }
 
-    // -------------------------------------------------------------------------
-    // verifyPin()
-    // -------------------------------------------------------------------------
+    private fun httpException(code: Int, jsonBody: String): HttpException {
+        val body = jsonBody.toResponseBody("application/json".toMediaTypeOrNull())
+        return HttpException(Response.error<Any>(code, body))
+    }
 
-    // VP_VM_001
+    private val validErrorJson =
+        """{"status":400,"is_success":false,"message":"parsed-msg","token":null,"data":{}}"""
+
+    private val invalidJson = "<<not-json>>"
+
+    // ───────────────────────────── otp length guard ─────────────────────────────
+
     @Test
-    fun `verifyPin emits Loading then Success and saves tokens when OTP is valid`() = runTest {
-        val email = "user@pharmacy.com"
-        val otp = "1234"
-        val data = VerifyPinData(accessToken = "access_tok", refreshToken = "refresh_tok")
-        val response = VerifyPinResponse(status = 200, isSuccess = true, data = data)
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        coEvery { repository.verifyPin(email, otp) } returns Result.success(response)
+    fun `verifyPin with otp length not 4 sets Error and does not call repository`() = runTest {
+        every { context.getString(R.string.error_invalid_otp) } returns "invalid-otp"
+
+        viewModel.verifyPin(email, "123")
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state is VerifyPinUiState.Error)
+        assertEquals("invalid-otp", (state as VerifyPinUiState.Error).message)
+        coVerify(exactly = 0) { repository.verifyPin(any(), any()) }
+    }
+
+    // ───────────────────────────── already-loading guard ─────────────────────────────
+
+    @Test
+    fun `verifyPin second call dropped while first is in Loading`() = runTest {
+        // Suspend the first repository call so the VM stays in Loading, then issue a
+        // second call which must hit the already-loading guard and return early.
+        val gate = CompletableDeferred<Result<VerifyPinResponse>>()
+        coEvery { repository.verifyPin(email, otp) } coAnswers { gate.await() }
+
+        viewModel.verifyPin(email, otp) // schedules coroutine #1
+        advanceUntilIdle()              // coroutine #1 runs: sets Loading, suspends on gate
+        assertEquals(VerifyPinUiState.Loading, viewModel.uiState.value)
+
+        viewModel.verifyPin(email, otp) // state is Loading -> guard hit, returns early
+        advanceUntilIdle()
+
+        // Release the first call so the test coroutine can finish cleanly.
+        gate.complete(Result.success(VerifyPinResponse(data = VerifyPinData())))
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.verifyPin(email, otp) }
+    }
+
+    // ───────────────────────────── no internet ─────────────────────────────
+
+    @Test
+    fun `verifyPin with no internet sets Error and skips repository`() = runTest {
+        every { NetworkUtils.isNetworkAvailable(any()) } returns false
+        every { context.getString(R.string.error_no_internet) } returns "no-internet"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state is VerifyPinUiState.Error)
+        assertEquals("no-internet", (state as VerifyPinUiState.Error).message)
+        coVerify(exactly = 0) { repository.verifyPin(any(), any()) }
+    }
+
+    // ───────────────────────────── success branches ─────────────────────────────
+
+    @Test
+    fun `verifyPin success with both tokens and non-null user saves tokens`() = runTest {
+        val user = VerifiedUser(email = email, isVerified = true)
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
 
         viewModel.uiState.test {
             assertEquals(VerifyPinUiState.Idle, awaitItem())
             viewModel.verifyPin(email, otp)
             assertEquals(VerifyPinUiState.Loading, awaitItem())
             assertEquals(VerifyPinUiState.Success, awaitItem())
-            verify { prefs.saveTokens("access_tok", "refresh_tok") }
             cancelAndIgnoreRemainingEvents()
         }
+        advanceUntilIdle()
+
+        verify(exactly = 1) { prefs.saveTokens("access", "refresh") }
     }
 
-    // VP_VM_002 — OTP shorter than 4
     @Test
-    fun `verifyPin emits Error immediately when OTP length is less than 4`() = runTest {
-        every { context.getString(any()) } returns "Invalid OTP"
+    fun `verifyPin success with missing token and null user does not save tokens`() = runTest {
+        // accessToken null -> warn branch; user null -> warn branch
+        val data = VerifyPinData(accessToken = null, refreshToken = null, user = null)
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.success(VerifyPinResponse(status = 200, data = data))
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.verifyPin("user@pharmacy.com", "12")
-            val state = awaitItem()
-            assertTrue(state is VerifyPinUiState.Error)
-            coVerify(exactly = 0) { repository.verifyPin(any(), any()) }
-            cancelAndIgnoreRemainingEvents()
-        }
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals(VerifyPinUiState.Success, viewModel.uiState.value)
+        coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
     }
 
-    // VP_VM_003 — OTP longer than 4
     @Test
-    fun `verifyPin emits Error immediately when OTP length is more than 4`() = runTest {
-        every { context.getString(any()) } returns "Invalid OTP"
+    fun `verifyPin success with blank refresh token hits missing-token branch`() = runTest {
+        val user = VerifiedUser(email = email)
+        val data = VerifyPinData(accessToken = "access", refreshToken = "", user = user)
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.success(VerifyPinResponse(data = data))
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.verifyPin("user@pharmacy.com", "12345")
-            val state = awaitItem()
-            assertTrue(state is VerifyPinUiState.Error)
-            coVerify(exactly = 0) { repository.verifyPin(any(), any()) }
-            cancelAndIgnoreRemainingEvents()
-        }
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals(VerifyPinUiState.Success, viewModel.uiState.value)
+        coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
     }
 
-    // VP_VM_004 — empty OTP
     @Test
-    fun `verifyPin emits Error immediately when OTP is empty`() = runTest {
-        every { context.getString(any()) } returns "Invalid OTP"
+    fun `verifyPin success with null data treats tokens and user as missing`() = runTest {
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.success(VerifyPinResponse(status = 200, data = null))
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.verifyPin("user@pharmacy.com", "")
-            val state = awaitItem()
-            assertTrue(state is VerifyPinUiState.Error)
-            cancelAndIgnoreRemainingEvents()
-        }
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals(VerifyPinUiState.Success, viewModel.uiState.value)
+        coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
     }
 
-    // VP_VM_005 — network unavailable (checked inside coroutine after Length guard)
-    @Test
-    fun `verifyPin emits Error when network is unavailable`() = runTest {
-        every { NetworkUtils.isNetworkAvailable(context) } returns false
-        every { context.getString(any()) } returns "No internet"
+    // ─────────────── failure: mapExceptionToUserMessage branches ───────────────
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.verifyPin("user@pharmacy.com", "1234")
-            advanceUntilIdle()
-            // Loading is emitted AFTER network check — here network check fires before Loading
-            val state = awaitItem()
-            assertTrue(state is VerifyPinUiState.Error)
-            coVerify(exactly = 0) { repository.verifyPin(any(), any()) }
-            cancelAndIgnoreRemainingEvents()
-        }
+    @Test
+    fun `verifyPin failure IOException maps to server unavailable`() = runTest {
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.failure(IOException("conn reset"))
+        every { context.getString(R.string.error_server_unavailable) } returns "server-unavailable"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals("server-unavailable", (viewModel.uiState.value as VerifyPinUiState.Error).message)
     }
 
-    // VP_VM_006 — HTTP 400
     @Test
-    fun `verifyPin emits Error when repository returns HttpException 400`() = runTest {
-        val email = "user@pharmacy.com"
-        val otp = "1234"
-        val exception = HttpException(Response.error<Any>(400, "".toResponseBody(null)))
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        every { context.getString(any()) } returns "Invalid OTP"
-        coEvery { repository.verifyPin(email, otp) } returns Result.failure(exception)
+    fun `verifyPin failure HttpException 401 maps to invalid otp`() = runTest {
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.failure(httpException(401, invalidJson))
+        every { context.getString(R.string.error_invalid_otp) } returns "invalid-otp"
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals("invalid-otp", (viewModel.uiState.value as VerifyPinUiState.Error).message)
+    }
+
+    @Test
+    fun `verifyPin failure HttpException 400 with parsed message`() = runTest {
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.failure(httpException(400, validErrorJson))
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals("parsed-msg", (viewModel.uiState.value as VerifyPinUiState.Error).message)
+    }
+
+    @Test
+    fun `verifyPin failure HttpException 400 with unparseable body falls back to invalid otp`() =
+        runTest {
+            coEvery { repository.verifyPin(email, otp) } returns
+                Result.failure(httpException(400, invalidJson))
+            every { context.getString(R.string.error_invalid_otp) } returns "invalid-otp"
+
             viewModel.verifyPin(email, otp)
             advanceUntilIdle()
-            awaitItem() // Loading
-            val error = awaitItem()
-            assertTrue(error is VerifyPinUiState.Error)
-            cancelAndIgnoreRemainingEvents()
+
+            assertEquals("invalid-otp", (viewModel.uiState.value as VerifyPinUiState.Error).message)
         }
+
+    @Test
+    fun `verifyPin failure HttpException 5xx maps to server down`() = runTest {
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.failure(httpException(503, invalidJson))
+        every { context.getString(R.string.error_server_down) } returns "server-down"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals("server-down", (viewModel.uiState.value as VerifyPinUiState.Error).message)
     }
 
-    // VP_VM_007 — HTTP 401
     @Test
-    fun `verifyPin emits Error when repository returns HttpException 401`() = runTest {
-        val email = "user@pharmacy.com"
-        val otp = "1234"
-        val exception = HttpException(Response.error<Any>(401, "".toResponseBody(null)))
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        every { context.getString(any()) } returns "Invalid OTP"
-        coEvery { repository.verifyPin(email, otp) } returns Result.failure(exception)
+    fun `verifyPin failure HttpException else-code with parsed message`() = runTest {
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.failure(httpException(418, validErrorJson))
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals("parsed-msg", (viewModel.uiState.value as VerifyPinUiState.Error).message)
+    }
+
+    @Test
+    fun `verifyPin failure HttpException else-code with null parsed message falls back to unknown`() =
+        runTest {
+            coEvery { repository.verifyPin(email, otp) } returns
+                Result.failure(httpException(418, invalidJson))
+            every { context.getString(R.string.error_unknown) } returns "unknown"
+
             viewModel.verifyPin(email, otp)
             advanceUntilIdle()
-            awaitItem() // Loading
-            val error = awaitItem()
-            assertTrue(error is VerifyPinUiState.Error)
-            cancelAndIgnoreRemainingEvents()
+
+            assertEquals("unknown", (viewModel.uiState.value as VerifyPinUiState.Error).message)
         }
+
+    @Test
+    fun `verifyPin failure generic exception maps to unknown`() = runTest {
+        coEvery { repository.verifyPin(email, otp) } returns
+            Result.failure(RuntimeException("boom"))
+        every { context.getString(R.string.error_unknown) } returns "unknown"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertEquals("unknown", (viewModel.uiState.value as VerifyPinUiState.Error).message)
     }
 
-    // VP_VM_008 — IOException
-    @Test
-    fun `verifyPin emits Error when repository throws IOException`() = runTest {
-        val email = "user@pharmacy.com"
-        val otp = "1234"
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        every { context.getString(any()) } returns "Server unavailable"
-        coEvery { repository.verifyPin(email, otp) } returns Result.failure(IOException("connection reset"))
+    // ───────────────────────────── state helpers ─────────────────────────────
 
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.verifyPin(email, otp)
-            advanceUntilIdle()
-            awaitItem() // Loading
-            val error = awaitItem()
-            assertTrue(error is VerifyPinUiState.Error)
-            cancelAndIgnoreRemainingEvents()
-        }
+    @Test
+    fun `resetState resets to Idle when not idle`() = runTest {
+        every { context.getString(R.string.error_invalid_otp) } returns "x"
+        viewModel.verifyPin(email, "12") // length guard -> Error (non-idle)
+
+        viewModel.resetState()
+
+        assertEquals(VerifyPinUiState.Idle, viewModel.uiState.value)
     }
 
-    // VP_VM_009 — server 5xx
     @Test
-    fun `verifyPin emits Error when repository returns HttpException 503`() = runTest {
-        val email = "user@pharmacy.com"
-        val otp = "1234"
-        val exception = HttpException(Response.error<Any>(503, "".toResponseBody(null)))
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        every { context.getString(any()) } returns "Server down"
-        coEvery { repository.verifyPin(email, otp) } returns Result.failure(exception)
-
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.verifyPin(email, otp)
-            advanceUntilIdle()
-            awaitItem() // Loading
-            val error = awaitItem()
-            assertTrue(error is VerifyPinUiState.Error)
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    // VP_VM_010 — tokens NOT saved when response has null tokens
-    @Test
-    fun `verifyPin does not save tokens when accessToken is null in response`() = runTest {
-        val email = "user@pharmacy.com"
-        val otp = "1234"
-        val response = VerifyPinResponse(status = 200, isSuccess = true, data = VerifyPinData(accessToken = null, refreshToken = null))
-        every { NetworkUtils.isNetworkAvailable(context) } returns true
-        coEvery { repository.verifyPin(email, otp) } returns Result.success(response)
-
-        viewModel.uiState.test {
-            awaitItem() // Idle
-            viewModel.verifyPin(email, otp)
-            advanceUntilIdle()
-            awaitItem() // Loading
-            awaitItem() // Success
-            coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    // -------------------------------------------------------------------------
-    // resetState / clearAfterSuccess / setUserLoggedIn
-    // -------------------------------------------------------------------------
-
-    // VP_VM_011
-    @Test
-    fun `resetState returns uiState to Idle from Error`() = runTest {
-        every { context.getString(any()) } returns "Invalid OTP"
-        viewModel.verifyPin("user@pharmacy.com", "12") // triggers Error (length check)
+    fun `resetState no-op when already idle`() = runTest {
         viewModel.resetState()
         assertEquals(VerifyPinUiState.Idle, viewModel.uiState.value)
     }
 
-    // VP_VM_012
     @Test
-    fun `resetState is a no-op when already Idle`() {
-        assertEquals(VerifyPinUiState.Idle, viewModel.uiState.value)
-        viewModel.resetState()
-        assertEquals(VerifyPinUiState.Idle, viewModel.uiState.value)
-    }
+    fun `clearAfterSuccess sets state to Idle`() = runTest {
+        every { context.getString(R.string.error_invalid_otp) } returns "x"
+        viewModel.verifyPin(email, "12") // -> Error
 
-    // VP_VM_013
-    @Test
-    fun `clearAfterSuccess sets uiState to Idle`() = runTest {
         viewModel.clearAfterSuccess()
+
         assertEquals(VerifyPinUiState.Idle, viewModel.uiState.value)
     }
 
-    // VP_VM_014
     @Test
-    fun `setUserLoggedIn delegates to PreferenceHelper`() {
+    fun `setUserLoggedIn delegates to prefs`() = runTest {
         viewModel.setUserLoggedIn(true)
-        verify { prefs.setUserLoggedIn(true) }
+        verify(exactly = 1) { prefs.setUserLoggedIn(true) }
 
         viewModel.setUserLoggedIn(false)
-        verify { prefs.setUserLoggedIn(false) }
+        verify(exactly = 1) { prefs.setUserLoggedIn(false) }
     }
 }

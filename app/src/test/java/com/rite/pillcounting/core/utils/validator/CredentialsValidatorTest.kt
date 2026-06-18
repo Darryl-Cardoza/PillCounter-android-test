@@ -1,297 +1,224 @@
 package com.rite.pillcounting.core.utils.validator
 
+import android.util.Patterns
+import com.rite.pillcounting.R
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import org.junit.runner.RunWith
-import org.robolectric.RobolectricTestRunner
-import org.robolectric.annotation.Config
+import java.lang.reflect.Field
+import java.util.regex.Pattern
 
 /**
  * Unit tests for [CredentialsValidator].
  *
- * RobolectricTestRunner is used because [CredentialsValidator] calls
- * android.util.Patterns.EMAIL_ADDRESS / PHONE — static fields that are null
- * in the plain Android stub JAR. Robolectric initialises them with real values
- * so validation logic runs correctly on the JVM without a device/emulator.
+ * `Patterns.EMAIL_ADDRESS` / `Patterns.PHONE` are `public static final Pattern` fields that are
+ * `null` in the android.jar unit-test stub (returnDefaultValues only affects method calls, not
+ * field reads). They are installed here with real [Pattern] instances via sun.misc.Unsafe
+ * (accessed reflectively — the `--add-opens` for java.base is configured for unit tests in
+ * app/build.gradle.kts), so the Patterns-based branches of validateEmail/validatePhone run for
+ * real on the JVM.
  */
-@RunWith(RobolectricTestRunner::class)
-@Config(manifest = Config.NONE)
 class CredentialsValidatorTest {
 
-    private lateinit var validator: CredentialsValidator
+    private val validator = CredentialsValidator()
 
     @Before
     fun setup() {
-        validator = CredentialsValidator()
+        setStaticFinalField(
+            Patterns::class.java.getField("EMAIL_ADDRESS"),
+            Pattern.compile("[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}"),
+        )
+        setStaticFinalField(
+            Patterns::class.java.getField("PHONE"),
+            Pattern.compile("[0-9+\\-() .]+"),
+        )
     }
 
-    // -------------------------------------------------------------------------
-    // validateEmail
-    // -------------------------------------------------------------------------
+    // ─────────────────────────── validateEmail ───────────────────────────
 
-    // CRED_001
     @Test
-    fun `validateEmail returns success for valid email`() {
-        val result = validator.validateEmail("user@pharmacy.com")
-        assertTrue(result.isSuccess)
-        assertNull(result.errorMessageResId)
+    fun `validateEmail blank is optional success`() {
+        val r = validator.validateEmail("   ")
+        assertTrue(r.isSuccess)
+        assertNull(r.errorMessageResId)
     }
 
-    // CRED_002 — blank is optional (isBlank check returns true before regex)
     @Test
-    fun `validateEmail returns success for blank email because field is optional`() {
-        val result = validator.validateEmail("")
-        assertTrue(result.isSuccess)
+    fun `validateEmail valid format success`() {
+        assertTrue(validator.validateEmail("john.doe@example.com").isSuccess)
     }
 
-    // CRED_003
     @Test
-    fun `validateEmail returns success for whitespace-only email because field is optional`() {
-        val result = validator.validateEmail("   ")
-        assertTrue(result.isSuccess)
+    fun `validateEmail malformed failure`() {
+        val r = validator.validateEmail("not-an-email")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_email_invalid, r.errorMessageResId)
     }
 
-    // CRED_004
+    // ─────────────────────────── validatePhone ───────────────────────────
+
     @Test
-    fun `validateEmail returns failure for email without at symbol`() {
-        val result = validator.validateEmail("userpharma.com")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validatePhone blank is optional success`() {
+        assertTrue(validator.validatePhone("").isSuccess)
     }
 
-    // CRED_005
     @Test
-    fun `validateEmail returns failure for email without domain extension`() {
-        val result = validator.validateEmail("user@pharmacy")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validatePhone valid success`() {
+        assertTrue(validator.validatePhone("1234567").isSuccess)
     }
 
-    // CRED_006
     @Test
-    fun `validateEmail returns failure for email starting with at symbol`() {
-        val result = validator.validateEmail("@pharmacy.com")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validatePhone too short failure`() {
+        // matches the PHONE pattern but length < 7
+        val r = validator.validatePhone("123456")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_phone_invalid, r.errorMessageResId)
     }
 
-    // CRED_007
     @Test
-    fun `validateEmail returns success for email with subdomain`() {
-        val result = validator.validateEmail("admin@mail.pharmacy.com")
-        assertTrue(result.isSuccess)
+    fun `validatePhone invalid characters failure`() {
+        // letters fail the PHONE pattern
+        val r = validator.validatePhone("12ab567")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_phone_invalid, r.errorMessageResId)
     }
 
-    // -------------------------------------------------------------------------
-    // validatePassword
-    // -------------------------------------------------------------------------
+    // ─────────────────────────── validateRequiredName ───────────────────────────
 
-    // CRED_008
     @Test
-    fun `validatePassword returns success when all rules satisfied`() {
-        val result = validator.validatePassword("Secure#1pass")
-        assertTrue(result.isSuccess)
-        assertNull(result.errorMessageResId)
+    fun `validateRequiredName blank is required failure`() {
+        val r = validator.validateRequiredName("  ")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_name_required, r.errorMessageResId)
     }
 
-    // CRED_009
     @Test
-    fun `validatePassword returns failure when fewer than 8 characters`() {
-        val result = validator.validatePassword("Ab1#")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validateRequiredName with digit failure`() {
+        val r = validator.validateRequiredName("John2")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_name_invalid, r.errorMessageResId)
     }
 
-    // CRED_010
     @Test
-    fun `validatePassword returns failure when exactly 7 characters`() {
-        val result = validator.validatePassword("Ab1#efg")
-        assertFalse(result.isSuccess)
+    fun `validateRequiredName valid success`() {
+        assertTrue(validator.validateRequiredName("Mary-Jane O'Neil").isSuccess)
     }
 
-    // CRED_011
+    // ─────────────────────────── validatePharmacyName ───────────────────────────
+
     @Test
-    fun `validatePassword returns failure when no uppercase letter`() {
-        val result = validator.validatePassword("secure#1pass")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validatePharmacyName blank is optional success`() {
+        assertTrue(validator.validatePharmacyName("").isSuccess)
     }
 
-    // CRED_012
     @Test
-    fun `validatePassword returns failure when no lowercase letter`() {
-        val result = validator.validatePassword("SECURE#1PASS")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validatePharmacyName single char failure`() {
+        val r = validator.validatePharmacyName("A")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_pharmacy_name_invalid, r.errorMessageResId)
     }
 
-    // CRED_013
     @Test
-    fun `validatePassword returns failure when no digit`() {
-        val result = validator.validatePassword("Secure#pass")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validatePharmacyName two chars boundary success`() {
+        assertTrue(validator.validatePharmacyName("CV").isSuccess)
     }
 
-    // CRED_014
+    // ─────────────────────────── validateNpi ───────────────────────────
+
     @Test
-    fun `validatePassword returns failure when no special character`() {
-        val result = validator.validatePassword("Secure1pass")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validateNpi blank is optional success`() {
+        assertTrue(validator.validateNpi("").isSuccess)
     }
 
-    // -------------------------------------------------------------------------
-    // validateRequiredName (blank = REQUIRED, not optional)
-    // -------------------------------------------------------------------------
-
-    // CRED_015
     @Test
-    fun `validateRequiredName returns success for valid alphabetic name`() {
-        val result = validator.validateRequiredName("John Doe")
-        assertTrue(result.isSuccess)
-        assertNull(result.errorMessageResId)
+    fun `validateNpi with letters failure`() {
+        val r = validator.validateNpi("12a456")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_npi_invalid, r.errorMessageResId)
     }
 
-    // CRED_016 — blank triggers error_name_required
     @Test
-    fun `validateRequiredName returns failure for blank name because field is required`() {
-        val result = validator.validateRequiredName("")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validateNpi too short failure`() {
+        assertFalse(validator.validateNpi("12345").isSuccess) // 5 digits
     }
 
-    // CRED_017
     @Test
-    fun `validateRequiredName returns failure when name contains a digit`() {
-        val result = validator.validateRequiredName("John123")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validateNpi too long failure`() {
+        assertFalse(validator.validateNpi("1234567890123").isSuccess) // 13 digits
     }
 
-    // CRED_018
     @Test
-    fun `validateRequiredName returns success for name with hyphens and spaces`() {
-        val result = validator.validateRequiredName("Mary-Jane Watson")
-        assertTrue(result.isSuccess)
+    fun `validateNpi valid boundaries success`() {
+        assertTrue(validator.validateNpi("123456").isSuccess) // 6
+        assertTrue(validator.validateNpi("123456789012").isSuccess) // 12
     }
 
-    // -------------------------------------------------------------------------
-    // validatePharmacyName
-    // -------------------------------------------------------------------------
+    // ─────────────────────────── validatePassword ───────────────────────────
 
-    // CRED_019 — blank is optional
     @Test
-    fun `validatePharmacyName returns success for blank pharmacy name because field is optional`() {
-        val result = validator.validatePharmacyName("")
-        assertTrue(result.isSuccess)
+    fun `validatePassword too short failure`() {
+        val r = validator.validatePassword("Aa1!")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_password_too_short, r.errorMessageResId)
     }
 
-    // CRED_020
     @Test
-    fun `validatePharmacyName returns failure for single-character name`() {
-        val result = validator.validatePharmacyName("A")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
+    fun `validatePassword no uppercase failure`() {
+        assertEquals(
+            R.string.error_password_no_uppercase,
+            validator.validatePassword("abcdefg1!").errorMessageResId,
+        )
     }
 
-    // CRED_021
     @Test
-    fun `validatePharmacyName returns success for two-character name (minimum)`() {
-        val result = validator.validatePharmacyName("AB")
-        assertTrue(result.isSuccess)
+    fun `validatePassword no lowercase failure`() {
+        assertEquals(
+            R.string.error_password_no_lowercase,
+            validator.validatePassword("ABCDEFG1!").errorMessageResId,
+        )
     }
 
-    // CRED_022
     @Test
-    fun `validatePharmacyName returns success for full pharmacy name`() {
-        val result = validator.validatePharmacyName("Rite Pharmacy LLC")
-        assertTrue(result.isSuccess)
+    fun `validatePassword no digit failure`() {
+        assertEquals(
+            R.string.error_password_no_digit,
+            validator.validatePassword("Abcdefg!").errorMessageResId,
+        )
     }
 
-    // -------------------------------------------------------------------------
-    // validateNpi (optional; digits only; length 6..12)
-    // -------------------------------------------------------------------------
-
-    // CRED_023
     @Test
-    fun `validateNpi returns success for blank NPI because field is optional`() {
-        val result = validator.validateNpi("")
-        assertTrue(result.isSuccess)
+    fun `validatePassword no special failure`() {
+        assertEquals(
+            R.string.error_password_no_special,
+            validator.validatePassword("Abcdefg1").errorMessageResId,
+        )
     }
 
-    // CRED_024
     @Test
-    fun `validateNpi returns success for 6-digit NPI (minimum length)`() {
-        val result = validator.validateNpi("123456")
-        assertTrue(result.isSuccess)
+    fun `validatePassword valid success`() {
+        assertTrue(validator.validatePassword("Abcdefg1!").isSuccess)
     }
 
-    // CRED_025
-    @Test
-    fun `validateNpi returns success for standard 10-digit NPI`() {
-        val result = validator.validateNpi("1234567890")
-        assertTrue(result.isSuccess)
-    }
+    // ─────────────────────────── helpers ───────────────────────────
 
-    // CRED_026
-    @Test
-    fun `validateNpi returns success for 12-digit NPI (maximum length)`() {
-        val result = validator.validateNpi("123456789012")
-        assertTrue(result.isSuccess)
-    }
-
-    // CRED_027
-    @Test
-    fun `validateNpi returns failure for 5-digit NPI (below minimum)`() {
-        val result = validator.validateNpi("12345")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
-    }
-
-    // CRED_028
-    @Test
-    fun `validateNpi returns failure for 13-digit NPI (above maximum)`() {
-        val result = validator.validateNpi("1234567890123")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
-    }
-
-    // CRED_029
-    @Test
-    fun `validateNpi returns failure when NPI contains letters`() {
-        val result = validator.validateNpi("12345A")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
-    }
-
-    // -------------------------------------------------------------------------
-    // validatePhone (optional; Patterns.PHONE match + length >= 7)
-    // -------------------------------------------------------------------------
-
-    // CRED_030
-    @Test
-    fun `validatePhone returns success for blank phone because field is optional`() {
-        val result = validator.validatePhone("")
-        assertTrue(result.isSuccess)
-    }
-
-    // CRED_031 — 6 digits falls under length guard (< 7)
-    @Test
-    fun `validatePhone returns failure for phone shorter than 7 digits`() {
-        val result = validator.validatePhone("123456")
-        assertFalse(result.isSuccess)
-        assertNotNull(result.errorMessageResId)
-    }
-
-    // CRED_032
-    @Test
-    fun `validatePhone returns success for 10-digit phone number`() {
-        val result = validator.validatePhone("1234567890")
-        assertTrue(result.isSuccess)
+    /**
+     * Sets a `public static final` reference field via sun.misc.Unsafe (reached reflectively so
+     * the `sun.misc` package needn't be on the compile classpath). Needs the java.base opens that
+     * app/build.gradle.kts configures for unit tests.
+     */
+    private fun setStaticFinalField(field: Field, value: Any) {
+        val unsafeField = Class.forName("sun.misc.Unsafe").getDeclaredField("theUnsafe")
+        unsafeField.isAccessible = true
+        val unsafe = unsafeField.get(null)
+        val unsafeClass = unsafe.javaClass
+        val base = unsafeClass.getMethod("staticFieldBase", Field::class.java).invoke(unsafe, field)
+        val offset = unsafeClass.getMethod("staticFieldOffset", Field::class.java)
+            .invoke(unsafe, field) as Long
+        unsafeClass
+            .getMethod("putObject", Any::class.java, Long::class.javaPrimitiveType, Any::class.java)
+            .invoke(unsafe, base, offset, value)
     }
 }

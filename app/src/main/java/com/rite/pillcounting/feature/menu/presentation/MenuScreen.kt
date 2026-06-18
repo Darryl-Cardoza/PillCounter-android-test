@@ -32,7 +32,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicat
 import com.rite.pillcounting.core.utils.common.navigateSafely
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
-import com.rite.pillcounting.feature.login.viewmodel.LoginViewModel
+import com.rite.pillcounting.feature.login.presentation.viewmodel.LoginViewModel
 import com.rite.pillcounting.feature.menu.presentation.compose.SimpleMenuRow
 import com.rite.pillcounting.feature.menu.presentation.viewmodel.MenuViewModel
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE

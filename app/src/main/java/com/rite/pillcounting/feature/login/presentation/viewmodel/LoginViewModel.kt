@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.login.viewmodel
+package com.rite.pillcounting.feature.login.presentation.viewmodel
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
