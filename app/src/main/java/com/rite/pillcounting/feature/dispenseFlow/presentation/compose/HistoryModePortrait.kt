@@ -71,7 +71,11 @@ fun HistoryModePortrait(
     onDeleteTxn: (Long) -> Unit,
     viewModel: PillScanningViewModel,
     drugName: String,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    // Hoisted so the open-fullscreen state survives the portrait↔landscape
+    // composable swap on rotation (otherwise the preview would close on rotate).
+    selectedImagePath: String?,
+    onImageSelected: (String?) -> Unit,
 ) {
     val activeHistory = remember(txnHistory) { txnHistory.sortedBy { it.createdAt } }
     val stepType by viewModel.currentStep.collectAsState()
@@ -79,7 +83,6 @@ fun HistoryModePortrait(
     var isDeleteMode by remember { mutableStateOf(false) }
     var selectedIds by remember { mutableStateOf(setOf<Long>()) }
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
-    var selectedImagePath by remember { mutableStateOf<String?>(null) }
 
     val isAllSelected = selectedIds.size == activeHistory.size && activeHistory.isNotEmpty()
 
@@ -189,7 +192,7 @@ fun HistoryModePortrait(
                                     selectedIds + item.txnDetailId
                             },
                             onDelete = onDeleteTxn,
-                            onImageClick = { path -> selectedImagePath = path },
+                            onImageClick = { path -> onImageSelected(path) },
                             cardModifier = Modifier
                                 .fillMaxWidth()
                                 .aspectRatio(0.80f)
@@ -231,7 +234,7 @@ fun HistoryModePortrait(
         selectedImagePath?.let { path ->
             FullScreenImageDialog(
                 imagePath = path,
-                onDismiss = { selectedImagePath = null },
+                onDismiss = { onImageSelected(null) },
                 modifier = Modifier.zIndex(1f)
             )
         }

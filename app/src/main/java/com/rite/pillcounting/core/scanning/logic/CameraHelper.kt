@@ -49,6 +49,10 @@ class CameraHelper(
     private val isBound = AtomicBoolean(false)
     private val isStreaming = AtomicBoolean(true)
 
+    // Last display rotation pushed via setTargetRotation. Used to detect an
+    // actual rotation change so we can rebind the use cases (see setTargetRotation).
+    private var lastAppliedRotation = ROTATION_UNSET
+
     private val _frameChannel = Channel<ImageProxy>(Channel.CONFLATED)
     val frameFlow = _frameChannel.receiveAsFlow()
     private var imageCapture: ImageCapture? = null
@@ -69,6 +73,11 @@ class CameraHelper(
         val minZoomRatio: Float = 1.0f,
         val maxZoomRatio: Float = 1.0f
     )
+
+    companion object {
+        // Sentinel: no rotation has been pushed via setTargetRotation yet.
+        private const val ROTATION_UNSET = -1
+    }
 
     // ---------------------------------------------------------
     // START CAMERA
@@ -252,6 +261,41 @@ class CameraHelper(
     fun setTargetRotation(rotation: Int) {
         imageAnalysis?.targetRotation = rotation
         imageCapture?.targetRotation = rotation
+
+        // Updating targetRotation alone does not reliably re-rotate an already-bound
+        // ImageAnalysis output stream: the analyzer can keep emitting frames in the
+        // orientation captured at bind time, so the tray box + pill centroids stay
+        // mapped to the previous orientation after the device rotates. When the
+        // rotation actually changes, rebind the use cases so a fresh ImageAnalysis is
+        // created with the new rotation (its builder seeds the current display
+        // rotation at bind time). Skip the very first push (lastAppliedRotation unset),
+        // which only aligns the freshly-bound stream.
+        if (isBound.get() &&
+            lastAppliedRotation != ROTATION_UNSET &&
+            rotation != lastAppliedRotation
+        ) {
+            previewView?.let { rebind(it) }
+        }
+        lastAppliedRotation = rotation
+    }
+
+    /**
+     * Tear down and re-bind the camera use cases. Used on a display rotation change
+     * so ImageAnalysis starts emitting frames in the new orientation immediately.
+     */
+    private fun rebind(previewView: PreviewView) {
+        logger.i("Rebinding camera for rotation change")
+        try {
+            cameraProviderFuture.get().unbindAll()
+        } catch (e: Exception) {
+            logger.w("Unbind before rotation rebind failed: ${e.message}")
+        }
+        preview = null
+        imageAnalysis = null
+        boundCamera = null
+        isBound.set(false)
+        isStreaming.set(false)
+        startCamera(previewView)
     }
 
     // ---------------------------------------------------------

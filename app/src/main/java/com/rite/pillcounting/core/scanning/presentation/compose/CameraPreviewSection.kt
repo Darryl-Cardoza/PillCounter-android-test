@@ -532,7 +532,7 @@ fun CameraPreviewSection(
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .background(Color.Black)
+                            .background(Color.White)
                     )
                 }
             }

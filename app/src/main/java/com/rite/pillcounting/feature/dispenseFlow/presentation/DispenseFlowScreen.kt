@@ -244,6 +244,11 @@ fun DispenseFlowScreen(
     // InventoryFlowScreen used. Tapping the Total Count on the pill panel sets
     // this to true.
     var showHistory by rememberSaveable { mutableStateOf(false) }
+    // Open-fullscreen image path for the history view. Hoisted to screen level
+    // (and saveable) so it survives the portrait↔landscape HistoryMode swap on
+    // rotation — otherwise rotating while a preview is open would close it and
+    // drop the user back to the history grid.
+    var fullScreenImagePath by rememberSaveable { mutableStateOf<String?>(null) }
     LaunchedEffect(showHistory) {
         if (showHistory) {
             pillVm.pauseIdleTimer()
@@ -914,6 +919,8 @@ fun DispenseFlowScreen(
                     viewModel = pillVm,
                     drugName = pillState.drugName,
                     onBack = { showHistory = false },
+                    selectedImagePath = fullScreenImagePath,
+                    onImageSelected = { fullScreenImagePath = it },
                 )
             } else {
                 HistoryModePortrait(
@@ -928,6 +935,8 @@ fun DispenseFlowScreen(
                     viewModel = pillVm,
                     drugName = pillState.drugName,
                     onBack = { showHistory = false },
+                    selectedImagePath = fullScreenImagePath,
+                    onImageSelected = { fullScreenImagePath = it },
                 )
             }
         }
