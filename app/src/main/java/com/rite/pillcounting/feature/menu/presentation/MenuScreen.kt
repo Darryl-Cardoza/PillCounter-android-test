@@ -100,19 +100,23 @@ fun MenuScreen(
                 }
             )
 
-            HorizontalDivider(color = extendedColors.primaryBackground)
-            SimpleMenuRow(
-                navController = navController,
-                icon = R.drawable.unsynced_transaction_icon,
-                iconTint = MaterialTheme.colorScheme.primary,
-                title = stringResource(R.string.menu_unsync_transaction),
-                trailingText = uiState.unsyncedTransactionCount.toString(),
-                onClick = {
-                    navController.navigateSafely(
-                        Screen.UnsyncedTransactionScreen.route
-                    )
-                }
-            )
+            // Unsynced transactions are HL7/PMS sync artifacts — hide the row
+            // entirely when HL7 is disabled from the portal.
+            if (viewModel.isHl7Enabled()) {
+                HorizontalDivider(color = extendedColors.primaryBackground)
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.unsynced_transaction_icon,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_unsync_transaction),
+                    trailingText = uiState.unsyncedTransactionCount.toString(),
+                    onClick = {
+                        navController.navigateSafely(
+                            Screen.UnsyncedTransactionScreen.route
+                        )
+                    }
+                )
+            }
 
             HorizontalDivider(color = extendedColors.primaryBackground)
 
