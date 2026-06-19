@@ -40,6 +40,9 @@ data class DispenseFlowUiState(
     // Fired when a scanned NDC is rejected by the batch PMS allowlist.
     val ndcNotAllowedToastTick: Int = 0,
     val ndcNotAllowedValue: String = "",
+    // Fired during the VIAL step when a scanned vial barcode's RX does not match
+    // the active transaction's RX number.
+    val vialRxMismatchToastTick: Int = 0,
 
     val isLoading: Boolean = false,
     val error: String? = null,

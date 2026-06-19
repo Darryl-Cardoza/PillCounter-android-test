@@ -12,12 +12,11 @@ import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
+import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
+import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.utils.compose.ContainerStatus
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
-import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
-import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
-import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseFlowUiState
@@ -72,6 +71,10 @@ class DispenseFlowViewModel @Inject constructor(
 
     private var countType: CountType = CountType.FIXED
     private var queueObserverJob: Job? = null
+
+    // Timestamp of the last VIAL RX-mismatch toast, used to debounce repeated
+    // misses on the same wrong vial.
+    private var lastVialMismatchToastAt: Long = 0L
 
     fun setCountType(type: String) {
         countType = runCatching { CountType.valueOf(type) }.getOrDefault(CountType.FIXED)
@@ -753,6 +756,46 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
+     * Process a vial barcode read during the VIAL step. The vial label carries
+     * the same RX-label barcode the user scanned at PRE_RX, so we extract the RX
+     * number and compare it to the active transaction's [DispenseFlowUiState.rxNo].
+     *
+     * Returns `true` when the RX matches — the caller then triggers the automatic
+     * photo capture (mirroring a tap on the camera button) and should NOT resume
+     * the analyzer. Returns `false` when the barcode can't be parsed or the RX
+     * doesn't match; on a mismatch a debounced toast is surfaced and the caller
+     * resumes the analyzer to keep scanning. Manual capture stays available
+     * regardless.
+     */
+    fun onVialBarcodeRead(rawValue: String): Boolean {
+        if (rawValue.isBlank()) return false
+        val expectedRx = _uiState.value.rxNo?.trim().orEmpty()
+        if (expectedRx.isEmpty()) return false
+
+        // Pipe-delimited payloads are the RX-label template; otherwise the raw
+        // value may already be the bare RX number.
+        val scannedRx = if (rawValue.contains('|')) {
+            parseScanData(preferenceHelper.getBarcodeRegex().toString(), rawValue).rxNo?.trim().orEmpty()
+        } else {
+            rawValue.trim()
+        }
+        if (scannedRx.isEmpty()) return false
+
+        val matched = scannedRx.equals(expectedRx, ignoreCase = true)
+        if (!matched) {
+            // The analyzer self-pauses then resumes on every miss, so the same
+            // wrong vial would otherwise spam toasts — debounce them.
+            val now = System.currentTimeMillis()
+            if (now - lastVialMismatchToastAt > VIAL_MISMATCH_TOAST_COOLDOWN_MS) {
+                lastVialMismatchToastAt = now
+                _uiState.update { it.copy(vialRxMismatchToastTick = it.vialRxMismatchToastTick + 1) }
+            }
+            logger.w("VIAL barcode RX mismatch: scanned=$scannedRx expected=$expectedRx")
+        }
+        return matched
+    }
+
+    /**
      * Called from the screen when, during PRE_NDC, the user scans something
      * that looks like an RX label (pipe-delimited template, not a GTIN-14).
      * The legacy single-screen flow had no way to surface this; the merged
@@ -898,6 +941,8 @@ class DispenseFlowViewModel @Inject constructor(
         }
     }
 }
+
+private const val VIAL_MISMATCH_TOAST_COOLDOWN_MS = 2000L
 
 private fun isControlledDrugType(drugType: String?): Boolean {
     val code = drugType?.trim()?.uppercase() ?: return false

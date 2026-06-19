@@ -255,6 +255,14 @@ fun DispenseFlowScreen(
 
     val pillStepType by pillVm.currentStep.collectAsState()
     val isTxnFromHl7 by pillVm.isTxnFromHl7.collectAsState()
+    val capturedBitmap by pillVm.capturedBitmap.collectAsState()
+
+    // VIAL step with no photo taken yet: run the barcode analyzer over the live
+    // frames so a vial whose RX matches the active transaction can be captured
+    // automatically. Once a photo exists (auto or manual) we stop scanning.
+    val isVialCaptureStep = dispenseState.stage == DispenseStage.COUNTING &&
+            pillStepType == StepState.VIAL &&
+            capturedBitmap == null
 
     // Once a hazardous drug is identified, keep the gloves icon visible for the
     // rest of this screen session — even if the user cancels the RX sheet and
@@ -484,6 +492,7 @@ fun DispenseFlowScreen(
     // the dialog closes.
     LaunchedEffect(
         dispenseState.stage,
+        isVialCaptureStep,
         dispenseState.showRxDetails,
         dispenseState.showNdcDetails,
         dispenseState.showNdcNotFoundDialog,
@@ -492,9 +501,12 @@ fun DispenseFlowScreen(
         dispenseState.showRxScannedInStockCountDialog,
         dispenseState.isLoading,
     ) {
+        // Pre-stages scan for the RX / NDC labels; the VIAL step scans the vial
+        // label to auto-capture when its RX matches the active transaction.
         val shouldRun = (dispenseState.stage == DispenseStage.QUEUE ||
                 dispenseState.stage == DispenseStage.PRE_RX ||
-                dispenseState.stage == DispenseStage.PRE_NDC) &&
+                dispenseState.stage == DispenseStage.PRE_NDC ||
+                isVialCaptureStep) &&
                 !dispenseState.showRxDetails &&
                 !dispenseState.showNdcDetails &&
                 !dispenseState.showNdcNotFoundDialog &&
@@ -677,6 +689,14 @@ fun DispenseFlowScreen(
         }
     }
 
+    // VIAL step: scanned vial barcode RX doesn't match the active transaction.
+    val vialRxMismatchToastText = stringResource(R.string.vial_rx_mismatch_toast)
+    LaunchedEffect(dispenseState.vialRxMismatchToastTick) {
+        if (dispenseState.vialRxMismatchToastTick > 0) {
+            showToast(context, vialRxMismatchToastText, Toast.LENGTH_SHORT)
+        }
+    }
+
     // Re-focus the BT scanner field whenever all overlays dismiss so the next
     // scan is captured without the user tapping the field.
     val btScannerOverlayActive = dispenseState.showRxDetails ||
@@ -732,6 +752,27 @@ fun DispenseFlowScreen(
                                 // would be dead until the user dismissed something
                                 // that never appeared.
                                 if (!dispatched) barcodeAnalyzer.resume()
+                            }
+                        } else if (
+                            pillStepType == StepState.VIAL && capturedBitmap == null
+                        ) {
+                            // Conditions are read live here (not via the precomputed
+                            // isVialCaptureStep) because this lambda is captured once
+                            // by CameraPreviewSection's frame collector — a plain
+                            // captured Boolean would be frozen at first composition.
+                            // VIAL step: read the vial label and auto-capture the
+                            // photo when its RX matches the active transaction. The
+                            // analyzer self-pauses on each hit; on a match we leave it
+                            // paused (capturedBitmap will hide the live view), on a
+                            // miss we resume to keep scanning. Manual capture still
+                            // works via the camera button.
+                            barcodeAnalyzer.analyze(imageProxy) { value, _ ->
+                                val matched = dispenseVm.onVialBarcodeRead(value)
+                                if (matched) {
+                                    pillVm.captureImage()
+                                } else {
+                                    barcodeAnalyzer.resume()
+                                }
                             }
                         }
                         pillVm.onFrameCaptured(imageProxy)
