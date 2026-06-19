@@ -66,13 +66,17 @@ import java.util.Locale
 // DashboardTabletLandscape (and eventually the phone variants) consume these so the
 // "same data, different placement" contract holds without per-variant duplication.
 
-internal fun buildTerminalUserLine(uiState: DashboardUiState): String {
+internal fun buildTerminalUserLine(
+    uiState: DashboardUiState,
+    includeTerminal: Boolean = true,
+): String {
     val profile = uiState.userDetail?.profile
     val activeTerminalName = uiState.userDetail?.terminals
         ?.firstOrNull { it.isActive == true }
         ?.terminalName
         ?.takeIf { it.isNotBlank() }
-    val terminal = activeTerminalName
+    // Terminal is HL7/PMS-driven — omit it from the top bar when HL7 is disabled.
+    val terminal = if (includeTerminal) activeTerminalName else null
     val user = listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }

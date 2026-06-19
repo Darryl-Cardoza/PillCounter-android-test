@@ -438,10 +438,16 @@ private fun ResponsiveProfileFields(
 
     // Add Terminal Dropdown if terminals are available
     if (viewModel.terminals.isNotEmpty()) {
+        // Terminal selection is HL7/PMS-driven — disable the dropdown when HL7 is
+        // turned off in the portal and surface a toast on tap.
+        val context = LocalContext.current
+        val hl7Enabled = viewModel.isHl7Enabled()
         TerminalDropdown(
             terminals = viewModel.terminals,
             selectedTerminal = viewModel.selectedTerminal,
             onTerminalSelected = { viewModel.onTerminalSelected(it) },
+            enabled = hl7Enabled,
+            onDisabledClick = { showToast(context, R.string.enable_hl7_from_portal_toast) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
@@ -460,13 +466,21 @@ private fun TerminalDropdown(
     terminals: List<Terminal>,
     selectedTerminal: Terminal?,
     onTerminalSelected: (Terminal) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    onDisabledClick: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
 
+    // Dim the field when disabled; never let it expand. A disabled tap routes to
+    // onDisabledClick (toast) instead.
+    val contentAlpha = if (enabled) 1f else 0.4f
+
     ExposedDropdownMenuBox(
-        expanded = expanded,
-        onExpandedChange = { expanded = !expanded },
+        expanded = expanded && enabled,
+        onExpandedChange = {
+            if (enabled) expanded = !expanded else onDisabledClick()
+        },
         modifier = modifier,
     ) {
         Box(
@@ -479,7 +493,7 @@ private fun TerminalDropdown(
         ) {
             Text(
                 text = stringResource(R.string.terminal),
-                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f * contentAlpha),
                 fontSize = 12.sp,
                 modifier = Modifier
                     .align(Alignment.TopStart)
@@ -487,7 +501,7 @@ private fun TerminalDropdown(
             )
             Text(
                 text = selectedTerminal?.terminalName ?: stringResource(R.string.select_terminal),
-                color = AppTheme.extendedColors.textColor,
+                color = AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
                 fontSize = 16.sp,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
@@ -496,13 +510,13 @@ private fun TerminalDropdown(
             Icon(
                 imageVector = Icons.Default.ArrowDropDown,
                 contentDescription = null,
-                tint = AppTheme.extendedColors.textColor,
+                tint = AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
                 modifier = Modifier.align(Alignment.CenterEnd),
             )
         }
 
         ExposedDropdownMenu(
-            expanded = expanded,
+            expanded = expanded && enabled,
             onDismissRequest = { expanded = false },
         ) {
             terminals.forEach { terminal ->
