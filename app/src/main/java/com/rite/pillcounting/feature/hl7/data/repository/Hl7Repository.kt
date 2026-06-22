@@ -29,6 +29,7 @@ import com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.rite.hl7.domain.model.CompleteHL7Message
 import javax.inject.Inject
@@ -52,6 +53,14 @@ class Hl7Repository @Inject constructor(
 
     private val logger = AppLogger.create<Hl7Repository>()
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+
+    companion object {
+        /**
+         * Grace delay after a success ACK before a synced transaction is deleted from local
+         * storage, allowing the PMS to pull the transaction images from the device image server.
+         */
+        private const val SYNCED_TXN_DELETE_DELAY_MS = 2_000L
+    }
 
     init {
         scope.launch {
@@ -189,7 +198,46 @@ class Hl7Repository @Inject constructor(
     fun markTransactionSynced() {
         scope.launch {
             val txnId = preferenceHelper.getSentMessageTxnId()
+            // Reached only on a success ACK (see Hl7EventHandler.onAckReceived). Flag the txn
+            // synced first, then — when the server disallows local storage — delete it. The PMS
+            // pulls images from the device image server before sending the success ACK, so the
+            // images are already retrieved by the time we delete here.
             pillCountTxnDao.markTxnSynced(txnId)
+            if (!preferenceHelper.isAllowLocalStorage()) {
+                // Wait before deleting: the PMS pulls the transaction images from the device
+                // image server (ImageNanoServer) *after* the success ACK. Deleting immediately
+                // would remove the image files before that pull completes, leaving the PMS
+                // without images. The delay gives the PMS time to fetch them first.
+                delay(SYNCED_TXN_DELETE_DELAY_MS)
+                deleteSyncedTransaction(txnId)
+            }
+        }
+    }
+
+    /**
+     * Removes a synced dispense transaction and its image files from local storage. Row deletion
+     * cascades to its detail rows; the barcode and detail images are file-system artifacts and
+     * must be deleted explicitly.
+     */
+    private suspend fun deleteSyncedTransaction(txnId: Long) {
+        if (txnId <= 0L) return
+        try {
+            val txn = pillCountTxnDao.getById(txnId)
+            val filesToDelete = mutableListOf<String>()
+            txn?.barcodeImage?.let { filesToDelete.add(it) }
+            filesToDelete.addAll(pillCountTxnDao.getTransactionDetailsImages(txnId))
+
+            pillCountTxnDao.deleteTransaction(txnId)
+
+            filesToDelete.forEach { path ->
+                val file = java.io.File(path)
+                if (file.exists() && !file.delete()) {
+                    logger.w("Failed to delete file for synced txn $txnId: $path")
+                }
+            }
+            logger.i("Deleted synced txn $txnId from local storage (allowLocalStorage=false)")
+        } catch (e: Exception) {
+            logger.e("Failed to delete synced txn $txnId", e)
         }
     }
 

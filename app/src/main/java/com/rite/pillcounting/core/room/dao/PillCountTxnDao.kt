@@ -574,6 +574,17 @@ interface PillCountTxnDao {
     suspend fun getTransactionsBefore(cutoff: Long): List<PillCountTxnEntity>
 
     /**
+     * Retrieves all dispense transactions that have already been synced with the PMS.
+     * Used by the launch-time cleanup pass to remove synced transactions from local storage
+     * when the server's `allow_local_storage` flag is false.
+     *
+     * @param countType Restricts to dispense (FIXED) transactions.
+     * @return A list of synced [PillCountTxnEntity].
+     */
+    @Query("SELECT * FROM pill_count_txn WHERE isSynced = 1 AND countType = :countType")
+    suspend fun getSyncedTransactions(countType: CountType = CountType.FIXED): List<PillCountTxnEntity>
+
+    /**
      * Retrieves the file paths of images linked to all transaction details under a given transaction.
      *
      * @param txnId The transaction ID.

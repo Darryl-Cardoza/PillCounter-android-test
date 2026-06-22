@@ -20,6 +20,7 @@ private const val KEY_REFRESH_TOKEN = "refresh_token"
 private const val KEY_USER_LOGGED_IN = "user_logged_in"
 private const val KEY_USER_ID = "user_id"
 private const val KEY_LOCAL_ID = "local_id"
+private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 
 // Transactions
 private const val KEY_TXN_ID = "txn_id"
@@ -129,6 +130,26 @@ class PreferenceHelper @Inject constructor(
         val id = prefs.getLong(KEY_LOCAL_ID, 0)
         logger.d("Retrieved localId")
         return id
+    }
+
+    /**
+     * Stores the `allow_local_storage` flag from the auth/me profile. When true, completed +
+     * PMS-synced dispense transactions are retained locally; when false, they are deleted from
+     * local storage once synced.
+     */
+    fun setAllowLocalStorage(allow: Boolean) {
+        prefs.putBoolean(KEY_ALLOW_LOCAL_STORAGE, allow)
+        logger.i("Saved allowLocalStorage: $allow")
+    }
+
+    /**
+     * Returns the cached `allow_local_storage` flag. Defaults to true so that completed/synced
+     * transactions are retained until the server explicitly opts into local-storage cleanup.
+     */
+    fun isAllowLocalStorage(): Boolean {
+        val allow = prefs.getBoolean(KEY_ALLOW_LOCAL_STORAGE, true)
+        logger.d("Retrieved allowLocalStorage: $allow")
+        return allow
     }
 
     // ─────────────────────────── TRANSACTIONS ───────────────────────────
