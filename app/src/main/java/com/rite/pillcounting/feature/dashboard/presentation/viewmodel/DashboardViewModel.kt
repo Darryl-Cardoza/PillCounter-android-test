@@ -590,6 +590,6 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         timezone = this.settings?.timezone,
         notifications = this.settings?.notificationsEnabled,
         createdAt = System.currentTimeMillis(),
-        isHl7Enable = this.profile?.isHl7Enable ?: false
+        isHl7Enable = this.profile?.isPMSIntegrated ?: false
     )
 }
