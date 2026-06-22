@@ -74,10 +74,21 @@ class Hl7EventHandlerTest {
     }
 
     @Test
-    fun `onAckReceived marks transaction synced`() {
-        handler.onAckReceived("ack", "MSG-3")
+    fun `onAckReceived marks transaction synced on success ACK`() {
+        val successAck = "MSH|^~\\&|PMS|PHARMACY|PillCounter|ROBOT|20240101000000||ACK|MSG-3|P|2.5\rMSA|AA|MSG-3\r"
+
+        handler.onAckReceived(successAck, "MSG-3")
 
         verify(exactly = 1) { hl7Repository.markTransactionSynced() }
+    }
+
+    @Test
+    fun `onAckReceived does not mark synced on error ACK`() {
+        val errorAck = "MSH|^~\\&|PMS|PHARMACY|PillCounter|ROBOT|20240101000000||ACK|MSG-3|P|2.5\rMSA|AE|MSG-3|rejected\r"
+
+        handler.onAckReceived(errorAck, "MSG-3")
+
+        verify(exactly = 0) { hl7Repository.markTransactionSynced() }
     }
 
     @Test

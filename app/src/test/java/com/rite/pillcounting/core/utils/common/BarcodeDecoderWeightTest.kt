@@ -34,11 +34,10 @@ class BarcodeDecoderWeightTest {
 
     @Test
     fun decode_parenthesizedWeight_parsed() {
-        // For the parenthesized form, parseWeight takes match.value.take(4) = "(310",
-        // whose last char '0' yields 0 decimals (divisor 1) -> 1500.0. This documents
-        // the actual implementation behavior for the (NNN) AI form.
+        // AI 3101 (net weight kg, 1 decimal place): "001500" / 10 = 150.0.
+        // Documents the actual implementation behavior for the (NNNN)NNNNNN form.
         val data = decoder.decode("(3101)001500")
-        assertEquals(1500.0, data.netWeightKg!!, 0.0001)
+        assertEquals(150.0, data.netWeightKg!!, 0.0001)
     }
 
     @Test
