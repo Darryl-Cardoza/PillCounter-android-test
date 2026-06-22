@@ -145,6 +145,11 @@ fun DashboardScreen(
     // creates a new batch. (Resume-last is reachable from elsewhere if needed.)
     var showBucketSelectDialog by remember { mutableStateOf(false) }
 
+    // When HL7 is disabled from the portal, tapping a partial dispense row in
+    // Today's Queue can't resume the PMS-initiated transaction — block it with
+    // an informational dialog instead of navigating into the flow.
+    var showEnableHl7Dialog by remember { mutableStateOf(false) }
+
     // ── Build the params bag shared by every variant ──
     // Lambdas are remembered so [DashboardVariantParams] is referentially stable across
     // recompositions — variants and their LazyColumn rows can skip re-render when only
@@ -180,14 +185,18 @@ fun DashboardScreen(
     }
     val onQueueDispenseClick = remember(viewModel, navController) {
         { txnId: Long ->
-            viewModel.selectCurrentTransaction(txnId)
-            navController.navigate(
-                Screen.DispenseFlow.createRoute(
-                    scanType = CountType.FIXED.toString(),
-                    fromResume = true,
-                    fromQueue = true,
+            if (!viewModel.isHl7Enabled()) {
+                showEnableHl7Dialog = true
+            } else {
+                viewModel.selectCurrentTransaction(txnId)
+                navController.navigate(
+                    Screen.DispenseFlow.createRoute(
+                        scanType = CountType.FIXED.toString(),
+                        fromResume = true,
+                        fromQueue = true,
+                    )
                 )
-            )
+            }
         }
     }
     val onQueueInventoryClick = remember(navController) {
@@ -256,6 +265,17 @@ fun DashboardScreen(
                 activity?.finishAffinity()
             },
             onCancel = { showLogoutDialog = false },
+        )
+    }
+
+    if (showEnableHl7Dialog) {
+        CommonDialog(
+            message = stringResource(R.string.please_enable_hl7_message),
+            confirmText = stringResource(R.string.ok),
+            cancelText = "",
+            onConfirm = { showEnableHl7Dialog = false },
+            onCancel = { showEnableHl7Dialog = false },
+            isSingleButton = true,
         )
     }
 

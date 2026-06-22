@@ -146,7 +146,7 @@ class DashboardViewModel @Inject constructor(
 
     fun getBucketList(): List<String> = preferenceHelper.getBucketList()
 
-    suspend fun getLastInProgressBatch() = batchDao.getLatest()
+//    suspend fun getLastInProgressBatch() = batchDao.getLatest()
 
     // ─────────────────────────── New dashboard: queue + KPIs ───────────────────────────
 
@@ -362,6 +362,7 @@ class DashboardViewModel @Inject constructor(
                             val localId = userDao.upsertPreservingLocalId(user = entity)
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.profile?.bucket ?: emptyList())
+                            preferenceHelper.setHl7Enabled(entity.isHl7Enable)
                             // Persist allow_local_storage so the HL7 sync flow knows whether to
                             // delete a dispense txn once it is completed and synced with the PMS.
                             preferenceHelper.setAllowLocalStorage(detail.profile?.allowLocalStorage ?: true)
@@ -370,7 +371,7 @@ class DashboardViewModel @Inject constructor(
                             // true). Runs on each auth/me response, so a true → false change takes
                             // effect on the next dashboard launch / refresh.
                             cleanupSyncedTransactionsIfNotAllowed()
-                            
+
                             // Save terminals to SharedPreferences
                             detail.terminals?.let { terminals ->
                                 preferenceHelper.saveTerminals(terminals)
@@ -588,6 +589,7 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         language = this.settings?.language,
         timezone = this.settings?.timezone,
         notifications = this.settings?.notificationsEnabled,
-        createdAt = System.currentTimeMillis()
+        createdAt = System.currentTimeMillis(),
+        isHl7Enable = this.profile?.isHl7Enable ?: false
     )
 }

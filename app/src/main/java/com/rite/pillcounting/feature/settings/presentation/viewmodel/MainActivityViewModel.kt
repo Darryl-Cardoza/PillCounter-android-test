@@ -68,6 +68,9 @@ class MainActivityViewModel @Inject constructor(
         preferenceHelper.saveShowNotesDialogSetting(newValue)
     }
 
+    /** HL7 toggle from the portal (cached in prefs). */
+    fun isHl7Enabled(): Boolean = preferenceHelper.isHl7Enabled()
+
     private val _uiState = MutableStateFlow(ApplicationSettingsUiState())
     override val uiState = _uiState.asStateFlow()
 
