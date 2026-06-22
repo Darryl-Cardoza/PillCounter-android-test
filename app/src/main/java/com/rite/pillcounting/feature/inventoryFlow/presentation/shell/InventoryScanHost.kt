@@ -87,7 +87,13 @@ fun InventoryScanHost(
 
     val context = LocalContext.current
     val analyzer = remember {
-        FrameBarcodeAnalyzer(context.applicationContext, enableFocusChangeDebounce = true)
+        FrameBarcodeAnalyzer(
+            context.applicationContext,
+            enableFocusChangeDebounce = true,
+            // Inventory is barcode-only (no parallel pill detection), so we can
+            // run more decode attempts/sec to cut time-to-detect on a steadied label.
+            minIntervalMs = 100L,
+        )
     }
     DisposableEffect(Unit) { onDispose { analyzer.close() } }
 

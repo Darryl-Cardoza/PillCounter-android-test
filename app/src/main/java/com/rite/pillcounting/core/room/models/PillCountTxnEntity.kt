@@ -25,6 +25,7 @@ import com.rite.pillcounting.core.room.models.enums.TxnPriority
  * @property note         Free-form note for the transaction.
  * @property expiry       Optional expiry (stored as string; consider epoch millis for strictness).
  * @property lotNo        Lot/batch number.
+ * @property serialNo     GS1 serial number (AI 21) of the scanned unit, if any.
  * @property barcodeImage Path/URI to a barcode image, if captured.
  * @property isSubstitute Whether a substitute drug was used.
  * @property rxNo         Prescription number.
@@ -85,6 +86,8 @@ data class PillCountTxnEntity(
     val note: String? = null,
     val expiry: String? = null,
     val lotNo: String? = null,
+    /** GS1 serial number (AI 21) of the scanned unit, when present on the label. */
+    val serialNo: String? = null,
     val barcodeImage: String? = null,
     val isSubstitute: Boolean = false,
     val rxNo: String? = null,
