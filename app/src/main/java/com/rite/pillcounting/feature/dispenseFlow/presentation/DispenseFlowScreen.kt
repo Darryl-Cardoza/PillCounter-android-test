@@ -138,6 +138,17 @@ fun DispenseFlowScreen(
     val isSoundEnabled by pillVm.isSoundEnabled.collectAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
 
+    // ── HL7-disabled dispense mode ───────────────────────────────────────────
+    // When HL7 is turned off in the portal, a plain dispense (FIXED) can't be
+    // driven by RX/NDC scanning. Barcode scanning (camera + BT) still runs, but
+    // any successful scan is intercepted: instead of dispatching to the VM we
+    // show a "enable HL7 from portal" dialog. The header keeps the normal "Scan
+    // Rx Label" prompt. Stock count (REGULAR) is inventory and unaffected by HL7.
+    val hl7DisabledDispense = remember(countType) {
+        !dispenseVm.isHl7Enabled() && countType == CountType.FIXED.toString()
+    }
+    var showHl7DisabledDialog by remember { mutableStateOf(false) }
+
     // ── BT scanner input ────────────────────────────────────────────────────
     // Tracks the text typed by a Bluetooth HID barcode scanner into the overlay
     // text field. Cleared after each submission so the field is ready for the
@@ -260,6 +271,14 @@ fun DispenseFlowScreen(
 
     val pillStepType by pillVm.currentStep.collectAsState()
     val isTxnFromHl7 by pillVm.isTxnFromHl7.collectAsState()
+    val capturedBitmap by pillVm.capturedBitmap.collectAsState()
+
+    // VIAL step with no photo taken yet: run the barcode analyzer over the live
+    // frames so a vial whose RX matches the active transaction can be captured
+    // automatically. Once a photo exists (auto or manual) we stop scanning.
+    val isVialCaptureStep = dispenseState.stage == DispenseStage.COUNTING &&
+            pillStepType == StepState.VIAL &&
+            capturedBitmap == null
 
     // Once a hazardous drug is identified, keep the gloves icon visible for the
     // rest of this screen session — even if the user cancels the RX sheet and
@@ -489,6 +508,7 @@ fun DispenseFlowScreen(
     // the dialog closes.
     LaunchedEffect(
         dispenseState.stage,
+        isVialCaptureStep,
         dispenseState.showRxDetails,
         dispenseState.showNdcDetails,
         dispenseState.showNdcNotFoundDialog,
@@ -496,17 +516,24 @@ fun DispenseFlowScreen(
         dispenseState.showNdcEquivalenceDialog,
         dispenseState.showRxScannedInStockCountDialog,
         dispenseState.isLoading,
+        showHl7DisabledDialog,
     ) {
+        // Pre-stages scan for the RX / NDC labels; the VIAL step scans the vial
+        // label to auto-capture when its RX matches the active transaction.
         val shouldRun = (dispenseState.stage == DispenseStage.QUEUE ||
                 dispenseState.stage == DispenseStage.PRE_RX ||
-                dispenseState.stage == DispenseStage.PRE_NDC) &&
+                dispenseState.stage == DispenseStage.PRE_NDC ||
+                isVialCaptureStep) &&
                 !dispenseState.showRxDetails &&
                 !dispenseState.showNdcDetails &&
                 !dispenseState.showNdcNotFoundDialog &&
                 !dispenseState.showInvalidScanDialog &&
                 !dispenseState.showNdcEquivalenceDialog &&
                 !dispenseState.showRxScannedInStockCountDialog &&
-                !dispenseState.isLoading
+                !dispenseState.isLoading &&
+                // HL7 disabled: keep the analyzer paused while the "enable HL7"
+                // dialog is up so the same barcode doesn't re-trigger it.
+                !showHl7DisabledDialog
         if (shouldRun) barcodeAnalyzer.resume() else barcodeAnalyzer.pause()
     }
 
@@ -633,6 +660,19 @@ fun DispenseFlowScreen(
         )
     }
 
+    // HL7 disabled: a barcode was scanned in a plain dispense flow — tell the
+    // user to enable HL7 from the portal instead of acting on the scan.
+    if (showHl7DisabledDialog) {
+        CommonDialog(
+            message = stringResource(R.string.please_enable_hl7_message),
+            confirmText = stringResource(R.string.ok),
+            cancelText = "",
+            onConfirm = { showHl7DisabledDialog = false },
+            onCancel = { showHl7DisabledDialog = false },
+            isSingleButton = true,
+        )
+    }
+
     // Substitute drug confirmation: surfaces when the scanned NDC is reported
     // by the server as a generic equivalent of the HL7-expected NDC.
     if (dispenseState.showNdcEquivalenceDialog) {
@@ -682,6 +722,14 @@ fun DispenseFlowScreen(
         }
     }
 
+    // VIAL step: scanned vial barcode RX doesn't match the active transaction.
+    val vialRxMismatchToastText = stringResource(R.string.vial_rx_mismatch_toast)
+    LaunchedEffect(dispenseState.vialRxMismatchToastTick) {
+        if (dispenseState.vialRxMismatchToastTick > 0) {
+            showToast(context, vialRxMismatchToastText, Toast.LENGTH_SHORT)
+        }
+    }
+
     // Re-focus the BT scanner field whenever all overlays dismiss so the next
     // scan is captured without the user tapping the field.
     val btScannerOverlayActive = dispenseState.showRxDetails ||
@@ -691,7 +739,8 @@ fun DispenseFlowScreen(
             dispenseState.showNdcEquivalenceDialog ||
             dispenseState.showRxScannedInStockCountDialog ||
             dispenseState.showOnHoldDialog ||
-            dispenseState.isLoading
+            dispenseState.isLoading ||
+            showHl7DisabledDialog
     LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
         if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
             btScannerInput = ""
@@ -720,6 +769,14 @@ fun DispenseFlowScreen(
                         // pause-fast-path inside onFrameCaptured — no leak.
                         if (dispenseState.stage != DispenseStage.COUNTING) {
                             barcodeAnalyzer.analyze(imageProxy) { value, imagePath ->
+                                // HL7 disabled: don't dispatch the scan — surface the
+                                // "enable HL7" dialog instead. The analyzer self-pauses
+                                // on this hit and stays paused while the dialog is up
+                                // (gated by the LaunchedEffect above on showHl7DisabledDialog).
+                                if (hl7DisabledDispense) {
+                                    showHl7DisabledDialog = true
+                                    return@analyze
+                                }
                                 val dispatched = handleBarcode(
                                     value = value,
                                     imagePath = imagePath,
@@ -737,6 +794,27 @@ fun DispenseFlowScreen(
                                 // would be dead until the user dismissed something
                                 // that never appeared.
                                 if (!dispatched) barcodeAnalyzer.resume()
+                            }
+                        } else if (
+                            pillStepType == StepState.VIAL && capturedBitmap == null
+                        ) {
+                            // Conditions are read live here (not via the precomputed
+                            // isVialCaptureStep) because this lambda is captured once
+                            // by CameraPreviewSection's frame collector — a plain
+                            // captured Boolean would be frozen at first composition.
+                            // VIAL step: read the vial label and auto-capture the
+                            // photo when its RX matches the active transaction. The
+                            // analyzer self-pauses on each hit; on a match we leave it
+                            // paused (capturedBitmap will hide the live view), on a
+                            // miss we resume to keep scanning. Manual capture still
+                            // works via the camera button.
+                            barcodeAnalyzer.analyze(imageProxy) { value, _ ->
+                                val matched = dispenseVm.onVialBarcodeRead(value)
+                                if (matched) {
+                                    pillVm.captureImage()
+                                } else {
+                                    barcodeAnalyzer.resume()
+                                }
                             }
                         }
                         pillVm.onFrameCaptured(imageProxy)
@@ -1052,17 +1130,23 @@ fun DispenseFlowScreen(
                 onInputChange = { btScannerInput = it },
                 onSubmit = { barcode ->
                     if (barcode.isNotBlank()) {
-                        val dispatched = handleBarcode(
-                            value = barcode,
-                            imagePath = null,
-                            stage = dispenseState.stage,
-                            countType = countType,
-                            onRx = dispenseVm::onRxBarcodeRead,
-                            onNdc = dispenseVm::onNdcBarcodeRead,
-                            onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
-                            onRxInStockCount = dispenseVm::onRxScannedInStockCount,
-                        )
-                        if (!dispatched) barcodeAnalyzer.resume()
+                        // HL7 disabled: surface the "enable HL7" dialog instead of
+                        // dispatching the scanned barcode.
+                        if (hl7DisabledDispense) {
+                            showHl7DisabledDialog = true
+                        } else {
+                            val dispatched = handleBarcode(
+                                value = barcode,
+                                imagePath = null,
+                                stage = dispenseState.stage,
+                                countType = countType,
+                                onRx = dispenseVm::onRxBarcodeRead,
+                                onNdc = dispenseVm::onNdcBarcodeRead,
+                                onRxInNdcStage = dispenseVm::onRxScannedInNdcStage,
+                                onRxInStockCount = dispenseVm::onRxScannedInStockCount,
+                            )
+                            if (!dispatched) barcodeAnalyzer.resume()
+                        }
                     }
                 },
                 focusRequester = btFocusRequester,

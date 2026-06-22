@@ -107,6 +107,9 @@ class MenuViewModel @Inject constructor(
 
     fun getBucketList(): List<String> = preferenceHelper.getBucketList()
 
+    /** HL7 toggle from the portal (cached in prefs). */
+    fun isHl7Enabled(): Boolean = preferenceHelper.isHl7Enabled()
+
     suspend fun getLastInProgressBatch() = batchDao.getLatest()
 
     suspend fun createBatch(bucketId: String): Long? {

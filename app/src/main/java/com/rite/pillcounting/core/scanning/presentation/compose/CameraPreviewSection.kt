@@ -403,8 +403,51 @@ fun CameraPreviewSection(
                     viewModel.updateFilteredPills(pills)
                     onFilteredCountChanged(pills.size)
 
-                    val pillShadow = Color.Black.copy(alpha = 0.6f)
-                    val lastIdx = pills.lastIndex
+                    // ── Target vs excess split ────────────────────────────────
+                    // The pills here are ON TRAY (chute pills are already excluded
+                    // upstream). The target count stays on the tray and is drawn
+                    // GREEN (dispense these); the EXCESS pills nearest the chute are
+                    // drawn RED (push these into the chute). "Nearest the chute" is
+                    // measured in original-image pixel space, which already tracks
+                    // the display orientation, so the split is correct in both
+                    // portrait and landscape.
+                    val targetCount = uiState.targetCount
+                    val excessCount = (pills.size - targetCount).coerceAtLeast(0)
+                    val excessIndices: Set<Int> = if (excessCount <= 0) {
+                        emptySet()
+                    } else {
+                        val chuteRect = trayDetections
+                            .firstOrNull { it.cls == com.rite.pillcounting.core.scanning.logic.TrayClass.CHUTE }
+                            ?.rect
+                        // Fallback when the chute isn't segmented this frame: the
+                        // bottom-centre of the tray, else of the frame (mirrors the
+                        // Python POC).
+                        val fallback = trayDetections
+                            .firstOrNull { it.cls == com.rite.pillcounting.core.scanning.logic.TrayClass.TRAY }
+                            ?.rect
+                            ?.let { Offset(it.centerX(), it.bottom) }
+                            ?: Offset(actualFrameW / 2f, actualFrameH)
+                        // Squared distance is enough for ordering (monotonic).
+                        pills.indices
+                            .sortedBy { idx ->
+                                val cx = pills[idx].x * actualFrameW
+                                val cy = pills[idx].y * actualFrameH
+                                if (chuteRect != null) {
+                                    val nx = cx.coerceIn(chuteRect.left, chuteRect.right)
+                                    val ny = cy.coerceIn(chuteRect.top, chuteRect.bottom)
+                                    val dx = cx - nx; val dy = cy - ny
+                                    dx * dx + dy * dy
+                                } else {
+                                    val dx = cx - fallback.x; val dy = cy - fallback.y
+                                    dx * dx + dy * dy
+                                }
+                            }
+                            .take(excessCount)
+                            .toSet()
+                    }
+
+                    val pillTarget = Color(0xFF00C853)   // GREEN — keep on tray (dispense)
+                    val pillExcess = Color.Red           // RED   — excess, push into chute
                     drawIntoCanvas {
                         for (i in pills.indices) {
                             val pill = pills[i]
@@ -414,15 +457,16 @@ fun CameraPreviewSection(
                             if (px !in 0f..previewW || py !in 0f..previewH) continue
 
                             val pos = Offset(px, py)
-                            // Dark shadow fill for contrast
+                            val color = if (i in excessIndices) pillExcess else pillTarget
+                            // Light translucent fill (not dark) + solid coloured
+                            // border ring: green = target (keep), red = excess.
                             drawCircle(
-                                color = pillShadow,
+                                color = color.copy(alpha = 0.35f),
                                 radius = pillOuterRadiusPx,
                                 center = pos
                             )
-                            // Coloured ring: yellow = newest detection, white = rest
                             drawCircle(
-                                color = if (i == lastIdx) Color.Yellow else Color.White,
+                                color = color,
                                 radius = pillOuterRadiusPx,
                                 center = pos,
                                 style = Stroke(width = pillStrokePx)

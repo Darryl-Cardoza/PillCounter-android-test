@@ -19,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -29,10 +30,11 @@ import com.rite.pillcounting.core.utils.common.HistoryRetention
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.common.navigateSafely
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
-import com.rite.pillcounting.feature.login.viewmodel.LoginViewModel
+import com.rite.pillcounting.feature.login.presentation.viewmodel.LoginViewModel
 import com.rite.pillcounting.feature.menu.presentation.compose.SimpleMenuRow
 import com.rite.pillcounting.feature.menu.presentation.viewmodel.MenuViewModel
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
@@ -57,6 +59,7 @@ fun MenuScreen(
     onLogOut: () -> Unit
 ) {
     val dimens = AppTheme.dimens
+    val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val logoutState by loginViewModel.logoutUiState.collectAsState()
     var showLogoutLoading by remember { mutableStateOf(false) }
@@ -100,6 +103,10 @@ fun MenuScreen(
                 }
             )
 
+            // Unsynced transactions are HL7/PMS sync artifacts. When HL7 is
+            // disabled from the portal, keep the row visible but disabled
+            // (dimmed) and surface a toast on tap instead of navigating.
+            val hl7Enabled = viewModel.isHl7Enabled()
             HorizontalDivider(color = extendedColors.primaryBackground)
             SimpleMenuRow(
                 navController = navController,
@@ -107,10 +114,15 @@ fun MenuScreen(
                 iconTint = MaterialTheme.colorScheme.primary,
                 title = stringResource(R.string.menu_unsync_transaction),
                 trailingText = uiState.unsyncedTransactionCount.toString(),
+                enabled = hl7Enabled,
                 onClick = {
-                    navController.navigateSafely(
-                        Screen.UnsyncedTransactionScreen.route
-                    )
+                    if (hl7Enabled) {
+                        navController.navigateSafely(
+                            Screen.UnsyncedTransactionScreen.route
+                        )
+                    } else {
+                        showToast(context, R.string.enable_hl7_from_portal_toast)
+                    }
                 }
             )
 

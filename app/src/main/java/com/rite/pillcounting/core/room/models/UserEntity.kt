@@ -7,7 +7,7 @@ import androidx.room.TypeConverters
 import com.rite.pillcounting.core.security.SecureStringConverter
 import com.rite.pillcounting.core.security.models.SecureString
 
-    /**
+/**
      * Room entity representing a user account, persisted locally for offline access.
      *
      * This entity mirrors the structure of the backend `profile` and `settings` payloads,
@@ -77,5 +77,6 @@ import com.rite.pillcounting.core.security.models.SecureString
         /**
          * Local timestamp (epoch millis) when this record was created/updated.
          */
-        val createdAt: Long = System.currentTimeMillis()
+        val createdAt: Long = System.currentTimeMillis(),
+        val isHl7Enable: Boolean = false
     )

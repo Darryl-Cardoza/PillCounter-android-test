@@ -254,6 +254,7 @@
     <string name="the_scanned_ndc_does_not_match">El NDC escaneado no coincide</string>
     <string name="substitute">Sustituir</string>
     <string name="scan_ndc_toast">Escanear NDC</string>
+    <string name="vial_rx_mismatch_toast">El vial escaneado no coincide con esta receta</string>
     <string name="rescan_ndc_does_not_match_toast">Reescanear — el NDC no coincide</string>
 
     <!-- Unsynced Transaction-->

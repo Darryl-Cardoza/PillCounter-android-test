@@ -21,12 +21,19 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.google.common.util.concurrent.ListenableFuture
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.concurrent.Executor
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -52,6 +59,20 @@ class CameraHelper(
     // Last display rotation pushed via setTargetRotation. Used to detect an
     // actual rotation change so we can rebind the use cases (see setTargetRotation).
     private var lastAppliedRotation = ROTATION_UNSET
+
+    /** Drives the periodic autofocus re-trigger; cancelled on pause/teardown. */
+    private val focusScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var focusJob: Job? = null
+
+    /**
+     * How often to re-trigger center autofocus. A single startup
+     * startFocusAndMetering() locks focus on whatever was centered at bind time
+     * (usually an empty scene) for the metering duration, so a bottle presented
+     * afterward stays soft until focus re-converges. Re-triggering on this
+     * cadence keeps focus locked onto the currently-centered object — the bound
+     * for "present a bottle → sharp" instead of waiting on lazy continuous AF.
+     */
+    private val autofocusIntervalMs = 1500L
 
     private val _frameChannel = Channel<ImageProxy>(Channel.CONFLATED)
     val frameFlow = _frameChannel.receiveAsFlow()
@@ -165,6 +186,7 @@ class CameraHelper(
                 _zoomFlow.value = zoomInit
 
                 setCenterFocus(previewView)
+                startPeriodicFocus(previewView)
 
             } catch (e: Exception) {
                 logger.e("Failed binding camera", e)
@@ -305,15 +327,20 @@ class CameraHelper(
     fun setCenterFocus(previewView: PreviewView) {
         try {
             val cam = boundCamera ?: return
+            // Skip until the preview has been measured — a 0×0 metering point is
+            // meaningless and throws on some devices.
+            if (previewView.width == 0 || previewView.height == 0) return
             val factory = previewView.meteringPointFactory
             val center = factory.createPoint(
                 previewView.width / 2f,
                 previewView.height / 2f
             )
 
-            val action = FocusMeteringAction.Builder(center)
-                .addPoint(center, FocusMeteringAction.FLAG_AF)
-                .setAutoCancelDuration(3, TimeUnit.SECONDS)
+            // Auto-cancel after roughly one refocus cycle so a triggered AF lock
+            // never outlives the next re-trigger (see [startPeriodicFocus]); a
+            // long lock here is what kept a stale focus plane on screen.
+            val action = FocusMeteringAction.Builder(center, FocusMeteringAction.FLAG_AF)
+                .setAutoCancelDuration(2, TimeUnit.SECONDS)
                 .build()
 
             cam.cameraControl.startFocusAndMetering(action)
@@ -323,12 +350,32 @@ class CameraHelper(
         }
     }
 
+    /**
+     * Periodically re-triggers center autofocus while the camera is streaming.
+     * This is what makes "present a bottle → it sharpens" fast: a one-shot AF at
+     * bind time locks onto the empty startup scene, so without a re-trigger the
+     * label stays soft until that lock expires. Cancelled in [pauseCamera].
+     */
+    private fun startPeriodicFocus(previewView: PreviewView) {
+        focusJob?.cancel()
+        focusJob = focusScope.launch {
+            while (isActive) {
+                delay(autofocusIntervalMs)
+                if (isStreaming.get() && isBound.get()) {
+                    setCenterFocus(previewView)
+                }
+            }
+        }
+    }
+
     // ---------------------------------------------------------
     // PAUSE / RESUME
     // ---------------------------------------------------------
 
     fun pauseCamera() {
         logger.i("Pausing camera")
+        focusJob?.cancel()
+        focusJob = null
         try {
             val provider = cameraProviderFuture.get()
             provider.unbindAll()

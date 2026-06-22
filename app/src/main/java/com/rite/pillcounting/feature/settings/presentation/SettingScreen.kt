@@ -28,6 +28,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -40,6 +41,7 @@ import com.rite.pillcounting.feature.settings.presentation.viewmodel.MainActivit
 import com.rite.pillcounting.core.utils.common.HistoryRetention
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.constants.LocalDimens
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.LocalExtendedColors
@@ -66,6 +68,13 @@ fun SettingsScreen(
     val isSoundOverrideEnable by viewModel.isSoundOverride.collectAsState()
     val isHazardousDrug by viewModel.isHazardousDrug.collectAsState()
     val dimens = LocalDimens.current
+    val context = LocalContext.current
+
+    // HL7 disabled from the portal: these settings depend on HL7/PMS, so disable
+    // them (dimmed + non-interactive) and surface a toast on tap.
+    val hl7Enabled = viewModel.isHl7Enabled()
+    val disabledAlpha = 0.4f
+    val onHl7DisabledTap = { showToast(context, R.string.enable_hl7_from_portal_toast) }
 
     Column(
         modifier = Modifier
@@ -107,26 +116,31 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { navController.navigate(Screen.RequireDoubleCount.route) }
+                    .clickable {
+                        if (hl7Enabled) navController.navigate(Screen.RequireDoubleCount.route)
+                        else onHl7DisabledTap()
+                    }
                     .padding(vertical = 12.dp, horizontal = 16.dp)
             ) {
                 Text(
                     text = stringResource(R.string.require_double_count),
                     fontSize = 16.sp,
-                    color = extendedColors.textColor
+                    color = if (hl7Enabled) extendedColors.textColor
+                    else extendedColors.textColor.copy(alpha = disabledAlpha)
                 )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(top = 10.dp)
                 ) {
                     ScheduleCode.entries.forEach { code ->
+                        val codeColor = if (selectedSchedules.contains(code))
+                            MaterialTheme.colorScheme.secondary
+                        else
+                            Color.Gray
                         Text(
                             text = code.name,
                             fontSize = 16.sp,
-                            color = if (selectedSchedules.contains(code))
-                                MaterialTheme.colorScheme.secondary
-                            else
-                                Color.Gray
+                            color = if (hl7Enabled) codeColor else codeColor.copy(alpha = disabledAlpha)
                         )
                     }
                 }
@@ -140,7 +154,9 @@ fun SettingsScreen(
                 onCheckedChange = { newValue ->
                     viewModel.toggleRequireBackCountOnOff(newValue)
                 },
-                checkedTrackColor = MaterialTheme.colorScheme.primary
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                enabled = hl7Enabled,
+                onDisabledClick = onHl7DisabledTap
             )
 
             HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
@@ -206,7 +222,9 @@ fun SettingsScreen(
                 onCheckedChange = { newValue ->
                     viewModel.toggleHazardousDrug(newValue)
                 },
-                checkedTrackColor = MaterialTheme.colorScheme.primary
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                enabled = hl7Enabled,
+                onDisabledClick = onHl7DisabledTap
             )
 
             HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
@@ -214,10 +232,14 @@ fun SettingsScreen(
             Text(
                 text = stringResource(R.string.clear_tray_color_lists),
                 fontSize = 16.sp,
-                color = extendedColors.textColor,
+                color = if (hl7Enabled) extendedColors.textColor
+                else extendedColors.textColor.copy(alpha = disabledAlpha),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { showClearTrayColorListsDialog = true }
+                    .clickable {
+                        if (hl7Enabled) showClearTrayColorListsDialog = true
+                        else onHl7DisabledTap()
+                    }
                     .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
             )
 
@@ -271,27 +293,40 @@ fun SettingSwitch(
     @StringRes labelRes: Int,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
-    checkedTrackColor: Color = MaterialTheme.colorScheme.secondary
+    checkedTrackColor: Color = MaterialTheme.colorScheme.secondary,
+    enabled: Boolean = true,
+    onDisabledClick: (() -> Unit)? = null
 ) {
     val extendedColors = LocalExtendedColors.current
     val dimens = LocalDimens.current
+
+    val textColor =
+        if (enabled) extendedColors.textColor else extendedColors.textColor.copy(alpha = 0.4f)
 
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
+            // When disabled, the switch is non-interactive; let the whole row be
+            // tapped so the caller can surface a toast.
+            .then(
+                if (!enabled && onDisabledClick != null)
+                    Modifier.clickable { onDisabledClick() }
+                else Modifier
+            )
             .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
     ) {
         Text(
             text = stringResource(labelRes),
             fontSize = 16.sp,
-            color = extendedColors.textColor,
+            color = textColor,
             modifier = Modifier.weight(1f)
         )
 
         Switch(
             checked = checked,
             onCheckedChange = onCheckedChange,
+            enabled = enabled,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = Color.White,
                 checkedTrackColor = checkedTrackColor,

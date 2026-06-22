@@ -61,6 +61,14 @@ class FrameBarcodeAnalyzer(
      * sheet appears and the caller resumes when it's dismissed.
      */
     private val enableFocusChangeDebounce: Boolean = false,
+    /**
+     * Minimum gap between MLKit decode attempts, in ms. Lower = more frames
+     * reach MLKit per second = faster acquisition, at the cost of more CPU.
+     * Inventory (barcode-only, no parallel pill detection) overrides this to a
+     * lower value so a steadied label decodes faster; the dispense flow keeps
+     * the conservative default to leave headroom for the pill model.
+     */
+    private val minIntervalMs: Long = DEFAULT_MIN_INTERVAL_MS,
 ) {
     private val logger = AppLogger("FrameBarcodeAnalyzer")
     private val scannerDelegate = lazy {
@@ -107,17 +115,25 @@ class FrameBarcodeAnalyzer(
     companion object {
         /** How long MLKit gets before we declare its frame lost and free the gate. */
         private const val MLKIT_TIMEOUT_MS = 1500L
-        /** Minimum gap between MLKit attempts. */
-        private const val MIN_INTERVAL_MS = 250L
+        /** Default minimum gap between MLKit attempts (overridable per instance). */
+        private const val DEFAULT_MIN_INTERVAL_MS = 250L
         /**
-         * In focus-change mode: how many consecutive empty MLKit frames count as
-         * "label out of view." Once reached, the analyzer is willing to fire the
-         * same barcode value again. At ~4 fps (MIN_INTERVAL_MS=250ms) this is
-         * roughly 0.75s of empty camera — enough for a deliberate bottle swap,
-         * short enough not to feel laggy.
+         * In focus-change mode, the real-time window of "label out of view" before
+         * the analyzer will re-fire the same barcode value (a deliberate bottle
+         * swap). Expressed in ms and converted to a frame count via [minIntervalMs]
+         * so the behaviour is stable regardless of the configured frame rate —
+         * enough for a deliberate swap, short enough not to feel laggy.
          */
-        private const val EMPTY_STREAK_THRESHOLD = 3
+        private const val FOCUS_CHANGE_WINDOW_MS = 750L
     }
+
+    /**
+     * Consecutive empty frames that constitute a focus change, derived from the
+     * frame rate so the real-time window stays ~[FOCUS_CHANGE_WINDOW_MS] whether
+     * we run at 4 fps (250ms) or 10 fps (100ms). Floored at 3.
+     */
+    private val emptyStreakThreshold: Int =
+        maxOf(3, (FOCUS_CHANGE_WINDOW_MS / minIntervalMs).toInt())
 
     /** Last value we fired a callback for (focus-change mode). */
     private var lastFiredValue: String? = null
@@ -177,11 +193,11 @@ class FrameBarcodeAnalyzer(
             return
         }
 
-        // Throttle to MIN_INTERVAL_MS. The check is racy by design — we accept
+        // Throttle to minIntervalMs. The check is racy by design — we accept
         // the possibility that two threads slip past simultaneously; the
         // isProcessing CAS below is the authoritative gate.
         val now = System.currentTimeMillis()
-        if (now - lastAttemptAtMs < MIN_INTERVAL_MS) {
+        if (now - lastAttemptAtMs < minIntervalMs) {
             val dropped = frameDroppedThrottle.incrementAndGet()
             if (dropped % 60 == 0L) logger.d("INV_SCAN analyze() dropped (throttle) total=$dropped seen=$seen")
             return
@@ -300,7 +316,7 @@ class FrameBarcodeAnalyzer(
                         logger.d("INV_SCAN focus-change: new value '$rawValue' (last='$lastFiredValue') → FIRE")
                         true
                     }
-                    emptyStreak >= EMPTY_STREAK_THRESHOLD -> {
+                    emptyStreak >= emptyStreakThreshold -> {
                         // Same value, but we've seen enough empty frames to call
                         // it a focus change. The user moved the label away and
                         // brought it (or another bottle of the same NDC) back.
