@@ -37,6 +37,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.io.File
 import javax.inject.Inject
 
 /**
@@ -145,7 +146,7 @@ class DashboardViewModel @Inject constructor(
 
     fun getBucketList(): List<String> = preferenceHelper.getBucketList()
 
-    suspend fun getLastInProgressBatch() = batchDao.getLatest()
+//    suspend fun getLastInProgressBatch() = batchDao.getLatest()
 
     // ─────────────────────────── New dashboard: queue + KPIs ───────────────────────────
 
@@ -361,7 +362,16 @@ class DashboardViewModel @Inject constructor(
                             val localId = userDao.upsertPreservingLocalId(user = entity)
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.profile?.bucket ?: emptyList())
-                            
+                            preferenceHelper.setHl7Enabled(entity.isHl7Enable)
+                            // Persist allow_local_storage so the HL7 sync flow knows whether to
+                            // delete a dispense txn once it is completed and synced with the PMS.
+                            preferenceHelper.setAllowLocalStorage(detail.profile?.allowLocalStorage ?: true)
+                            // When the server has now disallowed local storage, clean up dispense
+                            // transactions that were already synced (e.g. while the flag was still
+                            // true). Runs on each auth/me response, so a true → false change takes
+                            // effect on the next dashboard launch / refresh.
+                            cleanupSyncedTransactionsIfNotAllowed()
+
                             // Save terminals to SharedPreferences
                             detail.terminals?.let { terminals ->
                                 preferenceHelper.saveTerminals(terminals)
@@ -442,6 +452,45 @@ class DashboardViewModel @Inject constructor(
                     }
                 }
             )
+        }
+    }
+
+    /**
+     * Removes dispense transactions already synced with the PMS when the server's
+     * `allow_local_storage` flag is false (local persistence not permitted).
+     *
+     * Triggered from [fetchUserDetail] after the flag is persisted, so it reacts to the auth/me
+     * response: a true → false change cleans up earlier synced transactions on the next dashboard
+     * launch / refresh. Only **synced** transactions are deleted — unsynced ones are retained
+     * until they sync (and are then deleted on the success ACK). When the flag is true this is a
+     * no-op (everything is kept locally).
+     */
+    private suspend fun cleanupSyncedTransactionsIfNotAllowed() {
+        if (preferenceHelper.isAllowLocalStorage()) {
+            logger.d("allowLocalStorage=true — retaining synced transactions locally")
+            return
+        }
+        try {
+            val syncedTransactions = pillCountTxnDao.getSyncedTransactions()
+            logger.d("allowLocalStorage=false — cleaning up ${syncedTransactions.size} synced transactions")
+
+            syncedTransactions.forEach { txn ->
+                val filesToDelete = mutableListOf<String>()
+                txn.barcodeImage?.let { filesToDelete.add(it) }
+                filesToDelete.addAll(pillCountTxnDao.getTransactionDetailsImages(txn.txnId))
+
+                // Delete transaction (cascade deletes details)
+                pillCountTxnDao.deleteTransaction(txn.txnId)
+
+                filesToDelete.forEach { path ->
+                    val file = File(path)
+                    if (file.exists() && !file.delete()) {
+                        logger.w("Failed to delete file for synced txn ${txn.txnId}: $path")
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            logger.e("Error cleaning up synced transactions", e)
         }
     }
 
@@ -540,6 +589,7 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         language = this.settings?.language,
         timezone = this.settings?.timezone,
         notifications = this.settings?.notificationsEnabled,
-        createdAt = System.currentTimeMillis()
+        createdAt = System.currentTimeMillis(),
+        isHl7Enable = this.profile?.isHl7Enable ?: false
     )
 }

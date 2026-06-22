@@ -86,8 +86,30 @@ class Hl7EventHandler @Inject constructor(
      * - Update transaction sync status
      */
     override fun onAckReceived(ackRaw: String, messageId: String) {
-        logger.i("HL7 ACK received | msgId=$messageId")
-        hl7Repository.markTransactionSynced()
+        val isSuccess = isSuccessAck(ackRaw)
+        logger.i("HL7 ACK received | msgId=$messageId | success=$isSuccess")
+        // Only a success ACK means the PMS accepted the message; mark synced (and, when
+        // allow_local_storage is false, delete) only then. An error/reject ACK leaves the
+        // transaction unsynced so it is retried on the next reconnect.
+        if (isSuccess) {
+            hl7Repository.markTransactionSynced()
+        } else {
+            logger.w("Non-success ACK | msgId=$messageId — leaving transaction unsynced for retry")
+        }
+    }
+
+    /**
+     * Returns true when the raw HL7 ACK carries a success acknowledgment code in MSA-1.
+     * Accepts "AA" (Application Accept) and "CA" (Commit Accept, enhanced mode); "AE"/"AR"
+     * (error/reject) and a missing MSA segment are treated as non-success.
+     */
+    private fun isSuccessAck(ackRaw: String): Boolean {
+        val msaSegment = ackRaw
+            .split('\r', '\n')
+            .firstOrNull { it.startsWith("MSA|") }
+            ?: return false
+        val code = msaSegment.split('|').getOrNull(1)?.trim()?.uppercase()
+        return code == "AA" || code == "CA"
     }
 
 

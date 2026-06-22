@@ -64,9 +64,17 @@ fun SimpleMenuRow(
     iconTint: Color,
     title: String,
     trailingText: String? = null,
+    enabled: Boolean = true,
     onClick: (() -> Unit)? = null
 ) {
     val dimens = LocalDimens.current
+
+    // When disabled, the row stays tappable (so callers can surface a toast) but
+    // is visually dimmed to read as inactive.
+    val disabledAlpha = 0.4f
+    val resolvedIconTint = if (enabled) iconTint else iconTint.copy(alpha = disabledAlpha)
+    val resolvedTextColor =
+        if (enabled) extendedColors.textColor else extendedColors.textColor.copy(alpha = disabledAlpha)
 
     Spacer(modifier = Modifier.height(dimens.menuRowSpacing))
 
@@ -83,14 +91,14 @@ fun SimpleMenuRow(
             Icon(
                 painter = painterResource(id = icon),
                 contentDescription = title,
-                tint = iconTint,
+                tint = resolvedIconTint,
                 modifier = Modifier.size(responsiveDp(28.dp))
             )
             Spacer(modifier = Modifier.width(responsiveDp(12.dp)))
             Text(
                 text = title,
                 fontSize = 16.sp,
-                color = extendedColors.textColor
+                color = resolvedTextColor
             )
         }
 
@@ -99,7 +107,8 @@ fun SimpleMenuRow(
             Text(
                 text = it,
                 fontSize = 16.sp,
-                color = MaterialTheme.colorScheme.secondary,
+                color = if (enabled) MaterialTheme.colorScheme.secondary
+                else MaterialTheme.colorScheme.secondary.copy(alpha = disabledAlpha),
                 modifier = Modifier.padding(end = 12.dp)
             )
         }
