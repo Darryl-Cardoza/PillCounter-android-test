@@ -122,6 +122,9 @@ class ProfileViewModel @Inject constructor(
         logger.i("DoNotAskAgain updated → $value")
     }
 
+    /** HL7 toggle from the portal (cached in prefs). */
+    fun isHl7Enabled(): Boolean = preferenceHelper.isHl7Enabled()
+
     private fun observeUser(localId: Long) {
         viewModelScope.launch {
             userDao.observeByLocalId(localId).collect { user ->

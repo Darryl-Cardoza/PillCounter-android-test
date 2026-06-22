@@ -85,6 +85,13 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
+     * HL7 toggle from the portal (cached in prefs). When disabled, the dispense
+     * flow runs in a count-only mode: no RX/NDC barcode scanning, only the live
+     * pill-count circle is shown.
+     */
+    fun isHl7Enabled(): Boolean = preferenceHelper.isHl7Enabled()
+
+    /**
      * Hydrate the screen for an HL7/PMS-initiated dispense. Reads the
      * PMS-created transaction (saved by [com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository])
      * and jumps straight to [DispenseStage.PRE_NDC], with:

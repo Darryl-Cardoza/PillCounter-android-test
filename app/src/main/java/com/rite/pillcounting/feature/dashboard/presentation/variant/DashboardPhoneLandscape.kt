@@ -61,7 +61,7 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
         Column(modifier = Modifier.fillMaxSize()) {
             ScaffoldTopBar(
                 pharmacyName = uiState.userDetail?.profile?.pharmacyName,
-                terminalAndUserLine = buildTerminalUserLine(uiState),
+                terminalAndUserLine = buildTerminalUserLine(uiState, includeTerminal = params.isHl7Enabled),
                 showPmsDot = params.isHl7Enabled,
                 isPmsConnected = params.isPmsConnected,
                 navController = params.navController,

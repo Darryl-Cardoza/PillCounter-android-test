@@ -145,7 +145,7 @@ class DashboardViewModel @Inject constructor(
 
     fun getBucketList(): List<String> = preferenceHelper.getBucketList()
 
-    suspend fun getLastInProgressBatch() = batchDao.getLatest()
+//    suspend fun getLastInProgressBatch() = batchDao.getLatest()
 
     // ─────────────────────────── New dashboard: queue + KPIs ───────────────────────────
 
@@ -361,6 +361,7 @@ class DashboardViewModel @Inject constructor(
                             val localId = userDao.upsertPreservingLocalId(user = entity)
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.profile?.bucket ?: emptyList())
+                            preferenceHelper.setHl7Enabled(entity.isHl7Enable)
                             
                             // Save terminals to SharedPreferences
                             detail.terminals?.let { terminals ->
@@ -540,6 +541,7 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         language = this.settings?.language,
         timezone = this.settings?.timezone,
         notifications = this.settings?.notificationsEnabled,
-        createdAt = System.currentTimeMillis()
+        createdAt = System.currentTimeMillis(),
+        isHl7Enable = this.profile?.isHl7Enable ?: false
     )
 }
