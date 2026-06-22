@@ -59,7 +59,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicat
 import com.rite.pillcounting.core.utils.compose.SplitResponsive
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.login.domain.model.LoginUiState
-import com.rite.pillcounting.feature.login.viewmodel.LoginViewModel
+import com.rite.pillcounting.feature.login.presentation.viewmodel.LoginViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
 
 /**

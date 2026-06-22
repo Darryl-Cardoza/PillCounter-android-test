@@ -40,7 +40,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.OTPTextField
 import com.rite.pillcounting.core.utils.compose.SplitResponsive
-import com.rite.pillcounting.feature.login.viewmodel.LoginViewModel
+import com.rite.pillcounting.feature.login.presentation.viewmodel.LoginViewModel
 import com.rite.pillcounting.feature.verifyPin.domain.model.VerifyPinUiState
 import com.rite.pillcounting.feature.verifyPin.presentation.viewmodel.VerifyPinViewModel
 import com.rite.pillcounting.ui.theme.AppTheme

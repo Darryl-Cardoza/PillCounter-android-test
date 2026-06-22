@@ -272,6 +272,7 @@
     <string name="scan_ndc_toast">Scan NDC</string>
     <string name="rescan_ndc_does_not_match_toast">Rescan — NDC does not match</string>
     <string name="transaction_not_found_toast">Transaction not found</string>
+    <string name="vial_rx_mismatch_toast">Scanned vial does not match this prescription</string>
 
     <!-- Unsynced Transaction-->
     <string name="unsynced_transaction">UNSYNCED TRANSACTIONS</string>
@@ -304,6 +305,8 @@
     <string name="quantity">Quantity</string>
     <string name="proceed">PROCEED</string>
     <string name="scan_rx_label">Scan Rx Label</string>
+    <string name="please_enable_hl7_message">Please enable HL7 from the portal to continue.</string>
+    <string name="enable_hl7_from_portal_toast">Enable HL7 from Portal</string>
     <string name="scan_correct_label">Scan Correct Label</string>
 <!--    StockCount-->
     <string name="scan_stock_bottle">Scan Stock Bottle</string>
