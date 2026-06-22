@@ -27,12 +27,6 @@ class HistoryRepository @Inject constructor(
         return start to end
     }
 
-    //not using currently, keeping code if its required for future
-    fun getTransactionsForDate(date: LocalDate,type: CountType?, status: CountStatus?): Flow<List<TxnWithDrugDto>> {
-        val (start, end) = date.toEpochRange()
-        return dao.getTransactionsWithDrugByDate(start, end, type, status)
-    }
-
     suspend fun deleteTransactionsForDate(
         startDate: LocalDate,
         endDate: LocalDate,
