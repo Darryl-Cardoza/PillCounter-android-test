@@ -127,12 +127,12 @@ private fun ActionButtonItems(
         Icon(
             painter =  painterResource(id = R.drawable.captureimageredoicon),
             contentDescription = "Redo",
-            tint = if (hasCapture) MaterialTheme.colorScheme.primary else AppTheme.extendedColors.primaryBackground,
+            tint = if (hasCapture) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f),
             modifier = Modifier.size(responsiveDp(36.dp))
         )
         Text(
             text = stringResource(R.string.redo),
-            color = if (hasCapture) AppTheme.extendedColors.textColor else AppTheme.extendedColors.textColor.copy(alpha = 0.3f),
+            color = if (hasCapture) AppTheme.extendedColors.textColor else Color.White.copy(alpha = 0.5f),
             fontSize = responsiveSp(12.sp),
         )
     }
@@ -164,12 +164,12 @@ private fun ActionButtonItems(
         Icon(
             imageVector = Icons.Default.Check,
             contentDescription = "Done",
-            tint = if (hasCapture) MaterialTheme.colorScheme.primary else AppTheme.extendedColors.primaryBackground,
+            tint = if (hasCapture) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f),
             modifier = Modifier.size(responsiveDp(36.dp))
         )
         Text(
             text = stringResource(R.string.done),
-            color = if (hasCapture) AppTheme.extendedColors.textColor else AppTheme.extendedColors.textColor.copy(alpha = 0.3f),
+            color = if (hasCapture) AppTheme.extendedColors.textColor else Color.White.copy(alpha = 0.5f),
             fontSize = responsiveSp(12.sp)
         )
     }
