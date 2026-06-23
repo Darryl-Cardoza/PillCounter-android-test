@@ -218,9 +218,9 @@ fun CountModeLandscape(
                 .offset { IntOffset(circleOffset.x.roundToInt(), circleOffset.y.roundToInt()) }
                 .size(circleSize)
                 .clip(CircleShape)
-                // Darker than the top/bottom bars so the circle reads as a distinct
-                // tappable button over the camera feed.
-                .background(Color.Black.copy(alpha = 0.6f))
+                // Match the top/bottom bars' translucency so the circle reads as
+                // part of the same overlay.
+                .background(barBackground)
                 // Long-press to pick up, then drag the circle anywhere. The final
                 // resting position is saved to prefs so it persists across loads.
                 // Key on the current bounds so the gesture detector restarts after
