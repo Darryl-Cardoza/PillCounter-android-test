@@ -365,6 +365,11 @@ interface PillCountTxnDao {
         pct.countType,
         CASE WHEN pct.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
              THEN subDrug.drugType ELSE dm.drugType END AS drugType,
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.strength IS NOT NULL
+             THEN subDrug.strength ELSE dm.strength END AS strength,
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.dosageForm IS NOT NULL
+             THEN subDrug.dosageForm ELSE dm.dosageForm END AS dosageForm,
+        pct.bucketId,
         IFNULL(SUM(pcd.pillCount), 0) AS totalPillCount,
         pct.isSubstitute,
         dm.drugName AS requestedDrugName,

@@ -250,6 +250,10 @@
     <string name="pill_scanning_wait_button">Wait..</string>
     <string name="pill_scanning_total_count">Total Count</string>
     <string name="pill_scanning_all_done">All Done</string>
+    <string name="pill_scanning_view_all_counts">View all counts</string>
+    <string name="detail_label_form">Form</string>
+    <string name="detail_label_strength">Strength</string>
+    <string name="detail_label_bucket">Bucket</string>
     <string name="no_pill_added_yet">No Pill Added yet</string>
     <string name="count_pills_from_the_container">Count Pills from the container</string>
     <string name="count_prescribed_pills_quantity">Count prescribed Pills quantity</string>

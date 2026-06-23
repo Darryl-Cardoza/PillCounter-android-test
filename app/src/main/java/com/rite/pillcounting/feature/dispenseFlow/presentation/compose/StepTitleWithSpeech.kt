@@ -1,6 +1,9 @@
 ﻿package com.rite.pillcounting.feature.dispenseFlow.presentation.compose
 
 import android.speech.tts.TextToSpeech
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -18,6 +21,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.models.titleRes
 import com.rite.pillcounting.ui.theme.AppTheme
@@ -63,18 +67,35 @@ fun StepTitleWithSpeech(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .background(
-                AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.8f),
-                shape = RoundedCornerShape(50.dp)
-            )
-            .padding(horizontal = 20.dp, vertical = 10.dp)
+    // Behave like a toast: show the title briefly, then auto-hide. Re-shows
+    // whenever the title changes (i.e. a new step). The TTS above is unaffected.
+    var visible by remember { mutableStateOf(true) }
+    LaunchedEffect(title) {
+        visible = true
+        delay(STEP_TITLE_VISIBLE_MS)
+        visible = false
+    }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut()
     ) {
-        Text(
-            text = title,
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 16.sp
-        )
+        Box(
+            modifier = Modifier
+                .background(
+                    AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(50.dp)
+                )
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = title,
+                color = AppTheme.extendedColors.textColor,
+                fontSize = 16.sp
+            )
+        }
     }
 }
+
+private const val STEP_TITLE_VISIBLE_MS = 3000L

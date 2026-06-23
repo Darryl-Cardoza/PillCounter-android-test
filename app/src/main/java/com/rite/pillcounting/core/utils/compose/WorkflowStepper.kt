@@ -23,8 +23,11 @@ fun WorkflowStepper(
     val currentIndex = steps.indexOf(currentStep).coerceAtLeast(0)
 
     Row(
-        modifier = modifier
+        // fillMaxWidth first so a width constraint supplied by the caller via
+        // [modifier] (e.g. wrapContentWidth when embedded inline in a row) wins.
+        modifier = Modifier
             .fillMaxWidth()
+            .then(modifier)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center

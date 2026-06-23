@@ -1371,6 +1371,10 @@ class PillScanningViewModel @Inject constructor(
             _uiState.update {
                 it.copy(
                     drugName = txnInfo?.drugName.orEmpty(),
+                    ndc = txnInfo?.ndc.orEmpty(),
+                    strength = txnInfo?.strength.orEmpty(),
+                    dosageForm = txnInfo?.dosageForm.orEmpty(),
+                    bucket = txnInfo?.bucketId?.takeIf { b -> b.isNotBlank() } ?: "Normal",
                     targetCount = txnInfo?.targetCount ?: 0,
                     showTargetCountDialog = shouldShowDialog,
                 )
