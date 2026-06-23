@@ -114,17 +114,22 @@ fun CircularCountIndicator(
         Canvas(modifier = Modifier.fillMaxSize()) {
             val strokeWidth = 4.dp.toPx()
 
-            // If last 4 are same or uiState.showIdleOverlay is true, show full circle (steady), else animate
-            val sweepAngle =
-                if (lastFourSame || uiState.showIdleOverlay) 360f else 360 * sweepProgress
+            // No pills detected yet (count == 0) → hide the ring entirely. The
+            // sweeping/steady arc only appears once a count is detected, which is
+            // when its "counting" animation is meaningful.
+            if (count > 0) {
+                // If last 4 are same or uiState.showIdleOverlay is true, show full circle (steady), else animate
+                val sweepAngle =
+                    if (lastFourSame || uiState.showIdleOverlay) 360f else 360 * sweepProgress
 
-            drawArc(
-                color = indicatorColor,
-                startAngle = 90f,
-                sweepAngle = sweepAngle,
-                useCenter = false,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-            )
+                drawArc(
+                    color = indicatorColor,
+                    startAngle = 90f,
+                    sweepAngle = sweepAngle,
+                    useCenter = false,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                )
+            }
 
             // Expanding ripple ring: grows from the centre out to the indicator
             // radius while fading out. Kept within the indicator's own bounds because
@@ -136,9 +141,9 @@ fun CircularCountIndicator(
                 listOf(rippleProgress, (rippleProgress + 0.5f) % 1f).forEach { p ->
                     drawCircle(
                         color = indicatorColor.copy(alpha = (1f - p) * 0.45f),
-                        // Start at ~45% of the radius so the ring reads as emanating
-                        // from the count, then reach the edge as it fades.
-                        radius = edgeRadius * (0.45f + p * 0.55f),
+                        // Start at ~70% of the radius so the ring reads as emanating
+                        // from near the edge, then reach the edge as it fades.
+                        radius = edgeRadius * (0.7f + p * 0.3f),
                         style = Stroke(width = strokeWidth)
                     )
                 }

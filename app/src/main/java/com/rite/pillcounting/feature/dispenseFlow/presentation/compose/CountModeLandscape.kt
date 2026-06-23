@@ -165,14 +165,14 @@ fun CountModeLandscape(
                         modifier = Modifier.size(22.dp)
                     )
                 }
-                Spacer(Modifier.width(24.dp))
+                Spacer(Modifier.width(32.dp))
             }
             if (strength.isNotBlank()) {
                 DetailColumn(
                     label = stringResource(R.string.detail_label_strength),
                     value = strength
                 )
-                Spacer(Modifier.width(24.dp))
+                Spacer(Modifier.width(32.dp))
             }
             if (bucket.isNotBlank()) {
                 DetailColumn(
