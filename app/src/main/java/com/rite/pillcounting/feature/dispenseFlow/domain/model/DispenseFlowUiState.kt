@@ -24,6 +24,10 @@ data class DispenseFlowUiState(
     val ndcDrugName: String = "",
     val ndcPackageQty: Int? = null,
     val ndcDrugType: String? = null,
+    // Strength + dosage form from the NDC drug API (active_ingredients[0].strength
+    // and dosage_form[0]). Surfaced on the NDC verification sheet.
+    val ndcStrength: String? = null,
+    val ndcDosageForm: String? = null,
 
     val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
 

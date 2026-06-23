@@ -33,7 +33,7 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "pill_counting_db"
-        )
+        ).addMigrations(AppDatabase.MIGRATION_2_3)
 
         if (!BuildConfig.DEBUG) {
             // IMPORTANT

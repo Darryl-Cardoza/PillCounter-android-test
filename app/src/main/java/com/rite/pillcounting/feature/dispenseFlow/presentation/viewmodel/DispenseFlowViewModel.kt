@@ -388,6 +388,8 @@ class DispenseFlowViewModel @Inject constructor(
                         gtin = gtin14,
                         packageQty = drugInfo.qty,
                         isHazardous = drugInfo.isHazardous ?: false,
+                        strength = drugInfo.strength,
+                        dosageForm = drugInfo.dosageForm,
                     )
                 )
 
@@ -400,6 +402,8 @@ class DispenseFlowViewModel @Inject constructor(
                             ndcDrugName = displayName,
                             ndcPackageQty = drugInfo.qty,
                             ndcDrugType = drugInfo.drugType,
+                            ndcStrength = drugInfo.strength,
+                            ndcDosageForm = drugInfo.dosageForm,
                             barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcEquivalenceDialog = true,
                             isHazardous = drugInfo.isHazardous ?: false,
@@ -433,6 +437,8 @@ class DispenseFlowViewModel @Inject constructor(
                         ndcScannedValue = drugInfo.ndc,
                         ndcDrugName = displayName,
                         ndcPackageQty = drugInfo.qty,
+                        ndcStrength = drugInfo.strength,
+                        ndcDosageForm = drugInfo.dosageForm,
                         barcodeImagePath = imagePath ?: it.barcodeImagePath,
                         showNdcDetails = needsSheet,
                         isHazardous = drugInfo.isHazardous ?: false,
@@ -536,6 +542,8 @@ class DispenseFlowViewModel @Inject constructor(
                     ndc = ndc,
                     drugName = state.ndcDrugName.ifBlank { state.drugName },
                     isHazardous = state.isHazardous,
+                    strength = state.ndcStrength,
+                    dosageForm = state.ndcDosageForm,
                 )
             )
             val newTxnId = pillCountTxnDao.upsertPreservingId(
@@ -567,6 +575,8 @@ class DispenseFlowViewModel @Inject constructor(
                     drugType = state.ndcDrugType,
                     packageQty = state.ndcPackageQty,
                     isHazardous = state.isHazardous,
+                    strength = state.ndcStrength,
+                    dosageForm = state.ndcDosageForm,
                 )
             )
         } else null
@@ -631,6 +641,8 @@ class DispenseFlowViewModel @Inject constructor(
                 ndcDrugName = "",
                 ndcPackageQty = null,
                 ndcDrugType = null,
+                ndcStrength = null,
+                ndcDosageForm = null,
             )
         }
     }
@@ -663,6 +675,8 @@ class DispenseFlowViewModel @Inject constructor(
                         ndc = ndc,
                         drugName = state.ndcDrugName.ifBlank { state.drugName },
                         isHazardous = state.isHazardous,
+                        strength = state.ndcStrength,
+                        dosageForm = state.ndcDosageForm,
                     )
                 )
                 val txn = PillCountTxnEntity(
@@ -717,6 +731,8 @@ class DispenseFlowViewModel @Inject constructor(
                         drugType = state.ndcDrugType,
                         packageQty = state.ndcPackageQty,
                         isHazardous = state.isHazardous,
+                        strength = state.ndcStrength,
+                        dosageForm = state.ndcDosageForm,
                     )
                 )
             } else null
@@ -745,6 +761,8 @@ class DispenseFlowViewModel @Inject constructor(
                 ndcDrugName = "",
                 ndcPackageQty = null,
                 ndcDrugType = null,
+                ndcStrength = null,
+                ndcDosageForm = null,
                 isSubstituteConfirmed = false,
             )
         }

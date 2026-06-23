@@ -1,10 +1,12 @@
 package com.rite.pillcounting.core.utils.compose
 
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -32,6 +34,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -52,8 +55,24 @@ data class DrugCountRowData(
     val pillCount: Int,
     val targetCount: Int,
     val countType: CountType,
-    val isComingFromHL7: Boolean = false
+    val isComingFromHL7: Boolean = false,
+    val strength: String? = null,
+    val dosageForm: String? = null
 )
+
+/**
+ * Picks a vector icon for a dosage form string (e.g. "CAPSULE, EXTENDED RELEASE").
+ * Defaults to the capsule icon for unknown / missing forms.
+ */
+@DrawableRes
+private fun dosageFormIcon(dosageForm: String?): Int {
+    val form = dosageForm?.uppercase().orEmpty()
+    return when {
+        "CAPSULE" in form -> R.drawable.pill_capsule
+        "TABLET" in form -> R.drawable.pill_tablet
+        else -> R.drawable.pill_capsule
+    }
+}
 
 @Composable
 fun DrugCountRow(
@@ -96,7 +115,9 @@ fun DrugCountRow(
                     .padding(vertical = 12.dp, horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Drug image
+                // Left tile: dosage-form icon + strength badge when available,
+                // otherwise the captured drug image / generic prescription icon.
+                val hasFormInfo = !data.dosageForm.isNullOrBlank() || !data.strength.isNullOrBlank()
                 Box(
                     modifier = Modifier
                         .width(80.dp)
@@ -106,29 +127,62 @@ fun DrugCountRow(
                     contentAlignment = Alignment.Center
                 ) {
                     val hasImage = !data.barcodeImage.isNullOrEmpty()
-                    if (hasImage) {
-                        Image(
-                            painter = rememberAsyncImagePainter(
-                                ImageRequest.Builder(LocalContext.current)
-                                    .data(File(data.barcodeImage ?: ""))
-                                    .size(240, 192) // 3x the 80x64dp display box; Coil downsamples on decode
-                                    .placeholder(R.drawable.prescription_icon)
-                                    .error(R.drawable.prescription_icon)
-                                    .build()
-                            ),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .clip(RoundedCornerShape(8.dp))
-                        )
-                    } else {
-                        Icon(
-                            painter = painterResource(R.drawable.prescription_icon),
-                            contentDescription = null,
-                            tint = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),
-                            modifier = Modifier.size(36.dp)
-                        )
+                    when {
+                        hasFormInfo -> {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 4.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Icon(
+                                    painter = painterResource(dosageFormIcon(data.dosageForm)),
+                                    contentDescription = data.dosageForm,
+                                    tint = Color.Unspecified,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                                if (!data.strength.isNullOrBlank()) {
+                                    Spacer(modifier = Modifier.height(1.dp))
+                                    Text(
+                                        text = data.strength,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+
+                        hasImage -> {
+                            Image(
+                                painter = rememberAsyncImagePainter(
+                                    ImageRequest.Builder(LocalContext.current)
+                                        .data(File(data.barcodeImage ?: ""))
+                                        .size(240, 192) // 3x the 80x64dp display box; Coil downsamples on decode
+                                        .placeholder(R.drawable.prescription_icon)
+                                        .error(R.drawable.prescription_icon)
+                                        .build()
+                                ),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                        }
+
+                        else -> {
+                            Icon(
+                                painter = painterResource(R.drawable.prescription_icon),
+                                contentDescription = null,
+                                tint = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
                     }
                 }
 

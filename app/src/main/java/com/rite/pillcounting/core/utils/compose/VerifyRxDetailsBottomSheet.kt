@@ -55,6 +55,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -1041,14 +1042,26 @@ private fun TileDetailRow(
 }
 
 @Composable
-private fun FormTile(compact: Boolean = false) {
+private fun FormTile(compact: Boolean = false, dosageForm: String = "") {
     SquareTile(label = stringResource(R.string.form), compact = compact) {
-        Icon(
-            painter = painterResource(R.drawable.pill_capsule),
-            contentDescription = null,
-            tint = Color.Unspecified,
-            modifier = Modifier.size(if (compact) 22.dp else 28.dp)
-        )
+        if (dosageForm.isNotBlank()) {
+            Text(
+                text = dosageForm,
+                color = MaterialTheme.colorScheme.secondary,
+                fontSize = if (compact) 11.sp else 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        } else {
+            Icon(
+                painter = painterResource(R.drawable.pill_capsule),
+                contentDescription = null,
+                tint = Color.Unspecified,
+                modifier = Modifier.size(if (compact) 22.dp else 28.dp)
+            )
+        }
     }
 }
 
@@ -1191,6 +1204,8 @@ fun VerifyNdcDetailsInlinePanel(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 20.dp,
     isHazardous: Boolean = false,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     val configuration = LocalConfiguration.current
     val isTablet = configuration.smallestScreenWidthDp >= 600
@@ -1206,6 +1221,8 @@ fun VerifyNdcDetailsInlinePanel(
                 bucket = bucket,
                 ndcNumber = ndcNumber,
                 isHazardous = isHazardous,
+                strength = strength,
+                dosageForm = dosageForm,
                 onCancel = onCancel,
                 onProceed = onProceed,
             )
@@ -1216,6 +1233,8 @@ fun VerifyNdcDetailsInlinePanel(
                 ndcNumber = ndcNumber,
                 isLandscape = true,
                 isHazardous = isHazardous,
+                strength = strength,
+                dosageForm = dosageForm,
                 onCancel = onCancel,
                 onProceed = onProceed,
             )
@@ -1240,6 +1259,8 @@ fun VerifyNdcDetailsSheet(
     onProceed: () -> Unit,
     dismissible: Boolean = false,
     isHazardous: Boolean = false,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -1251,6 +1272,8 @@ fun VerifyNdcDetailsSheet(
             bucket = bucket,
             ndcNumber = ndcNumber,
             isHazardous = isHazardous,
+            strength = strength,
+            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1260,6 +1283,8 @@ fun VerifyNdcDetailsSheet(
             bucket = bucket,
             ndcNumber = ndcNumber,
             isHazardous = isHazardous,
+            strength = strength,
+            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1269,6 +1294,8 @@ fun VerifyNdcDetailsSheet(
             bucket = bucket,
             ndcNumber = ndcNumber,
             isHazardous = isHazardous,
+            strength = strength,
+            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1278,6 +1305,8 @@ fun VerifyNdcDetailsSheet(
             bucket = bucket,
             ndcNumber = ndcNumber,
             isHazardous = isHazardous,
+            strength = strength,
+            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1295,6 +1324,8 @@ private fun VerifyNdcDetailsBottomSheet(
     onProceed: () -> Unit,
     dismissible: Boolean = true,
     isHazardous: Boolean = false,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -1317,6 +1348,8 @@ private fun VerifyNdcDetailsBottomSheet(
             ndcNumber = ndcNumber,
             isLandscape = false,
             isHazardous = isHazardous,
+            strength = strength,
+            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
         )
@@ -1332,6 +1365,8 @@ private fun VerifyNdcDetailsSideDrawer(
     onProceed: () -> Unit,
     dismissible: Boolean = true,
     isHazardous: Boolean = false,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     val config = LocalConfiguration.current
     val drawerWidth = (config.screenWidthDp.dp * 0.42f).coerceIn(260.dp, 380.dp)
@@ -1348,6 +1383,8 @@ private fun VerifyNdcDetailsSideDrawer(
             ndcNumber = ndcNumber,
             isLandscape = true,
             isHazardous = isHazardous,
+            strength = strength,
+            dosageForm = dosageForm,
             onCancel = animatedCancel,
             onProceed = onProceed,
         )
@@ -1364,6 +1401,8 @@ private fun VerifyNdcDetailsTabletBottomSheet(
     onProceed: () -> Unit,
     dismissible: Boolean = true,
     isHazardous: Boolean = false,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -1386,6 +1425,8 @@ private fun VerifyNdcDetailsTabletBottomSheet(
             bucket = bucket,
             ndcNumber = ndcNumber,
             isHazardous = isHazardous,
+            strength = strength,
+            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
         )
@@ -1401,6 +1442,8 @@ private fun VerifyNdcDetailsTabletSideDrawer(
     onProceed: () -> Unit,
     dismissible: Boolean = true,
     isHazardous: Boolean = false,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     val config = LocalConfiguration.current
     val drawerWidth = (config.screenWidthDp.dp * 0.4f).coerceIn(360.dp, 520.dp)
@@ -1416,6 +1459,8 @@ private fun VerifyNdcDetailsTabletSideDrawer(
                 bucket = bucket,
                 ndcNumber = ndcNumber,
                 isHazardous = isHazardous,
+                strength = strength,
+                dosageForm = dosageForm,
                 onCancel = animatedCancel,
                 onProceed = onProceed,
             )
@@ -1436,6 +1481,8 @@ private fun NdcSheetBody(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     isHazardous: Boolean = false,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
     // Landscape gets slightly bigger outer padding so the panel doesn't feel
@@ -1479,6 +1526,8 @@ private fun NdcSheetBody(
                 bucket = bucket,
                 ndcNumber = ndcNumber,
                 compact = isLandscape,
+                strength = strength,
+                dosageForm = dosageForm,
             )
         }
 
@@ -1529,6 +1578,8 @@ private fun NdcDetailsGrid(
     bucket: String,
     ndcNumber: String,
     compact: Boolean,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     val dividerColor = AppTheme.extendedColors.textColor.copy(alpha = 0.5f)
     val dividerPadding = if (compact) 14.dp else 10.dp
@@ -1540,7 +1591,7 @@ private fun NdcDetailsGrid(
             contentAlignment = Alignment.Center,
         ) {
             TileDetailRow(
-                tile = { FormTile(compact = compact) },
+                tile = { FormTile(compact = compact, dosageForm = dosageForm) },
                 label = stringResource(R.string.ndc_number),
                 value = ndcNumber,
                 compact = compact,
@@ -1562,6 +1613,24 @@ private fun NdcDetailsGrid(
                 compact = compact,
             )
         }
+        if (strength.isNotBlank()) {
+            HorizontalDivider(
+                thickness = 1.dp,
+                color = dividerColor,
+                modifier = Modifier.padding(vertical = dividerPadding),
+            )
+            Box(
+                modifier = if (compact) Modifier.weight(1f) else Modifier,
+                contentAlignment = Alignment.Center,
+            ) {
+                DetailItem(
+                    label = stringResource(R.string.strength),
+                    value = strength,
+                    compact = compact,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        }
     }
 }
 
@@ -1574,6 +1643,8 @@ private fun NdcTabletHorizontalBody(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     isHazardous: Boolean = false,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     Column(
         modifier = Modifier
@@ -1594,7 +1665,7 @@ private fun NdcTabletHorizontalBody(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FormTile()
+            FormTile(dosageForm = dosageForm)
             BucketTile(bucket = bucket)
         }
 
@@ -1622,6 +1693,15 @@ private fun NdcTabletHorizontalBody(
             )
         }
 
+        if (strength.isNotBlank()) {
+            Spacer(modifier = Modifier.height(16.dp))
+            CenteredDetail(
+                label = stringResource(R.string.strength),
+                value = strength,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
+
         Spacer(modifier = Modifier.height(24.dp))
 
         TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 14.dp)
@@ -1639,6 +1719,8 @@ private fun NdcTabletVerticalBody(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     isHazardous: Boolean = false,
+    strength: String = "",
+    dosageForm: String = "",
 ) {
     Column(
         modifier = Modifier
@@ -1662,7 +1744,7 @@ private fun NdcTabletVerticalBody(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            FormTile()
+            FormTile(dosageForm = dosageForm)
             BucketTile(bucket = bucket)
 
             Spacer(modifier = Modifier.height(8.dp))
@@ -1679,6 +1761,12 @@ private fun NdcTabletVerticalBody(
                 label = stringResource(R.string.drugname),
                 value = drugName
             )
+            if (strength.isNotBlank()) {
+                CenteredDetail(
+                    label = stringResource(R.string.strength),
+                    value = strength
+                )
+            }
         }
 
         Spacer(modifier = Modifier.height(16.dp))

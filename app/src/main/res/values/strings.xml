@@ -358,6 +358,7 @@
     <string name="verify_stock_bottle_details">Verify Stock Bottle Details</string>
     <string name="hazardous_drug_warning">Hazardous Drug</string>
     <string name="form">Form</string>
+    <string name="strength">Strength</string>
     <!-- ================== HL7 NOTIFICATIONS ================== -->
     <string name="hl7_notification_device_connected_title">Device Connected</string>
     <string name="hl7_notification_device_connected_message">Connected to %1$s Successfully</string>

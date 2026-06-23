@@ -1270,6 +1270,8 @@ fun DispenseFlowScreen(
                         onProceed = { dispenseVm.onNdcConfirmed() },
                         dismissible = false,
                         isHazardous = dispenseState.isHazardous,
+                        strength = dispenseState.ndcStrength.orEmpty(),
+                        dosageForm = dispenseState.ndcDosageForm.orEmpty(),
                     )
                 } else {
                     Box(
@@ -1287,6 +1289,8 @@ fun DispenseFlowScreen(
                             onProceed = { dispenseVm.onNdcConfirmed() },
                             modifier = Modifier.fillMaxSize(),
                             isHazardous = dispenseState.isHazardous,
+                            strength = dispenseState.ndcStrength.orEmpty(),
+                            dosageForm = dispenseState.ndcDosageForm.orEmpty(),
                         )
                     }
                 }

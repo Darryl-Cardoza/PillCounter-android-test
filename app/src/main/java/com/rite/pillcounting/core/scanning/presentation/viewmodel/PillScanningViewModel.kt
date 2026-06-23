@@ -1530,6 +1530,8 @@ class PillScanningViewModel @Inject constructor(
                             gtin = gtin14,
                             packageQty = drugInfo.qty,
                             isHazardous = drugInfo.isHazardous ?: false,
+                            strength = drugInfo.strength,
+                            dosageForm = drugInfo.dosageForm,
                         )
                     )
                     drugMasterDao.getDrugByNdc(drugInfo.ndc) ?: drugMasterDao.getDrugByGtin(gtin14)
