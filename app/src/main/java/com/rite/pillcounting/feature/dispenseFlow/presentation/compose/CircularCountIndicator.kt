@@ -8,6 +8,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -22,8 +23,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
@@ -34,7 +37,13 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 fun CircularCountIndicator(
     count: Int,
     modifier: Modifier = Modifier,
-    viewModel: PillScanningViewModel
+    viewModel: PillScanningViewModel,
+    // Optional caption rendered under the count (e.g. "ADD THIS"). Null = no caption.
+    label: String? = null,
+    // When true (e.g. a FIXED count has met its target) the circle plays an
+    // Ookla-style completion "breath": it gently scales down/up while a soft ring
+    // ripples outward and fades. Looping, subtle — a finished-state affordance.
+    pulsing: Boolean = false,
 ) {
 
     val indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
@@ -67,8 +76,39 @@ fun CircularCountIndicator(
         }
     }
 
+    // ── Ookla-style completion "breath" + ripple ──────────────────────────────
+    // Driven by a single 0→1 looping phase. The scale dips slightly mid-cycle and
+    // returns (the "breath"); the ripple radius grows from the circle edge outward
+    // while its alpha fades to 0. Only animates while [pulsing]; otherwise held at
+    // rest (scale 1, no ripple).
+    val breathTransition = rememberInfiniteTransition(label = "breathTransition")
+    val breathScale by breathTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0.92f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "breathScale"
+    )
+    val rippleProgress by breathTransition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 2200, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "rippleProgress"
+    )
+    val scale = if (pulsing) breathScale else 1f
+
     Box(
-        modifier = modifier.size(responsiveDpForCircularCountIndicator()),
+        modifier = modifier
+            .size(responsiveDpForCircularCountIndicator())
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
@@ -85,20 +125,49 @@ fun CircularCountIndicator(
                 useCenter = false,
                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
             )
+
+            // Expanding ripple ring: grows from the centre out to the indicator
+            // radius while fading out. Kept within the indicator's own bounds because
+            // the surrounding count-circle Box clips to its shape — a ring drawn
+            // beyond the edge would be cut off. A second ring offset by half a cycle
+            // keeps the ripple continuous rather than pulsing in bursts.
+            if (pulsing) {
+                val edgeRadius = size.minDimension / 2f
+                listOf(rippleProgress, (rippleProgress + 0.5f) % 1f).forEach { p ->
+                    drawCircle(
+                        color = indicatorColor.copy(alpha = (1f - p) * 0.45f),
+                        // Start at ~45% of the radius so the ring reads as emanating
+                        // from the count, then reach the edge as it fades.
+                        radius = edgeRadius * (0.45f + p * 0.55f),
+                        style = Stroke(width = strokeWidth)
+                    )
+                }
+            }
         }
 
-        // Inner circle with pill count
+        // Inner circle with pill count (+ optional caption under it)
         Box(
             modifier = Modifier
                 .fillMaxSize(0.90f)
                 .clip(CircleShape),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = count.toString(),
-                color = Color.White,
-                fontSize = responsiveSp(32.sp)
-            )
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = count.toString(),
+                    color = Color.White,
+                    fontSize = responsiveSp(32.sp)
+                )
+                if (label != null) {
+                    Text(
+                        text = label,
+                        color = indicatorColor,
+                        fontSize = responsiveSp(13.sp),
+                        fontWeight = FontWeight.SemiBold,
+                        letterSpacing = 1.sp,
+                    )
+                }
+            }
         }
     }
 }

@@ -223,7 +223,12 @@ fun CountModeLandscape(
                 .background(Color.Black.copy(alpha = 0.6f))
                 // Long-press to pick up, then drag the circle anywhere. The final
                 // resting position is saved to prefs so it persists across loads.
-                .pointerInput(Unit) {
+                // Key on the current bounds so the gesture detector restarts after
+                // a rotation; otherwise the drag lambda keeps the stale max offsets
+                // captured at first composition and the circle can't be dragged past
+                // the *previous* orientation's limits (e.g. only mid-screen after
+                // landscape → portrait).
+                .pointerInput(maxOffsetX, maxOffsetY) {
                     detectDragGesturesAfterLongPress(
                         onDrag = { _, dragAmount ->
                             circleOffset = Offset(
@@ -234,27 +239,27 @@ fun CountModeLandscape(
                         onDragEnd = { CountCirclePositionPrefs.setOffset(context, circleOffset) }
                     )
                 }
-                // Whole-circle tap = Add (disabled while cooling down / at target).
-                .clickable(enabled = !isAllDone && !uiState.isAddCooldown) { onAdd() },
+                // Whole-circle tap commits the count (Add) while counting, or
+                // finishes (Done) once the target is met. Disabled mid-cooldown.
+                .clickable(enabled = !uiState.isAddCooldown) {
+                    if (isAllDone) onDone() else onAdd()
+                },
             contentAlignment = Alignment.Center
         ) {
-            if (isAllDone) {
-                Text(
-                    text = stringResource(R.string.pill_scanning_all_done),
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.clickable { onDone() }
-                )
-            } else {
-                // Live count, centred. The "All Done" action only appears once the
-                // target is reached (the isAllDone branch above).
-                CircularCountIndicator(
-                    count = detectedCount,
-                    viewModel = viewModel
-                )
-            }
+            // Both states keep the same ring (CircularCountIndicator); only the
+            // caption under the count changes: "ADD THIS" while counting, "ALL DONE"
+            // once the target is reached.
+            CircularCountIndicator(
+                count = detectedCount,
+                viewModel = viewModel,
+                label = if (isAllDone) {
+                    stringResource(R.string.pill_scanning_all_done)
+                } else {
+                    stringResource(R.string.pill_scanning_add_this)
+                },
+                // Target met → play the Ookla-style completion breath + ripple.
+                pulsing = isAllDone,
+            )
         }
 
         // ── BOTTOM: View all counts ─ progress bar ─ count ────────────────

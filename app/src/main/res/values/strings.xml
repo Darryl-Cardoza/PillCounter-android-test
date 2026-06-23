@@ -250,6 +250,7 @@
     <string name="pill_scanning_wait_button">Wait..</string>
     <string name="pill_scanning_total_count">Total Count</string>
     <string name="pill_scanning_all_done">All Done</string>
+    <string name="pill_scanning_add_this">ADD THIS</string>
     <string name="pill_scanning_view_all_counts">View all counts</string>
     <string name="detail_label_form">Form</string>
     <string name="detail_label_strength">Strength</string>
