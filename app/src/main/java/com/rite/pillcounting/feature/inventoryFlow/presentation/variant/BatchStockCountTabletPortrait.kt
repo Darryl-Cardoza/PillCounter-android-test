@@ -29,13 +29,17 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.BatchStockCountUiState
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditBatchRow
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.RecentBatchRow
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.BatchStockCountHeader
+import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.EditDetailsContent
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.RecentCountsLabelRow
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.ScannedDrugDetailsPortrait
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.ScannedSummaryRow
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.ui.theme.AppTheme
 
 /**
@@ -67,6 +71,10 @@ fun BatchStockCountTabletPortrait(
     onEndCount: () -> Unit,
     modifier: Modifier = Modifier,
     onRowTapped: (RecentBatchRow) -> Unit = {},
+    onEdit: () -> Unit = {},
+    editDetails: EditDrugDetails? = null,
+    onEditDismiss: () -> Unit = {},
+    onEditSave: (sealed: List<EditBatchRow>, open: List<EditBatchRow>) -> Unit = { _, _ -> },
 ) {
     // Grey sheet surface (matches Figma + the landscape variant). The two
     // inner sections (Recent Counts, Scanned NDC Details) are white cards that
@@ -90,6 +98,35 @@ fun BatchStockCountTabletPortrait(
                 .fillMaxSize()
                 .padding(horizontal = 20.dp, vertical = 18.dp),
         ) {
+            // Edit mode: the header morphs to "Edit Details" + X (the SCAN PILLS pill
+            // is hidden) and a single full-width card hosts the editable batch rows.
+            if (editDetails != null) {
+                BatchStockCountHeader(
+                    onScanPills = onScanPills,
+                    editing = true,
+                    onClose = onEditDismiss,
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .shadow(3.dp, RoundedCornerShape(13.dp))
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(AppTheme.extendedColors.secondaryBackground)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                ) {
+                    EditDetailsContent(
+                        details = editDetails,
+                        onDismiss = onEditDismiss,
+                        onSave = onEditSave,
+                        showTitle = false,
+                        wideDrugDetails = true,
+                    )
+                }
+                return@Column
+            }
+
             BatchStockCountHeader(onScanPills = onScanPills)
             Spacer(modifier = Modifier.height(16.dp))
 
@@ -134,20 +171,24 @@ fun BatchStockCountTabletPortrait(
                         .background(AppTheme.extendedColors.secondaryBackground)
                         .padding(horizontal = 16.dp, vertical = 14.dp),
                 ) {
-                    if (state.activeNdc != null) {
-                        ScannedDrugDetailsPortrait(
-                            active = state.activeNdc,
-                            onIncrement = onIncrement,
-                            onDecrement = onDecrement,
-                            onClear = onClear,
-                            onAdd = onAdd,
-                        )
-                    } else {
-                        EmptyScannedDetailsPortrait(
-                            totalNdcs = state.totalNdcs,
-                            totalPills = state.totalPills,
-                            onEndCount = onEndCount,
-                        )
+                    when {
+                        state.activeNdc != null -> {
+                            ScannedDrugDetailsPortrait(
+                                active = state.activeNdc,
+                                onIncrement = onIncrement,
+                                onDecrement = onDecrement,
+                                onClear = onClear,
+                                onAdd = onAdd,
+                                onEdit = onEdit,
+                            )
+                        }
+                        else -> {
+                            EmptyScannedDetailsPortrait(
+                                totalNdcs = state.totalNdcs,
+                                totalPills = state.totalPills,
+                                onEndCount = onEndCount,
+                            )
+                        }
                     }
                 }
             }
@@ -170,7 +211,7 @@ private fun EmptyScannedDetailsPortrait(
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
+            fontSize = responsiveSp(8.sp),
             fontWeight = FontWeight.SemiBold,
         )
         // Centered placeholder fills the slack between the header and the summary.
@@ -188,7 +229,7 @@ private fun EmptyScannedDetailsPortrait(
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
                 color = AppTheme.extendedColors.textColor.copy(alpha = 0.9f),
-                fontSize = 14.sp,
+                fontSize = responsiveSp(6.sp),
             )
         }
         HorizontalDivider(

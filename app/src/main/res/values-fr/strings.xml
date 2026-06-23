@@ -412,6 +412,12 @@
     <string name="batch_stock_count_scan_failed">Échec du scan</string>
     <string name="batch_stock_count_save_failed">Échec de l\'enregistrement</string>
     <string name="batch_stock_count_scan_new_bottle">Scannez un nouveau flacon de stock</string>
+    <string name="batch_stock_count_edit_details">Modifier les détails</string>
+    <string name="batch_stock_count_save">ENREGISTRER</string>
+    <string name="batch_stock_count_sealed_bottles">Flacons scellés</string>
+    <string name="batch_stock_count_open_pills">Comprimés ouverts</string>
+    <string name="batch_stock_count_edit">Modifier</string>
+    <string name="batch_stock_count_delete_row">Supprimer</string>
 
     <string name="violation_screen_overlay">Superposition d\'écran détectée — une autre application pourrait intercepter les entrées tactiles</string>
     <string name="permission_location_rationale">L\'accès à la localisation est utilisé uniquement pour identifier votre réseau Wi-Fi afin de découvrir les appareils médicaux HL7. Votre localisation n\'est jamais stockée, transmise ni associée aux données des patients.</string>

@@ -23,7 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -32,9 +32,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.BatchStockCountUiState
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditBatchRow
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.RecentBatchRow
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.BatchStockCountHeader
+import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.EditDetailsContent
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.RecentCountsLabelRow
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.ScannedDrugCard
@@ -65,10 +69,28 @@ fun BatchStockCountTabletLandscape(
     endCountEnabled: Boolean = true,
     modifier: Modifier = Modifier,
     onRowTapped: (RecentBatchRow) -> Unit = {},
+    onEdit: () -> Unit = {},
+    editDetails: EditDrugDetails? = null,
+    onEditDismiss: () -> Unit = {},
+    onEditSave: (sealed: List<EditBatchRow>, open: List<EditBatchRow>) -> Unit = { _, _ -> },
 ) {
     val density = androidx.compose.ui.platform.LocalDensity.current
     var overlayHeightPx by remember { mutableIntStateOf(0) }
     val overlayHeightDp = with(density) { overlayHeightPx.toDp() }
+
+    // Edit mode: the header morphs to "Edit Details" + X, the recent list stays
+    // visible, and the bottom card shows the editable batch rows in place of the
+    // scanned-drug counter.
+    if (editDetails != null) {
+        BatchStockCountEditingLandscape(
+            details = editDetails,
+            onScanPills = onScanPills,
+            onEditDismiss = onEditDismiss,
+            onEditSave = onEditSave,
+            modifier = modifier,
+        )
+        return
+    }
 
     Box(modifier = modifier.fillMaxHeight()) {
         // Top section: header + recent counts list. Fills the full height behind
@@ -114,54 +136,106 @@ fun BatchStockCountTabletLandscape(
                 .fillMaxWidth()
                 .onSizeChanged { overlayHeightPx = it.height },
         ) {
-            // Soft upward shadow so the card reads as floating above the list.
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(14.dp)
-                    .background(
-                        brush = androidx.compose.ui.graphics.Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.18f))
-                        )
-                    )
-            )
             // Card with rounded top corners, flat bottom (flush with screen edge).
+            // The shadow follows the rounded top corners so it reads as floating
+            // above the list (rather than a straight horizontal line).
+            val cardShape = androidx.compose.foundation.shape.RoundedCornerShape(
+                topStart = 24.dp,
+                topEnd = 24.dp,
+                bottomStart = 0.dp,
+                bottomEnd = 0.dp,
+            )
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(
-                        androidx.compose.foundation.shape.RoundedCornerShape(
-                            topStart = 24.dp,
-                            topEnd = 24.dp,
-                            bottomStart = 0.dp,
-                            bottomEnd = 0.dp,
-                        )
-                    )
+                    .shadow(elevation = 10.dp, shape = cardShape, clip = false)
+                    .clip(cardShape)
                     .background(AppTheme.extendedColors.secondaryBackground)
             ) {
-                // Drug details: active drug counter or the "scan a new bottle" placeholder.
-                if (state.activeNdc != null) {
-                    ScannedDrugCard(
-                        active = state.activeNdc,
-                        onIncrement = onIncrement,
-                        onDecrement = onDecrement,
-                        onClear = onClear,
-                        onAdd = onAdd,
-                    )
-                } else {
-                    EmptyScannedDetailsTabletLandscape()
+                when {
+                    // Drug details: active drug counter.
+                    state.activeNdc != null -> {
+                        ScannedDrugCard(
+                            active = state.activeNdc,
+                            onIncrement = onIncrement,
+                            onDecrement = onDecrement,
+                            onClear = onClear,
+                            onAdd = onAdd,
+                            onEdit = onEdit,
+                        )
+                    }
+                    // "Scan a new bottle" placeholder + summary.
+                    else -> {
+                        EmptyScannedDetailsTabletLandscape()
 
-                    HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+                        HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
-                    // Summary only shown when no drug is actively being scanned.
-                    ScannedSummaryCard(
-                        totalNdcs = state.totalNdcs,
-                        totalPills = state.totalPills,
-                        onEndCount = onEndCount,
-                        endCountEnabled = endCountEnabled,
-                    )
+                        ScannedSummaryCard(
+                            totalNdcs = state.totalNdcs,
+                            totalPills = state.totalPills,
+                            onEndCount = onEndCount,
+                            endCountEnabled = endCountEnabled,
+                        )
+                    }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Edit mode for the landscape panel. The top header morphs to "Edit Details" with
+ * an X close (replacing the SCAN PILLS pill); the edit card stretches to fill the
+ * entire area below the header, hosting the editable batch rows (sealed bottles /
+ * open pills) in place of the scanned-drug counter — its own title bar is
+ * suppressed since the panel header already shows it.
+ */
+@Composable
+private fun BatchStockCountEditingLandscape(
+    details: EditDrugDetails,
+    onScanPills: () -> Unit,
+    onEditDismiss: () -> Unit,
+    onEditSave: (sealed: List<EditBatchRow>, open: List<EditBatchRow>) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier
+            .fillMaxHeight()
+            .fillMaxWidth()
+            .background(AppTheme.extendedColors.primaryBackground),
+    ) {
+        // Header pinned at the top.
+        BatchStockCountHeader(
+            onScanPills = onScanPills,
+            editing = true,
+            onClose = onEditDismiss,
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+        )
+
+        // Edit card stretches to fill the rest below the header: rounded top, flush
+        // bottom — same surface as the scanned-drug card it replaces. The shadow
+        // follows the rounded top corners so it reads as floating below the header.
+        val editCardShape = androidx.compose.foundation.shape.RoundedCornerShape(
+            topStart = 24.dp,
+            topEnd = 24.dp,
+            bottomStart = 0.dp,
+            bottomEnd = 0.dp,
+        )
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .shadow(elevation = 10.dp, shape = editCardShape, clip = false)
+                .clip(editCardShape)
+                .background(AppTheme.extendedColors.secondaryBackground)
+                .padding(horizontal = 22.dp, vertical = 14.dp),
+        ) {
+            EditDetailsContent(
+                details = details,
+                onDismiss = onEditDismiss,
+                onSave = onEditSave,
+                showTitle = false,
+            )
         }
     }
 }
@@ -176,7 +250,7 @@ private fun EmptyScannedDetailsTabletLandscape() {
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
+            fontSize = responsiveSp(8.sp),
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(modifier = Modifier.height(12.dp))
@@ -194,7 +268,7 @@ private fun EmptyScannedDetailsTabletLandscape() {
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
                 color = AppTheme.extendedColors.textColor.copy(alpha = 0.9f),
-                fontSize = 14.sp,
+                fontSize = responsiveSp(6.sp),
             )
         }
     }

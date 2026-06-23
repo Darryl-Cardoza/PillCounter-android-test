@@ -431,6 +431,12 @@
     <string name="batch_stock_count_scan_failed">Scan failed</string>
     <string name="batch_stock_count_save_failed">Failed to save</string>
     <string name="batch_stock_count_scan_new_bottle">Scan a new Stock bottle</string>
+    <string name="batch_stock_count_edit_details">Edit Details</string>
+    <string name="batch_stock_count_save">SAVE</string>
+    <string name="batch_stock_count_sealed_bottles">Sealed Bottles</string>
+    <string name="batch_stock_count_open_pills">Open Pills</string>
+    <string name="batch_stock_count_edit">Edit</string>
+    <string name="batch_stock_count_delete_row">Delete</string>
 
     <string name="violation_screen_overlay">Screen overlay detected — another app may be intercepting touch input</string>
     <string name="permission_location_rationale">

@@ -34,6 +34,7 @@ import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.RecentCo
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.ScannedDrugDetailsPhone
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.ScannedSummaryRow
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.ui.theme.AppTheme
 
 /**
@@ -161,7 +162,7 @@ private fun EmptyScannedDetailsPhone(
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
+            fontSize = responsiveSp(8.sp),
             fontWeight = FontWeight.SemiBold,
         )
         Column(
@@ -178,7 +179,7 @@ private fun EmptyScannedDetailsPhone(
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
                 color = AppTheme.extendedColors.textColor.copy(alpha = 0.9f),
-                fontSize = 14.sp,
+                fontSize = responsiveSp(6.sp),
             )
         }
         HorizontalDivider(

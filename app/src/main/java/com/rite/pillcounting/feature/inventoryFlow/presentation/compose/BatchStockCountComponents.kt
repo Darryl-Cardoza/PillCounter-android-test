@@ -21,6 +21,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -42,6 +43,8 @@ import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.ActiveNdc
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.RecentBatchRow
 import com.rite.pillcounting.ui.theme.AppTheme
@@ -71,19 +74,38 @@ internal fun StockCountCard(
 internal fun BatchStockCountHeader(
     onScanPills: () -> Unit,
     modifier: Modifier = Modifier,
+    // When editing, the header morphs into the Edit Details title with an X close
+    // button in place of the SCAN PILLS pill (the scanned-drug card below it shows
+    // the editable batch rows).
+    editing: Boolean = false,
+    onClose: () -> Unit = {},
 ) {
     Row(
         modifier = modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Text(
-            text = stringResource(R.string.batch_stock_count_title),
+            text = stringResource(
+                if (editing) R.string.batch_stock_count_edit_details
+                else R.string.batch_stock_count_title
+            ),
             color = AppTheme.extendedColors.textColor,
-            fontSize = 18.sp,
+            fontSize = responsiveSp(10.sp),
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.weight(1f)
         )
-        ScanPillsPillButton(onClick = onScanPills)
+        if (editing) {
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = stringResource(R.string.batch_stock_count_cancel),
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier
+                    .size(responsiveDp(20.dp))
+                    .clickable(onClick = onClose),
+            )
+        } else {
+            ScanPillsPillButton(onClick = onScanPills)
+        }
     }
 }
 
@@ -101,7 +123,7 @@ private fun ScanPillsPillButton(onClick: () -> Unit) {
         Text(
             text = stringResource(R.string.batch_stock_count_scan_pills),
             color = color,
-            fontSize = 11.sp,
+            fontSize = responsiveSp(6.sp),
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -115,7 +137,7 @@ internal fun RecentCountsLabelRow(
     Text(
         text = label,
         color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-        fontSize = 13.sp,
+        fontSize = responsiveSp(7.sp),
         fontWeight = FontWeight.SemiBold,
         modifier = modifier.fillMaxWidth(),
     )
@@ -210,6 +232,49 @@ private fun UnitColumn(value: String, label: String) {
 
 /* ─────────────────────────  SCANNED DRUG CARD  ───────────────────────── */
 
+/**
+ * "SCANNED NDC DETAILS" caption with a trailing edit icon. The icon opens the
+ * Edit Details panel where sealed-bottle and open-pill batch rows for the active
+ * drug can be adjusted or removed.
+ */
+@Composable
+private fun ScannedDetailsHeaderRow(onEdit: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.batch_stock_count_scanned_drug_details),
+            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+            fontSize = responsiveSp(8.sp),
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+        )
+        EditPillButton(onClick = onEdit)
+    }
+}
+
+/** Outlined "EDIT" pill button matching the SCAN PILLS pill style. */
+@Composable
+private fun EditPillButton(onClick: () -> Unit) {
+    val color = MaterialTheme.colorScheme.primary
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .border(1.dp, color, RoundedCornerShape(50))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 7.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = stringResource(R.string.batch_stock_count_edit),
+            color = color,
+            fontSize = responsiveSp(6.sp),
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
 @Composable
 internal fun ScannedDrugCard(
     active: ActiveNdc,
@@ -218,18 +283,14 @@ internal fun ScannedDrugCard(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
+    onEdit: () -> Unit = {},
 ) {
     Column(
         modifier = modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 14.dp)
     ) {
-        Text(
-            text = stringResource(R.string.batch_stock_count_scanned_drug_details),
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
+        ScannedDetailsHeaderRow(onEdit = onEdit)
         Spacer(modifier = Modifier.height(12.dp))
 
         // Row 1: Drug Name (2x) | Bucket (1x).
@@ -322,13 +383,13 @@ private fun DetailField(label: String, value: String, modifier: Modifier = Modif
         Text(
             text = label,
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 11.sp,
+            fontSize = responsiveSp(6.sp),
         )
         Spacer(modifier = Modifier.height(2.dp))
         Text(
             text = value,
             color = MaterialTheme.colorScheme.secondary,
-            fontSize = 13.sp,
+            fontSize = responsiveSp(7.sp),
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             softWrap = false,
@@ -362,9 +423,9 @@ internal fun CounterRow(
     compact: Boolean = false,
 ) {
     val borderColor = AppTheme.extendedColors.primaryBackground
-    val rowHeight = if (compact) 56.dp else 76.dp
+    val rowHeight = 76.dp
     val iconSize = if (compact) 24.dp else 30.dp
-    val valueSize = if (compact) 22.sp else 26.sp
+    val valueSize = responsiveSp(10.sp)
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -411,7 +472,7 @@ internal fun CounterRow(
             Text(
                 text = stringResource(R.string.batch_stock_count_pills_suffix, totalPills),
                 color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
-                fontSize = 11.sp,
+                fontSize = responsiveSp(7.sp),
             )
         }
         CounterButton(
@@ -502,14 +563,10 @@ internal fun ScannedDrugDetailsPortrait(
     onClear: () -> Unit,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
+    onEdit: () -> Unit = {},
 ) {
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.batch_stock_count_scanned_drug_details),
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
-            fontWeight = FontWeight.SemiBold,
-        )
+        ScannedDetailsHeaderRow(onEdit = onEdit)
         Spacer(modifier = Modifier.height(12.dp))
 
         DetailField(
@@ -635,7 +692,7 @@ internal fun ScannedDrugDetailsPhone(
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_drug_details),
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
+            fontSize = responsiveSp(8.sp),
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(modifier = Modifier.height(fieldGap))
