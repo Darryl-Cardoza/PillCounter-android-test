@@ -811,7 +811,11 @@ fun DispenseFlowScreen(
                             barcodeAnalyzer.analyze(imageProxy) { value, _ ->
                                 val matched = dispenseVm.onVialBarcodeRead(value)
                                 if (matched) {
-                                    pillVm.captureImage()
+                                    // Auto-capture: capture the still AND commit it as
+                                    // if Done was tapped, so the "Confirm Done" dialog
+                                    // appears without a manual tap. Manual capture
+                                    // (camera button) still requires a Done tap.
+                                    pillVm.captureImage(autoConfirm = true)
                                 } else {
                                     barcodeAnalyzer.resume()
                                 }
