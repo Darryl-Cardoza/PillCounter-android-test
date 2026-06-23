@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,7 +55,11 @@ import com.rite.pillcounting.core.utils.compose.WorkflowStepper
 import com.rite.pillcounting.core.utils.preference.CountCirclePositionPrefs
 
 /**
- * Landscape count-mode overlay (phone + tablet).
+ * Shared full-bleed count-mode overlay (phone + tablet, BOTH orientations).
+ *
+ * Despite the historical name, this drives portrait and landscape alike — it is
+ * the single overlay used for every pill-counting step (VIAL keeps the separate
+ * CameraActionBar strip). [InformationPanelSection] routes both orientations here.
  *
  * Full-bleed overlay over the camera feed:
  *  - Top: translucent details bar (NDC + drug name on the left; Form / Strength /
@@ -103,10 +106,6 @@ fun CountModeLandscape(
 
     val isFixed = scanType == CountType.FIXED.toString() &&
         stepType != StepState.CONTAINER_INITIATE
-    android.util.Log.d(
-        "CountBar",
-        "scanType=$scanType targetCount=$targetCount totalCount=$totalCount stepType=$stepType isFixed=$isFixed"
-    )
     // Target reached → the centre circle turns into the "All Done" action.
     val isAllDone = isFixed && targetCount > 0 && totalCount >= targetCount
 
@@ -284,14 +283,17 @@ fun CountModeLandscape(
             Spacer(Modifier.width(12.dp))
 
             // Workflow steps live inside the bar (between "View all counts" and the
-            // progress bar). It is weighted so on narrow widths (phone portrait) it
-            // shrinks instead of pushing the progress bar to zero width and the
-            // count text off the right edge.
-            WorkflowStepper(
-                steps = steps,
-                currentStep = stepType,
-                modifier = Modifier.weight(1f, fill = false)
-            )
+            // progress bar). Weighted so on narrow widths (phone portrait) it shares
+            // the leftover space with the progress bar instead of taking a fixed
+            // footprint that pushes the progress bar to zero and the count text off
+            // the right edge. The stepper fills the width it's given; the weight
+            // bounds that, so nothing overflows.
+            Box(modifier = Modifier.weight(1f)) {
+                WorkflowStepper(
+                    steps = steps,
+                    currentStep = stepType,
+                )
+            }
 
             Spacer(Modifier.width(12.dp))
 
@@ -301,7 +303,6 @@ fun CountModeLandscape(
                     progress = { progress },
                     modifier = Modifier
                         .weight(1f)
-                        .widthIn(min = 48.dp)
                         .height(4.dp)
                         .clip(RoundedCornerShape(2.dp)),
                     color = MaterialTheme.colorScheme.primary,
@@ -312,8 +313,6 @@ fun CountModeLandscape(
                     drawStopIndicator = {}
                 )
                 Spacer(Modifier.width(12.dp))
-            } else {
-                Spacer(Modifier.weight(1f))
             }
 
             Text(
