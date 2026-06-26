@@ -858,7 +858,11 @@ fun DispenseFlowScreen(
                 }
             }
             val showPillPanel = dispenseState.stage == DispenseStage.COUNTING || showCountCircle
-            if (showPillPanel) {
+            // Suppress the pre-COUNTING pill panel while a resume/HL7 entry is
+            // still resolving its real stage — we keep the live camera visible
+            // under the loading scrim, but the wrong-stage overlay must not bleed
+            // through it.
+            if (showPillPanel && !awaitingResume) {
                 if (dispenseState.stage == DispenseStage.COUNTING) {
                     // Full pill panel — total / target / circle / Add / Done.
                     // The VIAL capture step keeps the original right-strip layout
@@ -1182,7 +1186,8 @@ fun DispenseFlowScreen(
         // overlay is active.
         if (!showHistory &&
             dispenseState.stage != DispenseStage.COUNTING &&
-            !btScannerOverlayActive
+            !btScannerOverlayActive &&
+            !awaitingResume
         ) {
             BtScannerInputBar(
                 input = btScannerInput,
@@ -1358,16 +1363,21 @@ fun DispenseFlowScreen(
             }
         }
 
-        // Loading gate for resume/HL7 entries — drawn last so it covers the
-        // default PRE_RX UI until the real start stage is resolved. Opaque
-        // background so no "Scan Rx Label" flash leaks through underneath.
+        // Loading gate for resume/HL7 entries — drawn last so it sits on top
+        // until the real start stage is resolved. Rather than an opaque white
+        // cover (which reads as a frozen/blank screen), we keep the live camera
+        // visible underneath and lay a light dark scrim + spinner over it, so it
+        // looks like the session is loading over the camera. The wrong-stage
+        // PRE_RX overlays are suppressed separately (see showPillPanel /
+        // BtScannerInputBar) so nothing incorrect bleeds through the scrim.
         if (awaitingResume) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
+                    .background(Color.Black.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
             ) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                CircularProgressIndicator(color = Color.White)
             }
         }
     }
