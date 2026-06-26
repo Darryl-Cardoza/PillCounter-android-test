@@ -141,25 +141,26 @@ class PillCountTxnEntityTest {
         assertEquals("note", e.component7())
         assertEquals("2027-01", e.component8())
         assertEquals("lot1", e.component9())
-        assertEquals("bc.png", e.component10())
-        assertEquals(true, e.component11())
-        assertEquals("rx1", e.component12())
-        assertEquals("rf1", e.component13())
-        assertEquals("John", e.component14())
-        assertEquals(true, e.component15())
-        assertEquals(100L, e.component16())
-        assertEquals(200L, e.component17())
-        assertEquals(true, e.component18())
-        assertEquals(true, e.component19())
-        assertEquals(true, e.component20())
-        assertEquals("bucket", e.component21())
-        assertEquals(4L, e.component22())
-        assertEquals(5, e.component23())
-        assertEquals(6, e.component24())
-        assertEquals(7L, e.component25())
-        assertEquals("step", e.component26())
-        assertEquals(TxnPriority.High, e.component27())
-        assertEquals(true, e.component28())
-        assertEquals(true, e.component29())
+        assertNull(e.component10())            // serialNo (not set in sample)
+        assertEquals("bc.png", e.component11()) // barcodeImage
+        assertEquals(true, e.component12())     // isSubstitute
+        assertEquals("rx1", e.component13())
+        assertEquals("rf1", e.component14())
+        assertEquals("John", e.component15())
+        assertEquals(true, e.component16())     // isDeleted
+        assertEquals(100L, e.component17())     // createdAt
+        assertEquals(200L, e.component18())     // updatedAt
+        assertEquals(true, e.component19())     // isComingFromHL7
+        assertEquals(true, e.component20())     // isSynced
+        assertEquals(true, e.component21())     // isNdcVerified
+        assertEquals("bucket", e.component22())
+        assertEquals(4L, e.component23())       // batchId
+        assertEquals(5, e.component24())        // bottleQty
+        assertEquals(6, e.component25())        // looseQty
+        assertEquals(7L, e.component26())       // substitutedDrugId
+        assertEquals("step", e.component27())   // workflowStep
+        assertEquals(TxnPriority.High, e.component28())
+        assertEquals(true, e.component29())     // isGlovesPresent
+        assertEquals(true, e.component30())     // hazardousTrayDetected
     }
 }

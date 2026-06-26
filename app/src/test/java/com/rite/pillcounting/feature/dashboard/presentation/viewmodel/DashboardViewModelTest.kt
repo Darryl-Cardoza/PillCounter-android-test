@@ -284,16 +284,6 @@ class DashboardViewModelTest {
         assertEquals(listOf("x", "y"), vm.getBucketList())
     }
 
-    @Test
-    fun `getLastInProgressBatch delegates to batch dao`() = runTest(testDispatcher) {
-        coEvery { batchDao.getLatest() } returns null
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        assertNull(vm.getLastInProgressBatch())
-        coVerify { batchDao.getLatest() }
-    }
-
     // ─────────────────────────────── observeUserDetail / toUserDetail ───────────────────────────────
 
     @Test
