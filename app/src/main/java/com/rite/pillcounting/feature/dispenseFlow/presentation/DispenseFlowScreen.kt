@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -1109,10 +1110,24 @@ fun DispenseFlowScreen(
                     .zIndex(1f)
                     .padding(top = 8.dp, bottom = 8.dp, end = headerEndPadding),
             ) {
+                // During COUNTING the back arrow sits in the left gutter of the
+                // details bar (NDC on top, drug name below). The arrow's own 10.dp
+                // internal padding makes its bounding box taller than that two-line
+                // block, so a plain CenterStart drops the arrow to the drug-name
+                // line. Pin it to the top and nudge up so the arrow centre lines up
+                // with the centre of the NDC / drug-name block instead. Other stages
+                // keep the arrow centred against the step-title header.
+                val centreOnDetailsBar = dispenseState.stage == DispenseStage.COUNTING
                 BackButton(
                     navController = navController,
                     showBox = false,
-                    modifier = Modifier.align(Alignment.CenterStart),
+                    modifier = if (centreOnDetailsBar) {
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .offset(y = (-8).dp)
+                    } else {
+                        Modifier.align(Alignment.CenterStart)
+                    },
                     onClick = {
                         pillVm.discardStagedCount()
                         if (fromQueue && dispenseState.stage == DispenseStage.PRE_RX) {
