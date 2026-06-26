@@ -579,6 +579,8 @@ internal fun ScaffoldQueueList(
                         targetCount = item.txn.targetCount ?: 0,
                         countType = item.txn.countType,
                         isComingFromHL7 = item.txn.isComingFromHL7,
+                        strength = item.txn.strength,
+                        dosageForm = item.txn.dosageForm,
                     ),
                     onClick = { onDispenseClick?.invoke(item.txn.txnId) },
                 )

@@ -26,6 +26,7 @@ data class NdcDrugInfo(
     val generic_name: String? = null,
     val splittable: Boolean? = null,
     val standard_name: String? = null,
+    val strength_info: StrengthInfo? = null,
     val active_ingredients: List<ActiveIngredient>? = null,
     val regulatory: DrugRegulatory? = null,
     val dosage_form: List<String>? = null,
@@ -37,6 +38,20 @@ data class NdcDrugInfo(
     val updated_at: String? = null,
     val `package`: Package? = null,
     val is_hazardous: Boolean? = null
+)
+
+/**
+ * Pre-formatted strength of the drug as returned by the backend.
+ *
+ * @property display Human-readable strength to show in the UI, e.g. "100 MG".
+ * @property value   Numeric strength value, e.g. 100.
+ * @property unit    Strength unit, e.g. "MG".
+ */
+@Serializable
+data class StrengthInfo(
+    val display: String? = null,
+    val value: Double? = null,
+    val unit: String? = null
 )
 
 @Serializable
@@ -89,6 +104,8 @@ data class DrugImageItem(
 @Serializable
 data class Package(
     val description: String? = null,
+    val container_type: String? = null,
+    val stock_qty: Int? = null,
     val sizes: List<String>? = null,
     val levels: List<PackageLevel>? = null
 )

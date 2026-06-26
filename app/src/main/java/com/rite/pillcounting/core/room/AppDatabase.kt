@@ -3,6 +3,8 @@ package com.rite.pillcounting.core.room
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
@@ -46,7 +48,7 @@ import com.rite.pillcounting.core.security.SecureStringConverter
         PillCountTxnDetailsEntity::class,
         BatchEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(
@@ -69,4 +71,17 @@ abstract class AppDatabase : RoomDatabase() {
 
     /** DAO for managing [BatchEntity] batch headers. */
     abstract fun batchDao(): BatchDao
+
+    companion object {
+        /**
+         * v2 → v3: add `strength` and `dosageForm` columns to `drug_master`.
+         * Existing rows get NULL; values are backfilled as drugs are re-scanned.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE drug_master ADD COLUMN strength TEXT")
+                db.execSQL("ALTER TABLE drug_master ADD COLUMN dosageForm TEXT")
+            }
+        }
+    }
 }

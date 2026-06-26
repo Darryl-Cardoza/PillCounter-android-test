@@ -334,6 +334,8 @@ class InventoryScanViewModel @Inject constructor(
                             gtin = gtin14,
                             packageQty = drugInfo.qty,
                             isHazardous = drugInfo.isHazardous ?: false,
+                            strength = drugInfo.strength,
+                            dosageForm = drugInfo.dosageForm,
                         )
                     )
                     // Re-read so we get the row with its assigned drugId.
