@@ -4,16 +4,20 @@ import Screen
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -21,9 +25,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowDropDown
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuAnchorType
@@ -37,6 +43,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -44,6 +52,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -59,7 +68,6 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FloatingLabelT
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
-import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileField
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
@@ -436,21 +444,42 @@ private fun ResponsiveProfileFields(
         }
     }
 
-    // Add Terminal Dropdown if terminals are available
-    if (viewModel.terminals.isNotEmpty()) {
+    // Terminal and Pharmacy Type dropdowns side by side.
+    val context = LocalContext.current
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
         // Terminal selection is HL7/PMS-driven — disable the dropdown when HL7 is
-        // turned off in the portal and surface a toast on tap.
-        val context = LocalContext.current
-        val hl7Enabled = viewModel.isHl7Enabled()
-        TerminalDropdown(
-            terminals = viewModel.terminals,
-            selectedTerminal = viewModel.selectedTerminal,
-            onTerminalSelected = { viewModel.onTerminalSelected(it) },
-            enabled = hl7Enabled,
-            onDisabledClick = { showToast(context, R.string.enable_hl7_from_portal_toast) },
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 8.dp)
+        // turned off in the portal and surface a toast on tap. Only shown when
+        // terminals are available.
+        if (viewModel.terminals.isNotEmpty()) {
+            val hl7Enabled = viewModel.isHl7Enabled()
+            LabeledDropdown(
+                label = stringResource(R.string.terminal),
+                selectedText = viewModel.selectedTerminal?.terminalName,
+                placeholder = stringResource(R.string.select_terminal),
+                items = viewModel.terminals,
+                itemLabel = { it.terminalName ?: stringResource(R.string.unknown) },
+                isSelected = { it.terminalId == viewModel.selectedTerminal?.terminalId },
+                onItemSelected = { viewModel.onTerminalSelected(it) },
+                enabled = hl7Enabled,
+                onDisabledClick = { showToast(context, R.string.enable_hl7_from_portal_toast) },
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        LabeledDropdown(
+            label = stringResource(R.string.pharmacy_type),
+            selectedText = viewModel.selectedPharmacyType?.let { stringResource(it.labelRes) },
+            placeholder = stringResource(R.string.select_pharmacy_type),
+            items = viewModel.pharmacyTypes,
+            itemLabel = { stringResource(it.labelRes) },
+            isSelected = { it == viewModel.selectedPharmacyType },
+            onItemSelected = { viewModel.onPharmacyTypeSelected(it) },
+            modifier = Modifier.weight(1f)
         )
     }
 
@@ -458,23 +487,35 @@ private fun ResponsiveProfileFields(
 
 
 /**
- * Dropdown menu to select a terminal.
+ * Reusable labeled dropdown used for selecting an item from a list.
+ *
+ * Shows [label] as a floating caption and [selectedText] (or [placeholder] when
+ * nothing is selected) as the value. When [enabled] is false the field is dimmed,
+ * never expands, and a tap routes to [onDisabledClick] instead.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun TerminalDropdown(
-    terminals: List<Terminal>,
-    selectedTerminal: Terminal?,
-    onTerminalSelected: (Terminal) -> Unit,
+private fun <T> LabeledDropdown(
+    label: String,
+    selectedText: String?,
+    placeholder: String,
+    items: List<T>,
+    itemLabel: @Composable (T) -> String,
+    onItemSelected: (T) -> Unit,
     modifier: Modifier = Modifier,
+    isSelected: (T) -> Boolean = { false },
     enabled: Boolean = true,
     onDisabledClick: () -> Unit = {}
 ) {
     var expanded by remember { mutableStateOf(false) }
 
-    // Dim the field when disabled; never let it expand. A disabled tap routes to
-    // onDisabledClick (toast) instead.
     val contentAlpha = if (enabled) 1f else 0.4f
+    val accent = MaterialTheme.colorScheme.primary
+    val shape = RoundedCornerShape(10.dp)
+    val arrowRotation by animateFloatAsState(
+        targetValue = if (expanded && enabled) 180f else 0f,
+        label = "dropdownArrow"
+    )
 
     ExposedDropdownMenuBox(
         expanded = expanded && enabled,
@@ -488,11 +529,18 @@ private fun TerminalDropdown(
                 .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
                 .fillMaxWidth()
                 .height(AppTheme.dimens.profileTextFieldHeight)
-                .background(AppTheme.extendedColors.inputBackground, RoundedCornerShape(8.dp))
+                .clip(shape)
+                .background(AppTheme.extendedColors.inputBackground)
+                .border(
+                    width = if (expanded && enabled) 1.5.dp else 1.dp,
+                    color = if (expanded && enabled) accent
+                    else AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
+                    shape = shape
+                )
                 .padding(horizontal = 15.dp),
         ) {
             Text(
-                text = stringResource(R.string.terminal),
+                text = label,
                 color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f * contentAlpha),
                 fontSize = 12.sp,
                 modifier = Modifier
@@ -500,38 +548,67 @@ private fun TerminalDropdown(
                     .padding(top = 6.dp),
             )
             Text(
-                text = selectedTerminal?.terminalName ?: stringResource(R.string.select_terminal),
-                color = AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
+                text = selectedText ?: placeholder,
+                color = if (selectedText == null)
+                    AppTheme.extendedColors.textColor.copy(alpha = 0.4f * contentAlpha)
+                else AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
                 fontSize = 16.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(bottom = 10.dp),
+                    .padding(bottom = 10.dp, end = 28.dp),
             )
             Icon(
                 imageVector = Icons.Default.ArrowDropDown,
                 contentDescription = null,
                 tint = AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
-                modifier = Modifier.align(Alignment.CenterEnd),
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .rotate(arrowRotation),
             )
         }
 
+        // Custom-styled menu: white rounded surface, compact rows, selected highlight.
         ExposedDropdownMenu(
             expanded = expanded && enabled,
             onDismissRequest = { expanded = false },
+            containerColor = AppTheme.extendedColors.inputBackground,
+            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.heightIn(max = 280.dp),
         ) {
-            terminals.forEach { terminal ->
+            items.forEachIndexed { index, item ->
+                val selected = isSelected(item)
                 DropdownMenuItem(
                     text = {
                         Text(
-                            text = terminal.terminalName ?: stringResource(R.string.unknown),
-                            color = AppTheme.extendedColors.textColor,
+                            text = itemLabel(item),
+                            color = if (selected) accent else AppTheme.extendedColors.textColor,
+                            fontSize = 15.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     },
+                    trailingIcon = if (selected) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                tint = accent,
+                            )
+                        }
+                    } else null,
                     onClick = {
-                        onTerminalSelected(terminal)
+                        onItemSelected(item)
                         expanded = false
                     },
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
                 )
+                if (index < items.lastIndex) {
+                    HorizontalDivider(
+                        color = AppTheme.extendedColors.textColor.copy(alpha = 0.08f),
+                        modifier = Modifier.padding(horizontal = 12.dp)
+                    )
+                }
             }
         }
     }

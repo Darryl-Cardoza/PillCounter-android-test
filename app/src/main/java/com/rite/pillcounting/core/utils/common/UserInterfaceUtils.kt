@@ -1202,13 +1202,10 @@ object UserInterfaceUtils {
     @Composable
     fun responsiveDpForCircularCountIndicator(): Dp {
         val config = LocalConfiguration.current
-        val isLandscape = config.orientation == Configuration.ORIENTATION_LANDSCAPE
         val sw = minOf(config.screenWidthDp, config.screenHeightDp)
-        val percent = when {
-            sw < 600 -> if (isLandscape) 0.30f else 0.25f   // phones
-            sw < 840 -> if (isLandscape) 0.30f else 0.20f   // tablets
-            else -> if (isLandscape) 0.30f else 0.22f   // large tablets
-        }
+        // Use the same proportion in both orientations so the circle is the same
+        // size in portrait and landscape (landscape's 0.30f was the desired size).
+        val percent = 0.30f
         return (sw * percent).dp
     }
 

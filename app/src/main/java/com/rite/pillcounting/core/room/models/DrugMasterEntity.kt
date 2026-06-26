@@ -26,5 +26,9 @@ data class DrugMasterEntity(
     val createdAt: Long = System.currentTimeMillis(),
     val gtin: String?= null,
     val packageQty: Int?= 0,
-    val isHazardous: Boolean = false
+    val isHazardous: Boolean = false,
+    /** Strength of the first active ingredient, e.g. "35 mg/1". From DrugInfo.strength. */
+    val strength: String? = null,
+    /** Dosage form, e.g. "CAPSULE, EXTENDED RELEASE". From DrugInfo.dosageForm. */
+    val dosageForm: String? = null
 )

@@ -32,6 +32,15 @@ fun StepTitleWithSpeech(
     val context = LocalContext.current
     val title = if (titleResOverride != null) stringResource(titleResOverride) else stringResource(stepType.titleRes())
 
+    // The header title is only shown for these entry/capture steps. All other
+    // steps (e.g. CONTAINER_INITIATE, TARGET_VERIFICATION) suppress it — they
+    // carry their own on-screen affordances. An explicit title override (e.g. the
+    // REGULAR "Scan open pills" prompt during COUNTING) is always shown.
+    val showHeaderTitle = titleResOverride != null ||
+        stepType == StepState.RX_LABEL ||
+        stepType == StepState.SCAN ||
+        stepType == StepState.VIAL
+
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var isTtsReady by remember { mutableStateOf(false) }
     DisposableEffect(context) {
@@ -51,8 +60,10 @@ fun StepTitleWithSpeech(
         }
     }
 
-    LaunchedEffect(title, isTtsReady) {
-        if (isTtsReady && isSoundOverride) {
+    // For the allowed header steps, speak the step title aloud when the voiceover
+    // setting (isSoundOverride) is enabled.
+    LaunchedEffect(title, isTtsReady, showHeaderTitle) {
+        if (isTtsReady && isSoundOverride && showHeaderTitle) {
             tts?.stop()
             tts?.speak(
                 title,
@@ -63,18 +74,22 @@ fun StepTitleWithSpeech(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .background(
-                AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.8f),
-                shape = RoundedCornerShape(50.dp)
+    // Render the title in the header for the allowed steps (e.g. "Scan Rx Label",
+    // "Scan Container QR Code"). It stays visible for the duration of the step.
+    if (showHeaderTitle) {
+        Box(
+            modifier = Modifier
+                .background(
+                    AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(50.dp)
+                )
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = title,
+                color = AppTheme.extendedColors.textColor,
+                fontSize = 16.sp
             )
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-    ) {
-        Text(
-            text = title,
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 16.sp
-        )
+        }
     }
 }

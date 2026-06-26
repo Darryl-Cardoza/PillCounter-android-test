@@ -27,7 +27,7 @@ fun PillAddButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(responsiveButtonHeight(48.dp)),
+        modifier = modifier.height(responsiveButtonHeight(40.dp)),
         shape = CircleShape,
         colors = ButtonDefaults.buttonColors(
             containerColor = color,
@@ -35,7 +35,7 @@ fun PillAddButton(
             disabledContainerColor = Color.Gray,
             disabledContentColor = Color.White
         ),
-        contentPadding = PaddingValues(horizontal = responsiveDp(20.dp), vertical = 0.dp),
+        contentPadding = PaddingValues(horizontal = responsiveDp(12.dp), vertical = 0.dp),
         elevation = ButtonDefaults.buttonElevation(
             defaultElevation = 4.dp,
             pressedElevation = 8.dp,

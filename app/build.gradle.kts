@@ -39,7 +39,7 @@ android {
         buildConfigField(
             "String",
             "BASE_URL",
-            "\"https://pill.ccrlindia.com/\""
+            "\"https://api.dispensesure.com/\""
         )
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")

@@ -852,17 +852,41 @@ fun DispenseFlowScreen(
             if (showPillPanel) {
                 if (dispenseState.stage == DispenseStage.COUNTING) {
                     // Full pill panel — total / target / circle / Add / Done.
+                    // The VIAL capture step keeps the original right-strip layout
+                    // (its CameraActionBar must look exactly as before); only the
+                    // pill-counting steps use the new full-bleed overlay.
+                    val isVialStep = pillStepType == StepState.VIAL
                     Box(
                         modifier = if (isLandscape) {
-                            Modifier
-                                .align(Alignment.CenterEnd)
-                                .fillMaxHeight()
-                                .fillMaxWidth(0.3f)
+                            if (isVialStep) {
+                                // Original landscape sizing for the vial capture bar.
+                                Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(0.3f)
+                            } else {
+                                // New overlay design: details bar on top, count
+                                // circle centered over the camera feed, progress bar
+                                // at the bottom. Spans the full preview.
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .fillMaxSize()
+                            }
                         } else {
-                            Modifier
-                                .align(Alignment.BottomCenter)
-                                .fillMaxWidth()
-                                .fillMaxHeight(0.25f)
+                            if (isVialStep) {
+                                // Portrait vial capture keeps the original bottom strip.
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .fillMaxHeight(0.25f)
+                            } else {
+                                // New full-bleed overlay (matches landscape): top details
+                                // bar, centered count circle over the feed, bottom progress
+                                // bar. Spans the full preview.
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .fillMaxSize()
+                            }
                         }
                     ) {
                         InformationPanelSection(
@@ -1177,6 +1201,7 @@ fun DispenseFlowScreen(
                     bucket = dispenseState.selectedBucketId,
                     ndcNumber = dispenseState.ndc,
                     rxNumber = dispenseState.rxNo.orEmpty(),
+                    strength = dispenseState.ndcStrength.orEmpty(),
                     onCancel = { dispenseVm.onRxCancelled() },
                     onProceed = { dispenseVm.onRxConfirmed() },
                     dismissible = false,
@@ -1187,7 +1212,7 @@ fun DispenseFlowScreen(
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
                         .width(inlinePanelWidth)
-                        .background(androidx.compose.ui.graphics.Color.Transparent)
+                        .background(Color.Transparent)
                 ) {
                     VerifyRxDetailsInlinePanel(
                         drugName = dispenseState.drugName,
@@ -1195,6 +1220,7 @@ fun DispenseFlowScreen(
                         bucket = dispenseState.selectedBucketId,
                         ndcNumber = dispenseState.ndc,
                         rxNumber = dispenseState.rxNo.orEmpty(),
+                        strength = dispenseState.ndcStrength.orEmpty(),
                         onCancel = { dispenseVm.onRxCancelled() },
                         onProceed = { dispenseVm.onRxConfirmed() },
                         modifier = Modifier.fillMaxSize(),
@@ -1270,6 +1296,8 @@ fun DispenseFlowScreen(
                         onProceed = { dispenseVm.onNdcConfirmed() },
                         dismissible = false,
                         isHazardous = dispenseState.isHazardous,
+                        strength = dispenseState.ndcStrength.orEmpty(),
+                        dosageForm = dispenseState.ndcDosageForm.orEmpty(),
                     )
                 } else {
                     Box(
@@ -1287,6 +1315,8 @@ fun DispenseFlowScreen(
                             onProceed = { dispenseVm.onNdcConfirmed() },
                             modifier = Modifier.fillMaxSize(),
                             isHazardous = dispenseState.isHazardous,
+                            strength = dispenseState.ndcStrength.orEmpty(),
+                            dosageForm = dispenseState.ndcDosageForm.orEmpty(),
                         )
                     }
                 }

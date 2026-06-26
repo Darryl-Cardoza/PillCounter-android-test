@@ -18,4 +18,6 @@ data class PillCountWithDrugAndTotal(
     val countType: CountType,
     val priority: TxnPriority?,
     val isHazardous: Boolean = false,
+    val strength: String? = null,
+    val dosageForm: String? = null,
 )

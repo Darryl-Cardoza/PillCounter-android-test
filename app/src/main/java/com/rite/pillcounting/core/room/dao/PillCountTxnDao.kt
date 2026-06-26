@@ -144,6 +144,10 @@ interface PillCountTxnDao {
                 THEN subDrug.drugType ELSE drug.drugType END AS drugType,
            IFNULL(CASE WHEN txn.isSubstitute = 1 AND subDrug.isHazardous IS NOT NULL
                        THEN subDrug.isHazardous ELSE drug.isHazardous END, 0) AS isHazardous,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.strength IS NOT NULL
+                THEN subDrug.strength ELSE drug.strength END AS strength,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.dosageForm IS NOT NULL
+                THEN subDrug.dosageForm ELSE drug.dosageForm END AS dosageForm,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug
@@ -361,6 +365,11 @@ interface PillCountTxnDao {
         pct.countType,
         CASE WHEN pct.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
              THEN subDrug.drugType ELSE dm.drugType END AS drugType,
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.strength IS NOT NULL
+             THEN subDrug.strength ELSE dm.strength END AS strength,
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.dosageForm IS NOT NULL
+             THEN subDrug.dosageForm ELSE dm.dosageForm END AS dosageForm,
+        pct.bucketId,
         IFNULL(SUM(pcd.pillCount), 0) AS totalPillCount,
         pct.isSubstitute,
         dm.drugName AS requestedDrugName,
@@ -827,6 +836,10 @@ interface PillCountTxnDao {
                 THEN subDrug.drugType ELSE drug.drugType END AS drugType,
            IFNULL(CASE WHEN txn.isSubstitute = 1 AND subDrug.isHazardous IS NOT NULL
                        THEN subDrug.isHazardous ELSE drug.isHazardous END, 0) AS isHazardous,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.strength IS NOT NULL
+                THEN subDrug.strength ELSE drug.strength END AS strength,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.dosageForm IS NOT NULL
+                THEN subDrug.dosageForm ELSE drug.dosageForm END AS dosageForm,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug

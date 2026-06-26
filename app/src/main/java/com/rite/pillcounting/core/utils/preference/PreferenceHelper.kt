@@ -51,6 +51,7 @@ private const val KEY_BUCKET_LIST="key_bucket_list"
 private const val KEY_TERMINALS="key_terminals"
 private const val KEY_SELECTED_TERMINAL_ID="key_selected_terminal_id"
 private const val KEY_SELECTED_TERMINAL_NAME="key_selected_terminal_name"
+private const val KEY_PHARMACY_TYPE="key_pharmacy_type"
 private const val KEY_HAZARDOUS_DRUG = "key_hazardous_drug"
 private const val KEY_HAZARDOUS_TRAY_COLOR = "key_hazardous_tray_color"
 private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
@@ -463,6 +464,25 @@ class PreferenceHelper @Inject constructor(
         val name = prefs.getString(KEY_SELECTED_TERMINAL_NAME, null)
         logger.d("Retrieved selected terminal name: $name")
         return name
+    }
+
+    /**
+     * Saves the selected pharmacy type (api value).
+     * @param pharmacyType The api value of the selected pharmacy type.
+     */
+    fun savePharmacyType(pharmacyType: String) {
+        prefs.putString(KEY_PHARMACY_TYPE, pharmacyType)
+        logger.i("Saved pharmacy type: $pharmacyType")
+    }
+
+    /**
+     * Retrieves the selected pharmacy type (api value).
+     * @return The selected pharmacy type, or null if not set.
+     */
+    fun getPharmacyType(): String? {
+        val value = prefs.getString(KEY_PHARMACY_TYPE, null)
+        logger.d("Retrieved pharmacy type: $value")
+        return value
     }
 
     // ─────────────────────────── HAZARDOUS DRUG ───────────────────────────
