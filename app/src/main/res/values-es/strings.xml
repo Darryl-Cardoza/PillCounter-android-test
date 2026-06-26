@@ -412,6 +412,12 @@
     <string name="batch_stock_count_scan_failed">Error de escaneo</string>
     <string name="batch_stock_count_save_failed">Error al guardar</string>
     <string name="batch_stock_count_scan_new_bottle">Escanee un nuevo frasco de stock</string>
+    <string name="batch_stock_count_edit_details">Editar detalles</string>
+    <string name="batch_stock_count_save">GUARDAR</string>
+    <string name="batch_stock_count_sealed_bottles">Frascos sellados</string>
+    <string name="batch_stock_count_open_pills">Pastillas abiertas</string>
+    <string name="batch_stock_count_edit">Editar</string>
+    <string name="batch_stock_count_delete_row">Eliminar</string>
 
     <string name="violation_screen_overlay">Superposición de pantalla detectada — otra aplicación podría estar interceptando la entrada táctil</string>
     <string name="permission_location_rationale">El acceso a la ubicación se utiliza únicamente para identificar su red Wi-Fi para el descubrimiento de dispositivos médicos HL7. Su ubicación nunca se almacena, transmite ni vincula a datos de pacientes.</string>

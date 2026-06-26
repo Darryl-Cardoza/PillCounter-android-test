@@ -23,6 +23,8 @@ import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.ActiveNdc
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.BatchStockCountUiState
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditBatchRow
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.RecentBatchRow
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -37,6 +39,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
@@ -145,6 +148,15 @@ class InventoryScanViewModel @Inject constructor(
     /** END COUNT confirmation dialog visibility. */
     private val _showEndCountDialog = MutableStateFlow(false)
     val showEndCountDialog: StateFlow<Boolean> = _showEndCountDialog.asStateFlow()
+
+    /**
+     * Backing state for the "Edit Details" panel. Non-null while the panel is
+     * open; holds the active drug's sealed-bottle and open-pill rows aggregated
+     * from its batch transactions. The panel keeps a local working copy for the
+     * +/- edits and removals; [saveEditDetails] commits the final lists.
+     */
+    private val _editDetails = MutableStateFlow<EditDrugDetails?>(null)
+    val editDetails: StateFlow<EditDrugDetails?> = _editDetails.asStateFlow()
 
     /** Emit true once the batch has been marked completed; the screen pops back. */
     private val _batchEnded = MutableStateFlow(false)
@@ -429,6 +441,7 @@ class InventoryScanViewModel @Inject constructor(
                     expiry = expiry.orEmpty(),
                     pillsPerBottle = packageQty,
                     bottles = startBottles,
+                    openPills = openPillsTotal(batchId, drug.ndc),
                     isHazardous = drug.isHazardous,
                     serialNo = serialNo,
                 )
@@ -456,12 +469,24 @@ class InventoryScanViewModel @Inject constructor(
     /* ─────────────────────────  Counter  ───────────────────────── */
 
     fun increment() {
+        // Aggregate card (multiple sealed txns): the counter sums several
+        // transactions, so +/- can't be attributed to one — edit per-row in Edit
+        // Details instead. Ignore here rather than show a value that won't persist.
+        if (_activeNdc.value?.aggregated == true) return
         val updated = _activeNdc.updateAndGet { it?.copy(bottles = it.bottles + 1) } ?: return
         schedulePersist(updated)
     }
 
     fun decrement() {
-        val updated = _activeNdc.updateAndGet { it?.copy(bottles = (it.bottles - 1).coerceAtLeast(1)) } ?: return
+        if (_activeNdc.value?.aggregated == true) return
+        val updated = _activeNdc.updateAndGet {
+            if (it == null) return@updateAndGet null
+            // Floor at 0 when the NDC carries open pills (a loose-only count is a
+            // valid 0-bottle state); otherwise keep the 1-bottle floor (CLEAR is the
+            // only way to drop a pure sealed-bottle scan).
+            val floor = if (it.openPills > 0) 0 else 1
+            it.copy(bottles = (it.bottles - 1).coerceAtLeast(floor))
+        } ?: return
         schedulePersist(updated)
     }
 
@@ -487,8 +512,9 @@ class InventoryScanViewModel @Inject constructor(
     /**
      * User tapped a row in the Recent Counts list — re-activate that NDC.
      * Auto-commits any currently-active NDC (same path the scanner uses when
-     * switching), then seeds the active card from the latest persisted txn for
-     * that NDC so +/- continues from the saved bottle count.
+     * switching), then seeds the active card from the drug's batch totals (sum of
+     * sealed bottles + sum of open pills across all its transactions) rather than
+     * just the latest transaction.
      */
     fun onRecentRowTapped(row: RecentBatchRow) {
         val batchId = _resolvedBatchId.value
@@ -500,22 +526,12 @@ class InventoryScanViewModel @Inject constructor(
                 if (current != null && current.ndc != row.ndc) {
                     persistActive(current)
                 }
-                val txn = pillCountTxnDao.findLatestTxnByNdcInBatch(batchId, row.ndc)
-                val drug = drugMasterDao.getDrugByNdc(row.ndc)
-                if (txn == null || drug == null) {
-                    logger.w("INV_SCAN onRecentRowTapped: missing txn=${txn?.localId} drug=${drug?.ndc}")
+                val active = buildActiveTotals(batchId, row.ndc)
+                if (active == null) {
+                    logger.w("INV_SCAN onRecentRowTapped: no drug/txns for ndc=${row.ndc}")
                     return@launch
                 }
-                _activeNdc.value = ActiveNdc(
-                    ndc = drug.ndc,
-                    drugName = drug.drugName ?: "",
-                    bucket = _bucketId.value.orEmpty(),
-                    batchNo = txn.lotNo.orEmpty(),
-                    expiry = txn.expiry.orEmpty(),
-                    pillsPerBottle = drug.packageQty ?: 0,
-                    bottles = (txn.bottleQty ?: 0).coerceAtLeast(1),
-                    isHazardous = drug.isHazardous,
-                )
+                _activeNdc.value = active
                 lastSameNdcIncrementAtMs = System.currentTimeMillis()
             } catch (e: Exception) {
                 logger.e("INV_SCAN onRecentRowTapped failed", e)
@@ -545,6 +561,13 @@ class InventoryScanViewModel @Inject constructor(
         // Any explicit persist supersedes a pending debounced counter write, so
         // cancel it to avoid a redundant follow-up upsert of the same row.
         counterPersistJob?.cancel()
+        // Aggregate card: [bottles] is a sum across multiple sealed transactions, so
+        // it can't be written back onto a single one without corrupting the others.
+        // Per-transaction edits go through the Edit Details panel (saveEditDetails).
+        if (active.aggregated) {
+            logger.d("INV_SCAN persistActive SKIP: aggregated card (multiple sealed txns) ndc=${active.ndc}")
+            return
+        }
         val batchId = _resolvedBatchId.value
         logger.d("INV_SCAN persistActive START ndc=${active.ndc} bottles=${active.bottles} batchId=$batchId lot=${active.batchNo} expiry=${active.expiry}")
         if (batchId == 0L) {
@@ -576,6 +599,10 @@ class InventoryScanViewModel @Inject constructor(
                     )
                 )
                 logger.d("INV_SCAN persistActive UPDATED txn localId=${existing.localId} drugId=$drugId bottles=${active.bottles}")
+            } else if (active.bottles <= 0) {
+                // Open-pills-only NDC (no sealed bottle scanned): nothing to record as
+                // a sealed txn. The loose pills live on their own txn from SCAN PILLS.
+                logger.d("INV_SCAN persistActive SKIP insert: bottles<=0 (open-pills-only)")
             } else {
                 pillCountTxnDao.upsertPreservingId(
                     PillCountTxnEntity(
@@ -620,6 +647,173 @@ class InventoryScanViewModel @Inject constructor(
                 _activeNdc.value = null
                 _scannerPaused.value = false
                 logger.d("INV_SCAN onAdd DONE — activeNdc cleared")
+            }
+        }
+    }
+
+    /* ─────────────────────────  Edit Details panel  ───────────────────────── */
+
+    /**
+     * Opens the "Edit Details" panel for the currently-active NDC. Loads every
+     * non-deleted transaction of that drug in the current batch and splits them
+     * into sealed-bottle rows (those carrying a [bottleQty]) and open-pill rows
+     * (those carrying a [looseQty]). Flushes the active count first so the panel
+     * reflects the latest persisted values. No-op when nothing is active.
+     */
+    fun openEditDetails() {
+        val active = _activeNdc.value ?: return
+        val batchId = _resolvedBatchId.value
+        if (batchId == 0L) return
+        viewModelScope.launch {
+            try {
+                // Flush the in-memory count so the loaded rows include the active edit.
+                persistActive(active)
+                val txns = pillCountTxnDao.getTxnsByBatchId(batchId)
+                    .filter { it.ndc == active.ndc }
+                val sealed = txns
+                    .filter { (it.bottleQty ?: 0) > 0 }
+                    .map { EditBatchRow(it.txnId, it.lotNo.orEmpty(), it.expiry.orEmpty(), it.bottleQty ?: 0) }
+                val open = txns
+                    .filter { (it.looseQty ?: 0) > 0 }
+                    .map { EditBatchRow(it.txnId, it.lotNo.orEmpty(), it.expiry.orEmpty(), it.looseQty ?: 0) }
+                _editDetails.value = EditDrugDetails(
+                    ndc = active.ndc,
+                    drugName = active.drugName,
+                    bucket = active.bucket,
+                    sealedBottles = sealed,
+                    openPills = open,
+                )
+            } catch (e: Exception) {
+                logger.e("INV_SCAN openEditDetails failed", e)
+                _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
+            }
+        }
+    }
+
+    fun dismissEditDetails() {
+        _editDetails.value = null
+    }
+
+    /** Sum of loose/open pills committed for [ndc] in [batchId] (0 if none). */
+    private suspend fun openPillsTotal(batchId: Long, ndc: String): Int {
+        if (batchId == 0L) return 0
+        return pillCountTxnDao.getTxnsByBatchId(batchId)
+            .filter { it.ndc == ndc }
+            .sumOf { it.looseQty ?: 0 }
+    }
+
+    /**
+     * Build the active-card model for [ndc] from ALL of its transactions in
+     * [batchId], so the counter reflects the drug's batch totals — sum of sealed
+     * bottles + sum of open pills — rather than just the latest transaction.
+     * Lot/expiry anchor to a sealed transaction (so +/- maps onto it); when the NDC
+     * has only open pills, the first transaction supplies them. Returns null when
+     * the drug or its transactions are missing.
+     */
+    private suspend fun buildActiveTotals(batchId: Long, ndc: String): ActiveNdc? {
+        if (batchId == 0L) return null
+        val drug = drugMasterDao.getDrugByNdc(ndc) ?: return null
+        val txns = pillCountTxnDao.getTxnsByBatchId(batchId).filter { it.ndc == ndc }
+        if (txns.isEmpty()) return null
+        val sealedCount = txns.count { (it.bottleQty ?: 0) > 0 }
+        val anchor = txns.firstOrNull { (it.bottleQty ?: 0) > 0 } ?: txns.first()
+        return ActiveNdc(
+            ndc = drug.ndc,
+            drugName = drug.drugName ?: "",
+            bucket = _bucketId.value.orEmpty(),
+            batchNo = anchor.lotNo.orEmpty(),
+            expiry = anchor.expiry.orEmpty(),
+            pillsPerBottle = drug.packageQty ?: 0,
+            bottles = txns.sumOf { it.bottleQty ?: 0 },
+            openPills = txns.sumOf { it.looseQty ?: 0 },
+            isHazardous = drug.isHazardous,
+            // The bottle count spans multiple sealed transactions, so +/- can't be
+            // attributed to one — guard persistActive from clobbering them.
+            aggregated = sealedCount > 1,
+        )
+    }
+
+    /**
+     * Refresh the active card's open-pill total from the DB. Called when the screen
+     * resumes (e.g. returning from the SCAN PILLS loose-count flow) so newly counted
+     * open pills appear in the card's pills total. Only [ActiveNdc.openPills] is
+     * touched so a concurrent +/- bottle edit isn't clobbered.
+     */
+    fun refreshActiveOpenPills() {
+        val active = _activeNdc.value ?: return
+        val batchId = _resolvedBatchId.value
+        if (batchId == 0L) return
+        viewModelScope.launch {
+            try {
+                val open = openPillsTotal(batchId, active.ndc)
+                _activeNdc.update { it?.copy(openPills = open) }
+            } catch (e: Exception) {
+                logger.e("INV_SCAN refreshActiveOpenPills failed", e)
+            }
+        }
+    }
+
+    /**
+     * Persists the edited "Edit Details" rows back onto their source transactions,
+     * then refreshes the active card from the database.
+     *
+     * Each row is keyed by its [EditBatchRow.txnId]; sealed rows write [bottleQty]
+     * and open rows write [looseQty]. A transaction present in neither list (its
+     * rows were removed via the trash icon) is soft-deleted. A transaction that
+     * survives in only one list has its other quantity cleared.
+     */
+    fun saveEditDetails(sealed: List<EditBatchRow>, open: List<EditBatchRow>) {
+        val active = _activeNdc.value ?: return
+        val batchId = _resolvedBatchId.value
+        if (batchId == 0L) return
+        viewModelScope.launch {
+            try {
+                // txnId → (newBottleQty, newLooseQty); null = field cleared/removed.
+                val edits = HashMap<Long, Pair<Int?, Int?>>()
+                sealed.forEach { row ->
+                    val prev = edits[row.txnId]
+                    edits[row.txnId] = row.qty to prev?.second
+                }
+                open.forEach { row ->
+                    val prev = edits[row.txnId]
+                    edits[row.txnId] = (prev?.first) to row.qty
+                }
+
+                val originalTxns = pillCountTxnDao.getTxnsByBatchId(batchId)
+                    .filter { it.ndc == active.ndc }
+                for (dto in originalTxns) {
+                    val edit = edits[dto.txnId]
+                    if (edit == null) {
+                        // Both rows removed — drop the transaction.
+                        pillCountTxnDao.softDelete(dto.txnId)
+                        continue
+                    }
+                    val entity = pillCountTxnDao.getById(dto.txnId) ?: continue
+                    val newBottle = edit.first
+                    val newLoose = edit.second
+                    if ((newBottle ?: 0) <= 0 && (newLoose ?: 0) <= 0) {
+                        pillCountTxnDao.softDelete(dto.txnId)
+                    } else {
+                        pillCountTxnDao.update(
+                            entity.copy(
+                                bottleQty = newBottle,
+                                looseQty = newLoose,
+                                updatedAt = System.currentTimeMillis(),
+                            )
+                        )
+                    }
+                }
+
+                // Refresh the active card from the DB so it reflects the edits as
+                // batch totals (recent-counts list updates automatically via its
+                // Flow). buildActiveTotals returns null when every row was removed.
+                _activeNdc.value = buildActiveTotals(batchId, active.ndc)
+                    ?.copy(serialNo = active.serialNo)
+            } catch (e: Exception) {
+                logger.e("INV_SCAN saveEditDetails failed", e)
+                _errorMessage.value = LocalizedError(R.string.batch_stock_count_save_failed)
+            } finally {
+                _editDetails.value = null
             }
         }
     }

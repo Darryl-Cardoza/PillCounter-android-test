@@ -1134,11 +1134,18 @@ fun DispenseFlowScreen(
                     DispenseStage.COUNTING -> pillStepType
                 }
                 Box(modifier = Modifier.align(Alignment.Center)) {
-                    StepTitleWithSpeech(
-                        stepType = headerStepType,
-                        isSoundOverride = isSoundEnabled,
-                        titleResOverride = if (dispenseState.stage == DispenseStage.COUNTING && countType == CountType.REGULAR.toString()) R.string.scan_open_pills else null,
-                    )
+                    // Stock count (REGULAR) during COUNTING no longer shows a
+                    // persistent "Scan open pills" header banner. The step name is
+                    // surfaced via the workflow stepper instead — revealed on entry
+                    // and whenever a step is tapped.
+                    val suppressHeaderTitle = dispenseState.stage == DispenseStage.COUNTING &&
+                        countType == CountType.REGULAR.toString()
+                    if (!suppressHeaderTitle) {
+                        StepTitleWithSpeech(
+                            stepType = headerStepType,
+                            isSoundOverride = isSoundEnabled,
+                        )
+                    }
                 }
             }
         }

@@ -100,6 +100,10 @@ fun InventoryTabletLandscapeShell(
                 onEndCount = onEndCount,
                 endCountEnabled = canEndCount,
                 onRowTapped = onRowTapped,
+                onEdit = onEdit,
+                editDetails = editDetails,
+                onEditDismiss = onEditDismiss,
+                onEditSave = onEditSave,
             )
         }
     }
@@ -203,7 +207,7 @@ fun InventoryTabletPortraitShell(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight(0.38f),
+                .fillMaxHeight(0.40f),
         ) {
             BatchStockCountTabletPortrait(
                 state = state,
@@ -214,6 +218,10 @@ fun InventoryTabletPortraitShell(
                 onAdd = onAdd,
                 onEndCount = onEndCount,
                 onRowTapped = onRowTapped,
+                onEdit = onEdit,
+                editDetails = editDetails,
+                onEditDismiss = onEditDismiss,
+                onEditSave = onEditSave,
                 modifier = Modifier.fillMaxHeight(),
             )
         }

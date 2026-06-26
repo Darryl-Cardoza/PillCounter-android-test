@@ -569,15 +569,21 @@ class DispenseFlowViewModel @Inject constructor(
             // the pill-count step has a real txn to accumulate counts against.
             if (countType != CountType.REGULAR || state.batchId == 0L) return
             val ndc = state.ndcScannedValue.ifBlank { state.ndc }
-            val drugId = drugMasterDao.upsertPreservingId(
-                DrugMasterEntity(
-                    ndc = ndc,
-                    drugName = state.ndcDrugName.ifBlank { state.drugName },
-                    isHazardous = state.isHazardous,
+            // The drug row was already upserted with full info during the NDC scan
+            // (local match / server lookup), so only resolve its id here. Re-upserting
+            // a partial entity would wipe packageQty/gtin/drugType, since
+            // upsertPreservingId overwrites every column — that erased the package
+            // qty so later sealed-bottle counts couldn't add pills.
+            val drugId = drugMasterDao.getDrugIdByNdc(ndc)
+                ?: drugMasterDao.upsertPreservingId(
+                    DrugMasterEntity(
+                        ndc = ndc,
+                        drugName = state.ndcDrugName.ifBlank { state.drugName },
+                        packageQty = state.ndcPackageQty,
+                        isHazardous = state.isHazardous,
                     strength = state.ndcStrength,
-                    dosageForm = state.ndcDosageForm,
+                    dosageForm = state.ndcDosageForm,)
                 )
-            )
             val newTxnId = pillCountTxnDao.upsertPreservingId(
                 PillCountTxnEntity(
                     localId = preferenceHelper.getLocalId(),

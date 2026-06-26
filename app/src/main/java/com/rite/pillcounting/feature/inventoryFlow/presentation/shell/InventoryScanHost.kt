@@ -19,6 +19,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
@@ -28,6 +31,8 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.BatchStockCountUiState
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditBatchRow
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.RecentBatchRow
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.feature.inventoryFlow.presentation.viewmodel.InventoryScanViewModel
@@ -48,6 +53,14 @@ class InventoryScanScope(
     val onAdd: () -> Unit,
     val onEndCount: () -> Unit,
     val onRowTapped: (RecentBatchRow) -> Unit,
+    /** Non-null while the Edit Details panel is open. */
+    val editDetails: EditDrugDetails?,
+    /** Open the Edit Details panel for the active NDC. */
+    val onEdit: () -> Unit,
+    /** Dismiss the Edit Details panel without saving. */
+    val onEditDismiss: () -> Unit,
+    /** Persist the edited sealed/open rows and close the panel. */
+    val onEditSave: (sealed: List<EditBatchRow>, open: List<EditBatchRow>) -> Unit,
     internal val cameraVm: PillScanningViewModel,
     internal val analyzer: FrameBarcodeAnalyzer,
     internal val logger: AppLogger,
@@ -80,6 +93,7 @@ fun InventoryScanHost(
     val panelState by inventoryVm.uiState.collectAsState()
     val errorMessage by inventoryVm.errorMessage.collectAsState()
     val batchEnded by inventoryVm.batchEnded.collectAsState()
+    val editDetails by inventoryVm.editDetails.collectAsState()
 
     var showNoteDialog by remember { mutableStateOf(false) }
     var showEndCountConfirmDialog by remember { mutableStateOf(false) }
@@ -144,6 +158,20 @@ fun InventoryScanHost(
     // the shared VM auto-pauses after ~30s (to stop the ML pipeline).
     LaunchedEffect(Unit) { cameraVm.pauseIdleTimer() }
 
+    // Returning from the SCAN PILLS loose-count flow persists open pills onto the
+    // active NDC's txn but can't update this screen's in-memory card. Refresh the
+    // active card's open-pill total on resume so the counted pills show in its total.
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                inventoryVm.refreshActiveOpenPills()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
     // System back gesture: same safe behavior as the on-screen back arrow.
     BackHandler { inventoryBack(navController) }
 
@@ -186,6 +214,10 @@ fun InventoryScanHost(
             inventoryVm.onRecentRowTapped(row)
             analyzer.resume()
         },
+        editDetails = editDetails,
+        onEdit = inventoryVm::openEditDetails,
+        onEditDismiss = inventoryVm::dismissEditDetails,
+        onEditSave = { sealed, open -> inventoryVm.saveEditDetails(sealed, open) },
         cameraVm = cameraVm,
         analyzer = analyzer,
         logger = logger,
