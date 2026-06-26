@@ -17,6 +17,7 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
 import com.rite.pillcounting.core.scanning.domain.model.PillScanningUiState
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 
 @Composable
 fun InformationPanelSection(
@@ -68,19 +69,74 @@ fun InformationPanelSection(
         return
     }
 
-    CountModeLandscape(
-        totalCount = totalCount,
-        targetCount = targetCount,
-        scanType = scanType,
-        detectedCount = filteredPillCount,
-        onAdd = onAdd,
-        onDone = onDone,
-        viewModel = viewModel,
-        drugName = drugName,
-        ndc = uiState.ndc,
-        strength = uiState.strength,
-        dosageForm = uiState.dosageForm,
-        bucket = uiState.bucket,
-        showHistory = onShowHistory
-    )
+    // All other counting steps use the shared full-bleed overlay, split by form
+    // factor into four variants so each layout can be tuned independently (see
+    // CountMode{Phone,Tablet}{Portrait,Landscape}). Mirrors the DashboardScreen
+    // form-factor dispatch.
+    val isTablet = UserInterfaceUtils.isTablet()
+    when {
+        isTablet && !isLandscape -> CountModeTabletPortrait(
+            totalCount = totalCount,
+            targetCount = targetCount,
+            scanType = scanType,
+            detectedCount = filteredPillCount,
+            onAdd = onAdd,
+            onDone = onDone,
+            viewModel = viewModel,
+            drugName = drugName,
+            ndc = uiState.ndc,
+            strength = uiState.strength,
+            dosageForm = uiState.dosageForm,
+            bucket = uiState.bucket,
+            showHistory = onShowHistory
+        )
+
+        isTablet && isLandscape -> CountModeTabletLandscape(
+            totalCount = totalCount,
+            targetCount = targetCount,
+            scanType = scanType,
+            detectedCount = filteredPillCount,
+            onAdd = onAdd,
+            onDone = onDone,
+            viewModel = viewModel,
+            drugName = drugName,
+            ndc = uiState.ndc,
+            strength = uiState.strength,
+            dosageForm = uiState.dosageForm,
+            bucket = uiState.bucket,
+            showHistory = onShowHistory
+        )
+
+        !isTablet && !isLandscape -> CountModePhonePortrait(
+            totalCount = totalCount,
+            targetCount = targetCount,
+            scanType = scanType,
+            detectedCount = filteredPillCount,
+            onAdd = onAdd,
+            onDone = onDone,
+            viewModel = viewModel,
+            drugName = drugName,
+            ndc = uiState.ndc,
+            strength = uiState.strength,
+            dosageForm = uiState.dosageForm,
+            bucket = uiState.bucket,
+            showHistory = onShowHistory
+        )
+
+        else -> CountModePhoneLandscape(
+            totalCount = totalCount,
+            targetCount = targetCount,
+            scanType = scanType,
+            detectedCount = filteredPillCount,
+            onAdd = onAdd,
+            onDone = onDone,
+            viewModel = viewModel,
+            drugName = drugName,
+            ndc = uiState.ndc,
+            strength = uiState.strength,
+            dosageForm = uiState.dosageForm,
+            bucket = uiState.bucket,
+            showHistory = onShowHistory
+        )
+    }
 }

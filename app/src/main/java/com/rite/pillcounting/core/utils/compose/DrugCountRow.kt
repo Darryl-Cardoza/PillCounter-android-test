@@ -42,6 +42,7 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
 
@@ -68,9 +69,9 @@ data class DrugCountRowData(
 private fun dosageFormIcon(dosageForm: String?): Int {
     val form = dosageForm?.uppercase().orEmpty()
     return when {
-        "CAPSULE" in form -> R.drawable.pill_capsule
+        "CAPSULE" in form -> R.drawable.pill_icon_48
         "TABLET" in form -> R.drawable.pill_tablet
-        else -> R.drawable.pill_capsule
+        else -> R.drawable.pill_icon_48
     }
 }
 
@@ -121,7 +122,7 @@ fun DrugCountRow(
                 Box(
                     modifier = Modifier
                         .width(80.dp)
-                        .height(64.dp)
+                        .height(74.dp)
                         .clip(RoundedCornerShape(8.dp))
                         .background(AppTheme.extendedColors.primaryBackground),
                     contentAlignment = Alignment.Center
@@ -139,8 +140,8 @@ fun DrugCountRow(
                                 Icon(
                                     painter = painterResource(dosageFormIcon(data.dosageForm)),
                                     contentDescription = data.dosageForm,
-                                    tint = Color.Unspecified,
-                                    modifier = Modifier.size(28.dp)
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(responsiveDp(20.dp))
                                 )
                                 if (!data.strength.isNullOrBlank()) {
                                     Spacer(modifier = Modifier.height(1.dp))

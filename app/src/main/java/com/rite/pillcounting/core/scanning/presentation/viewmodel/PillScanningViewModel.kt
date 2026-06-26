@@ -234,6 +234,16 @@ class PillScanningViewModel @Inject constructor(
 
     companion object {
         private const val ZERO_DETECTIONS_THRESHOLD = 25
+
+        /**
+         * How long Add stays disabled after a tap. The Add handler captures the
+         * current camera frame, draws the detection overlay, and writes a JPEG to
+         * disk on a background thread. This debounce guards that window so a second
+         * Add can't fire before the frame + detections have refreshed and the save
+         * has run — otherwise we'd persist a stale/duplicate image for the next
+         * transaction detail. Kept short so the UI stays responsive.
+         */
+        private const val ADD_COOLDOWN_MS = 1000L
     }
 
     /** Model initialization states */
@@ -931,11 +941,12 @@ class PillScanningViewModel @Inject constructor(
 
     private var addCooldownJob: Job? = null
 
+    /** Disables Add for [ADD_COOLDOWN_MS] while the captured frame is saved. */
     private fun startAddCooldown() {
         addCooldownJob?.cancel()
         _uiState.update { it.copy(isAddCooldown = true) }
         addCooldownJob = viewModelScope.launch {
-            delay(3000)
+            delay(ADD_COOLDOWN_MS)
             _uiState.update { it.copy(isAddCooldown = false) }
             lastAddClickTime = 0L
         }

@@ -23,12 +23,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -46,7 +48,7 @@ fun CircularCountIndicator(
     pulsing: Boolean = false,
 ) {
 
-    val indicatorColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.8f)
+    val indicatorColor = MaterialTheme.colorScheme.primary
     val lastDetections by viewModel.lastTenDetections.collectAsState()
 
     val uiState by viewModel.uiState.collectAsState()
@@ -102,21 +104,38 @@ fun CircularCountIndicator(
     )
     val scale = if (pulsing) breathScale else 1f
 
+    // While the post-Add cooldown is active the circle isn't tappable, so dim it
+    // and swap the caption to "Wait.." for immediate feedback that the tap landed
+    // and Add is briefly disabled.
+    val isCooldown = uiState.isAddCooldown
+
     Box(
         modifier = modifier
             .size(responsiveDpForCircularCountIndicator())
             .graphicsLayer {
                 scaleX = scale
                 scaleY = scale
+                alpha = if (isCooldown) 0.4f else 1f
             },
         contentAlignment = Alignment.Center
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val strokeWidth = 4.dp.toPx()
 
-            // No pills detected yet (count == 0) → hide the ring entirely. The
-            // sweeping/steady arc only appears once a count is detected, which is
-            // when its "counting" animation is meaningful.
+            // Always-visible border ring (track). It sits under the animated
+            // counting arc so the circle has a defined edge even at count == 0;
+            // once counting starts the brighter arc below draws over it.
+            drawArc(
+                color = Color.White.copy(alpha = 0.25f),
+                startAngle = 0f,
+                sweepAngle = 360f,
+                useCenter = false,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+            )
+
+            // No pills detected yet (count == 0) → only the static track above is
+            // shown. The sweeping/steady arc appears once a count is detected,
+            // which is when its "counting" animation is meaningful.
             if (count > 0) {
                 // If last 4 are same or uiState.showIdleOverlay is true, show full circle (steady), else animate
                 val sweepAngle =
@@ -158,14 +177,23 @@ fun CircularCountIndicator(
             contentAlignment = Alignment.Center
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = count.toString(),
-                    color = Color.White,
-                    fontSize = responsiveSp(32.sp)
-                )
-                if (label != null) {
+                // In the "All Done" state ([pulsing]) the count is no longer
+                // meaningful — show only the "ALL DONE" caption.
+                if (!pulsing) {
                     Text(
-                        text = label,
+                        text = count.toString(),
+                        color = Color.White,
+                        fontSize = responsiveSp(32.sp)
+                    )
+                }
+                val caption = if (isCooldown) {
+                    stringResource(R.string.pill_scanning_wait_button)
+                } else {
+                    label
+                }
+                if (caption != null) {
+                    Text(
+                        text = caption,
                         color = indicatorColor,
                         fontSize = responsiveSp(13.sp),
                         fontWeight = FontWeight.SemiBold,

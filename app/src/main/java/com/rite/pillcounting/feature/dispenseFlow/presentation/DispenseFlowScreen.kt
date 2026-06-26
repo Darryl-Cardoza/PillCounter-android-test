@@ -1201,6 +1201,7 @@ fun DispenseFlowScreen(
                     bucket = dispenseState.selectedBucketId,
                     ndcNumber = dispenseState.ndc,
                     rxNumber = dispenseState.rxNo.orEmpty(),
+                    strength = dispenseState.ndcStrength.orEmpty(),
                     onCancel = { dispenseVm.onRxCancelled() },
                     onProceed = { dispenseVm.onRxConfirmed() },
                     dismissible = false,
@@ -1211,7 +1212,7 @@ fun DispenseFlowScreen(
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
                         .width(inlinePanelWidth)
-                        .background(androidx.compose.ui.graphics.Color.Transparent)
+                        .background(Color.Transparent)
                 ) {
                     VerifyRxDetailsInlinePanel(
                         drugName = dispenseState.drugName,
@@ -1219,6 +1220,7 @@ fun DispenseFlowScreen(
                         bucket = dispenseState.selectedBucketId,
                         ndcNumber = dispenseState.ndc,
                         rxNumber = dispenseState.rxNo.orEmpty(),
+                        strength = dispenseState.ndcStrength.orEmpty(),
                         onCancel = { dispenseVm.onRxCancelled() },
                         onProceed = { dispenseVm.onRxConfirmed() },
                         modifier = Modifier.fillMaxSize(),

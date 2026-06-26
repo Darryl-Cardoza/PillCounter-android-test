@@ -235,7 +235,7 @@
     <string name="confirm_logout_title">Confirm Logout</string>
     <string name="confirm_logout_text">Are you sure you want to logout?</string>>
 
-    <string name="add_button_wait">Please wait 2 seconds before adding again.</string>
+    <string name="add_button_wait">Please wait a moment before adding again.</string>
     <string name="add_zero_detected">Cannot add — no pills detected.</string>
     <string name="duplicate_scan_ignored">Duplicate scan ignored — no new pills detected.</string>
 
@@ -250,8 +250,8 @@
     <string name="pill_scanning_wait_button">Wait..</string>
     <string name="pill_scanning_total_count">Total Count</string>
     <string name="pill_scanning_all_done">All Done</string>
-    <string name="pill_scanning_add_this">ADD THIS</string>
-    <string name="pill_scanning_view_all_counts">View all counts</string>
+    <string name="pill_scanning_add_this">ADD</string>
+    <string name="pill_scanning_view_all_counts">View all</string>
     <string name="detail_label_form">Form</string>
     <string name="detail_label_strength">Strength</string>
     <string name="detail_label_bucket">Bucket</string>
@@ -358,6 +358,19 @@
     <string name="terminal">Terminal</string>
     <string name="select_terminal">Select Terminal</string>
     <string name="unknown">Unknown</string>
+
+    <!-- Pharmacy type -->
+    <string name="pharmacy_type">Pharmacy Type</string>
+    <string name="select_pharmacy_type">Select Pharmacy Type</string>
+    <string name="pharmacy_type_chain">Chain Pharmacy</string>
+    <string name="pharmacy_type_supermarket">Supermarket / Big Box Pharmacy</string>
+    <string name="pharmacy_type_independent">Independent Pharmacy</string>
+    <string name="pharmacy_type_mail_order">Mail Order / Online Pharmacy</string>
+    <string name="pharmacy_type_hospital">Hospital Pharmacy</string>
+    <string name="pharmacy_type_clinic">Clinic Pharmacy</string>
+    <string name="pharmacy_type_long_term_care">Long Term Care Pharmacy</string>
+    <string name="pharmacy_type_compounding">Compounding Pharmacy</string>
+    <string name="pharmacy_type_specialty">Specialty Pharmacy</string>
 
     <string name="verify_rx_details">Verify Rx Details</string>
     <string name="verify_stock_bottle_details">Verify Stock Bottle Details</string>

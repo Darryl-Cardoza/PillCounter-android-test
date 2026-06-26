@@ -87,9 +87,11 @@ class DrugRepository @Inject constructor(
                     ndc = result.scanned_ndc?.drug_code ?: "N/A",
                     is_ndc_equivalent = result.is_ndc_equivalent,
                     drugType = result.scanned_ndc?.regulatory?.schedule.toString(),
-                    qty = result.scanned_ndc?.`package`?.levels?.firstOrNull()?.contains?.quantity,
+                    qty = result.scanned_ndc?.`package`?.stock_qty
+                        ?: result.scanned_ndc?.`package`?.levels?.firstOrNull()?.contains?.quantity,
                     isHazardous = result.scanned_ndc?.is_hazardous,
-                    strength = result.scanned_ndc?.active_ingredients?.firstOrNull()?.strength,
+                    strength = result.scanned_ndc?.strength_info?.display
+                        ?: result.scanned_ndc?.active_ingredients?.firstOrNull()?.strength,
                     dosageForm = result.scanned_ndc?.dosage_form?.firstOrNull()
                 ).also {
                     logger.i("Returning mapped DrugInfo -> $it")

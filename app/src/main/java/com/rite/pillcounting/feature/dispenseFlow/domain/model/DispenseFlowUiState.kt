@@ -32,6 +32,11 @@ data class DispenseFlowUiState(
     val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
 
     val showRxDetails: Boolean = false,
+    // Set when a scanned RX resolves to an existing PARTIAL transaction and the
+    // RX verification sheet is shown. Holds the stage to advance to when the user
+    // taps Proceed (PRE_NDC if the NDC isn't verified yet, else COUNTING). The txn
+    // already exists, so Proceed resumes it rather than creating a new one.
+    val pendingRxResumeStage: DispenseStage? = null,
     val showNdcDetails: Boolean = false,
     val showInvalidScanDialog: Boolean = false,
     val showNdcNotFoundDialog: Boolean = false,

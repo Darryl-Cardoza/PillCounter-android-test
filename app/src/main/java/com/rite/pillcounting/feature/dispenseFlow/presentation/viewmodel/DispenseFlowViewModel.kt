@@ -241,16 +241,28 @@ class DispenseFlowViewModel @Inject constructor(
                         return@launch
                     }
                     CountStatus.PARTIAL -> {
-                        // Auto-resume the existing transaction without asking.
+                        // RX found in local DB. The transaction already exists, so
+                        // we only prep it here (gloves reset, save txnId).
+                        //
+                        // If the container/NDC scan is already done
+                        // (isNdcVerified), skip the RX verification sheet and land
+                        // the user directly on the transaction's current step
+                        // (COUNTING). Otherwise show the sheet and defer the
+                        // advance to PRE_NDC until the user taps Proceed.
                         val txnId = existingTxn.txnId
                         val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
                         pillCountTxnDao.updateGlovesPresent(txnId, false)
                         preferenceHelper.saveTxnId(txnId)
-                        val targetStage = if (existingTxn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC
+                        val ndcAlreadyVerified = existingTxn.isNdcVerified == true
+                        val targetStage = if (ndcAlreadyVerified) DispenseStage.COUNTING else DispenseStage.PRE_NDC
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
-                                stage = targetStage,
+                                // NDC already scanned → go straight to COUNTING.
+                                // NDC pending → show the sheet, advance on Proceed.
+                                stage = if (ndcAlreadyVerified) targetStage else it.stage,
+                                showRxDetails = !ndcAlreadyVerified,
+                                pendingRxResumeStage = if (ndcAlreadyVerified) null else targetStage,
                                 txnId = txnId,
                                 drugName = drug?.drugName ?: it.drugName,
                                 ndc = drug?.ndc ?: it.ndc,
@@ -258,6 +270,10 @@ class DispenseFlowViewModel @Inject constructor(
                                 rxNo = existingTxn.rxNo ?: rxNo,
                                 qty = existingTxn.targetCount?.toString() ?: qty,
                                 isHazardous = drug?.isHazardous ?: false,
+                                // Surface the drug's strength on the RX verification
+                                // sheet. Overwritten with the API value once the NDC
+                                // is scanned in PRE_NDC.
+                                ndcStrength = drug?.strength,
                             )
                         }
                         return@launch
@@ -459,6 +475,21 @@ class DispenseFlowViewModel @Inject constructor(
      */
     fun onRxConfirmed() {
         val state = _uiState.value
+
+        // Scanned-RX resume path: the transaction already exists (resolved in
+        // onRxBarcodeRead), so just advance to the remembered stage — do NOT
+        // create a new transaction.
+        state.pendingRxResumeStage?.let { resumeStage ->
+            _uiState.update {
+                it.copy(
+                    stage = resumeStage,
+                    showRxDetails = false,
+                    pendingRxResumeStage = null,
+                )
+            }
+            return
+        }
+
         if (state.ndc.isBlank()) return
 
         viewModelScope.launch {
@@ -497,6 +528,7 @@ class DispenseFlowViewModel @Inject constructor(
         _uiState.update {
             it.copy(
                 showRxDetails = false,
+                pendingRxResumeStage = null,
                 drugName = "",
                 ndc = "",
                 rxNo = null,

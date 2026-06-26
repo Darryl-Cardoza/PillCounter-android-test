@@ -38,6 +38,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -124,6 +125,7 @@ fun VerifyRxDetailsInlinePanel(
     onProceed: () -> Unit,
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 20.dp,
+    strength: String = "",
 ) {
     val configuration = LocalConfiguration.current
     val isTablet = configuration.smallestScreenWidthDp >= 600
@@ -140,6 +142,7 @@ fun VerifyRxDetailsInlinePanel(
                 bucket = bucket,
                 ndcNumber = ndcNumber,
                 rxNumber = rxNumber,
+                strength = strength,
                 onCancel = onCancel,
                 onProceed = onProceed,
             )
@@ -181,6 +184,7 @@ fun VerifyRxDetailsSheet(
     rxNumber: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
+    strength: String = "",
     // When false (default), the sheet/drawer cannot be dismissed by swipe /
     // outside-tap / back press — only the Cancel and Proceed buttons close it.
     // The app-wide rule for verification sheets is "explicit commit required",
@@ -200,6 +204,7 @@ fun VerifyRxDetailsSheet(
             bucket = bucket,
             ndcNumber = ndcNumber,
             rxNumber = rxNumber,
+            strength = strength,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -210,6 +215,7 @@ fun VerifyRxDetailsSheet(
             bucket = bucket,
             ndcNumber = ndcNumber,
             rxNumber = rxNumber,
+            strength = strength,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -559,6 +565,7 @@ private fun VerifyRxDetailsTabletBottomSheet(
     bucket: String,
     ndcNumber: String,
     rxNumber: String,
+    strength: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
@@ -587,6 +594,7 @@ private fun VerifyRxDetailsTabletBottomSheet(
             bucket = bucket,
             ndcNumber = ndcNumber,
             rxNumber = rxNumber,
+            strength = strength,
             onCancel = onCancel,
             onProceed = onProceed
         )
@@ -604,6 +612,7 @@ private fun VerifyRxDetailsTabletSideDrawer(
     bucket: String,
     ndcNumber: String,
     rxNumber: String,
+    strength: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
@@ -623,6 +632,7 @@ private fun VerifyRxDetailsTabletSideDrawer(
             bucket = bucket,
             ndcNumber = ndcNumber,
             rxNumber = rxNumber,
+            strength = strength,
             onCancel = animatedCancel,
             onProceed = onProceed
         )
@@ -640,58 +650,85 @@ private fun TabletHorizontalBody(
     bucket: String,
     ndcNumber: String,
     rxNumber: String,
+    strength: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
 ) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // Take ~35% of the screen height so the portrait bottom sheet is taller
+            // (Figma proportions) rather than wrapping tightly to its content.
+            .fillMaxHeight(0.35f)
             .padding(horizontal = 24.dp, vertical = 20.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = stringResource(R.string.verify_rx_details),
             color = AppTheme.extendedColors.textColor,
-            fontSize = 18.sp,
+            fontSize = 22.sp,
             fontWeight = FontWeight.SemiBold,
             modifier = Modifier.padding(bottom = 20.dp)
         )
-
+        Spacer(modifier = Modifier.height(22.dp))
+        // Text details across the top: Drug Name | Rx Number | NDC Number.
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            FormTile()
-            QuantityTile(quantity = quantity)
-            BucketTile(bucket = bucket)
-        }
-
-        Spacer(modifier = Modifier.height(20.dp))
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceEvenly,
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
             verticalAlignment = Alignment.Top
         ) {
-            CenteredDetail(
-                label = stringResource(R.string.ndc_number),
-                value = ndcNumber,
-                modifier = Modifier.weight(1f)
-            )
-            CenteredDetail(
+            // Drug Name gets ~half the row; Rx / NDC share the rest (Figma).
+            // End padding keeps the (ellipsized) name from crowding the divider.
+            DetailItem(
                 label = stringResource(R.string.drugname),
                 value = drugName,
-                modifier = Modifier.weight(1f)
+                valueMaxLines = 1,
+                modifier = Modifier
+                    .weight(2f)
+                    .padding(end = 12.dp)
             )
-            CenteredDetail(
+            // Vertical divider separating Drug Name from the Rx/NDC group (Figma).
+            VerticalDivider(
+                modifier = Modifier.height(65.dp),
+                thickness = 1.dp,
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
+            )
+            DetailItem(
                 label = stringResource(R.string.rx_number),
                 value = rxNumber,
                 modifier = Modifier.weight(1f)
             )
+            DetailItem(
+                label = stringResource(R.string.ndc_number),
+                value = ndcNumber,
+                modifier = Modifier.weight(1f)
+            )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+//        HorizontalDivider(
+//            thickness = 1.dp,
+//            color = AppTheme.extendedColors.textColor.copy(alpha = 0.5f),
+//            modifier = Modifier.padding(vertical = 20.dp),
+//        )
+        Spacer(modifier = Modifier.weight(1f))
+        // Tiles in a single row: Quantity | Form | Strength | Bucket. Each tile
+        // claims an equal weighted share of the row so the cards are wider and
+        // span the full width (Figma proportions) rather than sitting at their
+        // default 84dp square width.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            QuantityTile(quantity = quantity, modifier = Modifier.weight(0.7f).height(120.dp))
+            FormTile(modifier = Modifier.weight(0.7f).height(120.dp))
+            StrengthTile(strength = strength, modifier = Modifier.weight(0.7f).height(120.dp))
+            BucketTile(bucket = bucket, modifier = Modifier.weight(0.7f).height(120.dp))
+        }
+
+        // Weighted spacer pushes the buttons to the bottom of the taller sheet so
+        // the extra height sits between the tiles and the buttons.
+        Spacer(modifier = Modifier.weight(1f))
 
         // Use the local tablet button row so HollowButton & ActionButtonPrimary
         // share identical outer widths in portrait *and* landscape on tablet.
@@ -717,7 +754,7 @@ private fun TabletButtonRow(
     // Give the Row a fixed total width and let each child claim weight(1f) of it
     // — this forces identical layout widths regardless of the differing internal
     // size/border modifiers inside the two button composables.
-    val rowWidth = TABLET_BUTTON_WIDTH * 2 + spacing
+    val rowWidth = 140.dp * 2 + spacing
     Row(
         modifier = Modifier.width(rowWidth),
         horizontalArrangement = Arrangement.spacedBy(spacing),
@@ -750,63 +787,105 @@ private fun TabletVerticalBody(
     bucket: String,
     ndcNumber: String,
     rxNumber: String,
+    strength: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
 ) {
+    val dividerColor = AppTheme.extendedColors.textColor.copy(alpha = 0.5f)
+    // Fixed grid-tile height so the 2x2 tiles read as cards (taller than the
+    // default compact tile) and match the Figma proportions.
+    val gridTileHeight = 180.dp
+    // Spacing between the two cards in a row and between the two rows — the Figma
+    // gives the 2x2 grid generous, equal gutters.
+    val gridSpacing = 16.dp
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 16.dp),
+            .padding(horizontal = 20.dp, vertical = 46.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
             text = stringResource(R.string.verify_rx_details),
             color = AppTheme.extendedColors.textColor,
-            fontSize = 18.sp,
+            fontSize = 20.sp,
             fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(bottom = 12.dp)
         )
 
+        // Gap between the title and the detail group (Figma leaves clear space here).
+        Spacer(modifier = Modifier.height(58.dp))
+
+        // Figma groups the text details tightly at the top (drug name, divider,
+        // Rx/NDC), then leaves a large gap before the 2x2 card grid, which sits
+        // centered in the remaining space above the buttons. The weighted spacers
+        // above and below the grid reproduce that breathing room.
         Column(
             modifier = Modifier
                 .weight(1f, fill = true)
-                .fillMaxWidth()
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .fillMaxWidth(),
         ) {
-            FormTile()
-            QuantityTile(quantity = quantity)
-            BucketTile(bucket = bucket)
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            CenteredDetail(
-                label = stringResource(R.string.ndc_number),
-                value = ndcNumber
-            )
-            CenteredDetail(
+            // ── Top group: drug name, divider, Rx | NDC (tight spacing) ──
+            DetailItem(
                 label = stringResource(R.string.drugname),
-                value = drugName
+                value = drugName,
+                valueMaxLines = 1,
+                modifier = Modifier.fillMaxWidth().padding(end = 100.dp)
             )
-            CenteredDetail(
-                label = stringResource(R.string.rx_number),
-                value = rxNumber
-            )
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(thickness = 1.dp, color = dividerColor)
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                DetailItem(
+                    label = stringResource(R.string.rx_number),
+                    value = rxNumber,
+                    modifier = Modifier.weight(1f)
+                )
+                DetailItem(
+                    label = stringResource(R.string.ndc_number),
+                    value = ndcNumber,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+
+            // Large gap above the grid (Figma).
+            Spacer(modifier = Modifier.weight(1f))
+
+            // ── 2x2 tile grid: [Quantity | Form] / [Strength | Bucket] ──
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(gridSpacing)
+            ) {
+                QuantityTile(quantity = quantity, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+                FormTile(modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+            }
+            Spacer(modifier = Modifier.height(gridSpacing))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(gridSpacing)
+            ) {
+                StrengthTile(strength = strength, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+                BucketTile(bucket = bucket, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+            }
+
+            // Balancing gap below the grid so it reads as centered in the space.
+            Spacer(modifier = Modifier.weight(1f))
         }
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 12.dp)
+        // Figma right-aligns the buttons in the landscape drawer.
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 12.dp)
+        }
 
         Spacer(modifier = Modifier.height(8.dp))
     }
 }
-
-// Tablet CANCEL/PROCEED button dimensions — same in portrait & landscape so they
-// look identical on a tablet. Adjust here to resize both at once.
-private val TABLET_BUTTON_WIDTH = 140.dp
-private val TABLET_BUTTON_HEIGHT = 44.dp
 
 /** Centered label-on-top, value-below detail item used in tablet layouts. */
 @Composable
@@ -1042,13 +1121,13 @@ private fun TileDetailRow(
 }
 
 @Composable
-private fun FormTile(compact: Boolean = false, dosageForm: String = "") {
-    SquareTile(label = stringResource(R.string.form), compact = compact) {
+private fun FormTile(compact: Boolean = false, dosageForm: String = "", modifier: Modifier = Modifier) {
+    SquareTile(label = stringResource(R.string.form), compact = compact, modifier = modifier) {
         if (dosageForm.isNotBlank()) {
             Text(
                 text = dosageForm,
                 color = MaterialTheme.colorScheme.secondary,
-                fontSize = if (compact) 11.sp else 12.sp,
+                fontSize = if (compact) 12.sp else 16.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -1056,34 +1135,49 @@ private fun FormTile(compact: Boolean = false, dosageForm: String = "") {
             )
         } else {
             Icon(
-                painter = painterResource(R.drawable.pill_capsule),
+                painter = painterResource(R.drawable.pill_icon_48),
                 contentDescription = null,
-                tint = Color.Unspecified,
-                modifier = Modifier.size(if (compact) 22.dp else 28.dp)
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(if (compact) 40.dp else 60.dp)
             )
         }
     }
 }
 
 @Composable
-private fun QuantityTile(quantity: String, compact: Boolean = false) {
-    SquareTile(label = stringResource(R.string.quantity), compact = compact) {
+private fun QuantityTile(quantity: String, compact: Boolean = false, modifier: Modifier = Modifier) {
+    SquareTile(label = stringResource(R.string.quantity), compact = compact, modifier = modifier) {
         Text(
             text = quantity,
             color = MaterialTheme.colorScheme.secondary,
-            fontSize = if (compact) 18.sp else 20.sp,
+            fontSize = if (compact) 14.sp else 20.sp,
             fontWeight = FontWeight.SemiBold
         )
     }
 }
 
 @Composable
-private fun BucketTile(bucket: String, compact: Boolean = false) {
-    SquareTile(label = stringResource(R.string.bucket), compact = compact) {
+private fun StrengthTile(strength: String, compact: Boolean = false, modifier: Modifier = Modifier) {
+    SquareTile(label = stringResource(R.string.detail_label_strength), compact = compact, modifier = modifier) {
+        Text(
+            text = strength.ifBlank { "-" },
+            color = MaterialTheme.colorScheme.secondary,
+            fontSize = if (compact) 14.sp else 20.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun BucketTile(bucket: String, compact: Boolean = false, modifier: Modifier = Modifier) {
+    SquareTile(label = stringResource(R.string.bucket), compact = compact, modifier = modifier) {
         Text(
             text = bucket.ifBlank { "-" },
             color = MaterialTheme.colorScheme.secondary,
-            fontSize = if (compact) 14.sp else 15.sp,
+            fontSize = if (compact) 14.sp else 20.sp,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center
         )
@@ -1094,22 +1188,27 @@ private fun BucketTile(bucket: String, compact: Boolean = false) {
 private fun SquareTile(
     label: String,
     compact: Boolean = false,
+    modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
     val tileSize = if (compact) 70.dp else 84.dp
     Column(
         modifier = Modifier
             .width(tileSize)
+            .then(modifier)
             .clip(RoundedCornerShape(12.dp))
             .background(AppTheme.extendedColors.primaryBackground)
             .padding(vertical = if (compact) 7.dp else 10.dp, horizontal = 6.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        // Center the label/value group vertically so tiles given extra height
+        // (e.g. the landscape 2x2 grid) keep their content balanced rather than
+        // top-anchored. With no imposed height the column wraps and this is a no-op.
+        verticalArrangement = Arrangement.spacedBy(2.dp, Alignment.CenterVertically)
     ) {
         Text(
             text = label,
             color = AppTheme.extendedColors.textColor,
-            fontSize = if (compact) 11.sp else 12.sp,
+            fontSize = if (compact) 12.sp else 16.sp,
             fontWeight = FontWeight.Normal
         )
         Box(
@@ -1127,6 +1226,9 @@ private fun DetailItem(
     value: String,
     compact: Boolean = false,
     modifier: Modifier = Modifier,
+    // Drug Name truncates to a single line with an ellipsis in the Figma
+    // ("Levothyroxine Disulphide 50mg.."); Rx / NDC numbers keep natural flow.
+    valueMaxLines: Int = Int.MAX_VALUE,
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -1136,15 +1238,19 @@ private fun DetailItem(
         Text(
             text = label,
             color = AppTheme.extendedColors.textColor,
-            fontSize = if (compact) 11.sp else 12.sp,
+            fontSize = if (compact) 12.sp else 16.sp,
             fontWeight = FontWeight.Normal
         )
-        // Value below the header → app textColor token (not the cyan accent).
+        // Value below the header → secondary accent. Figma renders the Drug Name /
+        // Rx / NDC values in the accent color (matching the tile values), not the
+        // dark text token.
         Text(
             text = value,
-            color = AppTheme.extendedColors.textColor,
-            fontSize = if (compact) 14.sp else 15.sp,
-            fontWeight = FontWeight.SemiBold
+            color = MaterialTheme.colorScheme.secondary,
+            fontSize = if (compact) 12.sp else 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = valueMaxLines,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
