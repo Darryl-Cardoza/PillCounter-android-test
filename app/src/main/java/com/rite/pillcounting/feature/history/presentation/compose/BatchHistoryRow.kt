@@ -70,7 +70,7 @@ fun BatchHistoryRow(
                 Box(
                     modifier = Modifier
                         .width(80.dp)
-                        .height(64.dp)
+                        .height(74.dp)
                         .background(
                             color = AppTheme.extendedColors.primaryBackground,
                             shape = RoundedCornerShape(10.dp)
@@ -83,7 +83,7 @@ fun BatchHistoryRow(
                             else R.drawable.stock
                         ),
                         contentDescription = null,
-                        tint = AppTheme.extendedColors.textColor,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(36.dp)
                     )
                 }

@@ -273,6 +273,14 @@ fun DispenseFlowScreen(
     val isTxnFromHl7 by pillVm.isTxnFromHl7.collectAsState()
     val capturedBitmap by pillVm.capturedBitmap.collectAsState()
 
+    // Resume/HL7 entries jump to their real start stage (COUNTING / PRE_NDC)
+    // asynchronously via initializeFromResumedTxn()/initializeFromHl7Txn(). Until
+    // that resolves, the default stage (PRE_RX → "Scan Rx Label") would flash on
+    // screen before snapping to the resumed step. Gate the UI behind a loading
+    // overlay while we wait, so the user only ever sees the correct stage.
+    val isResumeEntry = remember { fromResume || fromHl7 }
+    val awaitingResume = isResumeEntry && !dispenseState.initResolved
+
     // VIAL step with no photo taken yet: run the barcode analyzer over the live
     // frames so a vial whose RX matches the active transaction can be captured
     // automatically. Once a photo exists (auto or manual) we stop scanning.
@@ -1138,8 +1146,13 @@ fun DispenseFlowScreen(
                     // persistent "Scan open pills" header banner. The step name is
                     // surfaced via the workflow stepper instead — revealed on entry
                     // and whenever a step is tapped.
-                    val suppressHeaderTitle = dispenseState.stage == DispenseStage.COUNTING &&
-                        countType == CountType.REGULAR.toString()
+                    //
+                    // Also suppress while a resume/HL7 entry is still resolving its
+                    // real start stage: otherwise the default PRE_RX header would
+                    // both flash AND speak "Scan Rx Label" before snapping to the
+                    // resumed step. Not composing it here prevents the TTS entirely.
+                    val suppressHeaderTitle = (dispenseState.stage == DispenseStage.COUNTING &&
+                        countType == CountType.REGULAR.toString()) || awaitingResume
                     if (!suppressHeaderTitle) {
                         StepTitleWithSpeech(
                             stepType = headerStepType,
@@ -1327,6 +1340,19 @@ fun DispenseFlowScreen(
                         )
                     }
                 }
+            }
+        }
+
+        // Loading gate for resume/HL7 entries — drawn last so it covers the
+        // default PRE_RX UI until the real start stage is resolved. Opaque
+        // background so no "Scan Rx Label" flash leaks through underneath.
+        if (awaitingResume) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+            ) {
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
         }
     }

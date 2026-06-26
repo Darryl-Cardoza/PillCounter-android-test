@@ -1,6 +1,5 @@
 ﻿package com.rite.pillcounting.feature.dispenseFlow.presentation.compose
 
-import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.padding
@@ -9,10 +8,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
@@ -20,10 +15,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.models.titleRes
-import com.rite.pillcounting.core.utils.common.TtsUtils.routeToMediaStream
-import com.rite.pillcounting.core.utils.common.TtsUtils.speakAtSystemVolume
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.ui.theme.AppTheme
-import java.util.Locale
 
 @Composable
 fun StepTitleWithSpeech(
@@ -43,36 +36,20 @@ fun StepTitleWithSpeech(
         stepType == StepState.SCAN ||
         stepType == StepState.VIAL
 
-    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
-    var isTtsReady by remember { mutableStateOf(false) }
+    // Reuse the process-wide TTS engine (warmed up at app start). Ensure it's
+    // initialising in case this screen is the first thing to need it, and stop any
+    // in-progress utterance on leave without tearing the shared engine down.
     DisposableEffect(context) {
-        var engine: TextToSpeech? = null
-        engine = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                // Set the language on the captured local (assigned before this async
-                // init callback fires) rather than the `tts` state var.
-                engine?.language = Locale.US
-                // Route to the media stream so the volume keys / system volume
-                // control the voiceover instead of it playing at a fixed level.
-                engine?.routeToMediaStream()
-                isTtsReady = true
-            }
-        }
-
-        tts = engine
-
-        onDispose {
-            tts?.stop()
-            tts?.shutdown()
-            tts = null
-        }
+        SoundUtils.prewarmTts(context)
+        onDispose { SoundUtils.stopSpeaking() }
     }
 
     // For the allowed header steps, speak the step title aloud when the voiceover
-    // setting (isSoundOverride) is enabled.
-    LaunchedEffect(title, isTtsReady, showHeaderTitle, isSoundOverride) {
-        if (isTtsReady && isSoundOverride && showHeaderTitle) {
-            tts?.speakAtSystemVolume(
+    // setting (isSoundOverride) is enabled. Re-runs when the engine becomes ready
+    // (SoundUtils.isTtsReady is observable) so an early entry still speaks.
+    LaunchedEffect(title, SoundUtils.isTtsReady, showHeaderTitle, isSoundOverride) {
+        if (SoundUtils.isTtsReady && isSoundOverride && showHeaderTitle) {
+            SoundUtils.speak(
                 context = context,
                 text = title,
                 utteranceId = "step_title_$title",

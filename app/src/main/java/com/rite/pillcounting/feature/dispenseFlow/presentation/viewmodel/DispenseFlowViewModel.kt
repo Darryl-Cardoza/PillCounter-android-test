@@ -110,17 +110,20 @@ class DispenseFlowViewModel @Inject constructor(
             val txnId = preferenceHelper.getTxnId()
             if (txnId == 0L) {
                 logger.w("HL7 init requested but no txnId in preferences — falling back to PRE_RX")
+                _uiState.update { it.copy(initResolved = true) }
                 return@launch
             }
             val txn = pillCountTxnDao.getById(txnId)
             if (txn == null) {
                 logger.w("HL7 init: txn $txnId not found in DB — falling back to PRE_RX")
+                _uiState.update { it.copy(initResolved = true) }
                 return@launch
             }
             val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
             _uiState.update {
                 it.copy(
                     stage = DispenseStage.PRE_NDC,
+                    initResolved = true,
                     isFromHl7 = true,
                     txnId = txnId,
                     drugName = drug?.drugName ?: it.drugName,
@@ -146,11 +149,13 @@ class DispenseFlowViewModel @Inject constructor(
             val txnId = preferenceHelper.getTxnId()
             if (txnId == 0L) {
                 logger.w("Resume init requested but no txnId in preferences — falling back to PRE_RX")
+                _uiState.update { it.copy(initResolved = true) }
                 return@launch
             }
             val txn = pillCountTxnDao.getById(txnId)
             if (txn == null) {
                 logger.w("Resume init: txn $txnId not found in DB — falling back to PRE_RX")
+                _uiState.update { it.copy(initResolved = true) }
                 return@launch
             }
             pillCountTxnDao.updateGlovesPresent(txnId, false)
@@ -161,6 +166,7 @@ class DispenseFlowViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         stage = DispenseStage.COUNTING,
+                        initResolved = true,
                         txnId = txnId,
                         drugName = drug?.drugName ?: it.drugName,
                         ndc = drug?.ndc ?: it.ndc,
@@ -175,6 +181,7 @@ class DispenseFlowViewModel @Inject constructor(
                 _uiState.update {
                     it.copy(
                         stage = DispenseStage.PRE_NDC,
+                        initResolved = true,
                         txnId = txnId,
                         drugName = drug?.drugName ?: it.drugName,
                         ndc = drug?.ndc ?: it.ndc,
