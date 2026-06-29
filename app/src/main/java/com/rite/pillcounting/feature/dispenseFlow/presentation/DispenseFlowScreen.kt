@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -272,6 +273,14 @@ fun DispenseFlowScreen(
     val pillStepType by pillVm.currentStep.collectAsState()
     val isTxnFromHl7 by pillVm.isTxnFromHl7.collectAsState()
     val capturedBitmap by pillVm.capturedBitmap.collectAsState()
+
+    // Resume/HL7 entries jump to their real start stage (COUNTING / PRE_NDC)
+    // asynchronously via initializeFromResumedTxn()/initializeFromHl7Txn(). Until
+    // that resolves, the default stage (PRE_RX → "Scan Rx Label") would flash on
+    // screen before snapping to the resumed step. Gate the UI behind a loading
+    // overlay while we wait, so the user only ever sees the correct stage.
+    val isResumeEntry = remember { fromResume || fromHl7 }
+    val awaitingResume = isResumeEntry && !dispenseState.initResolved
 
     // VIAL step with no photo taken yet: run the barcode analyzer over the live
     // frames so a vial whose RX matches the active transaction can be captured
@@ -857,7 +866,11 @@ fun DispenseFlowScreen(
                 }
             }
             val showPillPanel = dispenseState.stage == DispenseStage.COUNTING || showCountCircle
-            if (showPillPanel) {
+            // Suppress the pre-COUNTING pill panel while a resume/HL7 entry is
+            // still resolving its real stage — we keep the live camera visible
+            // under the loading scrim, but the wrong-stage overlay must not bleed
+            // through it.
+            if (showPillPanel && !awaitingResume) {
                 if (dispenseState.stage == DispenseStage.COUNTING) {
                     // Full pill panel — total / target / circle / Add / Done.
                     // The VIAL capture step keeps the original right-strip layout
@@ -1109,10 +1122,24 @@ fun DispenseFlowScreen(
                     .zIndex(1f)
                     .padding(top = 8.dp, bottom = 8.dp, end = headerEndPadding),
             ) {
+                // During COUNTING the back arrow sits in the left gutter of the
+                // details bar (NDC on top, drug name below). The arrow's own 10.dp
+                // internal padding makes its bounding box taller than that two-line
+                // block, so a plain CenterStart drops the arrow to the drug-name
+                // line. Pin it to the top and nudge up so the arrow centre lines up
+                // with the centre of the NDC / drug-name block instead. Other stages
+                // keep the arrow centred against the step-title header.
+                val centreOnDetailsBar = dispenseState.stage == DispenseStage.COUNTING
                 BackButton(
                     navController = navController,
                     showBox = false,
-                    modifier = Modifier.align(Alignment.CenterStart),
+                    modifier = if (centreOnDetailsBar) {
+                        Modifier
+                            .align(Alignment.TopStart)
+                            .offset(y = (-8).dp)
+                    } else {
+                        Modifier.align(Alignment.CenterStart)
+                    },
                     onClick = {
                         pillVm.discardStagedCount()
                         if (fromQueue && dispenseState.stage == DispenseStage.PRE_RX) {
@@ -1146,8 +1173,13 @@ fun DispenseFlowScreen(
                     // persistent "Scan open pills" header banner. The step name is
                     // surfaced via the workflow stepper instead — revealed on entry
                     // and whenever a step is tapped.
-                    val suppressHeaderTitle = dispenseState.stage == DispenseStage.COUNTING &&
-                        countType == CountType.REGULAR.toString()
+                    //
+                    // Also suppress while a resume/HL7 entry is still resolving its
+                    // real start stage: otherwise the default PRE_RX header would
+                    // both flash AND speak "Scan Rx Label" before snapping to the
+                    // resumed step. Not composing it here prevents the TTS entirely.
+                    val suppressHeaderTitle = (dispenseState.stage == DispenseStage.COUNTING &&
+                        countType == CountType.REGULAR.toString()) || awaitingResume
                     if (!suppressHeaderTitle) {
                         StepTitleWithSpeech(
                             stepType = headerStepType,
@@ -1162,7 +1194,8 @@ fun DispenseFlowScreen(
         // overlay is active.
         if (!showHistory &&
             dispenseState.stage != DispenseStage.COUNTING &&
-            !btScannerOverlayActive
+            !btScannerOverlayActive &&
+            !awaitingResume
         ) {
             BtScannerInputBar(
                 input = btScannerInput,
@@ -1335,6 +1368,24 @@ fun DispenseFlowScreen(
                         )
                     }
                 }
+            }
+        }
+
+        // Loading gate for resume/HL7 entries — drawn last so it sits on top
+        // until the real start stage is resolved. Rather than an opaque white
+        // cover (which reads as a frozen/blank screen), we keep the live camera
+        // visible underneath and lay a light dark scrim + spinner over it, so it
+        // looks like the session is loading over the camera. The wrong-stage
+        // PRE_RX overlays are suppressed separately (see showPillPanel /
+        // BtScannerInputBar) so nothing incorrect bleeds through the scrim.
+        if (awaitingResume) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.4f)),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = Color.White)
             }
         }
     }

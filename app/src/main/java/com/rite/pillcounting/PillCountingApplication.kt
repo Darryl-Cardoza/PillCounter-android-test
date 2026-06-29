@@ -8,6 +8,7 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import coil.ImageLoader
 import com.google.firebase.FirebaseApp
 import com.rite.pillcounting.core.utils.coil.EncryptedImageFetcher
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -52,6 +53,12 @@ class PillCountingApplication : Application() {
                 logger.e("App start: model pre-load failed", e)
             }
         }
+
+        // Pre-warm the shared TextToSpeech engine. Building one binds to the system
+        // TTS service asynchronously (~0.5–1s before its onInit fires); doing it
+        // here means the first step-title voiceover on the dispense/count screens
+        // speaks immediately instead of after that init delay on screen entry.
+        SoundUtils.prewarmTts(this)
 
         // Pre-warm CameraX. ProcessCameraProvider.getInstance(...) does the heavy
         // one-time init (libraries, camera2 interop, vendor extensions) and caches

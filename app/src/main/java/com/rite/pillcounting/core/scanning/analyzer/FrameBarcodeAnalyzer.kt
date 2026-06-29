@@ -10,6 +10,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.barcode.common.Barcode
 import com.google.mlkit.vision.common.InputImage
 import com.rite.pillcounting.core.utils.common.HelperFunctions.saveBitmapToFile
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -346,6 +347,10 @@ class FrameBarcodeAnalyzer(
                 }
 
                 if (shouldFire) {
+                    // Audible confirmation that a barcode was decoded — mirrors a
+                    // handheld scanner's beep. Played here so every camera-based
+                    // scan (dispense + inventory) chirps from one place.
+                    SoundUtils.playBarcodeSound(appContext)
                     if (enableFocusChangeDebounce) {
                         lastFiredValue = rawValue
                         emptyStreak = 0

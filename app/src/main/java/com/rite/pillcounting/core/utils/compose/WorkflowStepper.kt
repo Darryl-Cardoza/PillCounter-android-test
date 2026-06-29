@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.utils.compose
 
-import android.speech.tts.TextToSpeech
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,7 +11,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -24,10 +22,8 @@ import androidx.compose.ui.unit.dp
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.models.StepStatus
 import com.rite.pillcounting.core.models.titleRes
-import com.rite.pillcounting.core.utils.common.TtsUtils.routeToMediaStream
-import com.rite.pillcounting.core.utils.common.TtsUtils.speakAtSystemVolume
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import kotlinx.coroutines.delay
-import java.util.Locale
 
 // How long a tapped step's title bubble stays visible.
 private const val STEP_TOOLTIP_VISIBLE_MS = 3000L
@@ -59,30 +55,14 @@ fun WorkflowStepper(
     }
     val currentTitle = resolvedTitles.getOrNull(currentIndex)
 
-    // Single TextToSpeech engine for the whole stepper: tapping any step speaks
-    // that step's title aloud. Created/destroyed with the composable.
+    // Reuse the process-wide TTS engine (warmed up at app start) so tapping a step
+    // — or the auto-reveal on entry — speaks instantly instead of waiting on a
+    // fresh engine's init. Ensure it's initialising and stop any in-progress
+    // utterance on leave without tearing the shared engine down.
     val context = LocalContext.current
-    var tts by remember { mutableStateOf<TextToSpeech?>(null) }
-    var isTtsReady by remember { mutableStateOf(false) }
     DisposableEffect(context) {
-        var engine: TextToSpeech? = null
-        engine = TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                // Set the language on the captured local (assigned before this async
-                // init callback fires) rather than the `tts` state var.
-                engine?.language = Locale.US
-                // Route to the media stream so the volume keys / system volume
-                // control the voiceover instead of it playing at a fixed level.
-                engine?.routeToMediaStream()
-                isTtsReady = true
-            }
-        }
-        tts = engine
-        onDispose {
-            tts?.stop()
-            tts?.shutdown()
-            tts = null
-        }
+        SoundUtils.prewarmTts(context)
+        onDispose { SoundUtils.stopSpeaking() }
     }
 
     // Which step's bubble is currently shown (-1 = none). The nonce restarts the
@@ -100,12 +80,12 @@ fun WorkflowStepper(
     // entry and on every current-step change), then let the auto-hide timer above
     // dismiss it after STEP_TOOLTIP_VISIBLE_MS. Speak it aloud too when voiceover
     // is enabled (waits for the TTS engine to finish initialising).
-    LaunchedEffect(autoRevealCurrentStep, currentIndex, isTtsReady) {
+    LaunchedEffect(autoRevealCurrentStep, currentIndex, SoundUtils.isTtsReady) {
         if (autoRevealCurrentStep) {
             tooltipIndex = currentIndex
             clickNonce++
-            if (isVoiceOverEnabled && isTtsReady && currentTitle != null) {
-                tts?.speakAtSystemVolume(
+            if (isVoiceOverEnabled && SoundUtils.isTtsReady && currentTitle != null) {
+                SoundUtils.speak(
                     context = context,
                     text = currentTitle,
                     utteranceId = "step_title_auto_$currentIndex",
@@ -146,8 +126,8 @@ fun WorkflowStepper(
                     // voiceover setting is enabled; otherwise just show the text.
                     tooltipIndex = index
                     clickNonce++
-                    if (isVoiceOverEnabled && isTtsReady) {
-                        tts?.speakAtSystemVolume(
+                    if (isVoiceOverEnabled && SoundUtils.isTtsReady) {
+                        SoundUtils.speak(
                             context = context,
                             text = title,
                             utteranceId = "step_title_$index",

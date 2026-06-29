@@ -31,6 +31,7 @@ import com.rite.pillcounting.core.utils.common.HelperFunctions.saveBitmapToFile
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.common.OverlayUtils
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
@@ -1784,6 +1785,7 @@ class PillScanningViewModel @Inject constructor(
      *   the user confirms via the Done button.
      */
     fun captureImage(autoConfirm: Boolean = false) {
+        SoundUtils.playCaptureSound(context)
         viewModelScope.launch {
             _showFlash.value = true
             delay(350)

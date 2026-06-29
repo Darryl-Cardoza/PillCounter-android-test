@@ -9,6 +9,12 @@ enum class DispenseStage { QUEUE, PRE_RX, PRE_NDC, COUNTING }
 
 data class DispenseFlowUiState(
     val stage: DispenseStage = DispenseStage.PRE_RX,
+    // True once a resume/HL7 entry has finished resolving its real start stage
+    // (COUNTING / PRE_NDC / fallback). Until then the screen shows a loading gate
+    // instead of the default PRE_RX ("Scan Rx Label") UI, so that stage doesn't
+    // flash before the async init jumps to the resumed step. Irrelevant for plain
+    // PRE_RX entries, which never wait on it.
+    val initResolved: Boolean = false,
     val queueItems: List<QueueItem.Dispense> = emptyList(),
     val selectedQueueFilter: KpiFilter? = null,
     val scanType: String = CountType.FIXED.toString(),
