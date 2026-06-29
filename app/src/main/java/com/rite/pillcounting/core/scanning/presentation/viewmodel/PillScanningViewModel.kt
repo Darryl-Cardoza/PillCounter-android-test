@@ -1767,6 +1767,14 @@ class PillScanningViewModel @Inject constructor(
     }
 
     /**
+     * True when VIAL is the final step of the active workflow. The auto-capture
+     * path uses this to decide whether scanning the vial should finish the flow
+     * outright (show the "Confirm Done" dialog) or merely capture the still and
+     * wait for the user to tap Done before advancing to the remaining step(s).
+     */
+    fun isVialLastStep(): Boolean = _steps.value.lastOrNull() == StepState.VIAL
+
+    /**
      * Capture the VIAL still photo.
      *
      * @param autoConfirm when true (auto-capture path, where the vial's RX matched

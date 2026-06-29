@@ -811,11 +811,15 @@ fun DispenseFlowScreen(
                             barcodeAnalyzer.analyze(imageProxy) { value, _ ->
                                 val matched = dispenseVm.onVialBarcodeRead(value)
                                 if (matched) {
-                                    // Auto-capture: capture the still AND commit it as
-                                    // if Done was tapped, so the "Confirm Done" dialog
-                                    // appears without a manual tap. Manual capture
-                                    // (camera button) still requires a Done tap.
-                                    pillVm.captureImage(autoConfirm = true)
+                                    // Auto-capture: always grab the still on a match.
+                                    // Only auto-commit (as if Done was tapped) when
+                                    // VIAL is the LAST workflow step — then the
+                                    // "Confirm Done" dialog appears without a manual
+                                    // tap. When VIAL is followed by more steps, just
+                                    // show the captured image and wait for the user to
+                                    // tap Done before advancing. Manual capture (camera
+                                    // button) always requires a Done tap.
+                                    pillVm.captureImage(autoConfirm = pillVm.isVialLastStep())
                                 } else {
                                     barcodeAnalyzer.resume()
                                 }
