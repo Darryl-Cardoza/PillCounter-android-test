@@ -1766,13 +1766,33 @@ class PillScanningViewModel @Inject constructor(
         return steps
     }
 
-    fun captureImage() {
+    /**
+     * True when VIAL is the final step of the active workflow. The auto-capture
+     * path uses this to decide whether scanning the vial should finish the flow
+     * outright (show the "Confirm Done" dialog) or merely capture the still and
+     * wait for the user to tap Done before advancing to the remaining step(s).
+     */
+    fun isVialLastStep(): Boolean = _steps.value.lastOrNull() == StepState.VIAL
+
+    /**
+     * Capture the VIAL still photo.
+     *
+     * @param autoConfirm when true (auto-capture path, where the vial's RX matched
+     *   the active transaction), immediately commit the photo as if the user tapped
+     *   "Done" once the bitmap lands — this advances the workflow and surfaces the
+     *   "Confirm Done" dialog. When false (manual capture), the still is shown and
+     *   the user confirms via the Done button.
+     */
+    fun captureImage(autoConfirm: Boolean = false) {
         viewModelScope.launch {
             _showFlash.value = true
             delay(350)
             _showFlash.value = false
         }
-        cameraHelper?.captureImage { bitmap -> _capturedBitmap.value = bitmap }
+        cameraHelper?.captureImage { bitmap ->
+            _capturedBitmap.value = bitmap
+            if (autoConfirm) saveCaptureImage()
+        }
     }
 
     fun redoCaptureImage() {

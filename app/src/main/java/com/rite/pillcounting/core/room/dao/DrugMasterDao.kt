@@ -61,12 +61,18 @@ interface DrugMasterDao {
      */
     @Transaction
     suspend fun upsertPreservingId(drug: DrugMasterEntity): Long {
-        val existingId = getDrugIdByNdc(drug.ndc)
+        // Normalize an empty drugType to null so the column never stores "" —
+        // an empty type carries no meaning and callers/queries treat null as
+        // "no type". Done here (the single persistence funnel) so every insert
+        // and update path is covered.
+        val normalizedDrug =
+            if (drug.drugType.isNullOrEmpty()) drug.copy(drugType = null) else drug
+        val existingId = getDrugIdByNdc(normalizedDrug.ndc)
         return if (existingId != null) {
-            update(drug.copy(drugId = existingId))
+            update(normalizedDrug.copy(drugId = existingId))
             existingId
         } else {
-            val newId = insertIgnore(drug)
+            val newId = insertIgnore(normalizedDrug)
             if (newId == -1L) {
                 // Possible race condition: fetch again
                 getDrugIdByNdc(drug.ndc)
