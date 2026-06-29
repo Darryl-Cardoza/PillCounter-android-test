@@ -20,6 +20,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.models.titleRes
+import com.rite.pillcounting.core.utils.common.TtsUtils.routeToMediaStream
+import com.rite.pillcounting.core.utils.common.TtsUtils.speakAtSystemVolume
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.util.Locale
 
@@ -32,17 +34,32 @@ fun StepTitleWithSpeech(
     val context = LocalContext.current
     val title = if (titleResOverride != null) stringResource(titleResOverride) else stringResource(stepType.titleRes())
 
+    // The header title is only shown for these entry/capture steps. All other
+    // steps (e.g. CONTAINER_INITIATE, TARGET_VERIFICATION) suppress it — they
+    // carry their own on-screen affordances. An explicit title override (e.g. the
+    // REGULAR "Scan open pills" prompt during COUNTING) is always shown.
+    val showHeaderTitle = titleResOverride != null ||
+        stepType == StepState.RX_LABEL ||
+        stepType == StepState.SCAN ||
+        stepType == StepState.VIAL
+
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     var isTtsReady by remember { mutableStateOf(false) }
     DisposableEffect(context) {
-        val ttsInstance = TextToSpeech(context) { status ->
+        var engine: TextToSpeech? = null
+        engine = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale.US
+                // Set the language on the captured local (assigned before this async
+                // init callback fires) rather than the `tts` state var.
+                engine?.language = Locale.US
+                // Route to the media stream so the volume keys / system volume
+                // control the voiceover instead of it playing at a fixed level.
+                engine?.routeToMediaStream()
                 isTtsReady = true
             }
         }
 
-        tts = ttsInstance
+        tts = engine
 
         onDispose {
             tts?.stop()
@@ -51,30 +68,34 @@ fun StepTitleWithSpeech(
         }
     }
 
-    LaunchedEffect(title, isTtsReady) {
-        if (isTtsReady && isSoundOverride) {
-            tts?.stop()
-            tts?.speak(
-                title,
-                TextToSpeech.QUEUE_FLUSH,
-                null,
-                "step_title_$title"
+    // For the allowed header steps, speak the step title aloud when the voiceover
+    // setting (isSoundOverride) is enabled.
+    LaunchedEffect(title, isTtsReady, showHeaderTitle, isSoundOverride) {
+        if (isTtsReady && isSoundOverride && showHeaderTitle) {
+            tts?.speakAtSystemVolume(
+                context = context,
+                text = title,
+                utteranceId = "step_title_$title",
             )
         }
     }
 
-    Box(
-        modifier = Modifier
-            .background(
-                AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.8f),
-                shape = RoundedCornerShape(50.dp)
+    // Render the title in the header for the allowed steps (e.g. "Scan Rx Label",
+    // "Scan Container QR Code"). It stays visible for the duration of the step.
+    if (showHeaderTitle) {
+        Box(
+            modifier = Modifier
+                .background(
+                    AppTheme.extendedColors.secondaryBackground.copy(alpha = 0.8f),
+                    shape = RoundedCornerShape(50.dp)
+                )
+                .padding(horizontal = 20.dp, vertical = 10.dp)
+        ) {
+            Text(
+                text = title,
+                color = AppTheme.extendedColors.textColor,
+                fontSize = 16.sp
             )
-            .padding(horizontal = 20.dp, vertical = 10.dp)
-    ) {
-        Text(
-            text = title,
-            color = AppTheme.extendedColors.textColor,
-            fontSize = 16.sp
-        )
+        }
     }
 }

@@ -297,6 +297,8 @@ class Hl7Repository @Inject constructor(
                     drugName = resolvedDrugName,
                     drugType = drugInfo?.drugType,
                     isHazardous = drugInfo?.isHazardous ?: false,
+                    strength = drugInfo?.strength,
+                    dosageForm = drugInfo?.dosageForm,
                 )
             }
         }
@@ -421,6 +423,8 @@ class Hl7Repository @Inject constructor(
                     drugType = drugInfo?.drugType,
                     packageQty = drugInfo?.qty,
                     isHazardous = drugInfo?.isHazardous ?: false,
+                    strength = drugInfo?.strength,
+                    dosageForm = drugInfo?.dosageForm,
                 )
 
                 val newDrugId = drugMasterDao.upsertPreservingId(drugEntity)
@@ -633,6 +637,8 @@ class Hl7Repository @Inject constructor(
                     drugName = resolvedName,
                     drugType = drugInfo?.drugType,
                     isHazardous = drugInfo?.isHazardous ?: false,
+                    strength = drugInfo?.strength,
+                    dosageForm = drugInfo?.dosageForm,
                 )
             } catch (e: Exception) {
                 logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e)

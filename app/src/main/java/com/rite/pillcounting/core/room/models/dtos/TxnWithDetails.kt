@@ -19,6 +19,9 @@ data class TxnWithDetails(
     val totalPillCount: Int,
     val countType: CountType,
     val drugType: String?,
+    val strength: String? = null,
+    val dosageForm: String? = null,
+    val bucketId: String? = null,
     @Relation(
         parentColumn = "txnId",
         entityColumn = "txnId",

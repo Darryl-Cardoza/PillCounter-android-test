@@ -23,6 +23,7 @@ import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyType
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
@@ -82,6 +83,10 @@ class ProfileViewModel @Inject constructor(
     var selectedTerminal by mutableStateOf<Terminal?>(null)
     private var initialTerminal: Terminal? = null // Track initial value to detect changes
 
+    // Pharmacy type selection
+    val pharmacyTypes: List<PharmacyType> = PharmacyType.entries
+    var selectedPharmacyType by mutableStateOf<PharmacyType?>(null)
+
     // ─────────────────────────── Validation Errors ───────────────────────────
     var firstNameError by mutableStateOf<Int?>(null)
     var lastNameError by mutableStateOf<Int?>(null)
@@ -114,6 +119,10 @@ class ProfileViewModel @Inject constructor(
         }
         
         logger.i("Loaded ${terminals.size} terminals, selected: ${selectedTerminal?.terminalName}")
+
+        // Restore previously selected pharmacy type
+        selectedPharmacyType = PharmacyType.fromApiValue(preferenceHelper.getPharmacyType())
+        logger.i("Loaded pharmacy type: ${selectedPharmacyType?.apiValue}")
     }
 
     fun toggleDoNotAskAgain(value: Boolean) {
@@ -145,6 +154,11 @@ class ProfileViewModel @Inject constructor(
     fun onTerminalSelected(terminal: Terminal) {
         selectedTerminal = terminal
         logger.i("Terminal selected: ${terminal.terminalName} (ID: ${terminal.terminalId})")
+    }
+
+    fun onPharmacyTypeSelected(pharmacyType: PharmacyType) {
+        selectedPharmacyType = pharmacyType
+        logger.i("Pharmacy type selected: ${pharmacyType.apiValue}")
     }
 
     fun onPhoneChanged(input: String) {
@@ -210,7 +224,8 @@ class ProfileViewModel @Inject constructor(
                     timezone = "Asia/Kolkata",
                     fName = firstName.trim(),
                     lName = lastName.trim(),
-                    terminalId = selectedTerminal?.terminalId
+                    terminalId = selectedTerminal?.terminalId,
+                    pharmacyType = selectedPharmacyType?.apiValue
                 )
 
                 repository.updateProfile(request)
@@ -238,6 +253,11 @@ class ProfileViewModel @Inject constructor(
                         }
 
                         preferenceHelper.saveDoNotAskAgain(doNotAskAgain)
+
+                        // Persist selected pharmacy type so it prefills on next visit
+                        selectedPharmacyType?.let {
+                            preferenceHelper.savePharmacyType(it.apiValue)
+                        }
 
                         // Update terminal if it has changed
                         if (selectedTerminal != null && selectedTerminal?.terminalId != initialTerminal?.terminalId) {

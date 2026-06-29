@@ -53,7 +53,6 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.utils.compose.WorkflowStepper
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
 import com.rite.pillcounting.core.scanning.logic.GloveDetector
@@ -106,8 +105,6 @@ fun CameraPreviewSection(
     var popText by remember { mutableStateOf("+0") }
 
     // ── ViewModel state ───────────────────────────────────────────────────────
-    val stepType by viewModel.currentStep.collectAsState()
-    val steps by viewModel.steps.collectAsState()
     val capturedBitmap by viewModel.capturedBitmap.collectAsState()
     val showCaptureEffect by viewModel.showFlash.collectAsState()
 
@@ -543,26 +540,11 @@ fun CameraPreviewSection(
                 }
 
                 // ── WORKFLOW STEPPER ──────────────────────────────────────────
-                val configuration = LocalConfiguration.current
-                val isLandscape =
-                    configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                val stepperBottomPadding = if (isLandscape) {
-                    20.dp
-                } else {
-                    (configuration.screenHeightDp * 0.25f).dp + 20.dp
-                }
-                val stepperEndPadding = if (isLandscape) {
-                    (configuration.screenWidthDp * 0.3f).dp
-                } else {
-                    0.dp
-                }
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(bottom = stepperBottomPadding, end = stepperEndPadding)
-                ) {
-                    WorkflowStepper(steps = steps, currentStep = stepType)
-                }
+                // Both orientations now render the stepper inside the bottom count
+                // bar of the full-bleed count overlay (see CountModeLandscape /
+                // CountModeOverlay), so there is no separate floating stepper here.
+                // During the pre-scan stages the workflow steps list is empty, so a
+                // floating stepper would have nothing to show anyway.
 
             } else {
                 // ── CAPTURED BITMAP VIEW ──────────────────────────────────────

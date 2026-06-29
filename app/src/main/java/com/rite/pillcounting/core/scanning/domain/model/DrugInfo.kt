@@ -15,5 +15,9 @@ data class DrugInfo(
     val is_ndc_equivalent: Boolean? = null,
     val drugType: String,
     val qty: Int? = 0,
-    val isHazardous: Boolean? = null
+    val isHazardous: Boolean? = null,
+    /** Strength of the first active ingredient, e.g. "35 mg/1" (active_ingredients[0].strength). */
+    val strength: String? = null,
+    /** Dosage form, e.g. "CAPSULE, EXTENDED RELEASE" (dosage_form[0]). */
+    val dosageForm: String? = null
 )

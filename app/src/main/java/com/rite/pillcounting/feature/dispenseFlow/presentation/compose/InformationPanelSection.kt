@@ -3,28 +3,21 @@
 import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
 import com.rite.pillcounting.core.scanning.domain.model.PillScanningUiState
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
-import com.rite.pillcounting.ui.theme.AppTheme
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 
 @Composable
 fun InformationPanelSection(
@@ -47,45 +40,21 @@ fun InformationPanelSection(
     val onDone = { onEvent(PillScanningEvent.FinalDone(stepType = stepType, totalCount)) }
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            // Always black (theme-independent); kept translucent so the camera
-            // feed still shows through behind the panel.
-            .background(Color.Black.copy(alpha = 0.5f))
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-    ) {
-        if (stepType != StepState.VIAL && !isLandscape) {
-            Row(
-                modifier = Modifier.fillMaxWidth()
-                    .padding(top = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = drugName,
-                    color = Color.White,
-                    fontSize = 18.sp,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
+    // VIAL capture keeps the original bottom strip (CameraActionBar) in both
+    // orientations. All other counting steps use the shared full-bleed overlay
+    // (CountModeOverlay): top details bar, centered tap-to-add count circle over
+    // the live feed, and a bottom progress bar with counted/target.
+    if (stepType == StepState.VIAL) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .then(
+                    if (isLandscape) Modifier
+                    else Modifier
+                        .background(Color.Black.copy(alpha = 0.5f))
+                        .padding(horizontal = 16.dp, vertical = 10.dp)
                 )
-            }
-        }
-
-        if (isLandscape) {
-            CountModeLandscape(
-                totalCount = totalCount,
-                targetCount = targetCount,
-                scanType = scanType,
-                detectedCount = filteredPillCount,
-                onAdd = onAdd,
-                onDone = onDone,
-                viewModel = viewModel,
-                drugName = drugName,
-                showHistory = onShowHistory
-            )
-        } else {
+        ) {
             CountModePortrait(
                 totalCount = totalCount,
                 targetCount = targetCount,
@@ -97,5 +66,77 @@ fun InformationPanelSection(
                 showHistory = onShowHistory
             )
         }
+        return
+    }
+
+    // All other counting steps use the shared full-bleed overlay, split by form
+    // factor into four variants so each layout can be tuned independently (see
+    // CountMode{Phone,Tablet}{Portrait,Landscape}). Mirrors the DashboardScreen
+    // form-factor dispatch.
+    val isTablet = UserInterfaceUtils.isTablet()
+    when {
+        isTablet && !isLandscape -> CountModeTabletPortrait(
+            totalCount = totalCount,
+            targetCount = targetCount,
+            scanType = scanType,
+            detectedCount = filteredPillCount,
+            onAdd = onAdd,
+            onDone = onDone,
+            viewModel = viewModel,
+            drugName = drugName,
+            ndc = uiState.ndc,
+            strength = uiState.strength,
+            dosageForm = uiState.dosageForm,
+            bucket = uiState.bucket,
+            showHistory = onShowHistory
+        )
+
+        isTablet && isLandscape -> CountModeTabletLandscape(
+            totalCount = totalCount,
+            targetCount = targetCount,
+            scanType = scanType,
+            detectedCount = filteredPillCount,
+            onAdd = onAdd,
+            onDone = onDone,
+            viewModel = viewModel,
+            drugName = drugName,
+            ndc = uiState.ndc,
+            strength = uiState.strength,
+            dosageForm = uiState.dosageForm,
+            bucket = uiState.bucket,
+            showHistory = onShowHistory
+        )
+
+        !isTablet && !isLandscape -> CountModePhonePortrait(
+            totalCount = totalCount,
+            targetCount = targetCount,
+            scanType = scanType,
+            detectedCount = filteredPillCount,
+            onAdd = onAdd,
+            onDone = onDone,
+            viewModel = viewModel,
+            drugName = drugName,
+            ndc = uiState.ndc,
+            strength = uiState.strength,
+            dosageForm = uiState.dosageForm,
+            bucket = uiState.bucket,
+            showHistory = onShowHistory
+        )
+
+        else -> CountModePhoneLandscape(
+            totalCount = totalCount,
+            targetCount = targetCount,
+            scanType = scanType,
+            detectedCount = filteredPillCount,
+            onAdd = onAdd,
+            onDone = onDone,
+            viewModel = viewModel,
+            drugName = drugName,
+            ndc = uiState.ndc,
+            strength = uiState.strength,
+            dosageForm = uiState.dosageForm,
+            bucket = uiState.bucket,
+            showHistory = onShowHistory
+        )
     }
 }

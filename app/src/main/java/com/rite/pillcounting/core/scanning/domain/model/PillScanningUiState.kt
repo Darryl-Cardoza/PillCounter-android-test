@@ -24,6 +24,10 @@ import com.rite.pillcounting.core.scanning.logic.TrayColor
 data class PillScanningUiState(
     val scanType: String = "REGULAR",
     val drugName: String = "",
+    val ndc: String = "",
+    val strength: String = "",
+    val dosageForm: String = "",
+    val bucket: String = "",
     val totalCount: Int = 0,
     val targetCount: Int = 0,
     val currentScanCount: Int = 0,

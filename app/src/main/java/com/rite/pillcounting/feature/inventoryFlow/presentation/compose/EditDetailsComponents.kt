@@ -439,5 +439,3 @@ private fun EditDetailField(
         )
     }
 }
-
-private val DELETE_BOX = 36.dp
