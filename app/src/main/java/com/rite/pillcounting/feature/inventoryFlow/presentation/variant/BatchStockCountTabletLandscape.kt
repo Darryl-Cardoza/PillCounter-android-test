@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.HorizontalDivider
@@ -255,7 +256,10 @@ private fun EmptyScannedDetailsTabletLandscape() {
         )
         Spacer(modifier = Modifier.height(12.dp))
         Column(
-            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 200.dp)
+                .padding(vertical = 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
@@ -268,7 +272,7 @@ private fun EmptyScannedDetailsTabletLandscape() {
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
                 color = AppTheme.extendedColors.textColor.copy(alpha = 0.9f),
-                fontSize = responsiveSp(6.sp),
+                fontSize = responsiveSp(7.sp),
             )
         }
     }

@@ -178,7 +178,7 @@ private fun EmptyScannedDetailsLandscape(
             Text(
                 text = stringResource(R.string.batch_stock_count_scan_new_bottle),
                 color = AppTheme.extendedColors.textColor.copy(alpha = 0.9f),
-                fontSize = responsiveSp(6.sp),
+                fontSize = responsiveSp(7.sp),
             )
         }
         HorizontalDivider(

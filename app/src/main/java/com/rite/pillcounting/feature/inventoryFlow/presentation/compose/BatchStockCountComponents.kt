@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -796,7 +797,7 @@ internal fun ScannedSummaryRow(
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_summary),
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
+            fontSize = responsiveSp(6.sp),
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(modifier = Modifier.height(12.dp))
@@ -844,7 +845,7 @@ internal fun ScannedSummaryCard(
         Text(
             text = stringResource(R.string.batch_stock_count_scanned_summary),
             color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 10.sp,
+            fontSize = responsiveSp(6.sp),
             fontWeight = FontWeight.SemiBold,
         )
         Spacer(modifier = Modifier.height(12.dp))
@@ -879,18 +880,23 @@ internal fun ScannedSummaryCard(
 @Composable
 private fun SummaryStat(label: String, value: String, modifier: Modifier = Modifier) {
     Column(modifier = modifier) {
-        Text(
-            text = label,
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = 11.sp,
-        )
-        Spacer(modifier = Modifier.height(2.dp))
-        Text(
-            text = value,
-            color = MaterialTheme.colorScheme.secondary,
-            fontSize = 22.sp,
-            fontWeight = FontWeight.Bold,
-        )
+        // Inner column hugs the label width so the value centers under the
+        // label, while the whole block stays at the start of the cell.
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = label,
+                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+                fontSize = responsiveSp(7.sp),
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                color = MaterialTheme.colorScheme.secondary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
