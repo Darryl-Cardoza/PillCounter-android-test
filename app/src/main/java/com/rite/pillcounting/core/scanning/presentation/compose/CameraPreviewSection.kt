@@ -408,7 +408,17 @@ fun CameraPreviewSection(
                     // measured in original-image pixel space, which already tracks
                     // the display orientation, so the split is correct in both
                     // portrait and landscape.
-                    val targetCount = uiState.targetCount
+                    // Pills already captured/added in THIS session reduce how many
+                    // still need to be dispensed, so the green threshold must track
+                    // the REMAINING target, not the original target. Mirrors the
+                    // "already counted" total shown in InformationPanelSection.
+                    val alreadyCounted =
+                        if (uiState.scanType == com.rite.pillcounting.core.room.models.enums.CountType.REGULAR.toString()) {
+                            uiState.stockCountSessionTotal
+                        } else {
+                            uiState.txnDetailHistory.sumOf { it.count }
+                        }
+                    val targetCount = (uiState.targetCount - alreadyCounted).coerceAtLeast(0)
                     val excessCount = (pills.size - targetCount).coerceAtLeast(0)
                     val excessIndices: Set<Int> = if (excessCount <= 0) {
                         emptySet()
