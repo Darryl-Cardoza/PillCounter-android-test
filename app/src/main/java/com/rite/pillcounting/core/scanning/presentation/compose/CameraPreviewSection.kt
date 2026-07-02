@@ -53,10 +53,11 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
 import com.rite.pillcounting.core.scanning.logic.GloveDetector
-import com.rite.pillcounting.core.scanning.logic.TrayColor
+import com.rite.pillcounting.core.scanning.logic.TrayClass
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import kotlinx.coroutines.flow.conflate
 
@@ -197,7 +198,6 @@ fun CameraPreviewSection(
     val noGlovesBgPaint = remember {
         android.graphics.Paint().apply { color = android.graphics.Color.argb(200, 180, 0, 0) }
     }
-    val trayLabelBgPaint = remember { android.graphics.Paint() }
     val labelBounds = remember { android.graphics.Rect() }
 
     // Resume live camera when the captured still is cleared, but NOT while the
@@ -239,7 +239,7 @@ fun CameraPreviewSection(
                 // live frame. Fades out the moment PreviewView reports STREAMING.
                 // No spinner — just a neutral fill so the warm-up reads as a calm
                 // dark screen rather than a "loading" state.
-                androidx.compose.animation.AnimatedVisibility(
+                AnimatedVisibility(
                     visible = !isPreviewStreaming,
                     enter = fadeIn(),
                     exit = fadeOut(),
@@ -339,7 +339,7 @@ fun CameraPreviewSection(
                     trayDetections.forEach { tray ->
                         // Skip chute detections in the UI — they exist only to
                         // exclude pills in the chute area from the count.
-                        if (tray.cls == com.rite.pillcounting.core.scanning.logic.TrayClass.CHUTE) {
+                        if (tray.cls == TrayClass.CHUTE) {
                             return@forEach
                         }
 
@@ -408,19 +408,29 @@ fun CameraPreviewSection(
                     // measured in original-image pixel space, which already tracks
                     // the display orientation, so the split is correct in both
                     // portrait and landscape.
-                    val targetCount = uiState.targetCount
+                    // Pills already captured/added in THIS session reduce how many
+                    // still need to be dispensed, so the green threshold must track
+                    // the REMAINING target, not the original target. Mirrors the
+                    // "already counted" total shown in InformationPanelSection.
+                    val alreadyCounted =
+                        if (uiState.scanType == CountType.REGULAR.toString()) {
+                            uiState.stockCountSessionTotal
+                        } else {
+                            uiState.txnDetailHistory.sumOf { it.count }
+                        }
+                    val targetCount = (uiState.targetCount - alreadyCounted).coerceAtLeast(0)
                     val excessCount = (pills.size - targetCount).coerceAtLeast(0)
                     val excessIndices: Set<Int> = if (excessCount <= 0) {
                         emptySet()
                     } else {
                         val chuteRect = trayDetections
-                            .firstOrNull { it.cls == com.rite.pillcounting.core.scanning.logic.TrayClass.CHUTE }
+                            .firstOrNull { it.cls == TrayClass.CHUTE }
                             ?.rect
                         // Fallback when the chute isn't segmented this frame: the
                         // bottom-centre of the tray, else of the frame (mirrors the
                         // Python POC).
                         val fallback = trayDetections
-                            .firstOrNull { it.cls == com.rite.pillcounting.core.scanning.logic.TrayClass.TRAY }
+                            .firstOrNull { it.cls == TrayClass.TRAY }
                             ?.rect
                             ?.let { Offset(it.centerX(), it.bottom) }
                             ?: Offset(actualFrameW / 2f, actualFrameH)
