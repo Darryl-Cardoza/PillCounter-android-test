@@ -51,10 +51,10 @@ class VerifyPinViewModel @Inject constructor(
      * Verifies the entered OTP against the backend.
      *
      * @param email User’s email address (for logging/debug).
-     * @param otp The 4-digit OTP entered by the user.
+     * @param otp The 6-digit OTP entered by the user.
      */
     fun verifyPin(email: String, otp: String) {
-        if (otp.length != 4) {
+        if (otp.length != 6) {
             _uiState.value = VerifyPinUiState.Error(
                 context.getString(R.string.error_invalid_otp)
             )

@@ -75,7 +75,7 @@ fun OTPScreen(
     var secondsRemaining by remember { mutableIntStateOf(timerDuration) }
     var isTimerRunning by remember { mutableStateOf(true) }
     var showExitConfirmationDialog by remember { mutableStateOf(false) }
-    val isOtpComplete = otp.length == 4
+    val isOtpComplete = otp.length == 6
 
     // Mask the email for privacy display
     val maskedEmail = remember(userEmail) { maskEmail(userEmail) }
@@ -147,7 +147,7 @@ fun OTPScreen(
                             otp = it
                             viewModel.resetState()
                         },
-                        boxCount = 4,
+                        boxCount = 6,
                         boxSize = 56.dp
                     )
 
