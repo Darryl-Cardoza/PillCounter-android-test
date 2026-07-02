@@ -1,6 +1,6 @@
 <resources>
     <!-- ================== APP INFO ================== -->
-    <string name="app_name">DistribuSûr</string>
+    <string name="app_name">DispenseSure</string>
     <string name="rite_title">RITE TECHNOLOGIES</string>
     <string name="version">Version</string>
 
