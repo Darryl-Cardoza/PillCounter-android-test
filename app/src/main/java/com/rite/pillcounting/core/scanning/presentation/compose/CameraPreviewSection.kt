@@ -239,7 +239,7 @@ fun CameraPreviewSection(
                 // live frame. Fades out the moment PreviewView reports STREAMING.
                 // No spinner — just a neutral fill so the warm-up reads as a calm
                 // dark screen rather than a "loading" state.
-                androidx.compose.animation.AnimatedVisibility(
+                AnimatedVisibility(
                     visible = !isPreviewStreaming,
                     enter = fadeIn(),
                     exit = fadeOut(),
