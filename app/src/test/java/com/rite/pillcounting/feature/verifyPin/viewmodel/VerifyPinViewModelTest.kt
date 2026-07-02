@@ -54,7 +54,7 @@ class VerifyPinViewModelTest {
     private lateinit var viewModel: VerifyPinViewModel
 
     private val email = "user@test.com"
-    private val otp = "1234"
+    private val otp = "123456"
 
     @Before
     fun setup() {
@@ -101,7 +101,7 @@ class VerifyPinViewModelTest {
     // ───────────────────────────── otp length guard ─────────────────────────────
 
     @Test
-    fun `verifyPin with otp length not 4 sets Error and does not call repository`() = runTest {
+    fun `verifyPin with otp length not 6 sets Error and does not call repository`() = runTest {
         every { context.getString(R.string.error_invalid_otp) } returns "invalid-otp"
 
         viewModel.verifyPin(email, "123")
