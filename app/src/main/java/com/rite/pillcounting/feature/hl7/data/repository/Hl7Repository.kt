@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.feature.hl7.data.repository
+package com.rite.pillcounting.feature.hl7.data.repository
 
 import android.annotation.SuppressLint
 import android.content.Context
@@ -34,7 +34,13 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import org.rite.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.model.HL7Message
+import org.rite.hl7.model.HL7MessageKind
+import org.rite.hl7.model.segment.INVSegment
+import org.rite.hl7.model.segment.ORCSegment
+import org.rite.hl7.model.segment.RXESegment
+import org.rite.hl7.model.segment.ZINSegment
+import org.rite.hl7.model.segment.ZPRSegment
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -76,8 +82,25 @@ class Hl7Repository @Inject constructor(
     }
 
 
-    fun handleReceivedMessage(message: CompleteHL7Message) {
+    /**
+     * Entry point for all inbound HL7 messages received from PMS.
+     * Uses the new hl7Core [HL7MessageKind] classifier instead of the old
+     * CompleteHL7Message property bag.
+     */
+    fun handleReceivedMessage(message: HL7Message) {
         val inboundType = classifyInboundMessage(message) ?: return
+
+        if (inboundType == MessageType.DISPENSE_REQUEST || inboundType == MessageType.EDIT_DISPENSE_REQUEST) {
+            val rxe = message.segment<RXESegment>(RXESegment.NAME)
+            val dispenseStr = rxe?.dispenseAmount?.trim()?.takeIf { it.isNotBlank() } ?: rxe?.giveAmountMinimum?.trim()
+            val parsedCount = dispenseStr?.toDoubleOrNull()?.toInt()
+            
+            if (parsedCount == null || parsedCount <= 0) {
+                logger.e("Invalid or missing dispense count: '$dispenseStr' in ${inboundType.name}. Rejecting message.")
+                throw IllegalArgumentException("Invalid or missing dispense count: $dispenseStr")
+            }
+        }
+
         scope.launch {
             when (inboundType) {
                 MessageType.DISPENSE_REQUEST ->
@@ -114,10 +137,14 @@ class Hl7Repository @Inject constructor(
         val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
             ?: return
 
+        val substitutedDrug = if (txn.isSubstitute) txn.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } else null
+        val scannedNdc = substitutedDrug?.ndc ?: drug.ndc
+
         val message = HL7MessageBuilder.buildDispenseMessage(
             txn = txn,
             txnDetails = txnDetails,
             drugCode = drug.ndc,
+            scannedDrugCode = scannedNdc,
             drugName = drug.drugName ?: "",
             pharmacistId = user?.userId,
             pharmacistName = listOfNotNull(user?.fName, user?.lName)
@@ -245,16 +272,23 @@ class Hl7Repository @Inject constructor(
         }
     }
 
-    private suspend fun handleRdeDispenseRequest(
-        message: CompleteHL7Message
-    ) {
-        val medication = message.medications.first()
+    // ─────────────────────────── INBOUND HANDLER: RDE^O11 (DISPENSE REQUEST) ───────────────────────────
 
-        val hl7Ndc = medication.drugCode.trim()
-        val hl7DrugName = medication.drugName
-        val targetCount = medication.requestedQty?.toIntOrNull()
-        val rxNo = message.order?.placerOrderId
+    private suspend fun handleRdeDispenseRequest(message: HL7Message) {
+        // Extract drug data from RXE segment (pharmacy encoded order)
+        val rxe = message.segment<RXESegment>(RXESegment.NAME)
+        val orc = message.segment<ORCSegment>(ORCSegment.NAME)
 
+        val hl7Ndc = rxe?.giveCode?.trim().orEmpty()
+        val hl7DrugName = rxe?.giveName.orEmpty()
+        val dispenseStr = rxe?.dispenseAmount?.trim()?.takeIf { it.isNotBlank() } ?: rxe?.giveAmountMinimum?.trim()
+        val targetCount = dispenseStr?.toDoubleOrNull()?.toInt()
+        val rxNo = orc?.placerOrderNumber?.takeIf { it.isNotBlank() }
+
+        if (hl7Ndc.isBlank()) {
+            logger.w("handleRdeDispenseRequest: NDC missing from RXE — ignoring message")
+            return
+        }
 
         // Local-first check
         val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
@@ -309,13 +343,14 @@ class Hl7Repository @Inject constructor(
 
         val drugId = finalDrug?.let { drugMasterDao.upsertPreservingId(it) }
 
+        // Priority from ZPR segment: ZPR|1|PRIORITY|<STAT|URGENT|ROUTINE|TIMED>
         val priority = TxnPriority.fromString(
-            message.customSegments
-                .firstOrNull { it.segmentType == "ZPR" && it.field2 == "PRIORITY" }
-                ?.field3
+            message.segment<ZPRSegment>(ZPRSegment.NAME)
+                ?.takeIf { it.qualifier == "PRIORITY" }
+                ?.priority
         )
 
-        val txnStatus = mapHl7OrderStatus(message.order?.orderStatus) ?: CountStatus.PARTIAL
+        val txnStatus = mapHl7OrderStatus(orc?.orderStatus) ?: CountStatus.PARTIAL
 
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
@@ -334,13 +369,10 @@ class Hl7Repository @Inject constructor(
         preferenceHelper.saveTxnId(txnId)
         insertZinContainerDetails(txnId, message)
 
-        val meds = message.medications
-        val notifBody = if (meds.size == 1) {
-            val med = meds[0]
-            val qty = med.requestedQty?.toIntOrNull() ?: 0
-            context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), med.drugName ?: "", qty)
+        val notifBody = if (targetCount != null && targetCount > 0) {
+            context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), hl7DrugName, targetCount)
         } else {
-            context.getString(R.string.hl7_notification_new_rx_multiple, rxNo.orEmpty(), meds.size)
+            context.getString(R.string.hl7_notification_new_rx_multiple, rxNo.orEmpty(), 1)
         }
         notifier.show(
             title = context.getString(R.string.hl7_notification_new_rx_title),
@@ -357,26 +389,28 @@ class Hl7Repository @Inject constructor(
         val targetCount: Int
     )
 
-    private suspend fun handleInrInventoryRequest(
-        message: CompleteHL7Message
-    ) {
-        logger.i("Handling INR Inventory Request with message: $message")
-        val inventoryItems = message.medications
-        if (inventoryItems.isEmpty()) {
-            logger.w("No inventory items found in HL7 message")
+    // ─────────────────────────── INBOUND HANDLER: INR^U04/U06 (INVENTORY REQUEST) ───────────────────────────
+
+    private suspend fun handleInrInventoryRequest(message: HL7Message) {
+        logger.i("Handling INR Inventory Request | msgId=${message.messageControlId}")
+
+        // INV segments carry the substance / drug info in an INR message
+        val invSegments = message.segments<INVSegment>(INVSegment.NAME)
+        if (invSegments.isEmpty()) {
+            logger.w("No INV segments found in HL7 message — ignoring")
             return
         }
 
         val resolvedItems = mutableListOf<ResolvedInventoryItem>()
 
-        for (inv in inventoryItems) {
-            val ndc = inv.drugCode?.trim().orEmpty()
-            val lot = ""
-            val expiry = ""
-            val targetCount = 0
+        for (inv in invSegments) {
+            val ndc = inv.substanceCode.trim()
+            val lot = inv.lotNumber.trim()
+            val expiry = inv.expirationDate.trim()
+            val targetCount = inv.inventoryOnHandQuantity.toIntOrNull() ?: 0
 
             if (ndc.isBlank()) {
-                logger.w("Skipping inventory item because NDC is missing: $inv")
+                logger.w("Skipping INV segment — NDC is blank")
                 continue
             }
 
@@ -414,7 +448,7 @@ class Hl7Repository @Inject constructor(
                 val drugInfo = drugRepository.getDrugInfoByNdc(request)
 
                 val resolvedDrugName = drugInfo?.genericName?.takeIf { it.isNotBlank() }
-                    ?: inv.drugName?.takeIf { it.isNotBlank() }
+                    ?: inv.substanceName.takeIf { it.isNotBlank() }
 
                 if (resolvedDrugName.isNullOrBlank()) {
                     logger.w("Skipping inventory item because API returned no usable drug name for NDC: $ndc")
@@ -469,7 +503,7 @@ class Hl7Repository @Inject constructor(
             isDeleted = false,
             note = null,
             bucketId = "",
-            requestIdFromPMS = message.header.messageControlId
+            requestIdFromPMS = message.messageControlId
         )
         val batchId = batchDao.insert(batch)
 
@@ -503,13 +537,17 @@ class Hl7Repository @Inject constructor(
         )
     }
 
-    private suspend fun insertZinContainerDetails(txnId: Long, message: CompleteHL7Message) {
-        val zinSegments = message.customSegments.filter {
-            it.segmentType == "ZIN" && it.field2 == "EXPECTED_ON_HAND"
-        }
+    /**
+     * Inserts ZIN|...|EXPECTED_ON_HAND|<count> detail rows into the transaction.
+     * Uses the new [ZINSegment] typed segment from hl7Core.
+     */
+    private suspend fun insertZinContainerDetails(txnId: Long, message: HL7Message) {
+        val zinSegments = message.segments<ZINSegment>(ZINSegment.NAME)
+            .filter { it.dispenseType == "EXPECTED_ON_HAND" }
+
         var inserted = false
         for (segment in zinSegments) {
-            val pillCount = segment.field3?.toIntOrNull() ?: continue
+            val pillCount = segment.quantity.toIntOrNull() ?: continue
             if (pillCount == 0) {
                 logger.i("ZIN EXPECTED_ON_HAND: skipping detail insert for txnId=$txnId because pillCount=0")
                 continue
@@ -531,44 +569,47 @@ class Hl7Repository @Inject constructor(
         }
     }
 
-    private fun classifyInboundMessage(
-        message: CompleteHL7Message
-    ): MessageType? {
-        return when {
-            // ORC|CA  — cancel an existing order
-            message.order?.orderControl == "CA" &&
-                    !message.order?.placerOrderId.isNullOrBlank() ->
+    // ─────────────────────────── MESSAGE CLASSIFICATION ───────────────────────────
+
+    /**
+     * Classifies an inbound [HL7Message] using the new hl7Core [HL7MessageKind] enum.
+     */
+    private fun classifyInboundMessage(message: HL7Message): MessageType? {
+        val orc = message.segment<ORCSegment>(ORCSegment.NAME)
+        val orderControl = orc?.orderControl?.uppercase()
+        val rxe = message.segment<RXESegment>(RXESegment.NAME)
+        val hasRxe = rxe != null
+
+        return when (message.kind) {
+            HL7MessageKind.CANCEL_ORDER ->
                 MessageType.CANCEL_ORDER
 
-            // ORC|XO  — change/edit an existing dispense order
-            message.messageType == "RDE" &&
-                    message.triggerEvent == "O11" &&
-                    message.order?.orderControl == "XO" &&
-                    !message.order?.placerOrderId.isNullOrBlank() &&
-                    message.medications.isNotEmpty() ->
-                MessageType.EDIT_DISPENSE_REQUEST
+            HL7MessageKind.DISPENSE_ORDER -> when {
+                orderControl == "XO" && !orc?.placerOrderNumber.isNullOrBlank() && hasRxe ->
+                    MessageType.EDIT_DISPENSE_REQUEST
+                hasRxe ->
+                    MessageType.DISPENSE_REQUEST
+                else -> null
+            }
 
-            // ORC|NW (or any other control) — new dispense request
-            message.messageType == "RDE" &&
-                    message.triggerEvent == "O11" &&
-                    message.medications.isNotEmpty() ->
-                MessageType.DISPENSE_REQUEST
-
-            message.messageType == "INR" &&
-                    message.triggerEvent == "U04" &&
-                    message.medications.isNotEmpty() ->
+            HL7MessageKind.INVENTORY_REQUEST,
+            HL7MessageKind.INVENTORY_RESPONSE ->
                 MessageType.INVENTORY_REQUEST
 
             else -> null
         }
     }
 
-    private suspend fun handleOrderCancellation(message: CompleteHL7Message) {
-        val rxNo = message.order?.placerOrderId ?: return
+    // ─────────────────────────── INBOUND HANDLER: ORC|CA (CANCEL) ───────────────────────────
+
+    private suspend fun handleOrderCancellation(message: HL7Message) {
+        val rxNo = message.segment<ORCSegment>(ORCSegment.NAME)?.placerOrderNumber ?: return
         logger.i("Received ORC|CA for rxNo=$rxNo — soft-deleting transaction")
         pillCountTxnDao.softDeleteByRxNo(rxNo)
         logger.i("Transaction with rxNo=$rxNo marked as deleted")
     }
+
+    // ─────────────────────────── INBOUND HANDLER: ORC|XO (EDIT) ───────────────────────────
 
     /**
      * Handles ORC|XO (change-order) messages from PMS.
@@ -583,11 +624,12 @@ class Hl7Repository @Inject constructor(
      * - [PillCountTxnEntity.targetCount] — from RXE quantity
      * - [PillCountTxnEntity.isSynced]    — reset to false so the updated result is re-sent
      */
-    private suspend fun handleOrderEdit(message: CompleteHL7Message) {
-        val rxNo = message.order?.placerOrderId ?: return
-        val medication = message.medications.firstOrNull() ?: return
+    private suspend fun handleOrderEdit(message: HL7Message) {
+        val orc = message.segment<ORCSegment>(ORCSegment.NAME) ?: return
+        val rxNo = orc.placerOrderNumber.takeIf { it.isNotBlank() } ?: return
+        val rxe = message.segment<RXESegment>(RXESegment.NAME) ?: return
 
-        val orderStatusRaw = message.order?.orderStatus?.uppercase()
+        val orderStatusRaw = orc.orderStatus.uppercase()
 
         logger.i("Received ORC|XO for rxNo=$rxNo orderStatus=$orderStatusRaw — looking up existing transaction")
 
@@ -611,9 +653,10 @@ class Hl7Repository @Inject constructor(
         }
 
         // 2. Resolve the updated drug (local DB first, then API fallback)
-        val hl7Ndc = medication.drugCode.trim()
-        val hl7DrugName = medication.drugName
-        val newTargetCount = medication.requestedQty?.toIntOrNull()
+        val hl7Ndc = rxe.giveCode.trim()
+        val hl7DrugName = rxe.giveName
+        val dispenseStr = rxe.dispenseAmount.trim().takeIf { it.isNotBlank() } ?: rxe.giveAmountMinimum.trim()
+        val newTargetCount = dispenseStr.toDoubleOrNull()?.toInt()
 
         val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
 
@@ -665,9 +708,9 @@ class Hl7Repository @Inject constructor(
 
         // 3. Parse priority from ZPR segment
         val newPriority = TxnPriority.fromString(
-            message.customSegments
-                .firstOrNull { it.segmentType == "ZPR" && it.field2 == "PRIORITY" }
-                ?.field3
+            message.segment<ZPRSegment>(ZPRSegment.NAME)
+                ?.takeIf { it.qualifier == "PRIORITY" }
+                ?.priority
         )
 
         // 4. Map order status and apply the edit
@@ -698,11 +741,13 @@ class Hl7Repository @Inject constructor(
             message = context.getString(
                 R.string.hl7_notification_edit_rx_updated,
                 rxNo,
-                resolvedDrug?.drugName ?: hl7DrugName ?: hl7Ndc,
+                resolvedDrug?.drugName ?: hl7DrugName,
                 newTargetCount ?: 0
             )
         )
     }
+
+    // ─────────────────────────── HELPERS ───────────────────────────
 
     /**
      * Maps an HL7 ORC-5 order status code to the app's [CountStatus].

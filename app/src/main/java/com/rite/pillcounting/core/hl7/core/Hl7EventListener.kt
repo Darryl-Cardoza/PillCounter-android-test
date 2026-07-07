@@ -1,6 +1,6 @@
 package com.rite.pillcounting.core.hl7.core
 
-import org.rite.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.model.HL7Message
 
 /**
  * Listener for observing the HL7 runtime lifecycle and message processing events.
@@ -14,11 +14,11 @@ interface Hl7EventListener {
     /**
      * Called when a raw HL7 message is successfully received and parsed.
      *
-     * @param parsed Parsed HL7 message model
+     * @param parsed Parsed HL7 message model (from hl7Core)
      * @param idempotencyKey Stable key used to prevent duplicate processing
      */
     fun onMessageReceived(
-        parsed: CompleteHL7Message,
+        parsed: HL7Message,
         idempotencyKey: String
     )
 

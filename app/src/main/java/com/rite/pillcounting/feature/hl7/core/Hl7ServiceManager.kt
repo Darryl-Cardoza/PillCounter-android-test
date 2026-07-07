@@ -4,7 +4,7 @@ package com.rite.pillcounting.feature.hl7.core
 import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.hl7.service.Hl7serviceHandler
 import com.rite.pillcounting.core.utils.logger.AppLogger
-import org.rite.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.model.HL7Message
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -96,9 +96,10 @@ class Hl7ServiceManager @Inject constructor(
 
 
     /**
-     * Send an HL7 message via bound service.
+     * Send a parsed HL7 message via the bound service.
+     * The [HL7Message] is encoded to wire format by the service layer.
      */
-    fun sendMessage(message: CompleteHL7Message): Result<Unit> {
+    fun sendMessage(message: HL7Message): Result<Unit> {
         return try {
             if (!serviceManager.isServiceStarted())
                 return Result.failure(IllegalStateException("HL7 service not started"))

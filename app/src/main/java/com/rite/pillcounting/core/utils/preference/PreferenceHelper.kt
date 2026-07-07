@@ -57,6 +57,7 @@ private const val KEY_HAZARDOUS_TRAY_COLOR = "key_hazardous_tray_color"
 private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
 private const val KEY_HL7_PILLCOUNTER_HOST = "key_hl7_pillcounter_host"
 private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
+private const val KEY_HL7_VERSION = "key_hl7_version"
 
 @Singleton
 class PreferenceHelper @Inject constructor(
@@ -524,5 +525,31 @@ class PreferenceHelper @Inject constructor(
         prefs.remove(KEY_HL7_PILLCOUNTER_HOST)
         prefs.putBoolean(KEY_HL7_CONFIG_FETCHED, false)
         logger.w("Cleared HL7 config from prefs")
+    }
+
+    // ─────────────────────────── HL7 VERSION ───────────────────────────
+
+    /**
+     * Saves the HL7 specification version used by the parser and builder.
+     * Common values: "2.3", "2.4", "2.5", "2.5.1".
+     * Defaults to [DEFAULT_HL7_VERSION] when not set.
+     */
+    fun saveHl7Version(version: String) {
+        prefs.putString(KEY_HL7_VERSION, version)
+        logger.i("Saved HL7 version: $version")
+    }
+
+    /**
+     * Returns the persisted HL7 version, defaulting to "2.5" if not yet configured.
+     */
+    fun getHl7Version(): String {
+        val version = prefs.getString(KEY_HL7_VERSION) ?: DEFAULT_HL7_VERSION
+        logger.d("Retrieved HL7 version: $version")
+        return version
+    }
+
+    companion object {
+        /** Default HL7 spec version used by parser and builder when not explicitly configured. */
+        const val DEFAULT_HL7_VERSION = "2.5"
     }
 }
