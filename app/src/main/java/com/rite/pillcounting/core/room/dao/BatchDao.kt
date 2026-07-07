@@ -209,10 +209,9 @@ interface BatchDao {
         b.requestIdFromPMS AS requestIdFromPMS,
         COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
     FROM batch b
-    LEFT JOIN pill_count_txn txn
+    LEFT JOIN stock_txn txn
         ON b.batchId = txn.batchId
         AND txn.isDeleted = 0
-        AND txn.localId = :userLocalId
     WHERE b.isDeleted = 0
       AND b.startDateTime BETWEEN :startDate AND :endDate
     GROUP BY b.batchId
@@ -221,8 +220,7 @@ interface BatchDao {
     )
     fun getBatchSummaries(
         startDate: Long,
-        endDate: Long,
-        userLocalId: Long
+        endDate: Long
     ): Flow<List<BatchSummaryDto>>
 
     @Query(
@@ -235,7 +233,7 @@ interface BatchDao {
         b.requestIdFromPMS AS requestIdFromPMS,
         COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
     FROM batch b
-    LEFT JOIN pill_count_txn txn
+    LEFT JOIN stock_txn txn
         ON b.batchId = txn.batchId
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
@@ -265,7 +263,7 @@ interface BatchDao {
         b.requestIdFromPMS AS requestIdFromPMS,
         COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
     FROM batch b
-    LEFT JOIN pill_count_txn txn
+    LEFT JOIN stock_txn txn
         ON b.batchId = txn.batchId
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
@@ -288,7 +286,7 @@ interface BatchDao {
         b.requestIdFromPMS AS requestIdFromPMS,
         COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
     FROM batch b
-    LEFT JOIN pill_count_txn txn
+    LEFT JOIN stock_txn txn
         ON b.batchId = txn.batchId
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0

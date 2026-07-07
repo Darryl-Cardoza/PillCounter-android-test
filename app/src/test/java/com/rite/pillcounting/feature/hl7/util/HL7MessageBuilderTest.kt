@@ -29,16 +29,12 @@ class HL7MessageBuilderTest {
         txnId: Long = 100L,
         rxNo: String? = null,
         barcodeImage: String? = null,
-        note: String? = "some note",
-        lotNo: String? = "LOT123",
-        expiry: String? = "20301231"
+        note: String? = "some note"
     ): PillCountTxnEntity = PillCountTxnEntity(
         txnId = txnId,
         countType = CountType.REGULAR,
         status = CountStatus.COMPLETED,
         note = note,
-        expiry = expiry,
-        lotNo = lotNo,
         barcodeImage = barcodeImage,
         rxNo = rxNo
     )
@@ -99,8 +95,10 @@ class HL7MessageBuilderTest {
         assertEquals("John", d.pharmacistGivenName)
         assertEquals("Counter1", d.deliverToLocation)
         assertEquals("some note", d.dispensingNotes)
-        assertEquals("LOT123", d.lotNumber)
-        assertEquals("20301231", d.expirationDate)
+        // Lot/expiry are no longer emitted on dispense after the stock-count normalization
+        // (they lived only on stock rows and were always null for dispense).
+        assertEquals(null, d.lotNumber)
+        assertEquals(null, d.expirationDate)
 
         // 2 detail OBX + 1 barcode OBX
         assertEquals(3, msg.obxSegments.size)

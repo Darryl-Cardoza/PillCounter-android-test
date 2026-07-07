@@ -23,9 +23,6 @@ import com.rite.pillcounting.core.room.models.enums.TxnPriority
  * @property targetCount  Expected/target count for reconciliation.
  * @property status       Transaction status (requires a TypeConverter).
  * @property note         Free-form note for the transaction.
- * @property expiry       Optional expiry (stored as string; consider epoch millis for strictness).
- * @property lotNo        Lot/batch number.
- * @property serialNo     GS1 serial number (AI 21) of the scanned unit, if any.
  * @property barcodeImage Path/URI to a barcode image, if captured.
  * @property isSubstitute Whether a substitute drug was used.
  * @property rxNo         Prescription number.
@@ -55,19 +52,12 @@ import com.rite.pillcounting.core.room.models.enums.TxnPriority
             parentColumns = ["drugId"],
             childColumns = ["substitutedDrugId"],
             onDelete = ForeignKey.SET_NULL
-        ),
-        ForeignKey(
-            entity = BatchEntity::class,
-            parentColumns = ["batchId"],
-            childColumns = ["batchId"],
-            onDelete = ForeignKey.SET_NULL
         )
     ],
     indices = [
         Index(value = ["localId"], name = "idx_txn_localId"),
         Index(value = ["drugId"], name = "idx_txn_drugId"),
         Index(value = ["substitutedDrugId"], name = "idx_txn_substitutedDrugId"),
-        Index(value = ["batchId"], name = "idx_txn_batchId"),
     ]
 )
 
@@ -84,10 +74,6 @@ data class PillCountTxnEntity(
     val status: CountStatus,
 
     val note: String? = null,
-    val expiry: String? = null,
-    val lotNo: String? = null,
-    /** GS1 serial number (AI 21) of the scanned unit, when present on the label. */
-    val serialNo: String? = null,
     val barcodeImage: String? = null,
     val isSubstitute: Boolean = false,
     val rxNo: String? = null,
@@ -104,9 +90,6 @@ data class PillCountTxnEntity(
     val isNdcVerified: Boolean? = null,
 
     val bucketId: String? = null,
-    val batchId: Long? = null,
-    val bottleQty: Int? = null,
-    val looseQty: Int? = null,
     val substitutedDrugId: Long? = null,
 
     val workflowStep: String? = null,

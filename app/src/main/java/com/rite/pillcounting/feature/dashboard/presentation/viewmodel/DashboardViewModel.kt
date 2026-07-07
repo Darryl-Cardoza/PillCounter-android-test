@@ -133,10 +133,14 @@ class DashboardViewModel @Inject constructor(
             val detail = current.userDetail ?: return@update current
             // Only update if the active terminal actually changed, to avoid
             // needless recompositions.
-            val currentActive = detail.terminals?.firstOrNull { it.isActive == true }?.terminalId
+            val currentActive = detail.settings?.terminals?.firstOrNull { it.isActive == true }?.terminalId
             val newActive = terminals.firstOrNull { it.isActive == true }?.terminalId
             if (currentActive == newActive) current
-            else current.copy(userDetail = detail.copy(terminals = terminals))
+            else current.copy(
+                userDetail = detail.copy(
+                    settings = (detail.settings ?: UserSettings()).copy(terminals = terminals)
+                )
+            )
         }
     }
 
@@ -254,7 +258,6 @@ class DashboardViewModel @Inject constructor(
             val completedBatchesFlow = batchDao.getBatchSummaries(
                 startDate = 0L,
                 endDate = Long.MAX_VALUE,
-                userLocalId = localId,
             )
 
             completedDispenseFlow.combine(completedBatchesFlow) { dispenses, batches ->
@@ -361,11 +364,11 @@ class DashboardViewModel @Inject constructor(
                             val entity = detail.toUserEntity(jwtUserId = uiUser.profile?.userId)
                             val localId = userDao.upsertPreservingLocalId(user = entity)
                             preferenceHelper.saveUserId(entity.userId)
-                            preferenceHelper.setKeyBucketList(payload.data?.profile?.bucket ?: emptyList())
+                            preferenceHelper.setKeyBucketList(payload.data?.settings?.bucket ?: emptyList())
                             preferenceHelper.setHl7Enabled(entity.isHl7Enable)
                             // Persist allow_local_storage so the HL7 sync flow knows whether to
                             // delete a dispense txn once it is completed and synced with the PMS.
-                            preferenceHelper.setAllowLocalStorage(detail.profile?.allowLocalStorage ?: true)
+                            preferenceHelper.setAllowLocalStorage(detail.settings?.allowLocalStorage ?: true)
                             // When the server has now disallowed local storage, clean up dispense
                             // transactions that were already synced (e.g. while the flag was still
                             // true). Runs on each auth/me response, so a true → false change takes
@@ -373,7 +376,7 @@ class DashboardViewModel @Inject constructor(
                             cleanupSyncedTransactionsIfNotAllowed()
 
                             // Save terminals to SharedPreferences
-                            detail.terminals?.let { terminals ->
+                            detail.settings?.terminals?.let { terminals ->
                                 preferenceHelper.saveTerminals(terminals)
                                 logger.i("Saved ${terminals.size} terminals to preferences")
 
@@ -564,8 +567,9 @@ private fun UserEntity.toUserDetail(
         notificationsEnabled = this.notifications,
         language = this.language,
         timezone = this.timezone,
+        terminals = terminals,
     )
-    return UserDetail(profile = profile, settings = settings, terminals = terminals)
+    return UserDetail(profile = profile, settings = settings)
 }
 
 /**
@@ -590,6 +594,6 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         timezone = this.settings?.timezone,
         notifications = this.settings?.notificationsEnabled,
         createdAt = System.currentTimeMillis(),
-        isHl7Enable = this.profile?.isPMSIntegrated ?: false
+        isHl7Enable = this.settings?.isPMSIntegrated ?: false
     )
 }

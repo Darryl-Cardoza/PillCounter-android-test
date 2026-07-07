@@ -6,7 +6,9 @@ import android.content.pm.PackageManager
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
@@ -51,6 +53,8 @@ class MainActivityViewModelTest {
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var txnDao: PillCountTxnDao
     private lateinit var batchDao: BatchDao
+    private lateinit var stockTxnDao: StockTxnDao
+    private lateinit var bottleInfoDao: BottleInfoDao
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
 
@@ -119,6 +123,8 @@ class MainActivityViewModelTest {
         preferenceHelper = mockk(relaxed = true)
         txnDao = mockk(relaxed = true)
         batchDao = mockk(relaxed = true)
+        stockTxnDao = mockk(relaxed = true)
+        bottleInfoDao = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
 
@@ -151,7 +157,7 @@ class MainActivityViewModelTest {
     }
 
     private fun createViewModel() =
-        MainActivityViewModel(repository, preferenceHelper, txnDao, batchDao, hl7ServiceManager, hl7EventHandler)
+        MainActivityViewModel(repository, preferenceHelper, txnDao, batchDao, stockTxnDao, bottleInfoDao, hl7ServiceManager, hl7EventHandler)
 
     // ─────────────────────────── init / theme loading ───────────────────────────
 

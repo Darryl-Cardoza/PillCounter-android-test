@@ -96,8 +96,11 @@ object HL7MessageBuilder {
                     pharmacistGivenName = pharmacistName,
                     deliverToLocation = location,
                     dispensingNotes = txn.note,
-                    lotNumber = txn.lotNo,
-                    expirationDate = txn.expiry
+                    // Lot/expiry are no longer captured on dispense transactions after the
+                    // stock-count normalization (they lived only on stock rows). Dispense
+                    // never populated them, so this preserves the previous (null) behavior.
+                    lotNumber = null,
+                    expirationDate = null
                 )
             ),
 

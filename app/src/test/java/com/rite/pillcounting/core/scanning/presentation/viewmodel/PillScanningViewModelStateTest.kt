@@ -1,9 +1,11 @@
 package com.rite.pillcounting.core.scanning.presentation.viewmodel
 
 import android.app.Application
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
@@ -50,6 +52,8 @@ class PillScanningViewModelStateTest {
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
+    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
@@ -73,6 +77,8 @@ class PillScanningViewModelStateTest {
             app = application,
             preferenceHelper = preferenceHelper,
             pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             userDao = userDao,
             pillCountTxnDetailsDao = pillCountTxnDetailsDao,
             locationProvider = locationProvider,

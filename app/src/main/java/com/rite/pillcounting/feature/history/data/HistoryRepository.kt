@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.history.data
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
@@ -17,7 +18,8 @@ import javax.inject.Inject
 
 class HistoryRepository @Inject constructor(
     private val dao: PillCountTxnDao,
-    private val batchDao: BatchDao
+    private val batchDao: BatchDao,
+    private val stockTxnDao: StockTxnDao
 ) {
 
     private fun LocalDate.toEpochRange(): Pair<Long, Long> {
@@ -52,7 +54,7 @@ class HistoryRepository @Inject constructor(
         val batchIds = batchDao.getBatchIdsByDate(startMillis, endMillis, isCompleted)
         if (batchIds.isNotEmpty()) {
             batchDao.softDeleteBatchesByDate(startMillis, endMillis, isCompleted)
-            dao.deleteTransactionsByBatchIds(batchIds)
+            stockTxnDao.deleteByBatchIds(batchIds)
         }
     }
 
@@ -65,7 +67,7 @@ class HistoryRepository @Inject constructor(
         val startMillis = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
         val endMillis = endDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
 
-        return batchDao.getBatchSummaries(startMillis, endMillis, userLocalId).map { dtos ->
+        return batchDao.getBatchSummaries(startMillis, endMillis).map { dtos ->
             dtos.map { dto ->
                 BatchSummary(
                     batchId = dto.batchId,

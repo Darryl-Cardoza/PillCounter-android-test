@@ -72,6 +72,13 @@ data class DispenseFlowUiState(
 
     val txnId: Long = 0L,
 
+    // Stock-count (normalized) session: set when a REGULAR loose-count line is created so
+    // the shared PillScanningViewModel can count into the BottleInfo line. Stock counts do
+    // not use pill_count_txn, so [txnId] stays 0 for them.
+    val stockTxnId: Long = 0L,
+    val stockBottleId: Long = 0L,
+    val stockDrugId: Long = 0L,
+
     val isHazardous: Boolean = false,
 
     // Stock-count only: shown when the user scans an RX label instead of an NDC container.

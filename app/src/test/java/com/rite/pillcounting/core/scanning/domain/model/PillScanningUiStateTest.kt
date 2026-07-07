@@ -146,33 +146,37 @@ class PillScanningUiStateTest {
     @Test
     fun componentN_returnValues() {
         val s = full()
-        assertEquals("FIXED", s.component1())
-        assertEquals("Crocin", s.component2())
-        assertEquals(100, s.component3())
-        assertEquals(120, s.component4())
-        assertEquals(20, s.component5())
-        assertEquals(s.txnDetailHistory, s.component6())
-        assertEquals(listOf(pill), s.component7())
-        assertEquals(listOf(pill), s.component8())
-        assertEquals(s.gloveDetections, s.component9())
-        assertTrue(s.component10())
-        assertTrue(s.component11())
-        assertTrue(s.component12())
-        assertTrue(s.component13())
-        assertTrue(s.component14())
-        assertTrue(s.component15())
-        assertTrue(s.component16())
-        assertTrue(s.component17())
-        assertEquals(640, s.component18())
-        assertEquals(480, s.component19())
-        assertTrue(s.component20())
-        assertEquals(3, s.component21())
-        assertTrue(s.component22())
-        assertEquals("err", s.component23())
-        assertTrue(s.component24())
-        assertTrue(s.component25())
-        assertTrue(s.component26())
-        assertEquals(50, s.component27())
-        assertEquals(TrayColor.WHITE, s.component28())
+        assertEquals("FIXED", s.component1())          // scanType
+        assertEquals("Crocin", s.component2())          // drugName
+        assertEquals("", s.component3())                // ndc
+        assertEquals("", s.component4())                // strength
+        assertEquals("", s.component5())                // dosageForm
+        assertEquals("", s.component6())                // bucket
+        assertEquals(100, s.component7())               // totalCount
+        assertEquals(120, s.component8())               // targetCount
+        assertEquals(20, s.component9())                // currentScanCount
+        assertEquals(s.txnDetailHistory, s.component10())
+        assertEquals(listOf(pill), s.component11())     // detectedPills
+        assertEquals(listOf(pill), s.component12())     // filteredPills
+        assertEquals(s.gloveDetections, s.component13())
+        assertTrue(s.component14())                     // isPaused
+        assertTrue(s.component15())                     // isLoading
+        assertTrue(s.component16())                     // restrictAdd
+        assertTrue(s.component17())                     // showConfirmDialog
+        assertTrue(s.component18())                     // showNoTransaction
+        assertTrue(s.component19())                     // showTargetCountDialog
+        assertTrue(s.component20())                     // showIdleOverlay
+        assertTrue(s.component21())                     // showNotesDialog
+        assertEquals(640, s.component22())              // imageFrameWidth
+        assertEquals(480, s.component23())              // imageFrameHeight
+        assertTrue(s.component24())                     // isAddCooldown
+        assertEquals(3, s.component25())                // addCount
+        assertTrue(s.component26())                     // showDialogForControl
+        assertEquals("err", s.component27())            // showErrorMessage
+        assertTrue(s.component28())                     // isHl7Txn
+        assertTrue(s.component29())                     // showCountMismatchDialog
+        assertTrue(s.component30())                     // showEndStockCountDialog
+        assertEquals(50, s.component31())               // stockCountSessionTotal
+        assertEquals(TrayColor.WHITE, s.component32())  // pendingTrayColorForClassification
     }
 }

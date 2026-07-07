@@ -39,6 +39,7 @@ android {
         buildConfigField(
             "String",
             "BASE_URL",
+//            "\"http://192.168.0.39:8000/\""
             "\"https://api.dispensesure.com/\""
         )
         ndk {

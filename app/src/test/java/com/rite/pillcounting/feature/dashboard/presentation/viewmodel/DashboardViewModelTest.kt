@@ -109,7 +109,7 @@ class DashboardViewModelTest {
         every {
             pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
         } returns flowOf(emptyList())
-        every { batchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
+        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
         coEvery { batchDao.getLatest() } returns null
     }
 
@@ -176,7 +176,6 @@ class DashboardViewModelTest {
         drugType: String? = null,
     ) = TxnWithDrugDto(
         txnId = txnId,
-        batchId = null,
         countType = CountType.FIXED,
         status = CountStatus.COMPLETED,
         pillCount = 7,
@@ -226,10 +225,14 @@ class DashboardViewModelTest {
             userId = userId,
             role = null,
             isVerified = true,
-            bucket = listOf("b1"),
         ),
-        settings = UserSettings(notificationsEnabled = true, language = "en", timezone = "UTC"),
-        terminals = terminals,
+        settings = UserSettings(
+            notificationsEnabled = true,
+            language = "en",
+            timezone = "UTC",
+            bucket = listOf("b1"),
+            terminals = terminals,
+        ),
     )
 
     // ─────────────────────────────── init / simple getters ───────────────────────────────
@@ -298,7 +301,7 @@ class DashboardViewModelTest {
         val detail = vm.uiState.value.userDetail
         assertEquals("First", detail?.profile?.fName)
         assertEquals("a@b.com", detail?.profile?.email)
-        assertEquals(terminals, detail?.terminals)
+        assertEquals(terminals, detail?.settings?.terminals)
         assertEquals("en", detail?.settings?.language)
     }
 
@@ -334,13 +337,13 @@ class DashboardViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        assertEquals("t1", vm.uiState.value.userDetail?.terminals?.first()?.terminalId)
+        assertEquals("t1", vm.uiState.value.userDetail?.settings?.terminals?.first()?.terminalId)
 
         val newTerminals = listOf(Terminal(terminalId = "t2", isActive = true))
         every { preferenceHelper.getTerminals() } returns newTerminals
         vm.refreshTerminalsFromPrefs()
 
-        assertEquals("t2", vm.uiState.value.userDetail?.terminals?.first()?.terminalId)
+        assertEquals("t2", vm.uiState.value.userDetail?.settings?.terminals?.first()?.terminalId)
     }
 
     @Test
@@ -454,7 +457,7 @@ class DashboardViewModelTest {
         every {
             pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
         } returns flowOf(completedDispense)
-        every { batchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(completedBatches)
+        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(completedBatches)
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -488,7 +491,7 @@ class DashboardViewModelTest {
         every {
             pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
         } returns flowOf(emptyList())
-        every { batchDao.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
+        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -499,7 +502,7 @@ class DashboardViewModelTest {
 
         // collected once even though selected twice (flowOf completes so the job is no longer
         // active; but the second call dispatches before the first completes in same loop).
-        verify(atLeast = 1) { batchDao.getBatchSummaries(any(), any(), any()) }
+        verify(atLeast = 1) { batchDao.getBatchSummaries(any(), any()) }
     }
 
     @Test
@@ -514,7 +517,7 @@ class DashboardViewModelTest {
         vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
         advanceUntilIdle()
 
-        verify(exactly = 0) { batchDao.getBatchSummaries(any(), any(), any()) }
+        verify(exactly = 0) { batchDao.getBatchSummaries(any(), any()) }
     }
 
     // ─────────────────────────────── fetchUserDetail branches ───────────────────────────────

@@ -3,9 +3,11 @@ package com.rite.pillcounting.feature.hl7.data.repository
 import android.content.Context
 import android.util.Log
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
@@ -74,6 +76,8 @@ class Hl7RepositoryTest {
     private lateinit var txnDetailsDao: PillCountTxnDetailsDao
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var pillCountTxnDao: PillCountTxnDao
+    private lateinit var stockTxnDao: StockTxnDao
+    private lateinit var bottleInfoDao: BottleInfoDao
     private lateinit var userDao: UserDao
     private lateinit var batchDao: BatchDao
     private lateinit var hl7MessageSender: Hl7MessageSender
@@ -104,6 +108,8 @@ class Hl7RepositoryTest {
         txnDetailsDao = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
         pillCountTxnDao = mockk(relaxed = true)
+        stockTxnDao = mockk(relaxed = true)
+        bottleInfoDao = mockk(relaxed = true)
         userDao = mockk(relaxed = true)
         batchDao = mockk(relaxed = true)
         hl7MessageSender = mockk(relaxed = true)
@@ -133,6 +139,8 @@ class Hl7RepositoryTest {
         txnDetailsDao = txnDetailsDao,
         preferenceHelper = preferenceHelper,
         pillCountTxnDao = pillCountTxnDao,
+        stockTxnDao = stockTxnDao,
+        bottleInfoDao = bottleInfoDao,
         userDao = userDao,
         batchDao = batchDao,
         hl7MessageSender = hl7MessageSender,
@@ -198,7 +206,6 @@ class Hl7RepositoryTest {
         txnId: Long = 1L,
         drugId: Long? = 5L,
         countType: CountType = CountType.FIXED,
-        batchId: Long? = null,
     ) = PillCountTxnEntity(
         txnId = txnId,
         localId = 1L,
@@ -206,7 +213,6 @@ class Hl7RepositoryTest {
         countType = countType,
         status = CountStatus.PARTIAL,
         rxNo = "RX1",
-        batchId = batchId,
     )
 
     // ─────────────────────────────── init / observe ───────────────────────────────
@@ -298,7 +304,7 @@ class Hl7RepositoryTest {
         coEvery { drugMasterDao.getDrugByNdc("12345") } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { batchDao.insert(any()) } returns 100L
-        coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 1L
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
 
         val msg = message(messageType = "INR", triggerEvent = "U04")
         repo.handleReceivedMessage(msg)
@@ -360,7 +366,7 @@ class Hl7RepositoryTest {
     fun `buildAndSendInventoryResponse success marks batch synced`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
-        coEvery { txnDao.getTxnsByBatchId(100L) } returns emptyList()
+        coEvery { bottleInfoDao.getByBatchId(100L) } returns emptyList()
         every { hl7MessageSender.sendRaw(any()) } returns Result.success(Unit)
 
         repo.buildAndSendInventoryResponse(100L)
@@ -372,7 +378,7 @@ class Hl7RepositoryTest {
     fun `buildAndSendInventoryResponse failure does not mark synced`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
-        coEvery { txnDao.getTxnsByBatchId(100L) } returns emptyList()
+        coEvery { bottleInfoDao.getByBatchId(100L) } returns emptyList()
         every { hl7MessageSender.sendRaw(any()) } returns Result.failure(RuntimeException("send fail"))
 
         repo.buildAndSendInventoryResponse(100L)
@@ -408,26 +414,26 @@ class Hl7RepositoryTest {
     @Test
     fun `resendPendingHl7Transactions fixed and regular branches`() = runTest(testDispatcher) {
         val repo = createRepo()
+        // Stock (REGULAR) counts no longer live in pill_count_txn; only FIXED (dispense) txns are
+        // resent here. REGULAR entries are a no-op — their HL7 responses are resent per-batch via
+        // resendPendingHl7BatchTransactions().
         val fixedTxn = txnEntity(txnId = 1L, countType = CountType.FIXED)
-        val regularWithBatch = txnEntity(txnId = 2L, countType = CountType.REGULAR, batchId = 100L)
-        val regularNoBatch = txnEntity(txnId = 3L, countType = CountType.REGULAR, batchId = null)
+        val regularTxn = txnEntity(txnId = 2L, countType = CountType.REGULAR)
         coEvery { pillCountTxnDao.getPendingHl7TxnOnce() } returns
-            listOf(fixedTxn, regularWithBatch, regularNoBatch)
+            listOf(fixedTxn, regularTxn)
 
         // FIXED -> buildAndSendSuccessfulDispense
         coEvery { txnDao.getById(1L) } returns txnEntity(txnId = 1L, drugId = 5L)
         coEvery { txnDetailsDao.getAllForTxn("1") } returns emptyList()
         coEvery { drugMasterDao.getDrugById(5L) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
-        // REGULAR with batch -> buildAndSendInventoryResponse
-        coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
-        coEvery { txnDao.getTxnsByBatchId(100L) } returns emptyList()
 
         repo.resendPendingHl7Transactions()
 
         verify(timeout = 3000) { preferenceHelper.saveSentMessageTxnId(1L) }
         verify(timeout = 3000) { hl7MessageSender.send(any()) }
-        coVerify(timeout = 3000) { batchDao.markBatchSynced(100L) }
+        // REGULAR is a no-op now: no inventory response is triggered from this path.
+        coVerify(exactly = 0) { batchDao.markBatchSynced(any()) }
     }
 
     // ─────────────────────────────── resendPendingHl7BatchTransactions ───────────────────────────────
@@ -460,7 +466,7 @@ class Hl7RepositoryTest {
                 )
             )
         coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
-        coEvery { txnDao.getTxnsByBatchId(100L) } returns emptyList()
+        coEvery { bottleInfoDao.getByBatchId(100L) } returns emptyList()
 
         repo.resendPendingHl7BatchTransactions()
 
@@ -609,13 +615,14 @@ class Hl7RepositoryTest {
         coEvery { drugMasterDao.getDrugByNdc("12345") } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { batchDao.insert(any()) } returns 100L
-        coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 1L
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
 
         val msg = message(messageType = "INR", triggerEvent = "U04")
         repo.handleReceivedMessage(msg)
 
         coVerify(timeout = 3000) { batchDao.insert(any()) }
-        coVerify(timeout = 3000) { pillCountTxnDao.upsertPreservingId(any()) }
+        // Stock counts now write to stock_txn (StockTxnEntity), not pill_count_txn.
+        coVerify(timeout = 3000) { stockTxnDao.upsertPreservingId(any()) }
         verify(timeout = 3000) { notifier.show(any(), any()) }
     }
 
@@ -640,7 +647,7 @@ class Hl7RepositoryTest {
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns drugInfo()
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 9L
         coEvery { batchDao.insert(any()) } returns 100L
-        coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 1L
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
 
         val msg = message(messageType = "INR", triggerEvent = "U04")
         repo.handleReceivedMessage(msg)
@@ -656,7 +663,7 @@ class Hl7RepositoryTest {
             drugInfo(genericName = null)
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 9L
         coEvery { batchDao.insert(any()) } returns 100L
-        coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 1L
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
 
         // med drugName is non-blank "Aspirin" so falls back to it
         val msg = message(messageType = "INR", triggerEvent = "U04")

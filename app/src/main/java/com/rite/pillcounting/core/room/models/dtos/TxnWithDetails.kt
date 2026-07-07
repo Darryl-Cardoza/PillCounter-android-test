@@ -11,8 +11,6 @@ data class TxnWithDetails(
     val drugId: Long,
     val ndc: String?,
     val targetCount: Int?,
-    val expiry: String?,
-    val lotNo: String?,
     val note: String?,
     val createdAt: Long,
     val barcodeImage: String?,

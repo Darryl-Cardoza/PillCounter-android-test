@@ -39,5 +39,11 @@ data class BatchEntity(
     val note: String? = null,
     val bucketId: String? = null,
     val requestIdFromPMS: String? = null,
-    val isSynced: Boolean = false
+    val isSynced: Boolean = false,
+
+    /** Number of distinct NDCs (drug groups) counted in this batch. */
+    val totalNdcs: Int? = null,
+
+    /** Display name of the user who ran the count. */
+    val userName: String? = null
 )

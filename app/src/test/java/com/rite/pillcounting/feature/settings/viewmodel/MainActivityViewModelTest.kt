@@ -2,7 +2,9 @@ package com.rite.pillcounting.feature.settings.viewmodel
 
 import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
@@ -43,6 +45,8 @@ class MainActivityViewModelTest {
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val txnDao: PillCountTxnDao = mockk(relaxed = true)
     private val batchDao: BatchDao = mockk(relaxed = true)
+    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
+    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val hl7ServiceManager: Hl7ServiceManager = mockk(relaxed = true)
     private val hl7EventHandler: Hl7EventHandler = mockk(relaxed = true)
 
@@ -68,6 +72,8 @@ class MainActivityViewModelTest {
             preferenceHelper = preferenceHelper,
             txnDao = txnDao,
             batchDao = batchDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             hl7ServiceManager = hl7ServiceManager,
             hl7EventHandler = hl7EventHandler,
         )

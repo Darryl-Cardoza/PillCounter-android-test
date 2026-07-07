@@ -428,12 +428,23 @@ fun DispenseFlowScreen(
         if (dispenseState.stage == DispenseStage.COUNTING) {
             Log.i(HAZARDOUS_TAG, "Stage → COUNTING | countType=$countType | txnId=${dispenseState.txnId} | drug=${dispenseState.drugName} | isHazardous=${dispenseState.isHazardous}")
             pillVm.resumePillDetection()
-            // For stock count (REGULAR) the NDC scan already happened in PRE_NDC,
-            // so skip the SCAN workflow step and start at pill counting directly.
-            pillVm.getDrugInfo(
-                forceStartStep = if (countType == CountType.REGULAR.toString()) StepState.TARGET_VERIFICATION else null
-            )
-            pillVm.showTxnInfo(countType)
+            // Stock count (REGULAR): no pill_count_txn — count loose pills into the
+            // already-created BottleInfo line via the stock-count session. Dispense (FIXED)
+            // keeps loading its txn from pill_count_txn via getDrugInfo.
+            if (countType == CountType.REGULAR.toString()) {
+                // Stock count: enterStockCountSession → startStockCounting sets up the
+                // synthetic txn info and header fields itself. Calling showTxnInfo() here
+                // would clobber it with a null DB lookup (no pill_count_txn row for stock).
+                pillVm.enterStockCountSession(
+                    bottleId = dispenseState.stockBottleId,
+                    stockTxnId = dispenseState.stockTxnId,
+                    batchId = dispenseState.batchId,
+                    drugId = dispenseState.stockDrugId,
+                )
+            } else {
+                pillVm.getDrugInfo(forceStartStep = null)
+                pillVm.showTxnInfo(countType)
+            }
             // Enable tray color detection for all transactions (hazardous and non-hazardous).
             Log.i(HAZARDOUS_TAG, "Calling setHazardousTransaction(isHazardous=${dispenseState.isHazardous})")
             pillVm.setHazardousTransaction(dispenseState.isHazardous)

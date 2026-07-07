@@ -71,7 +71,7 @@ internal fun buildTerminalUserLine(
     includeTerminal: Boolean = true,
 ): String {
     val profile = uiState.userDetail?.profile
-    val activeTerminalName = uiState.userDetail?.terminals
+    val activeTerminalName = uiState.userDetail?.settings?.terminals
         ?.firstOrNull { it.isActive == true }
         ?.terminalName
         ?.takeIf { it.isNotBlank() }

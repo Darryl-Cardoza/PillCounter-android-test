@@ -4,13 +4,16 @@ import android.annotation.SuppressLint
 import android.content.Context
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
@@ -44,6 +47,8 @@ class Hl7Repository @Inject constructor(
     private val txnDetailsDao: PillCountTxnDetailsDao,
     private val preferenceHelper: PreferenceHelper,
     private val pillCountTxnDao: PillCountTxnDao,
+    private val stockTxnDao: StockTxnDao,
+    private val bottleInfoDao: BottleInfoDao,
     private val userDao: UserDao,
     private val batchDao: BatchDao,
     private val hl7MessageSender: Hl7MessageSender,
@@ -136,7 +141,7 @@ class Hl7Repository @Inject constructor(
                 return
             }
 
-            val txns = txnDao.getTxnsByBatchId(batchId)
+            val txns = bottleInfoDao.getByBatchId(batchId)
             logger.i("txns count = ${txns.size}, txns = $txns")
 
             val message = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
@@ -172,10 +177,9 @@ class Hl7Repository @Inject constructor(
                             buildAndSendSuccessfulDispense(txnId = txn.txnId)
 //                        }
                     }
-                    CountType.REGULAR -> {
-                        val batchId = txn.batchId ?: continue
-                        buildAndSendInventoryResponse(batchId = batchId)
-                    }
+                    // Stock (REGULAR) counts no longer live in pill_count_txn; their pending
+                    // HL7 responses are resent per-batch via resendPendingHl7BatchTransactions().
+                    CountType.REGULAR -> Unit
                 }
             }
         }
@@ -470,24 +474,26 @@ class Hl7Repository @Inject constructor(
         val batchId = batchDao.insert(batch)
 
         for (item in resolvedItems) {
-            val txn = PillCountTxnEntity(
-                localId = preferenceHelper.getLocalId(),
+            val txn = StockTxnEntity(
                 drugId = item.drugId,
                 countType = CountType.REGULAR,
-                targetCount = item.targetCount,
                 status = CountStatus.PARTIAL,
-                isComingFromHL7 = true,
-                isSynced = false,
-                isNdcVerified = false,
                 batchId = batchId
             )
 
-            val txnId = pillCountTxnDao.upsertPreservingId(txn)
+            val txnId = stockTxnDao.upsertPreservingId(txn)
 
             logger.i(
-                "Inserted transaction for NDC: ${item.ndc}, drugId: ${item.drugId}, txnId: $txnId, lotNo: ${item.lot}, expiry: ${item.expiry}, targetCount: ${item.targetCount}"
+                "Inserted stock txn for NDC: ${item.ndc}, drugId: ${item.drugId}, txnId: $txnId, lotNo: ${item.lot}, expiry: ${item.expiry}, targetCount: ${item.targetCount}"
             )
         }
+
+        // Stock txns added → persist the batch's live NDC total and running user.
+        stockTxnDao.refreshBatchTotalNdcs(batchId)
+        stockTxnDao.updateBatchUserName(
+            batchId,
+            preferenceHelper.getRecentLogins().firstOrNull() ?: preferenceHelper.getUserId()
+        )
 
         logger.i("Processed ${resolvedItems.size} inventory items for batchId: $batchId")
 

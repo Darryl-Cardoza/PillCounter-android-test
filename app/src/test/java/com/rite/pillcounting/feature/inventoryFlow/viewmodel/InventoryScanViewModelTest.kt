@@ -4,8 +4,9 @@ import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import androidx.lifecycle.SavedStateHandle
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
-import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
@@ -51,7 +52,8 @@ class InventoryScanViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val batchDao: BatchDao = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
+    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
@@ -70,7 +72,7 @@ class InventoryScanViewModelTest {
     @Before
     fun setup() {
         every { hl7EventHandler.connectionState } returns MutableStateFlow(false)
-        every { pillCountTxnDao.observeByBatchId(any()) } returns flowOf(emptyList())
+        every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
         viewModel = createViewModel()
     }
 
@@ -80,7 +82,8 @@ class InventoryScanViewModelTest {
     private fun createViewModel(batchId: Long = BATCH_ID) = InventoryScanViewModel(
         savedStateHandle = SavedStateHandle(mapOf("batch_id" to batchId)),
         batchDao = batchDao,
-        pillCountTxnDao = pillCountTxnDao,
+        stockTxnDao = stockTxnDao,
+        bottleInfoDao = bottleInfoDao,
         drugMasterDao = drugMasterDao,
         preferenceHelper = preferenceHelper,
         barcodeDecoder = barcodeDecoder,
@@ -94,7 +97,7 @@ class InventoryScanViewModelTest {
      * - isGs1Barcode → false (GTIN path via toGtin14)
      * - toGtin14 → ndc (identity, already 14 digits)
      * - getDrugByGtin → local DrugMasterEntity found (skips API)
-     * - findSealedTxnInBatch → null (no existing sealed txn)
+     * - findByDrugInBatch / findLine → null (no existing stock txn / bottle line; relaxed default)
      * - getDrugIdByNdc → 1L (needed by persistActive to avoid error)
      */
     private fun setupScanMocks(ndc: String = TEST_NDC) {
@@ -102,7 +105,8 @@ class InventoryScanViewModelTest {
         every { barcodeDecoder.isGs1Barcode(ndc) } returns false
         every { barcodeDecoder.toGtin14(ndc) } returns ndc
         coEvery { drugMasterDao.getDrugByGtin(ndc) } returns drug
-        coEvery { pillCountTxnDao.findSealedTxnInBatch(any(), any(), any(), any()) } returns null
+        coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
+        coEvery { bottleInfoDao.findLine(any(), any(), any()) } returns null
         coEvery { drugMasterDao.getDrugIdByNdc(ndc) } returns 1L
     }
 
@@ -287,7 +291,7 @@ class InventoryScanViewModelTest {
             txnId = 1L, drugId = 1L, drugName = "Aspirin", ndc = TEST_NDC,
             lotNo = null, expiry = null, bottleQty = 1, looseQty = 0, packageQty = 10
         )
-        every { pillCountTxnDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
+        every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
 
         viewModel.uiState.test {
             awaitItem()
@@ -310,7 +314,7 @@ class InventoryScanViewModelTest {
             txnId = 1L, drugId = 1L, drugName = "Aspirin", ndc = TEST_NDC,
             lotNo = null, expiry = null, bottleQty = 1, looseQty = 0, packageQty = 10
         )
-        every { pillCountTxnDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
+        every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
 
         viewModel.uiState.test {
             awaitItem()

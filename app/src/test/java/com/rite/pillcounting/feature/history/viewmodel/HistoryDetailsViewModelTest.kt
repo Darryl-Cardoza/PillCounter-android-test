@@ -55,8 +55,6 @@ class HistoryDetailsViewModelTest {
             drugId = 100L,
             ndc = "12345",
             targetCount = 10,
-            expiry = null,
-            lotNo = null,
             note = null,
             createdAt = 1_000_000L,
             barcodeImage = null,
