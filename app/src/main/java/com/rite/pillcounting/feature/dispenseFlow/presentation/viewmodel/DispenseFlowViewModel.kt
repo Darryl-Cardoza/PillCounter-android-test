@@ -1066,6 +1066,7 @@ class DispenseFlowViewModel @Inject constructor(
                 scanType = CountType.FIXED.name,
                 queueItems = it.queueItems,
                 selectedQueueFilter = it.selectedQueueFilter ?: KpiFilter.DISP_PENDING,
+                initResolved = true,
             )
         }
     }
@@ -1078,13 +1079,14 @@ class DispenseFlowViewModel @Inject constructor(
                 scanType = CountType.FIXED.name,
                 queueItems = it.queueItems,
                 selectedQueueFilter = it.selectedQueueFilter ?: KpiFilter.DISP_PENDING,
+                initResolved = true,
             )
         }
     }
 
     private suspend fun hasPendingDispenseItems(): Boolean {
         val localId = preferenceHelper.getLocalId()
-        return pillCountTxnDao.countPartialByCountType(
+        return pillCountTxnDao.countPartialByIsDispense(
             isDispense = true,
             partialStatus = CountStatus.PARTIAL,
             userLocalId = localId,
@@ -1138,7 +1140,7 @@ class DispenseFlowViewModel @Inject constructor(
         queueObserverJob?.cancel()
         queueObserverJob = viewModelScope.launch(Dispatchers.IO) {
             val localId = preferenceHelper.getLocalId()
-            pillCountTxnDao.observePartialByCountType(
+            pillCountTxnDao.observePartialByIsDispense(
                 isDispense = true,
                 partialStatus = CountStatus.PARTIAL,
                 userLocalId = localId,

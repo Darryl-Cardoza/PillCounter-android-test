@@ -46,7 +46,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
 
     private fun observeUnsyncedDispense() {
         viewModelScope.launch {
-            pillCountTxnDao.observeUnsyncedByCountType(
+            pillCountTxnDao.observeUnsyncedByIsDispense(
                 isDispense = true,
                 type = StepState.TARGET_VERIFICATION.toString()
             )

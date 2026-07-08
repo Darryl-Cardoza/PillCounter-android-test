@@ -178,7 +178,7 @@ interface PillCountTxnDao {
     """
     )
 
-    fun observePartialByCountType(
+    fun observePartialByIsDispense(
         isDispense: Boolean,
         partialStatus: CountStatus = CountStatus.PARTIAL,
         userLocalId: Long,
@@ -716,7 +716,7 @@ interface PillCountTxnDao {
     ORDER BY txn.createdAt DESC
     """
     )
-    fun observeUnsyncedByCountType(
+    fun observeUnsyncedByIsDispense(
         isDispense: Boolean,
         completeStatus: CountStatus = CountStatus.COMPLETED,
         forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED,
@@ -747,7 +747,7 @@ interface PillCountTxnDao {
       AND localId = :userLocalId
     """
     )
-    suspend fun countPartialByCountType(
+    suspend fun countPartialByIsDispense(
         isDispense: Boolean,
         partialStatus: CountStatus = CountStatus.PARTIAL,
         userLocalId: Long,

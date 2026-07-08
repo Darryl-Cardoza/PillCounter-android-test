@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.feature.dashboard.presentation
+package com.rite.pillcounting.feature.dashboard.presentation
 
 import Screen
 import android.app.Activity
@@ -25,6 +25,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
+import com.rite.pillcounting.core.utils.compose.GlobalLoadingOverlay
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.presentation.model.DashboardVariantParams
@@ -288,4 +289,9 @@ fun DashboardScreen(
             onCancel = { viewModel.clearPmsCertPin() }
         )
     }
+
+    GlobalLoadingOverlay(
+        isVisible = uiState.isLoadingQueue,
+        message = stringResource(R.string.loading_transactions),
+    )
 }

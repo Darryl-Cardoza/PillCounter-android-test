@@ -56,4 +56,7 @@ data class DashboardUiState(
      * to avoid unnecessary DB work on first paint.
      */
     val recentActivity: List<QueueItem> = emptyList(),
+
+    /** Loading state for queue/transaction fetches from database. */
+    val isLoadingQueue: Boolean = false,
 )

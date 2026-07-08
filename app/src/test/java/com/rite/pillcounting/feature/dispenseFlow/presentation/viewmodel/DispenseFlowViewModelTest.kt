@@ -984,24 +984,26 @@ class DispenseFlowViewModelTest {
     fun `enterQueueMode sets QUEUE stage and default filter`() = runTest(testDispatcher) {
         every { preferenceHelper.getLocalId() } returns 1L
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         val vm = createViewModel()
         vm.enterQueueMode()
         advanceUntilIdle()
         assertEquals(DispenseStage.QUEUE, vm.uiState.value.stage)
         assertEquals(KpiFilter.DISP_PENDING, vm.uiState.value.selectedQueueFilter)
+        assertEquals(true, vm.uiState.value.initResolved)
     }
 
     @Test
     fun `resetToQueue sets QUEUE stage`() = runTest(testDispatcher) {
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         val vm = createViewModel()
         vm.resetToQueue()
         advanceUntilIdle()
         assertEquals(DispenseStage.QUEUE, vm.uiState.value.stage)
+        assertEquals(true, vm.uiState.value.initResolved)
     }
 
     @Test
@@ -1013,7 +1015,7 @@ class DispenseFlowViewModelTest {
             priority = TxnPriority.High, isHazardous = true,
         )
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(listOf(dto))
         val vm = createViewModel()
         vm.enterQueueMode()
@@ -1030,10 +1032,10 @@ class DispenseFlowViewModelTest {
     @Test
     fun `resetToQueueOrNavigateDashboard with pending resets queue`() = runTest(testDispatcher) {
         coEvery {
-            pillCountTxnDao.countPartialByCountType(any(), any(), any())
+            pillCountTxnDao.countPartialByIsDispense(any(), any(), any())
         } returns 2
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         val vm = createViewModel()
         vm.resetToQueueOrNavigateDashboard()
@@ -1044,7 +1046,7 @@ class DispenseFlowViewModelTest {
     @Test
     fun `resetToQueueOrNavigateDashboard no pending navigates dashboard`() = runTest(testDispatcher) {
         coEvery {
-            pillCountTxnDao.countPartialByCountType(any(), any(), any())
+            pillCountTxnDao.countPartialByIsDispense(any(), any(), any())
         } returns 0
         val vm = createViewModel()
         vm.resetToQueueOrNavigateDashboard()

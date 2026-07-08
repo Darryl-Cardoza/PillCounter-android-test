@@ -38,6 +38,7 @@
     <string name="nothing_here_yet">Nothing here yet</string>
     <string name="all_caught_up">You are all caught up!</string>
     <string name="no_pending_tasks">No pending tasks right now</string>
+    <string name="loading_transactions">Loading transactions...</string>
     <string name="pms_status_connected">PMS Connected</string>
     <string name="pms_status_disconnected">PMS Disconnected</string>
     <string name="kpi_disp_short">Disp.</string>

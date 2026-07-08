@@ -104,7 +104,7 @@ class DashboardViewModelTest {
 
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 5L
-        every { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(emptyList())
         every {
             pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
@@ -256,7 +256,7 @@ class DashboardViewModelTest {
         createViewModel()
         advanceUntilIdle()
 
-        verify(exactly = 0) { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) }
+        verify(exactly = 0) { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) }
     }
 
     @Test
@@ -377,7 +377,7 @@ class DashboardViewModelTest {
             batchSummary(batchId = 10, createdAt = 2, requestIdFromPMS = "pms-1"),
             batchSummary(batchId = 11, createdAt = 4, requestIdFromPMS = null),
         )
-        every { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) } returns flowOf(dispense)
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(dispense)
         every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(batches)
 
         val vm = createViewModel()
@@ -407,7 +407,7 @@ class DashboardViewModelTest {
             batchSummary(batchId = 10, createdAt = 2, requestIdFromPMS = "pms"),
             batchSummary(batchId = 11, createdAt = 4, requestIdFromPMS = null),
         )
-        every { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) } returns flowOf(dispense)
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(dispense)
         every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(batches)
 
         val vm = createViewModel()
@@ -609,7 +609,7 @@ class DashboardViewModelTest {
         advanceUntilIdle()
 
         // observeQueue(localId=9) invoked from fetch path.
-        verify { pillCountTxnDao.observePartialByCountType(any(), any(), 9L, any()) }
+        verify { pillCountTxnDao.observePartialByIsDispense(any(), any(), 9L, any()) }
         verify { preferenceHelper.saveLocalId(9L) }
         assertEquals("First", vm.uiState.value.userDetail?.profile?.fName)
     }

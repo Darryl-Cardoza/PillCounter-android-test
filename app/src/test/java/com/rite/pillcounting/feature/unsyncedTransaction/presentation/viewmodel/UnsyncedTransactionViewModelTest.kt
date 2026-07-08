@@ -63,7 +63,7 @@ class UnsyncedTransactionViewModelTest {
 
         // Sensible defaults so the init observers do not blow up.
         every {
-            pillCountTxnDao.observeUnsyncedByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observeUnsyncedByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         every { batchDao.observeUnsyncedCompletedBatches() } returns flowOf(emptyList())
         every { hl7EventHandler.connectionState } returns connectionState
@@ -103,7 +103,7 @@ class UnsyncedTransactionViewModelTest {
     fun `observeUnsyncedDispense maps txn to CountItem with non-null drugName`() =
         runTest(testDispatcher) {
             every {
-                pillCountTxnDao.observeUnsyncedByCountType(any(), any(), any(), any())
+                pillCountTxnDao.observeUnsyncedByIsDispense(any(), any(), any(), any())
             } returns flowOf(listOf(pillCount(drugName = "Aspirin", targetCount = 50)))
 
             val vm = createViewModel()
@@ -134,7 +134,7 @@ class UnsyncedTransactionViewModelTest {
     fun `observeUnsyncedDispense maps null drugName to empty and null target to zero`() =
         runTest(testDispatcher) {
             every {
-                pillCountTxnDao.observeUnsyncedByCountType(any(), any(), any(), any())
+                pillCountTxnDao.observeUnsyncedByIsDispense(any(), any(), any(), any())
             } returns flowOf(listOf(pillCount(drugName = null, targetCount = null)))
 
             val vm = createViewModel()
@@ -148,7 +148,7 @@ class UnsyncedTransactionViewModelTest {
     @Test
     fun `observeUnsyncedDispense catch keeps default empty list`() = runTest(testDispatcher) {
         every {
-            pillCountTxnDao.observeUnsyncedByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observeUnsyncedByIsDispense(any(), any(), any(), any())
         } returns flow { throw RuntimeException("dispense error") }
 
         val vm = createViewModel()

@@ -164,7 +164,9 @@ class DashboardViewModel @Inject constructor(
      */
     private fun observeQueue(localId: Long = preferenceHelper.getLocalId()) {
         viewModelScope.launch(Dispatchers.IO) {
-            val dispenseFlow = pillCountTxnDao.observePartialByCountType(
+            _uiState.update { it.copy(isLoadingQueue = true) }
+
+            val dispenseFlow = pillCountTxnDao.observePartialByIsDispense(
                 isDispense = true,
                 partialStatus = CountStatus.PARTIAL,
                 userLocalId = localId,
@@ -202,6 +204,7 @@ class DashboardViewModel @Inject constructor(
                     state.copy(
                         queue = applyKpiFilter(combined, state.activeKpiFilter),
                         kpiCounts = counts,
+                        isLoadingQueue = false,
                     )
                 }
             }
@@ -246,6 +249,8 @@ class DashboardViewModel @Inject constructor(
         if (localId == 0L) return
 
         recentActivityJob = viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isLoadingQueue = true) }
+
             val completedDispenseFlow = pillCountTxnDao.getTransactionsForDateRange(
                 startDate = 0L,
                 endDate = Long.MAX_VALUE,
@@ -288,7 +293,7 @@ class DashboardViewModel @Inject constructor(
                     .map { QueueItem.Inventory(batch = it) }
                 (dispenseItems + inventoryItems).sortedByDescending { it.createdAt }
             }.collect { combined ->
-                _uiState.update { it.copy(recentActivity = combined) }
+                _uiState.update { it.copy(recentActivity = combined, isLoadingQueue = false) }
             }
         }
     }
