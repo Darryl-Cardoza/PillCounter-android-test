@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
+package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
@@ -16,6 +16,7 @@ import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.utils.compose.ContainerStatus
@@ -68,6 +69,7 @@ class DispenseFlowViewModel @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
     private val stockTxnDao: StockTxnDao,
     private val bottleInfoDao: BottleInfoDao,
+    private val drugImageDownloader: DrugImageDownloader,
 ) : ViewModel() {
 
     /**
@@ -157,7 +159,7 @@ class DispenseFlowViewModel @Inject constructor(
     private val _uiState = MutableStateFlow(DispenseFlowUiState())
     val uiState: StateFlow<DispenseFlowUiState> = _uiState.asStateFlow()
 
-    private var countType: CountType = CountType.FIXED
+    private var isDispense: Boolean = true
     private var queueObserverJob: Job? = null
 
     // Timestamp of the last VIAL RX-mismatch toast, used to debounce repeated
@@ -165,9 +167,10 @@ class DispenseFlowViewModel @Inject constructor(
     private var lastVialMismatchToastAt: Long = 0L
 
     fun setCountType(type: String) {
-        countType = runCatching { CountType.valueOf(type) }.getOrDefault(CountType.FIXED)
+        val typeEnum = runCatching { CountType.valueOf(type) }.getOrDefault(CountType.FIXED)
+        isDispense = typeEnum == CountType.FIXED
         // Stock count has no RX label — start directly at container (NDC) scanning.
-        val initialStage = if (countType == CountType.REGULAR) DispenseStage.PRE_NDC else DispenseStage.PRE_RX
+        val initialStage = if (!isDispense) DispenseStage.PRE_NDC else DispenseStage.PRE_RX
         _uiState.update { it.copy(scanType = type, stage = initialStage) }
     }
 
@@ -402,6 +405,10 @@ class DispenseFlowViewModel @Inject constructor(
             null
         } ?: return null
 
+        val imagePath = drugImageDownloader.downloadAndSave(
+            url = drugInfo.imageUrl,
+            drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
+        )
         drugMasterDao.upsertPreservingId(
             DrugMasterEntity(
                 ndc = drugInfo.ndc,
@@ -412,6 +419,7 @@ class DispenseFlowViewModel @Inject constructor(
                 isHazardous = drugInfo.isHazardous ?: false,
                 strength = drugInfo.strength,
                 dosageForm = drugInfo.dosageForm,
+                drugImagePath = imagePath,
             )
         )
         return drugInfo.ndc
@@ -493,7 +501,7 @@ class DispenseFlowViewModel @Inject constructor(
                     // (no batchId) where no txn exists yet. When coming from the
                     // batch "Scan Pills" flow the batchId is always set, so skip
                     // the sheet and advance straight to COUNTING.
-                    val needsSheet = countType == CountType.REGULAR &&
+                    val needsSheet = !isDispense &&
                             _uiState.value.txnId == 0L &&
                             _uiState.value.batchId == 0L
                     _uiState.update {
@@ -529,6 +537,10 @@ class DispenseFlowViewModel @Inject constructor(
 
                 val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() }
                     ?: "Unknown Drug"
+                val imagePath = drugImageDownloader.downloadAndSave(
+                    url = drugInfo.imageUrl,
+                    drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
+                )
                 drugMasterDao.upsertPreservingId(
                     DrugMasterEntity(
                         ndc = drugInfo.ndc,
@@ -539,6 +551,7 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drugInfo.isHazardous ?: false,
                         strength = drugInfo.strength,
                         dosageForm = drugInfo.dosageForm,
+                        drugImagePath = imagePath,
                     )
                 )
 
@@ -577,7 +590,7 @@ class DispenseFlowViewModel @Inject constructor(
                     return@launch
                 }
 
-                val needsSheet = countType == CountType.REGULAR &&
+                val needsSheet = !isDispense &&
                         _uiState.value.txnId == 0L &&
                         _uiState.value.batchId == 0L
                 _uiState.update {
@@ -633,7 +646,7 @@ class DispenseFlowViewModel @Inject constructor(
             val txn = PillCountTxnEntity(
                 localId = preferenceHelper.getLocalId(),
                 drugId = drugId,
-                countType = countType,
+                isDispense = isDispense,
                 status = CountStatus.PARTIAL,
                 barcodeImage = state.barcodeImagePath,
                 isNdcVerified = false,
@@ -675,7 +688,7 @@ class DispenseFlowViewModel @Inject constructor(
      * straight match.
      */
     fun confirmSubstitute() {
-        val needsSheet = countType == CountType.REGULAR &&
+        val needsSheet = !isDispense &&
                 _uiState.value.txnId == 0L &&
                 _uiState.value.batchId == 0L
         _uiState.update {
@@ -698,7 +711,7 @@ class DispenseFlowViewModel @Inject constructor(
             // No pre-existing txn: batch "Scan Pills" flow where no active NDC
             // was staged. Create a fresh PARTIAL txn scoped to this batch so
             // the pill-count step has a real txn to accumulate counts against.
-            if (countType != CountType.REGULAR || state.batchId == 0L) return
+            if (isDispense || state.batchId == 0L) return
             val ndc = state.ndcScannedValue.ifBlank { state.ndc }
             // The drug row was already upserted with full info during the NDC scan
             // (local match / server lookup), so only resolve its id here. Re-upserting
@@ -741,6 +754,9 @@ class DispenseFlowViewModel @Inject constructor(
         val txn = pillCountTxnDao.getById(txnId) ?: return
         val isSubstitute = state.isSubstituteConfirmed
         val substitutedDrugId = if (isSubstitute && state.ndcScannedValue.isNotBlank()) {
+            // The image was already downloaded during the NDC scan step (onNdcBarcodeRead).
+            // Carry that path forward so the upsert doesn't overwrite it with null.
+            val existingImagePath = drugMasterDao.getDrugByNdc(state.ndcScannedValue)?.drugImagePath
             drugMasterDao.upsertPreservingId(
                 DrugMasterEntity(
                     ndc = state.ndcScannedValue,
@@ -750,6 +766,7 @@ class DispenseFlowViewModel @Inject constructor(
                     isHazardous = state.isHazardous,
                     strength = state.ndcStrength,
                     dosageForm = state.ndcDosageForm,
+                    drugImagePath = existingImagePath,
                 )
             )
         } else null
@@ -839,7 +856,7 @@ class DispenseFlowViewModel @Inject constructor(
         // SEALED bottles are immediately complete — bottleQty = 1, status = COMPLETED,
         // then navigate back to the batch. OPENED bottles are PARTIAL and proceed to
         // COUNTING so the user can count pills.
-        if (countType == CountType.REGULAR && txnId == 0L) {
+        if (!isDispense && txnId == 0L) {
             viewModelScope.launch {
                 val isSealed = state.selectedContainerStatus == ContainerStatus.SEALED
                 val ndc = state.ndcScannedValue.ifBlank { state.ndc }
@@ -1068,7 +1085,7 @@ class DispenseFlowViewModel @Inject constructor(
     private suspend fun hasPendingDispenseItems(): Boolean {
         val localId = preferenceHelper.getLocalId()
         return pillCountTxnDao.countPartialByCountType(
-            countType = CountType.FIXED,
+            isDispense = true,
             partialStatus = CountStatus.PARTIAL,
             userLocalId = localId,
         ) > 0
@@ -1122,7 +1139,7 @@ class DispenseFlowViewModel @Inject constructor(
         queueObserverJob = viewModelScope.launch(Dispatchers.IO) {
             val localId = preferenceHelper.getLocalId()
             pillCountTxnDao.observePartialByCountType(
-                countType = CountType.FIXED,
+                isDispense = true,
                 partialStatus = CountStatus.PARTIAL,
                 userLocalId = localId,
                 type = StepState.TARGET_VERIFICATION,

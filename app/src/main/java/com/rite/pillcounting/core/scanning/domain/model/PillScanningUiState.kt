@@ -19,7 +19,6 @@ import com.rite.pillcounting.core.scanning.logic.TrayColor
  * @param detectedPills List of pills detected in the current camera frame.
  * @param isPaused Whether the scanning process is currently paused.
  * @param isLoading Whether a loading state is active (e.g., processing results).
- * @param error Error message if an error occurred during scanning or counting.
  */
 data class PillScanningUiState(
     val scanType: String = "REGULAR",
@@ -28,6 +27,7 @@ data class PillScanningUiState(
     val strength: String = "",
     val dosageForm: String = "",
     val bucket: String = "",
+    val drugImage: String = "",
     val totalCount: Int = 0,
     val targetCount: Int = 0,
     val currentScanCount: Int = 0,

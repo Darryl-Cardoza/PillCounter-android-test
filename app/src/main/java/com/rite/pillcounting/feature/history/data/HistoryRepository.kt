@@ -32,13 +32,13 @@ class HistoryRepository @Inject constructor(
     suspend fun deleteTransactionsForDate(
         startDate: LocalDate,
         endDate: LocalDate,
-        type: CountType?,
+        isDispense: Boolean?,
         isCompleted: Boolean?,
         userLocalId: Long
     ) {
         val (startStartDate, _) = startDate.toEpochRange()
         val (_, endEndDate) = endDate.toEpochRange()
-        dao.deleteTransactionsByDate(startStartDate, endEndDate, type, isCompleted, userLocalId)
+        dao.deleteTransactionsByDate(startStartDate, endEndDate, isDispense, isCompleted, userLocalId)
     }
 
     suspend fun deleteBatchesForDateRange(
@@ -84,7 +84,7 @@ class HistoryRepository @Inject constructor(
     fun getTransactionsForDateRange(
         startDate: LocalDate,
         endDate: LocalDate,
-        type: CountType?,
+        isDispense: Boolean?,
         status: CountStatus?,
         userLocalId: Long
     ): Flow<List<TxnWithDrugDto>> {
@@ -106,7 +106,7 @@ class HistoryRepository @Inject constructor(
             startDate = startMillis,
             endDate = endMillis,
             stepType = StepState.TARGET_VERIFICATION,
-            type = type,
+            isDispense = isDispense,
             status = status,
             userLocalId = userLocalId
         )

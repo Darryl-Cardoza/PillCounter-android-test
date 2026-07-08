@@ -88,7 +88,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             dosageForm = uiState.dosageForm,
             bucket = uiState.bucket,
-            showHistory = onShowHistory
+            showHistory = onShowHistory,
+            drugImage = uiState.drugImage
         )
 
         isTablet && isLandscape -> CountModeTabletLandscape(
@@ -104,7 +105,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             dosageForm = uiState.dosageForm,
             bucket = uiState.bucket,
-            showHistory = onShowHistory
+            showHistory = onShowHistory,
+            drugImage = uiState.drugImage
         )
 
         !isTablet && !isLandscape -> CountModePhonePortrait(
@@ -120,7 +122,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             dosageForm = uiState.dosageForm,
             bucket = uiState.bucket,
-            showHistory = onShowHistory
+            showHistory = onShowHistory,
+            drugImage = uiState.drugImage
         )
 
         else -> CountModePhoneLandscape(
@@ -136,7 +139,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             dosageForm = uiState.dosageForm,
             bucket = uiState.bucket,
-            showHistory = onShowHistory
+            showHistory = onShowHistory,
+            drugImage = uiState.drugImage
         )
     }
 }

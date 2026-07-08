@@ -55,10 +55,12 @@ data class DrugCountRowData(
     val bucketId: String?,
     val pillCount: Int,
     val targetCount: Int,
-    val countType: CountType,
+    val isDispense: Boolean,
     val isComingFromHL7: Boolean = false,
     val strength: String? = null,
-    val dosageForm: String? = null
+    val dosageForm: String? = null,
+    /** Absolute local path to the downloaded drug image (.webp). Shown first when available. */
+    val drugImagePath: String? = null,
 )
 
 /**
@@ -84,14 +86,16 @@ fun DrugCountRow(
     onSelectChange: () -> Unit = {}
 ) {
     val dimens = AppTheme.dimens
-    val progress = when {
-        data.countType == CountType.FIXED && data.targetCount > 0 ->
-            (data.pillCount.toFloat() / data.targetCount.toFloat()).coerceIn(0f, 1f)
+    val animatedProgress by animateFloatAsState(
+        targetValue = when {
+            data.isDispense && data.targetCount > 0 ->
+                (data.pillCount.toFloat() / data.targetCount.toFloat()).coerceAtMost(1f)
 
-        data.countType == CountType.REGULAR -> 1f
-        else -> 0f
-    }
-    val animatedProgress by animateFloatAsState(progress)
+            !data.isDispense -> 1f
+            else -> 0f
+        },
+        label = "progress"
+    )
     val isActive = multiSelectMode && isSelected
     val selectionColor = MaterialTheme.colorScheme.secondary
 
@@ -116,8 +120,13 @@ fun DrugCountRow(
                     .padding(vertical = 12.dp, horizontal = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left tile: dosage-form icon + strength badge when available,
-                // otherwise the captured drug image / generic prescription icon.
+                // Left tile priority:
+                // 1. Drug image (API webp downloaded locally) — highest priority
+                // 2. Dosage-form icon + strength badge
+                // 3. Captured barcode image
+                // 4. Generic prescription icon
+                val hasDrugImage = !data.drugImagePath.isNullOrBlank() &&
+                        File(data.drugImagePath).let { it.exists() && it.length() > 0 }
                 val hasFormInfo = !data.dosageForm.isNullOrBlank() || !data.strength.isNullOrBlank()
                 Box(
                     modifier = Modifier
@@ -129,6 +138,24 @@ fun DrugCountRow(
                 ) {
                     val hasImage = !data.barcodeImage.isNullOrEmpty()
                     when {
+                        hasDrugImage -> {
+                            Image(
+                                painter = rememberAsyncImagePainter(
+                                    ImageRequest.Builder(LocalContext.current)
+                                        .data(File(data.drugImagePath))
+                                        .size(240, 222)
+                                        .placeholder(R.drawable.prescription_icon)
+                                        .error(R.drawable.prescription_icon)
+                                        .build()
+                                ),
+                                contentDescription = data.drugName,
+                                contentScale = ContentScale.FillBounds,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+                        }
+
                         hasFormInfo -> {
                             Column(
                                 modifier = Modifier
@@ -266,9 +293,10 @@ fun DrugCountRow(
                         modifier = Modifier.size(30.dp)
                     )
                     Spacer(modifier = Modifier.height(10.dp))
-                    val countText = when (data.countType) {
-                        CountType.REGULAR -> "${data.pillCount}"
-                        else -> "${data.pillCount}/${data.targetCount}"
+                    val countText = if (data.isDispense) {
+                        "${data.pillCount}/${data.targetCount}"
+                    } else {
+                        "${data.pillCount}"
                     }
                     Text(
                         text = countText,

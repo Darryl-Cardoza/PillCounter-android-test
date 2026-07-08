@@ -12,6 +12,7 @@ import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
@@ -83,6 +84,7 @@ class InventoryScanViewModel @Inject constructor(
     private val drugRepository: IDrugRepository,
     private val hl7Repository: Hl7Repository,
     private val hl7EventHandler: Hl7EventHandler,
+    private val drugImageDownloader: DrugImageDownloader,
 ) : ViewModel() {
 
     private val logger = AppLogger("InventoryScanViewModel")
@@ -353,6 +355,10 @@ class InventoryScanViewModel @Inject constructor(
                         return@launch
                     }
                     val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug"
+                    val imagePath = drugImageDownloader.downloadAndSave(
+                        url = drugInfo.imageUrl,
+                        drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
+                    )
                     drugMasterDao.upsertPreservingId(
                         DrugMasterEntity(
                             ndc = drugInfo.ndc,
@@ -363,6 +369,7 @@ class InventoryScanViewModel @Inject constructor(
                             isHazardous = drugInfo.isHazardous ?: false,
                             strength = drugInfo.strength,
                             dosageForm = drugInfo.dosageForm,
+                            drugImagePath = imagePath,
                         )
                     )
                     // Re-read so we get the row with its assigned drugId.

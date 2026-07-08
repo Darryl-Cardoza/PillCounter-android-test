@@ -79,8 +79,8 @@ class MenuViewModelTest {
         every { preferenceHelper.getLocalId() } returns 5L
         every { pillCountTxnDao.observeDashboardCountsGrouped(5L) } returns flowOf(
             listOf(
-                StatusTypeCount(CountStatus.COMPLETED, CountType.FIXED, 11),
-                StatusTypeCount(CountStatus.PARTIAL, CountType.FIXED, 7)
+                StatusTypeCount(CountStatus.COMPLETED, true, 11),
+                StatusTypeCount(CountStatus.PARTIAL, true, 7)
             )
         )
         every { batchDao.observeActiveInProgressCount() } returns flowOf(3)

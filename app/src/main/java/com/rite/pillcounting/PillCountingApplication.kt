@@ -1,12 +1,10 @@
-﻿package com.rite.pillcounting
+package com.rite.pillcounting
 
 import android.app.Application
-import android.util.Log
 import androidx.camera.lifecycle.ProcessCameraProvider
 import coil.Coil
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import coil.ImageLoader
-import com.google.firebase.FirebaseApp
 import com.rite.pillcounting.core.utils.coil.EncryptedImageFetcher
 import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
@@ -42,7 +40,7 @@ class PillCountingApplication : Application() {
                 .build()
         )
 
-        // Pre-load BOTH models (pill + tray) in parallel on app start.
+        // Preload BOTH models (pill + tray) in parallel on app start.
         // They are cached as singletons so the scanning screen gets them instantly.
         applicationScope.launch {
             logger.i("App start: triggering parallel model pre-load…")

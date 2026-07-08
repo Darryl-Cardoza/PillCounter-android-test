@@ -93,7 +93,7 @@ class UnsyncedTransactionViewModelTest {
         totalPillCount = 42,
         isComingFromHL7 = true,
         isNdcVerified = true,
-        countType = CountType.FIXED,
+        isDispense = true,
         priority = null
     )
 
@@ -123,7 +123,7 @@ class UnsyncedTransactionViewModelTest {
                 assertEquals("barcode.png", item.barcodeImage)
                 assertTrue(item.isComingFromHL7)
                 assertTrue(item.isNdcVerified)
-                assertEquals(CountType.FIXED, item.countType)
+                assertEquals(true, item.isDispense)
                 // Real toFormattedDate call on a positive epoch millis -> not the fallback.
                 assertTrue(item.date.isNotBlank())
                 assertTrue(item.date != "-")

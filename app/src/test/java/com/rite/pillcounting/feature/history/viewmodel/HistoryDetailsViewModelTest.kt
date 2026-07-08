@@ -59,7 +59,7 @@ class HistoryDetailsViewModelTest {
             createdAt = 1_000_000L,
             barcodeImage = null,
             totalPillCount = 10,
-            countType = CountType.FIXED,
+            isDispense = true,
             drugType = null,
             txnDetails = txnDetails,
             isComingFromHL7 = false

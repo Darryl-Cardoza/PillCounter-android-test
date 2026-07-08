@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.feature.dashboard.presentation.compose
+package com.rite.pillcounting.feature.dashboard.presentation.compose
 
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.BorderStroke
@@ -577,10 +577,11 @@ internal fun ScaffoldQueueList(
                         bucketId = item.txn.bucketId,
                         pillCount = item.txn.totalPillCount,
                         targetCount = item.txn.targetCount ?: 0,
-                        countType = item.txn.countType,
+                        isDispense = item.txn.isDispense,
                         isComingFromHL7 = item.txn.isComingFromHL7,
                         strength = item.txn.strength,
                         dosageForm = item.txn.dosageForm,
+                        drugImagePath = item.txn.drugImagePath,
                     ),
                     onClick = { onDispenseClick?.invoke(item.txn.txnId) },
                 )

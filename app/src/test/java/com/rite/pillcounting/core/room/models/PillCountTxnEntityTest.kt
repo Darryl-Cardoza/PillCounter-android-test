@@ -16,7 +16,7 @@ class PillCountTxnEntityTest {
         txnId = 1L,
         localId = 2L,
         drugId = 3L,
-        countType = CountType.FIXED,
+        isDispense = true,
         targetCount = 50,
         status = CountStatus.COMPLETED,
         note = "note",
@@ -41,11 +41,11 @@ class PillCountTxnEntityTest {
 
     @Test
     fun defaultValues() {
-        val e = PillCountTxnEntity(countType = CountType.REGULAR, status = CountStatus.PARTIAL)
+        val e = PillCountTxnEntity(isDispense = false, status = CountStatus.PARTIAL)
         assertEquals(0L, e.txnId)
         assertNull(e.localId)
         assertNull(e.drugId)
-        assertEquals(CountType.REGULAR, e.countType)
+        assertEquals(false, e.isDispense)
         assertNull(e.targetCount)
         assertEquals(CountStatus.PARTIAL, e.status)
         assertNull(e.note)
@@ -74,7 +74,7 @@ class PillCountTxnEntityTest {
         assertEquals(1L, e.txnId)
         assertEquals(2L, e.localId)
         assertEquals(3L, e.drugId)
-        assertEquals(CountType.FIXED, e.countType)
+        assertEquals(true, e.isDispense)
         assertEquals(50, e.targetCount)
         assertEquals(CountStatus.COMPLETED, e.status)
         assertEquals("note", e.note)
@@ -111,7 +111,7 @@ class PillCountTxnEntityTest {
 
     @Test
     fun copy() {
-        assertEquals(CountType.REGULAR, sample().copy(countType = CountType.REGULAR).countType)
+        assertEquals(false, sample().copy(isDispense = false).isDispense)
     }
 
     @Test
@@ -122,7 +122,7 @@ class PillCountTxnEntityTest {
         assertEquals(1L, e.component1())        // txnId
         assertEquals(2L, e.component2())        // localId
         assertEquals(3L, e.component3())        // drugId
-        assertEquals(CountType.FIXED, e.component4())
+        assertEquals(true, e.component4())
         assertEquals(50, e.component5())        // targetCount
         assertEquals(CountStatus.COMPLETED, e.component6())
         assertEquals("note", e.component7())

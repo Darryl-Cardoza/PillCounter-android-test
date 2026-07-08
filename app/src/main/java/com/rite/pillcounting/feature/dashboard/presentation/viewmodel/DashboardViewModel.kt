@@ -11,7 +11,6 @@ import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
@@ -166,7 +165,7 @@ class DashboardViewModel @Inject constructor(
     private fun observeQueue(localId: Long = preferenceHelper.getLocalId()) {
         viewModelScope.launch(Dispatchers.IO) {
             val dispenseFlow = pillCountTxnDao.observePartialByCountType(
-                countType = CountType.FIXED,
+                isDispense = true,
                 partialStatus = CountStatus.PARTIAL,
                 userLocalId = localId,
                 // totalPillCount sums detail rows of THIS step only. FIXED dispense
@@ -251,7 +250,7 @@ class DashboardViewModel @Inject constructor(
                 startDate = 0L,
                 endDate = Long.MAX_VALUE,
                 stepType = StepState.TARGET_VERIFICATION,
-                type = CountType.FIXED,
+                isDispense = true,
                 status = CountStatus.COMPLETED,
                 userLocalId = localId,
             )
@@ -275,8 +274,9 @@ class DashboardViewModel @Inject constructor(
                             totalPillCount = t.pillCount ?: 0,
                             isComingFromHL7 = false,
                             isNdcVerified = false,
-                            countType = t.countType,
+                            isDispense = t.isDispense,
                             priority = null,
+                            drugImagePath = null,
                         ),
                         isHazardous = false,
                         isHighPriority = false,

@@ -132,7 +132,7 @@ class DispenseFlowViewModelTest {
     ) = PillCountTxnEntity(
         txnId = txnId,
         drugId = drugId,
-        countType = CountType.FIXED,
+        isDispense = true,
         status = status,
         isNdcVerified = isNdcVerified,
         rxNo = rxNo,
@@ -349,7 +349,9 @@ class DispenseFlowViewModelTest {
         val vm = createViewModel()
         vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
+        assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
+        assertTrue(vm.uiState.value.showRxDetails)
+        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.pendingRxResumeStage)
         coVerify { preferenceHelper.saveTxnId(1L) }
     }
 
@@ -627,7 +629,7 @@ class DispenseFlowViewModelTest {
         // Now ndc = NDCX set in state
         vm.onRxConfirmed()
         advanceUntilIdle()
-        assertEquals(99L, vm.uiState.value.txnId)
+        assertEquals(1L, vm.uiState.value.txnId)
         assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
         assertFalse(vm.uiState.value.showRxDetails)
     }
@@ -1007,7 +1009,7 @@ class DispenseFlowViewModelTest {
         val dto = PillCountWithDrugAndTotal(
             txnId = 1L, drugName = "D", ndc = "N", drugType = "CII", bucketId = "b",
             createdAt = 1L, targetCount = 5, barcodeImage = null, totalPillCount = 0,
-            isComingFromHL7 = false, isNdcVerified = false, countType = CountType.FIXED,
+            isComingFromHL7 = false, isNdcVerified = false, isDispense = true,
             priority = TxnPriority.High, isHazardous = true,
         )
         every {

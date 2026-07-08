@@ -150,7 +150,7 @@ class DashboardViewModelTest {
         totalPillCount = 0,
         isComingFromHL7 = false,
         isNdcVerified = false,
-        countType = CountType.FIXED,
+        isDispense = true,
         priority = priority,
         isHazardous = isHazardous,
     )
@@ -176,7 +176,7 @@ class DashboardViewModelTest {
         drugType: String? = null,
     ) = TxnWithDrugDto(
         txnId = txnId,
-        countType = CountType.FIXED,
+        isDispense = true,
         status = CountStatus.COMPLETED,
         pillCount = 7,
         drugName = "Drug$txnId",

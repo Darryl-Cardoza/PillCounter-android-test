@@ -30,7 +30,7 @@ class QueueItemTest {
         totalPillCount = 10,
         isComingFromHL7 = false,
         isNdcVerified = true,
-        countType = CountType.FIXED,
+        isDispense = true,
         priority = TxnPriority.High,
         isHazardous = false,
     )

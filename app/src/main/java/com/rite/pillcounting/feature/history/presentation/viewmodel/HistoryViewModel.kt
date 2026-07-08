@@ -75,12 +75,12 @@ class HistoryViewModel @Inject constructor(
         }
             .flatMapLatest { (start, end, mode) ->
 
-                val (type, status) = mode.toQueryParams()
+                val (isDispense, status) = mode.toQueryParams()
 
                 repository.getTransactionsForDateRange(
                     startDate = start,
                     endDate = end,
-                    type = type,
+                    isDispense = isDispense,
                     status = status,
                     userLocalId = preferenceHelper.getLocalId()
                 )
@@ -151,8 +151,8 @@ class HistoryViewModel @Inject constructor(
         _selectedDate.value = date
     }
 
-    private fun HistoryMode.toQueryParams(): Pair<CountType?, CountStatus?> =
-        if (this == HistoryMode.DISPENSE) CountType.FIXED to null else null to null
+    private fun HistoryMode.toQueryParams(): Pair<Boolean?, CountStatus?> =
+        if (this == HistoryMode.DISPENSE) true to null else null to null
 
 
     fun deleteCountsForSelectedDate(option: ToggleOption, filter: HistoryDeleteFilter) {
@@ -170,11 +170,11 @@ class HistoryViewModel @Inject constructor(
                     userLocalId = preferenceHelper.getLocalId()
                 )
             } else {
-                val (type, _) = currentMode.value.toQueryParams()
+                val (isDispense, _) = currentMode.value.toQueryParams()
                 repository.deleteTransactionsForDate(
                     startDate = _startDate.value,
                     endDate = _endDate.value,
-                    type = type,
+                    isDispense = isDispense,
                     isCompleted = isCompleted,
                     userLocalId = preferenceHelper.getLocalId()
                 )

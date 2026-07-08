@@ -6,6 +6,6 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 /** Row for (status, countType) aggregate. */
 data class StatusTypeCount(
     val status: CountStatus,
-    val countType: CountType,
+    val isDispense: Boolean,
     val cnt: Int
 )

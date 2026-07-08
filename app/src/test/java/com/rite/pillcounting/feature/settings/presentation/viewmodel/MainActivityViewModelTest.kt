@@ -534,7 +534,7 @@ class MainActivityViewModelTest {
     fun `deleteOldTransactions processes txn with images and missing files`() = runTest(testDispatcher) {
         val txn = PillCountTxnEntity(
             txnId = 5L,
-            countType = CountType.FIXED,
+            isDispense = true,
             status = CountStatus.COMPLETED,
             barcodeImage = "C:/nonexistent/barcode.png",
         )

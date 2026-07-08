@@ -72,7 +72,7 @@ fun CountsSection(
     }
 
     // ── Dispensed (FIXED) breakdowns ──────────────────────────────────────────
-    val dispensedCounts = remember(counts) { counts.filter { it.countType == CountType.FIXED } }
+    val dispensedCounts = remember(counts) { counts.filter { it.isDispense } }
     val completedDispensed = remember(dispensedCounts) {
         dispensedCounts.filter {
             it.status == CountStatus.COMPLETED || it.status == CountStatus.FORCE_COMPLETED
@@ -226,7 +226,7 @@ fun CountsSection(
                                         bucketId = rowData.bucketId,
                                         pillCount = rowData.pillCount ?: 0,
                                         targetCount = rowData.targetCount ?: 0,
-                                        countType = rowData.countType
+                                        isDispense = rowData.isDispense
                                     ),
                                     onClick = { onTxnClick(rowData.txnId) }
                                 )
@@ -265,7 +265,7 @@ fun CountsSection(
                                         bucketId = rowData.bucketId,
                                         pillCount = rowData.pillCount ?: 0,
                                         targetCount = rowData.targetCount ?: 0,
-                                        countType = rowData.countType
+                                        isDispense = rowData.isDispense
                                     ),
                                     onClick = { onTxnClick(rowData.txnId) }
                                 )

@@ -56,6 +56,9 @@ interface PillCountTxnDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(txn: PillCountTxnEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(txns: List<PillCountTxnEntity>): List<Long>
+
     /**
      * Updates an existing transaction entry matched by its [PillCountTxnEntity.txnId].
      *
@@ -133,7 +136,7 @@ interface PillCountTxnDao {
            txn.isComingFromHL7,
            txn.isNdcVerified,
            txn.bucketId,
-           txn.countType,
+           txn.isDispense,
            txn.priority,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
                 THEN subDrug.drugName ELSE drug.drugName END AS drugName,
@@ -147,6 +150,8 @@ interface PillCountTxnDao {
                 THEN subDrug.strength ELSE drug.strength END AS strength,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.dosageForm IS NOT NULL
                 THEN subDrug.dosageForm ELSE drug.dosageForm END AS dosageForm,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
+                THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug
@@ -159,7 +164,7 @@ interface PillCountTxnDao {
           AND details.type = :type
     WHERE txn.isDeleted = 0
       AND txn.status = :partialStatus
-      AND txn.countType = :countType
+      AND txn.isDispense = :isDispense
       AND txn.localId = :userLocalId
     GROUP BY txn.txnId
     ORDER BY CASE txn.priority
@@ -174,7 +179,7 @@ interface PillCountTxnDao {
     )
 
     fun observePartialByCountType(
-        countType: CountType,
+        isDispense: Boolean,
         partialStatus: CountStatus = CountStatus.PARTIAL,
         userLocalId: Long,
         type: StepState
@@ -323,12 +328,12 @@ interface PillCountTxnDao {
     @Query(
         """
     SELECT status AS status,
-           countType AS countType,
+           isDispense AS isDispense,
            COUNT(*) AS cnt
     FROM pill_count_txn
     WHERE isDeleted = 0
       AND localId = :userLocalId
-    GROUP BY status, countType
+    GROUP BY status, isDispense
     """
     )
     fun observeDashboardCountsGrouped(userLocalId: Long): Flow<List<StatusTypeCount>>
@@ -359,7 +364,7 @@ interface PillCountTxnDao {
         pct.createdAt,
         pct.barcodeImage,
         pct.isComingFromHL7,
-        pct.countType,
+        pct.isDispense,
         CASE WHEN pct.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
              THEN subDrug.drugType ELSE dm.drugType END AS drugType,
         CASE WHEN pct.isSubstitute = 1 AND subDrug.strength IS NOT NULL
@@ -371,7 +376,9 @@ interface PillCountTxnDao {
         pct.isSubstitute,
         dm.drugName AS requestedDrugName,
         dm.ndc AS requestedNdc,
-        pct.workflowStep
+        pct.workflowStep,
+        CASE WHEN pct.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
+             THEN subDrug.drugImagePath ELSE dm.drugImagePath END AS drugImage
     FROM pill_count_txn AS pct
     LEFT JOIN drug_master AS dm
         ON pct.drugId = dm.drugId
@@ -434,7 +441,7 @@ interface PillCountTxnDao {
         """
     SELECT
         txn.txnId,
-        txn.countType,
+        txn.isDispense,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
@@ -458,7 +465,7 @@ interface PillCountTxnDao {
     WHERE txn.createdAt >= :startOfDay
       AND txn.createdAt < :endOfDay
       AND txn.isDeleted = 0
-      AND (:type IS NULL OR txn.countType = :type)
+      AND (:isDispense IS NULL OR txn.isDispense = :isDispense)
       AND (:status IS NULL OR txn.status = :status)
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
@@ -467,7 +474,7 @@ interface PillCountTxnDao {
     fun getTransactionsWithDrugByDate(
         startOfDay: Long,
         endOfDay: Long,
-        type: CountType?,
+        isDispense: Boolean?,
         status: CountStatus?
     ): Flow<List<TxnWithDrugDto>>
 
@@ -475,7 +482,7 @@ interface PillCountTxnDao {
         """
     SELECT
         txn.txnId,
-        txn.countType,
+        txn.isDispense,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
@@ -501,7 +508,7 @@ interface PillCountTxnDao {
     WHERE txn.createdAt BETWEEN :startDate AND :endDate
       AND txn.isDeleted = 0
       AND txn.localId = :userLocalId
-      AND (:type IS NULL OR txn.countType = :type)
+      AND (:isDispense IS NULL OR txn.isDispense = :isDispense)
       AND (:status IS NULL OR txn.status = :status)
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
@@ -511,7 +518,7 @@ interface PillCountTxnDao {
         startDate: Long,
         endDate: Long,
         stepType: StepState?,
-        type: CountType?,
+        isDispense: Boolean?,
         status: CountStatus?,
         userLocalId: Long
     ): Flow<List<TxnWithDrugDto>>
@@ -531,7 +538,7 @@ interface PillCountTxnDao {
     WHERE createdAt >= :start
       AND createdAt < :end
       AND localId = :userLocalId
-      AND (:type IS NULL OR countType = :type)
+      AND (:isDispense IS NULL OR isDispense = :isDispense)
       AND (
         :isCompleted IS NULL
         OR (:isCompleted = 1 AND (status = :completedStatus OR status = :forceCompletedStatus))
@@ -542,7 +549,7 @@ interface PillCountTxnDao {
     suspend fun deleteTransactionsByDate(
         start: Long,
         end: Long,
-        type: CountType?,
+        isDispense: Boolean?,
         isCompleted: Boolean?,
         userLocalId: Long,
         completedStatus: CountStatus = CountStatus.COMPLETED,
@@ -568,8 +575,8 @@ interface PillCountTxnDao {
      * @param countType Restricts to dispense (FIXED) transactions.
      * @return A list of synced [PillCountTxnEntity].
      */
-    @Query("SELECT * FROM pill_count_txn WHERE isSynced = 1 AND countType = :countType")
-    suspend fun getSyncedTransactions(countType: CountType = CountType.FIXED): List<PillCountTxnEntity>
+    @Query("SELECT * FROM pill_count_txn WHERE isSynced = 1 AND isDispense = :isDispense")
+    suspend fun getSyncedTransactions(isDispense: Boolean = true): List<PillCountTxnEntity>
 
     /**
      * Retrieves the file paths of images linked to all transaction details under a given transaction.
@@ -676,7 +683,7 @@ interface PillCountTxnDao {
            txn.isComingFromHL7,
            txn.isNdcVerified,
            txn.bucketId,
-           txn.countType,
+           txn.isDispense,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
                 THEN subDrug.drugName ELSE drug.drugName END AS drugName,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
@@ -689,6 +696,8 @@ interface PillCountTxnDao {
                 THEN subDrug.strength ELSE drug.strength END AS strength,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.dosageForm IS NOT NULL
                 THEN subDrug.dosageForm ELSE drug.dosageForm END AS dosageForm,
+           CASE WHEN txn.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
+                THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
     FROM pill_count_txn AS txn
     LEFT JOIN drug_master AS drug
@@ -701,14 +710,14 @@ interface PillCountTxnDao {
           AND details.type = :type
     WHERE txn.isDeleted = 0
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)
-      AND txn.countType = :countType
+      AND txn.isDispense = :isDispense
       AND txn.isSynced = 0
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
     )
     fun observeUnsyncedByCountType(
-        countType: CountType,
+        isDispense: Boolean,
         completeStatus: CountStatus = CountStatus.COMPLETED,
         forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED,
         type: String
@@ -734,12 +743,12 @@ interface PillCountTxnDao {
     SELECT COUNT(*) FROM pill_count_txn
     WHERE isDeleted = 0
       AND status = :partialStatus
-      AND countType = :countType
+      AND isDispense = :isDispense
       AND localId = :userLocalId
     """
     )
     suspend fun countPartialByCountType(
-        countType: CountType,
+        isDispense: Boolean,
         partialStatus: CountStatus = CountStatus.PARTIAL,
         userLocalId: Long,
     ): Int

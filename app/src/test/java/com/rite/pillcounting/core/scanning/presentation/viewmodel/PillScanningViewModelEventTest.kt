@@ -216,7 +216,7 @@ class PillScanningViewModelEventTest {
             txnId = 1L, drugName = null, drugId = 1L, ndc = null,
             targetCount = 10, note = null,
             createdAt = 0L, barcodeImage = null, totalPillCount = 0,
-            countType = CountType.REGULAR, drugType = null,
+            isDispense = false, drugType = null,
             txnDetails = emptyList(), isComingFromHL7 = false,
         )
         coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns txnInfo
@@ -235,7 +235,7 @@ class PillScanningViewModelEventTest {
             txnId = 1L, drugName = null, drugId = 1L, ndc = null,
             targetCount = 10, note = null,
             createdAt = 0L, barcodeImage = null, totalPillCount = 0,
-            countType = CountType.FIXED, drugType = null,
+            isDispense = true, drugType = null,
             txnDetails = emptyList(), isComingFromHL7 = false,
         )
         coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns txnInfo

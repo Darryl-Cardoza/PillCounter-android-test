@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.core.scanning.presentation.viewmodel
+package com.rite.pillcounting.core.scanning.presentation.viewmodel
 
 import android.app.Application
 import android.content.Context
@@ -41,6 +41,7 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
@@ -94,6 +95,7 @@ class PillScanningViewModel @Inject constructor(
     private val performanceLogger: PerformanceLogger,
     private val barcodeDecoder: BarcodeDecoder,
     private val drugRepository: IDrugRepository,
+    private val drugImageDownloader: DrugImageDownloader,
 ) : AndroidViewModel(app) {
 
     private val logger = AppLogger("PillScanningVM")
@@ -349,7 +351,7 @@ class PillScanningViewModel @Inject constructor(
                     }
 
                     val currentSum = history.sumOf { it.count }
-                    val isStockCount = _txnInfo.value?.countType == CountType.REGULAR
+                    val isStockCount = _txnInfo.value?.isDispense == false
                     if (isStockCount && stockCountBaseTotal == -1) {
                         stockCountBaseTotal = currentSum
                     }
@@ -1214,7 +1216,7 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun handleConfirmDialog(event: PillScanningEvent.FinalDone) {
-        if (_txnInfo.value?.countType == CountType.REGULAR) {
+        if (_txnInfo.value?.isDispense == false) {
             _uiState.update {
                 it.copy(showEndStockCountDialog = true)
             }
@@ -1245,9 +1247,9 @@ class PillScanningViewModel @Inject constructor(
             }
 
             StepState.TARGET_VERIFICATION -> {
-                if (_txnInfo.value?.countType == CountType.FIXED && _uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }) {
+                if (_txnInfo.value?.isDispense == true && _uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }) {
                     moveNextStep()
-                } else if (_txnInfo.value?.countType == CountType.REGULAR) {
+                } else if (_txnInfo.value?.isDispense == false) {
                     handleDone()
                 } else {
                     _uiState.update { it.copy(showErrorMessage = context.getString(R.string.pills_count_should_be_greater_than_target_count)) }
@@ -1292,7 +1294,7 @@ class PillScanningViewModel @Inject constructor(
                 _uiState.update { it.copy(showNoTransaction = true) }
                 return@launch
             }
-            if (txnInfo.value?.countType == CountType.REGULAR) {
+            if (txnInfo.value?.isDispense == false) {
                 // Stock: flush the loose count onto the BottleInfo line, complete the stock
                 // header, and return to the batch screen. Nothing is written to pill_count_txn.
                 flushStagedDetails(txnId)
@@ -1346,7 +1348,7 @@ class PillScanningViewModel @Inject constructor(
                 return@launch
             }
             val status =
-                if (txn.countType == CountType.FIXED && txn.targetCount != null && total < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+                if (txn.isDispense && txn.targetCount != null && total < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
 
             if (txn.isComingFromHL7 == true) {
                 pillCountTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)
@@ -1453,6 +1455,7 @@ class PillScanningViewModel @Inject constructor(
                     bucket = txnInfo?.bucketId?.takeIf { b -> b.isNotBlank() } ?: "Normal",
                     targetCount = txnInfo?.targetCount ?: 0,
                     showTargetCountDialog = shouldShowDialog,
+                    drugImage = txnInfo?.drugImage.orEmpty()
                 )
             }
             logger.d("Txn info loaded. Drug=${txnInfo?.drugName}, Target=${txnInfo?.targetCount}")
@@ -1463,7 +1466,7 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch {
             val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
             _txnInfo.value = txnInfo
-            val countType = txnInfo?.countType
+            val isDispense = txnInfo?.isDispense
             val isComingFromHL7 = txnInfo?.isComingFromHL7 ?: false
             val drugId = txnInfo?.drugId
             val drugInfo = drugMasterDao.getDrugById(drugId)
@@ -1486,7 +1489,7 @@ class PillScanningViewModel @Inject constructor(
                     isFromHl7 = false,
                     simpleFlow = true,
                     drugType = drugInfo?.drugType.orEmpty(),
-                    countType = CountType.REGULAR
+                    isDispense = false
                 )
 
                 isComingFromHL7 && drugInfo?.drugType?.let {
@@ -1495,7 +1498,7 @@ class PillScanningViewModel @Inject constructor(
                     isFromHl7 = true,
                     simpleFlow = false,
                     drugType = drugInfo?.drugType.orEmpty(),
-                    countType = countType
+                    isDispense = isDispense
                 )
 
                 isComingFromHL7 && drugInfo?.drugType?.let {
@@ -1504,14 +1507,14 @@ class PillScanningViewModel @Inject constructor(
                     isFromHl7 = true,
                     simpleFlow = true,
                     drugType = drugInfo?.drugType.orEmpty(),
-                    countType = countType
+                    isDispense = isDispense
                 )
 
                 else -> buildWorkflowSteps(
                     isFromHl7 = false,
                     simpleFlow = true,
                     drugType = drugInfo?.drugType.orEmpty(),
-                    countType = countType
+                    isDispense = isDispense
                 )
             }
 
@@ -1530,7 +1533,7 @@ class PillScanningViewModel @Inject constructor(
                 savedWorkflowStep == null -> {
                     // No saved step yet — fall back to deriving from details history
                     val latestStep = pillCountTxnDetailsDao.getLatestType(preferenceHelper.getTxnId())
-                    if (drugInfo?.drugType.equals("null", true)) {
+                    if (drugInfo?.drugType.isNullOrEmpty() || drugInfo?.drugType.equals("null", true)) {
                         latestStep ?: StepState.TARGET_VERIFICATION
                     } else {
                         latestStep ?: StepState.CONTAINER_INITIATE
@@ -1602,6 +1605,10 @@ class PillScanningViewModel @Inject constructor(
                         return@launch
                     }
                     val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug"
+                    val imagePath = drugImageDownloader.downloadAndSave(
+                        url = drugInfo.imageUrl,
+                        drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
+                    )
                     drugMasterDao.upsertPreservingId(
                         DrugMasterEntity(
                             ndc = drugInfo.ndc,
@@ -1612,6 +1619,7 @@ class PillScanningViewModel @Inject constructor(
                             isHazardous = drugInfo.isHazardous ?: false,
                             strength = drugInfo.strength,
                             dosageForm = drugInfo.dosageForm,
+                            drugImagePath = imagePath,
                         )
                     )
                     drugMasterDao.getDrugByNdc(drugInfo.ndc) ?: drugMasterDao.getDrugByGtin(gtin14)
@@ -1688,7 +1696,7 @@ class PillScanningViewModel @Inject constructor(
             createdAt = System.currentTimeMillis(),
             barcodeImage = null,
             totalPillCount = 0,
-            countType = CountType.REGULAR,
+            isDispense = false,
             drugType = drug.drugType,
             strength = drug.strength,
             dosageForm = drug.dosageForm,
@@ -1701,7 +1709,7 @@ class PillScanningViewModel @Inject constructor(
             isFromHl7 = false,
             simpleFlow = true,
             drugType = drug.drugType.orEmpty(),
-            countType = CountType.REGULAR,
+            isDispense = false,
         )
         // Stock counts have no pill_count_txn row, so showTxnInfo()'s DB lookup
         // (getTxnWithDetails(txnId=0)) would return null and wipe both the synthetic
@@ -1842,14 +1850,14 @@ class PillScanningViewModel @Inject constructor(
     }
 
     fun buildWorkflowSteps(
-        isFromHl7: Boolean, simpleFlow: Boolean, drugType: String, countType: CountType?
+        isFromHl7: Boolean, simpleFlow: Boolean, drugType: String, isDispense: Boolean?
     ): List<StepState> {
 
-        if (countType?.equals(CountType.REGULAR) == true) {
+        if (isDispense == false) {
             return listOf(StepState.SCAN, StepState.TARGET_VERIFICATION)
         }
 
-        if (countType?.equals(CountType.FIXED) == true && simpleFlow && drugType.equals("null",true)) {
+        if (isDispense == true && simpleFlow && (drugType.isEmpty() || drugType.equals("null", true))) {
             return listOf(StepState.SCAN, StepState.TARGET_VERIFICATION, StepState.VIAL)
         }
 

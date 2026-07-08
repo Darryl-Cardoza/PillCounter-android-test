@@ -73,6 +73,7 @@ class InventoryScanViewModelTest {
     fun setup() {
         every { hl7EventHandler.connectionState } returns MutableStateFlow(false)
         every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
+        every { stockTxnDao.observeRequestedDrugs(any()) } returns flowOf(emptyList())
         viewModel = createViewModel()
     }
 
