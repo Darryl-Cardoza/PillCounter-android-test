@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.core.scanning.domain.model
+package com.rite.pillcounting.core.scanning.domain.model
 
 /**
  * Represents the clean, essential information about a drug for use within the app's domain layer.
@@ -19,5 +19,7 @@ data class DrugInfo(
     /** Strength of the first active ingredient, e.g. "35 mg/1" (active_ingredients[0].strength). */
     val strength: String? = null,
     /** Dosage form, e.g. "CAPSULE, EXTENDED RELEASE" (dosage_form[0]). */
-    val dosageForm: String? = null
+    val dosageForm: String? = null,
+    /** Primary drug image URL returned by the API (webp). Null when no image is available. */
+    val imageUrl: String? = null,
 )

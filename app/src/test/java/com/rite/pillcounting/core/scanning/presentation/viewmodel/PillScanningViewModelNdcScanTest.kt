@@ -186,7 +186,7 @@ class PillScanningViewModelNdcScanTest {
         every { preferenceHelper.getTxnId() } returns 1L
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(1L) } returns 0
         coEvery { pillCountTxnDao.getById(1L) } returns PillCountTxnEntity(
-            txnId = 1L, countType = CountType.FIXED, status = CountStatus.PARTIAL
+            txnId = 1L, isDispense = true, status = CountStatus.PARTIAL
         )
 
         viewModel.onEvent(PillScanningEvent.ConfirmDone)
@@ -204,7 +204,7 @@ class PillScanningViewModelNdcScanTest {
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(1L) } returns 10
         coEvery { pillCountTxnDao.getById(1L) } returns PillCountTxnEntity(
             txnId = 1L,
-            countType = CountType.FIXED,
+            isDispense = true,
             status = CountStatus.PARTIAL,
             targetCount = 10,
             isComingFromHL7 = false
@@ -224,7 +224,7 @@ class PillScanningViewModelNdcScanTest {
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(2L) } returns 5
         coEvery { pillCountTxnDao.getById(2L) } returns PillCountTxnEntity(
             txnId = 2L,
-            countType = CountType.FIXED,
+            isDispense = true,
             status = CountStatus.PARTIAL,
             targetCount = 10,   // 5 < 10 → status is PARTIAL
             isComingFromHL7 = true

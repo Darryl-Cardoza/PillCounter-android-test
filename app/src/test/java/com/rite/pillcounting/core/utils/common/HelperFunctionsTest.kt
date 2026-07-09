@@ -117,10 +117,10 @@ class HelperFunctionsTest {
     @Test
     fun mapCounts_allCombinations_areMapped() {
         val rows = listOf(
-            StatusTypeCount(CountStatus.COMPLETED, CountType.FIXED, 1),
-            StatusTypeCount(CountStatus.PARTIAL, CountType.FIXED, 2),
-            StatusTypeCount(CountStatus.COMPLETED, CountType.REGULAR, 3),
-            StatusTypeCount(CountStatus.PARTIAL, CountType.REGULAR, 4)
+            StatusTypeCount(CountStatus.COMPLETED, true, 1),
+            StatusTypeCount(CountStatus.PARTIAL, true, 2),
+            StatusTypeCount(CountStatus.COMPLETED, false, 3),
+            StatusTypeCount(CountStatus.PARTIAL, false, 4)
         )
         val result = HelperFunctions.mapCounts(rows)
         assertEquals(1, result.fixedCompleted)
@@ -133,8 +133,8 @@ class HelperFunctionsTest {
     fun mapCounts_otherStatus_hitsElseBranch_andIsIgnored() {
         // FORCE_COMPLETED falls through the inner else -> {} for both count types
         val rows = listOf(
-            StatusTypeCount(CountStatus.FORCE_COMPLETED, CountType.FIXED, 99),
-            StatusTypeCount(CountStatus.FORCE_COMPLETED, CountType.REGULAR, 88)
+            StatusTypeCount(CountStatus.FORCE_COMPLETED, true, 99),
+            StatusTypeCount(CountStatus.FORCE_COMPLETED, false, 88)
         )
         val result = HelperFunctions.mapCounts(rows)
         assertEquals(0, result.fixedCompleted)

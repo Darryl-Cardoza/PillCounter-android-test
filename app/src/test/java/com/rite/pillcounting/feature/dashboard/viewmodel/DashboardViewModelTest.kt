@@ -118,7 +118,7 @@ class DashboardViewModelTest {
         coEvery { repository.getUserDetail(token) } returns Result.success(apiResponse)
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 42L
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
-        every { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { batchDao.observeInProgressBatchSummaries() } returns flowOf(emptyList())
 
         val viewModel = createViewModel()
@@ -152,7 +152,7 @@ class DashboardViewModelTest {
         coEvery { repository.getUserDetail(token) } returns Result.success(apiResponse)
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 10L
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
-        every { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { batchDao.observeInProgressBatchSummaries() } returns flowOf(emptyList())
 
         val viewModel = createViewModel()
@@ -304,7 +304,7 @@ class DashboardViewModelTest {
         coEvery { repository.getUserDetail(token) } returns Result.success(apiResponse)
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 10L
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
-        every { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { batchDao.observeInProgressBatchSummaries() } returns flowOf(emptyList())
 
         val viewModel = createViewModel()

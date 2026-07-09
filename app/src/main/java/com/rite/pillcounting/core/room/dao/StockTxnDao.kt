@@ -24,6 +24,9 @@ interface StockTxnDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertIgnore(txn: StockTxnEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(txns: List<StockTxnEntity>): List<Long>
+
     @Update
     suspend fun update(txn: StockTxnEntity)
 

@@ -132,7 +132,7 @@ class DispenseFlowViewModelTest {
     ) = PillCountTxnEntity(
         txnId = txnId,
         drugId = drugId,
-        countType = CountType.FIXED,
+        isDispense = true,
         status = status,
         isNdcVerified = isNdcVerified,
         rxNo = rxNo,
@@ -349,7 +349,9 @@ class DispenseFlowViewModelTest {
         val vm = createViewModel()
         vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
+        assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
+        assertTrue(vm.uiState.value.showRxDetails)
+        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.pendingRxResumeStage)
         coVerify { preferenceHelper.saveTxnId(1L) }
     }
 
@@ -627,7 +629,7 @@ class DispenseFlowViewModelTest {
         // Now ndc = NDCX set in state
         vm.onRxConfirmed()
         advanceUntilIdle()
-        assertEquals(99L, vm.uiState.value.txnId)
+        assertEquals(1L, vm.uiState.value.txnId)
         assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
         assertFalse(vm.uiState.value.showRxDetails)
     }
@@ -982,24 +984,26 @@ class DispenseFlowViewModelTest {
     fun `enterQueueMode sets QUEUE stage and default filter`() = runTest(testDispatcher) {
         every { preferenceHelper.getLocalId() } returns 1L
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         val vm = createViewModel()
         vm.enterQueueMode()
         advanceUntilIdle()
         assertEquals(DispenseStage.QUEUE, vm.uiState.value.stage)
         assertEquals(KpiFilter.DISP_PENDING, vm.uiState.value.selectedQueueFilter)
+        assertEquals(true, vm.uiState.value.initResolved)
     }
 
     @Test
     fun `resetToQueue sets QUEUE stage`() = runTest(testDispatcher) {
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         val vm = createViewModel()
         vm.resetToQueue()
         advanceUntilIdle()
         assertEquals(DispenseStage.QUEUE, vm.uiState.value.stage)
+        assertEquals(true, vm.uiState.value.initResolved)
     }
 
     @Test
@@ -1007,11 +1011,11 @@ class DispenseFlowViewModelTest {
         val dto = PillCountWithDrugAndTotal(
             txnId = 1L, drugName = "D", ndc = "N", drugType = "CII", bucketId = "b",
             createdAt = 1L, targetCount = 5, barcodeImage = null, totalPillCount = 0,
-            isComingFromHL7 = false, isNdcVerified = false, countType = CountType.FIXED,
+            isComingFromHL7 = false, isNdcVerified = false, isDispense = true,
             priority = TxnPriority.High, isHazardous = true,
         )
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(listOf(dto))
         val vm = createViewModel()
         vm.enterQueueMode()
@@ -1028,10 +1032,10 @@ class DispenseFlowViewModelTest {
     @Test
     fun `resetToQueueOrNavigateDashboard with pending resets queue`() = runTest(testDispatcher) {
         coEvery {
-            pillCountTxnDao.countPartialByCountType(any(), any(), any())
+            pillCountTxnDao.countPartialByIsDispense(any(), any(), any())
         } returns 2
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         val vm = createViewModel()
         vm.resetToQueueOrNavigateDashboard()
@@ -1042,7 +1046,7 @@ class DispenseFlowViewModelTest {
     @Test
     fun `resetToQueueOrNavigateDashboard no pending navigates dashboard`() = runTest(testDispatcher) {
         coEvery {
-            pillCountTxnDao.countPartialByCountType(any(), any(), any())
+            pillCountTxnDao.countPartialByIsDispense(any(), any(), any())
         } returns 0
         val vm = createViewModel()
         vm.resetToQueueOrNavigateDashboard()

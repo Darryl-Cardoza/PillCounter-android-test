@@ -39,6 +39,15 @@ interface DrugMasterDao {
     suspend fun insertIgnore(drug: DrugMasterEntity): Long
 
     /**
+     * Inserts multiple [DrugMasterEntity] records into the database.
+     *
+     * @param drugs The list of drug entities to insert.
+     * @return List of generated drugIds (row IDs) or -1 for ignored entries.
+     */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(drugs: List<DrugMasterEntity>): List<Long>
+
+    /**
      * Updates an existing drug by matching on its [DrugMasterEntity.drugId].
      *
      * @param drug The entity with updated values (must have a valid PK).
@@ -67,10 +76,16 @@ interface DrugMasterDao {
         // and update path is covered.
         val normalizedDrug =
             if (drug.drugType.isNullOrEmpty()) drug.copy(drugType = null) else drug
-        val existingId = getDrugIdByNdc(normalizedDrug.ndc)
-        return if (existingId != null) {
-            update(normalizedDrug.copy(drugId = existingId))
-            existingId
+        val existingDrug = getDrugByNdc(normalizedDrug.ndc)
+        return if (existingDrug != null) {
+            val finalImagePath = normalizedDrug.drugImagePath ?: existingDrug.drugImagePath
+            update(
+                normalizedDrug.copy(
+                    drugId = existingDrug.drugId,
+                    drugImagePath = finalImagePath
+                )
+            )
+            existingDrug.drugId
         } else {
             val newId = insertIgnore(normalizedDrug)
             if (newId == -1L) {
@@ -115,5 +130,8 @@ interface DrugMasterDao {
 
     @Query("SELECT * FROM drug_master WHERE drugId = :drugId LIMIT 1")
     suspend fun getDrugById(drugId: Long?): DrugMasterEntity?
+
+    @Query("SELECT drugId FROM drug_master LIMIT :limit")
+    suspend fun getAllDrugIds(limit: Int): List<Long>
 
 }

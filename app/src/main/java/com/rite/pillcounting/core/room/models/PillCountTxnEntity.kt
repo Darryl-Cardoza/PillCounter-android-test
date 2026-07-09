@@ -69,7 +69,7 @@ data class PillCountTxnEntity(
     val localId: Long? = null,
     val drugId: Long? = null,
 
-    val countType: CountType,
+    val isDispense: Boolean,
     val targetCount: Int? = null,
     val status: CountStatus,
 

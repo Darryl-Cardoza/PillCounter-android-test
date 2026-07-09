@@ -1261,6 +1261,7 @@ fun DispenseFlowScreen(
                     ndcNumber = dispenseState.ndc,
                     rxNumber = dispenseState.rxNo.orEmpty(),
                     strength = dispenseState.ndcStrength.orEmpty(),
+                    drugImage = dispenseState.drugImage,
                     onCancel = { dispenseVm.onRxCancelled() },
                     onProceed = { dispenseVm.onRxConfirmed() },
                     dismissible = false,
@@ -1283,6 +1284,7 @@ fun DispenseFlowScreen(
                         onCancel = { dispenseVm.onRxCancelled() },
                         onProceed = { dispenseVm.onRxConfirmed() },
                         modifier = Modifier.fillMaxSize(),
+                        drugImage = dispenseState.drugImage
                     )
                 }
             }
@@ -1357,6 +1359,7 @@ fun DispenseFlowScreen(
                         isHazardous = dispenseState.isHazardous,
                         strength = dispenseState.ndcStrength.orEmpty(),
                         dosageForm = dispenseState.ndcDosageForm.orEmpty(),
+                        drugImage = dispenseState.drugImage
                     )
                 } else {
                     Box(
@@ -1376,6 +1379,7 @@ fun DispenseFlowScreen(
                             isHazardous = dispenseState.isHazardous,
                             strength = dispenseState.ndcStrength.orEmpty(),
                             dosageForm = dispenseState.ndcDosageForm.orEmpty(),
+                            drugImage = dispenseState.drugImage
                         )
                     }
                 }

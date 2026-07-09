@@ -15,7 +15,7 @@ data class TxnWithDetails(
     val createdAt: Long,
     val barcodeImage: String?,
     val totalPillCount: Int,
-    val countType: CountType,
+    val isDispense: Boolean,
     val drugType: String?,
     val strength: String? = null,
     val dosageForm: String? = null,
@@ -32,6 +32,7 @@ data class TxnWithDetails(
     val requestedDrugName: String? = null,
     val requestedNdc: String? = null,
     val workflowStep: String? = null,
+    val drugImage: String? = "",
 )
 
 data class TxnDetailInfo(

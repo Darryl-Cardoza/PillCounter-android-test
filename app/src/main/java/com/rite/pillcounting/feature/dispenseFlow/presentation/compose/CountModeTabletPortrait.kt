@@ -51,6 +51,7 @@ fun CountModeTabletPortrait(
     dosageForm: String,
     bucket: String,
     showHistory: () -> Unit,
+    drugImage: String? = ""
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val stepType by viewModel.currentStep.collectAsState()
@@ -75,6 +76,7 @@ fun CountModeTabletPortrait(
             strength = strength,
             dosageForm = dosageForm,
             bucket = bucket,
+            drugImage = drugImage
         )
 
         CountModeCenterCircle(

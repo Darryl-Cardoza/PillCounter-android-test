@@ -13,6 +13,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.unmockkAll
+import io.mockk.verify
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -66,11 +67,11 @@ class HistoryRepositoryTest {
     fun `getTransactionsForDateRange passes correct type and status to DAO`() = runTest {
         every { dao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any()) } returns flowOf(emptyList())
 
-        repository.getTransactionsForDateRange(today, today, CountType.FIXED, null, 1L)
+        repository.getTransactionsForDateRange(today, today, true, null, 1L)
             .test { cancelAndIgnoreRemainingEvents() }
 
         // Verify type=FIXED was forwarded
-        every { dao.getTransactionsForDateRange(any(), any(), any(), CountType.FIXED, any(), any()) } returns flowOf(emptyList())
+        verify { dao.getTransactionsForDateRange(any(), any(), any(), true, any(), any()) }
     }
 
     // HIST_REPO_003

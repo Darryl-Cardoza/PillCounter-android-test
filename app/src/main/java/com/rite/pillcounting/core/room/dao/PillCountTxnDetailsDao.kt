@@ -44,6 +44,9 @@ interface PillCountTxnDetailsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(detail: PillCountTxnDetailsEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(details: List<PillCountTxnDetailsEntity>): List<Long>
+
     // ──────────────────────────────── Reads ────────────────────────────────
 
     /**

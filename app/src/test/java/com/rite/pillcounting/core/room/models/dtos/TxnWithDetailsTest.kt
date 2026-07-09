@@ -29,7 +29,7 @@ class TxnWithDetailsTest {
         createdAt = 100L,
         barcodeImage = "bc.png",
         totalPillCount = 30,
-        countType = CountType.FIXED,
+        isDispense = true,
         drugType = "tablet",
         txnDetails = listOf(detail()),
         isComingFromHL7 = true,
@@ -90,7 +90,7 @@ class TxnWithDetailsTest {
             createdAt = 0L,
             barcodeImage = null,
             totalPillCount = 0,
-            countType = CountType.REGULAR,
+            isDispense = false,
             drugType = null,
             txnDetails = emptyList(),
             isComingFromHL7 = false
@@ -114,7 +114,7 @@ class TxnWithDetailsTest {
         assertEquals(100L, t.createdAt)
         assertEquals("bc.png", t.barcodeImage)
         assertEquals(30, t.totalPillCount)
-        assertEquals(CountType.FIXED, t.countType)
+        assertEquals(true, t.isDispense)
         assertEquals("tablet", t.drugType)
         assertEquals(listOf(detail()), t.txnDetails)
         assertTrue(t.isComingFromHL7)
@@ -155,7 +155,7 @@ class TxnWithDetailsTest {
         assertEquals(100L, t.component7())      // createdAt
         assertEquals("bc.png", t.component8())  // barcodeImage
         assertEquals(30, t.component9())        // totalPillCount
-        assertEquals(CountType.FIXED, t.component10()) // countType
+        assertEquals(true, t.component10())
         assertEquals("tablet", t.component11()) // drugType
         assertNull(t.component12())             // strength
         assertNull(t.component13())             // dosageForm

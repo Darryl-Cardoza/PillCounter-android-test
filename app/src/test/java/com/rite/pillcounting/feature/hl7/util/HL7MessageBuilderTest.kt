@@ -32,7 +32,7 @@ class HL7MessageBuilderTest {
         note: String? = "some note"
     ): PillCountTxnEntity = PillCountTxnEntity(
         txnId = txnId,
-        countType = CountType.REGULAR,
+        isDispense = false,
         status = CountStatus.COMPLETED,
         note = note,
         barcodeImage = barcodeImage,

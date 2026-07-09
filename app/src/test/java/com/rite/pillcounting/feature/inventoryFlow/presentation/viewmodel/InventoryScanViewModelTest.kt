@@ -14,7 +14,6 @@ import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.dtos.RequestedDrugDto
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.BarcodeData
 import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
@@ -66,6 +65,7 @@ class InventoryScanViewModelTest {
     private lateinit var drugRepository: IDrugRepository
     private lateinit var hl7Repository: Hl7Repository
     private lateinit var hl7EventHandler: Hl7EventHandler
+    private lateinit var drugImageDownloader: com.rite.pillcounting.core.scanning.data.DrugImageDownloader
     private lateinit var connectionState: MutableStateFlow<Boolean>
 
     @Before
@@ -90,6 +90,7 @@ class InventoryScanViewModelTest {
         drugRepository = mockk(relaxed = true)
         hl7Repository = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
+        drugImageDownloader = mockk(relaxed = true)
         connectionState = MutableStateFlow(false)
 
         every { hl7EventHandler.connectionState } returns connectionState
@@ -124,6 +125,7 @@ class InventoryScanViewModelTest {
             drugRepository,
             hl7Repository,
             hl7EventHandler,
+            drugImageDownloader,
         )
     }
 
@@ -169,7 +171,6 @@ class InventoryScanViewModelTest {
     ) = StockTxnEntity(
         txnId = txnId,
         drugId = drugId,
-        countType = CountType.REGULAR,
         status = CountStatus.COMPLETED,
     )
 

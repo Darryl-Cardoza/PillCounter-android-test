@@ -7,11 +7,14 @@ import androidx.room.PrimaryKey
 /**
  * Entity representing the master record of a drug in the local Room database.
  *
- * @property drugId      Auto-generated unique identifier for each drug.
- * @property drugName    Display name of the drug.
- * @property ndc         National Drug Code (unique identifier per drug).
- * @property drugType    Type/classification of the drug (e.g., tablet, capsule).
- * @property createdAt   Timestamp (epoch millis) when the record was created.
+ * @property drugId       Auto-generated unique identifier for each drug.
+ * @property drugName     Display name of the drug.
+ * @property ndc          National Drug Code (unique identifier per drug).
+ * @property drugType     Type/classification of the drug (e.g., tablet, capsule).
+ * @property createdAt    Timestamp (epoch millis) when the record was created.
+ * @property drugImagePath Absolute local path to the downloaded drug image (.webp).
+ *                         Null until the image is first downloaded. Used to display
+ *                         the drug in the Dashboard row thumbnail.
  */
 @Entity(
     tableName = "drug_master",
@@ -30,5 +33,7 @@ data class DrugMasterEntity(
     /** Strength of the first active ingredient, e.g. "35 mg/1". From DrugInfo.strength. */
     val strength: String? = null,
     /** Dosage form, e.g. "CAPSULE, EXTENDED RELEASE". From DrugInfo.dosageForm. */
-    val dosageForm: String? = null
+    val dosageForm: String? = null,
+    /** Absolute local path to the downloaded drug image (.webp). Null if never downloaded. */
+    val drugImagePath: String? = null,
 )

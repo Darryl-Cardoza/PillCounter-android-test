@@ -52,6 +52,7 @@ fun CountModePhoneLandscape(
     dosageForm: String,
     bucket: String,
     showHistory: () -> Unit,
+    drugImage: String? = ""
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val stepType by viewModel.currentStep.collectAsState()
@@ -76,6 +77,7 @@ fun CountModePhoneLandscape(
             strength = strength,
             dosageForm = dosageForm,
             bucket = bucket,
+            drugImage = drugImage
         )
 
         CountModeCenterCircle(

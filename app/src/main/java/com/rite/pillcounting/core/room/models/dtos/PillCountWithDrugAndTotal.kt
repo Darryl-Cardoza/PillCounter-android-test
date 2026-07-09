@@ -15,9 +15,11 @@ data class PillCountWithDrugAndTotal(
     val totalPillCount: Int,
     val isComingFromHL7 : Boolean,
     val isNdcVerified: Boolean,
-    val countType: CountType,
+    val isDispense: Boolean,
     val priority: TxnPriority?,
     val isHazardous: Boolean = false,
     val strength: String? = null,
     val dosageForm: String? = null,
+    /** Absolute local path to the downloaded drug image (.webp). Null if not yet downloaded. */
+    val drugImagePath: String? = null,
 )

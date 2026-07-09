@@ -11,7 +11,6 @@ import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
@@ -166,8 +165,10 @@ class DashboardViewModel @Inject constructor(
      */
     private fun observeQueue(localId: Long = preferenceHelper.getLocalId()) {
         viewModelScope.launch(Dispatchers.IO) {
-            val dispenseFlow = pillCountTxnDao.observePartialByCountType(
-                countType = CountType.FIXED,
+            _uiState.update { it.copy(isLoadingQueue = true) }
+
+            val dispenseFlow = pillCountTxnDao.observePartialByIsDispense(
+                isDispense = true,
                 partialStatus = CountStatus.PARTIAL,
                 userLocalId = localId,
                 // totalPillCount sums detail rows of THIS step only. FIXED dispense
@@ -204,6 +205,7 @@ class DashboardViewModel @Inject constructor(
                     state.copy(
                         queue = applyKpiFilter(combined, state.activeKpiFilter),
                         kpiCounts = counts,
+                        isLoadingQueue = false,
                     )
                 }
             }
@@ -248,11 +250,13 @@ class DashboardViewModel @Inject constructor(
         if (localId == 0L) return
 
         recentActivityJob = viewModelScope.launch(Dispatchers.IO) {
+            _uiState.update { it.copy(isLoadingQueue = true) }
+
             val completedDispenseFlow = pillCountTxnDao.getTransactionsForDateRange(
                 startDate = 0L,
                 endDate = Long.MAX_VALUE,
                 stepType = StepState.TARGET_VERIFICATION,
-                type = CountType.FIXED,
+                isDispense = true,
                 status = CountStatus.COMPLETED,
                 userLocalId = localId,
             )
@@ -276,8 +280,9 @@ class DashboardViewModel @Inject constructor(
                             totalPillCount = t.pillCount ?: 0,
                             isComingFromHL7 = false,
                             isNdcVerified = false,
-                            countType = t.countType,
+                            isDispense = t.isDispense,
                             priority = null,
+                            drugImagePath = null,
                         ),
                         isHazardous = false,
                         isHighPriority = false,
@@ -289,7 +294,7 @@ class DashboardViewModel @Inject constructor(
                     .map { QueueItem.Inventory(batch = it) }
                 (dispenseItems + inventoryItems).sortedByDescending { it.createdAt }
             }.collect { combined ->
-                _uiState.update { it.copy(recentActivity = combined) }
+                _uiState.update { it.copy(recentActivity = combined, isLoadingQueue = false) }
             }
         }
     }

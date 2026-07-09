@@ -205,12 +205,12 @@ class Hl7RepositoryTest {
     private fun txnEntity(
         txnId: Long = 1L,
         drugId: Long? = 5L,
-        countType: CountType = CountType.FIXED,
+        isDispense: Boolean = true,
     ) = PillCountTxnEntity(
         txnId = txnId,
         localId = 1L,
         drugId = drugId,
-        countType = countType,
+        isDispense = isDispense,
         status = CountStatus.PARTIAL,
         rxNo = "RX1",
     )
@@ -417,8 +417,8 @@ class Hl7RepositoryTest {
         // Stock (REGULAR) counts no longer live in pill_count_txn; only FIXED (dispense) txns are
         // resent here. REGULAR entries are a no-op — their HL7 responses are resent per-batch via
         // resendPendingHl7BatchTransactions().
-        val fixedTxn = txnEntity(txnId = 1L, countType = CountType.FIXED)
-        val regularTxn = txnEntity(txnId = 2L, countType = CountType.REGULAR)
+        val fixedTxn = txnEntity(txnId = 1L, isDispense = true)
+        val regularTxn = txnEntity(txnId = 2L, isDispense = false)
         coEvery { pillCountTxnDao.getPendingHl7TxnOnce() } returns
             listOf(fixedTxn, regularTxn)
 

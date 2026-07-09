@@ -16,7 +16,6 @@ import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -25,6 +24,7 @@ import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.scanning.data.DrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.feature.hl7.core.Hl7MessageSender
 import com.rite.pillcounting.feature.hl7.domain.model.MessageType
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
@@ -62,7 +62,8 @@ class Hl7Repository @Inject constructor(
     private val batchDao: BatchDao,
     private val hl7MessageSender: Hl7MessageSender,
     private val drugRepository: DrugRepository,
-    private val notifier: Hl7Notifier
+    private val notifier: Hl7Notifier,
+    private val drugImageDownloader: DrugImageDownloader,
 ) {
 
     private val logger = AppLogger.create<Hl7Repository>()
@@ -231,16 +232,11 @@ class Hl7Repository @Inject constructor(
             logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
             for (txn in pendingTxn) {
                 preferenceHelper.saveSentMessageTxnId(txn.txnId)
-                when (txn.countType) {
-                    CountType.FIXED -> {
-                        //Change this condition because we have transaction status that we are handling from pms
+                if (txn.isDispense) {
+                    //Change this condition because we have transaction status that we are handling from pms
 //                        if (txn.targetCount != null) {
                             buildAndSendSuccessfulDispense(txnId = txn.txnId)
 //                        }
-                    }
-                    // Stock (REGULAR) counts no longer live in pill_count_txn; their pending
-                    // HL7 responses are resent per-batch via resendPendingHl7BatchTransactions().
-                    CountType.REGULAR -> Unit
                 }
             }
         }
@@ -364,6 +360,10 @@ class Hl7Repository @Inject constructor(
             }
 
             resolvedNdc?.let {
+                val imagePath = drugImageDownloader.downloadAndSave(
+                    url = drugInfo?.imageUrl,
+                    drugName = resolvedDrugName ?: drugInfo?.ndc
+                )
                 DrugMasterEntity(
                     ndc = it,
                     drugName = resolvedDrugName,
@@ -371,6 +371,7 @@ class Hl7Repository @Inject constructor(
                     isHazardous = drugInfo?.isHazardous ?: false,
                     strength = drugInfo?.strength,
                     dosageForm = drugInfo?.dosageForm,
+                    drugImagePath = imagePath,
                 )
             }
         }
@@ -391,7 +392,7 @@ class Hl7Repository @Inject constructor(
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
             drugId = drugId,
-            countType = CountType.FIXED,
+            isDispense = true,
             targetCount = targetCount,
             status = txnStatus,
             isComingFromHL7 = true,
@@ -740,6 +741,10 @@ class Hl7Repository @Inject constructor(
                     continue
                 }
 
+                val imagePath = drugImageDownloader.downloadAndSave(
+                    url = drugInfo?.imageUrl,
+                    drugName = resolvedDrugName ?: drugInfo?.ndc
+                )
                 val drugEntity = DrugMasterEntity(
                     ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
                     drugName = resolvedDrugName,
@@ -748,6 +753,7 @@ class Hl7Repository @Inject constructor(
                     isHazardous = drugInfo?.isHazardous ?: false,
                     strength = drugInfo?.strength,
                     dosageForm = drugInfo?.dosageForm,
+                    drugImagePath = imagePath,
                 )
 
                 val newDrugId = drugMasterDao.upsertPreservingId(drugEntity)
@@ -795,7 +801,6 @@ class Hl7Repository @Inject constructor(
         for (item in resolvedItems) {
             val txn = StockTxnEntity(
                 drugId = item.drugId,
-                countType = CountType.REGULAR,
                 status = CountStatus.PARTIAL,
                 batchId = batchId
             )
@@ -970,6 +975,10 @@ class Hl7Repository @Inject constructor(
                     )
                     return
                 }
+                val imagePath = drugImageDownloader.downloadAndSave(
+                    url = drugInfo?.imageUrl,
+                    drugName = resolvedName ?: drugInfo?.ndc
+                )
                 DrugMasterEntity(
                     ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: hl7Ndc,
                     drugName = resolvedName,
@@ -977,6 +986,7 @@ class Hl7Repository @Inject constructor(
                     isHazardous = drugInfo?.isHazardous ?: false,
                     strength = drugInfo?.strength,
                     dosageForm = drugInfo?.dosageForm,
+                    drugImagePath = imagePath,
                 )
             } catch (e: Exception) {
                 logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e)

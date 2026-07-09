@@ -24,7 +24,7 @@ class CountItemTest {
         image: Int = R.drawable.logo,
         isComingFromHL7: Boolean = false,
         isNdcVerified: Boolean = true,
-        countType: CountType = CountType.REGULAR,
+        isDispense: Boolean = false,
         priority: TxnPriority? = null
     ) = CountItem(
         id = id,
@@ -39,7 +39,7 @@ class CountItemTest {
         image = image,
         isComingFromHL7 = isComingFromHL7,
         isNdcVerified = isNdcVerified,
-        countType = countType,
+        isDispense = isDispense,
         priority = priority
     )
 
@@ -60,7 +60,7 @@ class CountItemTest {
         )
 
         assertEquals(R.drawable.logo, item.image)
-        assertEquals(CountType.REGULAR, item.countType)
+        assertEquals(false, item.isDispense)
         assertNull(item.priority)
     }
 
@@ -79,7 +79,7 @@ class CountItemTest {
             image = R.drawable.logo,
             isComingFromHL7 = true,
             isNdcVerified = false,
-            countType = CountType.FIXED,
+            isDispense = true,
             priority = TxnPriority.High
         )
 
@@ -95,7 +95,7 @@ class CountItemTest {
         assertEquals(R.drawable.logo, item.image)
         assertTrue(item.isComingFromHL7)
         assertEquals(false, item.isNdcVerified)
-        assertEquals(CountType.FIXED, item.countType)
+        assertEquals(true, item.isDispense)
         assertEquals(TxnPriority.High, item.priority)
     }
 
@@ -143,12 +143,12 @@ class CountItemTest {
             image = R.drawable.logo,
             isComingFromHL7 = true,
             isNdcVerified = false,
-            countType = CountType.FIXED,
+            isDispense = true,
             priority = TxnPriority.Medium
         )
 
         val (id, name, ndc, drugType, bucketId, pillCount, target, barcodeImage,
-            date, image, isComingFromHL7, isNdcVerified, countType, priority) = item
+            date, image, isComingFromHL7, isNdcVerified, isDispense, priority) = item
 
         assertEquals(5L, id)
         assertEquals("Drug", name)
@@ -162,7 +162,7 @@ class CountItemTest {
         assertEquals(R.drawable.logo, image)
         assertEquals(true, isComingFromHL7)
         assertEquals(false, isNdcVerified)
-        assertEquals(CountType.FIXED, countType)
+        assertEquals(true, isDispense)
         assertEquals(TxnPriority.Medium, priority)
     }
 }

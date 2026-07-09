@@ -22,6 +22,9 @@ interface BottleInfoDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(bottle: BottleInfoEntity): Long
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(bottles: List<BottleInfoEntity>): List<Long>
+
     @Update
     suspend fun update(bottle: BottleInfoEntity)
 
