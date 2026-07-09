@@ -16,7 +16,6 @@ import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -483,7 +482,6 @@ class Hl7Repository @Inject constructor(
         for (item in resolvedItems) {
             val txn = StockTxnEntity(
                 drugId = item.drugId,
-                countType = CountType.REGULAR,
                 status = CountStatus.PARTIAL,
                 batchId = batchId
             )

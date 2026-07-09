@@ -1648,7 +1648,6 @@ class PillScanningViewModel @Inject constructor(
                 stockTxnId = stockTxn?.txnId ?: stockTxnDao.upsertPreservingId(
                     StockTxnEntity(
                         drugId = drugId,
-                        countType = CountType.REGULAR,
                         status = CountStatus.PARTIAL,
                         batchId = stockCountBatchId,
                     )

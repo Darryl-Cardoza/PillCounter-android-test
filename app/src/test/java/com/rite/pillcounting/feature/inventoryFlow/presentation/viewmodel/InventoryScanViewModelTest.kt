@@ -14,7 +14,6 @@ import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.dtos.RequestedDrugDto
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.BarcodeData
 import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
@@ -169,7 +168,6 @@ class InventoryScanViewModelTest {
     ) = StockTxnEntity(
         txnId = txnId,
         drugId = drugId,
-        countType = CountType.REGULAR,
         status = CountStatus.COMPLETED,
     )
 

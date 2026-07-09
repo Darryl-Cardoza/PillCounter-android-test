@@ -625,7 +625,6 @@ class InventoryScanViewModel @Inject constructor(
                 val stockTxnId = stockTxn?.txnId ?: stockTxnDao.upsertPreservingId(
                     StockTxnEntity(
                         drugId = drugId,
-                        countType = CountType.REGULAR,
                         status = CountStatus.COMPLETED,
                         batchId = batchId,
                         bucketId = _bucketId.value,

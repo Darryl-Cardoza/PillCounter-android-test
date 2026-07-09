@@ -7,7 +7,6 @@ import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.rite.pillcounting.core.room.di.PillCountTxnConverters
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 
 /**
  * Stock/inventory transaction header — one row per drug counted inside a batch.
@@ -19,7 +18,6 @@ import com.rite.pillcounting.core.room.models.enums.CountType
  *
  * @property txnId     Auto-generated primary key.
  * @property drugId    FK to [DrugMasterEntity.drugId]. Null if the drug is deleted.
- * @property countType Always [CountType.REGULAR] for stock; kept for symmetry/reporting.
  * @property status    Transaction status (requires a TypeConverter).
  * @property isDeleted Soft-delete flag.
  * @property createdAt Creation timestamp (epoch millis).
@@ -55,7 +53,6 @@ data class StockTxnEntity(
 
     val drugId: Long? = null,
 
-    val countType: CountType = CountType.REGULAR,
     val status: CountStatus = CountStatus.PARTIAL,
 
     val isDeleted: Boolean = false,

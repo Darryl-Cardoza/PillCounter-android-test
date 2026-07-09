@@ -101,7 +101,6 @@ class DispenseFlowViewModel @Inject constructor(
         val stockTxnId = existingHeader?.txnId ?: stockTxnDao.upsertPreservingId(
             StockTxnEntity(
                 drugId = drugId,
-                countType = CountType.REGULAR,
                 status = status,
                 batchId = batch,
                 bucketId = _uiState.value.selectedBucketId.ifBlank { null },
