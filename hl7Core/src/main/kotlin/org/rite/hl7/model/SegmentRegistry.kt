@@ -22,6 +22,7 @@ import org.rite.hl7.model.segment.RXRSegment
 import org.rite.hl7.model.segment.ZINSegment
 import org.rite.hl7.model.segment.ZNISegment
 import org.rite.hl7.model.segment.ZPRSegment
+import org.rite.hl7.model.segment.ZUISegment
 
 /**
  * Maps segment names to typed-view factories. Ships with all standard segments
@@ -40,7 +41,7 @@ class SegmentRegistry {
             RXCSegment.Definition, RXRSegment.Definition, OBXSegment.Definition,
             EQUSegment.Definition, INVSegment.Definition, QPDSegment.Definition,
             RCPSegment.Definition, QAKSegment.Definition, ZINSegment.Definition,
-            ZPRSegment.Definition, ZNISegment.Definition,
+            ZPRSegment.Definition, ZNISegment.Definition, ZUISegment.Definition,
         ).forEach { register(it) }
     }
 

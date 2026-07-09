@@ -6,6 +6,7 @@ import com.google.gson.Gson
 import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
+import com.rite.pillcounting.feature.hl7.util.Hl7Format
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -58,6 +59,8 @@ private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
 private const val KEY_HL7_PILLCOUNTER_HOST = "key_hl7_pillcounter_host"
 private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
 private const val KEY_HL7_VERSION = "key_hl7_version"
+private const val KEY_BYPASS_TLS = "key_bypass_tls"
+private const val KEY_HL7_FORMAT = "key_hl7_format"
 
 @Singleton
 class PreferenceHelper @Inject constructor(
@@ -546,6 +549,43 @@ class PreferenceHelper @Inject constructor(
         val version = prefs.getString(KEY_HL7_VERSION) ?: DEFAULT_HL7_VERSION
         logger.d("Retrieved HL7 version: $version")
         return version
+    }
+
+    // ─────────────────────────── HL7 TLS BYPASS ───────────────────────────
+
+    /**
+     * When enabled, HL7 MLLP connections skip TLS certificate verification
+     * (trust-all), regardless of build type. Intended for pharmacies whose
+     * PMS cannot present a valid/pinned certificate.
+     */
+    fun setBypassTlsEnabled(enabled: Boolean) {
+        prefs.putBoolean(KEY_BYPASS_TLS, enabled)
+        logger.i("Bypass TLS set to: $enabled")
+    }
+
+    fun isBypassTlsEnabled(): Boolean {
+        val enabled = prefs.getBoolean(KEY_BYPASS_TLS, true)
+        logger.d("isBypassTlsEnabled: $enabled")
+        return enabled
+    }
+
+    // ─────────────────────────── HL7 FORMAT ───────────────────────────
+
+    /**
+     * Saves the HL7 sending-application format used when composing outbound
+     * messages. One of [Hl7Format.DISPENSESURE], [Hl7Format.EYECON], [Hl7Format.VIVID].
+     */
+    fun saveHl7Format(format: Hl7Format) {
+        prefs.putString(KEY_HL7_FORMAT, format.name)
+        logger.i("Saved HL7 format: ${format.name}")
+    }
+
+    /** Returns the persisted HL7 format, defaulting to [Hl7Format.DEFAULT] if not yet configured. */
+    fun getHl7Format(): Hl7Format {
+        val name = prefs.getString(KEY_HL7_FORMAT)
+        val format = name?.let { runCatching { Hl7Format.valueOf(it) }.getOrNull() } ?: Hl7Format.DEFAULT
+        logger.d("Retrieved HL7 format: $format")
+        return format
     }
 
     companion object {

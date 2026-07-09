@@ -15,8 +15,8 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.Socket
 import java.net.SocketTimeoutException
-import javax.net.ssl.SSLSocket
 
 class MllpClient(
     private val socketFactory: TlsSocketFactory
@@ -30,7 +30,7 @@ class MllpClient(
         private const val READ_TIMEOUT_MS = 1_000  // non-zero so passiveReader releases streamGate on timeout
     }
 
-    private var socket: SSLSocket? = null
+    private var socket: Socket? = null
     private var input: InputStream? = null
     private var output: OutputStream? = null
     private val mutex = Mutex()

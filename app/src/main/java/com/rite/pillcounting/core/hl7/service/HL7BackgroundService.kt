@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.hl7.service
 
-import com.rite.pillcounting.core.hl7.imageWebService.ImageWebServer
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -13,11 +12,12 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.rite.pillcounting.core.hl7.core.Hl7EventListener
+import com.rite.pillcounting.core.hl7.imageWebService.ImageWebServer
 import com.rite.pillcounting.core.hl7.imageWebService.NetworkUtils
 import com.rite.pillcounting.core.hl7.mllp.client.MllpClient
 import com.rite.pillcounting.core.hl7.mllp.client.MllpConnectionManager
-import com.rite.pillcounting.core.hl7.mllp.nsd.NsdHelper
 import com.rite.pillcounting.core.hl7.mllp.nsd.NetworkIpMonitor
+import com.rite.pillcounting.core.hl7.mllp.nsd.NsdHelper
 import com.rite.pillcounting.core.hl7.mllp.server.MllpServer
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsSocketFactory
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -28,9 +28,6 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.rite.hl7.HL7
 import org.rite.hl7.model.HL7Message
-import org.rite.hl7.model.segment.INVSegment
-import org.rite.hl7.model.segment.ZINSegment
-import org.rite.hl7.model.segment.ZPRSegment
 
 
 /**
@@ -44,9 +41,11 @@ import org.rite.hl7.model.segment.ZPRSegment
  * - Send automated responses (ACK / RDS)
  * - Maintain foreground notification to prevent background termination
  *
- * The HL7 version used for parsing and building is read from [PreferenceHelper.getHl7Version]
- * at service startup so that the correct trigger events (e.g. RDS^O13 vs RDS^O01) are
- * resolved automatically.
+ * Incoming messages are parsed permissively: the sender's own MSH-12 determines the
+ * version used to interpret each message, so any HL7 v2.x sender is accepted. The
+ * version from [PreferenceHelper.getHl7Version] is only a fallback for messages that
+ * omit MSH-12, and is what [HL7MessageBuilder][com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder]
+ * uses to decide trigger events (e.g. RDS^O13 vs RDS^O01) when building outbound messages.
  */
 class HL7Service : Service() {
     companion object {
@@ -280,6 +279,7 @@ class HL7Service : Service() {
     private fun startMllpServer() {
         server = MllpServer(
             port = config.serverPort,
+            bypassTls = PreferenceHelper(applicationContext).isBypassTlsEnabled(),
         ) { raw ->
             handleIncomingMessage(raw)
         }

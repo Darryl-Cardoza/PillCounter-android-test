@@ -20,6 +20,7 @@ class MSHSegment(raw: HL7Segment) : TypedSegment(raw) {
     val messageControlId: String get() = fieldValue(10)
     val processingId: String get() = fieldValue(11)
     val versionId: String get() = fieldValue(12)
+    val sequenceNumber: String get() = fieldValue(13)
     val countryCode: String get() = fieldValue(17)
 
     companion object {

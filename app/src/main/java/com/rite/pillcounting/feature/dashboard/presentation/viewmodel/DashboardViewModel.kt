@@ -366,6 +366,12 @@ class DashboardViewModel @Inject constructor(
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.settings?.bucket ?: emptyList())
                             preferenceHelper.setHl7Enabled(entity.isHl7Enable)
+                            // Persist the HL7 spec version from the server so the HL7 parser and
+                            // builder resolve the correct trigger events (e.g. RDS^O13 vs RDS^O01).
+                            // Falls back to the current/default version when the server omits it.
+                            detail.settings?.hl7Version
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { preferenceHelper.saveHl7Version(it) }
                             // Persist allow_local_storage so the HL7 sync flow knows whether to
                             // delete a dispense txn once it is completed and synced with the PMS.
                             preferenceHelper.setAllowLocalStorage(detail.settings?.allowLocalStorage ?: true)

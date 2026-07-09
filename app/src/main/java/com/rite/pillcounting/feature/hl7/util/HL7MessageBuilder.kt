@@ -12,6 +12,7 @@ import org.rite.hl7.builder.ZadReasonCode
 import org.rite.hl7.builder.ZsnTransactionType
 import org.rite.hl7.builder.ZsvMatchStrength
 import org.rite.hl7.builder.ZsvValidationResult
+import org.rite.hl7.builder.ZuiTransactionStatus
 
 import java.io.File
 import java.text.SimpleDateFormat
@@ -36,6 +37,23 @@ import java.util.Locale
  * a static convenience default ("2.5") is used when no preference is available.
  */
 
+/**
+ * HL7 sending application formats supported when composing outbound messages.
+ * Persisted via [PreferenceHelper.saveHl7Format]/[PreferenceHelper.getHl7Format].
+ */
+enum class Hl7Format(val sendingApplication: String) {
+    DISPENSESURE("DISPENSESURE"),
+    EYECON("EYECON"),
+    VIVID("VIVID");
+
+    companion object {
+        val DEFAULT = DISPENSESURE
+
+        fun fromSendingApplication(value: String?): Hl7Format =
+            entries.firstOrNull { it.sendingApplication == value } ?: DEFAULT
+    }
+}
+
 data class HL7Config(
     val sendingApplication: String,
     val sendingFacility: String,
@@ -47,15 +65,16 @@ data class HL7Config(
         /**
          * Sourced from app settings: the terminal name identifies this
          * station as the sending facility, and the configured PMS host name
-         * is used as the receiving facility since the PMS routes by that
+         * is used as the receiving facility since the PMS routes by t
          * identity. Mirrors iOS `HL7Config.current`.
          */
         fun current(
             selectedTerminalName: String,
             pmsHostName: String,
-            hl7Version: String = PreferenceHelper.DEFAULT_HL7_VERSION
+            hl7Version: String = PreferenceHelper.DEFAULT_HL7_VERSION,
+            hl7Format: Hl7Format = Hl7Format.DEFAULT
         ) = HL7Config(
-            sendingApplication = "DISPENSESURE",
+            sendingApplication = hl7Format.sendingApplication,
             sendingFacility = selectedTerminalName,
             receivingApplication = "PMS",
             receivingFacility = pmsHostName,
@@ -219,6 +238,29 @@ object HL7MessageBuilder {
                 z.validator = zsv.validator
                 z.validationTimestamp = zsv.validationTimestamp
                 z.matchStrength = zsv.matchStrength
+            }
+
+            when (config.sendingApplication) {
+                Hl7Format.VIVID.sendingApplication -> zui { z ->
+                    z.ndc = drugCode
+                    z.vividUserName = pharmacistName
+                    z.transactionOrderId = orderId
+                    z.rxNumber = orderId
+                    z.dispensedQuantity = totalCount.toString()
+                    z.transactionStatus = ZuiTransactionStatus.DONE
+                    z.drugLotNumber = lotNumber
+                    z.drugSerialNumber = serialNumber
+                    z.drugExpirationDate = expirationDate
+                }
+                Hl7Format.EYECON.sendingApplication -> zni { z ->
+                    z.ndc = drugCode
+                    z.drugName = drugName
+                    z.userName = pharmacistName
+                    z.fillerOrderNumber = orderId
+                    z.dispenseAmount = totalCount.toString()
+                    z.prescriptionNumber = orderId
+                    z.resultStatus = "F"
+                }
             }
         }
 

@@ -121,3 +121,55 @@ class ZNISegment(raw: HL7Segment) : TypedSegment(raw) {
         val Definition = SegmentDefinition(NAME) { ZNISegment(it) }
     }
 }
+
+/**
+ * ZUI — Order Data Packet / Pharmacy Dispense Message. The "ZUI" segment name is
+ * reused for two unrelated field maps depending on message type — direction must
+ * be determined from MSH-9 before deciding which accessor group applies.
+ *
+ * Order Data Packet (RDE^O11, PMSS → VIVID):
+ * `ZUI|ndc|drugName|patientName|transactionOrderId|dispenseQuantity|rxNumber|fillNumber`
+ * ndc: required, 11-digit NDC.
+ * patientName: family^given.
+ * transactionOrderId: required, order ID or Rx number (numeric).
+ * dispenseQuantity: required, numeric.
+ * rxNumber: required, numeric.
+ * fillNumber: optional, numeric.
+ *
+ * Pharmacy Dispense Message (RDS, VIVID → PMSS):
+ * `ZUI|ndc|vividUserName|transactionOrderId|rxNumber|fillNumber|dispensedQuantity|transactionStatus|drugImage|drugLotNumber|drugSerialNumber|drugExpirationDate`
+ * vividUserName: "Anonymous" if in Anonymous Mode.
+ * transactionStatus: Done / Cancelled / Partial / Overfill — see [org.rite.hl7.builder.ZuiTransactionStatus].
+ * drugImage: optional, base64 encoded string.
+ * drugLotNumber / drugSerialNumber / drugExpirationDate: optional GS1 fields; expirationDate is yyMMdd.
+ */
+class ZUISegment(raw: HL7Segment) : TypedSegment(raw) {
+    /** Shared by both layouts (field 1 in both). */
+    val ndc: String get() = fieldValue(1)
+
+    // --- Order Data Packet (RDE^O11) accessors ---
+    val orderDrugName: String get() = fieldValue(2)
+    val orderPatientFamilyName: String get() = component(3, 1)
+    val orderPatientGivenName: String get() = component(3, 2)
+    val orderTransactionOrderId: String get() = fieldValue(4)
+    val orderDispenseQuantity: String get() = fieldValue(5)
+    val orderRxNumber: String get() = fieldValue(6)
+    val orderFillNumber: String get() = fieldValue(7)
+
+    // --- Pharmacy Dispense Message (RDS) accessors ---
+    val dispenseVividUserName: String get() = fieldValue(2)
+    val dispenseTransactionOrderId: String get() = fieldValue(3)
+    val dispenseRxNumber: String get() = fieldValue(4)
+    val dispenseFillNumber: String get() = fieldValue(5)
+    val dispensedQuantity: String get() = fieldValue(6)
+    val transactionStatus: String get() = fieldValue(7)
+    val drugImage: String get() = fieldValue(8)
+    val drugLotNumber: String get() = fieldValue(9)
+    val drugSerialNumber: String get() = fieldValue(10)
+    val drugExpirationDate: String get() = fieldValue(11)
+
+    companion object {
+        const val NAME = "ZUI"
+        val Definition = SegmentDefinition(NAME) { ZUISegment(it) }
+    }
+}

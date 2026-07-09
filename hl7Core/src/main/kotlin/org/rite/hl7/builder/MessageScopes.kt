@@ -44,6 +44,8 @@ class RdsO13Scope : MessageScope() {
     fun obx(block: (OBXBuilder) -> Unit) = add(OBXBuilder(), block)   // repeating
     fun zsn(block: (ZSNBuilder) -> Unit) = add(ZSNBuilder(), block)   // repeating
     fun zsv(block: (ZSVBuilder) -> Unit) = add(ZSVBuilder(), block)
+    fun zui(block: (ZUIDispenseBuilder) -> Unit) = add(ZUIDispenseBuilder(), block)
+    fun zni(block: (ZNIBuilder) -> Unit) = add(ZNIBuilder(), block)
 }
 
 /** Scope for RDE^O11 dispense order. */
@@ -55,6 +57,7 @@ class RdeO11Scope : MessageScope() {
     fun rxr(block: (RXRBuilder) -> Unit) = add(RXRBuilder(), block)
     fun rxc(block: (RXCBuilder) -> Unit) = add(RXCBuilder(), block)
     fun nte(block: (NTEBuilder) -> Unit) = add(NTEBuilder(), block)
+    fun zui(block: (ZUIOrderBuilder) -> Unit) = add(ZUIOrderBuilder(), block)
 }
 
 /** Scope for INR^U05 inventory count response (INV + ZIN rows). */

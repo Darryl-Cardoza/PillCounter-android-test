@@ -23,6 +23,7 @@ class HL7Message internal constructor(
     val messageCode: String get() = header?.messageCode ?: ""
     val triggerEvent: String get() = header?.triggerEvent ?: ""
     val messageControlId: String get() = header?.messageControlId ?: ""
+    val sequenceNumber: String get() = header?.sequenceNumber ?: ""
     val sendingFacility: String get() = header?.sendingFacility ?: ""
 
     /** Business classification (DISPENSE, INVENTORY_ADJUSTMENT, QUERY, …). */

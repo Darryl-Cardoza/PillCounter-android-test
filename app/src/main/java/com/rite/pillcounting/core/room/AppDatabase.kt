@@ -54,7 +54,7 @@ import com.rite.pillcounting.core.security.SecureStringConverter
         StockTxnEntity::class,
         BottleInfoEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 @TypeConverters(

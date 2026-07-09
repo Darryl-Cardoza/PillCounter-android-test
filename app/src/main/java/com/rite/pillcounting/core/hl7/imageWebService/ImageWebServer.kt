@@ -3,6 +3,7 @@ package com.rite.pillcounting.core.hl7.imageWebService
 import android.content.Context
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsImageKeystoreUtil
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import fi.iki.elonen.NanoHTTPD
 import java.security.SecureRandom
 import javax.net.ssl.KeyManagerFactory
@@ -12,6 +13,7 @@ class ImageWebServer(private val context: Context) {
 
     companion object {
         private const val PORT = 8443
+        private const val PLAIN_PORT = 8080
     }
 
     private val logger = AppLogger("ImageWebServer")
@@ -19,6 +21,15 @@ class ImageWebServer(private val context: Context) {
 
     fun start() {
         if (server != null) return
+
+        val bypassTls = PreferenceHelper(context).isBypassTlsEnabled()
+
+        if (bypassTls) {
+            server = ImageNanoServer(context, PLAIN_PORT, sslFactory = null)
+            server!!.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+            logger.i("HTTP Image Server started on port $PLAIN_PORT (TLS bypassed)")
+            return
+        }
 
         val keyStore = TlsImageKeystoreUtil.ensureKeystore(context)
         val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
