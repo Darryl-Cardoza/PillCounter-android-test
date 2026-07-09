@@ -590,6 +590,6 @@ class PreferenceHelper @Inject constructor(
 
     companion object {
         /** Default HL7 spec version used by parser and builder when not explicitly configured. */
-        const val DEFAULT_HL7_VERSION = "2.5"
+        const val DEFAULT_HL7_VERSION = "2.5.1"
     }
 }

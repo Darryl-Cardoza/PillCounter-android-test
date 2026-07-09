@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.hl7.util
 
 
+import com.rite.pillcounting.core.models.toImageLabel
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
@@ -121,7 +122,8 @@ object HL7MessageBuilder {
         val builder = hl7.build()
 
         val now = now()
-        val messageId = System.currentTimeMillis().toString()
+        val messageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
+            ?: System.currentTimeMillis().toString()
 
         val txnDetails = txnDetails.filter { !it.isDeleted }
         val details = txnDetails.map { detail ->
@@ -133,7 +135,7 @@ object HL7MessageBuilder {
             )
         }.filter { it.pillCount != null }
 
-        val totalCount = details.sumOf { it.pillCount?.toIntOrNull() ?: 0 }
+        val totalCount = txn.targetCount ?: details.sumOf { it.pillCount?.toIntOrNull() ?: 0 }
         val orderId = txn.rxNo ?: txn.txnId.toString()
 
 
@@ -152,7 +154,8 @@ object HL7MessageBuilder {
             orc { orc ->
                 orc.orderControl = "RE"
                 orc.placerOrderNumber = orderId
-                orc.orderStatus = "CM"
+                orc.orderStatus = null
+                orc.orderingProviderId = pharmacistName?.takeIf { it.isNotBlank() }
             }
 
             pid { pid ->
@@ -245,7 +248,7 @@ object HL7MessageBuilder {
                     z.ndc = drugCode
                     z.vividUserName = pharmacistName
                     z.transactionOrderId = orderId
-                    z.rxNumber = orderId
+                    z.rxNumber = txn.hl7SequenceNumber?.takeIf { it.isNotBlank() } ?: orderId
                     z.dispensedQuantity = totalCount.toString()
                     z.transactionStatus = ZuiTransactionStatus.DONE
                     z.drugLotNumber = lotNumber
@@ -315,7 +318,7 @@ object HL7MessageBuilder {
                 msh.sendingApplication = config.sendingApplication
                 msh.sendingFacility = config.sendingFacility
                 msh.receivingApplication = config.receivingApplication
-                msh.receivingFacility = config.receivingFacility
+                msh.receivingFacility = ""
                 msh.dateTimeOfMessage = now
                 msh.messageControlId = messageId
                 msh.processingId = "P"
@@ -393,7 +396,7 @@ object HL7MessageBuilder {
 
         val detailRows = details.mapIndexed { index, detail ->
             val count = detail.pillCount ?: 0
-            val type = detail.type ?: "UNKNOWN"
+            val type = detail.type.toImageLabel()
             val fileName = detail.imagePath?.let { File(it).name } ?: ""
 
             ObxRow(
@@ -415,7 +418,7 @@ object HL7MessageBuilder {
                 valueType = "ST",
                 observationId = observationId,
                 observationText = "Barcode Image",
-                observationValue = "count=0|type=SCAN|image=$barcodeFileName",
+                observationValue = "count=0|type=${"SCAN".toImageLabel()}|image=$barcodeFileName",
                 resultStatus = "F",
                 units = null
             )

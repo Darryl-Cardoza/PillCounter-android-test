@@ -28,6 +28,7 @@ import com.rite.pillcounting.feature.dashboard.domain.model.UserProfile
 import com.rite.pillcounting.feature.dashboard.domain.model.UserSettings
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
+import com.rite.pillcounting.feature.hl7.util.Hl7Format
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -375,6 +376,14 @@ class DashboardViewModel @Inject constructor(
                             // Persist allow_local_storage so the HL7 sync flow knows whether to
                             // delete a dispense txn once it is completed and synced with the PMS.
                             preferenceHelper.setAllowLocalStorage(detail.settings?.allowLocalStorage ?: true)
+                            // Persist bypass_ssl so HL7 MLLP connections know whether to skip
+                            // TLS certificate verification for this pharmacy's PMS.
+                            detail.settings?.bypassSSL?.let { preferenceHelper.setBypassTlsEnabled(it) }
+                            // Persist hl7_message_spec so outbound HL7 messages are composed
+                            // using the sending-application format the server has configured.
+                            detail.settings?.hl7MessageSpec
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { preferenceHelper.saveHl7Format(Hl7Format.fromSendingApplication(it)) }
                             // When the server has now disallowed local storage, clean up dispense
                             // transactions that were already synced (e.g. while the flag was still
                             // true). Runs on each auth/me response, so a true → false change takes

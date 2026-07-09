@@ -13,6 +13,26 @@ enum class StepState {
     CONTAINER_PENDING
 }
 
+/** Label used for this step in outbound image file names and the HL7 OBX segment. */
+fun StepState.imageLabel(): String {
+    return when (this) {
+        StepState.SCAN -> "dispense_bottle"
+        StepState.CONTAINER_INITIATE -> "before_dispense_stock_bottle_count"
+        StepState.TARGET_VERIFICATION -> "dispense_count"
+        StepState.TARGET_REVERIFICATION -> "dispense_recount"
+        StepState.VIAL -> "dispense_vial"
+        StepState.CONTAINER_PENDING -> "after_dispense_stock_bottle_count"
+        StepState.RX_LABEL -> name.lowercase()
+        StepState.STOCK_COUNT -> name.lowercase()
+    }
+}
+
+/** Same mapping as [imageLabel], from the raw type string stored on a transaction/detail entity. */
+fun String?.toImageLabel(): String {
+    val state = this?.let { raw -> StepState.entries.firstOrNull { it.name == raw } }
+    return state?.imageLabel() ?: (this?.lowercase() ?: "unknown")
+}
+
 fun StepState.icon(): Int {
     return when (this) {
         StepState.SCAN -> R.drawable.ndc_scan

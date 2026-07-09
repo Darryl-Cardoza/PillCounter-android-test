@@ -386,6 +386,8 @@ class Hl7Repository @Inject constructor(
 
         val txnStatus = mapHl7OrderStatus(orc?.orderStatus) ?: CountStatus.PARTIAL
 
+        logger.i("MSH-10 raw messageControlId (site1/handleNewOrder) = '${message.messageControlId}'")
+
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
             drugId = drugId,
@@ -400,6 +402,8 @@ class Hl7Repository @Inject constructor(
             hl7MessageControlId = message.messageControlId.takeIf { it.isNotBlank() },
             hl7SequenceNumber = message.sequenceNumber.takeIf { it.isNotBlank() }
         )
+
+        logger.i("Saving txn (site1) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
         preferenceHelper.saveTxnId(txnId)
@@ -505,6 +509,8 @@ class Hl7Repository @Inject constructor(
                 ?.priority
         )
 
+        logger.i("MSH-10 raw messageControlId (site2) = '${message.messageControlId}'")
+
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
             drugId = drugId,
@@ -520,6 +526,8 @@ class Hl7Repository @Inject constructor(
             hl7MessageControlId = message.messageControlId.takeIf { it.isNotBlank() },
             hl7SequenceNumber = message.sequenceNumber.takeIf { it.isNotBlank() }
         )
+
+        logger.i("Saving txn (site2) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
         preferenceHelper.saveTxnId(txnId)
@@ -621,6 +629,8 @@ class Hl7Repository @Inject constructor(
                 ?.priority
         )
 
+        logger.i("MSH-10 raw messageControlId (site3/orderPacket) = '${message.messageControlId}'")
+
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
             drugId = drugId,
@@ -637,6 +647,8 @@ class Hl7Repository @Inject constructor(
             hl7SequenceNumber = message.sequenceNumber.takeIf { it.isNotBlank() },
             transactionOrderId = orderPacket.orderTransactionOrderId.takeIf { it.isNotBlank() }
         )
+
+        logger.i("Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
         preferenceHelper.saveTxnId(txnId)

@@ -3,6 +3,7 @@ package com.rite.pillcounting.core.hl7.imageWebService
 import android.content.Context
 import android.util.Base64
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsImageKeystoreUtil
+import com.rite.pillcounting.core.models.toImageLabel
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
@@ -202,12 +203,24 @@ class ImageNanoServer(
     }
 
     private fun zipResponse(entries: List<ImageEntry>): Response {
+        // Batch position/total is per label: e.g. two CONTAINER_PENDING images are 1B2/2B2,
+        // while a lone VIAL image is 1B1. Overall sequence is the position across all entries.
+        val labels = entries.map { it.type.toImageLabel() }
+        val batchTotalsByLabel = labels.groupingBy { it }.eachCount()
+        val batchCounters = mutableMapOf<String, Int>()
+
         val baos = ByteArrayOutputStream()
         ZipOutputStream(baos).use { zip ->
             entries.forEachIndexed { index, entry ->
-                val sequence = index + 1
+                val seq = index + 1
+                val label = labels[index]
+                val batchNum = (batchCounters[label] ?: 0) + 1
+                batchCounters[label] = batchNum
+                val batchTotal = batchTotalsByLabel[label] ?: 1
                 val ext = entry.file.extension.ifBlank { "jpg" }
-                zip.putNextEntry(ZipEntry("${entry.type}_${sequence}_${entry.pillCount}.$ext"))
+                zip.putNextEntry(
+                    ZipEntry("${seq}_rx_${label}_${batchNum}B${batchTotal}_qty${entry.pillCount}.$ext")
+                )
                 zip.write(readImageBytes(entry.file))
                 zip.closeEntry()
             }
