@@ -65,6 +65,7 @@ class InventoryScanViewModelTest {
     private lateinit var drugRepository: IDrugRepository
     private lateinit var hl7Repository: Hl7Repository
     private lateinit var hl7EventHandler: Hl7EventHandler
+    private lateinit var drugImageDownloader: com.rite.pillcounting.core.scanning.data.DrugImageDownloader
     private lateinit var connectionState: MutableStateFlow<Boolean>
 
     @Before
@@ -89,6 +90,7 @@ class InventoryScanViewModelTest {
         drugRepository = mockk(relaxed = true)
         hl7Repository = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
+        drugImageDownloader = mockk(relaxed = true)
         connectionState = MutableStateFlow(false)
 
         every { hl7EventHandler.connectionState } returns connectionState
@@ -123,6 +125,7 @@ class InventoryScanViewModelTest {
             drugRepository,
             hl7Repository,
             hl7EventHandler,
+            drugImageDownloader,
         )
     }
 

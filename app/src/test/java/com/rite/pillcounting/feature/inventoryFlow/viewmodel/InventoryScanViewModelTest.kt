@@ -9,6 +9,7 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -60,6 +61,7 @@ class InventoryScanViewModelTest {
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
     private val hl7EventHandler: Hl7EventHandler = mockk(relaxed = true)
+    private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
 
     private lateinit var viewModel: InventoryScanViewModel
 
@@ -91,6 +93,7 @@ class InventoryScanViewModelTest {
         drugRepository = drugRepository,
         hl7Repository = hl7Repository,
         hl7EventHandler = hl7EventHandler,
+        drugImageDownloader = drugImageDownloader
     )
 
     /**
