@@ -7,6 +7,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.Orientation
@@ -50,6 +51,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
@@ -62,10 +64,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
+import coil.compose.rememberAsyncImagePainter
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.ui.theme.AppTheme
+import java.io.File
 
 /**
  * Hides status + navigation bars on whichever window owns the calling composable.
@@ -126,6 +130,7 @@ fun VerifyRxDetailsInlinePanel(
     modifier: Modifier = Modifier,
     cornerRadius: Dp = 20.dp,
     strength: String = "",
+    drugImage: String = ""
 ) {
     val configuration = LocalConfiguration.current
     val isTablet = configuration.smallestScreenWidthDp >= 600
@@ -145,6 +150,7 @@ fun VerifyRxDetailsInlinePanel(
                 strength = strength,
                 onCancel = onCancel,
                 onProceed = onProceed,
+                drugImage = drugImage
             )
         } else {
             SheetBody(
@@ -156,6 +162,7 @@ fun VerifyRxDetailsInlinePanel(
                 isLandscape = true,
                 onCancel = onCancel,
                 onProceed = onProceed,
+                drugImage = drugImage
             )
         }
     }
@@ -185,6 +192,7 @@ fun VerifyRxDetailsSheet(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     strength: String = "",
+    drugImage: String = "",
     // When false (default), the sheet/drawer cannot be dismissed by swipe /
     // outside-tap / back press — only the Cancel and Proceed buttons close it.
     // The app-wide rule for verification sheets is "explicit commit required",
@@ -208,6 +216,7 @@ fun VerifyRxDetailsSheet(
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
+            drugImage = drugImage,
         )
         isTablet -> VerifyRxDetailsTabletBottomSheet(
             drugName = drugName,
@@ -219,6 +228,7 @@ fun VerifyRxDetailsSheet(
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
+            drugImage = drugImage
         )
         isLandscape -> VerifyRxDetailsSideDrawer(
             drugName = drugName,
@@ -229,6 +239,7 @@ fun VerifyRxDetailsSheet(
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
+            drugImage = drugImage
         )
         else -> VerifyRxDetailsBottomSheet(
             drugName = drugName,
@@ -239,6 +250,7 @@ fun VerifyRxDetailsSheet(
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
+            drugImage = drugImage
         )
     }
 }
@@ -330,6 +342,7 @@ private fun VerifyRxDetailsBottomSheet(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    drugImage: String
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -362,6 +375,7 @@ private fun VerifyRxDetailsBottomSheet(
             isLandscape = false,
             onCancel = onCancel,
             onProceed = onProceed,
+            drugImage = drugImage
         )
     }
 }
@@ -376,6 +390,7 @@ private fun VerifyRxDetailsSideDrawer(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    drugImage: String
 ) {
     val config = LocalConfiguration.current
     val drawerWidth = (config.screenWidthDp.dp * 0.42f).coerceIn(260.dp, 380.dp)
@@ -395,6 +410,7 @@ private fun VerifyRxDetailsSideDrawer(
             isLandscape = true,
             onCancel = animatedCancel,
             onProceed = onProceed,
+            drugImage = drugImage
         )
     }
 }
@@ -569,6 +585,7 @@ private fun VerifyRxDetailsTabletBottomSheet(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    drugImage: String,
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -596,7 +613,8 @@ private fun VerifyRxDetailsTabletBottomSheet(
             rxNumber = rxNumber,
             strength = strength,
             onCancel = onCancel,
-            onProceed = onProceed
+            onProceed = onProceed,
+            drugImage = drugImage
         )
     }
 }
@@ -616,6 +634,7 @@ private fun VerifyRxDetailsTabletSideDrawer(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    drugImage: String,
 ) {
     val config = LocalConfiguration.current
     val drawerWidth = (config.screenWidthDp.dp * 0.4f).coerceIn(360.dp, 520.dp)
@@ -634,7 +653,8 @@ private fun VerifyRxDetailsTabletSideDrawer(
             rxNumber = rxNumber,
             strength = strength,
             onCancel = animatedCancel,
-            onProceed = onProceed
+            onProceed = onProceed,
+            drugImage = drugImage
         )
     }
 }
@@ -653,6 +673,7 @@ private fun TabletHorizontalBody(
     strength: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
+    drugImage: String,
 ) {
     Column(
         modifier = Modifier
@@ -721,7 +742,7 @@ private fun TabletHorizontalBody(
             verticalAlignment = Alignment.CenterVertically
         ) {
             QuantityTile(quantity = quantity, modifier = Modifier.weight(0.7f).height(120.dp))
-            FormTile(modifier = Modifier.weight(0.7f).height(120.dp))
+            DrugImageTile(drugImagePath = drugImage,modifier = Modifier.weight(0.7f).height(120.dp))
             StrengthTile(strength = strength, modifier = Modifier.weight(0.7f).height(120.dp))
             BucketTile(bucket = bucket, modifier = Modifier.weight(0.7f).height(120.dp))
         }
@@ -788,6 +809,7 @@ private fun TabletVerticalBody(
     ndcNumber: String,
     rxNumber: String,
     strength: String,
+    drugImage: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
 ) {
@@ -858,7 +880,7 @@ private fun TabletVerticalBody(
                 horizontalArrangement = Arrangement.spacedBy(gridSpacing)
             ) {
                 QuantityTile(quantity = quantity, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
-                FormTile(modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+                DrugImageTile(drugImagePath = drugImage,modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
             }
             Spacer(modifier = Modifier.height(gridSpacing))
             Row(
@@ -928,6 +950,7 @@ private fun SheetBody(
     isLandscape: Boolean,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
+    drugImage: String
 ) {
     // 3-section layout: fixed title, scrollable middle (gets remaining height),
     // pinned button row. Outer column fills the parent's bounded height so weight() works.
@@ -976,6 +999,7 @@ private fun SheetBody(
                 ndcNumber = ndcNumber,
                 rxNumber = rxNumber,
                 compact = isLandscape,
+                drugImage = drugImage
             )
         }
 
@@ -1038,6 +1062,7 @@ private fun DetailsGrid(
     ndcNumber: String,
     rxNumber: String,
     compact: Boolean,
+    drugImage: String
 ) {
     // Hairline separators between rows mirror the reference screenshot. To stop
     // the landscape panel from feeling cramped, each row claims an even share of
@@ -1056,7 +1081,7 @@ private fun DetailsGrid(
             contentAlignment = Alignment.Center,
         ) {
             TileDetailRow(
-                tile = { FormTile(compact = compact) },
+                tile = { DrugImageTile(drugImagePath = drugImage,compact = compact) },
                 label = stringResource(R.string.drugname),
                 value = drugName,
                 compact = compact,
@@ -1121,17 +1146,27 @@ private fun TileDetailRow(
 }
 
 @Composable
-private fun FormTile(compact: Boolean = false, dosageForm: String = "", modifier: Modifier = Modifier) {
-    SquareTile(label = stringResource(R.string.form), compact = compact, modifier = modifier) {
-        if (dosageForm.isNotBlank()) {
-            Text(
-                text = dosageForm,
-                color = MaterialTheme.colorScheme.secondary,
-                fontSize = if (compact) 12.sp else 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+private fun DrugImageTile(
+    drugImagePath: String = "",
+    compact: Boolean = false,
+    modifier: Modifier = Modifier
+) {
+    val tileSize = if (compact) 70.dp else 84.dp
+
+    Box(
+        modifier = Modifier
+            .width(tileSize)
+            .then(modifier)
+            .clip(RoundedCornerShape(12.dp))
+            .background(AppTheme.extendedColors.primaryBackground),
+        contentAlignment = Alignment.Center
+    ) {
+        if (drugImagePath.isNotBlank()) {
+            Image(
+                painter = rememberAsyncImagePainter(File(drugImagePath)),
+                contentDescription = stringResource(R.string.drug_image),
+                contentScale = ContentScale.FillBounds,
+                modifier = Modifier.fillMaxSize()
             )
         } else {
             Icon(
@@ -1312,6 +1347,7 @@ fun VerifyNdcDetailsInlinePanel(
     isHazardous: Boolean = false,
     strength: String = "",
     dosageForm: String = "",
+    drugImage: String =  ""
 ) {
     val configuration = LocalConfiguration.current
     val isTablet = configuration.smallestScreenWidthDp >= 600
@@ -1328,6 +1364,7 @@ fun VerifyNdcDetailsInlinePanel(
                 ndcNumber = ndcNumber,
                 isHazardous = isHazardous,
                 strength = strength,
+                drugImage = drugImage,
                 dosageForm = dosageForm,
                 onCancel = onCancel,
                 onProceed = onProceed,
@@ -1367,6 +1404,7 @@ fun VerifyNdcDetailsSheet(
     isHazardous: Boolean = false,
     strength: String = "",
     dosageForm: String = "",
+    drugImage: String = ""
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -1394,6 +1432,7 @@ fun VerifyNdcDetailsSheet(
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
+            drugImage = drugImage
         )
         isLandscape -> VerifyNdcDetailsSideDrawer(
             drugName = drugName,
@@ -1509,6 +1548,7 @@ private fun VerifyNdcDetailsTabletBottomSheet(
     isHazardous: Boolean = false,
     strength: String = "",
     dosageForm: String = "",
+    drugImage: String = ""
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -1535,6 +1575,7 @@ private fun VerifyNdcDetailsTabletBottomSheet(
             dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
+            drugImage = drugImage
         )
     }
 }
@@ -1589,6 +1630,7 @@ private fun NdcSheetBody(
     isHazardous: Boolean = false,
     strength: String = "",
     dosageForm: String = "",
+    drugImage: String = ""
 ) {
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
     // Landscape gets slightly bigger outer padding so the panel doesn't feel
@@ -1634,6 +1676,7 @@ private fun NdcSheetBody(
                 compact = isLandscape,
                 strength = strength,
                 dosageForm = dosageForm,
+                drugImage = drugImage
             )
         }
 
@@ -1686,6 +1729,7 @@ private fun NdcDetailsGrid(
     compact: Boolean,
     strength: String = "",
     dosageForm: String = "",
+    drugImage: String = "",
 ) {
     val dividerColor = AppTheme.extendedColors.textColor.copy(alpha = 0.5f)
     val dividerPadding = if (compact) 14.dp else 10.dp
@@ -1697,7 +1741,7 @@ private fun NdcDetailsGrid(
             contentAlignment = Alignment.Center,
         ) {
             TileDetailRow(
-                tile = { FormTile(compact = compact, dosageForm = dosageForm) },
+                tile = { DrugImageTile(compact = compact, drugImagePath = drugImage) },
                 label = stringResource(R.string.ndc_number),
                 value = ndcNumber,
                 compact = compact,
@@ -1751,6 +1795,7 @@ private fun NdcTabletHorizontalBody(
     isHazardous: Boolean = false,
     strength: String = "",
     dosageForm: String = "",
+    drugImage: String = ""
 ) {
     Column(
         modifier = Modifier
@@ -1771,7 +1816,7 @@ private fun NdcTabletHorizontalBody(
             horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
-            FormTile(dosageForm = dosageForm)
+            DrugImageTile(drugImagePath = drugImage)
             BucketTile(bucket = bucket)
         }
 
@@ -1827,6 +1872,7 @@ private fun NdcTabletVerticalBody(
     isHazardous: Boolean = false,
     strength: String = "",
     dosageForm: String = "",
+    drugImage: String = ""
 ) {
     Column(
         modifier = Modifier
@@ -1850,7 +1896,7 @@ private fun NdcTabletVerticalBody(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            FormTile(dosageForm = dosageForm)
+            DrugImageTile(drugImagePath = drugImage)
             BucketTile(bucket = bucket)
 
             Spacer(modifier = Modifier.height(8.dp))

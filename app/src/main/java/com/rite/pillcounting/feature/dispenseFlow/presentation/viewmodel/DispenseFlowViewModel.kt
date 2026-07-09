@@ -372,6 +372,7 @@ class DispenseFlowViewModel @Inject constructor(
                                 // sheet. Overwritten with the API value once the NDC
                                 // is scanned in PRE_NDC.
                                 ndcStrength = drug?.strength,
+                                drugImage = drug?.drugImagePath ?: it.drugImage
                             )
                         }
                         return@launch
@@ -565,6 +566,7 @@ class DispenseFlowViewModel @Inject constructor(
                             ndcPackageQty = drugInfo.qty,
                             ndcDrugType = drugInfo.drugType,
                             ndcStrength = drugInfo.strength,
+                            drugImage = drugInfo.imageUrl ?: it.drugImage,
                             ndcDosageForm = drugInfo.dosageForm,
                             barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcEquivalenceDialog = true,
@@ -600,6 +602,7 @@ class DispenseFlowViewModel @Inject constructor(
                         ndcDrugName = displayName,
                         ndcPackageQty = drugInfo.qty,
                         ndcStrength = drugInfo.strength,
+                        drugImage = drugInfo.imageUrl ?: it.drugImage,
                         ndcDosageForm = drugInfo.dosageForm,
                         barcodeImagePath = imagePath ?: it.barcodeImagePath,
                         showNdcDetails = needsSheet,
@@ -726,6 +729,7 @@ class DispenseFlowViewModel @Inject constructor(
                         packageQty = state.ndcPackageQty,
                         isHazardous = state.isHazardous,
                     strength = state.ndcStrength,
+                        drugImagePath = state.drugImage,
                     dosageForm = state.ndcDosageForm,)
                 )
             // Stock loose count: create the StockTxn/BottleInfo line; counting accumulates
@@ -832,6 +836,7 @@ class DispenseFlowViewModel @Inject constructor(
                 ndcPackageQty = null,
                 ndcDrugType = null,
                 ndcStrength = null,
+                drugImage = "",
                 ndcDosageForm = null,
             )
         }
@@ -866,6 +871,7 @@ class DispenseFlowViewModel @Inject constructor(
                         drugName = state.ndcDrugName.ifBlank { state.drugName },
                         isHazardous = state.isHazardous,
                         strength = state.ndcStrength,
+                        drugImagePath = state.drugImage,
                         dosageForm = state.ndcDosageForm,
                     )
                 )
@@ -923,6 +929,7 @@ class DispenseFlowViewModel @Inject constructor(
                         packageQty = state.ndcPackageQty,
                         isHazardous = state.isHazardous,
                         strength = state.ndcStrength,
+                        drugImagePath = state.drugImage,
                         dosageForm = state.ndcDosageForm,
                     )
                 )
@@ -953,6 +960,7 @@ class DispenseFlowViewModel @Inject constructor(
                 ndcPackageQty = null,
                 ndcDrugType = null,
                 ndcStrength = null,
+                drugImage = "",
                 ndcDosageForm = null,
                 isSubstituteConfirmed = false,
             )

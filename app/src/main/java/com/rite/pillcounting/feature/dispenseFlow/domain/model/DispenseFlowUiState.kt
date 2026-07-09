@@ -20,6 +20,7 @@ data class DispenseFlowUiState(
     val scanType: String = CountType.FIXED.toString(),
 
     val drugName: String = "",
+    val drugImage: String = "",
     val ndc: String = "",
     val rxNo: String? = null,
     val qty: String? = null,

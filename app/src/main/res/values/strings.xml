@@ -142,6 +142,7 @@
     <string name="pills_count">Pills Count</string>
     <string name="pill_required">Pills Required</string>
     <string name="counting_paused">Counting paused due to inactivity.</string>
+    <string name="drug_image">Drug Image</string>
 
     <!-- ================== TRANSACTIONS ================== -->
     <string name="transaction_detail">Transaction Detail</string>
