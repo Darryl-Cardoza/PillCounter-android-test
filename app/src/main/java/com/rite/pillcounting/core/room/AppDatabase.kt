@@ -54,7 +54,7 @@ import com.rite.pillcounting.core.security.SecureStringConverter
         StockTxnEntity::class,
         BottleInfoEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 @TypeConverters(
@@ -104,6 +104,18 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE drug_master ADD COLUMN drugImagePath TEXT")
+            }
+        }
+
+        /**
+         * v6 → v7: add `lastAckedChunkIndex` and `totalChunks` columns to `batch`,
+         * used to resume a chunked HL7 inventory sync at the exact failed chunk
+         * instead of resending already-ACKed chunks.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE batch ADD COLUMN lastAckedChunkIndex INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE batch ADD COLUMN totalChunks INTEGER")
             }
         }
 

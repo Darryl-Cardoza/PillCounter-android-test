@@ -176,19 +176,20 @@ class EQUBuilder : HL7SegmentBuilder("EQU") {
     }
 }
 
+/** Field positions per HL7 v2.5.1 standard INV layout (see [org.rite.hl7.model.segment.INVSegment]). */
 class INVBuilder : HL7SegmentBuilder("INV") {
-    var setId: String? = null
-    var substanceCode: String? = null                 // NDC (INV-2.1)
-    var substanceName: String? = null                 // INV-2.2
-    var substanceCodeSystem: String? = null           // INV-2.3
-    var lotNumber: String? = null
-    var expirationDate: String? = null
-    var inventoryOnHandQuantity: String? = null
-    var units: String? = null
+    var substanceCode: String? = null                 // NDC (INV-1.1)
+    var substanceName: String? = null                 // INV-1.2
+    var substanceCodeSystem: String? = null           // INV-1.3
+    var lotNumber: String? = null                      // INV-16
+    var expirationDate: String? = null                // INV-12
+    var inventoryOnHandQuantity: String? = null        // INV-8 (Current Quantity)
+    var units: String? = null                          // INV-11 (Quantity Units)
     override fun apply() {
-        set(1, setId)
-        set(2, 1, substanceCode); set(2, 2, substanceName); set(2, 3, substanceCodeSystem)
-        set(3, lotNumber); set(4, expirationDate); set(5, inventoryOnHandQuantity); set(6, units)
+        set(1, 1, substanceCode); set(1, 2, substanceName); set(1, 3, substanceCodeSystem)
+        set(8, inventoryOnHandQuantity); set(11, units)
+        set(12, expirationDate)
+        set(16, lotNumber)
     }
 }
 

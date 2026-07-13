@@ -35,7 +35,12 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "pill_counting_db"
-        ).addMigrations(AppDatabase.MIGRATION_2_3, AppDatabase.MIGRATION_4_5, AppDatabase.MIGRATION_5_6)
+        ).addMigrations(
+            AppDatabase.MIGRATION_2_3,
+            AppDatabase.MIGRATION_4_5,
+            AppDatabase.MIGRATION_5_6,
+            AppDatabase.MIGRATION_6_7
+        )
             // Stock-count normalization (v3 → v4) restructures local tables; existing local
             // rows are disposable (synced to PMS), so recreate rather than migrate.
             .fallbackToDestructiveMigration()

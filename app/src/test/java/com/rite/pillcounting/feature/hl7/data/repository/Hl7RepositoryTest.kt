@@ -15,6 +15,7 @@ import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.scanning.data.DrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
@@ -395,6 +396,136 @@ class Hl7RepositoryTest {
 
         verify(exactly = 0) { hl7MessageSender.sendRaw(any()) }
     }
+
+    // ─────────────────────────────── large batch (chunked) sync ───────────────────────────────
+
+    /**
+     * Builds enough distinct (ndc, lot, expiry) rows to produce ~10000 INV segments once
+     * grouped by HL7MessageBuilder — with maxRowsPerChunk=200 this yields 50 chunks.
+     */
+    private fun largeBatchTxns(rowCount: Int = 10000): List<BatchTxnDto> =
+        (1..rowCount).map { i ->
+            BatchTxnDto(
+                txnId = i.toLong(),
+                drugId = i.toLong(),
+                drugName = "Drug$i",
+                ndc = "NDC$i",
+                lotNo = "LOT$i",
+                expiry = "12-31-2026",
+                bottleQty = 1,
+                looseQty = 0,
+                packageQty = 30,
+            )
+        }
+
+    @Test
+    fun `buildAndSendInventoryResponse large batch sends all chunks in order then marks synced`() =
+        runTest(testDispatcher) {
+            val repo = createRepo()
+            coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
+            coEvery { bottleInfoDao.getByBatchId(100L) } returns largeBatchTxns(10000)
+            every { hl7MessageSender.sendRaw(any()) } returns Result.success(Unit)
+
+            repo.buildAndSendInventoryResponse(100L)
+
+            // 10000 distinct ndc/lot/expiry rows chunked at 200 rows/chunk => 50 chunks.
+            coVerify(exactly = 50) { hl7MessageSender.sendRaw(any()) }
+            for (chunkIndex in 1..50) {
+                coVerify { batchDao.markChunkAcked(100L, chunkIndex) }
+            }
+            coVerify { batchDao.setTotalChunks(100L, 50) }
+            coVerify { batchDao.markBatchSynced(100L) }
+        }
+
+    @Test
+    fun `buildAndSendInventoryResponse large batch stops and stays unsynced on mid-batch chunk failure`() =
+        runTest(testDispatcher) {
+            val repo = createRepo()
+            coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
+            coEvery { bottleInfoDao.getByBatchId(100L) } returns largeBatchTxns(10000)
+
+            // Chunks are single-line HL7 messages; chunk N carries "chunk N of" via the BTS
+            // trailer text, so fail specifically the 27th send call regardless of message content.
+            var callCount = 0
+            every { hl7MessageSender.sendRaw(any()) } answers {
+                callCount++
+                if (callCount == 27) Result.failure(RuntimeException("PMS unavailable"))
+                else Result.success(Unit)
+            }
+
+            repo.buildAndSendInventoryResponse(100L)
+
+            // Only chunks 1..26 acked; the loop returns immediately on the 27th failure without
+            // sending chunks 28..50 out of order, and the batch is never marked synced.
+            coVerify(exactly = 27) { hl7MessageSender.sendRaw(any()) }
+            for (chunkIndex in 1..26) {
+                coVerify { batchDao.markChunkAcked(100L, chunkIndex) }
+            }
+            coVerify(exactly = 0) { batchDao.markChunkAcked(100L, 27) }
+            coVerify(exactly = 0) { batchDao.markBatchSynced(any()) }
+        }
+
+    @Test
+    fun `resendPendingHl7BatchTransactions resumes a large batch from lastAckedChunkIndex and syncs`() =
+        runTest(testDispatcher) {
+            val repo = createRepo()
+            // Batch previously got through chunk 40 of 50 before PMS went offline / app restarted.
+            coEvery { batchDao.getUnsyncedCompletedBatchesOnce() } returns
+                listOf(
+                    com.rite.pillcounting.core.room.models.dtos.BatchSummaryDto(
+                        batchId = 100L,
+                        createdAt = 0L,
+                        uniqueNdcCount = 10000,
+                        status = "COMPLETED",
+                        bucketId = null,
+                        requestIdFromPMS = "REQ",
+                    )
+                )
+            coEvery { batchDao.getById(100L) } returns
+                BatchEntity(batchId = 100L, requestIdFromPMS = "REQ", lastAckedChunkIndex = 40, totalChunks = 50)
+            coEvery { bottleInfoDao.getByBatchId(100L) } returns largeBatchTxns(10000)
+            every { hl7MessageSender.sendRaw(any()) } returns Result.success(Unit)
+
+            repo.resendPendingHl7BatchTransactions()
+
+            // Only the remaining 10 chunks (41..50) are resent; 1..40 are skipped as already ACKed.
+            coVerify(timeout = 3000, exactly = 10) { hl7MessageSender.sendRaw(any()) }
+            for (chunkIndex in 41..50) {
+                coVerify(timeout = 3000) { batchDao.markChunkAcked(100L, chunkIndex) }
+            }
+            coVerify(exactly = 0) { batchDao.markChunkAcked(100L, 40) }
+            coVerify(timeout = 3000) { batchDao.markBatchSynced(100L) }
+        }
+
+    @Test
+    fun `onClientConnected triggers large batch resend and marks synced once fully sent`() =
+        runTest(testDispatcher) {
+            // Mirrors Hl7EventHandler.onClientConnected, which calls
+            // resendPendingHl7BatchTransactions() as soon as PMS (re)connects — this is the
+            // "send on connected" trigger for a large (10k-segment / 50-chunk) pending batch.
+            val repo = createRepo()
+            coEvery { batchDao.getUnsyncedCompletedBatchesOnce() } returns
+                listOf(
+                    com.rite.pillcounting.core.room.models.dtos.BatchSummaryDto(
+                        batchId = 100L,
+                        createdAt = 0L,
+                        uniqueNdcCount = 10000,
+                        status = "COMPLETED",
+                        bucketId = null,
+                        requestIdFromPMS = "REQ",
+                    )
+                )
+            coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
+            coEvery { bottleInfoDao.getByBatchId(100L) } returns largeBatchTxns(10000)
+            every { hl7MessageSender.sendRaw(any()) } returns Result.success(Unit)
+
+            // Simulates the connect callback's resend trigger directly against the repository
+            // (Hl7EventHandler.onClientConnected just forwards to this).
+            repo.resendPendingHl7BatchTransactions()
+
+            coVerify(timeout = 3000, exactly = 50) { hl7MessageSender.sendRaw(any()) }
+            coVerify(timeout = 3000) { batchDao.markBatchSynced(100L) }
+        }
 
     // ─────────────────────────────── resendPendingHl7Transactions ───────────────────────────────
 

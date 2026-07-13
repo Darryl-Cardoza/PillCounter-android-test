@@ -1,6 +1,7 @@
 package org.rite.hl7.model
 
 import org.rite.hl7.model.ast.HL7Segment
+import org.rite.hl7.model.segment.BTSSegment
 import org.rite.hl7.model.segment.EQUSegment
 import org.rite.hl7.model.segment.ERRSegment
 import org.rite.hl7.model.segment.GenericSegment
@@ -42,6 +43,7 @@ class SegmentRegistry {
             EQUSegment.Definition, INVSegment.Definition, QPDSegment.Definition,
             RCPSegment.Definition, QAKSegment.Definition, ZINSegment.Definition,
             ZPRSegment.Definition, ZNISegment.Definition, ZUISegment.Definition,
+            BTSSegment.Definition,
         ).forEach { register(it) }
     }
 

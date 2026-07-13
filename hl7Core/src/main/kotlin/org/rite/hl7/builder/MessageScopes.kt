@@ -69,21 +69,41 @@ class InrU05Scope : MessageScope() {
     fun nte(block: (NTEBuilder) -> Unit) = add(NTEBuilder(), block)
 }
 
-/** Scope for INR^U06 inventory adjustment (INV + ZAD pairs from §11). */
+/**
+ * Scope for INR^U06 inventory adjustment (INV + ZAD pairs from §11).
+ * ZIN rows are a project extension used alongside INV so PMS can see the
+ * opened/sealed breakdown behind each INV row's combined on-hand total.
+ */
 class InrU06Scope : MessageScope() {
     fun equ(block: (EQUBuilder) -> Unit) = add(EQUBuilder(), block)
     fun orc(block: (ORCBuilder) -> Unit) = add(ORCBuilder(), block)
     fun inv(block: (INVBuilder) -> Unit) = add(INVBuilder(), block)   // repeating
+    fun zin(block: (ZINBuilder) -> Unit) = add(ZINBuilder(), block)   // repeating, project extension
     fun zad(block: (ZADBuilder) -> Unit) = add(ZADBuilder(), block)   // repeating
     fun nte(block: (NTEBuilder) -> Unit) = add(NTEBuilder(), block)
+    /** Per-message chunk trailer — present only when this message is one chunk of a split sync. */
+    fun bts(block: (BTSBuilder) -> Unit) = add(BTSBuilder(), block)
 }
 
-/** Scope for INU^U05 unsolicited inventory update. */
+/**
+ * Scope for INU^U05 inventory update — sent as the response to a
+ * PMS-initiated INR^U06 request (or unsolicited). INV carries each drug/lot
+ * group's combined on-hand total; ZIN rows underneath break that total down
+ * by dispenseType (OPENED/SEALED).
+ *
+ * ZAD is not part of the standard INU_U05 definition; it's kept here as a
+ * project-specific extension so cycle-count adjustment reason/approver data
+ * still travels on the response.
+ */
 class InuU05Scope : MessageScope() {
     fun equ(block: (EQUBuilder) -> Unit) = add(EQUBuilder(), block)
-    fun inv(block: (INVBuilder) -> Unit) = add(INVBuilder(), block)
-    fun zin(block: (ZINBuilder) -> Unit) = add(ZINBuilder(), block)
+    fun orc(block: (ORCBuilder) -> Unit) = add(ORCBuilder(), block)
+    fun inv(block: (INVBuilder) -> Unit) = add(INVBuilder(), block)   // repeating
+    fun zin(block: (ZINBuilder) -> Unit) = add(ZINBuilder(), block)   // repeating
+    fun zad(block: (ZADBuilder) -> Unit) = add(ZADBuilder(), block)   // repeating, non-standard extension
     fun nte(block: (NTEBuilder) -> Unit) = add(NTEBuilder(), block)
+    /** Per-message chunk trailer — present only when this message is one chunk of a split sync. */
+    fun bts(block: (BTSBuilder) -> Unit) = add(BTSBuilder(), block)
 }
 
 /** Scope for QBP^Q11 pre-count / stock-on-hand query (§12). */
@@ -107,5 +127,21 @@ class ZINBuilder : HL7SegmentBuilder("ZIN") {
     var expiry: String? = null
     override fun apply() {
         set(1, setId); set(2, dispenseType); set(3, quantity); set(4, lotNumber); set(5, expiry)
+    }
+}
+
+/**
+ * BTS — Batch Trailer Segment (standard control segment, HL7 v2.5.1 §2.19).
+ * Used per-message to mark this message's position within a chunked inventory
+ * sync: BTS-1 = this chunk's 1-based index (numeric), BTS-2 = total chunk
+ * count for this sync (numeric — NOT free text), BTS-3 = this chunk's item
+ * total (numeric).
+ */
+class BTSBuilder : HL7SegmentBuilder("BTS") {
+    var batchMessageCount: String? = null
+    var batchComment: String? = null
+    var batchTotals: String? = null
+    override fun apply() {
+        set(1, batchMessageCount); set(2, batchComment); set(3, batchTotals)
     }
 }

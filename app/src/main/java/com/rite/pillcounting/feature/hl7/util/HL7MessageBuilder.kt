@@ -280,19 +280,50 @@ object HL7MessageBuilder {
         approvedBy: String? = null,
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
     ): String {
+        return buildInventoryMessageChunks(batch, txns, approvedBy, config).single().message
+    }
 
-        val hl7 = HL7(version = config.versionId)
-        val builder = hl7.build()
+    /** One chunk of a (possibly split) inventory sync — see [buildInventoryMessageChunks]. */
+    data class InventoryChunk(
+        val chunkIndex: Int,
+        val totalChunks: Int,
+        val itemTotal: Int,
+        val message: String
+    )
+
+    /**
+     * Splits a batch's grouped inventory rows into multiple complete, independently
+     * sendable INR^U06 messages so no single message exceeds [maxRowsPerChunk] INV
+     * segments — keeping each message safely under PMS's message-size ceiling
+     * regardless of how large the overall batch grows.
+     *
+     * Every chunk carries this batch's id in ORC-2, a stable inventoryGroupId (derived
+     * from [BatchEntity.bucketId]) in ORC-3 so PMS updates the same inventory record
+     * across repeated syncs instead of creating a new one each time, and the batch's
+     * grand total in ZAD-3. A BTS trailer right after MSH marks this message's position
+     * (BTS-1 = this chunk's 1-based index, BTS-2 = total chunk count, BTS-3 = this
+     * chunk's own item total — all numeric) so PMS can detect a missing/out-of-order
+     * chunk. Chunks must be sent in order, each one only after the previous chunk's
+     * ACK — see Hl7Repository.
+     */
+    fun buildInventoryMessageChunks(
+        batch: BatchEntity,
+        txns: List<BatchTxnDto>,
+        approvedBy: String? = null,
+        config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
+        maxRowsPerChunk: Int = 200
+    ): List<InventoryChunk> {
 
         val now = now()
-        val messageId = "RES${System.currentTimeMillis() / 1000}"
         val orderId = batch.bucketId.orEmpty()
-        // Kept for parity with iOS: the ACK for the originating request
-        // (MSA-2 = requestId) is a *separate* message, built from the
-        // parsed inbound request via HL7.ack(...), not here.
-        val requestId = batch.requestIdFromPMS
-            ?.takeIf { it.isNotBlank() }
-            ?: "REQ${batch.batchId}"
+
+        // Stable across every inventory sync for this bucket/location — independent of
+        // batch.batchId, which changes every time a new local BatchEntity is created (e.g. a
+        // retry after app restart, or a fresh count of the same bucket). PMS keys its inventory
+        // record off this value (ORC-3) so repeated syncs of the same bucket UPDATE the existing
+        // record instead of inserting a duplicate; ORC-2 still carries this specific batch's id
+        // for traceability/debugging.
+        val inventoryGroupId = "INV-${batch.bucketId.orEmpty().ifEmpty { "DEFAULT" }}"
 
         data class Key(val ndc: String, val name: String, val lot: String, val expiry: String)
         data class Qty(var opened: Int = 0, var sealed: Int = 0)
@@ -311,66 +342,117 @@ object HL7MessageBuilder {
             e.sealed += (txn.bottleQty ?: 0) * packageQty
         }
 
-        val grandTotal = grouped.values.sumOf { it.opened + it.sealed }
+        val rows = grouped.entries.toList()
+        val grandTotal = rows.sumOf { it.value.opened + it.value.sealed }
+        val chunkedRows = if (rows.isEmpty()) listOf(rows) else rows.chunked(maxRowsPerChunk)
+        val totalChunks = chunkedRows.size
 
-        val message = builder.inrU06 {
-            msh { msh ->
-                msh.sendingApplication = config.sendingApplication
-                msh.sendingFacility = config.sendingFacility
-                msh.receivingApplication = config.receivingApplication
-                msh.receivingFacility = ""
-                msh.dateTimeOfMessage = now
-                msh.messageControlId = messageId
-                msh.processingId = "P"
-                msh.versionId = config.versionId
-            }
+        return chunkedRows.mapIndexed { chunkIdx, chunkRows ->
+            val chunkIndex = chunkIdx + 1
+            val chunkTotal = chunkRows.sumOf { it.value.opened + it.value.sealed }
+            val messageId = "RES${System.currentTimeMillis() / 1000}-$chunkIndex"
 
-            orc { orc ->
-                orc.orderControl = "RE"
-                orc.placerOrderNumber = orderId
-            }
+            val hl7 = HL7(version = config.versionId)
+            val builder = hl7.build()
 
-            buildCommonNotes(
-                txnId = batch.batchId.toString(),
-                note = batch.note,
-                totalCount = grandTotal,
-                isBatch = true
-            ).forEach { note ->
-                nte { nte ->
-                    nte.setId = note.setId
-                    nte.sourceOfComment = note.sourceOfComment
-                    nte.comment = note.comment
-                    nte.commentType = note.commentType
+            val message = builder.inuU05 {
+                msh { msh ->
+                    msh.sendingApplication = config.sendingApplication
+                    msh.sendingFacility = config.sendingFacility
+                    msh.receivingApplication = config.receivingApplication
+                    msh.receivingFacility = ""
+                    msh.dateTimeOfMessage = now
+                    msh.messageControlId = messageId
+                    msh.processingId = "P"
+                    msh.versionId = config.versionId
+                }
+
+                // BTS is placed right after MSH (chunk-position trailer, describing the
+                // whole message that follows) — BTS-1/BTS-2 are numeric per spec:
+                // BTS-1 = this chunk's 1-based index, BTS-2 = total chunk count.
+                // batchComment carries the shared inventoryGroupId (not free text) so PMS can
+                // correlate all chunks/sessions of the same inventory sync.
+                bts { bts ->
+                    bts.batchMessageCount = chunkIndex.toString()
+                    bts.batchComment = totalChunks.toString()
+                    bts.batchTotals = chunkTotal.toString()
+                }
+
+                equ { equ ->
+                    equ.equipmentId = config.sendingApplication
+                    equ.eventDateTime = now
+                }
+
+                orc { orc ->
+                    orc.orderControl = "RE"
+                    orc.placerOrderNumber = orderId
+                    orc.fillerOrderNumber = inventoryGroupId
+                }
+
+                buildCommonNotes(
+                    txnId = batch.batchId.toString(),
+                    note = batch.note,
+                    totalCount = grandTotal,
+                    isBatch = true
+                ).forEach { note ->
+                    nte { nte ->
+                        nte.setId = note.setId
+                        nte.sourceOfComment = note.sourceOfComment
+                        nte.comment = note.comment
+                        nte.commentType = note.commentType
+                    }
+                }
+
+                chunkRows.forEachIndexed { idx, (key, value) ->
+                    val setId = (idx + 1).toString()
+                    val total = value.opened + value.sealed
+
+                    inv { inv ->
+                        inv.substanceCode = key.ndc
+                        inv.substanceCodeSystem = "NDC"
+                        inv.substanceName = key.name.ifEmpty { null }
+                        inv.inventoryOnHandQuantity = total.toString()
+                        inv.lotNumber = key.lot.ifEmpty { null }
+                        inv.expirationDate = key.expiry.ifEmpty { null }
+                    }
+
+                    // ZIN breaks the INV total down by open/sealed so PMS keeps that
+                    // distinction instead of only seeing the combined on-hand count.
+                    zin { zin ->
+                        zin.setId = "$setId.1"
+                        zin.dispenseType = "OPENED"
+                        zin.quantity = value.opened.toString()
+                        zin.lotNumber = key.lot.ifEmpty { null }
+                        zin.expiry = key.expiry.ifEmpty { null }
+                    }
+                    zin { zin ->
+                        zin.setId = "$setId.2"
+                        zin.dispenseType = "SEALED"
+                        zin.quantity = value.sealed.toString()
+                        zin.lotNumber = key.lot.ifEmpty { null }
+                        zin.expiry = key.expiry.ifEmpty { null }
+                    }
+                }
+
+                // ZAD-3 carries the whole batch's grand total on every chunk so PMS
+                // can cross-check completeness once all chunks are in.
+                zad { zad ->
+                    zad.setId = "1"
+                    zad.adjustmentType = "CYCLE_COUNT"
+                    zad.adjustmentQuantity = grandTotal.toString()
+                    zad.adjustmentReason = ZadReasonCode.CYCLE_COUNT
+                    zad.adjustmentDateTime = now
+                    zad.approvedBy = approvedBy ?: "Unknown"
                 }
             }
 
-            // INV repeats per drug — unchanged
-            grouped.entries.forEachIndexed { idx, (key, value) ->
-                val setId = (idx + 1).toString()
-                val total = value.opened + value.sealed
-
-                inv { inv ->
-                    inv.setId = setId
-                    inv.substanceCode = key.ndc
-                    inv.substanceCodeSystem = "NDC"
-                    inv.substanceName = key.name.ifEmpty { null }
-                    inv.inventoryOnHandQuantity = total.toString()
-                    inv.lotNumber = key.lot.ifEmpty { null }
-                    inv.expirationDate = key.expiry.ifEmpty { null }
-                }
-            }
-
-            // ZAD is a single segment for the whole message
-            zad { zad ->
-                zad.setId = "1"
-                zad.adjustmentType = "CYCLE_COUNT"
-                zad.adjustmentQuantity = grandTotal.toString()
-                zad.adjustmentReason = ZadReasonCode.CYCLE_COUNT
-                zad.adjustmentDateTime = now
-                zad.approvedBy = approvedBy ?: "Unknown"
-            }
+            InventoryChunk(
+                chunkIndex = chunkIndex,
+                totalChunks = totalChunks,
+                itemTotal = chunkTotal,
+                message = message.encode()
+            )
         }
-        return message.encode()
     }
 
     // =========================================================

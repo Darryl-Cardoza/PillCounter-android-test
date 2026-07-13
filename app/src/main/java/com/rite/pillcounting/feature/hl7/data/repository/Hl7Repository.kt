@@ -187,7 +187,17 @@ class Hl7Repository @Inject constructor(
     }
 
     /**
-     * Build and send inventory response
+     * Builds and sends the inventory response for a batch, splitting it into
+     * multiple independently-ACKed HL7 messages (chunks) when the batch is large,
+     * so no single message risks exceeding PMS's message-size ceiling.
+     *
+     * Chunks are sent strictly in order, one at a time, each only after the
+     * previous chunk's ACK succeeds. Progress is persisted
+     * ([BatchDao.markChunkAcked]) immediately after every successful ACK, so if
+     * PMS goes offline or the app is killed mid-sync, the next call (via
+     * [resendPendingHl7BatchTransactions]) resumes at the first un-ACKed chunk
+     * instead of resending chunks PMS has already applied. The batch is marked
+     * synced ([BatchDao.markBatchSynced]) only once every chunk has ACKed.
      */
     suspend fun buildAndSendInventoryResponse(batchId: Long) {
         try {
@@ -202,20 +212,48 @@ class Hl7Repository @Inject constructor(
             val txns = bottleInfoDao.getByBatchId(batchId)
             logger.i("txns count = ${txns.size}, txns = $txns")
 
-            val message = HL7MessageBuilder.buildInventoryMessage(
+            val chunks = HL7MessageBuilder.buildInventoryMessageChunks(
                 batch = batch,
                 txns = txns,
                 config = currentHl7Config()
             )
-            logger.i("HL7 inventory message built:\n$message")
 
-            val result = hl7MessageSender.sendRaw(message)
-            if (result.isSuccess) {
-                logger.i("Inventory HL7 message sent successfully for batchId=$batchId")
-                batchDao.markBatchSynced(batchId)
-            } else {
-                logger.e("Failed to send inventory HL7 message for batchId=$batchId: ${result.exceptionOrNull()?.message}")
+            // totalChunks is fixed the first time this batch starts sending; on a
+            // resume, chunk contents are rebuilt from the same DB rows, so the
+            // count should match what was persisted, but persist defensively in
+            // case rows changed since the last attempt (e.g. an edit while offline).
+            if (batch.totalChunks != chunks.size) {
+                batchDao.setTotalChunks(batchId, chunks.size)
             }
+
+            val resumeFromChunk = batch.lastAckedChunkIndex + 1
+            logger.i("Sending ${chunks.size} inventory chunk(s) for batchId=$batchId, resuming at chunk $resumeFromChunk")
+
+            for (chunk in chunks) {
+                if (chunk.chunkIndex < resumeFromChunk) {
+                    // Already ACKed on a prior attempt — do not resend.
+                    continue
+                }
+
+                logger.i("Sending inventory chunk ${chunk.chunkIndex}/${chunk.totalChunks} for batchId=$batchId")
+                val result = hl7MessageSender.sendRaw(chunk.message)
+
+                if (result.isSuccess) {
+                    batchDao.markChunkAcked(batchId, chunk.chunkIndex)
+                    logger.i("Chunk ${chunk.chunkIndex}/${chunk.totalChunks} ACKed for batchId=$batchId")
+                } else {
+                    // Stop here — do not send later chunks out of order. The batch
+                    // stays unsynced and will resume at this exact chunk next time.
+                    logger.e(
+                        "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed for batchId=$batchId: " +
+                            "${result.exceptionOrNull()?.message}"
+                    )
+                    return
+                }
+            }
+
+            batchDao.markBatchSynced(batchId)
+            logger.i("All chunks sent — inventory HL7 sync complete for batchId=$batchId")
 
         } catch (e: Exception) {
             logger.e("buildAndSendInventoryResponse failed for batchId=$batchId", e)
@@ -239,6 +277,73 @@ class Hl7Repository @Inject constructor(
 //                        }
                 }
             }
+        }
+    }
+
+    /**
+     * TEMPORARY TEST-ONLY SEED — inserts one COMPLETED/unsynced batch with 2,000 distinct
+     * NDC/lot/expiry bottle_info rows, so the chunked HL7 inventory sync path can be exercised
+     * for real against a connected PMS. Guarded by [hasSeededLargeTestBatch] so it only runs
+     * once per process even if onClientConnected fires again (reconnect). Remove this method,
+     * the guard flag, and its call site in onClientConnected after large-batch testing is done.
+     */
+    @Volatile
+    private var hasSeededLargeTestBatch = false
+
+    fun seedLargeTestBatchAndResend(rowCount: Int = 2_000) {
+        if (hasSeededLargeTestBatch) {
+            logger.i("seedLargeTestBatchAndResend already ran once this session — skipping")
+            return
+        }
+        hasSeededLargeTestBatch = true
+        scope.launch {
+            // Unique per run so a second onClientConnected firing in the same millisecond (or a
+            // re-run reusing prior test NDCs) can't silently no-op the IGNORE insert below and
+            // leave later rows pointing at a batchId/drugId that was never actually written —
+            // that FK mismatch is what crashed with SQLITE_CONSTRAINT_FOREIGNKEY previously.
+            val runTag = System.nanoTime()
+            val batchId = runTag
+            val insertedBatchId = batchDao.insert(
+                BatchEntity(
+                    batchId = batchId,
+                    status = BatchStatus.COMPLETED,
+                    isSynced = false,
+                )
+            )
+            if (insertedBatchId == -1L) {
+                logger.e("seedLargeTestBatchAndResend: batch insert conflicted for batchId=$batchId — aborting seed")
+                return@launch
+            }
+            repeat(rowCount) { i ->
+                val drugId = drugMasterDao.insertIgnore(
+                    DrugMasterEntity(
+                        drugName = "TestDrug-$runTag-$i",
+                        ndc = "TESTNDC-$runTag-$i",
+                        packageQty = 30,
+                    )
+                )
+                if (drugId == -1L) return@repeat
+                val txnId = stockTxnDao.insertIgnore(
+                    StockTxnEntity(
+                        drugId = drugId,
+                        status = CountStatus.COMPLETED,
+                        batchId = batchId,
+                    )
+                )
+                if (txnId == -1L) return@repeat
+                bottleInfoDao.insert(
+                    com.rite.pillcounting.core.room.models.BottleInfoEntity(
+                        stockTxnId = txnId,
+                        batchId = batchId,
+                        lotNo = "TESTLOT-$runTag-$i",
+                        expNo = "12-31-2026",
+                        bottleQty = 1,
+                        looseQty = 0,
+                    )
+                )
+            }
+            logger.i("Seeded test batch $batchId with $rowCount rows — triggering resend")
+            resendPendingHl7BatchTransactions()
         }
     }
 
@@ -515,7 +620,6 @@ class Hl7Repository @Inject constructor(
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
             drugId = drugId,
-            countType = CountType.FIXED,
             targetCount = targetCount,
             status = CountStatus.PARTIAL,
             isComingFromHL7 = true,
@@ -525,7 +629,8 @@ class Hl7Repository @Inject constructor(
             refillNo = fillNo,
             priority = priority,
             hl7MessageControlId = message.messageControlId.takeIf { it.isNotBlank() },
-            hl7SequenceNumber = message.sequenceNumber.takeIf { it.isNotBlank() }
+            hl7SequenceNumber = message.sequenceNumber.takeIf { it.isNotBlank() },
+            isDispense = true
         )
 
         logger.i("Saving txn (site2) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}'")
@@ -635,7 +740,6 @@ class Hl7Repository @Inject constructor(
         val txn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
             drugId = drugId,
-            countType = CountType.FIXED,
             targetCount = targetCount,
             status = CountStatus.PARTIAL,
             isComingFromHL7 = true,
@@ -646,7 +750,8 @@ class Hl7Repository @Inject constructor(
             priority = priority,
             hl7MessageControlId = message.messageControlId.takeIf { it.isNotBlank() },
             hl7SequenceNumber = message.sequenceNumber.takeIf { it.isNotBlank() },
-            transactionOrderId = orderPacket.orderTransactionOrderId.takeIf { it.isNotBlank() }
+            transactionOrderId = orderPacket.orderTransactionOrderId.takeIf { it.isNotBlank() },
+            isDispense = true
         )
 
         logger.i("Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'")
@@ -682,98 +787,49 @@ class Hl7Repository @Inject constructor(
 
         // INV segments carry the substance / drug info in an INR message
         val invSegments = message.segments<INVSegment>(INVSegment.NAME)
-        if (invSegments.isEmpty()) {
-            logger.w("No INV segments found in HL7 message — ignoring")
-            return
-        }
 
         val resolvedItems = mutableListOf<ResolvedInventoryItem>()
 
-        for (inv in invSegments) {
-            val ndc = inv.substanceCode.trim()
-            val lot = inv.lotNumber.trim()
-            val expiry = inv.expirationDate.trim()
-            val targetCount = inv.inventoryOnHandQuantity.toIntOrNull() ?: 0
+        if (invSegments.isNotEmpty()) {
+            for (inv in invSegments) {
+                val ndc = inv.substanceCode.trim()
+                val lot = inv.lotNumber.trim()
+                val expiry = inv.expirationDate.trim()
+                val targetCount = inv.inventoryOnHandQuantity.toIntOrNull() ?: 0
 
-            if (ndc.isBlank()) {
-                logger.w("Skipping INV segment — NDC is blank")
-                continue
-            }
-
-            // Local DB check
-            val existingDrug = drugMasterDao.getDrugByNdc(ndc)
-            if (existingDrug != null) {
-                val localName = existingDrug.drugName
-                if (!localName.isNullOrBlank()) {
-                    resolvedItems.add(
-                        ResolvedInventoryItem(
-                            ndc = ndc,
-                            drugId = existingDrug.drugId,
-                            resolvedName = localName,
-                            lot = lot,
-                            expiry = expiry,
-                            targetCount = targetCount
-                        )
-                    )
-                    logger.i("Drug found in local DB for NDC: $ndc")
-                } else {
-                    logger.w("Drug found in local DB but drugName is empty for NDC: $ndc")
-                }
-                continue
-            }
-
-            // API fallback
-            val request = GetNdcRequestModel(
-                target_ndc = ndc,
-                scanned_ndc = ndc
-            )
-
-            try {
-                logger.i("Drug not found locally for NDC: $ndc, calling API")
-
-                val drugInfo = drugRepository.getDrugInfoByNdc(request)
-
-                val resolvedDrugName = drugInfo?.genericName?.takeIf { it.isNotBlank() }
-                    ?: inv.substanceName.takeIf { it.isNotBlank() }
-
-                if (resolvedDrugName.isNullOrBlank()) {
-                    logger.w("Skipping inventory item because API returned no usable drug name for NDC: $ndc")
+                if (ndc.isBlank()) {
+                    logger.w("Skipping INV segment — NDC is blank")
                     continue
                 }
 
-                val imagePath = drugImageDownloader.downloadAndSave(
-                    url = drugInfo?.imageUrl,
-                    drugName = resolvedDrugName ?: drugInfo?.ndc
-                )
-                val drugEntity = DrugMasterEntity(
-                    ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
-                    drugName = resolvedDrugName,
-                    drugType = drugInfo?.drugType,
-                    packageQty = drugInfo?.qty,
-                    isHazardous = drugInfo?.isHazardous ?: false,
-                    strength = drugInfo?.strength,
-                    dosageForm = drugInfo?.dosageForm,
-                    drugImagePath = imagePath,
-                )
-
-                val newDrugId = drugMasterDao.upsertPreservingId(drugEntity)
-
-                resolvedItems.add(
-                    ResolvedInventoryItem(
-                        ndc = ndc,
-                        drugId = newDrugId,
-                        resolvedName = resolvedDrugName,
-                        lot = lot,
-                        expiry = expiry,
-                        targetCount = targetCount
-                    )
-                )
-
-                logger.i("Drug resolved from API and saved locally for NDC: $ndc")
-            } catch (e: Exception) {
-                logger.e("Failed to fetch drug info from API for NDC: $ndc", e)
-                continue
+                resolveInventoryItem(
+                    ndc = ndc,
+                    fallbackName = inv.substanceName,
+                    lot = lot,
+                    expiry = expiry,
+                    targetCount = targetCount
+                )?.let { resolvedItems.add(it) }
             }
+        } else {
+            // No INV segments — some PMS senders (e.g. this INR^U04 variant) carry the
+            // substance data in the RXE segment instead.
+            val rxe = message.segment<RXESegment>(RXESegment.NAME)
+            val ndc = rxe?.giveCode?.trim().orEmpty()
+            if (rxe == null || ndc.isBlank()) {
+                logger.w("No INV or usable RXE segment found in HL7 message — ignoring")
+                return
+            }
+            val targetCount = (rxe.dispenseAmount.trim().takeIf { it.isNotBlank() }
+                ?: rxe.giveAmountMinimum.trim())
+                .toDoubleOrNull()?.toInt() ?: 0
+
+            resolveInventoryItem(
+                ndc = ndc,
+                fallbackName = rxe.giveName,
+                lot = "",
+                expiry = "",
+                targetCount = targetCount
+            )?.let { resolvedItems.add(it) }
         }
 
         if (resolvedItems.isEmpty()) {
@@ -825,6 +881,82 @@ class Hl7Repository @Inject constructor(
             title = context.getString(R.string.hl7_notification_inventory_title),
             message = context.getString(R.string.hl7_notification_inventory_items_count, resolvedItems.size)
         )
+    }
+
+    /**
+     * Resolves a single inventory NDC to a [ResolvedInventoryItem], checking the local
+     * DB first and falling back to the drug-info API (saving the result locally) when
+     * not found. Returns null when the drug can't be resolved by either path.
+     */
+    private suspend fun resolveInventoryItem(
+        ndc: String,
+        fallbackName: String,
+        lot: String,
+        expiry: String,
+        targetCount: Int
+    ): ResolvedInventoryItem? {
+        val existingDrug = drugMasterDao.getDrugByNdc(ndc)
+        if (existingDrug != null) {
+            val localName = existingDrug.drugName
+            if (!localName.isNullOrBlank()) {
+                logger.i("Drug found in local DB for NDC: $ndc")
+                return ResolvedInventoryItem(
+                    ndc = ndc,
+                    drugId = existingDrug.drugId,
+                    resolvedName = localName,
+                    lot = lot,
+                    expiry = expiry,
+                    targetCount = targetCount
+                )
+            }
+            logger.w("Drug found in local DB but drugName is empty for NDC: $ndc")
+            return null
+        }
+
+        val request = GetNdcRequestModel(target_ndc = ndc, scanned_ndc = ndc)
+        return try {
+            logger.i("Drug not found locally for NDC: $ndc, calling API")
+
+            val drugInfo = drugRepository.getDrugInfoByNdc(request)
+
+            val resolvedDrugName = drugInfo?.genericName?.takeIf { it.isNotBlank() }
+                ?: fallbackName.takeIf { it.isNotBlank() }
+
+            if (resolvedDrugName.isNullOrBlank()) {
+                logger.w("Skipping inventory item because API returned no usable drug name for NDC: $ndc")
+                return null
+            }
+
+            val imagePath = drugImageDownloader.downloadAndSave(
+                url = drugInfo?.imageUrl,
+                drugName = resolvedDrugName ?: drugInfo?.ndc
+            )
+            val drugEntity = DrugMasterEntity(
+                ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
+                drugName = resolvedDrugName,
+                drugType = drugInfo?.drugType,
+                packageQty = drugInfo?.qty,
+                isHazardous = drugInfo?.isHazardous ?: false,
+                strength = drugInfo?.strength,
+                dosageForm = drugInfo?.dosageForm,
+                drugImagePath = imagePath,
+            )
+
+            val newDrugId = drugMasterDao.upsertPreservingId(drugEntity)
+
+            logger.i("Drug resolved from API and saved locally for NDC: $ndc")
+            ResolvedInventoryItem(
+                ndc = ndc,
+                drugId = newDrugId,
+                resolvedName = resolvedDrugName,
+                lot = lot,
+                expiry = expiry,
+                targetCount = targetCount
+            )
+        } catch (e: Exception) {
+            logger.e("Failed to fetch drug info from API for NDC: $ndc", e)
+            null
+        }
     }
 
     /**
