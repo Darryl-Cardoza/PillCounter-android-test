@@ -1,6 +1,7 @@
 ﻿package com.rite.pillcounting.feature.dispenseFlow.domain.model
 
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
 import com.rite.pillcounting.core.utils.compose.ContainerStatus
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
@@ -26,6 +27,11 @@ data class DispenseFlowUiState(
     val qty: String? = null,
     val selectedBucketId: String = "",
     val barcodeImagePath: String? = null,
+
+    // GS1 lot/exp/serial decoded off the NDC container scan, staged here until the
+    // scan resolves (auto-confirm or after the NDC/equivalence sheet), then written
+    // once as the txn's first bottle entry in [advanceToCountingStage].
+    val pendingFirstBottle: BottleInfo? = null,
 
     val ndcScannedValue: String = "",
     val ndcDrugName: String = "",

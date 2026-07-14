@@ -54,4 +54,6 @@ data class PillScanningUiState(
     val showEndStockCountDialog: Boolean = false,
     val stockCountSessionTotal: Int = 0,
     val pendingTrayColorForClassification: TrayColor? = null,
+    val showAddBottleDialog: Boolean = false,
+    val showReplaceBottleDialog: Boolean = false,
 )

@@ -268,6 +268,13 @@
     <string name="the_counted_quantity_does_not_match_the_target_count">The counted quantity does not match the target count. Do you want to proceed?</string>
     <string name="count_mismatch">Count Mismatch</string>
 
+    <!--    Bottle rescan during counting -->
+    <string name="new_bottle_detected">New Bottle Detected</string>
+    <string name="add_new_bottle_confirm_message">A new bottle of this drug was scanned. Do you want to add it and continue counting?</string>
+    <string name="replace_bottle_detected">Replace Bottle Info</string>
+    <string name="replace_bottle_confirm_message">You have not dispensed any pills from the previously scanned bottle. Do you want to replace it with this new bottle\'s info?</string>
+    <string name="bottle_already_scanned">Bottle already scanned</string>
+
     <!--    ManualDrugEntry -->
     <string name="ndc_number">NDC Number</string>
     <string name="drug_name">Drug Name</string>

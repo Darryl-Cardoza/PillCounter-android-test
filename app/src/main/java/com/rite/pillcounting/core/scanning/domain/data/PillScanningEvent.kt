@@ -16,4 +16,8 @@ sealed interface PillScanningEvent {
     data object NoteSkip : PillScanningEvent
     data class NoteSaved(val note: String) : PillScanningEvent
     data class AddVialPhotoInTxn(val filteredCount: Int, val bitmap: Bitmap) : PillScanningEvent
+    data object ConfirmAddBottle : PillScanningEvent
+    data object CancelAddBottle : PillScanningEvent
+    data object ConfirmReplaceBottle : PillScanningEvent
+    data object CancelReplaceBottle : PillScanningEvent
 }

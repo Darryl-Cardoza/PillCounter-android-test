@@ -46,6 +46,8 @@ import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
 import com.rite.pillcounting.core.scanning.domain.model.PillScanningUiState
 import com.rite.pillcounting.core.scanning.domain.model.TxnDetail
@@ -164,6 +166,16 @@ class PillScanningViewModel @Inject constructor(
     // Lot/expiry decoded on the compulsory NDC scan, remembered so Done can stamp the new line.
     private var stockLotNo: String? = null
     private var stockExpNo: String? = null
+
+    // --- Dispense-flow bottle tracking (rescan-same-NDC during counting) ---
+    // No in-memory cache of the bottle list: every scan re-reads
+    // PillCountTxnEntity.bottleInfoListJson fresh from Room, so a resumed/killed-and-restarted
+    // process always compares against the real persisted state. isProcessingBottleScan only
+    // guards against the same physical scan firing this handler multiple times in a row
+    // (camera frame analyzer re-detecting the same barcode across consecutive frames) while a
+    // scan is already being resolved or its confirm dialog is awaiting a user tap.
+    @Volatile private var isProcessingBottleScan = false
+    private var pendingBottleScan: BottleInfo? = null
 
     /**
      * Arm the compulsory NDC-scan start for the SCAN PILLS hand-off. Must be
@@ -448,13 +460,36 @@ class PillScanningViewModel @Inject constructor(
                 }
             }
         } else {
+            val txn = pillCountTxnDao.getById(txnId)
+            val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
             stagedDetails.forEach { entity ->
-                pillCountTxnDetailsDao.insert(entity.copy(txnId = txnId))
+                val newDetailsId = pillCountTxnDetailsDao.insert(entity.copy(txnId = txnId))
+                linkDetailToActiveBottle(txnId, bottles, newDetailsId)
             }
             logger.i("Flushed ${stagedDetails.size} staged details to DB. stagedSum=$stagedSum txnId=$txnId")
         }
         stagedDetails.clear()
         stagingActive = false
+    }
+
+    /**
+     * Appends [newDetailsId] to the currently active (last) bottle's [BottleInfo.txnDetailsIds]
+     * and persists it. No-op if the txn has no bottle entries yet (no bottle scanned before
+     * this pill was counted — legacy/no-GS1-scan txns). [bottles] is the list resolved once by
+     * the caller (avoids a redundant decode per staged row when flushing several at once);
+     * the write itself re-reads+re-writes fresh each call so concurrent appends don't clobber
+     * each other.
+     */
+    private suspend fun linkDetailToActiveBottle(txnId: Long, bottles: List<BottleInfo>, newDetailsId: Long) {
+        if (bottles.isEmpty()) return
+        val txn = pillCountTxnDao.getById(txnId) ?: return
+        val current = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
+        if (current.isEmpty()) return
+        val lastIndex = current.lastIndex
+        current[lastIndex] = current[lastIndex].copy(
+            txnDetailsIds = current[lastIndex].txnDetailsIds + newDetailsId
+        )
+        pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(current))
     }
 
     /**
@@ -1005,6 +1040,10 @@ class PillScanningViewModel @Inject constructor(
 
             is PillScanningEvent.FinalDone -> handleConfirmDialog(event)
             is PillScanningEvent.AddVialPhotoInTxn -> handleAddVialImageInTxn(event)
+            is PillScanningEvent.ConfirmAddBottle -> handleConfirmAddBottle()
+            is PillScanningEvent.CancelAddBottle -> handleCancelBottleDialog(isAdd = true)
+            is PillScanningEvent.ConfirmReplaceBottle -> handleConfirmReplaceBottle()
+            is PillScanningEvent.CancelReplaceBottle -> handleCancelBottleDialog(isAdd = false)
         }
     }
 
@@ -1118,11 +1157,20 @@ class PillScanningViewModel @Inject constructor(
                 logger.e("Failed to copy base bitmap", e)
                 return@launch
             }
+            if (workingBitmap == null) {
+                logger.e("Bitmap.copy() returned null, skipping save")
+                return@launch
+            }
 
             val filteredPills = _uiState.value.filteredPills
             val txnId = preferenceHelper.getTxnId()
             val txn = pillCountTxnDao.getById(txnId)
             val drug = drugMasterDao.getDrugById(txn?.drugId)
+
+            // Resolve the currently active bottle (last one scanned) once — used both to
+            // watermark this photo with its lot/exp/serial and to tag the detail row below.
+            val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
+            val activeBottle = bottles.lastOrNull()
 
             val overlayBitmap = if (filteredPills.isNotEmpty()) {
                 try {
@@ -1139,6 +1187,9 @@ class PillScanningViewModel @Inject constructor(
                         count = currentCount.toString(),
                         rx = txn?.rxNo,
                         stepLabel = stepType.name,
+                        lotNumber = activeBottle?.lotNumber,
+                        expirationDate = activeBottle?.expirationDate,
+                        serialNumber = activeBottle?.serialNumber,
                     )
                 } catch (e: Exception) {
                     logger.e("Overlay drawing failed, using bitmap without overlay", e)
@@ -1169,7 +1220,7 @@ class PillScanningViewModel @Inject constructor(
                 imagePath = filePath,
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis(),
-                type = stepType.toString()
+                type = stepType.toString(),
             )
 
             if (stagingEnabled) {
@@ -1179,6 +1230,8 @@ class PillScanningViewModel @Inject constructor(
                 // the user confirms Done. looseQty for REGULAR is incremented
                 // once, on flush, for the whole staged sum (see handleConfirmDone
                 // / handleDone flush blocks). On back-out these are discarded.
+                // Bottle linkage (txnDetailsIds) is done in flushStagedDetails, once
+                // real row ids exist — staged rows have no id yet.
                 stagedDetails.add(detail)
                 stagingActive = true
 
@@ -1193,7 +1246,8 @@ class PillScanningViewModel @Inject constructor(
                 // DB observer (observeTxnDetailsForTxn) drives uiState because
                 // stagingActive stays false. looseQty for REGULAR is incremented
                 // per-ADD here to match the per-row insert.
-                pillCountTxnDetailsDao.insert(detail)
+                val newDetailsId = pillCountTxnDetailsDao.insert(detail)
+                linkDetailToActiveBottle(txnId, bottles, newDetailsId)
 
                 if (!workingBitmap.isRecycled) workingBitmap.recycle()
                 currentFrameBitmap = null
@@ -1675,6 +1729,128 @@ class PillScanningViewModel @Inject constructor(
             } finally {
                 isStagingNdc = false
             }
+        }
+    }
+
+    /**
+     * Always-on rescan hook for the dispense pill-counting steps (TARGET_VERIFICATION /
+     * TARGET_REVERIFICATION). Unlike [onNdcScannedForStockCount] (a one-shot compulsory scan
+     * gated to [StepState.SCAN]), this fires on every barcode the camera decodes while the
+     * pharmacist is actively counting pills for a dispense txn, so a second bottle of the same
+     * drug can be detected mid-count.
+     *
+     * Behavior (bottle info is always read fresh from Room — no in-memory cache — so a
+     * killed/resumed process still compares against the real persisted state):
+     * - Ignored if not currently on a dispense counting step, or the decoded NDC doesn't match
+     *   the active txn's NDC (wrong-drug scans are dropped silently, no lookup/popup).
+     * - A non-GS1 barcode carries no lot/exp/serial: treated as a count-only bottle entry.
+     * - If the decoded lot+exp+serial exactly match the last bottle on file → toast only.
+     * - Else if pills have already been counted since the last bottle was recorded → show the
+     *   "add new bottle" confirm dialog (adds a new bottle entry on confirm).
+     * - Else (nothing counted yet against the last bottle) → show the "replace bottle" confirm
+     *   dialog (overwrites the last bottle's lot/exp/serial on confirm).
+     */
+    fun onNdcRescannedDuringCount(rawValue: String) {
+        val countingSteps = setOf(StepState.TARGET_VERIFICATION, StepState.TARGET_REVERIFICATION)
+        if (_currentStep.value !in countingSteps) return
+        if (_txnInfo.value?.isDispense != true) return
+        if (isProcessingBottleScan) return
+        isProcessingBottleScan = true
+
+        viewModelScope.launch {
+            try {
+                val txnId = preferenceHelper.getTxnId()
+                val activeNdc = _txnInfo.value?.ndc
+                if (activeNdc.isNullOrBlank()) return@launch
+
+                val isGs1 = barcodeDecoder.isGs1Barcode(rawValue)
+                val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
+                val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
+                val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
+
+                val scannedDrug = gtin14?.let { drugMasterDao.getDrugByGtin(it) ?: drugMasterDao.getDrugByNdc(it) }
+                if (scannedDrug == null || scannedDrug.ndc != activeNdc) {
+                    // Not the same drug (or unreadable) — ignore, no popup, no lookup, no DB write.
+                    return@launch
+                }
+
+                val lotNumber = decoded?.lotNumber
+                val expirationDate = decoded?.expirationDate?.format(
+                    java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
+                )
+                val serialNumber = decoded?.serialNumber
+
+                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                val bottles = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
+                val lastBottle = bottles.lastOrNull()
+
+                if (lastBottle != null && isGs1 &&
+                    lastBottle.lotNumber == lotNumber &&
+                    lastBottle.expirationDate == expirationDate &&
+                    lastBottle.serialNumber == serialNumber
+                ) {
+                    _uiState.update { it.copy(showErrorMessage = context.getString(R.string.bottle_already_scanned)) }
+                    return@launch
+                }
+
+                val currentCount = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
+                val scannedBottle = BottleInfo(
+                    lotNumber = lotNumber,
+                    expirationDate = expirationDate,
+                    serialNumber = serialNumber,
+                )
+                pendingBottleScan = scannedBottle
+                if (currentCount > 0 || bottles.isEmpty()) {
+                    _uiState.update { it.copy(showAddBottleDialog = true) }
+                } else {
+                    _uiState.update { it.copy(showReplaceBottleDialog = true) }
+                }
+            } catch (e: Exception) {
+                logger.e("BOTTLE_SCAN onNdcRescannedDuringCount failed", e)
+            } finally {
+                isProcessingBottleScan = false
+            }
+        }
+    }
+
+    private fun handleConfirmAddBottle() {
+        val pending = pendingBottleScan
+        _uiState.update { it.copy(showAddBottleDialog = false) }
+        if (pending == null) return
+        viewModelScope.launch {
+            val txnId = preferenceHelper.getTxnId()
+            val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+            val bottles = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
+            bottles.add(pending)
+            pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(bottles))
+            pendingBottleScan = null
+            logger.i("BOTTLE_SCAN added new bottle for txnId=$txnId, total bottles=${bottles.size}")
+        }
+    }
+
+    private fun handleConfirmReplaceBottle() {
+        val pending = pendingBottleScan
+        _uiState.update { it.copy(showReplaceBottleDialog = false) }
+        if (pending == null) return
+        viewModelScope.launch {
+            val txnId = preferenceHelper.getTxnId()
+            val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+            val bottles = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
+            if (bottles.isEmpty()) {
+                bottles.add(pending)
+            } else {
+                bottles[bottles.lastIndex] = pending
+            }
+            pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(bottles))
+            pendingBottleScan = null
+            logger.i("BOTTLE_SCAN replaced last bottle for txnId=$txnId")
+        }
+    }
+
+    private fun handleCancelBottleDialog(isAdd: Boolean) {
+        pendingBottleScan = null
+        _uiState.update {
+            if (isAdd) it.copy(showAddBottleDialog = false) else it.copy(showReplaceBottleDialog = false)
         }
     }
 

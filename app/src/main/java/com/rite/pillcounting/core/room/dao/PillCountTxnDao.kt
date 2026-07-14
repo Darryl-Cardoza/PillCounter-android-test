@@ -216,6 +216,20 @@ interface PillCountTxnDao {
     )
 
     /**
+     * Persists the JSON-encoded per-bottle info list for a transaction.
+     *
+     * @param txnId The transaction ID.
+     * @param bottleInfoListJson JSON-encoded `List<BottleInfo>` (see `BottleInfoJson.encode`).
+     * @param now Optional timestamp; defaults to [System.currentTimeMillis].
+     */
+    @Query("UPDATE pill_count_txn SET bottleInfoListJson = :bottleInfoListJson, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateBottleInfoList(
+        txnId: Long,
+        bottleInfoListJson: String,
+        now: Long = System.currentTimeMillis()
+    )
+
+    /**
      * Performs a soft delete by setting `isDeleted = 1`.
      * This preserves record history and maintains referential integrity.
      *

@@ -54,7 +54,7 @@ import com.rite.pillcounting.core.security.SecureStringConverter
         StockTxnEntity::class,
         BottleInfoEntity::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = true
 )
 @TypeConverters(
@@ -116,6 +116,16 @@ abstract class AppDatabase : RoomDatabase() {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("ALTER TABLE batch ADD COLUMN lastAckedChunkIndex INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE batch ADD COLUMN totalChunks INTEGER")
+            }
+        }
+
+        /**
+         * v7 → v8: add `bottleInfoListJson` column to `pill_count_txn`, storing a
+         * JSON-encoded list of per-bottle lot/exp/serial/pillCount entries.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE pill_count_txn ADD COLUMN bottleInfoListJson TEXT")
             }
         }
 

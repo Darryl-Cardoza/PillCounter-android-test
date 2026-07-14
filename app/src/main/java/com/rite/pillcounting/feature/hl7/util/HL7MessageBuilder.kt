@@ -2,6 +2,8 @@ package com.rite.pillcounting.feature.hl7.util
 
 
 import com.rite.pillcounting.core.models.toImageLabel
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
@@ -126,16 +128,19 @@ object HL7MessageBuilder {
             ?: System.currentTimeMillis().toString()
 
         val txnDetails = txnDetails.filter { !it.isDeleted }
-        val details = txnDetails.map { detail ->
-            DummyBottleInfo(
-                lotNumber = "LOT123456",
-                exp =  "20991231",
-                serialNumber = "SN123456",
-                pillCount = detail.pillCount?.toString()
-            )
-        }.filter { it.pillCount != null }
+        // Each bottle's true pill count is live-summed here from its own txnDetailsIds against
+        // the (already non-deleted-filtered) detail rows — there is no stored pill count on
+        // BottleInfo itself, so this keeps a bottle's reported count correct even if a detail
+        // row was deleted/redone after the bottle was scanned.
+        val pillCountByDetailsId = txnDetails.associate { it.txnDetailsId to (it.pillCount ?: 0) }
+        val bottles = BottleInfoJson.decode(txn.bottleInfoListJson)
+        val bottleCounts = bottles.map { bottle ->
+            bottle.txnDetailsIds.sumOf { id -> pillCountByDetailsId[id] ?: 0 }
+        }
 
-        val totalCount = txn.targetCount ?: details.sumOf { it.pillCount?.toIntOrNull() ?: 0 }
+        val totalCount = txn.targetCount
+            ?: bottleCounts.sum().takeIf { bottles.isNotEmpty() }
+            ?: txnDetails.sumOf { it.pillCount ?: 0 }
         val orderId = txn.rxNo ?: txn.txnId.toString()
 
 
@@ -205,9 +210,12 @@ object HL7MessageBuilder {
 
             buildZSN(
                 drugCode = drugCode,
+                bottles = bottles,
+                bottleCounts = bottleCounts,
                 lotNumber = lotNumber,
                 expirationDate = expirationDate,
                 serialNumber = serialNumber,
+                totalCount = totalCount,
                 now = now
             ).forEach { zsn ->
                 zsn { z ->
@@ -521,36 +529,46 @@ object HL7MessageBuilder {
         val transactionType: String
     )
 
-    private data class DummyBottleInfo(
-        val lotNumber: String?,
-        val exp: String,
-        val serialNumber: String?,
-        val pillCount: String?
-
-
-    )
-
+    /**
+     * Builds one ZSN row per bottle recorded on the transaction ([BottleInfo] decoded from
+     * [PillCountTxnEntity.bottleInfoListJson]). Falls back to a single row built from the
+     * caller-supplied [lotNumber]/[expirationDate]/[serialNumber]/[totalCount] when the
+     * transaction has no bottle entries (legacy txns predating bottle tracking, or a txn
+     * whose pills were all counted before any bottle was ever scanned).
+     */
     private fun buildZSN(
         drugCode: String,
+        bottles: List<BottleInfo>,
+        bottleCounts: List<Int>,
         lotNumber: String?,
         expirationDate: String?,
         serialNumber: String?,
+        totalCount: Int,
         now: String
     ): List<ZsnRow> {
-        // Fixed sample data — always exactly 2 ZSN segments, independent of txn details
-        val sampleRows = listOf(
-            "30" to (lotNumber ?: "LOT123456"),
-            "60" to (lotNumber ?: "LOT123457")
-        )
-
-        return sampleRows.mapIndexed { index, (qty, lot) ->
+        if (bottles.isEmpty()) {
+            return listOf(
+                ZsnRow(
+                    setId = "1",
+                    nationalDrugCode = drugCode,
+                    lotNumber = lotNumber,
+                    expirationDate = expirationDate,
+                    packageSerialNumber = serialNumber,
+                    quantityFromThisStockItem = totalCount.toString(),
+                    captureSource = ScanSource.GS1,
+                    captureTimestamp = now,
+                    transactionType = ZsnTransactionType.DISPENSE
+                )
+            )
+        }
+        return bottles.mapIndexed { index, bottle ->
             ZsnRow(
                 setId = (index + 1).toString(),
                 nationalDrugCode = drugCode,
-                lotNumber = lot,
-                expirationDate = expirationDate ?: "20991231",
-                packageSerialNumber = serialNumber ?: "SN12345${index + 6}",
-                quantityFromThisStockItem = qty,
+                lotNumber = bottle.lotNumber,
+                expirationDate = bottle.expirationDate,
+                packageSerialNumber = bottle.serialNumber,
+                quantityFromThisStockItem = bottleCounts[index].toString(),
                 captureSource = ScanSource.GS1,
                 captureTimestamp = now,
                 transactionType = ZsnTransactionType.DISPENSE

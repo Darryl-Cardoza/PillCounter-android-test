@@ -112,4 +112,11 @@ data class PillCountTxnEntity(
     val hl7MessageControlId: String? = null,
     val hl7SequenceNumber: String? = null,
     val transactionOrderId: String? = null,
+
+    /**
+     * JSON-encoded `List<BottleInfo>` — one entry per physical bottle scanned
+     * against this transaction, with its own lot/exp/serial and pill count.
+     * See [com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson].
+     */
+    val bottleInfoListJson: String? = null,
 )
