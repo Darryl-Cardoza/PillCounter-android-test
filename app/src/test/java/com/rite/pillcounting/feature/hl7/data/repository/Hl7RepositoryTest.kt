@@ -17,6 +17,7 @@ import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.data.DrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
@@ -84,6 +85,7 @@ class Hl7RepositoryTest {
     private lateinit var hl7MessageSender: Hl7MessageSender
     private lateinit var drugRepository: DrugRepository
     private lateinit var notifier: Hl7Notifier
+    private lateinit var drugImageDownloader: DrugImageDownloader
 
     @Before
     fun setup() {
@@ -116,6 +118,7 @@ class Hl7RepositoryTest {
         hl7MessageSender = mockk(relaxed = true)
         drugRepository = mockk(relaxed = true)
         notifier = mockk(relaxed = true)
+        drugImageDownloader = mockk(relaxed = true)
 
         every { context.getString(any()) } returns "x"
         every { context.getString(any(), *anyVararg()) } returns "x"
@@ -147,6 +150,7 @@ class Hl7RepositoryTest {
         hl7MessageSender = hl7MessageSender,
         drugRepository = drugRepository,
         notifier = notifier,
+        drugImageDownloader = drugImageDownloader,
     )
 
     // ─────────────────────────────── message builders ───────────────────────────────

@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.utils.compose
 
+import com.rite.pillcounting.R
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateFloat
@@ -27,6 +28,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -38,7 +40,7 @@ import kotlin.math.sin
 @Composable
 fun GlobalLoadingOverlay(
     isVisible: Boolean,
-    message: String = "Loading...",
+    message: String = stringResource(R.string.loading),
     backgroundColor: Color = Color.Black.copy(alpha = 0.3f),
 ) {
     if (!isVisible) return

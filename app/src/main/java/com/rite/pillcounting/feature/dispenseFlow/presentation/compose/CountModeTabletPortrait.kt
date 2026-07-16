@@ -48,7 +48,6 @@ fun CountModeTabletPortrait(
     drugName: String,
     ndc: String,
     strength: String,
-    dosageForm: String,
     bucket: String,
     showHistory: () -> Unit,
     drugImage: String? = ""
@@ -74,7 +73,6 @@ fun CountModeTabletPortrait(
             ndc = ndc,
             drugName = drugName,
             strength = strength,
-            dosageForm = dosageForm,
             bucket = bucket,
             drugImage = drugImage
         )

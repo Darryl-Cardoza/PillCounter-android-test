@@ -11,6 +11,7 @@ import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
@@ -54,6 +55,7 @@ class DispenseFlowViewModelTest {
     private lateinit var pillCountTxnDao: PillCountTxnDao
     private lateinit var stockTxnDao: StockTxnDao
     private lateinit var bottleInfoDao: BottleInfoDao
+    private lateinit var drugImageDownloader: DrugImageDownloader
 
     @Before
     fun setup() {
@@ -81,6 +83,7 @@ class DispenseFlowViewModelTest {
         pillCountTxnDao = mockk(relaxed = true)
         stockTxnDao = mockk(relaxed = true)
         bottleInfoDao = mockk(relaxed = true)
+        drugImageDownloader = mockk(relaxed = true)
 
         every { preferenceHelper.getLocalId() } returns 1L
         every { preferenceHelper.getTxnId() } returns 0L
@@ -96,7 +99,7 @@ class DispenseFlowViewModelTest {
 
     private fun createViewModel() = DispenseFlowViewModel(
         appContext, drugRepository, drugMasterDao, preferenceHelper, pillCountTxnDao,
-        stockTxnDao, bottleInfoDao
+        stockTxnDao, bottleInfoDao, drugImageDownloader
     )
 
     private fun validParsed(

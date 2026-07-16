@@ -49,7 +49,6 @@ fun CountModeTabletLandscape(
     drugName: String,
     ndc: String,
     strength: String,
-    dosageForm: String,
     bucket: String,
     showHistory: () -> Unit,
     drugImage: String? = "",
@@ -75,7 +74,6 @@ fun CountModeTabletLandscape(
             ndc = ndc,
             drugName = drugName,
             strength = strength,
-            dosageForm = dosageForm,
             bucket = bucket,
             drugImage = drugImage
         )

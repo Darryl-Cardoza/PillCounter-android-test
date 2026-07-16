@@ -10,6 +10,7 @@ import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.util.MainDispatcherRule
 import io.mockk.mockk
@@ -47,6 +48,7 @@ class DispenseFlowViewModelTest {
     private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
     private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
+    private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
 
     private lateinit var viewModel: DispenseFlowViewModel
 
@@ -60,6 +62,7 @@ class DispenseFlowViewModelTest {
             pillCountTxnDao = pillCountTxnDao,
             stockTxnDao = stockTxnDao,
             bottleInfoDao = bottleInfoDao,
+            drugImageDownloader = drugImageDownloader,
         )
     }
 

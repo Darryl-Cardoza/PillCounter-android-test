@@ -86,7 +86,6 @@ fun InformationPanelSection(
             drugName = drugName,
             ndc = uiState.ndc,
             strength = uiState.strength,
-            dosageForm = uiState.dosageForm,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
             drugImage = uiState.drugImage
@@ -103,7 +102,6 @@ fun InformationPanelSection(
             drugName = drugName,
             ndc = uiState.ndc,
             strength = uiState.strength,
-            dosageForm = uiState.dosageForm,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
             drugImage = uiState.drugImage
@@ -120,7 +118,6 @@ fun InformationPanelSection(
             drugName = drugName,
             ndc = uiState.ndc,
             strength = uiState.strength,
-            dosageForm = uiState.dosageForm,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
             drugImage = uiState.drugImage
@@ -137,7 +134,6 @@ fun InformationPanelSection(
             drugName = drugName,
             ndc = uiState.ndc,
             strength = uiState.strength,
-            dosageForm = uiState.dosageForm,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
             drugImage = uiState.drugImage
