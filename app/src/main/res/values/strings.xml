@@ -6,6 +6,7 @@
 
     <!--    Common   -->
     <string name="pms">PMS</string>
+    <string name="loading">Loading...</string>
 
     <!-- ================== AUTH / LOGIN / REGISTER ================== -->
     <string name="email">Email</string>

@@ -83,9 +83,7 @@ class HistoryPdfExporter(private val context: Context) {
         val folderName = "PillReports/DailyHistoryReports"
         val directory = File(context.getExternalFilesDir(null), folderName)
 
-        if (!directory.exists()) {
-            if (!directory.mkdirs()) return null
-        }
+        if (!directory.exists() && !directory.mkdirs()) return null
 
         // 2. Define strict filename
         val fileName = "DrugHistory_$selectedDate.pdf"
@@ -107,19 +105,17 @@ class HistoryPdfExporter(private val context: Context) {
 
         try {
             // Column Widths
-            val col1 = contentWidth * 0.30f
-            val col2 = contentWidth * 0.22f
-            val col3 = contentWidth * 0.13f
-            val col4 = contentWidth * 0.15f
-            val col5 = contentWidth * 0.20f
+            val col1 = contentWidth * 0.38f
+            val col2 = contentWidth * 0.25f
+            val col3 = contentWidth * 0.17f
+            val col4 = contentWidth * 0.20f
 
-            val colWidths = floatArrayOf(col1, col2, col3, col4, col5)
+            val colWidths = floatArrayOf(col1, col2, col3, col4)
             val headers = arrayOf(
                 context.getString(R.string.drugname_two_lines),
                 context.getString(R.string.ndc_gtin14),
                 context.getString(R.string.pills_count),
-                context.getString(R.string.status),
-                context.getString(R.string.count_type_two_lines)
+                context.getString(R.string.status)
             )
 
             // Page 1 Setup
@@ -171,8 +167,7 @@ class HistoryPdfExporter(private val context: Context) {
                         item.drugName ?: "",
                         item.ndc ?: "N/A",
                         item.pillCount?.toString() ?: "0",
-                        item.status.toString(),
-                        if (item.isDispense) "FIXED" else "REGULAR"
+                        item.status.toString()
                     )
 
                     drawTableRow(canvas, margin.toFloat(), yPosition, colWidths, rowData)

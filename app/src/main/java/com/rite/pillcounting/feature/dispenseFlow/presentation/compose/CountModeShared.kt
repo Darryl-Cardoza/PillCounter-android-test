@@ -82,7 +82,6 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
     ndc: String,
     drugName: String,
     strength: String,
-    dosageForm: String,
     bucket: String,
     drugImage: String? = "",
 ) {
@@ -143,24 +142,7 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
         // Keep the (ellipsized) drug name from butting up against the Form column.
         Spacer(Modifier.width(16.dp))
 
-        // Right: Form (icon) / Strength / Bucket
-//        if (dosageForm.isNotBlank()) {
-//            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-//                Text(
-//                    text = stringResource(R.string.detail_label_form),
-//                    color = Color.White.copy(alpha = 0.7f),
-//                    fontSize = responsiveSp(8.sp),
-//                    maxLines = 1
-//                )
-//                Icon(
-//                    painter = painterResource(R.drawable.pill_icon_48),
-//                    contentDescription = dosageForm,
-//                    tint = Color.White,
-//                    modifier = Modifier.size(responsiveDp(16.dp))
-//                )
-//            }
-//            Spacer(Modifier.width(32.dp))
-//        }
+        // Right: Strength / Bucket
         if (strength.isNotBlank()) {
             DetailColumn(
                 label = stringResource(R.string.detail_label_strength),

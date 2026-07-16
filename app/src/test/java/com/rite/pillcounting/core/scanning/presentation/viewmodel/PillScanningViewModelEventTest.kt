@@ -10,6 +10,7 @@ import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
@@ -65,6 +66,7 @@ class PillScanningViewModelEventTest {
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
+    private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
 
@@ -92,6 +94,7 @@ class PillScanningViewModelEventTest {
             performanceLogger = performanceLogger,
             barcodeDecoder = barcodeDecoder,
             drugRepository = drugRepository,
+            drugImageDownloader = drugImageDownloader,
         )
     }
 
