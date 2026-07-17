@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.MenuButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -569,7 +570,7 @@ internal fun ScaffoldQueueList(
             when (item) {
                 is QueueItem.Dispense -> DrugCountRow(
                     data = DrugCountRowData(
-                        barcodeImage = item.txn.barcodeImage,
+                        barcodeImage = BottleInfoJson.decode(item.txn.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
                         ndc = item.txn.ndc,
                         drugType = item.txn.drugType,
                         drugName = item.txn.drugName ?: "—",

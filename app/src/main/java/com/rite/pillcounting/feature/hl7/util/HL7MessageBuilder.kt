@@ -192,7 +192,7 @@ object HL7MessageBuilder {
                 }
 
             buildImageOBX(
-                barcodeImage = txn.barcodeImage,
+                barcodeImage = bottles.firstOrNull()?.barcodeImagePath,
                 details = txnDetails,
                 observationId = "DISP_IMG",
                 label = "Dispense Image"

@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.feature.countResume.domain.model.CountItem
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
@@ -75,10 +76,11 @@ fun UnsyncedTransactionListCard(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                val hasImage = !item.barcodeImage.isNullOrEmpty()
+                val barcodeImage = BottleInfoJson.decode(item.bottleInfoListJson).firstOrNull()?.barcodeImagePath
+                val hasImage = !barcodeImage.isNullOrEmpty()
 
                 val painter = if (hasImage) {
-                    val file = File(item.barcodeImage ?: "")
+                    val file = File(barcodeImage ?: "")
                     rememberAsyncImagePainter(
                         ImageRequest.Builder(LocalContext.current)
                             .data(file)

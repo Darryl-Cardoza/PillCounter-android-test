@@ -305,6 +305,8 @@
     <string name="notes">NOTES</string>
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
+    <string name="bottle_page_indicator">%1$d of %2$d</string>
+    <string name="serial_no">Serial No.</string>
     <string name="stock_count_dialog_title">What would you like to do?</string>
     <string name="stock_count_dialog_option_first">Create a new Batch</string>
     <string name="stock_count_dialog_option_second">Continue last Batch</string>

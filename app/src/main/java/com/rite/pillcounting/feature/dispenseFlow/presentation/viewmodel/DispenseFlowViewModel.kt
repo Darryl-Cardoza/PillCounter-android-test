@@ -3,7 +3,7 @@ package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.rite.pillcounting.core.models.ScheduleCode
+import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
@@ -652,7 +652,6 @@ class DispenseFlowViewModel @Inject constructor(
                 drugId = drugId,
                 isDispense = isDispense,
                 status = CountStatus.PARTIAL,
-                barcodeImage = state.barcodeImagePath,
                 isNdcVerified = false,
                 targetCount = qtyInt,
                 bucketId = state.selectedBucketId.ifBlank { null },
@@ -780,14 +779,13 @@ class DispenseFlowViewModel @Inject constructor(
         // process death) doesn't clobber bottles already tracked via a rescan mid-count.
         val existingBottles = BottleInfoJson.decode(txn.bottleInfoListJson)
         val bottleInfoListJson = if (txn.isDispense && existingBottles.isEmpty() && state.pendingFirstBottle != null) {
-            BottleInfoJson.encode(listOf(state.pendingFirstBottle))
+            BottleInfoJson.encode(listOf(state.pendingFirstBottle.copy(txnId = txnId)))
         } else txn.bottleInfoListJson
         pillCountTxnDao.update(
             txn.copy(
                 isNdcVerified = true,
                 isSubstitute = isSubstitute,
                 substitutedDrugId = substitutedDrugId,
-                barcodeImage = state.barcodeImagePath,
                 bottleInfoListJson = bottleInfoListJson,
             )
         )
@@ -944,16 +942,20 @@ class DispenseFlowViewModel @Inject constructor(
                 )
             } else null
 
+            val existingBottles = BottleInfoJson.decode(txn.bottleInfoListJson)
+            val bottleInfoListJson = if (txn.isDispense && existingBottles.isEmpty() && state.pendingFirstBottle != null) {
+                BottleInfoJson.encode(listOf(state.pendingFirstBottle.copy(txnId = txnId)))
+            } else txn.bottleInfoListJson
             pillCountTxnDao.update(
                 txn.copy(
                     isNdcVerified = true,
                     isSubstitute = isSubstitute,
                     substitutedDrugId = substitutedDrugId,
-                    barcodeImage = state.barcodeImagePath
+                    bottleInfoListJson = bottleInfoListJson,
                 )
             )
             _uiState.update {
-                it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false)
+                it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, pendingFirstBottle = null)
             }
             logger.i("[HAZARDOUS] NDC confirmed (sheet): txn=$txnId substitute=$isSubstitute isHazardous=${state.isHazardous} → COUNTING")
         }
@@ -1178,9 +1180,4 @@ class DispenseFlowViewModel @Inject constructor(
 }
 
 private const val VIAL_MISMATCH_TOAST_COOLDOWN_MS = 2000L
-
-private fun isControlledDrugType(drugType: String?): Boolean {
-    val code = drugType?.trim()?.uppercase() ?: return false
-    return ScheduleCode.entries.any { it.name == code }
-}
 

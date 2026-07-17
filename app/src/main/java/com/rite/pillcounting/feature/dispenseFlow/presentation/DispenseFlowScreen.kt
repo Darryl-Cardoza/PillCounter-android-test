@@ -855,8 +855,8 @@ fun DispenseFlowScreen(
                             // self-pauses on each hit; always resume immediately afterward since
                             // this hook never itself surfaces a full-screen sheet that would
                             // otherwise re-trigger on the same barcode.
-                            barcodeAnalyzer.analyze(imageProxy) { value, _ ->
-                                pillVm.onNdcRescannedDuringCount(value)
+                            barcodeAnalyzer.analyze(imageProxy) { value, imagePath ->
+                                pillVm.onNdcRescannedDuringCount(value, imagePath)
                                 barcodeAnalyzer.resume()
                             }
                         } else if (
@@ -1512,6 +1512,8 @@ internal fun handleBarcode(
                         java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
                     ),
                     serialNumber = decoded?.serialNumber,
+                    txnId = 0L, // placeholder — the real txnId is stamped in onNdcBarcodeRead once the txn row is known
+                    barcodeImagePath = imagePath,
                 )
                 onNdc(finalGtin14, imagePath, firstBottle)
                 true

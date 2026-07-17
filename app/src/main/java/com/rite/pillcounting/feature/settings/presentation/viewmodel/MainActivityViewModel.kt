@@ -9,6 +9,7 @@ import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsRepository
 import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsViewModel
 import com.rite.pillcounting.feature.settings.domain.model.ApplicationSettingsUiState
@@ -291,8 +292,8 @@ class MainActivityViewModel @Inject constructor(
             oldTransactions.forEach { txn ->
                 val filesToDelete = mutableListOf<String>()
 
-                // Collect barcode image
-                txn.barcodeImage?.let { filesToDelete.add(it) }
+                // Collect barcode images
+                BottleInfoJson.decode(txn.bottleInfoListJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
 
                 // Collect details images
                 val detailImages = txnDao.getTransactionDetailsImages(txn.txnId)

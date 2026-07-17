@@ -273,6 +273,8 @@
     <string name="notes">NOTAS</string>
     <string name="total_re_count">RECONTEO TOTAL</string>
     <string name="no_batches_recorded">No hay lotes registrados</string>
+    <string name="bottle_page_indicator">%1$d de %2$d</string>
+    <string name="serial_no">N.º de serie</string>
     <string name="stock_count_dialog_title">¿Qué le gustaría hacer?</string>
     <string name="stock_count_dialog_option_first">Crear un nuevo lote</string>
     <string name="stock_count_dialog_option_second">Continuar el último lote</string>

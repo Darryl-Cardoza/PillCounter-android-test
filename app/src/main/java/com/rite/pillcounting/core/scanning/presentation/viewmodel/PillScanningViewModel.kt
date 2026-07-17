@@ -1750,7 +1750,7 @@ class PillScanningViewModel @Inject constructor(
      * - Else (nothing counted yet against the last bottle) → show the "replace bottle" confirm
      *   dialog (overwrites the last bottle's lot/exp/serial on confirm).
      */
-    fun onNdcRescannedDuringCount(rawValue: String) {
+    fun onNdcRescannedDuringCount(rawValue: String, imagePath: String?) {
         val countingSteps = setOf(StepState.TARGET_VERIFICATION, StepState.TARGET_REVERIFICATION)
         if (_currentStep.value !in countingSteps) return
         if (_txnInfo.value?.isDispense != true) return
@@ -1798,6 +1798,8 @@ class PillScanningViewModel @Inject constructor(
                     lotNumber = lotNumber,
                     expirationDate = expirationDate,
                     serialNumber = serialNumber,
+                    txnId = txnId,
+                    barcodeImagePath = imagePath,
                 )
                 pendingBottleScan = scannedBottle
                 if (currentCount > 0 || bottles.isEmpty()) {
@@ -1869,7 +1871,7 @@ class PillScanningViewModel @Inject constructor(
             targetCount = null,
             note = null,
             createdAt = System.currentTimeMillis(),
-            barcodeImage = null,
+            bottleInfoListJson = null,
             totalPillCount = 0,
             isDispense = false,
             drugType = drug.drugType,
