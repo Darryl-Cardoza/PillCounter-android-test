@@ -4,6 +4,7 @@ private val logger = AppLogger("ParsedScanData")
 
 data class ParsedScanData(
     val rxNo: String? = null,
+    val refillNo: String? = null,
     val ndcNo: String? = null,
     val qty: String? = null,
     val bucket: String? = null,
@@ -31,6 +32,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
 
         ParsedScanData(
             rxNo = mappedData["RXNO"],
+            refillNo = mappedData["REFILLNO"],
             ndcNo = mappedData["NDCNO"],
             qty = mappedData["QTY"],
             bucket = mappedData["BUCKET"],

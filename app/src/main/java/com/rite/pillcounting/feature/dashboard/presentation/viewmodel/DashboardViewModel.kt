@@ -29,6 +29,7 @@ import com.rite.pillcounting.feature.dashboard.domain.model.UserSettings
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import com.rite.pillcounting.feature.hl7.util.Hl7Format
+import com.rite.pillcounting.feature.profile.domain.data.IProfileRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -68,6 +69,7 @@ class DashboardViewModel @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
     private val hl7EventHandler: Hl7EventHandler,
     private val hl7ServiceManager: Hl7ServiceManager,
+    private val profileRepository: IProfileRepository,
 
 ) : ViewModel() {
 
@@ -342,6 +344,25 @@ class DashboardViewModel @Inject constructor(
      * - Updates [DashboardUiState] with either success or error state.
      * - Sets [DashboardUiState.navigateToProfile] to `true` if profile is incomplete.
      */
+    /**
+     * Fetches the selectable pharmacy-type options and caches them in prefs.
+     * Called once per install (guarded by an empty-cache check in the caller)
+     * so the profile screen's dropdown doesn't hit the network every launch.
+     */
+    private fun fetchPharmacyTypes() {
+        viewModelScope.launch(Dispatchers.IO) {
+            profileRepository.getPharmacyTypes()
+                .onSuccess { response ->
+                    val options = response.data?.pharmacyTypes.orEmpty()
+                    preferenceHelper.savePharmacyTypes(options)
+                    logger.i("Fetched and cached ${options.size} pharmacy types")
+                }
+                .onFailure { e ->
+                    logger.e("Failed to fetch pharmacy types", e)
+                }
+        }
+    }
+
     private fun fetchUserDetail() {
         viewModelScope.launch(Dispatchers.IO) {
             logger.d("Starting fetchUserDetail()")
@@ -395,6 +416,16 @@ class DashboardViewModel @Inject constructor(
                             // true). Runs on each auth/me response, so a true → false change takes
                             // effect on the next dashboard launch / refresh.
                             cleanupSyncedTransactionsIfNotAllowed()
+
+                            // Persist the currently-selected pharmacy type code so the
+                            // profile screen's dropdown prefills from the server value.
+                            detail.profile?.pharmacyType?.let { preferenceHelper.savePharmacyType(it) }
+
+                            // Fetch the pharmacy-type options once per install — cached
+                            // list is reused on subsequent launches instead of re-fetching.
+                            if (preferenceHelper.getPharmacyTypes().isEmpty()) {
+                                fetchPharmacyTypes()
+                            }
 
                             // Save terminals to SharedPreferences
                             detail.settings?.terminals?.let { terminals ->

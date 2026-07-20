@@ -24,6 +24,7 @@ data class DispenseFlowUiState(
     val drugImage: String = "",
     val ndc: String = "",
     val rxNo: String? = null,
+    val refillNo: String? = null,
     val qty: String? = null,
     val selectedBucketId: String = "",
     val barcodeImagePath: String? = null,

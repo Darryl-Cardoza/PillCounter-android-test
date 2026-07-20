@@ -167,10 +167,6 @@ class Hl7EventHandler @Inject constructor(
         logger.i("HL7 client connected | $host:$port")
         _connectionState.value = true
         hl7Repository.resendPendingHl7Transactions()
-        // TEMPORARY: seeds a 2k-row test batch (once per process, guarded internally) and
-        // sends it in chunks to PMS to validate large-batch sync. Remove this call (and
-        // Hl7Repository.seedLargeTestBatchAndResend) after testing.
-        hl7Repository.seedLargeTestBatchAndResend()
         hl7Repository.resendPendingHl7BatchTransactions()
         notifier.show(
             title = context.getString(R.string.hl7_notification_device_connected_title),

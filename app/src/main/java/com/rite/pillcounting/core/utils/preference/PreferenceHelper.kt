@@ -7,6 +7,7 @@ import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.hl7.util.Hl7Format
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeOption
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -53,6 +54,7 @@ private const val KEY_TERMINALS="key_terminals"
 private const val KEY_SELECTED_TERMINAL_ID="key_selected_terminal_id"
 private const val KEY_SELECTED_TERMINAL_NAME="key_selected_terminal_name"
 private const val KEY_PHARMACY_TYPE="key_pharmacy_type"
+private const val KEY_PHARMACY_TYPES_LIST = "key_pharmacy_types_list"
 private const val KEY_HAZARDOUS_DRUG = "key_hazardous_drug"
 private const val KEY_HAZARDOUS_TRAY_COLOR = "key_hazardous_tray_color"
 private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
@@ -487,6 +489,26 @@ class PreferenceHelper @Inject constructor(
         val value = prefs.getString(KEY_PHARMACY_TYPE, null)
         logger.d("Retrieved pharmacy type: $value")
         return value
+    }
+
+    /**
+     * Saves the list of selectable pharmacy types fetched from `/users/pharmacy-types`,
+     * so the profile screen's dropdown can be populated without re-fetching every launch.
+     */
+    fun savePharmacyTypes(pharmacyTypes: List<PharmacyTypeOption>) {
+        val json = gson.toJson(pharmacyTypes)
+        prefs.putString(KEY_PHARMACY_TYPES_LIST, json)
+        logger.i("Saved pharmacy types list (size=${pharmacyTypes.size})")
+    }
+
+    /**
+     * Retrieves the cached list of selectable pharmacy types.
+     * @return List of [PharmacyTypeOption], or empty list if never fetched.
+     */
+    fun getPharmacyTypes(): List<PharmacyTypeOption> {
+        val json = prefs.getString(KEY_PHARMACY_TYPES_LIST) ?: return emptyList()
+        val array = gson.fromJson(json, Array<PharmacyTypeOption>::class.java)
+        return array.toList()
     }
 
     // ─────────────────────────── HAZARDOUS DRUG ───────────────────────────

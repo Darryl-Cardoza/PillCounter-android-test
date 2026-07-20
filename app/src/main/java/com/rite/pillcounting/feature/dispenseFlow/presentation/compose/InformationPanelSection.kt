@@ -25,9 +25,11 @@ fun InformationPanelSection(
     viewModel: PillScanningViewModel,
     onEvent: (PillScanningEvent) -> Unit,
     filteredPillCount: Int,
-    onShowHistory: () -> Unit
+    onShowHistory: () -> Unit,
+    showGloveIcon: Boolean = false,
 ) {
     val stepType by viewModel.currentStep.collectAsState()
+    val glovesDetected by viewModel.glovesDetected.collectAsState()
     val totalCount = if (uiState.scanType == CountType.REGULAR.toString()) {
         uiState.stockCountSessionTotal
     } else {
@@ -88,7 +90,9 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
-            drugImage = uiState.drugImage
+            drugImage = uiState.drugImage,
+            showGloveIcon = showGloveIcon,
+            glovesDetected = glovesDetected,
         )
 
         isTablet && isLandscape -> CountModeTabletLandscape(
@@ -104,7 +108,9 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
-            drugImage = uiState.drugImage
+            drugImage = uiState.drugImage,
+            showGloveIcon = showGloveIcon,
+            glovesDetected = glovesDetected,
         )
 
         !isTablet && !isLandscape -> CountModePhonePortrait(
@@ -120,7 +126,9 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
-            drugImage = uiState.drugImage
+            drugImage = uiState.drugImage,
+            showGloveIcon = showGloveIcon,
+            glovesDetected = glovesDetected,
         )
 
         else -> CountModePhoneLandscape(
@@ -136,7 +144,9 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
-            drugImage = uiState.drugImage
+            drugImage = uiState.drugImage,
+            showGloveIcon = showGloveIcon,
+            glovesDetected = glovesDetected,
         )
     }
 }

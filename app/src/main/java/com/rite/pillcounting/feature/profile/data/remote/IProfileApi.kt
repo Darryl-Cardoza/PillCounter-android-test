@@ -1,11 +1,13 @@
 package com.rite.pillcounting.feature.profile.data.remote
 
 import com.rite.pillcounting.core.utils.constants.URLConstant
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
 import retrofit2.http.Body
 import retrofit2.http.DELETE
+import retrofit2.http.GET
 import retrofit2.http.Header
 import retrofit2.http.POST
 
@@ -35,4 +37,14 @@ interface IProfileApi {
     suspend fun deleteProfile(
         @Header("Authorization") authorization: String,
     ): ProfileDeleteResponse
+
+    /**
+     * Fetches the list of selectable pharmacy types.
+     *
+     * @return [PharmacyTypeResponse] containing the pharmacy type options.
+     */
+    @GET(URLConstant.GET_PHARMACY_TYPES)
+    suspend fun getPharmacyTypes(
+        @Header("Authorization") authorization: String,
+    ): PharmacyTypeResponse
 }

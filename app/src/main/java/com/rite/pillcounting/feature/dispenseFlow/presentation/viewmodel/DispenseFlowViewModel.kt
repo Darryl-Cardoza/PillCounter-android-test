@@ -222,6 +222,7 @@ class DispenseFlowViewModel @Inject constructor(
                     ndc = drug?.ndc ?: it.ndc,
                     hl7ExpectedNdc = drug?.ndc,
                     rxNo = txn.rxNo,
+                    refillNo = txn.refillNo,
                     qty = txn.targetCount?.toString(),
                     isHazardous = drug?.isHazardous ?: false,
                 )
@@ -263,6 +264,7 @@ class DispenseFlowViewModel @Inject constructor(
                         drugName = drug?.drugName ?: it.drugName,
                         ndc = drug?.ndc ?: it.ndc,
                         rxNo = txn.rxNo,
+                        refillNo = txn.refillNo,
                         qty = txn.targetCount?.toString(),
                         isHazardous = drug?.isHazardous ?: false,
                     )
@@ -279,6 +281,7 @@ class DispenseFlowViewModel @Inject constructor(
                         ndc = drug?.ndc ?: it.ndc,
                         hl7ExpectedNdc = drug?.ndc,
                         rxNo = txn.rxNo,
+                        refillNo = txn.refillNo,
                         qty = txn.targetCount?.toString(),
                         isHazardous = drug?.isHazardous ?: false,
                     )
@@ -317,6 +320,7 @@ class DispenseFlowViewModel @Inject constructor(
                 val parsedNdc = parsed.ndcNo
                 val qty = parsed.qty
                 val rxNo = parsed.rxNo
+                val refillNo = parsed.refillNo
                 val bucket = parsed.bucket
 
                 if (parsedNdc.isNullOrBlank() || qty.isNullOrBlank() || rxNo.isNullOrBlank()) {
@@ -324,14 +328,67 @@ class DispenseFlowViewModel @Inject constructor(
                     return@launch
                 }
 
-                if (!bucket.isNullOrBlank()) {
-                    _uiState.update { it.copy(selectedBucketId = bucket) }
-                }
-
                 // Check if this RX has an active local transaction (PARTIAL or ON_HOLD).
                 val existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
                 if (existingTxn == null) {
-                    _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
+                    if (preferenceHelper.isHl7Enabled()) {
+                        // PMS-integrated pharmacies only dispense txns that the PMS
+                        // pushed via HL7. A scanned RX with no local txn means the
+                        // PMS hasn't sent it yet — don't fabricate one locally.
+                        _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
+                        return@launch
+                    }
+                    // Not PMS-integrated: no PMS will ever push this txn, so the
+                    // scan itself is the source of truth — bucket comes from the
+                    // label too, since there's no existing txn to carry it. Always
+                    // fetch the drug
+                    // detail fresh from the server (never trust a stale local
+                    // cache here — the label's NDC may have changed since the
+                    // last scan) and re-cache it, so the sheet always shows the
+                    // latest name/image/ndc, then show the sheet so
+                    // onRxConfirmed() can create a new txn.
+                    val drugInfo = try {
+                        drugRepository.getDrugInfoByNdc(
+                            GetNdcRequestModel(target_ndc = parsedNdc, scanned_ndc = parsedNdc)
+                        )
+                    } catch (e: Exception) {
+                        logger.e("Drug detail lookup failed for ndc=$parsedNdc", e)
+                        null
+                    }
+                    val resolvedNdc = drugInfo?.ndc ?: parsedNdc
+                    val drug = drugInfo?.let { info ->
+                        val imagePath = drugImageDownloader.downloadAndSave(
+                            url = info.imageUrl,
+                            drugName = info.genericName?.takeIf { it.isNotBlank() } ?: info.ndc,
+                        )
+                        val entity = DrugMasterEntity(
+                            ndc = info.ndc,
+                            drugName = info.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug",
+                            drugType = info.drugType,
+                            packageQty = info.qty,
+                            isHazardous = info.isHazardous ?: false,
+                            strength = info.strength,
+                            dosageForm = info.dosageForm,
+                            drugImagePath = imagePath,
+                        )
+                        val drugId = drugMasterDao.upsertPreservingId(entity)
+                        drugMasterDao.getDrugById(drugId)
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            showRxDetails = true,
+                            pendingRxResumeStage = null,
+                            drugName = drug?.drugName ?: "",
+                            drugImage = drug?.drugImagePath ?: "",
+                            ndc = resolvedNdc,
+                            rxNo = rxNo,
+                            refillNo = refillNo,
+                            qty = qty,
+                            isHazardous = drug?.isHazardous ?: false,
+                            selectedBucketId = bucket?.ifBlank { null } ?: it.selectedBucketId,
+                        )
+                    }
                     return@launch
                 }
                 when (existingTxn.status) {
@@ -367,13 +424,15 @@ class DispenseFlowViewModel @Inject constructor(
                                 ndc = drug?.ndc ?: it.ndc,
                                 hl7ExpectedNdc = drug?.ndc,
                                 rxNo = existingTxn.rxNo ?: rxNo,
+                                refillNo = existingTxn.refillNo ?: refillNo,
                                 qty = existingTxn.targetCount?.toString() ?: qty,
                                 isHazardous = drug?.isHazardous ?: false,
                                 // Surface the drug's strength on the RX verification
                                 // sheet. Overwritten with the API value once the NDC
                                 // is scanned in PRE_NDC.
                                 ndcStrength = drug?.strength,
-                                drugImage = drug?.drugImagePath ?: it.drugImage
+                                drugImage = drug?.drugImagePath ?: it.drugImage,
+                                selectedBucketId = existingTxn.bucketId ?: it.selectedBucketId,
                             )
                         }
                         return@launch
@@ -643,7 +702,12 @@ class DispenseFlowViewModel @Inject constructor(
         if (state.ndc.isBlank()) return
 
         viewModelScope.launch {
-            val drugId = drugMasterDao.upsertPreservingId(
+            // onRxBarcodeRead already resolved and cached the full drug detail for
+            // this NDC (local DB or server). Preserve it here instead of upserting
+            // a bare ndc+name entity, which would wipe isHazardous/strength/
+            // dosageForm/drugImagePath back to defaults.
+            val existingDrug = drugMasterDao.getDrugByNdc(state.ndc)
+            val drugId = existingDrug?.drugId ?: drugMasterDao.upsertPreservingId(
                 DrugMasterEntity(ndc = state.ndc, drugName = state.drugName)
             )
             val qtyInt = state.qty?.toIntOrNull() ?: 0
@@ -656,6 +720,7 @@ class DispenseFlowViewModel @Inject constructor(
                 targetCount = qtyInt,
                 bucketId = state.selectedBucketId.ifBlank { null },
                 rxNo = state.rxNo?.ifBlank { null },
+                refillNo = state.refillNo?.ifBlank { null },
             )
             val newTxnId = pillCountTxnDao.upsertPreservingId(txn)
             preferenceHelper.saveTxnId(newTxnId)
@@ -679,6 +744,7 @@ class DispenseFlowViewModel @Inject constructor(
                 drugName = "",
                 ndc = "",
                 rxNo = null,
+                refillNo = null,
                 qty = null,
             )
         }
@@ -816,6 +882,7 @@ class DispenseFlowViewModel @Inject constructor(
                     ndc = drug?.ndc ?: it.ndc,
                     hl7ExpectedNdc = drug?.ndc,
                     rxNo = txn.rxNo,
+                    refillNo = txn.refillNo,
                     qty = txn.targetCount?.toString(),
                     isHazardous = drug?.isHazardous ?: false,
                 )
@@ -1148,6 +1215,7 @@ class DispenseFlowViewModel @Inject constructor(
                     ndc = drug?.ndc ?: it.ndc,
                     hl7ExpectedNdc = drug?.ndc,
                     rxNo = txn.rxNo,
+                    refillNo = txn.refillNo,
                     qty = txn.targetCount?.toString(),
                     isHazardous = drug?.isHazardous ?: false,
                 )
