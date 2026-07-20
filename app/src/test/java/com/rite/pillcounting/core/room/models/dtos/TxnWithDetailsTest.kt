@@ -25,13 +25,11 @@ class TxnWithDetailsTest {
         drugId = 2L,
         ndc = "111",
         targetCount = 50,
-        expiry = "2027",
-        lotNo = "lot",
         note = "note",
         createdAt = 100L,
         barcodeImage = "bc.png",
         totalPillCount = 30,
-        countType = CountType.FIXED,
+        isDispense = true,
         drugType = "tablet",
         txnDetails = listOf(detail()),
         isComingFromHL7 = true,
@@ -88,13 +86,11 @@ class TxnWithDetailsTest {
             drugId = 2L,
             ndc = null,
             targetCount = null,
-            expiry = null,
-            lotNo = null,
             note = null,
             createdAt = 0L,
             barcodeImage = null,
             totalPillCount = 0,
-            countType = CountType.REGULAR,
+            isDispense = false,
             drugType = null,
             txnDetails = emptyList(),
             isComingFromHL7 = false
@@ -114,13 +110,11 @@ class TxnWithDetailsTest {
         assertEquals(2L, t.drugId)
         assertEquals("111", t.ndc)
         assertEquals(50, t.targetCount)
-        assertEquals("2027", t.expiry)
-        assertEquals("lot", t.lotNo)
         assertEquals("note", t.note)
         assertEquals(100L, t.createdAt)
         assertEquals("bc.png", t.barcodeImage)
         assertEquals(30, t.totalPillCount)
-        assertEquals(CountType.FIXED, t.countType)
+        assertEquals(true, t.isDispense)
         assertEquals("tablet", t.drugType)
         assertEquals(listOf(detail()), t.txnDetails)
         assertTrue(t.isComingFromHL7)
@@ -149,25 +143,28 @@ class TxnWithDetailsTest {
 
     @Test
     fun txn_componentN() {
+        // expiry/lotNo were removed; strength/dosageForm/bucketId were added (all null
+        // in sample()), shifting the destructuring layout.
         val t = sample()
-        assertEquals(1L, t.component1())
-        assertEquals("Drug", t.component2())
-        assertEquals(2L, t.component3())
-        assertEquals("111", t.component4())
-        assertEquals(50, t.component5())
-        assertEquals("2027", t.component6())
-        assertEquals("lot", t.component7())
-        assertEquals("note", t.component8())
-        assertEquals(100L, t.component9())
-        assertEquals("bc.png", t.component10())
-        assertEquals(30, t.component11())
-        assertEquals(CountType.FIXED, t.component12())
-        assertEquals("tablet", t.component13())
-        assertEquals(listOf(detail()), t.component14())
-        assertEquals(true, t.component15())
-        assertEquals(true, t.component16())
-        assertEquals("ReqDrug", t.component17())
-        assertEquals("222", t.component18())
-        assertEquals("step", t.component19())
+        assertEquals(1L, t.component1())        // txnId
+        assertEquals("Drug", t.component2())    // drugName
+        assertEquals(2L, t.component3())        // drugId
+        assertEquals("111", t.component4())     // ndc
+        assertEquals(50, t.component5())        // targetCount
+        assertEquals("note", t.component6())    // note
+        assertEquals(100L, t.component7())      // createdAt
+        assertEquals("bc.png", t.component8())  // barcodeImage
+        assertEquals(30, t.component9())        // totalPillCount
+        assertEquals(true, t.component10())
+        assertEquals("tablet", t.component11()) // drugType
+        assertNull(t.component12())             // strength
+        assertNull(t.component13())             // dosageForm
+        assertNull(t.component14())             // bucketId
+        assertEquals(listOf(detail()), t.component15()) // txnDetails
+        assertEquals(true, t.component16())     // isComingFromHL7
+        assertEquals(true, t.component17())     // isSubstitute
+        assertEquals("ReqDrug", t.component18()) // requestedDrugName
+        assertEquals("222", t.component19())    // requestedNdc
+        assertEquals("step", t.component20())   // workflowStep
     }
 }

@@ -66,7 +66,7 @@ class HistoryViewModelTest {
         ndc: String? = "00000",
         note: String? = null
     ) = TxnWithDrugDto(
-        txnId = id, batchId = null, countType = CountType.FIXED, status = CountStatus.COMPLETED,
+        txnId = id, isDispense = true, status = CountStatus.COMPLETED,
         pillCount = 10, drugName = drugName, ndc = ndc, barcodeImage = null,
         createdAt = 1000L, targetCount = 10, note = note, bucketId = null, drugType = null
     )
@@ -158,11 +158,11 @@ class HistoryViewModelTest {
 
     // HIST_VM_005
     @Test
-    fun `setHistoryMode DISPENSE queries repository with CountType FIXED`() = runTest {
+    fun `setHistoryMode DISPENSE queries repository with isDispense true`() = runTest {
         val normalTxns = listOf(txnDto(id = 1L))
         val dispenseTxns = listOf(txnDto(id = 2L))
         every { repository.getTransactionsForDateRange(any(), any(), null, any(), any()) } returns flowOf(normalTxns)
-        every { repository.getTransactionsForDateRange(any(), any(), CountType.FIXED, any(), any()) } returns flowOf(dispenseTxns)
+        every { repository.getTransactionsForDateRange(any(), any(), true, any(), any()) } returns flowOf(dispenseTxns)
 
         viewModel.counts.test {
             awaitItem()
@@ -182,7 +182,7 @@ class HistoryViewModelTest {
     fun `setHistoryMode NORMAL queries repository with null type`() = runTest {
         val dispenseTxns = listOf(txnDto(id = 1L))
         val normalTxns = listOf(txnDto(id = 2L))
-        every { repository.getTransactionsForDateRange(any(), any(), CountType.FIXED, any(), any()) } returns flowOf(dispenseTxns)
+        every { repository.getTransactionsForDateRange(any(), any(), true, any(), any()) } returns flowOf(dispenseTxns)
         every { repository.getTransactionsForDateRange(any(), any(), null, any(), any()) } returns flowOf(normalTxns)
 
         viewModel.counts.test {
@@ -274,14 +274,14 @@ class HistoryViewModelTest {
 
     // HIST_VM_013
     @Test
-    fun `deleteCountsForSelectedDate DISPENSED in DISPENSE mode passes CountType FIXED to repository`() = runTest {
+    fun `deleteCountsForSelectedDate DISPENSED in DISPENSE mode passes isDispense true to repository`() = runTest {
         coJustRun { repository.deleteTransactionsForDate(any(), any(), any(), any(), any()) }
         viewModel.setHistoryMode(HistoryMode.DISPENSE)
 
         viewModel.deleteCountsForSelectedDate(ToggleOption.DISPENSED, HistoryDeleteFilter.ALL)
         advanceUntilIdle()
 
-        coVerify { repository.deleteTransactionsForDate(any(), any(), CountType.FIXED, null, any()) }
+        coVerify { repository.deleteTransactionsForDate(any(), any(), true, null, any()) }
     }
 
     // ─────────────────────────── Transaction selection ───────────────────────────

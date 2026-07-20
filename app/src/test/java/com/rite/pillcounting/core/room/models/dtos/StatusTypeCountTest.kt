@@ -11,7 +11,7 @@ class StatusTypeCountTest {
 
     private fun sample() = StatusTypeCount(
         status = CountStatus.COMPLETED,
-        countType = CountType.FIXED,
+        isDispense = true,
         cnt = 7
     )
 
@@ -19,7 +19,7 @@ class StatusTypeCountTest {
     fun getters() {
         val d = sample()
         assertEquals(CountStatus.COMPLETED, d.status)
-        assertEquals(CountType.FIXED, d.countType)
+        assertEquals(true, d.isDispense)
         assertEquals(7, d.cnt)
     }
 
@@ -37,14 +37,14 @@ class StatusTypeCountTest {
 
     @Test
     fun copy() {
-        assertEquals(CountType.REGULAR, sample().copy(countType = CountType.REGULAR).countType)
+        assertEquals(false, sample().copy(isDispense = false).isDispense)
     }
 
     @Test
     fun componentN() {
         val d = sample()
         assertEquals(CountStatus.COMPLETED, d.component1())
-        assertEquals(CountType.FIXED, d.component2())
+        assertEquals(true, d.component2())
         assertEquals(7, d.component3())
     }
 }

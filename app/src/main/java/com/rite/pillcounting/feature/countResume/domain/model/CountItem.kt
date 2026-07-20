@@ -30,6 +30,6 @@ data class CountItem(
     val image: Int = R.drawable.logo,
     val isComingFromHL7: Boolean,
     val isNdcVerified: Boolean,
-    val countType: CountType = CountType.REGULAR,
+    val isDispense: Boolean = false,
     val priority: TxnPriority? = null
 )

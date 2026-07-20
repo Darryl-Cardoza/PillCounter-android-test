@@ -3,18 +3,20 @@ package com.rite.pillcounting.core.room
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import androidx.room.migration.Migration
-import androidx.sqlite.db.SupportSQLiteDatabase
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.di.BatchConverters
 import com.rite.pillcounting.core.room.models.BatchEntity
+import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.security.SecureStringConverter
 
@@ -46,9 +48,11 @@ import com.rite.pillcounting.core.security.SecureStringConverter
         DrugMasterEntity::class,
         PillCountTxnEntity::class,
         PillCountTxnDetailsEntity::class,
-        BatchEntity::class
+        BatchEntity::class,
+        StockTxnEntity::class,
+        BottleInfoEntity::class
     ],
-    version = 3,
+    version = 1,
     exportSchema = true
 )
 @TypeConverters(
@@ -72,16 +76,11 @@ abstract class AppDatabase : RoomDatabase() {
     /** DAO for managing [BatchEntity] batch headers. */
     abstract fun batchDao(): BatchDao
 
-    companion object {
-        /**
-         * v2 → v3: add `strength` and `dosageForm` columns to `drug_master`.
-         * Existing rows get NULL; values are backfilled as drugs are re-scanned.
-         */
-        val MIGRATION_2_3 = object : Migration(2, 3) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE drug_master ADD COLUMN strength TEXT")
-                db.execSQL("ALTER TABLE drug_master ADD COLUMN dosageForm TEXT")
-            }
-        }
-    }
+    /** DAO for managing [StockTxnEntity] stock transaction headers. */
+    abstract fun stockTxnDao(): StockTxnDao
+
+    /** DAO for managing [BottleInfoEntity] stock bottle lines. */
+    abstract fun bottleInfoDao(): BottleInfoDao
+
+
 }

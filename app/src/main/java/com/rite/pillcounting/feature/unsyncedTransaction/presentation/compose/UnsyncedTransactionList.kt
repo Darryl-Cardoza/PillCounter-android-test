@@ -92,7 +92,7 @@ fun UnsyncedTransactionList(
                                 bucketId = item.bucketId,
                                 pillCount = item.pillCount,
                                 targetCount = item.target,
-                                countType = item.countType,
+                                isDispense = item.isDispense,
                                 isComingFromHL7 = item.isComingFromHL7
                             ),
                             onClick = {}

@@ -65,8 +65,10 @@ fun HistoryDetailScreen(
         DrugInfoSection(
             ndc = uiState.txnInfo?.ndc ?: "",
             drugName = uiState.txnInfo?.drugName ?: "",
-            expiry = uiState.txnInfo?.expiry ?: "",
-            lotNo = uiState.txnInfo?.lotNo ?: "",
+            // Lot/expiry are no longer stored on dispense transactions (moved to the
+            // normalized stock tables); dispense never populated them, so these stay blank.
+            expiry = "",
+            lotNo = "",
             date = uiState.txnInfo?.createdAt?.toDateString() ?: "",
             time = uiState.txnInfo?.createdAt?.toTimeString() ?: "",
             note = uiState.txnInfo?.note ?: "",

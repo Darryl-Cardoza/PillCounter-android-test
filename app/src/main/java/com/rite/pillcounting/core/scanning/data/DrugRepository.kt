@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.core.scanning.data
+package com.rite.pillcounting.core.scanning.data
 
 import com.google.gson.Gson
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -92,7 +92,8 @@ class DrugRepository @Inject constructor(
                     isHazardous = result.scanned_ndc?.is_hazardous,
                     strength = result.scanned_ndc?.strength_info?.display
                         ?: result.scanned_ndc?.active_ingredients?.firstOrNull()?.strength,
-                    dosageForm = result.scanned_ndc?.dosage_form?.firstOrNull()
+                    dosageForm = result.scanned_ndc?.dosage_form?.firstOrNull(),
+                    imageUrl = result.scanned_ndc?.images?.primary,
                 ).also {
                     logger.i("Returning mapped DrugInfo -> $it")
                 }

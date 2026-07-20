@@ -500,8 +500,6 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
     private fun drugKvRows(txn: TxnWithDetails, dateOnly: String, timeOnly: String) = listOf(
         context.getString(R.string.drug_name) to (txn.drugName ?: "—"),
         context.getString(R.string.pdf_ndc_label) to (txn.ndc ?: "—"),
-        context.getString(R.string.expiry) to (txn.expiry ?: "—"),
-        context.getString(R.string.lotNo) to (txn.lotNo ?: "—"),
         context.getString(R.string.date) to dateOnly,
         context.getString(R.string.time) to timeOnly,
     )

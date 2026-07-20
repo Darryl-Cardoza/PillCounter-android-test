@@ -1,17 +1,22 @@
-﻿package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
+package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
 
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
+import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.utils.compose.ContainerStatus
@@ -62,14 +67,98 @@ class DispenseFlowViewModel @Inject constructor(
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
     private val pillCountTxnDao: PillCountTxnDao,
+    private val stockTxnDao: StockTxnDao,
+    private val bottleInfoDao: BottleInfoDao,
+    private val drugImageDownloader: DrugImageDownloader,
 ) : ViewModel() {
+
+    /**
+     * Find-or-create the [StockTxnEntity] header for a drug in a batch and a [BottleInfoEntity]
+     * line for the scanned unit, then return (stockTxnId, bottleId).
+     *
+     * The header is unique per `(drug)` within a batch. The bottle line, however, is per-entry:
+     *  - **Sealed** ([isSealed] = true): all sealed units of the same `(drug, lot, expiry)` collapse
+     *    onto ONE line whose [BottleInfoEntity.bottleQty] is the running count — a repeat sealed scan
+     *    increments it by [bottleQty] (1). A sealed line is one with no loose pills.
+     *  - **Loose/opened**: every counting session is its own bottle, so a FRESH line is always
+     *    inserted with `bottleQty = 1`; loose pills accumulate onto it via
+     *    [BottleInfoDao.incrementLooseQty] on Done. The same NDC therefore keeps separate loose rows.
+     *
+     * DispenseFlow does not decode lot/expiry, so its lines are keyed by `(stockTxn, null, null)`.
+     * Stock counts never touch `pill_count_txn`.
+     */
+    private suspend fun createStockLine(
+        drugId: Long,
+        batchId: Long,
+        bottleQty: Int?,
+        status: CountStatus,
+        isSealed: Boolean = false,
+        lotNo: String? = null,
+        expNo: String? = null,
+    ): Pair<Long, Long> {
+        val batch = batchId.takeIf { it != 0L }
+        val existingHeader = batch?.let { stockTxnDao.findByDrugInBatch(it, drugId) }
+        val stockTxnId = existingHeader?.txnId ?: stockTxnDao.upsertPreservingId(
+            StockTxnEntity(
+                drugId = drugId,
+                status = status,
+                batchId = batch,
+                bucketId = _uiState.value.selectedBucketId.ifBlank { null },
+            )
+        )
+        val bottleId = if (isSealed) {
+            // Sealed re-scan bumps the existing sealed line's running bottle count; first sealed
+            // scan of this (drug, lot, expiry) creates it.
+            val sealedLine = bottleInfoDao.findSealedLine(stockTxnId, lotNo, expNo)
+            if (sealedLine != null) {
+                bottleInfoDao.update(
+                    sealedLine.copy(
+                        bottleQty = (sealedLine.bottleQty ?: 0) + (bottleQty ?: 1),
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                )
+                sealedLine.bottleId
+            } else {
+                bottleInfoDao.insert(
+                    BottleInfoEntity(
+                        stockTxnId = stockTxnId,
+                        batchId = batch,
+                        lotNo = lotNo,
+                        expNo = expNo,
+                        bottleQty = bottleQty ?: 1,
+                    )
+                )
+            }
+        } else {
+            // Loose/opened bottle: one fresh line per counting session. This line only carries
+            // loose/open pills, so bottleQty stays 0 — it must NOT count as a sealed bottle.
+            bottleInfoDao.insert(
+                BottleInfoEntity(
+                    stockTxnId = stockTxnId,
+                    batchId = batch,
+                    lotNo = lotNo,
+                    expNo = expNo,
+                    bottleQty = 0,
+                )
+            )
+        }
+        // Stock txn added → keep the batch's live totals in sync.
+        if (batch != null) {
+            stockTxnDao.refreshBatchTotalNdcs(batch)
+            stockTxnDao.updateBatchUserName(
+                batch,
+                preferenceHelper.getRecentLogins().firstOrNull() ?: preferenceHelper.getUserId()
+            )
+        }
+        return stockTxnId to bottleId
+    }
 
     private val logger = AppLogger("DispenseFlowVM")
 
     private val _uiState = MutableStateFlow(DispenseFlowUiState())
     val uiState: StateFlow<DispenseFlowUiState> = _uiState.asStateFlow()
 
-    private var countType: CountType = CountType.FIXED
+    private var isDispense: Boolean = true
     private var queueObserverJob: Job? = null
 
     // Timestamp of the last VIAL RX-mismatch toast, used to debounce repeated
@@ -77,9 +166,10 @@ class DispenseFlowViewModel @Inject constructor(
     private var lastVialMismatchToastAt: Long = 0L
 
     fun setCountType(type: String) {
-        countType = runCatching { CountType.valueOf(type) }.getOrDefault(CountType.FIXED)
+        val typeEnum = runCatching { CountType.valueOf(type) }.getOrDefault(CountType.FIXED)
+        isDispense = typeEnum == CountType.FIXED
         // Stock count has no RX label — start directly at container (NDC) scanning.
-        val initialStage = if (countType == CountType.REGULAR) DispenseStage.PRE_NDC else DispenseStage.PRE_RX
+        val initialStage = if (!isDispense) DispenseStage.PRE_NDC else DispenseStage.PRE_RX
         _uiState.update { it.copy(scanType = type, stage = initialStage) }
     }
 
@@ -281,6 +371,7 @@ class DispenseFlowViewModel @Inject constructor(
                                 // sheet. Overwritten with the API value once the NDC
                                 // is scanned in PRE_NDC.
                                 ndcStrength = drug?.strength,
+                                drugImage = drug?.drugImagePath ?: it.drugImage
                             )
                         }
                         return@launch
@@ -295,6 +386,43 @@ class DispenseFlowViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }
+    }
+
+    /**
+     * Resolves a scanned GTIN-14 to its canonical NDC via the server, caching the drug in
+     * `drug_master` WITH the scanned GTIN. Used by the PMS allowlist check when a local lookup
+     * fails (PMS-requested drugs are cached without a GTIN). Caching here means the main lookup
+     * later in [onNdcBarcodeRead] resolves locally and takes the trust-local path — no second
+     * server round-trip. Returns null when the server can't resolve the barcode.
+     */
+    private suspend fun resolveNdcFromServer(gtin14: String): String? {
+        val drugInfo = try {
+            drugRepository.getDrugInfoByNdc(
+                GetNdcRequestModel(target_ndc = "", scanned_ndc = gtin14)
+            )
+        } catch (e: Exception) {
+            logger.e("allowlist NDC resolve failed for gtin=$gtin14", e)
+            null
+        } ?: return null
+
+        val imagePath = drugImageDownloader.downloadAndSave(
+            url = drugInfo.imageUrl,
+            drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
+        )
+        drugMasterDao.upsertPreservingId(
+            DrugMasterEntity(
+                ndc = drugInfo.ndc,
+                drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug",
+                drugType = drugInfo.drugType,
+                gtin = gtin14,
+                packageQty = drugInfo.qty,
+                isHazardous = drugInfo.isHazardous ?: false,
+                strength = drugInfo.strength,
+                dosageForm = drugInfo.dosageForm,
+                drugImagePath = imagePath,
+            )
+        )
+        return drugInfo.ndc
     }
 
     /**
@@ -322,22 +450,28 @@ class DispenseFlowViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                // Batch PMS restriction: if an NDC allowlist is set, reject the
-                // scan immediately before doing any DB/server lookup.
+                // Batch PMS restriction: if an NDC allowlist is set, reject any
+                // scan whose drug isn't in the batch's requested set.
                 val allowedNdcs = _uiState.value.allowedNdcs
                 if (allowedNdcs.isNotEmpty()) {
-                    // Resolve the NDC from the scanned GTIN-14 for comparison.
-                    // Try local DB first; if not found, the raw value may already be an NDC.
+                    // Resolve the scanned GTIN-14 to its NDC for comparison. Try the local
+                    // DB first (by GTIN, then treating the raw value as an NDC). PMS-requested
+                    // drugs are cached WITHOUT a GTIN — the PMS request only carries the NDC —
+                    // so a first-time container scan won't resolve locally. Fall back to the
+                    // server (which also caches the drug WITH its GTIN) so the comparison uses
+                    // the real NDC, not the raw GTIN. Without this, correct barcodes were
+                    // wrongly rejected until the drug had first been scanned on the main
+                    // stock-count screen (which is what seeded the GTIN).
                     val localForCheck = drugMasterDao.getDrugByGtin(gtin14)
                         ?: drugMasterDao.getDrugByNdc(gtin14)
-                    val scannedNdc = localForCheck?.ndc ?: gtin14
-                    if (scannedNdc !in allowedNdcs) {
+                    val scannedNdc = localForCheck?.ndc ?: resolveNdcFromServer(gtin14)
+                    if (scannedNdc == null || scannedNdc !in allowedNdcs) {
                         logger.w("NDC scan rejected by allowlist: scanned=$gtin14 resolvedNdc=$scannedNdc allowed=$allowedNdcs")
                         _uiState.update {
                             it.copy(
                                 isLoading = false,
                                 ndcNotAllowedToastTick = it.ndcNotAllowedToastTick + 1,
-                                ndcNotAllowedValue = scannedNdc,
+                                ndcNotAllowedValue = scannedNdc ?: gtin14,
                             )
                         }
                         return@launch
@@ -367,7 +501,7 @@ class DispenseFlowViewModel @Inject constructor(
                     // (no batchId) where no txn exists yet. When coming from the
                     // batch "Scan Pills" flow the batchId is always set, so skip
                     // the sheet and advance straight to COUNTING.
-                    val needsSheet = countType == CountType.REGULAR &&
+                    val needsSheet = !isDispense &&
                             _uiState.value.txnId == 0L &&
                             _uiState.value.batchId == 0L
                     _uiState.update {
@@ -403,6 +537,10 @@ class DispenseFlowViewModel @Inject constructor(
 
                 val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() }
                     ?: "Unknown Drug"
+                val imagePath = drugImageDownloader.downloadAndSave(
+                    url = drugInfo.imageUrl,
+                    drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
+                )
                 drugMasterDao.upsertPreservingId(
                     DrugMasterEntity(
                         ndc = drugInfo.ndc,
@@ -413,6 +551,7 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drugInfo.isHazardous ?: false,
                         strength = drugInfo.strength,
                         dosageForm = drugInfo.dosageForm,
+                        drugImagePath = imagePath,
                     )
                 )
 
@@ -426,6 +565,7 @@ class DispenseFlowViewModel @Inject constructor(
                             ndcPackageQty = drugInfo.qty,
                             ndcDrugType = drugInfo.drugType,
                             ndcStrength = drugInfo.strength,
+                            drugImage = drugInfo.imageUrl ?: it.drugImage,
                             ndcDosageForm = drugInfo.dosageForm,
                             barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcEquivalenceDialog = true,
@@ -451,7 +591,7 @@ class DispenseFlowViewModel @Inject constructor(
                     return@launch
                 }
 
-                val needsSheet = countType == CountType.REGULAR &&
+                val needsSheet = !isDispense &&
                         _uiState.value.txnId == 0L &&
                         _uiState.value.batchId == 0L
                 _uiState.update {
@@ -461,6 +601,7 @@ class DispenseFlowViewModel @Inject constructor(
                         ndcDrugName = displayName,
                         ndcPackageQty = drugInfo.qty,
                         ndcStrength = drugInfo.strength,
+                        drugImage = drugInfo.imageUrl ?: it.drugImage,
                         ndcDosageForm = drugInfo.dosageForm,
                         barcodeImagePath = imagePath ?: it.barcodeImagePath,
                         showNdcDetails = needsSheet,
@@ -507,10 +648,8 @@ class DispenseFlowViewModel @Inject constructor(
             val txn = PillCountTxnEntity(
                 localId = preferenceHelper.getLocalId(),
                 drugId = drugId,
-                countType = countType,
+                isDispense = isDispense,
                 status = CountStatus.PARTIAL,
-                expiry = null,
-                lotNo = null,
                 barcodeImage = state.barcodeImagePath,
                 isNdcVerified = false,
                 targetCount = qtyInt,
@@ -551,7 +690,7 @@ class DispenseFlowViewModel @Inject constructor(
      * straight match.
      */
     fun confirmSubstitute() {
-        val needsSheet = countType == CountType.REGULAR &&
+        val needsSheet = !isDispense &&
                 _uiState.value.txnId == 0L &&
                 _uiState.value.batchId == 0L
         _uiState.update {
@@ -574,7 +713,7 @@ class DispenseFlowViewModel @Inject constructor(
             // No pre-existing txn: batch "Scan Pills" flow where no active NDC
             // was staged. Create a fresh PARTIAL txn scoped to this batch so
             // the pill-count step has a real txn to accumulate counts against.
-            if (countType != CountType.REGULAR || state.batchId == 0L) return
+            if (isDispense || state.batchId == 0L) return
             val ndc = state.ndcScannedValue.ifBlank { state.ndc }
             // The drug row was already upserted with full info during the NDC scan
             // (local match / server lookup), so only resolve its id here. Re-upserting
@@ -589,30 +728,38 @@ class DispenseFlowViewModel @Inject constructor(
                         packageQty = state.ndcPackageQty,
                         isHazardous = state.isHazardous,
                     strength = state.ndcStrength,
+                        drugImagePath = state.drugImage,
                     dosageForm = state.ndcDosageForm,)
                 )
-            val newTxnId = pillCountTxnDao.upsertPreservingId(
-                PillCountTxnEntity(
-                    localId = preferenceHelper.getLocalId(),
-                    drugId = drugId,
-                    countType = CountType.REGULAR,
-                    status = CountStatus.PARTIAL,
-                    isNdcVerified = true,
-                    batchId = state.batchId,
-                    barcodeImage = state.barcodeImagePath,
-                )
+            // Stock loose count: create the StockTxn/BottleInfo line; counting accumulates
+            // onto BottleInfo.looseQty. No pill_count_txn row.
+            val (stockTxnId, bottleId) = createStockLine(
+                drugId = drugId,
+                batchId = state.batchId,
+                bottleQty = null,
+                status = CountStatus.PARTIAL,
             )
-            preferenceHelper.saveTxnId(newTxnId)
+            preferenceHelper.saveTxnId(0)
             _uiState.update {
-                it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, txnId = newTxnId)
+                it.copy(
+                    stage = DispenseStage.COUNTING,
+                    showNdcDetails = false,
+                    txnId = 0L,
+                    stockTxnId = stockTxnId,
+                    stockBottleId = bottleId,
+                    stockDrugId = drugId,
+                )
             }
-            logger.i("[HAZARDOUS] NDC auto-confirmed (batch): isHazardous=${state.isHazardous} txn=$newTxnId batchId=${state.batchId} → COUNTING")
+            logger.i("[HAZARDOUS] NDC auto-confirmed (batch): isHazardous=${state.isHazardous} stockTxn=$stockTxnId bottle=$bottleId batchId=${state.batchId} → COUNTING")
             return
         }
 
         val txn = pillCountTxnDao.getById(txnId) ?: return
         val isSubstitute = state.isSubstituteConfirmed
         val substitutedDrugId = if (isSubstitute && state.ndcScannedValue.isNotBlank()) {
+            // The image was already downloaded during the NDC scan step (onNdcBarcodeRead).
+            // Carry that path forward so the upsert doesn't overwrite it with null.
+            val existingImagePath = drugMasterDao.getDrugByNdc(state.ndcScannedValue)?.drugImagePath
             drugMasterDao.upsertPreservingId(
                 DrugMasterEntity(
                     ndc = state.ndcScannedValue,
@@ -622,6 +769,7 @@ class DispenseFlowViewModel @Inject constructor(
                     isHazardous = state.isHazardous,
                     strength = state.ndcStrength,
                     dosageForm = state.ndcDosageForm,
+                    drugImagePath = existingImagePath,
                 )
             )
         } else null
@@ -687,6 +835,7 @@ class DispenseFlowViewModel @Inject constructor(
                 ndcPackageQty = null,
                 ndcDrugType = null,
                 ndcStrength = null,
+                drugImage = "",
                 ndcDosageForm = null,
             )
         }
@@ -711,7 +860,7 @@ class DispenseFlowViewModel @Inject constructor(
         // SEALED bottles are immediately complete — bottleQty = 1, status = COMPLETED,
         // then navigate back to the batch. OPENED bottles are PARTIAL and proceed to
         // COUNTING so the user can count pills.
-        if (countType == CountType.REGULAR && txnId == 0L) {
+        if (!isDispense && txnId == 0L) {
             viewModelScope.launch {
                 val isSealed = state.selectedContainerStatus == ContainerStatus.SEALED
                 val ndc = state.ndcScannedValue.ifBlank { state.ndc }
@@ -721,40 +870,42 @@ class DispenseFlowViewModel @Inject constructor(
                         drugName = state.ndcDrugName.ifBlank { state.drugName },
                         isHazardous = state.isHazardous,
                         strength = state.ndcStrength,
+                        drugImagePath = state.drugImage,
                         dosageForm = state.ndcDosageForm,
                     )
                 )
-                val txn = PillCountTxnEntity(
-                    localId = preferenceHelper.getLocalId(),
+                val (stockTxnId, bottleId) = createStockLine(
                     drugId = drugId,
-                    countType = countType,
-                    status = if (isSealed) CountStatus.COMPLETED else CountStatus.PARTIAL,
-                    expiry = null,
-                    lotNo = null,
-                    barcodeImage = state.barcodeImagePath,
-                    isNdcVerified = true,
-                    targetCount = null,
-                    bucketId = state.selectedBucketId.ifBlank { null },
-                    rxNo = null,
-                    batchId = state.batchId.takeIf { it != 0L },
+                    batchId = state.batchId,
                     bottleQty = if (isSealed) 1 else 0,
+                    status = if (isSealed) CountStatus.COMPLETED else CountStatus.PARTIAL,
+                    isSealed = isSealed,
                 )
-                val newTxnId = pillCountTxnDao.upsertPreservingId(txn)
-                preferenceHelper.saveTxnId(newTxnId)
+                preferenceHelper.saveTxnId(0)
                 if (isSealed) {
                     _uiState.update {
                         it.copy(
                             showNdcDetails = false,
-                            txnId = newTxnId,
-                            navigateToBatchId = state.batchId.takeIf { it != 0L } ?: newTxnId,
+                            txnId = 0L,
+                            stockTxnId = stockTxnId,
+                            stockBottleId = bottleId,
+                            stockDrugId = drugId,
+                            navigateToBatchId = state.batchId.takeIf { it != 0L } ?: bottleId,
                         )
                     }
-                    logger.i("[HAZARDOUS] Stock count SEALED: isHazardous=${state.isHazardous} txn=$newTxnId batchId=${state.batchId}")
+                    logger.i("[HAZARDOUS] Stock count SEALED: isHazardous=${state.isHazardous} stockTxn=$stockTxnId bottle=$bottleId batchId=${state.batchId}")
                 } else {
                     _uiState.update {
-                        it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, txnId = newTxnId)
+                        it.copy(
+                            stage = DispenseStage.COUNTING,
+                            showNdcDetails = false,
+                            txnId = 0L,
+                            stockTxnId = stockTxnId,
+                            stockBottleId = bottleId,
+                            stockDrugId = drugId,
+                        )
                     }
-                    logger.i("[HAZARDOUS] Stock count OPENED: isHazardous=${state.isHazardous} txn=$newTxnId batchId=${state.batchId} → COUNTING")
+                    logger.i("[HAZARDOUS] Stock count OPENED: isHazardous=${state.isHazardous} stockTxn=$stockTxnId bottle=$bottleId batchId=${state.batchId} → COUNTING")
                 }
             }
             return
@@ -777,6 +928,7 @@ class DispenseFlowViewModel @Inject constructor(
                         packageQty = state.ndcPackageQty,
                         isHazardous = state.isHazardous,
                         strength = state.ndcStrength,
+                        drugImagePath = state.drugImage,
                         dosageForm = state.ndcDosageForm,
                     )
                 )
@@ -807,6 +959,7 @@ class DispenseFlowViewModel @Inject constructor(
                 ndcPackageQty = null,
                 ndcDrugType = null,
                 ndcStrength = null,
+                drugImage = "",
                 ndcDosageForm = null,
                 isSubstituteConfirmed = false,
             )
@@ -920,6 +1073,7 @@ class DispenseFlowViewModel @Inject constructor(
                 scanType = CountType.FIXED.name,
                 queueItems = it.queueItems,
                 selectedQueueFilter = it.selectedQueueFilter ?: KpiFilter.DISP_PENDING,
+                initResolved = true,
             )
         }
     }
@@ -932,14 +1086,15 @@ class DispenseFlowViewModel @Inject constructor(
                 scanType = CountType.FIXED.name,
                 queueItems = it.queueItems,
                 selectedQueueFilter = it.selectedQueueFilter ?: KpiFilter.DISP_PENDING,
+                initResolved = true,
             )
         }
     }
 
     private suspend fun hasPendingDispenseItems(): Boolean {
         val localId = preferenceHelper.getLocalId()
-        return pillCountTxnDao.countPartialByCountType(
-            countType = CountType.FIXED,
+        return pillCountTxnDao.countPartialByIsDispense(
+            isDispense = true,
             partialStatus = CountStatus.PARTIAL,
             userLocalId = localId,
         ) > 0
@@ -992,8 +1147,8 @@ class DispenseFlowViewModel @Inject constructor(
         queueObserverJob?.cancel()
         queueObserverJob = viewModelScope.launch(Dispatchers.IO) {
             val localId = preferenceHelper.getLocalId()
-            pillCountTxnDao.observePartialByCountType(
-                countType = CountType.FIXED,
+            pillCountTxnDao.observePartialByIsDispense(
+                isDispense = true,
                 partialStatus = CountStatus.PARTIAL,
                 userLocalId = localId,
                 type = StepState.TARGET_VERIFICATION,

@@ -6,7 +6,9 @@ import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsRepository
 import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsViewModel
 import com.rite.pillcounting.feature.settings.domain.model.ApplicationSettingsUiState
@@ -49,6 +51,8 @@ class MainActivityViewModel @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
     private val txnDao: PillCountTxnDao,
     private val batchDao: BatchDao,
+    private val stockTxnDao: StockTxnDao,
+    private val bottleInfoDao: BottleInfoDao,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val hl7EventHandler: Hl7EventHandler,
 ) : ViewModel(), IApplicationSettingsViewModel {
@@ -473,6 +477,8 @@ class MainActivityViewModel @Inject constructor(
     fun deleteAllTransaction() {
         viewModelScope.launch {
             txnDao.deleteAllTransactions()
+            bottleInfoDao.deleteAll()
+            stockTxnDao.deleteAll()
             batchDao.deleteAll()
         }
     }

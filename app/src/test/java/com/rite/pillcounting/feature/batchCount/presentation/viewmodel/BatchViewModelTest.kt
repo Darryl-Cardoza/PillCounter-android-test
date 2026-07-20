@@ -3,7 +3,8 @@ package com.rite.pillcounting.feature.batchCount.presentation.viewmodel
 import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.rite.pillcounting.core.room.dao.BatchDao
-import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
@@ -36,7 +37,8 @@ class BatchViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
-    private lateinit var pillCountTxnDao: PillCountTxnDao
+    private lateinit var stockTxnDao: StockTxnDao
+    private lateinit var bottleInfoDao: BottleInfoDao
     private lateinit var batchDao: BatchDao
     private lateinit var hl7Repository: Hl7Repository
     private lateinit var preferenceHelper: PreferenceHelper
@@ -44,7 +46,8 @@ class BatchViewModelTest {
     @Before
     fun setup() {
         Dispatchers.setMain(testDispatcher)
-        pillCountTxnDao = mockk(relaxed = true)
+        stockTxnDao = mockk(relaxed = true)
+        bottleInfoDao = mockk(relaxed = true)
         batchDao = mockk(relaxed = true)
         hl7Repository = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
@@ -53,8 +56,8 @@ class BatchViewModelTest {
         every { preferenceHelper.getLocalId() } returns 1L
         coEvery { batchDao.getLatest() } returns null
         coEvery { batchDao.getById(any()) } returns null
-        coEvery { pillCountTxnDao.getUniqueNdcCountForBatch(any(), any()) } returns 0
-        every { pillCountTxnDao.observeByBatchId(any()) } returns flowOf(emptyList())
+        coEvery { stockTxnDao.getUniqueNdcCountForBatch(any()) } returns 0
+        every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
     }
 
     @After
@@ -67,7 +70,14 @@ class BatchViewModelTest {
         val savedStateHandle = SavedStateHandle(
             if (batchId == null) emptyMap() else mapOf("batch_id" to batchId)
         )
-        return BatchViewModel(savedStateHandle, pillCountTxnDao, batchDao, hl7Repository, preferenceHelper)
+        return BatchViewModel(
+            savedStateHandle,
+            stockTxnDao,
+            bottleInfoDao,
+            batchDao,
+            hl7Repository,
+            preferenceHelper,
+        )
     }
 
     private fun txn(
@@ -101,7 +111,7 @@ class BatchViewModelTest {
         val entity = BatchEntity(batchId = 7L, status = BatchStatus.INPROGRESS)
         coEvery { batchDao.getLatest() } returns entity
         coEvery { batchDao.getById(7L) } returns entity
-        coEvery { pillCountTxnDao.getUniqueNdcCountForBatch(7L, 1L) } returns 3
+        coEvery { stockTxnDao.getUniqueNdcCountForBatch(7L) } returns 3
 
         val vm = createViewModel(batchId = 0L)
         advanceUntilIdle()
@@ -116,7 +126,7 @@ class BatchViewModelTest {
     fun `init with explicit batch_id loads completed entity`() = runTest(testDispatcher) {
         val entity = BatchEntity(batchId = 9L, status = BatchStatus.COMPLETED)
         coEvery { batchDao.getById(9L) } returns entity
-        coEvery { pillCountTxnDao.getUniqueNdcCountForBatch(9L, 1L) } returns 5
+        coEvery { stockTxnDao.getUniqueNdcCountForBatch(9L) } returns 5
 
         val vm = createViewModel(batchId = 9L)
         advanceUntilIdle()
@@ -165,7 +175,7 @@ class BatchViewModelTest {
                 bottleQty = null, looseQty = null, packageQty = null
             )
         )
-        every { pillCountTxnDao.observeByBatchId(5L) } returns flowOf(txns)
+        every { bottleInfoDao.observeByBatchId(5L) } returns flowOf(txns)
 
         val vm = createViewModel(batchId = 5L)
         advanceUntilIdle()
@@ -203,7 +213,7 @@ class BatchViewModelTest {
             txn(txnId = 1, drugId = 10L, bottleQty = 3, looseQty = 0, packageQty = 2),
             txn(txnId = 2, drugId = 10L, bottleQty = 0, looseQty = 6, packageQty = 1)
         )
-        every { pillCountTxnDao.observeByBatchId(8L) } returns flowOf(txns)
+        every { bottleInfoDao.observeByBatchId(8L) } returns flowOf(txns)
 
         val vm = createViewModel(batchId = 8L)
         // Start a real collector so WhileSubscribed activates the upstream and groupAndMap runs.
@@ -291,7 +301,7 @@ class BatchViewModelTest {
 
         assertTrue(done)
         coVerify(exactly = 1) { batchDao.softDelete(4L) }
-        coVerify(exactly = 1) { pillCountTxnDao.deleteTransactionsByBatchIds(listOf(4L)) }
+        coVerify(exactly = 1) { stockTxnDao.deleteByBatchIds(listOf(4L)) }
     }
 
     @Test
@@ -305,7 +315,7 @@ class BatchViewModelTest {
 
         assertTrue(done)
         coVerify(exactly = 0) { batchDao.softDelete(any()) }
-        coVerify(exactly = 0) { pillCountTxnDao.deleteTransactionsByBatchIds(any()) }
+        coVerify(exactly = 0) { stockTxnDao.deleteByBatchIds(any()) }
     }
 
     @Test

@@ -1,14 +1,17 @@
 package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
 
 import android.content.Context
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
@@ -50,6 +53,9 @@ class DispenseFlowViewModelTest {
     private lateinit var drugMasterDao: DrugMasterDao
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var pillCountTxnDao: PillCountTxnDao
+    private lateinit var stockTxnDao: StockTxnDao
+    private lateinit var bottleInfoDao: BottleInfoDao
+    private lateinit var drugImageDownloader: DrugImageDownloader
 
     @Before
     fun setup() {
@@ -75,6 +81,9 @@ class DispenseFlowViewModelTest {
         drugMasterDao = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
         pillCountTxnDao = mockk(relaxed = true)
+        stockTxnDao = mockk(relaxed = true)
+        bottleInfoDao = mockk(relaxed = true)
+        drugImageDownloader = mockk(relaxed = true)
 
         every { preferenceHelper.getLocalId() } returns 1L
         every { preferenceHelper.getTxnId() } returns 0L
@@ -89,7 +98,8 @@ class DispenseFlowViewModelTest {
     }
 
     private fun createViewModel() = DispenseFlowViewModel(
-        appContext, drugRepository, drugMasterDao, preferenceHelper, pillCountTxnDao
+        appContext, drugRepository, drugMasterDao, preferenceHelper, pillCountTxnDao,
+        stockTxnDao, bottleInfoDao, drugImageDownloader
     )
 
     private fun validParsed(
@@ -125,7 +135,7 @@ class DispenseFlowViewModelTest {
     ) = PillCountTxnEntity(
         txnId = txnId,
         drugId = drugId,
-        countType = CountType.FIXED,
+        isDispense = true,
         status = status,
         isNdcVerified = isNdcVerified,
         rxNo = rxNo,
@@ -342,7 +352,9 @@ class DispenseFlowViewModelTest {
         val vm = createViewModel()
         vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
-        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
+        assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
+        assertTrue(vm.uiState.value.showRxDetails)
+        assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.pendingRxResumeStage)
         coVerify { preferenceHelper.saveTxnId(1L) }
     }
 
@@ -414,17 +426,58 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
-    fun `onNdcBarcodeRead allowlist reject`() = runTest(testDispatcher) {
+    fun `onNdcBarcodeRead allowlist reject when server cannot resolve`() = runTest(testDispatcher) {
         val vm = ndcVm()
         vm.setAllowedNdcs(setOf("OTHER"))
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
         coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
+        coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.ndcNotAllowedToastTick > 0)
         assertEquals("gtin", vm.uiState.value.ndcNotAllowedValue)
     }
+
+    @Test
+    fun `onNdcBarcodeRead allowlist resolves via server then rejects disallowed ndc`() =
+        runTest(testDispatcher) {
+            // PMS drug has no cached GTIN → local lookups miss → server resolves the NDC,
+            // which is NOT in the allowlist → reject using the resolved NDC (not the raw GTIN).
+            val vm = ndcVm()
+            vm.setAllowedNdcs(setOf("ALLOWED"))
+            advanceUntilIdle()
+            coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
+            coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
+            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
+                brandName = null, genericName = "Gen", ndc = "OTHER",
+                is_ndc_equivalent = false, drugType = "CII", qty = 1, isHazardous = false
+            )
+            vm.onNdcBarcodeRead("gtin", null)
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.ndcNotAllowedToastTick > 0)
+            assertEquals("OTHER", vm.uiState.value.ndcNotAllowedValue)
+        }
+
+    @Test
+    fun `onNdcBarcodeRead allowlist resolves via server and accepts allowed ndc`() =
+        runTest(testDispatcher) {
+            // Correct barcode for a PMS-requested drug with no cached GTIN: the server resolves
+            // it to an allowed NDC, so the scan is accepted (no reject toast) and proceeds.
+            val vm = ndcVm()
+            vm.setAllowedNdcs(setOf("ALLOWED"))
+            advanceUntilIdle()
+            coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
+            coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
+            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
+                brandName = null, genericName = "Gen", ndc = "ALLOWED",
+                is_ndc_equivalent = false, drugType = "CII", qty = 1, isHazardous = false
+            )
+            vm.onNdcBarcodeRead("gtin", null)
+            advanceUntilIdle()
+            assertEquals(0, vm.uiState.value.ndcNotAllowedToastTick)
+            assertEquals("ALLOWED", vm.uiState.value.ndcScannedValue)
+        }
 
     @Test
     fun `onNdcBarcodeRead trustLocal no sheet advances to COUNTING with batch`() = runTest(testDispatcher) {
@@ -579,7 +632,7 @@ class DispenseFlowViewModelTest {
         // Now ndc = NDCX set in state
         vm.onRxConfirmed()
         advanceUntilIdle()
-        assertEquals(99L, vm.uiState.value.txnId)
+        assertEquals(1L, vm.uiState.value.txnId)
         assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
         assertFalse(vm.uiState.value.showRxDetails)
     }
@@ -719,7 +772,13 @@ class DispenseFlowViewModelTest {
         vm.onContainerStatusChanged(ContainerStatus.SEALED)
         advanceUntilIdle()
         coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 5L
-        coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 88L
+        // Stock count now creates StockTxn + BottleInfo (not a REGULAR pill_count_txn).
+        // With no batchId set, navigateToBatchId falls back to the created bottleId.
+        coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 7L
+        // No existing sealed line → the VM inserts a fresh sealed bottle row.
+        coEvery { bottleInfoDao.findSealedLine(any(), any(), any()) } returns null
+        coEvery { bottleInfoDao.insert(any()) } returns 88L
         vm.onNdcConfirmed()
         advanceUntilIdle()
         assertEquals(88L, vm.uiState.value.navigateToBatchId)
@@ -807,21 +866,24 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
-    fun `onNdcConfirmed REGULAR existing txn runs sheet-confirm update path`() = runTest(testDispatcher) {
+    fun `onNdcBarcodeRead REGULAR batch writes StockTxn and BottleInfo`() = runTest(testDispatcher) {
+        // Stock counting no longer uses pill_count_txn: a REGULAR batch NDC scan creates a
+        // StockTxn header + a BottleInfo line and advances straight to COUNTING.
         val vm = ndcVm() // REGULAR
-        vm.setBatchId(9L) // batch set so needsSheet false; advanceToCountingStage creates txn
+        vm.setBatchId(9L) // batch set so needsSheet false; advanceToCountingStage creates the stock line
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
-        coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 33L
-        coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 44L
-        coEvery { pillCountTxnDao.getById(44L) } returns txn(txnId = 44L, isNdcVerified = false)
-        vm.onNdcBarcodeRead("gtin", null) // creates txn 44, stage COUNTING
+        coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
+        coEvery { stockTxnDao.findByDrugInBatch(9L, 10L) } returns null
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 33L
+        coEvery { bottleInfoDao.findLine(any(), any(), any()) } returns null
+        coEvery { bottleInfoDao.insert(any()) } returns 44L
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
-        assertEquals(44L, vm.uiState.value.txnId)
-        // now txnId != 0 and REGULAR -> onNdcConfirmed takes launch-block path (line 696)
-        vm.onNdcConfirmed()
-        advanceUntilIdle()
-        coVerify { pillCountTxnDao.update(any()) }
+        assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
+        assertEquals(0L, vm.uiState.value.txnId)
+        coVerify { stockTxnDao.upsertPreservingId(any()) }
+        coVerify { bottleInfoDao.insert(any()) }
     }
 
     @Test
@@ -925,24 +987,26 @@ class DispenseFlowViewModelTest {
     fun `enterQueueMode sets QUEUE stage and default filter`() = runTest(testDispatcher) {
         every { preferenceHelper.getLocalId() } returns 1L
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         val vm = createViewModel()
         vm.enterQueueMode()
         advanceUntilIdle()
         assertEquals(DispenseStage.QUEUE, vm.uiState.value.stage)
         assertEquals(KpiFilter.DISP_PENDING, vm.uiState.value.selectedQueueFilter)
+        assertEquals(true, vm.uiState.value.initResolved)
     }
 
     @Test
     fun `resetToQueue sets QUEUE stage`() = runTest(testDispatcher) {
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         val vm = createViewModel()
         vm.resetToQueue()
         advanceUntilIdle()
         assertEquals(DispenseStage.QUEUE, vm.uiState.value.stage)
+        assertEquals(true, vm.uiState.value.initResolved)
     }
 
     @Test
@@ -950,11 +1014,11 @@ class DispenseFlowViewModelTest {
         val dto = PillCountWithDrugAndTotal(
             txnId = 1L, drugName = "D", ndc = "N", drugType = "CII", bucketId = "b",
             createdAt = 1L, targetCount = 5, barcodeImage = null, totalPillCount = 0,
-            isComingFromHL7 = false, isNdcVerified = false, countType = CountType.FIXED,
+            isComingFromHL7 = false, isNdcVerified = false, isDispense = true,
             priority = TxnPriority.High, isHazardous = true,
         )
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(listOf(dto))
         val vm = createViewModel()
         vm.enterQueueMode()
@@ -971,10 +1035,10 @@ class DispenseFlowViewModelTest {
     @Test
     fun `resetToQueueOrNavigateDashboard with pending resets queue`() = runTest(testDispatcher) {
         coEvery {
-            pillCountTxnDao.countPartialByCountType(any(), any(), any())
+            pillCountTxnDao.countPartialByIsDispense(any(), any(), any())
         } returns 2
         every {
-            pillCountTxnDao.observePartialByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         val vm = createViewModel()
         vm.resetToQueueOrNavigateDashboard()
@@ -985,7 +1049,7 @@ class DispenseFlowViewModelTest {
     @Test
     fun `resetToQueueOrNavigateDashboard no pending navigates dashboard`() = runTest(testDispatcher) {
         coEvery {
-            pillCountTxnDao.countPartialByCountType(any(), any(), any())
+            pillCountTxnDao.countPartialByIsDispense(any(), any(), any())
         } returns 0
         val vm = createViewModel()
         vm.resetToQueueOrNavigateDashboard()
@@ -1054,17 +1118,23 @@ class DispenseFlowViewModelTest {
     // ───────────── advanceToCountingStage batch path (txn0) ─────────────
 
     @Test
-    fun `advanceToCountingStage batch creates txn and COUNTING`() = runTest(testDispatcher) {
+    fun `advanceToCountingStage batch creates stock line and COUNTING`() = runTest(testDispatcher) {
         val vm = ndcVm() // REGULAR
         vm.setBatchId(9L)
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
-        coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 33L
-        coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 44L
+        coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
+        coEvery { stockTxnDao.findByDrugInBatch(9L, 10L) } returns null
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 7L
+        coEvery { bottleInfoDao.findLine(any(), any(), any()) } returns null
+        coEvery { bottleInfoDao.insert(any()) } returns 44L
         vm.onNdcBarcodeRead("gtin", null) // trustLocal, needsSheet false (batch set) -> advance
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        assertEquals(44L, vm.uiState.value.txnId)
+        // Stock counts no longer create a pill_count_txn; they create StockTxn + BottleInfo.
+        assertEquals(0L, vm.uiState.value.txnId)
+        assertEquals(7L, vm.uiState.value.stockTxnId)
+        assertEquals(44L, vm.uiState.value.stockBottleId)
     }
 
     @Test

@@ -1,14 +1,18 @@
 package com.rite.pillcounting.core.scanning.presentation.viewmodel
 
 import android.app.Application
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
@@ -23,7 +27,6 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.unmockkAll
-import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -56,6 +59,8 @@ class PillScanningViewModelNdcScanTest {
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
+    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
@@ -64,6 +69,7 @@ class PillScanningViewModelNdcScanTest {
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
+    private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
 
@@ -84,6 +90,8 @@ class PillScanningViewModelNdcScanTest {
             app = application,
             preferenceHelper = preferenceHelper,
             pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             userDao = userDao,
             pillCountTxnDetailsDao = pillCountTxnDetailsDao,
             locationProvider = locationProvider,
@@ -92,6 +100,7 @@ class PillScanningViewModelNdcScanTest {
             performanceLogger = performanceLogger,
             barcodeDecoder = barcodeDecoder,
             drugRepository = drugRepository,
+            drugImageDownloader = drugImageDownloader,
         )
     }
 
@@ -130,7 +139,7 @@ class PillScanningViewModelNdcScanTest {
 
     // SCAN_VM_021
     @Test
-    fun `onNdcScannedForStockCount saves txnId when drug is found locally`() = runTest {
+    fun `onNdcScannedForStockCount creates a stock txn header but no bottle line when drug is found locally`() = runTest {
         viewModel.enterStockCountScanMode(batchId = BATCH_ID)
         viewModel.getDrugInfo()
         advanceUntilIdle()
@@ -139,14 +148,18 @@ class PillScanningViewModelNdcScanTest {
         every { barcodeDecoder.isGs1Barcode(VALID_GTIN) } returns false
         every { barcodeDecoder.toGtin14(VALID_GTIN) } returns VALID_GTIN
         coEvery { drugMasterDao.getDrugByGtin(VALID_GTIN) } returns drug
-        coEvery { pillCountTxnDao.findSealedTxnInBatch(any(), any(), any(), any()) } returns null
-        coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 9L
-        coEvery { pillCountTxnDao.getTxnWithDetails(9L) } returns null
+        // "Scan Pills" loose flow: the VM creates the StockTxn header on scan, but the BottleInfo
+        // row is deferred to Done ([flushStagedDetails]) so each counting session gets its own line.
+        coEvery { stockTxnDao.findByDrugInBatch(BATCH_ID, 7L) } returns null
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 9L
 
         viewModel.onNdcScannedForStockCount(VALID_GTIN)
         advanceUntilIdle()
 
-        verify { preferenceHelper.saveTxnId(9L) }
+        coVerify(exactly = 1) {
+            stockTxnDao.upsertPreservingId(match<StockTxnEntity> { it.drugId == 7L && it.batchId == BATCH_ID })
+        }
+        coVerify(exactly = 0) { bottleInfoDao.insert(any()) }
     }
 
     // SCAN_VM_022
@@ -176,7 +189,7 @@ class PillScanningViewModelNdcScanTest {
         every { preferenceHelper.getTxnId() } returns 1L
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(1L) } returns 0
         coEvery { pillCountTxnDao.getById(1L) } returns PillCountTxnEntity(
-            txnId = 1L, countType = CountType.FIXED, status = CountStatus.PARTIAL
+            txnId = 1L, isDispense = true, status = CountStatus.PARTIAL
         )
 
         viewModel.onEvent(PillScanningEvent.ConfirmDone)
@@ -194,7 +207,7 @@ class PillScanningViewModelNdcScanTest {
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(1L) } returns 10
         coEvery { pillCountTxnDao.getById(1L) } returns PillCountTxnEntity(
             txnId = 1L,
-            countType = CountType.FIXED,
+            isDispense = true,
             status = CountStatus.PARTIAL,
             targetCount = 10,
             isComingFromHL7 = false
@@ -214,7 +227,7 @@ class PillScanningViewModelNdcScanTest {
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(2L) } returns 5
         coEvery { pillCountTxnDao.getById(2L) } returns PillCountTxnEntity(
             txnId = 2L,
-            countType = CountType.FIXED,
+            isDispense = true,
             status = CountStatus.PARTIAL,
             targetCount = 10,   // 5 < 10 → status is PARTIAL
             isComingFromHL7 = true

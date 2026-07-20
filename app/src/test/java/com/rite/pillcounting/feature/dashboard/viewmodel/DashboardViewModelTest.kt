@@ -13,6 +13,7 @@ import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
 import com.rite.pillcounting.feature.dashboard.domain.model.UserProfile
+import com.rite.pillcounting.feature.dashboard.domain.model.UserSettings
 import com.rite.pillcounting.feature.dashboard.presentation.viewmodel.DashboardViewModel
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
@@ -110,14 +111,14 @@ class DashboardViewModelTest {
         val token = "access-tok"
         val terminal = Terminal(terminalId = "T1", terminalName = "Main Terminal", isActive = true)
         val profile = UserProfile(userId = "u1", isProfileCompleted = true)
-        val userDetail = UserDetail(profile = profile, settings = null, terminals = listOf(terminal))
+        val userDetail = UserDetail(profile = profile, settings = UserSettings(terminals = listOf(terminal)))
         val apiResponse = ApiResponse(status = 200, isSuccess = true, message = "OK", token = null, data = userDetail)
 
         every { preferenceHelper.getAccessToken() } returns token
         coEvery { repository.getUserDetail(token) } returns Result.success(apiResponse)
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 42L
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
-        every { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { batchDao.observeInProgressBatchSummaries() } returns flowOf(emptyList())
 
         val viewModel = createViewModel()
@@ -144,14 +145,14 @@ class DashboardViewModelTest {
     fun `fetchUserDetail sets navigateToProfile when profile is incomplete`() = runTest {
         val token = "access-tok"
         val profile = UserProfile(userId = "u1", isProfileCompleted = false)
-        val userDetail = UserDetail(profile = profile, settings = null, terminals = emptyList())
+        val userDetail = UserDetail(profile = profile, settings = null)
         val apiResponse = ApiResponse(status = 200, isSuccess = true, message = "OK", token = null, data = userDetail)
 
         every { preferenceHelper.getAccessToken() } returns token
         coEvery { repository.getUserDetail(token) } returns Result.success(apiResponse)
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 10L
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
-        every { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { batchDao.observeInProgressBatchSummaries() } returns flowOf(emptyList())
 
         val viewModel = createViewModel()
@@ -296,14 +297,14 @@ class DashboardViewModelTest {
     fun `resetNavigateToProfile clears navigateToProfile flag after profile-incomplete fetch`() = runTest {
         val token = "access-tok"
         val profile = UserProfile(userId = "u1", isProfileCompleted = false)
-        val userDetail = UserDetail(profile = profile, settings = null, terminals = emptyList())
+        val userDetail = UserDetail(profile = profile, settings = null)
         val apiResponse = ApiResponse(status = 200, isSuccess = true, message = "OK", token = null, data = userDetail)
 
         every { preferenceHelper.getAccessToken() } returns token
         coEvery { repository.getUserDetail(token) } returns Result.success(apiResponse)
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 10L
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
-        every { pillCountTxnDao.observePartialByCountType(any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { batchDao.observeInProgressBatchSummaries() } returns flowOf(emptyList())
 
         val viewModel = createViewModel()

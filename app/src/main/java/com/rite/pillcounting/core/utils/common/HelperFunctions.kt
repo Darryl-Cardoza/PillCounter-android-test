@@ -91,14 +91,14 @@ object HelperFunctions {
         var regularPartial = 0
 
         rows.forEach { row ->
-            when (row.countType) {
-                CountType.FIXED -> when (row.status) {
+            if (row.isDispense) {
+                when (row.status) {
                     CountStatus.COMPLETED -> fixedCompleted = row.cnt
                     CountStatus.PARTIAL -> fixedPartial = row.cnt
                     else -> {}
                 }
-
-                CountType.REGULAR -> when (row.status) {
+            } else {
+                when (row.status) {
                     CountStatus.COMPLETED -> regularCompleted = row.cnt
                     CountStatus.PARTIAL -> regularPartial = row.cnt
                     else -> {}

@@ -2,7 +2,8 @@ package com.rite.pillcounting.feature.batchCount.viewmodel
 
 import androidx.lifecycle.SavedStateHandle
 import com.rite.pillcounting.core.room.dao.BatchDao
-import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -39,7 +40,8 @@ class BatchViewModelTest {
     val mainDispatcherRule = MainDispatcherRule()
 
     private val savedStateHandle: SavedStateHandle = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
+    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val batchDao: BatchDao = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
@@ -51,7 +53,8 @@ class BatchViewModelTest {
         every { savedStateHandle.get<Long>("batch_id") } returns 0L
         viewModel = BatchViewModel(
             savedStateHandle = savedStateHandle,
-            pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             batchDao = batchDao,
             hl7Repository = hl7Repository,
             preferenceHelper = preferenceHelper,
@@ -81,7 +84,8 @@ class BatchViewModelTest {
 
         val vm = BatchViewModel(
             savedStateHandle = savedStateHandle,
-            pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             batchDao = batchDao,
             hl7Repository = hl7Repository,
             preferenceHelper = preferenceHelper,
@@ -104,7 +108,8 @@ class BatchViewModelTest {
 
         val vm = BatchViewModel(
             savedStateHandle = savedStateHandle,
-            pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             batchDao = batchDao,
             hl7Repository = hl7Repository,
             preferenceHelper = preferenceHelper,
@@ -116,11 +121,12 @@ class BatchViewModelTest {
 
     // BATCH_VM_004
     @Test
-    fun `deleteBatch calls softDelete and deleteTransactionsByBatchIds then invokes the callback`() = runTest {
+    fun `deleteBatch calls softDelete and deleteByBatchIds then invokes the callback`() = runTest {
         every { savedStateHandle.get<Long>("batch_id") } returns 3L
         val vm = BatchViewModel(
             savedStateHandle = savedStateHandle,
-            pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             batchDao = batchDao,
             hl7Repository = hl7Repository,
             preferenceHelper = preferenceHelper,
@@ -132,7 +138,7 @@ class BatchViewModelTest {
         advanceUntilIdle()
 
         coVerify { batchDao.softDelete(3L) }
-        coVerify { pillCountTxnDao.deleteTransactionsByBatchIds(listOf(3L)) }
+        coVerify { stockTxnDao.deleteByBatchIds(listOf(3L)) }
         assertTrue(callbackFired)
     }
 
@@ -163,7 +169,8 @@ class BatchViewModelTest {
         every { savedStateHandle.get<Long>("batch_id") } returns 7L
         val vm = BatchViewModel(
             savedStateHandle = savedStateHandle,
-            pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             batchDao = batchDao,
             hl7Repository = hl7Repository,
             preferenceHelper = preferenceHelper,
@@ -183,7 +190,8 @@ class BatchViewModelTest {
         every { savedStateHandle.get<Long>("batch_id") } returns 8L
         val vm = BatchViewModel(
             savedStateHandle = savedStateHandle,
-            pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             batchDao = batchDao,
             hl7Repository = hl7Repository,
             preferenceHelper = preferenceHelper,

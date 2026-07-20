@@ -1,13 +1,16 @@
 package com.rite.pillcounting.feature.dispenseFlow.viewmodel
 
 import android.content.Context
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.utils.compose.ContainerStatus
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.util.MainDispatcherRule
 import io.mockk.mockk
@@ -43,6 +46,9 @@ class DispenseFlowViewModelTest {
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
+    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
+    private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
 
     private lateinit var viewModel: DispenseFlowViewModel
 
@@ -54,6 +60,9 @@ class DispenseFlowViewModelTest {
             drugMasterDao = drugMasterDao,
             preferenceHelper = preferenceHelper,
             pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
+            drugImageDownloader = drugImageDownloader,
         )
     }
 

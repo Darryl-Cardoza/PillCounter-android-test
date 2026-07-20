@@ -1,5 +1,7 @@
 package com.rite.pillcounting.feature.dispenseFlow.presentation.compose
 
+import android.media.Image
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
@@ -33,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -42,6 +45,8 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
 import kotlin.math.roundToInt
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
@@ -49,6 +54,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.core.utils.preference.CountCirclePositionPrefs
+import java.io.File
 
 /**
  * Shared building blocks for the full-bleed count-mode overlay.
@@ -76,8 +82,8 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
     ndc: String,
     drugName: String,
     strength: String,
-    dosageForm: String,
     bucket: String,
+    drugImage: String? = "",
 ) {
     Row(
         modifier = Modifier
@@ -91,6 +97,26 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
             .padding(start = 76.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (!drugImage.isNullOrBlank()) {
+            Image(
+                painter = rememberAsyncImagePainter(
+                    ImageRequest.Builder(LocalContext.current)
+                        .data(File(drugImage))
+                        .size(300, 225)
+                        .placeholder(R.drawable.prescription_icon)
+                        .error(R.drawable.prescription_icon)
+                        .build()
+                ),
+                contentDescription = drugName,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(60.dp)
+                    .clip(RoundedCornerShape(8.dp))
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+        }
         // Left: NDC + drug name
         Column(modifier = Modifier.weight(1f)) {
             if (ndc.isNotBlank()) {
@@ -116,24 +142,7 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
         // Keep the (ellipsized) drug name from butting up against the Form column.
         Spacer(Modifier.width(16.dp))
 
-        // Right: Form (icon) / Strength / Bucket
-        if (dosageForm.isNotBlank()) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = stringResource(R.string.detail_label_form),
-                    color = Color.White.copy(alpha = 0.7f),
-                    fontSize = responsiveSp(8.sp),
-                    maxLines = 1
-                )
-                Icon(
-                    painter = painterResource(R.drawable.pill_icon_48),
-                    contentDescription = dosageForm,
-                    tint = Color.White,
-                    modifier = Modifier.size(responsiveDp(16.dp))
-                )
-            }
-            Spacer(Modifier.width(32.dp))
-        }
+        // Right: Strength / Bucket
         if (strength.isNotBlank()) {
             DetailColumn(
                 label = stringResource(R.string.detail_label_strength),

@@ -4,7 +4,8 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.room.dao.BatchDao
-import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
@@ -29,7 +30,8 @@ import javax.inject.Inject
 @HiltViewModel
 class BatchViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val pillCountTxnDao: PillCountTxnDao,
+    private val stockTxnDao: StockTxnDao,
+    private val bottleInfoDao: BottleInfoDao,
     private val batchDao: BatchDao,
     private val hl7Repository: Hl7Repository,
     private val preferenceHelper: PreferenceHelper
@@ -60,10 +62,7 @@ class BatchViewModel @Inject constructor(
                 val entity = batchDao.getById(batchId)
                 _isBatchCompleted.value = entity?.status == BatchStatus.COMPLETED
                 _batchEntity.value = entity
-                _uniqueNdcCount.value = pillCountTxnDao.getUniqueNdcCountForBatch(
-                    batchId,
-                    preferenceHelper.getLocalId()
-                )
+                _uniqueNdcCount.value = stockTxnDao.getUniqueNdcCountForBatch(batchId)
             }
         }
     }
@@ -72,7 +71,7 @@ class BatchViewModel @Inject constructor(
     val drugGroups: StateFlow<List<BatchDrugGroup>> = _resolvedBatchId
         .flatMapLatest { id ->
             if (id == 0L) flowOf(emptyList())
-            else pillCountTxnDao.observeByBatchId(id).map { it.groupAndMap() }
+            else bottleInfoDao.observeByBatchId(id).map { it.groupAndMap() }
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
@@ -82,7 +81,7 @@ class BatchViewModel @Inject constructor(
                 val id = _resolvedBatchId.value
                 if (id != 0L) {
                     batchDao.softDelete(id)
-                    pillCountTxnDao.deleteTransactionsByBatchIds(listOf(id))
+                    stockTxnDao.deleteByBatchIds(listOf(id))
                 }
             } catch (e: Exception) {
                 if (e !is CancellationException) e.printStackTrace()

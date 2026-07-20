@@ -161,8 +161,9 @@ fun DispenseQueuePanel(
                             bucketId = item.txn.bucketId,
                             pillCount = item.txn.totalPillCount,
                             targetCount = item.txn.targetCount ?: 0,
-                            countType = CountType.FIXED,
+                            isDispense = true,
                             isComingFromHL7 = item.txn.isComingFromHL7,
+                            drugImagePath = item.txn.drugImagePath,
                         ),
                         onClick = { onItemClick(item.txn.txnId) },
                     )

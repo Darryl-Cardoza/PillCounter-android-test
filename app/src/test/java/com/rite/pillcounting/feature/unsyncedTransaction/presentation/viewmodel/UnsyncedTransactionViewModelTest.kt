@@ -63,7 +63,7 @@ class UnsyncedTransactionViewModelTest {
 
         // Sensible defaults so the init observers do not blow up.
         every {
-            pillCountTxnDao.observeUnsyncedByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observeUnsyncedByIsDispense(any(), any(), any(), any())
         } returns flowOf(emptyList())
         every { batchDao.observeUnsyncedCompletedBatches() } returns flowOf(emptyList())
         every { hl7EventHandler.connectionState } returns connectionState
@@ -93,7 +93,7 @@ class UnsyncedTransactionViewModelTest {
         totalPillCount = 42,
         isComingFromHL7 = true,
         isNdcVerified = true,
-        countType = CountType.FIXED,
+        isDispense = true,
         priority = null
     )
 
@@ -103,7 +103,7 @@ class UnsyncedTransactionViewModelTest {
     fun `observeUnsyncedDispense maps txn to CountItem with non-null drugName`() =
         runTest(testDispatcher) {
             every {
-                pillCountTxnDao.observeUnsyncedByCountType(any(), any(), any(), any())
+                pillCountTxnDao.observeUnsyncedByIsDispense(any(), any(), any(), any())
             } returns flowOf(listOf(pillCount(drugName = "Aspirin", targetCount = 50)))
 
             val vm = createViewModel()
@@ -123,7 +123,7 @@ class UnsyncedTransactionViewModelTest {
                 assertEquals("barcode.png", item.barcodeImage)
                 assertTrue(item.isComingFromHL7)
                 assertTrue(item.isNdcVerified)
-                assertEquals(CountType.FIXED, item.countType)
+                assertEquals(true, item.isDispense)
                 // Real toFormattedDate call on a positive epoch millis -> not the fallback.
                 assertTrue(item.date.isNotBlank())
                 assertTrue(item.date != "-")
@@ -134,7 +134,7 @@ class UnsyncedTransactionViewModelTest {
     fun `observeUnsyncedDispense maps null drugName to empty and null target to zero`() =
         runTest(testDispatcher) {
             every {
-                pillCountTxnDao.observeUnsyncedByCountType(any(), any(), any(), any())
+                pillCountTxnDao.observeUnsyncedByIsDispense(any(), any(), any(), any())
             } returns flowOf(listOf(pillCount(drugName = null, targetCount = null)))
 
             val vm = createViewModel()
@@ -148,7 +148,7 @@ class UnsyncedTransactionViewModelTest {
     @Test
     fun `observeUnsyncedDispense catch keeps default empty list`() = runTest(testDispatcher) {
         every {
-            pillCountTxnDao.observeUnsyncedByCountType(any(), any(), any(), any())
+            pillCountTxnDao.observeUnsyncedByIsDispense(any(), any(), any(), any())
         } returns flow { throw RuntimeException("dispense error") }
 
         val vm = createViewModel()

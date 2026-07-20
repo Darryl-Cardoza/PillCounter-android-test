@@ -2,12 +2,15 @@ package com.rite.pillcounting.core.scanning.presentation.viewmodel
 
 import android.app.Application
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
@@ -53,6 +56,8 @@ class PillScanningViewModelEventTest {
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
+    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
@@ -61,6 +66,7 @@ class PillScanningViewModelEventTest {
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
+    private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
 
@@ -78,6 +84,8 @@ class PillScanningViewModelEventTest {
             app = application,
             preferenceHelper = preferenceHelper,
             pillCountTxnDao = pillCountTxnDao,
+            stockTxnDao = stockTxnDao,
+            bottleInfoDao = bottleInfoDao,
             userDao = userDao,
             pillCountTxnDetailsDao = pillCountTxnDetailsDao,
             locationProvider = locationProvider,
@@ -86,6 +94,7 @@ class PillScanningViewModelEventTest {
             performanceLogger = performanceLogger,
             barcodeDecoder = barcodeDecoder,
             drugRepository = drugRepository,
+            drugImageDownloader = drugImageDownloader,
         )
     }
 
@@ -208,9 +217,9 @@ class PillScanningViewModelEventTest {
     fun `FinalDone with REGULAR countType sets showEndStockCountDialog to true`() = runTest {
         val txnInfo = TxnWithDetails(
             txnId = 1L, drugName = null, drugId = 1L, ndc = null,
-            targetCount = 10, expiry = null, lotNo = null, note = null,
+            targetCount = 10, note = null,
             createdAt = 0L, barcodeImage = null, totalPillCount = 0,
-            countType = CountType.REGULAR, drugType = null,
+            isDispense = false, drugType = null,
             txnDetails = emptyList(), isComingFromHL7 = false,
         )
         coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns txnInfo
@@ -227,9 +236,9 @@ class PillScanningViewModelEventTest {
     fun `FinalDone with CONTAINER_INITIATE and totalCount below target sets showErrorMessage`() = runTest {
         val txnInfo = TxnWithDetails(
             txnId = 1L, drugName = null, drugId = 1L, ndc = null,
-            targetCount = 10, expiry = null, lotNo = null, note = null,
+            targetCount = 10, note = null,
             createdAt = 0L, barcodeImage = null, totalPillCount = 0,
-            countType = CountType.FIXED, drugType = null,
+            isDispense = true, drugType = null,
             txnDetails = emptyList(), isComingFromHL7 = false,
         )
         coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns txnInfo

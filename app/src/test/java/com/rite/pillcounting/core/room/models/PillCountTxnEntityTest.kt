@@ -16,12 +16,10 @@ class PillCountTxnEntityTest {
         txnId = 1L,
         localId = 2L,
         drugId = 3L,
-        countType = CountType.FIXED,
+        isDispense = true,
         targetCount = 50,
         status = CountStatus.COMPLETED,
         note = "note",
-        expiry = "2027-01",
-        lotNo = "lot1",
         barcodeImage = "bc.png",
         isSubstitute = true,
         rxNo = "rx1",
@@ -34,9 +32,6 @@ class PillCountTxnEntityTest {
         isSynced = true,
         isNdcVerified = true,
         bucketId = "bucket",
-        batchId = 4L,
-        bottleQty = 5,
-        looseQty = 6,
         substitutedDrugId = 7L,
         workflowStep = "step",
         priority = TxnPriority.High,
@@ -46,16 +41,14 @@ class PillCountTxnEntityTest {
 
     @Test
     fun defaultValues() {
-        val e = PillCountTxnEntity(countType = CountType.REGULAR, status = CountStatus.PARTIAL)
+        val e = PillCountTxnEntity(isDispense = false, status = CountStatus.PARTIAL)
         assertEquals(0L, e.txnId)
         assertNull(e.localId)
         assertNull(e.drugId)
-        assertEquals(CountType.REGULAR, e.countType)
+        assertEquals(false, e.isDispense)
         assertNull(e.targetCount)
         assertEquals(CountStatus.PARTIAL, e.status)
         assertNull(e.note)
-        assertNull(e.expiry)
-        assertNull(e.lotNo)
         assertNull(e.barcodeImage)
         assertFalse(e.isSubstitute)
         assertNull(e.rxNo)
@@ -68,9 +61,6 @@ class PillCountTxnEntityTest {
         assertNull(e.isSynced)
         assertNull(e.isNdcVerified)
         assertNull(e.bucketId)
-        assertNull(e.batchId)
-        assertNull(e.bottleQty)
-        assertNull(e.looseQty)
         assertNull(e.substitutedDrugId)
         assertNull(e.workflowStep)
         assertNull(e.priority)
@@ -84,12 +74,10 @@ class PillCountTxnEntityTest {
         assertEquals(1L, e.txnId)
         assertEquals(2L, e.localId)
         assertEquals(3L, e.drugId)
-        assertEquals(CountType.FIXED, e.countType)
+        assertEquals(true, e.isDispense)
         assertEquals(50, e.targetCount)
         assertEquals(CountStatus.COMPLETED, e.status)
         assertEquals("note", e.note)
-        assertEquals("2027-01", e.expiry)
-        assertEquals("lot1", e.lotNo)
         assertEquals("bc.png", e.barcodeImage)
         assertTrue(e.isSubstitute)
         assertEquals("rx1", e.rxNo)
@@ -102,9 +90,6 @@ class PillCountTxnEntityTest {
         assertEquals(true, e.isSynced)
         assertEquals(true, e.isNdcVerified)
         assertEquals("bucket", e.bucketId)
-        assertEquals(4L, e.batchId)
-        assertEquals(5, e.bottleQty)
-        assertEquals(6, e.looseQty)
         assertEquals(7L, e.substitutedDrugId)
         assertEquals("step", e.workflowStep)
         assertEquals(TxnPriority.High, e.priority)
@@ -126,41 +111,37 @@ class PillCountTxnEntityTest {
 
     @Test
     fun copy() {
-        assertEquals(CountType.REGULAR, sample().copy(countType = CountType.REGULAR).countType)
+        assertEquals(false, sample().copy(isDispense = false).isDispense)
     }
 
     @Test
     fun componentN() {
+        // expiry/lotNo/serialNo/bottleQty/looseQty/batchId were removed in the DB
+        // normalization refactor, so the destructuring layout shifted accordingly.
         val e = sample()
-        assertEquals(1L, e.component1())
-        assertEquals(2L, e.component2())
-        assertEquals(3L, e.component3())
-        assertEquals(CountType.FIXED, e.component4())
-        assertEquals(50, e.component5())
+        assertEquals(1L, e.component1())        // txnId
+        assertEquals(2L, e.component2())        // localId
+        assertEquals(3L, e.component3())        // drugId
+        assertEquals(true, e.component4())
+        assertEquals(50, e.component5())        // targetCount
         assertEquals(CountStatus.COMPLETED, e.component6())
         assertEquals("note", e.component7())
-        assertEquals("2027-01", e.component8())
-        assertEquals("lot1", e.component9())
-        assertNull(e.component10())            // serialNo (not set in sample)
-        assertEquals("bc.png", e.component11()) // barcodeImage
-        assertEquals(true, e.component12())     // isSubstitute
-        assertEquals("rx1", e.component13())
-        assertEquals("rf1", e.component14())
-        assertEquals("John", e.component15())
-        assertEquals(true, e.component16())     // isDeleted
-        assertEquals(100L, e.component17())     // createdAt
-        assertEquals(200L, e.component18())     // updatedAt
-        assertEquals(true, e.component19())     // isComingFromHL7
-        assertEquals(true, e.component20())     // isSynced
-        assertEquals(true, e.component21())     // isNdcVerified
-        assertEquals("bucket", e.component22())
-        assertEquals(4L, e.component23())       // batchId
-        assertEquals(5, e.component24())        // bottleQty
-        assertEquals(6, e.component25())        // looseQty
-        assertEquals(7L, e.component26())       // substitutedDrugId
-        assertEquals("step", e.component27())   // workflowStep
-        assertEquals(TxnPriority.High, e.component28())
-        assertEquals(true, e.component29())     // isGlovesPresent
-        assertEquals(true, e.component30())     // hazardousTrayDetected
+        assertEquals("bc.png", e.component8())  // barcodeImage
+        assertEquals(true, e.component9())      // isSubstitute
+        assertEquals("rx1", e.component10())
+        assertEquals("rf1", e.component11())
+        assertEquals("John", e.component12())   // patientName
+        assertEquals(true, e.component13())     // isDeleted
+        assertEquals(100L, e.component14())     // createdAt
+        assertEquals(200L, e.component15())     // updatedAt
+        assertEquals(true, e.component16())     // isComingFromHL7
+        assertEquals(true, e.component17())     // isSynced
+        assertEquals(true, e.component18())     // isNdcVerified
+        assertEquals("bucket", e.component19()) // bucketId
+        assertEquals(7L, e.component20())       // substitutedDrugId
+        assertEquals("step", e.component21())   // workflowStep
+        assertEquals(TxnPriority.High, e.component22())
+        assertEquals(true, e.component23())     // isGlovesPresent
+        assertEquals(true, e.component24())     // hazardousTrayDetected
     }
 }

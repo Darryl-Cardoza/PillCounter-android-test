@@ -5,9 +5,11 @@ import android.util.Base64
 import androidx.room.Room
 import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
+import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.security.DatabaseKeyProvider
 import com.rite.pillcounting.BuildConfig
@@ -33,7 +35,10 @@ object DatabaseModule {
             context,
             AppDatabase::class.java,
             "pill_counting_db"
-        ).addMigrations(AppDatabase.MIGRATION_2_3)
+        )
+            // Stock-count normalization (v3 → v4) restructures local tables; existing local
+            // rows are disposable (synced to PMS), so recreate rather than migrate.
+            .fallbackToDestructiveMigration()
 
         if (!BuildConfig.DEBUG) {
             // IMPORTANT
@@ -70,4 +75,14 @@ object DatabaseModule {
     @Provides
     fun provideBatchDao(db: AppDatabase): BatchDao =
         db.batchDao()
+
+    /** Provides the [StockTxnDao]. */
+    @Provides
+    fun provideStockTxnDao(db: AppDatabase): StockTxnDao =
+        db.stockTxnDao()
+
+    /** Provides the [BottleInfoDao]. */
+    @Provides
+    fun provideBottleInfoDao(db: AppDatabase): BottleInfoDao =
+        db.bottleInfoDao()
 }

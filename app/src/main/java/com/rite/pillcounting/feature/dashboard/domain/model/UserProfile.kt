@@ -18,8 +18,6 @@ data class UserProfile(
     @Json(name = "npi_id") val npiId: String? = null,
     @Json(name = "user_id") val userId: String? = null,
     @Json(name = "role") val role: UserRole? = null,
-    @Json(name = "is_verified") val isVerified: Boolean? = null,
-    @Json(name = "is_pms_integrated") val isPMSIntegrated: Boolean? = null,
-    @Json(name = "bucket") val bucket: List<String>? = null,
-    @Json(name = "allow_local_storage") val allowLocalStorage: Boolean? = null
+    @Json(name = "pharmacy_type") val pharmacyType: String? = null,
+    @Json(name = "is_verified") val isVerified: Boolean? = null
 )

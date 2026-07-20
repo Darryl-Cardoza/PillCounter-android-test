@@ -23,7 +23,7 @@ class PillCountWithDrugAndTotalTest {
         totalPillCount = 30,
         isComingFromHL7 = true,
         isNdcVerified = true,
-        countType = CountType.FIXED,
+        isDispense = true,
         priority = TxnPriority.High,
         isHazardous = true
     )
@@ -42,7 +42,7 @@ class PillCountWithDrugAndTotalTest {
             totalPillCount = 0,
             isComingFromHL7 = false,
             isNdcVerified = false,
-            countType = CountType.REGULAR,
+            isDispense = false,
             priority = null
         )
         assertFalse(d.isHazardous)
@@ -69,7 +69,7 @@ class PillCountWithDrugAndTotalTest {
         assertEquals(30, d.totalPillCount)
         assertTrue(d.isComingFromHL7)
         assertTrue(d.isNdcVerified)
-        assertEquals(CountType.FIXED, d.countType)
+        assertEquals(true, d.isDispense)
         assertEquals(TxnPriority.High, d.priority)
         assertTrue(d.isHazardous)
     }
@@ -105,7 +105,7 @@ class PillCountWithDrugAndTotalTest {
         assertEquals(30, d.component9())
         assertEquals(true, d.component10())
         assertEquals(true, d.component11())
-        assertEquals(CountType.FIXED, d.component12())
+        assertEquals(true, d.component12())
         assertEquals(TxnPriority.High, d.component13())
         assertEquals(true, d.component14())
     }

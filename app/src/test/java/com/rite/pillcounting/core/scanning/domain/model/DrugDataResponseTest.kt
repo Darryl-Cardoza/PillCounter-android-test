@@ -246,8 +246,10 @@ class DrugDataResponseTest {
         assertTrue(p.toString().contains("desc"))
         assertEquals("x", p.copy(description = "x").description)
         assertEquals("desc", p.component1())
-        assertEquals(listOf("30s"), p.component2())
-        assertEquals(listOf(packageLevel()), p.component3())
+        assertEquals(null, p.component2())
+        assertEquals(null, p.component3())
+        assertEquals(listOf("30s"), p.component4())
+        assertEquals(listOf(packageLevel()), p.component5())
     }
 
     // ---------- NdcDrugInfo ----------
@@ -320,17 +322,18 @@ class DrugDataResponseTest {
         assertEquals("Generic", n.component3())
         assertEquals(true, n.component4())
         assertEquals("Std", n.component5())
-        assertEquals(listOf(ingredient()), n.component6())
-        assertEquals(regulatory(), n.component7())
-        assertEquals(listOf("TABLET"), n.component8())
-        assertEquals("lookup", n.component9())
-        assertEquals("Mfg", n.component10())
-        assertEquals(listOf("ORAL"), n.component11())
-        assertEquals(therapeutic(), n.component12())
-        assertEquals(images(), n.component13())
-        assertEquals("2021", n.component14())
-        assertEquals(pkg(), n.component15())
-        assertEquals(false, n.component16())
+        assertEquals(null, n.component6()) // strength_info
+        assertEquals(listOf(ingredient()), n.component7())
+        assertEquals(regulatory(), n.component8())
+        assertEquals(listOf("TABLET"), n.component9())
+        assertEquals("lookup", n.component10())
+        assertEquals("Mfg", n.component11())
+        assertEquals(listOf("ORAL"), n.component12())
+        assertEquals(therapeutic(), n.component13())
+        assertEquals(images(), n.component14())
+        assertEquals("2021", n.component15())
+        assertEquals(pkg(), n.component16())
+        assertEquals(false, n.component17())
     }
 
     // ---------- DrugComparisonData ----------
