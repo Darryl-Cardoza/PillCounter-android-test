@@ -6,6 +6,7 @@ import com.rite.pillcounting.core.hl7.core.Hl7EventListener
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
+import com.rite.pillcounting.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -96,20 +97,6 @@ class Hl7EventHandler @Inject constructor(
         }
     }
 
-    /**
-     * Returns true when the raw HL7 ACK carries a success acknowledgment code in MSA-1.
-     * Accepts "AA" (Application Accept) and "CA" (Commit Accept, enhanced mode); "AE"/"AR"
-     * (error/reject) and a missing MSA segment are treated as non-success.
-     */
-    private fun isSuccessAck(ackRaw: String): Boolean {
-        val msaSegment = ackRaw
-            .split('\r', '\n')
-            .firstOrNull { it.startsWith("MSA|") }
-            ?: return false
-        val code = msaSegment.split('|').getOrNull(1)?.trim()?.uppercase()
-        return code == "AA" || code == "CA"
-    }
-
 
     /**
      * Called when HL7 background service starts.
@@ -167,10 +154,6 @@ class Hl7EventHandler @Inject constructor(
         logger.i("HL7 client connected | $host:$port")
         _connectionState.value = true
         hl7Repository.resendPendingHl7Transactions()
-        // TEMPORARY: seeds a 2k-row test batch (once per process, guarded internally) and
-        // sends it in chunks to PMS to validate large-batch sync. Remove this call (and
-        // Hl7Repository.seedLargeTestBatchAndResend) after testing.
-        hl7Repository.seedLargeTestBatchAndResend()
         hl7Repository.resendPendingHl7BatchTransactions()
         notifier.show(
             title = context.getString(R.string.hl7_notification_device_connected_title),

@@ -138,9 +138,10 @@ object HL7MessageBuilder {
             bottle.txnDetailsIds.sumOf { id -> pillCountByDetailsId[id] ?: 0 }
         }
 
-        val totalCount = txn.targetCount
-            ?: bottleCounts.sum().takeIf { bottles.isNotEmpty() }
-            ?: txnDetails.sumOf { it.pillCount ?: 0 }
+        val totalCount = bottleCounts.sum().takeIf { bottles.isNotEmpty() }
+            ?: txnDetails.sumOf { it.pillCount ?: 0 }.takeIf { txnDetails.isNotEmpty() }
+            ?: txn.targetCount
+            ?: 0
         val orderId = txn.rxNo ?: txn.txnId.toString()
 
 

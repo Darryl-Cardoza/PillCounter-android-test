@@ -30,6 +30,7 @@ import com.rite.pillcounting.feature.hl7.domain.model.MessageType
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
 import com.rite.pillcounting.feature.hl7.util.HL7Config
 import com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder
+import com.rite.pillcounting.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -237,16 +238,17 @@ class Hl7Repository @Inject constructor(
 
                 logger.i("Sending inventory chunk ${chunk.chunkIndex}/${chunk.totalChunks} for batchId=$batchId")
                 val result = hl7MessageSender.sendRaw(chunk.message)
+                val ackAccepted = result.getOrNull()?.let { isSuccessAck(it) } ?: false
 
-                if (result.isSuccess) {
+                if (result.isSuccess && ackAccepted) {
                     batchDao.markChunkAcked(batchId, chunk.chunkIndex)
                     logger.i("Chunk ${chunk.chunkIndex}/${chunk.totalChunks} ACKed for batchId=$batchId")
                 } else {
                     // Stop here — do not send later chunks out of order. The batch
                     // stays unsynced and will resume at this exact chunk next time.
                     logger.e(
-                        "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed for batchId=$batchId: " +
-                            "${result.exceptionOrNull()?.message}"
+                        "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed/NAKed for batchId=$batchId: " +
+                            "${result.exceptionOrNull()?.message ?: "non-success ACK"}"
                     )
                     return
                 }
@@ -277,73 +279,6 @@ class Hl7Repository @Inject constructor(
 //                        }
                 }
             }
-        }
-    }
-
-    /**
-     * TEMPORARY TEST-ONLY SEED — inserts one COMPLETED/unsynced batch with 2,000 distinct
-     * NDC/lot/expiry bottle_info rows, so the chunked HL7 inventory sync path can be exercised
-     * for real against a connected PMS. Guarded by [hasSeededLargeTestBatch] so it only runs
-     * once per process even if onClientConnected fires again (reconnect). Remove this method,
-     * the guard flag, and its call site in onClientConnected after large-batch testing is done.
-     */
-    @Volatile
-    private var hasSeededLargeTestBatch = false
-
-    fun seedLargeTestBatchAndResend(rowCount: Int = 2_000) {
-        if (hasSeededLargeTestBatch) {
-            logger.i("seedLargeTestBatchAndResend already ran once this session — skipping")
-            return
-        }
-        hasSeededLargeTestBatch = true
-        scope.launch {
-            // Unique per run so a second onClientConnected firing in the same millisecond (or a
-            // re-run reusing prior test NDCs) can't silently no-op the IGNORE insert below and
-            // leave later rows pointing at a batchId/drugId that was never actually written —
-            // that FK mismatch is what crashed with SQLITE_CONSTRAINT_FOREIGNKEY previously.
-            val runTag = System.nanoTime()
-            val batchId = runTag
-            val insertedBatchId = batchDao.insert(
-                BatchEntity(
-                    batchId = batchId,
-                    status = BatchStatus.COMPLETED,
-                    isSynced = false,
-                )
-            )
-            if (insertedBatchId == -1L) {
-                logger.e("seedLargeTestBatchAndResend: batch insert conflicted for batchId=$batchId — aborting seed")
-                return@launch
-            }
-            repeat(rowCount) { i ->
-                val drugId = drugMasterDao.insertIgnore(
-                    DrugMasterEntity(
-                        drugName = "TestDrug-$runTag-$i",
-                        ndc = "TESTNDC-$runTag-$i",
-                        packageQty = 30,
-                    )
-                )
-                if (drugId == -1L) return@repeat
-                val txnId = stockTxnDao.insertIgnore(
-                    StockTxnEntity(
-                        drugId = drugId,
-                        status = CountStatus.COMPLETED,
-                        batchId = batchId,
-                    )
-                )
-                if (txnId == -1L) return@repeat
-                bottleInfoDao.insert(
-                    com.rite.pillcounting.core.room.models.BottleInfoEntity(
-                        stockTxnId = txnId,
-                        batchId = batchId,
-                        lotNo = "TESTLOT-$runTag-$i",
-                        expNo = "12-31-2026",
-                        bottleQty = 1,
-                        looseQty = 0,
-                    )
-                )
-            }
-            logger.i("Seeded test batch $batchId with $rowCount rows — triggering resend")
-            resendPendingHl7BatchTransactions()
         }
     }
 
@@ -1029,7 +964,8 @@ class Hl7Repository @Inject constructor(
     // ─────────────────────────── INBOUND HANDLER: ORC|CA (CANCEL) ───────────────────────────
 
     private suspend fun handleOrderCancellation(message: HL7Message) {
-        val rxNo = message.segment<ORCSegment>(ORCSegment.NAME)?.placerOrderNumber ?: return
+        val rxNo = message.segment<ORCSegment>(ORCSegment.NAME)?.placerOrderNumber
+            ?.takeIf { it.isNotBlank() } ?: return
         logger.i("Received ORC|CA for rxNo=$rxNo — soft-deleting transaction")
         pillCountTxnDao.softDeleteByRxNo(rxNo)
         logger.i("Transaction with rxNo=$rxNo marked as deleted")
