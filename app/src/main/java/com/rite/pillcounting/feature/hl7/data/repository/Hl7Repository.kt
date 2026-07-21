@@ -401,16 +401,16 @@ class Hl7Repository @Inject constructor(
 
             resolvedNdc?.let {
                 val imagePath = drugImageDownloader.downloadAndSave(
-                    url = drugInfo?.imageUrl,
-                    drugName = resolvedDrugName ?: drugInfo?.ndc
+                    url = drugInfo.imageUrl,
+                    drugName = resolvedDrugName
                 )
                 DrugMasterEntity(
                     ndc = it,
                     drugName = resolvedDrugName,
-                    drugType = drugInfo?.drugType,
-                    isHazardous = drugInfo?.isHazardous ?: false,
-                    strength = drugInfo?.strength,
-                    dosageForm = drugInfo?.dosageForm,
+                    drugType = drugInfo.drugType,
+                    isHazardous = drugInfo.isHazardous ?: false,
+                    strength = drugInfo.strength,
+                    dosageForm = drugInfo.dosageForm,
                     drugImagePath = imagePath,
                 )
             }
@@ -1044,16 +1044,16 @@ class Hl7Repository @Inject constructor(
                     return
                 }
                 val imagePath = drugImageDownloader.downloadAndSave(
-                    url = drugInfo?.imageUrl,
-                    drugName = resolvedName ?: drugInfo?.ndc
+                    url = drugInfo.imageUrl,
+                    drugName = resolvedName
                 )
                 DrugMasterEntity(
-                    ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: hl7Ndc,
+                    ndc = drugInfo.ndc.takeIf { it.isNotBlank() } ?: hl7Ndc,
                     drugName = resolvedName,
-                    drugType = drugInfo?.drugType,
-                    isHazardous = drugInfo?.isHazardous ?: false,
-                    strength = drugInfo?.strength,
-                    dosageForm = drugInfo?.dosageForm,
+                    drugType = drugInfo.drugType,
+                    isHazardous = drugInfo.isHazardous ?: false,
+                    strength = drugInfo.strength,
+                    dosageForm = drugInfo.dosageForm,
                     drugImagePath = imagePath,
                 )
             } catch (e: Exception) {
@@ -1136,25 +1136,8 @@ class Hl7Repository @Inject constructor(
         scope.launch {
             pillCountTxnDao.observePendingHl7Txn()
                 .collect { pendingTxn ->
-
                     logger.i("HL7 observer fired, pending=${pendingTxn.size}")
-
-//                    val hasPendingNow = pendingTxn.isNotEmpty()
-//                    if (hasPendingNow) {
-//                        logger.i("Pending HL7 txn detected, initiating connection")
-//                        hl7MessageSender.connect()
                     resendPendingHl7Transactions()
-//                    }
-                }
-        }
-    }
-
-    private fun observePendingHl7BatchTransactions() {
-        scope.launch {
-            batchDao.observeUnsyncedCompletedBatches()
-                .collect { pendingBatches ->
-                    logger.i("HL7 batch observer fired, pending=${pendingBatches.size}")
-                    resendPendingHl7BatchTransactions()
                 }
         }
     }

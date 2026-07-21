@@ -79,7 +79,7 @@ class Hl7ServiceManager @Inject constructor(
     private fun stopService() {
         try {
             serviceManager.stopService()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             logger.i("Failed to stop HL7 service")
         }
     }

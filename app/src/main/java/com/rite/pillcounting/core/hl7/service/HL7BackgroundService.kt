@@ -402,7 +402,7 @@ class HL7Service : Service() {
      * 3. Build and return a wire-ready ACK string via [HL7.ack].
      *    On parse failure, returns an AA ACK derived from the raw MSH fields.
      */
-    private suspend fun handleIncomingMessage(raw: String): String {
+    private  fun handleIncomingMessage(raw: String): String {
         return try {
             logger.i("HL7 message received (${raw} chars)")
 
