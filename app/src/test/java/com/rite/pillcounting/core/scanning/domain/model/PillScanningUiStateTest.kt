@@ -146,7 +146,7 @@ class PillScanningUiStateTest {
     @Test
     fun componentN_returnValues() {
         val s = full()
-        assertEquals("FIXED", s.component1())          // scanType
+        assertEquals("FIXED", s.component1())           // scanType
         assertEquals("Crocin", s.component2())          // drugName
         assertEquals("", s.component3())                // ndc
         assertEquals("", s.component4())                // strength
@@ -155,11 +155,11 @@ class PillScanningUiStateTest {
         assertEquals("", s.component7())                // drugImage
         assertEquals(100, s.component8())               // totalCount
         assertEquals(120, s.component9())               // targetCount
-        assertEquals(20, s.component10())                // currentScanCount
-        assertEquals(s.txnDetailHistory, s.component11())
+        assertEquals(20, s.component10())               // currentScanCount
+        assertEquals(s.txnDetailHistory, s.component11()) // txnDetailHistory
         assertEquals(listOf(pill), s.component12())     // detectedPills
         assertEquals(listOf(pill), s.component13())     // filteredPills
-        assertEquals(s.gloveDetections, s.component14())
+        assertEquals(s.gloveDetections, s.component14()) // gloveDetections
         assertTrue(s.component15())                     // isPaused
         assertTrue(s.component16())                     // isLoading
         assertTrue(s.component17())                     // restrictAdd

@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.utils.preference
 
-import android.annotation.SuppressLint
 import android.content.Context
 import com.google.gson.Gson
 import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
@@ -225,12 +224,11 @@ class PreferenceHelper @Inject constructor(
     // ─────────────────────────── RECENT LOGINS ───────────────────────────
     // Stored as JSON string — SecurePreferences does not support StringSet
 
-    @SuppressLint("NewApi")
     fun addRecentLogin(email: String) {
         val current = getRecentLogins().toMutableList()
         current.remove(email)
         current.add(0, email)
-        while (current.size > 5) current.removeLast()
+        while (current.size > 5) current.removeAt(current.size - 1)
         prefs.putString(KEY_RECENT_LOGINS, gson.toJson(current))
         logger.i("Added recent login (total=${current.size})")
     }

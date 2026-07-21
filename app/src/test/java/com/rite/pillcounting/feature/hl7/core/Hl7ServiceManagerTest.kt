@@ -4,17 +4,20 @@ import android.util.Log
 import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.hl7.service.HL7Service
 import com.rite.pillcounting.core.hl7.service.Hl7serviceHandler
+import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import org.rite.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.model.HL7Message
 
 class Hl7ServiceManagerTest {
 
@@ -118,7 +121,7 @@ class Hl7ServiceManagerTest {
 
     @Test
     fun `sendMessage fails when service not started`() {
-        val message = mockk<CompleteHL7Message>()
+        val message = mockk<HL7Message>()
         every { serviceHandler.isServiceStarted() } returns false
 
         val result = manager.sendMessage(message)
@@ -129,7 +132,7 @@ class Hl7ServiceManagerTest {
 
     @Test
     fun `sendMessage fails when service not bound`() {
-        val message = mockk<CompleteHL7Message>()
+        val message = mockk<HL7Message>()
         every { serviceHandler.isServiceStarted() } returns true
         every { serviceHandler.isBound() } returns false
 
@@ -141,7 +144,7 @@ class Hl7ServiceManagerTest {
 
     @Test
     fun `sendMessage fails when getService returns null`() {
-        val message = mockk<CompleteHL7Message>()
+        val message = mockk<HL7Message>()
         every { serviceHandler.isServiceStarted() } returns true
         every { serviceHandler.isBound() } returns true
         every { serviceHandler.getService() } returns null
@@ -154,7 +157,7 @@ class Hl7ServiceManagerTest {
 
     @Test
     fun `sendMessage succeeds and forwards to service`() {
-        val message = mockk<CompleteHL7Message>()
+        val message = mockk<HL7Message>()
         val service = mockk<HL7Service>(relaxed = true)
         every { serviceHandler.isServiceStarted() } returns true
         every { serviceHandler.isBound() } returns true
@@ -168,7 +171,7 @@ class Hl7ServiceManagerTest {
 
     @Test
     fun `sendMessage returns failure when service throws`() {
-        val message = mockk<CompleteHL7Message>()
+        val message = mockk<HL7Message>()
         val service = mockk<HL7Service>()
         val error = RuntimeException("send boom")
         every { serviceHandler.isServiceStarted() } returns true
@@ -185,7 +188,7 @@ class Hl7ServiceManagerTest {
     // ──────────────────────────── sendRawMessage ────────────────────────────
 
     @Test
-    fun `sendRawMessage fails when service not started`() {
+    fun `sendRawMessage fails when service not started`() = runBlocking {
         every { serviceHandler.isServiceStarted() } returns false
 
         val result = manager.sendRawMessage("RAW")
@@ -195,7 +198,7 @@ class Hl7ServiceManagerTest {
     }
 
     @Test
-    fun `sendRawMessage fails when service not bound`() {
+    fun `sendRawMessage fails when service not bound`() = runBlocking {
         every { serviceHandler.isServiceStarted() } returns true
         every { serviceHandler.isBound() } returns false
 
@@ -206,7 +209,7 @@ class Hl7ServiceManagerTest {
     }
 
     @Test
-    fun `sendRawMessage fails when getService returns null`() {
+    fun `sendRawMessage fails when getService returns null`() = runBlocking {
         every { serviceHandler.isServiceStarted() } returns true
         every { serviceHandler.isBound() } returns true
         every { serviceHandler.getService() } returns null
@@ -218,26 +221,27 @@ class Hl7ServiceManagerTest {
     }
 
     @Test
-    fun `sendRawMessage succeeds and forwards to service`() {
+    fun `sendRawMessage succeeds and forwards to service`() = runBlocking {
         val service = mockk<HL7Service>(relaxed = true)
         every { serviceHandler.isServiceStarted() } returns true
         every { serviceHandler.isBound() } returns true
         every { serviceHandler.getService() } returns service
+        coEvery { service.sendRawHl7Message("RAW") } returns "ACK"
 
         val result = manager.sendRawMessage("RAW")
 
         assertTrue(result.isSuccess)
-        verify(exactly = 1) { service.sendRawHl7Message("RAW") }
+        coVerify(exactly = 1) { service.sendRawHl7Message("RAW") }
     }
 
     @Test
-    fun `sendRawMessage returns failure when service throws`() {
+    fun `sendRawMessage returns failure when service throws`() = runBlocking {
         val service = mockk<HL7Service>()
         val error = RuntimeException("raw boom")
         every { serviceHandler.isServiceStarted() } returns true
         every { serviceHandler.isBound() } returns true
         every { serviceHandler.getService() } returns service
-        every { service.sendRawHl7Message("RAW") } throws error
+        coEvery { service.sendRawHl7Message("RAW") } throws error
 
         val result = manager.sendRawMessage("RAW")
 

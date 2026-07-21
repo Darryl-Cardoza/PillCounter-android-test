@@ -32,6 +32,8 @@ class AppLoggerTest {
         every { Log.i(any(), any(), any()) } returns 0
         every { Log.w(any(), any<String>(), any()) } returns 0
         every { Log.e(any(), any(), any()) } returns 0
+        every { Log.println(any(), any(), any()) } returns 0
+        every { Log.getStackTraceString(any()) } returns "stack trace"
 
         logger = AppLogger(tag)
     }
@@ -61,18 +63,21 @@ class AppLoggerTest {
     // -------------------------------------------------------------------------
     // i()
     // -------------------------------------------------------------------------
+    // i() routes through logLong (chunked Log.println), not Log.i directly, so
+    // that long HL7 payloads aren't silently truncated by Logcat's ~4KB line limit.
 
     @Test
-    fun `i without throwable delegates to Log i with null throwable`() {
+    fun `i without throwable delegates to Log println with just the message`() {
         logger.i("info message")
-        verify(exactly = 1) { Log.i(tag, "info message", null) }
+        verify(exactly = 1) { Log.println(Log.INFO, tag, "info message") }
     }
 
     @Test
-    fun `i with throwable delegates to Log i with that throwable`() {
+    fun `i with throwable delegates to Log println with message and stack trace`() {
         val throwable = IllegalStateException("state")
         logger.i("info message", throwable)
-        verify(exactly = 1) { Log.i(tag, "info message", throwable) }
+        verify(exactly = 1) { Log.getStackTraceString(throwable) }
+        verify(exactly = 1) { Log.println(Log.INFO, tag, "info message\nstack trace") }
     }
 
     // -------------------------------------------------------------------------
