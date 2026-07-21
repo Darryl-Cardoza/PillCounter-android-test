@@ -26,6 +26,9 @@ object OverlayUtils {
         patientId: String? = null,
         rx: String? = null,
         stepLabel: String? = null,
+        lotNumber: String? = null,
+        expirationDate: String? = null,
+        serialNumber: String? = null,
         timestamp: Long = System.currentTimeMillis()
     ): Bitmap {
         val result = bitmap.copy(Bitmap.Config.ARGB_8888, true)
@@ -124,6 +127,9 @@ object OverlayUtils {
             if (!rx.isNullOrBlank()) add("RX" to rx!!)
             if (!count.isNullOrBlank()) add("Count" to count!!)
             if (!patientId.isNullOrBlank()) add("Patient" to patientId!!)
+            if (!lotNumber.isNullOrBlank()) add("Lot" to lotNumber!!)
+            if (!expirationDate.isNullOrBlank()) add("Exp" to expirationDate!!)
+            if (!serialNumber.isNullOrBlank()) add("Serial" to serialNumber!!)
             val nameStr = buildString {
                 if (!userName.isNullOrBlank()) append(userName)
 //                if (!userId.isNullOrBlank()) append(" ($userId)")

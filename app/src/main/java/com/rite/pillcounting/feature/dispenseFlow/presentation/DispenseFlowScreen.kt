@@ -55,6 +55,7 @@ import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
 import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.core.scanning.presentation.compose.CameraPreviewSection
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
@@ -289,6 +290,11 @@ fun DispenseFlowScreen(
             pillStepType == StepState.VIAL &&
             capturedBitmap == null
 
+    // Actively counting pills: keep the barcode scanner live so a rescan of the same NDC
+    // (a second bottle) can be detected mid-count — see the bottle-rescan branch below.
+    val isCountingScanStep = dispenseState.stage == DispenseStage.COUNTING &&
+            (pillStepType == StepState.TARGET_VERIFICATION || pillStepType == StepState.TARGET_REVERIFICATION)
+
     // Once a hazardous drug is identified, keep the gloves icon visible for the
     // rest of this screen session — even if the user cancels the RX sheet and
     // the dispenseState.isHazardous flag momentarily resets. The icon only clears
@@ -379,6 +385,28 @@ fun DispenseFlowScreen(
                 pillVm.resetIdleOverlay()
                 pillVm.handleDismissDialog()
             },
+        )
+    }
+
+    if (pillState.showAddBottleDialog) {
+        CommonDialog(
+            message = stringResource(R.string.add_new_bottle_confirm_message),
+            title = stringResource(R.string.new_bottle_detected),
+            confirmText = stringResource(R.string.ok),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = { pillVm.onEvent(PillScanningEvent.ConfirmAddBottle) },
+            onCancel = { pillVm.onEvent(PillScanningEvent.CancelAddBottle) },
+        )
+    }
+
+    if (pillState.showReplaceBottleDialog) {
+        CommonDialog(
+            message = stringResource(R.string.replace_bottle_confirm_message),
+            title = stringResource(R.string.replace_bottle_detected),
+            confirmText = stringResource(R.string.ok),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = { pillVm.onEvent(PillScanningEvent.ConfirmReplaceBottle) },
+            onCancel = { pillVm.onEvent(PillScanningEvent.CancelReplaceBottle) },
         )
     }
 
@@ -529,6 +557,7 @@ fun DispenseFlowScreen(
     LaunchedEffect(
         dispenseState.stage,
         isVialCaptureStep,
+        isCountingScanStep,
         dispenseState.showRxDetails,
         dispenseState.showNdcDetails,
         dispenseState.showNdcNotFoundDialog,
@@ -539,11 +568,13 @@ fun DispenseFlowScreen(
         showHl7DisabledDialog,
     ) {
         // Pre-stages scan for the RX / NDC labels; the VIAL step scans the vial
-        // label to auto-capture when its RX matches the active transaction.
+        // label to auto-capture when its RX matches the active transaction; the
+        // counting steps scan for a same-NDC bottle rescan mid-count.
         val shouldRun = (dispenseState.stage == DispenseStage.QUEUE ||
                 dispenseState.stage == DispenseStage.PRE_RX ||
                 dispenseState.stage == DispenseStage.PRE_NDC ||
-                isVialCaptureStep) &&
+                isVialCaptureStep ||
+                isCountingScanStep) &&
                 !dispenseState.showRxDetails &&
                 !dispenseState.showNdcDetails &&
                 !dispenseState.showNdcNotFoundDialog &&
@@ -814,6 +845,19 @@ fun DispenseFlowScreen(
                                 // would be dead until the user dismissed something
                                 // that never appeared.
                                 if (!dispatched) barcodeAnalyzer.resume()
+                            }
+                        } else if (
+                            pillStepType == StepState.TARGET_VERIFICATION ||
+                            pillStepType == StepState.TARGET_REVERIFICATION
+                        ) {
+                            // Actively counting pills: keep the scanner live so a rescan of the
+                            // same NDC (a second bottle) can be detected mid-count. The analyzer
+                            // self-pauses on each hit; always resume immediately afterward since
+                            // this hook never itself surfaces a full-screen sheet that would
+                            // otherwise re-trigger on the same barcode.
+                            barcodeAnalyzer.analyze(imageProxy) { value, _ ->
+                                pillVm.onNdcRescannedDuringCount(value)
+                                barcodeAnalyzer.resume()
                             }
                         } else if (
                             pillStepType == StepState.VIAL && capturedBitmap == null
@@ -1425,7 +1469,7 @@ internal fun handleBarcode(
     stage: DispenseStage,
     countType: String,
     onRx: (String, String?) -> Unit,
-    onNdc: (String, String?) -> Unit,
+    onNdc: (String, String?, BottleInfo?) -> Unit,
     onRxInNdcStage: () -> Unit,
     onRxInStockCount: () -> Unit,
 ): Boolean {
@@ -1460,7 +1504,16 @@ internal fun handleBarcode(
             if (isInvalid) {
                 false
             } else {
-                onNdc(finalGtin14, imagePath)
+                // First-bottle info for this txn: a plain (non-GS1) barcode carries no
+                // lot/exp/serial, so the bottle entry is count-only in that case.
+                val firstBottle = BottleInfo(
+                    lotNumber = decoded?.lotNumber,
+                    expirationDate = decoded?.expirationDate?.format(
+                        java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
+                    ),
+                    serialNumber = decoded?.serialNumber,
+                )
+                onNdc(finalGtin14, imagePath, firstBottle)
                 true
             }
         }

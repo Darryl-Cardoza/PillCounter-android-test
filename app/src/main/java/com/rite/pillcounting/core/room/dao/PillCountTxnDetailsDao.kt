@@ -110,14 +110,28 @@ interface PillCountTxnDetailsDao {
      */
     @Query(
         """
-        SELECT COALESCE(SUM(pillCount), 0) 
-        FROM pill_count_txn_details 
+        SELECT COALESCE(SUM(pillCount), 0)
+        FROM pill_count_txn_details
         WHERE txnId = :txnId AND isDeleted = 0
         """
     )
     suspend fun getTotalPillCountForTxn(txnId: Long): Int
 
-
+    /**
+     * Live pill total for a specific bottle's detail rows, by id. A bottle's true count is
+     * always this — never a stored/snapshotted number — so deleting or redoing a count is
+     * automatically reflected. See [com.rite.pillcounting.core.scanning.domain.model.BottleInfo.txnDetailsIds].
+     *
+     * @return 0 if [txnDetailsIds] is empty or every matching row is deleted.
+     */
+    @Query(
+        """
+        SELECT COALESCE(SUM(pillCount), 0)
+        FROM pill_count_txn_details
+        WHERE txnDetailsId IN (:txnDetailsIds) AND isDeleted = 0
+        """
+    )
+    suspend fun getPillCountForDetailIds(txnDetailsIds: List<Long>): Int
 
     @Query(
         """

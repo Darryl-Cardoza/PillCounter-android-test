@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.hl7.service
 
-import com.rite.pillcounting.core.hl7.imageWebService.ImageWebServer
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -13,24 +12,22 @@ import android.os.IBinder
 import android.os.Looper
 import androidx.core.app.NotificationCompat
 import com.rite.pillcounting.core.hl7.core.Hl7EventListener
-import org.rite.hl7.builder.HL7MessageBuilder
-import org.rite.hl7.builder.toTypedHL7String
-import org.rite.hl7.parser.Hl7Parser
-import org.rite.hl7.parser.generateMessageIdempotencyKey
+import com.rite.pillcounting.core.hl7.imageWebService.ImageWebServer
 import com.rite.pillcounting.core.hl7.imageWebService.NetworkUtils
 import com.rite.pillcounting.core.hl7.mllp.client.MllpClient
 import com.rite.pillcounting.core.hl7.mllp.client.MllpConnectionManager
-import com.rite.pillcounting.core.hl7.mllp.nsd.NsdHelper
 import com.rite.pillcounting.core.hl7.mllp.nsd.NetworkIpMonitor
+import com.rite.pillcounting.core.hl7.mllp.nsd.NsdHelper
 import com.rite.pillcounting.core.hl7.mllp.server.MllpServer
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsSocketFactory
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import org.rite.hl7.AckDecision
-import org.rite.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.HL7
+import org.rite.hl7.model.HL7Message
 
 
 /**
@@ -40,11 +37,15 @@ import org.rite.hl7.domain.model.CompleteHL7Message
  * - Load HL7 configuration from Intent extras at startup
  * - Start and manage MLLP server and client connections
  * - Register and broadcast HL7 service via NSD
- * - Parse incoming HL7 messages and emit callbacks
+ * - Parse incoming HL7 messages using hl7Core [HL7] facade, build ACKs, emit callbacks
  * - Send automated responses (ACK / RDS)
  * - Maintain foreground notification to prevent background termination
  *
- * This service is designed to survive process death and OS restarts.
+ * Incoming messages are parsed permissively: the sender's own MSH-12 determines the
+ * version used to interpret each message, so any HL7 v2.x sender is accepted. The
+ * version from [PreferenceHelper.getHl7Version] is only a fallback for messages that
+ * omit MSH-12, and is what [HL7MessageBuilder][com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder]
+ * uses to decide trigger events (e.g. RDS^O13 vs RDS^O01) when building outbound messages.
  */
 class HL7Service : Service() {
     companion object {
@@ -68,8 +69,12 @@ class HL7Service : Service() {
 
     private lateinit var networkIpMonitor: NetworkIpMonitor
 
-    private lateinit var parser: Hl7Parser
-    private lateinit var builder: HL7MessageBuilder
+    /**
+     * hl7Core facade — wires together parser, validator, builder, and AckBuilder
+     * with all PillCounter Z-segments (ZSN, ZSV, ZAD) pre-registered.
+     * Rebuilt when [config] changes (i.e., after [updateConfig] is called).
+     */
+    private lateinit var hl7: HL7
 
     private var listener: Hl7EventListener? = null
 
@@ -199,10 +204,19 @@ class HL7Service : Service() {
 
     /* -------------------- INITIALIZATION -------------------- */
 
-
     private fun initializeCoreComponents() {
-        parser = Hl7Parser()
-        builder = HL7MessageBuilder()
+        // Build the hl7Core facade with the persisted HL7 version preference.
+        // PreferenceHelper is injected via Hilt in production; for the service
+        // we access it directly via the application context.
+        val hl7Version = try {
+            val pref = PreferenceHelper(applicationContext)
+            pref.getHl7Version()
+        } catch (_: Exception) {
+            PreferenceHelper.DEFAULT_HL7_VERSION
+        }
+
+        hl7 = HL7(version = hl7Version)
+
         nsdHelper = NsdHelper(this)
 
         tlsFactory = TlsSocketFactory(this)
@@ -235,7 +249,7 @@ class HL7Service : Service() {
 
         clientManager.startContinuousReconnect()
 
-        logger.d("Core components initialized")
+        logger.d("Core components initialized (HL7 version=$hl7Version)")
     }
 
 
@@ -265,6 +279,7 @@ class HL7Service : Service() {
     private fun startMllpServer() {
         server = MllpServer(
             port = config.serverPort,
+            bypassTls = PreferenceHelper(applicationContext).isBypassTlsEnabled(),
         ) { raw ->
             handleIncomingMessage(raw)
         }
@@ -355,7 +370,7 @@ class HL7Service : Service() {
 
                 if (host.isBlank()) return@launch
 
-                logger.d( "NSD resolved: serviceName=${info.serviceName} host=$host port=$port")
+                logger.d("NSD resolved: serviceName=${info.serviceName} host=$host port=$port")
 
                 // Prevent duplicate connect
                 if (lastConnectedHost == "$host:$port" && clientManager.isConnected()) {
@@ -375,54 +390,104 @@ class HL7Service : Service() {
             }
         }
     }
+
     /* -------------------- MESSAGE HANDLING -------------------- */
 
-    private fun handleIncomingMessage(raw: String): AckDecision {
+    /**
+     * Handles an incoming raw HL7 string from the MLLP server.
+     *
+     * Pipeline:
+     * 1. Parse raw text via hl7Core's [HL7] facade (parser + validator).
+     * 2. Notify the [listener] with the typed [HL7Message].
+     * 3. Build and return a wire-ready ACK string via [HL7.ack].
+     *    On parse failure, returns an AA ACK derived from the raw MSH fields.
+     */
+    private  fun handleIncomingMessage(raw: String): String {
         return try {
-                logger.i("HL7 message before parsing | msgId=${raw} ")
-            val message = parser.parse(raw)
-            val key = message.generateMessageIdempotencyKey()
+            logger.i("HL7 message received (${raw} chars)")
 
-            listener?.onMessageReceived(
-                parsed = message,
-                idempotencyKey = key
-            )
+            val parseResult = hl7.parse(raw)
+            val message = parseResult.messageOrNull
+            
+            if (message == null) {
+                val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
+                logger.e("HL7 parse failed, no partial message: $errors")
+                return buildFallbackAck(raw, "Parse Failed")
+            }
+            
+            if (!parseResult.isSuccess) {
+                val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
+                logger.w("HL7 parse had errors but partial message available: $errors")
+            }
 
-            AckDecision.Accept
+            val key = message.messageControlId.ifBlank { System.currentTimeMillis().toString() }
+            listener?.onMessageReceived(parsed = message, idempotencyKey = key)
+
+            // hl7Core builds and returns the validated ACK string
+            hl7.ack(message)
+
         } catch (e: Exception) {
             listener?.onError("HL7_PARSE", e)
             logger.e("HL7 processing failed", e)
-            AckDecision.Error(e.message ?: "HL7 error")
+            buildFallbackAck(raw, e.message ?: "Unknown Error")
+        }
+    }
+
+    /**
+     * Builds a minimal AA ACK from raw MSH fields when the full parse fails,
+     * so the sender doesn't time out waiting for an acknowledgement.
+     */
+    private fun buildFallbackAck(raw: String, errorMsg: String? = null): String {
+        return try {
+            val msh = raw.lineSequence().first { it.startsWith("MSH|") }
+            val f = msh.split("|")
+            val sendingApp  = f.getOrElse(2) { "" }
+            val sendingFac  = f.getOrElse(3) { "" }
+            val recvApp     = f.getOrElse(4) { "" }
+            val recvFac     = f.getOrElse(5) { "" }
+            val ts          = f.getOrElse(6) { "" }
+            val controlId   = f.getOrElse(9) { "" }
+            val procId      = f.getOrElse(10) { "P" }
+            val version     = f.getOrElse(11) { "2.5" }
+
+            val ackCode = if (errorMsg != null) "AR" else "AA"
+            val cleanError = errorMsg?.replace("|", " ")?.replace("\r", " ")?.replace("\n", " ") ?: ""
+            val textMessage = if (cleanError.isNotEmpty()) "|$cleanError" else ""
+
+            "MSH|^~\\&|$recvApp|$recvFac|$sendingApp|$sendingFac|$ts||ACK^R01|ACK$controlId|$procId|$version\rMSA|$ackCode|$controlId$textMessage"
+        } catch (_: Exception) {
+            val ackCode = if (errorMsg != null) "AR" else "AA"
+            val cleanError = errorMsg?.replace("|", " ")?.replace("\r", " ")?.replace("\n", " ") ?: ""
+            val textMessage = if (cleanError.isNotEmpty()) "|$cleanError" else ""
+            "MSH|^~\\&||||||||ACK^R01|FALLBACK||2.5\rMSA|$ackCode|$textMessage"
         }
     }
 
     /* -------------------- RESPONSE -------------------- */
 
-
-    fun sendHl7Message(original: CompleteHL7Message) {
+    /**
+     * Sends a typed [HL7Message] outbound to PMS.
+     * The message is encoded to wire format (pipe-encoded HL7) before sending.
+     */
+    fun sendHl7Message(original: HL7Message) {
         serviceScope.launch {
             try {
-                val messageStr = original.toTypedHL7String()
-                logger.i("sendHl7Message dispense=${messageStr} ")
+                val messageStr = original.encode()
+                logger.i("sendHl7Message | msgId=${original.messageControlId} | len=${messageStr.length}")
                 val ack = clientManager.send(messageStr)
-                listener?.onMessageSent(messageStr, original.messageId)
-                listener?.onAckReceived(ack, original.messageId)
+                listener?.onMessageSent(messageStr, original.messageControlId)
+                listener?.onAckReceived(ack, original.messageControlId)
             } catch (e: Exception) {
                 listener?.onError("MESSAGE_SEND", e)
             }
         }
     }
 
-    fun sendRawHl7Message(raw: String) {
-        serviceScope.launch {
-            try {
-                val ack = clientManager.send(raw)
-                listener?.onMessageSent(raw, "INR_RESPONSE")
-                listener?.onAckReceived(ack, "INR_RESPONSE")
-            } catch (e: Exception) {
-                listener?.onError("MESSAGE_SEND", e)
-            }
-        }
+    suspend fun sendRawHl7Message(raw: String): String {
+        val ack = clientManager.send(raw)
+        listener?.onMessageSent(raw, "INR_RESPONSE")
+        listener?.onAckReceived(ack, "INR_RESPONSE")
+        return ack
     }
 
     /* -------------------- NOTIFICATION -------------------- */

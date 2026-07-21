@@ -1,16 +1,16 @@
 package com.rite.pillcounting.feature.hl7.core
 
 import android.content.Context
-import com.google.gson.Gson
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.hl7.core.Hl7EventListener
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
+import com.rite.pillcounting.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import org.rite.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.model.HL7Message
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -21,7 +21,7 @@ import javax.inject.Singleton
  * the PillCounting business layer.
  *
  * Responsibilities:
- * - Receive callbacks from HL7 runtime
+ * - Receive callbacks from HL7 runtime (now using hl7Core HL7Message)
  * - Log lifecycle & protocol events
  * - Delegate business-relevant events directly to Hl7Repository
  */
@@ -31,7 +31,6 @@ class Hl7EventHandler @Inject constructor(
     private val hl7Repository: Hl7Repository,
     private val notifier: Hl7Notifier
 ) : Hl7EventListener {
-
 
     private val logger = AppLogger("HL7EventHandler")
     private val _connectionState = MutableStateFlow(false)
@@ -46,18 +45,18 @@ class Hl7EventHandler @Inject constructor(
      * Called when a new HL7 message is received from PMS.
      *
      * Business meaning:
-     * - Incoming dispense request
-     * - Incoming inventory count request
+     * - Incoming dispense request (RDE^O11)
+     * - Incoming inventory count request (INR^U04 / INR^U06)
      *
      * Action:
      * - Delegate to repository for parsing, mapping, and persistence
      */
     override fun onMessageReceived(
-        parsed: CompleteHL7Message,
+        parsed: HL7Message,
         idempotencyKey: String
     ) {
-        logger.i("HL7 message parsed received | msgId=${Gson().toJson(parsed)} | key=$idempotencyKey ")
-        logger.i("HL7 message received | msgId=${parsed.messageId} | key=$idempotencyKey ")
+        val msgId = parsed.messageControlId
+        logger.i("HL7 message received | msgId=$msgId | type=${parsed.messageType} | key=$idempotencyKey")
         hl7Repository.handleReceivedMessage(parsed)
     }
 
@@ -96,20 +95,6 @@ class Hl7EventHandler @Inject constructor(
         } else {
             logger.w("Non-success ACK | msgId=$messageId — leaving transaction unsynced for retry")
         }
-    }
-
-    /**
-     * Returns true when the raw HL7 ACK carries a success acknowledgment code in MSA-1.
-     * Accepts "AA" (Application Accept) and "CA" (Commit Accept, enhanced mode); "AE"/"AR"
-     * (error/reject) and a missing MSA segment are treated as non-success.
-     */
-    private fun isSuccessAck(ackRaw: String): Boolean {
-        val msaSegment = ackRaw
-            .split('\r', '\n')
-            .firstOrNull { it.startsWith("MSA|") }
-            ?: return false
-        val code = msaSegment.split('|').getOrNull(1)?.trim()?.uppercase()
-        return code == "AA" || code == "CA"
     }
 
 
@@ -236,7 +221,4 @@ class Hl7EventHandler @Inject constructor(
         logger.e("PMS certificate mismatch — blocking reconnects until admin clears the pin")
         _pmsCertMismatch.value = true
     }
-
-
-
 }

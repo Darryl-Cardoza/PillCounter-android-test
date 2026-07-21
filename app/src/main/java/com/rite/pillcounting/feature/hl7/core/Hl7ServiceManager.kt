@@ -4,7 +4,7 @@ package com.rite.pillcounting.feature.hl7.core
 import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.hl7.service.Hl7serviceHandler
 import com.rite.pillcounting.core.utils.logger.AppLogger
-import org.rite.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.model.HL7Message
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -79,7 +79,7 @@ class Hl7ServiceManager @Inject constructor(
     private fun stopService() {
         try {
             serviceManager.stopService()
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             logger.i("Failed to stop HL7 service")
         }
     }
@@ -96,9 +96,10 @@ class Hl7ServiceManager @Inject constructor(
 
 
     /**
-     * Send an HL7 message via bound service.
+     * Send a parsed HL7 message via the bound service.
+     * The [HL7Message] is encoded to wire format by the service layer.
      */
-    fun sendMessage(message: CompleteHL7Message): Result<Unit> {
+    fun sendMessage(message: HL7Message): Result<Unit> {
         return try {
             if (!serviceManager.isServiceStarted())
                 return Result.failure(IllegalStateException("HL7 service not started"))
@@ -122,7 +123,7 @@ class Hl7ServiceManager @Inject constructor(
      * Send a raw HL7 string via bound service.
      * Used for inventory responses that are pre-built as raw HL7 text.
      */
-    fun sendRawMessage(raw: String): Result<Unit> {
+    suspend fun sendRawMessage(raw: String): Result<String> {
         return try {
             if (!serviceManager.isServiceStarted())
                 return Result.failure(IllegalStateException("HL7 service not started"))
@@ -134,8 +135,8 @@ class Hl7ServiceManager @Inject constructor(
                 ?: return Result.failure(IllegalStateException("HL7 service unavailable"))
 
             logger.i("Sending raw HL7 message:\n$raw")
-            service.sendRawHl7Message(raw)
-            Result.success(Unit)
+            val ack = service.sendRawHl7Message(raw)
+            Result.success(ack)
 
         } catch (e: Exception) {
             logger.i("Failed sending raw HL7 message", e)

@@ -41,6 +41,17 @@ data class BatchEntity(
     val requestIdFromPMS: String? = null,
     val isSynced: Boolean = false,
 
+    /**
+     * Progress markers for a chunked HL7 inventory sync (see
+     * [com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository.buildAndSendInventoryResponse]).
+     * [lastAckedChunkIndex] is the highest chunk index that has received a
+     * successful ACK; [totalChunks] is fixed once the sync starts. On resume,
+     * sending continues at [lastAckedChunkIndex] + 1 instead of restarting from
+     * chunk 1, so an already-applied chunk is never resent.
+     */
+    val lastAckedChunkIndex: Int = 0,
+    val totalChunks: Int? = null,
+
     /** Number of distinct NDCs (drug groups) counted in this batch. */
     val totalNdcs: Int? = null,
 

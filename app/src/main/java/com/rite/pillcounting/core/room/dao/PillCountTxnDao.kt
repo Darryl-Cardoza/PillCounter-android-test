@@ -216,6 +216,20 @@ interface PillCountTxnDao {
     )
 
     /**
+     * Persists the JSON-encoded per-bottle info list for a transaction.
+     *
+     * @param txnId The transaction ID.
+     * @param bottleInfoListJson JSON-encoded `List<BottleInfo>` (see `BottleInfoJson.encode`).
+     * @param now Optional timestamp; defaults to [System.currentTimeMillis].
+     */
+    @Query("UPDATE pill_count_txn SET bottleInfoListJson = :bottleInfoListJson, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateBottleInfoList(
+        txnId: Long,
+        bottleInfoListJson: String,
+        now: Long = System.currentTimeMillis()
+    )
+
+    /**
      * Performs a soft delete by setting `isDeleted = 1`.
      * This preserves record history and maintains referential integrity.
      *
@@ -279,6 +293,26 @@ interface PillCountTxnDao {
         """
     )
     suspend fun getActiveByRxNo(rxNo: String): PillCountTxnEntity?
+
+    // ─────────────────────────── IMAGE SERVER LOOKUPS ───────────────────────────
+    // Backing lookups for ImageNanoServer's getby* endpoints — same underlying
+    // transaction/image data, just keyed differently per the caller (Vivid/Eyecon).
+
+    @Query("SELECT * FROM pill_count_txn WHERE hl7MessageControlId = :messageControlId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByMessageControlId(messageControlId: String): PillCountTxnEntity?
+
+    @Query("SELECT * FROM pill_count_txn WHERE hl7SequenceNumber = :sequenceNumber AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getBySequenceNumber(sequenceNumber: String): PillCountTxnEntity?
+
+    @Query("SELECT * FROM pill_count_txn WHERE transactionOrderId = :transactionOrderId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByTransactionOrderId(transactionOrderId: String): PillCountTxnEntity?
+
+    @Query("SELECT * FROM pill_count_txn WHERE rxNo = :rxNo AND refillNo = :fillNo AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByRxNoAndFillNo(rxNo: String, fillNo: String): PillCountTxnEntity?
+
+    /** Most recent transaction for [rxNo], regardless of fill number — used when no fill number is supplied. */
+    @Query("SELECT * FROM pill_count_txn WHERE rxNo = :rxNo AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getMostRecentByRxNo(rxNo: String): PillCountTxnEntity?
 
     /**
      * Applies an HL7 change-order (ORC|XO) edit to an existing transaction:

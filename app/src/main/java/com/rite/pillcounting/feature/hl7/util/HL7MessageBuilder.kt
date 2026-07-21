@@ -1,130 +1,341 @@
 package com.rite.pillcounting.feature.hl7.util
 
 
-import android.os.Build
-import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.models.toImageLabel
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
-import org.rite.hl7.builder.HL7MessageBuilder as Hl7Builder
-import org.rite.hl7.domain.model.CompleteHL7Message
-import org.rite.hl7.domain.model.CustomSegmentData
-import org.rite.hl7.domain.model.DispenseData
-import org.rite.hl7.domain.model.MessageHeaderData
-import org.rite.hl7.domain.model.NoteData
-import org.rite.hl7.domain.model.ObservationData
-import org.rite.hl7.domain.model.OrderData
-import org.rite.hl7.domain.model.PatientData
+import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import org.rite.hl7.HL7
+import org.rite.hl7.builder.ScanSource
+import org.rite.hl7.builder.ZadReasonCode
+import org.rite.hl7.builder.ZsnTransactionType
+import org.rite.hl7.builder.ZsvMatchStrength
+import org.rite.hl7.builder.ZsvValidationResult
+import org.rite.hl7.builder.ZuiTransactionStatus
+
+import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 /**
  * =========================================================
- * HL7MessageBuilder
+ * HL7MessageBuilder (Hl7Core edition)
  * =========================================================
  *
- * Responsibility:
- * - Build HL7 messages (RDS / INU)
+ * Kotlin port of iOS `HL7CompletionBuilder`, using the same `HL7Builder`
+ * DSL that Hl7Core exposes on both platforms (it's a KMP library — this
+ * is not a re-implementation, it's the same builder called natively).
  *
  * This class:
  * - Does NOT send messages
- * - Does NOT access database
+ * - Does NOT access the database
  * - Does NOT use coroutines
+ *
+ * HL7 version is sourced from [PreferenceHelper.getHl7Version] at call site;
+ * a static convenience default ("2.5") is used when no preference is available.
+ */
+
+/**
+ * HL7 sending application formats supported when composing outbound messages.
+ * Persisted via [PreferenceHelper.saveHl7Format]/[PreferenceHelper.getHl7Format].
+ */
+enum class Hl7Format(val sendingApplication: String) {
+    DISPENSESURE("DISPENSESURE"),
+    EYECON("EYECON"),
+    VIVID("VIVID");
+
+    companion object {
+        val DEFAULT = DISPENSESURE
+
+        fun fromSendingApplication(value: String?): Hl7Format =
+            entries.firstOrNull { it.sendingApplication == value } ?: DEFAULT
+    }
+}
+
+data class HL7Config(
+    val sendingApplication: String,
+    val sendingFacility: String,
+    val receivingApplication: String,
+    val receivingFacility: String,
+    val versionId: String
+) {
+    companion object {
+        /**
+         * Sourced from app settings: the terminal name identifies this
+         * station as the sending facility, and the configured PMS host name
+         * is used as the receiving facility since the PMS routes by t
+         * identity. Mirrors iOS `HL7Config.current`.
+         */
+        fun current(
+            selectedTerminalName: String,
+            pmsHostName: String,
+            hl7Version: String = PreferenceHelper.DEFAULT_HL7_VERSION,
+            hl7Format: Hl7Format = Hl7Format.DEFAULT
+        ) = HL7Config(
+            sendingApplication = hl7Format.sendingApplication,
+            sendingFacility = selectedTerminalName,
+            receivingApplication = "PMS",
+            receivingFacility = pmsHostName,
+            versionId = hl7Version
+        )
+    }
+}
+
+/**
+ * Builds wire-encoded HL7 strings for outbound messages.
+ *
+ * All builder methods are **object-level** (companion object) to keep the
+ * call site simple: `HL7MessageBuilder.buildDispenseMessage(...)`.
+ *
+ * The [HL7] facade is instantiated lazily per-call using the HL7 version
+ * embedded in [HL7Config] so that version-sensitive trigger events
+ * (e.g. RDS^O13 vs RDS^O01) resolve correctly.
  */
 object HL7MessageBuilder {
 
-    private const val IMAGE_PORT = 8443
+    // =========================================================
+    // DISPENSE (RDS O13)
+    // =========================================================
 
-    /* =========================================================
-     * DISPENSE (RDS O13)
-     * ========================================================= */
-
-    @Suppress("SimpleDateFormat")
     fun buildDispenseMessage(
         txn: PillCountTxnEntity,
         txnDetails: List<PillCountTxnDetailsEntity>,
         drugCode: String,
+        scannedDrugCode: String,
         drugName: String,
         pharmacistId: String?,
         pharmacistName: String?,
-        location: String?
-    ): CompleteHL7Message {
+        location: String? = null,
+        // Optional fields that may not yet exist on every PillCountTxnEntity build;
+        // passed explicitly until Room entities are confirmed to carry them.
+        lotNumber: String? = null,
+        expirationDate: String? = null,
+        serialNumber: String? = null,
+        isNdcVerified: Boolean = false,
+        config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
+    ): String {
+
+        val hl7 = HL7(version = config.versionId)
+        val builder = hl7.build()
 
         val now = now()
-        val totalCount = txnDetails.sumOf { it.pillCount ?: 0 }
+        val messageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
+            ?: System.currentTimeMillis().toString()
 
-        val imageObx = buildImageObx(
-            txn,
-            txnDetails,
-            observationId = "DISP_IMG",
-            label = "Dispense Image"
-        )
+        val txnDetails = txnDetails.filter { !it.isDeleted }
+        // Each bottle's true pill count is live-summed here from its own txnDetailsIds against
+        // the (already non-deleted-filtered) detail rows — there is no stored pill count on
+        // BottleInfo itself, so this keeps a bottle's reported count correct even if a detail
+        // row was deleted/redone after the bottle was scanned.
+        val pillCountByDetailsId = txnDetails.associate { it.txnDetailsId to (it.pillCount ?: 0) }
+        val bottles = BottleInfoJson.decode(txn.bottleInfoListJson)
+        val bottleCounts = bottles.map { bottle ->
+            bottle.txnDetailsIds.sumOf { id -> pillCountByDetailsId[id] ?: 0 }
+        }
 
-        return CompleteHL7Message(
-            messageId = System.currentTimeMillis().toString(),
-            messageType = "RDS",
-            triggerEvent = "O13",
-            timestamp = now,
-            sendingFacility = "PillCounter-${Build.MODEL}",
+        val totalCount = bottleCounts.sum().takeIf { bottles.isNotEmpty() }
+            ?: txnDetails.sumOf { it.pillCount ?: 0 }.takeIf { txnDetails.isNotEmpty() }
+            ?: txn.targetCount
+            ?: 0
+        val orderId = txn.rxNo ?: txn.txnId.toString()
 
-            header = buildHeader("RDS", "O13", now),
 
-            patient = PatientData(
-                patientId = txn.rxNo ?: txn.txnId.toString()
-            ),
+        val message = builder.rdsO13 {
+            msh { msh ->
+                msh.sendingApplication = config.sendingApplication
+                msh.sendingFacility = config.sendingFacility
+                msh.receivingApplication = config.receivingApplication
+                msh.receivingFacility = config.receivingFacility
+                msh.dateTimeOfMessage = now
+                msh.messageControlId = messageId
+                msh.processingId = "P"
+                msh.versionId = config.versionId
+            }
 
-            order = OrderData(
-                orderControl = "RE",
-                orderStatus = "CM",
-                placerOrderId = txn.rxNo ?: txn.txnId.toString()
-            ),
+            orc { orc ->
+                orc.orderControl = "RE"
+                orc.placerOrderNumber = orderId
+                orc.orderStatus = null
+                orc.orderingProviderId = pharmacistName?.takeIf { it.isNotBlank() }
+            }
 
-            dispenses = listOf(
-                DispenseData(
-                    dispenseSubId = "1",
-                    drugCode = drugCode,
-                    drugName = drugName,
-                    drugCodeSystem = "NDC",
-                    dateTimeDispensed = now,
-                    quantityDispensed = totalCount.toString(),
-                    unitCode = "TAB",
-                    unitText = "Tablets",
-                    prescriptionNumber = txn.rxNo ?: txn.txnId.toString(),
-                    pharmacistId = pharmacistId,
-                    pharmacistGivenName = pharmacistName,
-                    deliverToLocation = location,
-                    dispensingNotes = txn.note,
-                    // Lot/expiry are no longer captured on dispense transactions after the
-                    // stock-count normalization (they lived only on stock rows). Dispense
-                    // never populated them, so this preserves the previous (null) behavior.
-                    lotNumber = null,
-                    expirationDate = null
-                )
-            ),
+            pid { pid ->
+                pid.patientId = orderId
+            }
 
-            obxSegments = imageObx,
+            rxd { rxd ->
+                rxd.dispenseGiveCode = drugCode
+                rxd.dispenseGiveName = drugName
+                rxd.dispenseGiveCodeSystem = "NDC"
+                rxd.dateTimeDispensed = now
+                rxd.actualDispenseAmount = totalCount.toString()
+                rxd.actualDispenseUnits = "TAB"
+                rxd.prescriptionNumber = orderId
+                rxd.lotNumber = lotNumber
+                rxd.expirationDate = expirationDate
+                rxd.dispensingProviderId = pharmacistId
+                rxd.dispenseSubIdCounter = "1"
+            }
 
-            notes = buildCommonNotes(txn, totalCount)
-        )
+            buildCommonNotes(txnId = txn.txnId.toString(), note = txn.note, totalCount = totalCount)
+                .forEach { note ->
+                    nte { nte ->
+                        nte.setId = note.setId
+                        nte.sourceOfComment = note.sourceOfComment
+                        nte.comment = note.comment
+                        nte.commentType = note.commentType
+                    }
+                }
+
+            buildImageOBX(
+                barcodeImage = txn.barcodeImage,
+                details = txnDetails,
+                observationId = "DISP_IMG",
+                label = "Dispense Image"
+            ).forEach { obx ->
+                obx { b ->
+                    b.setId = obx.setId
+                    b.valueType = obx.valueType
+                    b.observationId = obx.observationId
+                    b.observationText = obx.observationText
+                    b.observationValue = obx.observationValue
+                    b.resultStatus = obx.resultStatus
+                    b.units = obx.units
+                }
+            }
+
+            buildZSN(
+                drugCode = drugCode,
+                bottles = bottles,
+                bottleCounts = bottleCounts,
+                lotNumber = lotNumber,
+                expirationDate = expirationDate,
+                serialNumber = serialNumber,
+                totalCount = totalCount,
+                now = now
+            ).forEach { zsn ->
+                zsn { z ->
+                    z.setId = zsn.setId
+                    z.nationalDrugCode = zsn.nationalDrugCode
+                    z.lotNumber = zsn.lotNumber
+                    z.expirationDate = zsn.expirationDate
+                    z.packageSerialNumber = zsn.packageSerialNumber
+                    z.quantityFromThisStockItem = zsn.quantityFromThisStockItem
+                    z.captureSource = zsn.captureSource
+                    z.captureTimestamp = zsn.captureTimestamp
+                    z.transactionType = zsn.transactionType
+                }
+            }
+
+            val isMatch = (drugCode == scannedDrugCode) && (txn.isNdcVerified == true) && !txn.isSubstitute
+            val zsv = buildZSV(
+                requestedNdc = drugCode,
+                scannedNdc = scannedDrugCode,
+                isMatch = isMatch,
+                now = now
+            )
+            zsv { z ->
+                z.setId = zsv.setId
+                // ZSVBuilder field order: setId|dispensedNdc|scannedNdc|validationResult|
+                //                         scanSource|validator|validationTimestamp|matchStrength
+                z.dispensedNdc = zsv.dispensedNdc
+                z.scannedNdc = zsv.scannedNdc
+                z.validationResult = zsv.validationResult
+                z.scanSource = zsv.scanSource
+                z.validator = zsv.validator
+                z.validationTimestamp = zsv.validationTimestamp
+                z.matchStrength = zsv.matchStrength
+            }
+
+            when (config.sendingApplication) {
+                Hl7Format.VIVID.sendingApplication -> zui { z ->
+                    z.ndc = drugCode
+                    z.vividUserName = pharmacistName
+                    z.transactionOrderId = orderId
+                    z.rxNumber = txn.hl7SequenceNumber?.takeIf { it.isNotBlank() } ?: orderId
+                    z.dispensedQuantity = totalCount.toString()
+                    z.transactionStatus = ZuiTransactionStatus.DONE
+                    z.drugLotNumber = lotNumber
+                    z.drugSerialNumber = serialNumber
+                    z.drugExpirationDate = expirationDate
+                }
+                Hl7Format.EYECON.sendingApplication -> zni { z ->
+                    z.ndc = drugCode
+                    z.drugName = drugName
+                    z.userName = pharmacistName
+                    z.fillerOrderNumber = orderId
+                    z.dispenseAmount = totalCount.toString()
+                    z.prescriptionNumber = orderId
+                    z.resultStatus = "F"
+                }
+            }
+        }
+
+        return message.encode()
     }
 
+    // =========================================================
+    // INVENTORY RESPONSE (INR U06, INV + ZAD)
+    // =========================================================
 
     fun buildInventoryMessage(
         batch: BatchEntity,
         txns: List<BatchTxnDto>,
-        requestId: String = batch.requestIdFromPMS
-            ?.takeIf { it.isNotBlank() }
-            ?: "REQ${batch.batchId}",
-        orderId: String = batch.bucketId.orEmpty()
+        approvedBy: String? = null,
+        config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
     ): String {
+        return buildInventoryMessageChunks(batch, txns, approvedBy, config).single().message
+    }
+
+    /** One chunk of a (possibly split) inventory sync — see [buildInventoryMessageChunks]. */
+    data class InventoryChunk(
+        val chunkIndex: Int,
+        val totalChunks: Int,
+        val itemTotal: Int,
+        val message: String
+    )
+
+    /**
+     * Splits a batch's grouped inventory rows into multiple complete, independently
+     * sendable INR^U06 messages so no single message exceeds [maxRowsPerChunk] INV
+     * segments — keeping each message safely under PMS's message-size ceiling
+     * regardless of how large the overall batch grows.
+     *
+     * Every chunk carries this batch's id in ORC-2, a stable inventoryGroupId (derived
+     * from [BatchEntity.bucketId]) in ORC-3 so PMS updates the same inventory record
+     * across repeated syncs instead of creating a new one each time, and the batch's
+     * grand total in ZAD-3. A BTS trailer right after MSH marks this message's position
+     * (BTS-1 = this chunk's 1-based index, BTS-2 = total chunk count, BTS-3 = this
+     * chunk's own item total — all numeric) so PMS can detect a missing/out-of-order
+     * chunk. Chunks must be sent in order, each one only after the previous chunk's
+     * ACK — see Hl7Repository.
+     */
+    fun buildInventoryMessageChunks(
+        batch: BatchEntity,
+        txns: List<BatchTxnDto>,
+        approvedBy: String? = null,
+        config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
+        maxRowsPerChunk: Int = 200
+    ): List<InventoryChunk> {
+
+        val now = now()
+        val orderId = batch.bucketId.orEmpty()
+
+        // Stable across every inventory sync for this bucket/location — independent of
+        // batch.batchId, which changes every time a new local BatchEntity is created (e.g. a
+        // retry after app restart, or a fresh count of the same bucket). PMS keys its inventory
+        // record off this value (ORC-3) so repeated syncs of the same bucket UPDATE the existing
+        // record instead of inserting a duplicate; ORC-2 still carries this specific batch's id
+        // for traceability/debugging.
+        val inventoryGroupId = "INV-${batch.bucketId.orEmpty().ifEmpty { "DEFAULT" }}"
 
         data class Key(val ndc: String, val name: String, val lot: String, val expiry: String)
         data class Qty(var opened: Int = 0, var sealed: Int = 0)
-
-        val now = System.currentTimeMillis()
-        val messageId = "RES${now / 1000}"
 
         val grouped = linkedMapOf<Key, Qty>()
         txns.forEach { txn ->
@@ -135,153 +346,294 @@ object HL7MessageBuilder {
                 expiry = txn.expiry.orEmpty()
             )
             val packageQty = txn.packageQty ?: 0
-            val existing = grouped.getOrPut(key) { Qty() }
-            existing.opened += txn.looseQty ?: 0
-            existing.sealed += (txn.bottleQty ?: 0) * packageQty
+            val e = grouped.getOrPut(key) { Qty() }
+            e.opened += txn.looseQty ?: 0
+            e.sealed += (txn.bottleQty ?: 0) * packageQty
         }
 
-        val segments = mutableListOf<CustomSegmentData>()
+        val rows = grouped.entries.toList()
+        val grandTotal = rows.sumOf { it.value.opened + it.value.sealed }
+        val chunkedRows = if (rows.isEmpty()) listOf(rows) else rows.chunked(maxRowsPerChunk)
+        val totalChunks = chunkedRows.size
 
-        segments.add(CustomSegmentData(
-            segmentType = "MSA",
-            allFields = mapOf(1 to "AA", 2 to requestId)
-        ))
-        segments.add(CustomSegmentData(
-            segmentType = "ORC",
-            allFields = mapOf(1 to "RE", 2 to orderId)
-        ))
+        return chunkedRows.mapIndexed { chunkIdx, chunkRows ->
+            val chunkIndex = chunkIdx + 1
+            val chunkTotal = chunkRows.sumOf { it.value.opened + it.value.sealed }
+            val messageId = "RES${System.currentTimeMillis() / 1000}-$chunkIndex"
 
-        grouped.entries.forEachIndexed { idx, (key, value) ->
-            val setId = (idx + 1).toString()
-            val total = (value.opened + value.sealed).toString()
+            val hl7 = HL7(version = config.versionId)
+            val builder = hl7.build()
 
-            segments.add(CustomSegmentData(
-                segmentType = "INV",
-                allFields = mapOf(
-                    1 to setId,
-                    2 to "${key.ndc}^${key.name}",
-                    3 to "", 4 to "", 5 to "", 6 to "",
-                    7 to "", 8 to "", 9 to "", 10 to "",
-                    11 to total,
-                    12 to "", 13 to "", 14 to "", 15 to ""
-                )
-            ))
-
-            if (value.opened == 0 && value.sealed == 0) {
-                segments.add(CustomSegmentData(segmentType = "ZIN", field1 = setId, field2 = "NA", field3 = "0", field4 = "", field5 = ""))
-            } else {
-                if (value.opened > 0) {
-                    segments.add(CustomSegmentData(segmentType = "ZIN", field1 = setId, field2 = "OPENED", field3 = value.opened.toString(), field4 = key.lot, field5 = key.expiry))
+            val message = builder.inuU05 {
+                msh { msh ->
+                    msh.sendingApplication = config.sendingApplication
+                    msh.sendingFacility = config.sendingFacility
+                    msh.receivingApplication = config.receivingApplication
+                    msh.receivingFacility = ""
+                    msh.dateTimeOfMessage = now
+                    msh.messageControlId = messageId
+                    msh.processingId = "P"
+                    msh.versionId = config.versionId
                 }
-                if (value.sealed > 0) {
-                    segments.add(CustomSegmentData(segmentType = "ZIN", field1 = setId, field2 = "SEALED", field3 = value.sealed.toString(), field4 = key.lot, field5 = key.expiry))
+
+                // BTS is placed right after MSH (chunk-position trailer, describing the
+                // whole message that follows) — BTS-1/BTS-2 are numeric per spec:
+                // BTS-1 = this chunk's 1-based index, BTS-2 = total chunk count.
+                // batchComment carries the shared inventoryGroupId (not free text) so PMS can
+                // correlate all chunks/sessions of the same inventory sync.
+                bts { bts ->
+                    bts.batchMessageCount = chunkIndex.toString()
+                    bts.batchComment = totalChunks.toString()
+                    bts.batchTotals = chunkTotal.toString()
+                }
+
+                equ { equ ->
+                    equ.equipmentId = config.sendingApplication
+                    equ.eventDateTime = now
+                }
+
+                orc { orc ->
+                    orc.orderControl = "RE"
+                    orc.placerOrderNumber = orderId
+                    orc.fillerOrderNumber = inventoryGroupId
+                }
+
+                buildCommonNotes(
+                    txnId = batch.batchId.toString(),
+                    note = batch.note,
+                    totalCount = grandTotal,
+                    isBatch = true
+                ).forEach { note ->
+                    nte { nte ->
+                        nte.setId = note.setId
+                        nte.sourceOfComment = note.sourceOfComment
+                        nte.comment = note.comment
+                        nte.commentType = note.commentType
+                    }
+                }
+
+                chunkRows.forEachIndexed { idx, (key, value) ->
+                    val setId = (idx + 1).toString()
+                    val total = value.opened + value.sealed
+
+                    inv { inv ->
+                        inv.substanceCode = key.ndc
+                        inv.substanceCodeSystem = "NDC"
+                        inv.substanceName = key.name.ifEmpty { null }
+                        inv.inventoryOnHandQuantity = total.toString()
+                        inv.lotNumber = key.lot.ifEmpty { null }
+                        inv.expirationDate = key.expiry.ifEmpty { null }
+                    }
+
+                    // ZIN breaks the INV total down by open/sealed so PMS keeps that
+                    // distinction instead of only seeing the combined on-hand count.
+                    zin { zin ->
+                        zin.setId = "$setId.1"
+                        zin.dispenseType = "OPENED"
+                        zin.quantity = value.opened.toString()
+                        zin.lotNumber = key.lot.ifEmpty { null }
+                        zin.expiry = key.expiry.ifEmpty { null }
+                    }
+                    zin { zin ->
+                        zin.setId = "$setId.2"
+                        zin.dispenseType = "SEALED"
+                        zin.quantity = value.sealed.toString()
+                        zin.lotNumber = key.lot.ifEmpty { null }
+                        zin.expiry = key.expiry.ifEmpty { null }
+                    }
+                }
+
+                // ZAD-3 carries the whole batch's grand total on every chunk so PMS
+                // can cross-check completeness once all chunks are in.
+                zad { zad ->
+                    zad.setId = "1"
+                    zad.adjustmentType = "CYCLE_COUNT"
+                    zad.adjustmentQuantity = grandTotal.toString()
+                    zad.adjustmentReason = ZadReasonCode.CYCLE_COUNT
+                    zad.adjustmentDateTime = now
+                    zad.approvedBy = approvedBy ?: "Unknown"
                 }
             }
+
+            InventoryChunk(
+                chunkIndex = chunkIndex,
+                totalChunks = totalChunks,
+                itemTotal = chunkTotal,
+                message = message.encode()
+            )
         }
-
-        val message = CompleteHL7Message(
-            messageId = messageId,
-            messageType = "INR",
-            triggerEvent = "U05",
-            timestamp = now.toString(),
-            sendingFacility = "STORE",
-            header = MessageHeaderData(
-                fieldSeparator = "|",
-                encodingCharacters = "^~\\&",
-                sendingApplication = "PILLCOUNTER",
-                sendingFacility = "STORE",
-                receivingApplication = "PMS",
-                receivingFacility = "PHARMACY",
-                messageType = "INR",
-                triggerEvent = "U05",
-                messageControlId = messageId,
-                processingId = "P",
-                versionId = "2.5",
-                messageDateTime = now.toString()
-            ),
-            customSegments = segments
-        )
-
-        return Hl7Builder().build(message)
     }
 
-    private fun buildImageObx(
-        txn: PillCountTxnEntity,
+    // =========================================================
+    // Private helpers
+    // =========================================================
+
+    private data class ObxRow(
+        val setId: String,
+        val valueType: String,
+        val observationId: String,
+        val observationText: String?,
+        val observationValue: String,
+        val resultStatus: String,
+        val units: String?
+    )
+
+    private fun buildImageOBX(
+        barcodeImage: String?,
         details: List<PillCountTxnDetailsEntity>,
         observationId: String,
         label: String
-    ): List<ObservationData> {
+    ): List<ObxRow> {
 
-        val detailObxList = details.mapIndexed { index, detail ->
-
+        val detailRows = details.mapIndexed { index, detail ->
             val count = detail.pillCount ?: 0
-            val type = detail.type ?: "UNKNOWN"
-            val fileName = detail.imagePath?.substringAfterLast("/") ?: ""
+            val type = detail.type.toImageLabel()
+            val fileName = detail.imagePath?.let { File(it).name } ?: ""
 
-            ObservationData(
+            ObxRow(
                 setId = (index + 1).toString(),
                 valueType = "ST",
                 observationId = observationId,
                 observationText = "$label ${index + 1}",
                 observationValue = "count=$count|type=$type|image=$fileName",
-                resultStatus = "F"
+                resultStatus = "F",
+                units = null
             )
         }
 
-        val barcodeImagePath = txn.barcodeImage
-        val barcodeFileName = barcodeImagePath?.substringAfterLast("/") ?: ""
-        val barcodeType = StepState.SCAN
+        val barcodeFileName = barcodeImage?.let { File(it).name }.orEmpty()
 
-        val barcodeObx = if (barcodeFileName.isNotEmpty()) {
-            ObservationData(
-                setId = (detailObxList.size + 1).toString(),
+        val barcodeRow = if (barcodeFileName.isNotEmpty()) {
+            ObxRow(
+                setId = (detailRows.size + 1).toString(),
                 valueType = "ST",
                 observationId = observationId,
                 observationText = "Barcode Image",
-                observationValue = "count=0|type=$barcodeType|image=$barcodeFileName",
-                resultStatus = "F"
+                observationValue = "count=0|type=${"SCAN".toImageLabel()}|image=$barcodeFileName",
+                resultStatus = "F",
+                units = null
             )
-        } else {
-            null
-        }
+        } else null
 
-        return if (barcodeObx != null) {
-            detailObxList + barcodeObx
-        } else {
-            detailObxList
+        return if (barcodeRow != null) detailRows + barcodeRow else detailRows
+    }
+
+    private data class ZsnRow(
+        val setId: String,
+        val nationalDrugCode: String?,
+        val lotNumber: String?,
+        val expirationDate: String?,
+        val packageSerialNumber: String?,
+        val quantityFromThisStockItem: String,
+        val captureSource: String,
+        val captureTimestamp: String,
+        val transactionType: String
+    )
+
+    /**
+     * Builds one ZSN row per bottle recorded on the transaction ([BottleInfo] decoded from
+     * [PillCountTxnEntity.bottleInfoListJson]). Falls back to a single row built from the
+     * caller-supplied [lotNumber]/[expirationDate]/[serialNumber]/[totalCount] when the
+     * transaction has no bottle entries (legacy txns predating bottle tracking, or a txn
+     * whose pills were all counted before any bottle was ever scanned).
+     */
+    private fun buildZSN(
+        drugCode: String,
+        bottles: List<BottleInfo>,
+        bottleCounts: List<Int>,
+        lotNumber: String?,
+        expirationDate: String?,
+        serialNumber: String?,
+        totalCount: Int,
+        now: String
+    ): List<ZsnRow> {
+        if (bottles.isEmpty()) {
+            return listOf(
+                ZsnRow(
+                    setId = "1",
+                    nationalDrugCode = drugCode,
+                    lotNumber = lotNumber,
+                    expirationDate = expirationDate,
+                    packageSerialNumber = serialNumber,
+                    quantityFromThisStockItem = totalCount.toString(),
+                    captureSource = ScanSource.GS1,
+                    captureTimestamp = now,
+                    transactionType = ZsnTransactionType.DISPENSE
+                )
+            )
+        }
+        return bottles.mapIndexed { index, bottle ->
+            ZsnRow(
+                setId = (index + 1).toString(),
+                nationalDrugCode = drugCode,
+                lotNumber = bottle.lotNumber,
+                expirationDate = bottle.expirationDate,
+                packageSerialNumber = bottle.serialNumber,
+                quantityFromThisStockItem = bottleCounts[index].toString(),
+                captureSource = ScanSource.GS1,
+                captureTimestamp = now,
+                transactionType = ZsnTransactionType.DISPENSE
+            )
         }
     }
 
-    private fun buildHeader(type: String, trigger: String, time: String) =
-        MessageHeaderData(
-            fieldSeparator = "|",
-            encodingCharacters = "^~\\&",
-            sendingApplication = "PillCounter",
-            sendingFacility = "ROBOT",
-            receivingApplication = "PMS",
-            receivingFacility = "PHARMACY",
-            messageType = type,
-            triggerEvent = trigger,
-            messageControlId = System.currentTimeMillis().toString(),
-            processingId = "P",
-            versionId = "2.5",
-            messageDateTime = time
-        )
+    private data class ZsvRow(
+        val setId: String,
+        val scannedNdc: String?,
+        val dispensedNdc: String?,
+        val matchStrength: String?,
+        val validationResult: String,
+        val validator: String,
+        val validationTimestamp: String,
+        val scanSource: String
+    )
+
+    private fun buildZSV(
+        requestedNdc: String,
+        scannedNdc: String,
+        isMatch: Boolean,
+        now: String
+    ): ZsvRow = ZsvRow(
+        setId = "1",
+        scannedNdc = scannedNdc,
+        dispensedNdc = requestedNdc,
+        matchStrength = if (isMatch) ZsvMatchStrength.EXACT else "MISMATCH",
+        validationResult = if (isMatch) ZsvValidationResult.MATCH else ZsvValidationResult.SUBSTITUTION,
+        validator = "PillCounter",
+        validationTimestamp = now,
+        scanSource = ScanSource.UNKNOWN
+    )
+
+    private data class NoteRow(
+        val setId: String,
+        val sourceOfComment: String,
+        val comment: String,
+        val commentType: String
+    )
 
     private fun buildCommonNotes(
-        txn: PillCountTxnEntity,
-        totalCount: Int
-    ) = listOf(
-        NoteData("1", "L", "Transaction completed"),
-        NoteData("2", "L", "Total Count: $totalCount"),
-        NoteData("3", "L", "Transaction Id: ${txn.txnId}"),
-        NoteData("4", "L", "Note: ${txn.note}")
-    )
+        txnId: String,
+        note: String?,
+        totalCount: Int,
+        isBatch: Boolean = false
+    ): List<NoteRow> {
+        val label = if (isBatch) "Batch Id" else "Transaction Id"
+        var comment = "$label: $txnId | Status: Completed | Total Count: $totalCount"
+
+        note?.trim()?.takeIf { it.isNotEmpty() }?.let {
+            comment += " | Note: $it"
+        }
+
+        return listOf(
+            NoteRow(
+                setId = "1",
+                sourceOfComment = "L",
+                comment = comment,
+                commentType = "INFO"
+            )
+        )
+    }
 
     private fun now(): String =
         SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date())
-
-    private fun buildRoomImageUrl(deviceIp: String, fileName: String, port: String): String {
-        return "https://$deviceIp:$port/images/$fileName"
-    }
 }

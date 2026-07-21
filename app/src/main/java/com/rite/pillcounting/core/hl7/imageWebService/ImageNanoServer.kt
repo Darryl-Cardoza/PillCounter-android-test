@@ -3,32 +3,83 @@ package com.rite.pillcounting.core.hl7.imageWebService
 import android.content.Context
 import android.util.Base64
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsImageKeystoreUtil
+import com.rite.pillcounting.core.models.toImageLabel
+import com.rite.pillcounting.core.room.dao.PillCountTxnDao
+import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
+import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
+import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.security.ImageCrypto
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import dagger.hilt.EntryPoint
+import dagger.hilt.EntryPoints
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 import fi.iki.elonen.NanoHTTPD
+import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
+import java.io.ByteArrayOutputStream
+import java.io.File
+import java.net.URLDecoder
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import javax.net.ssl.SSLServerSocketFactory
 
 class ImageNanoServer(
     private val context: Context,
     port: Int,
-    sslFactory: SSLServerSocketFactory
+    sslFactory: SSLServerSocketFactory?
 ) : NanoHTTPD(port) {
+
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface ImageServerDaoEntryPoint {
+        fun pillCountTxnDao(): PillCountTxnDao
+        fun pillCountTxnDetailsDao(): PillCountTxnDetailsDao
+    }
 
     private val logger = AppLogger("ImageNanoServer")
 
+    private val txnDao: PillCountTxnDao
+    private val txnDetailsDao: PillCountTxnDetailsDao
+
     init {
-        // Attach the SSL factory — this makes NanoHTTPD use HTTPS
-        makeSecure(sslFactory, null)
+        // Attach the SSL factory — this makes NanoHTTPD use HTTPS.
+        // When null (TLS bypassed), NanoHTTPD serves plain HTTP.
+        if (sslFactory != null) makeSecure(sslFactory, null)
         setTempFileManagerFactory { PrivateTempFileManager(context) }
+
+        val entryPoint = EntryPoints.get(
+            context.applicationContext,
+            ImageServerDaoEntryPoint::class.java
+        )
+        txnDao = entryPoint.pillCountTxnDao()
+        txnDetailsDao = entryPoint.pillCountTxnDetailsDao()
     }
 
     override fun serve(session: IHTTPSession): Response {
         logger.d("Request: ${session.method} ${session.uri}")
 
+        val segments = session.uri.trim('/').split("/")
+
         return when {
             session.uri == "/health"      -> handleHealth()
             session.uri == "/fingerprint" -> handleFingerprint()
+
+            segments.size == 3 && segments[0] == "images" && segments[1] == "getbymessagecontrolid" ->
+                handleTxnLookup { txnDao.getByMessageControlId(decode(segments[2])) }
+
+            segments.size == 3 && segments[0] == "images" && segments[1] == "getbysequencenumber" ->
+                handleTxnLookup { txnDao.getBySequenceNumber(decode(segments[2])) }
+
+            segments.size == 3 && segments[0] == "images" && segments[1] == "getbytransactionorderid" ->
+                handleTxnLookup { txnDao.getByTransactionOrderId(decode(segments[2])) }
+
+            segments.size == 4 && segments[0] == "images" && segments[1] == "getbyrxnumber" ->
+                handleTxnLookup { txnDao.getByRxNoAndFillNo(decode(segments[2]), decode(segments[3])) }
+
+            segments.size == 3 && segments[0] == "images" && segments[1] == "getbyrxnumber" ->
+                handleTxnLookup { txnDao.getMostRecentByRxNo(decode(segments[2])) }
+
             session.uri.startsWith("/images/") -> handleImage(
                 session.uri.removePrefix("/images/")
             )
@@ -38,6 +89,9 @@ class ImageNanoServer(
             )
         }
     }
+
+    private fun decode(segment: String): String =
+        URLDecoder.decode(segment, "UTF-8")
 
     // ----------------------------------------------------------------
     // Handlers
@@ -102,6 +156,104 @@ class ImageNanoServer(
                 message = "Failed to read image"
             )
         }
+    }
+
+    // ----------------------------------------------------------------
+    // Transaction image-zip lookups (getby* endpoints)
+    // ----------------------------------------------------------------
+
+    private fun handleTxnLookup(lookup: suspend () -> PillCountTxnEntity?): Response {
+        return try {
+            val txn = runBlocking { lookup() }
+                ?: return errorResponse(Response.Status.NOT_FOUND, "Transaction not found")
+
+            val entries = runBlocking { collectImageEntries(txn) }
+            if (entries.isEmpty()) {
+                return errorResponse(Response.Status.NOT_FOUND, "No images found for transaction")
+            }
+
+            zipResponse(entries)
+        } catch (e: Exception) {
+            logger.e("Transaction image lookup failed", e)
+            errorResponse(Response.Status.INTERNAL_ERROR, "Failed to build image archive")
+        }
+    }
+
+    /** One image, resolved to bytes, with the naming metadata needed for the zip entry. */
+    private data class ImageEntry(val type: String, val pillCount: Int, val file: File)
+
+    private suspend fun collectImageEntries(txn: PillCountTxnEntity): List<ImageEntry> {
+        val entries = mutableListOf<ImageEntry>()
+
+        txn.barcodeImage?.takeIf { it.isNotBlank() }?.let { path ->
+            resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it)) }
+        }
+
+        val details = txnDetailsDao.getAllForTxn(txn.txnId.toString())
+            .filter { !it.isDeleted }
+            .sortedBy { it.createdAt }
+
+        for (detail: PillCountTxnDetailsEntity in details) {
+            val path = detail.imagePath?.takeIf { it.isNotBlank() } ?: continue
+            val file = resolveFile(path) ?: continue
+            entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, file))
+        }
+
+        return entries
+    }
+
+    private fun zipResponse(entries: List<ImageEntry>): Response {
+        // Batch position/total is per label: e.g. two CONTAINER_PENDING images are 1B2/2B2,
+        // while a lone VIAL image is 1B1. Overall sequence is the position across all entries.
+        val labels = entries.map { it.type.toImageLabel() }
+        val batchTotalsByLabel = labels.groupingBy { it }.eachCount()
+        val batchCounters = mutableMapOf<String, Int>()
+
+        val baos = ByteArrayOutputStream()
+        ZipOutputStream(baos).use { zip ->
+            entries.forEachIndexed { index, entry ->
+                val seq = index + 1
+                val label = labels[index]
+                val batchNum = (batchCounters[label] ?: 0) + 1
+                batchCounters[label] = batchNum
+                val batchTotal = batchTotalsByLabel[label] ?: 1
+                val ext = entry.file.extension.ifBlank { "jpg" }
+                zip.putNextEntry(
+                    ZipEntry("${seq}_rx_${label}_${batchNum}B${batchTotal}_qty${entry.pillCount}.$ext")
+                )
+                zip.write(readImageBytes(entry.file))
+                zip.closeEntry()
+            }
+        }
+        val bytes = baos.toByteArray()
+        return newFixedLengthResponse(
+            Response.Status.OK,
+            "application/zip",
+            bytes.inputStream(),
+            bytes.size.toLong()
+        )
+    }
+
+    private fun readImageBytes(file: File): ByteArray {
+        val raw = file.readBytes()
+        return if (ImageCrypto.isEncrypted(raw)) ImageCrypto.decrypt(raw) else raw
+    }
+
+    /** Resolves a stored image path — direct hit first, else a name search across storage roots. */
+    private fun resolveFile(pathOrName: String): File? {
+        val direct = File(pathOrName)
+        if (direct.exists()) return direct
+
+        val searchRoots = listOfNotNull(
+            context.filesDir,
+            context.cacheDir,
+            context.getExternalFilesDir(null),
+            context.getExternalFilesDir("Pictures")
+        )
+        val targetName = direct.name
+        return searchRoots
+            .flatMap { it.walkTopDown().toList() }
+            .firstOrNull { it.name == targetName }
     }
 
     // ----------------------------------------------------------------

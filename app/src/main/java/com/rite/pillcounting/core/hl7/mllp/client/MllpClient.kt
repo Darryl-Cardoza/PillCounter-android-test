@@ -15,8 +15,8 @@ import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.net.Socket
 import java.net.SocketTimeoutException
-import javax.net.ssl.SSLSocket
 
 class MllpClient(
     private val socketFactory: TlsSocketFactory
@@ -28,9 +28,13 @@ class MllpClient(
         private const val EB: Byte = 0x1C
         private const val CR: Byte = 0x0D
         private const val READ_TIMEOUT_MS = 1_000  // non-zero so passiveReader releases streamGate on timeout
+        // Large inventory chunks (up to 200 INV/ZIN groups) can take PMS well over 1s to
+        // process and ACK. readResponse() must not treat the per-read soTimeout as a hard
+        // failure — it should keep polling until this deadline, or the real ACK arrives.
+        private const val ACK_WAIT_TIMEOUT_MS = 60_000L
     }
 
-    private var socket: SSLSocket? = null
+    private var socket: Socket? = null
     private var input: InputStream? = null
     private var output: OutputStream? = null
     private val mutex = Mutex()
@@ -151,8 +155,19 @@ class MllpClient(
     private fun readResponse(): String {
         val buffer = ByteArrayOutputStream()
         var started = false
+        val deadline = System.currentTimeMillis() + ACK_WAIT_TIMEOUT_MS
         while (true) {
-            val b = input!!.read()
+            val b = try {
+                input!!.read()
+            } catch (e: SocketTimeoutException) {
+                // soTimeout (1s) firing here only means "no bytes yet" — not a dead
+                // connection. Keep waiting for the ACK up to ACK_WAIT_TIMEOUT_MS instead
+                // of letting this propagate as a send failure that tears down the socket.
+                if (System.currentTimeMillis() >= deadline) {
+                    throw IOException("Timed out waiting for ACK after ${ACK_WAIT_TIMEOUT_MS}ms")
+                }
+                continue
+            }
             if (b == -1) throw IOException("Connection closed by server mid-read")
             when (b.toByte()) {
                 SB -> { started = true; buffer.reset() }

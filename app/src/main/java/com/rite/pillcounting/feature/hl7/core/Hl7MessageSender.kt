@@ -1,18 +1,28 @@
 package com.rite.pillcounting.feature.hl7.core
 
-import org.rite.hl7.domain.model.CompleteHL7Message
 import javax.inject.Inject
 import javax.inject.Singleton
 
+/**
+ * Thin facade over [Hl7ServiceManager] for sending outbound HL7 messages.
+ *
+ * [send] accepts a pre-built raw HL7 string (from [HL7MessageBuilder]) and
+ * delegates to [Hl7ServiceManager.sendRawMessage], keeping the repository layer
+ * decoupled from the service layer's typed [org.rite.hl7.model.HL7Message] model.
+ */
 @Singleton
 class Hl7MessageSender @Inject constructor(
     private val hl7ServiceManager: Hl7ServiceManager
 ) {
-    fun send(message: CompleteHL7Message) {
-        hl7ServiceManager.sendMessage(message)
+    /**
+     * Sends a pre-encoded HL7 wire string.
+     * The message is forwarded verbatim via the MLLP client.
+     */
+    suspend fun send(raw: String): Result<String> {
+        return hl7ServiceManager.sendRawMessage(raw)
     }
 
-    fun sendRaw(raw: String): Result<Unit> {
+    suspend fun sendRaw(raw: String): Result<String> {
         return hl7ServiceManager.sendRawMessage(raw)
     }
 

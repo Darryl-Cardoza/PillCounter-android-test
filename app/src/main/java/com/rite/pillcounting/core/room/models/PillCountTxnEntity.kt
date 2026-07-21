@@ -104,4 +104,19 @@ data class PillCountTxnEntity(
      * any tray was detected). True/false = set by tray classification logic.
      */
     val hazardousTrayDetected: Boolean? = null,
+
+    /**
+     * HL7 identifiers captured from the inbound order message, used as lookup keys
+     * by the on-device image server (see ImageNanoServer's getby* endpoints).
+     */
+    val hl7MessageControlId: String? = null,
+    val hl7SequenceNumber: String? = null,
+    val transactionOrderId: String? = null,
+
+    /**
+     * JSON-encoded `List<BottleInfo>` — one entry per physical bottle scanned
+     * against this transaction, with its own lot/exp/serial and pill count.
+     * See [com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson].
+     */
+    val bottleInfoListJson: String? = null,
 )

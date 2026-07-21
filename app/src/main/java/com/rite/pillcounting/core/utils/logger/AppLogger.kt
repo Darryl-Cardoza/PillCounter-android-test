@@ -32,7 +32,7 @@ class AppLogger(private val tag: String) {
      * @param throwable An optional throwable to log with the message.
      */
     fun i(message: String, throwable: Throwable? = null) {
-        if (BuildConfig.DEBUG) Log.i(tag, message, throwable)
+        if (BuildConfig.DEBUG) logLong(Log.INFO, message, throwable)
     }
 
     /**
@@ -55,6 +55,29 @@ class AppLogger(private val tag: String) {
      */
     fun e(message: String, throwable: Throwable? = null) {
         Log.e(tag, message, throwable)
+    }
+
+    /**
+     * Logcat truncates any single log line around 4KB, which silently chops long HL7
+     * messages (chunked inventory batches can run to tens of KB) so only their tail shows up.
+     * Split into ~3500-char slices so the full payload is visible across multiple log lines.
+     */
+    private fun logLong(priority: Int, message: String, throwable: Throwable? = null) {
+        val maxChunkSize = 3500
+        if (message.length <= maxChunkSize) {
+            Log.println(priority, tag, if (throwable != null) message + '\n' + Log.getStackTraceString(throwable) else message)
+            return
+        }
+        var start = 0
+        var part = 1
+        val totalParts = (message.length + maxChunkSize - 1) / maxChunkSize
+        while (start < message.length) {
+            val end = minOf(start + maxChunkSize, message.length)
+            Log.println(priority, tag, "[$part/$totalParts] ${message.substring(start, end)}")
+            start = end
+            part++
+        }
+        if (throwable != null) Log.println(priority, tag, Log.getStackTraceString(throwable))
     }
 
     companion object {

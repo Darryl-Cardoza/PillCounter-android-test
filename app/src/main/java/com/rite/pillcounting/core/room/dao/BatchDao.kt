@@ -303,6 +303,14 @@ interface BatchDao {
     @Query("UPDATE batch SET isSynced = 1 WHERE batchId = :batchId")
     suspend fun markBatchSynced(batchId: Long)
 
+    /** Records the total chunk count once a chunked inventory sync starts (idempotent across resumes). */
+    @Query("UPDATE batch SET totalChunks = :totalChunks WHERE batchId = :batchId")
+    suspend fun setTotalChunks(batchId: Long, totalChunks: Int)
+
+    /** Advances progress after a chunk's ACK succeeds — persisted immediately so a resume never resends it. */
+    @Query("UPDATE batch SET lastAckedChunkIndex = :chunkIndex WHERE batchId = :batchId")
+    suspend fun markChunkAcked(batchId: Long, chunkIndex: Int)
+
     @Query("""
         SELECT COUNT(*)
         FROM batch

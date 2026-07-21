@@ -4,50 +4,63 @@ import com.rite.pillcounting.core.hl7.mllp.tls.TlsKeystoreUtil
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import org.rite.hl7.AckDecision
-import org.rite.hl7.AckGenerator
-import org.rite.hl7.MshFields
-import java.io.ByteArrayOutputStream
+import org.rite.hl7.encoding.Mllp
 import java.io.EOFException
 import java.io.InputStream
+import java.net.ServerSocket
+import java.net.Socket
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
 
+/**
+ * MLLP server.
+ *
+ * Accepts inbound connections from PMS, reads MLLP-framed HL7 messages,
+ * invokes [onHl7Message] with the raw text, and writes back the returned ACK
+ * string (already wire-formatted by the caller) wrapped in MLLP framing.
+ *
+ * The server is fully responsible for TCP/MLLP transport only; all HL7 parsing,
+ * validation, and ACK building is delegated to the supplied callback so that
+ * this class remains decoupled from the hl7Core message model.
+ *
+ * @param port       TCP port to listen on.
+ * @param bypassTls  When true, listens on a plain (non-TLS) server socket instead
+ *                   of wrapping connections in TLS. Mirrors the app-wide "Bypass TLS"
+ *                   preference for pharmacies whose PMS cannot negotiate TLS.
+ * @param onHl7Message Suspending callback: receives the raw HL7 text, returns
+ *                     the ACK string to echo back (empty string = no reply).
+ */
 class MllpServer(
     private val port: Int,
-    private val onHl7Message: suspend (String) -> AckDecision
+    private val bypassTls: Boolean = false,
+    private val onHl7Message: suspend (raw: String) -> String
 ) {
-
-    companion object {
-        private const val SB: Byte = 0x0B
-        private const val EB: Byte = 0x1C
-        private const val CR: Byte = 0x0D
-    }
 
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
     private val running = AtomicBoolean(false)
-    private val clients = ConcurrentHashMap<String, SSLSocket>()
+    private val clients = ConcurrentHashMap<String, Socket>()
 
-    private var serverSocket: SSLServerSocket? = null
+    private var serverSocket: ServerSocket? = null
 
     suspend fun start() = withContext(Dispatchers.IO) {
         mutex.withLock {
             if (running.get()) return@withContext
 
-            TlsKeystoreUtil.ensureKeyExists()
-            val sslContext = TlsKeystoreUtil.createServerSslContext()
+            serverSocket = if (bypassTls) {
+                ServerSocket(port)
+            } else {
+                TlsKeystoreUtil.ensureKeyExists()
+                val sslContext = TlsKeystoreUtil.createServerSslContext()
 
-            serverSocket = sslContext.serverSocketFactory
-                .createServerSocket(port) as SSLServerSocket
-
-            serverSocket!!.apply {
-                enabledProtocols = arrayOf("TLSv1.2", "TLSv1.3")
-                enabledCipherSuites = supportedCipherSuites
-                needClientAuth = false
+                (sslContext.serverSocketFactory.createServerSocket(port) as SSLServerSocket).apply {
+                    enabledProtocols = arrayOf("TLSv1.2", "TLSv1.3")
+                    enabledCipherSuites = supportedCipherSuites
+                    needClientAuth = false
+                }
             }
 
             running.set(true)
@@ -58,7 +71,7 @@ class MllpServer(
     private suspend fun acceptLoop() {
         while (running.get()) {
             try {
-                val socket = serverSocket!!.accept() as SSLSocket
+                val socket = serverSocket!!.accept()
                 val id = UUID.randomUUID().toString()
                 clients[id] = socket
 
@@ -71,21 +84,20 @@ class MllpServer(
         }
     }
 
-    private suspend fun handleClient(socket: SSLSocket) {
+    private suspend fun handleClient(socket: Socket) {
         try {
-            socket.startHandshake()
+            if (socket is SSLSocket) socket.startHandshake()
 
             val input = socket.inputStream
             val output = socket.outputStream
 
             while (!socket.isClosed) {
                 val msg = readMllp(input)
-                val msh = extractMshFields(msg)
-                val decision = onHl7Message(msg)
-                val ack = AckGenerator.generate(msh, decision)
-
-                output.write(wrapMllp(ack))
-                output.flush()
+                val ack = onHl7Message(msg)
+                if (ack.isNotEmpty()) {
+                    output.write(Mllp.wrap(ack))
+                    output.flush()
+                }
             }
         } catch (_: Exception) {
         } finally {
@@ -104,7 +116,7 @@ class MllpServer(
     }
 
     private fun readMllp(input: InputStream): String {
-        val buffer = ByteArrayOutputStream()
+        val buffer = java.io.ByteArrayOutputStream()
         var started = false
 
         while (true) {
@@ -117,28 +129,16 @@ class MllpServer(
                     buffer.reset()
                 }
                 EB -> {
-                    input.read() // CR
-                    return buffer.toString(Charsets.UTF_8.name())
+                    input.read() // consume trailing CR
+                    return buffer.toByteArray().decodeToString()
                 }
                 else -> if (started) buffer.write(b)
             }
         }
     }
 
-    private fun wrapMllp(msg: String): ByteArray =
-        byteArrayOf(SB) + msg.toByteArray() + byteArrayOf(EB, CR)
-
-    private fun extractMshFields(msg: String): MshFields {
-        val msh = msg.lineSequence().first { it.startsWith("MSH|") }
-        val f = msh.split("|")
-
-        return MshFields(
-            sendingApp = f.getOrElse(2) { "" },
-            sendingFacility = f.getOrElse(4) { "" },
-            receivingApp = f.getOrElse(3) { "" },
-            receivingFacility = f.getOrElse(5) { "" },
-            messageControlId = f.getOrElse(9) { UUID.randomUUID().toString() },
-            version = f.getOrElse(11) { "2.5" }
-        )
+    companion object {
+        private const val SB: Byte = 0x0B  // Start Block (VT)
+        private const val EB: Byte = 0x1C  // End Block (FS)
     }
 }

@@ -18,6 +18,8 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.utils.compose.ContainerStatus
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -438,7 +440,7 @@ class DispenseFlowViewModel @Inject constructor(
      *      confirmation dialog instead of the success popup. The user has to
      *      accept the substitute explicitly via [confirmSubstitute].
      */
-    fun onNdcBarcodeRead(gtin14: String, imagePath: String?) {
+    fun onNdcBarcodeRead(gtin14: String, imagePath: String?, firstBottle: BottleInfo? = null) {
         if (_uiState.value.stage != DispenseStage.PRE_NDC) return
         if (_uiState.value.isLoading) return
         if (gtin14.isBlank()) {
@@ -446,7 +448,7 @@ class DispenseFlowViewModel @Inject constructor(
             return
         }
 
-        _uiState.update { it.copy(isLoading = true) }
+        _uiState.update { it.copy(isLoading = true, pendingFirstBottle = firstBottle) }
 
         viewModelScope.launch {
             try {
@@ -773,15 +775,23 @@ class DispenseFlowViewModel @Inject constructor(
                 )
             )
         } else null
+        // Stamp the first bottle scanned against this txn — only when the txn has no
+        // bottle entries yet, so resuming an already-in-progress dispense (e.g. after
+        // process death) doesn't clobber bottles already tracked via a rescan mid-count.
+        val existingBottles = BottleInfoJson.decode(txn.bottleInfoListJson)
+        val bottleInfoListJson = if (txn.isDispense && existingBottles.isEmpty() && state.pendingFirstBottle != null) {
+            BottleInfoJson.encode(listOf(state.pendingFirstBottle))
+        } else txn.bottleInfoListJson
         pillCountTxnDao.update(
             txn.copy(
                 isNdcVerified = true,
                 isSubstitute = isSubstitute,
                 substitutedDrugId = substitutedDrugId,
                 barcodeImage = state.barcodeImagePath,
+                bottleInfoListJson = bottleInfoListJson,
             )
         )
-        _uiState.update { it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false) }
+        _uiState.update { it.copy(stage = DispenseStage.COUNTING, showNdcDetails = false, pendingFirstBottle = null) }
         logger.i("[HAZARDOUS] NDC auto-confirmed: txn=$txnId substitute=$isSubstitute isHazardous=${state.isHazardous} → COUNTING")
     }
 
