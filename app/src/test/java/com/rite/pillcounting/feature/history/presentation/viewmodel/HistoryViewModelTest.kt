@@ -1,4 +1,4 @@
-package com.rite.pillcounting.feature.history.viewmodel
+package com.rite.pillcounting.feature.history.presentation.viewmodel
 
 import app.cash.turbine.test
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
@@ -11,7 +11,6 @@ import com.rite.pillcounting.feature.history.domain.model.HistoryDeleteFilter
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.history.domain.model.ToggleOption
 import com.rite.pillcounting.feature.history.domain.model.TxnWithDrugDto
-import com.rite.pillcounting.feature.history.presentation.viewmodel.HistoryViewModel
 import com.rite.pillcounting.util.MainDispatcherRule
 import io.mockk.coJustRun
 import io.mockk.coVerify
