@@ -473,6 +473,11 @@
     HL7 medical device discovery. Your location is never stored,
     transmitted, or linked to patient data.
 </string>
+    <string name="permission_camera_title">Camera Access</string>
+    <string name="permission_camera_rationale">Camera access is required to scan barcodes and count pills. Please enable it in Settings to continue.</string>
+    <string name="permission_notifications_rationale">Notifications keep you informed about important updates. Please enable them in Settings to continue.</string>
+    <string name="permission_required_title">Permissions Required</string>
+    <string name="permission_required_combined_message">%1$s permission(s) are required for this app to work properly. Please enable them in Settings to continue.</string>
     <string name="pms_cert_mismatch_message">The PMS server certificate has changed. This may happen after a PMS update. Tap Reset to accept the new certificate and reconnect.</string>
     <string name="pms_cert_mismatch_confirm">Reset &amp; Reconnect</string>
 

@@ -3,10 +3,7 @@ package com.rite.pillcounting.feature.inventoryFlow.presentation.shell
 import Screen
 import android.Manifest
 import android.annotation.SuppressLint
-import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -17,7 +14,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -29,6 +25,7 @@ import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import com.rite.pillcounting.core.utils.permission.rememberPermissionState
 import com.rite.pillcounting.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.BatchStockCountUiState
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditBatchRow
@@ -113,20 +110,12 @@ fun InventoryScanHost(
 
     // Camera permission. Without it CameraX retries forever and the preview never
     // streams (infinite spinner). Request on entry; render the camera once granted.
-    var hasCameraPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { hasCameraPermission = it },
+    // Falls back to a Settings-redirect dialog if the user has permanently denied it.
+    val hasCameraPermission = rememberPermissionState(
+        permission = Manifest.permission.CAMERA,
+        rationaleTitle = stringResource(R.string.permission_camera_title),
+        rationaleMessage = stringResource(R.string.permission_camera_rationale),
     )
-    LaunchedEffect(Unit) {
-        if (!hasCameraPermission) permissionLauncher.launch(Manifest.permission.CAMERA)
-    }
 
     // Resume the analyzer when the active NDC card clears. We do NOT pause while
     // activeNdc is non-null: the analyzer self-pauses on each hit, and the VM
