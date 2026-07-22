@@ -935,30 +935,34 @@ class InventoryScanViewModelTest {
     }
 
     @Test
-    fun `onScanPillsForActive batchId zero emits no_active_batch`() = runTest(testDispatcher) {
-        coEvery { batchDao.insert(any()) } returns 0L
-        val vm = createViewModel(batchId = 0L)
-        advanceUntilIdle()
-
-        var called = false
-        vm.onScanPillsForActive { _, _ -> called = true }
-        advanceUntilIdle()
-
-        assertFalse(called)
-        assertEquals(R.string.batch_stock_count_no_active_batch, vm.errorMessage.value?.messageResId)
-    }
-
-    @Test
-    fun `onScanPillsForActive creates batch when zero`() = runTest(testDispatcher) {
-        coEvery { batchDao.insert(any()) } returns 42L
+    fun `onScanPillsForActive batchId zero passes through zero without error`() = runTest(testDispatcher) {
         val vm = createViewModel(batchId = 0L)
         advanceUntilIdle()
 
         var readyBatch = -1L
-        vm.onScanPillsForActive { b, _ -> readyBatch = b }
+        var called = false
+        vm.onScanPillsForActive { b, _ -> readyBatch = b; called = true }
         advanceUntilIdle()
 
-        assertEquals(42L, readyBatch)
+        // No batch exists yet — SCAN PILLS must not create one merely by being
+        // tapped. batchId=0L is passed through as-is (the same sentinel
+        // onBarcodeDetected treats as "not yet created"); the real batch is
+        // created lazily on the first successful scan in the dispense flow.
+        assertTrue(called)
+        assertEquals(0L, readyBatch)
+        assertNull(vm.errorMessage.value)
+        coVerify(exactly = 0) { batchDao.insert(any()) }
+    }
+
+    @Test
+    fun `onScanPillsForActive does not create a batch merely from being called`() = runTest(testDispatcher) {
+        val vm = createViewModel(batchId = 0L)
+        advanceUntilIdle()
+
+        vm.onScanPillsForActive { _, _ -> }
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { batchDao.insert(any()) }
     }
 
     @Test

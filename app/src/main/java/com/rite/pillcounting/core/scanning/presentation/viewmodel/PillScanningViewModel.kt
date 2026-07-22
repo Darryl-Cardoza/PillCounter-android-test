@@ -15,18 +15,21 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
+import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.models.ScheduleCode
@@ -89,6 +92,7 @@ class PillScanningViewModel @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
     private val stockTxnDao: StockTxnDao,
     private val bottleInfoDao: BottleInfoDao,
+    private val batchDao: BatchDao,
     private val userDao: UserDao,
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao,
     private val locationProvider: LocationProvider,
@@ -192,6 +196,40 @@ class PillScanningViewModel @Inject constructor(
     /** True while the screen should route frames to the barcode decoder. */
     val isOnNdcScanStep: Boolean
         get() = forceStartOnScan && _currentStep.value == StepState.SCAN
+
+    /**
+     * Inserts a new BatchEntity and stores its id in [stockCountBatchId]. Mirrors
+     * InventoryScanViewModel.ensureBatchCreated: called only once, on the first
+     * successful NDC scan of a SCAN PILLS session started with no batch yet
+     * (stockCountBatchId == 0L), so that backing out before scanning a pill never
+     * leaves an empty batch row. bucketId is left null here — this hand-off has no
+     * bucket context of its own; the parent screen only shows it for display.
+     *
+     * Returns the new batchId on success, or 0 if the insert failed.
+     */
+    private suspend fun ensureStockCountBatchCreated(): Long {
+        val existing = stockCountBatchId
+        if (existing != 0L) return existing
+        return try {
+            val now = System.currentTimeMillis()
+            val newId = batchDao.insert(
+                BatchEntity(
+                    batchId = now,
+                    startDateTime = now,
+                    endDateTime = null,
+                    status = BatchStatus.INPROGRESS,
+                    isDeleted = false,
+                    note = null,
+                    bucketId = null,
+                )
+            )
+            stockCountBatchId = newId
+            newId
+        } catch (e: Exception) {
+            logger.e("ensureStockCountBatchCreated failed", e)
+            0L
+        }
+    }
 
     /**
      * Enter a stock loose-count session for an already-created [BottleInfoEntity] line
@@ -1688,6 +1726,19 @@ class PillScanningViewModel @Inject constructor(
                 val expiry = decoded?.expirationDate?.format(
                     java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
                 )
+
+                // First successful scan of a SCAN PILLS session started with no batch
+                // yet (InventoryScanViewModel.onScanPillsForActive passes batchId=0L
+                // rather than creating one eagerly): create the BatchEntity now so an
+                // abandoned session never leaves an empty batch row.
+                if (stockCountBatchId == 0L) {
+                    val newBatchId = ensureStockCountBatchCreated()
+                    if (newBatchId == 0L) {
+                        _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_no_active_batch)) }
+                        isStagingNdc = false
+                        return@launch
+                    }
+                }
 
                 // Create the StockTxn header (once per drug in the batch) but DON'T create the
                 // BottleInfo row here — this is the "Scan Pills" loose flow, where each counting

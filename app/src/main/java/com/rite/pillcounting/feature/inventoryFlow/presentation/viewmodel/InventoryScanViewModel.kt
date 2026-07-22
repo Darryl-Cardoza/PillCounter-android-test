@@ -863,9 +863,16 @@ class InventoryScanViewModel @Inject constructor(
      *
      * Works with or without an active NDC. The legacy pill-count flow scans its
      * own NDC, so SCAN PILLS is always available: with no active NDC we simply
-     * navigate into the batch (creating it if needed) and let that flow establish
-     * its own txn. With an active NDC we additionally stage that NDC's txn so the
-     * counted loose pills accumulate onto its Recent Counts row.
+     * navigate into the batch and let that flow establish its own txn. With an
+     * active NDC we additionally stage that NDC's txn so the counted loose pills
+     * accumulate onto its Recent Counts row.
+     *
+     * batchId is passed through as-is — including 0L when no batch has been
+     * created yet — rather than creating it here. Tapping SCAN PILLS is not
+     * itself a commitment to count; the batch is created lazily by
+     * PillScanningViewModel on the first successful NDC scan in the dispense
+     * flow, same as [onBarcodeDetected] does for the NDC-scan path, so an
+     * abandoned session never leaves an empty batch row.
      */
     /**
      * @param onReady Called with (batchId, allowedNdcs) when ready to navigate.
@@ -882,11 +889,12 @@ class InventoryScanViewModel @Inject constructor(
                 // while the user is away counting pills.
                 if (active != null) persistActive(active)
 
-                val batchId = _resolvedBatchId.value.takeIf { it != 0L } ?: ensureBatchCreated()
-                if (batchId == 0L) {
-                    _errorMessage.value = LocalizedError(R.string.batch_stock_count_no_active_batch)
-                    return@launch
-                }
+                // Do NOT create the batch here. SCAN PILLS only stages an intent to
+                // count — the user may still back out of the dispense flow before
+                // scanning a pill. Pass batchId through as-is (0L when no batch
+                // exists yet); PillScanningViewModel lazily creates it on the first
+                // successful NDC scan in that flow, mirroring onBarcodeDetected above.
+                val batchId = _resolvedBatchId.value
 
                 // Always clear the staged txnId so the dispense flow starts at
                 // PRE_NDC and the user scans the container themselves.
