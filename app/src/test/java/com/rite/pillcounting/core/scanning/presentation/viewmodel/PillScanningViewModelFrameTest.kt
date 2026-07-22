@@ -137,13 +137,15 @@ class PillScanningViewModelFrameTest {
 
     // SCAN_VM_017
     @Test
-    fun `getDrugInfo with no txn and forceStartOnScan=false resolves currentStep to CONTAINER_INITIATE`() = runTest {
-        // Relaxed mocks: getTxnWithDetails → null, getLatestType → null
-        // null drugType → equals("null", true) == false → falls back to CONTAINER_INITIATE
+    fun `getDrugInfo with no txn and forceStartOnScan=false resolves currentStep to TARGET_VERIFICATION`() = runTest {
+        // Relaxed mocks: getTxnWithDetails → null, getLatestType → null.
+        // drugInfo is null (no txn -> no drugId), so drugType.isNullOrEmpty() is true,
+        // which falls back to TARGET_VERIFICATION (not CONTAINER_INITIATE, which is only
+        // reached when drugType is a known non-blank, non-"null" value).
         viewModel.getDrugInfo()
         advanceUntilIdle()
 
-        assertEquals(StepState.CONTAINER_INITIATE, viewModel.currentStep.value)
+        assertEquals(StepState.TARGET_VERIFICATION, viewModel.currentStep.value)
     }
 
     // SCAN_VM_018

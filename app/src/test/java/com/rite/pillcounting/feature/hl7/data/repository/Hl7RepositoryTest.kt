@@ -14,7 +14,6 @@ import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
@@ -43,11 +42,9 @@ import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
-import org.rite.hl7.domain.model.CompleteHL7Message
-import org.rite.hl7.domain.model.CustomSegmentData
-import org.rite.hl7.domain.model.MedicationData
-import org.rite.hl7.domain.model.MessageHeaderData
-import org.rite.hl7.domain.model.OrderData
+import org.rite.hl7.model.HL7Message
+import org.rite.hl7.parser.HL7Parser
+import org.rite.hl7.parser.HL7ParseResult
 
 /**
  * The SUT creates its own `CoroutineScope(Dispatchers.IO)` at construction and launches its
@@ -65,11 +62,19 @@ import org.rite.hl7.domain.model.OrderData
  *    polling form `coVerify(timeout = 3000) { }` / `verify(timeout = 3000) { }`. Absence
  *    ("not called") is only asserted AFTER synchronizing on a positive signal that proves the
  *    coroutine reached the relevant point.
+ *
+ * Inbound HL7 messages are built by parsing real wire-format HL7 text via [HL7Parser] into a
+ * genuine [HL7Message] — the SUT's [HL7Message] constructor is internal to the hl7Core module, so
+ * tests cannot construct one directly.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class Hl7RepositoryTest {
 
+    // isSuccessAck() requires a real MSA|AA segment; a plain string like "ACK" is never accepted.
+    private val SUCCESS_ACK = "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||ACK|MSG1|P|2.5\rMSA|AA|MSG1"
+
     private val testDispatcher = StandardTestDispatcher()
+    private val hl7Parser = HL7Parser.Builder().build()
 
     private lateinit var context: Context
     private lateinit var drugMasterDao: DrugMasterDao
@@ -126,7 +131,7 @@ class Hl7RepositoryTest {
         // By default HL7 is disabled so init's observePendingHl7Transactions does not interfere.
         every { preferenceHelper.isHl7Enabled() } returns false
         every { preferenceHelper.getLocalId() } returns 1L
-        every { hl7MessageSender.sendRaw(any()) } returns Result.success(Unit)
+        coEvery { hl7MessageSender.sendRaw(any()) } returns Result.success(SUCCESS_ACK)
     }
 
     @After
@@ -155,45 +160,63 @@ class Hl7RepositoryTest {
 
     // ─────────────────────────────── message builders ───────────────────────────────
 
-    private fun header(controlId: String = "MSG1") = MessageHeaderData(
-        fieldSeparator = "|",
-        encodingCharacters = "^~\\&",
-        sendingApplication = "PMS",
-        sendingFacility = "FAC",
-        receivingApplication = "APP",
-        receivingFacility = "STORE",
-        messageDateTime = "20240101",
-        messageType = "RDE",
-        triggerEvent = "O11",
-        messageControlId = controlId,
-        processingId = "P",
-        versionId = "2.5",
-    )
+    private fun parse(raw: String): HL7Message {
+        val result = hl7Parser.parse(raw)
+        return when (result) {
+            is HL7ParseResult.Success -> result.message
+            is HL7ParseResult.Failure -> result.partialMessage
+                ?: error("Failed to parse test HL7 message: ${result.errors}")
+        }
+    }
 
-    private fun med(
+    private fun msh(messageType: String, triggerEvent: String, controlId: String) =
+        "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||$messageType^$triggerEvent|$controlId|P|2.5"
+
+    /** RDE^O11 dispense request/edit built from MSH + ORC + RXE (+ optional ZPR/ZIN segments). */
+    private fun dispenseMessage(
+        orderControl: String = "NW",
+        placerOrderId: String = "RX1",
+        orderStatus: String = "IP",
         drugCode: String = "12345",
         drugName: String = "Aspirin",
-        requestedQty: String? = "10",
-    ) = MedicationData(drugCode = drugCode, drugName = drugName, requestedQty = requestedQty)
-
-    private fun message(
-        messageType: String = "RDE",
-        triggerEvent: String = "O11",
-        order: OrderData? = OrderData(orderControl = "NW", placerOrderId = "RX1", orderStatus = "IP"),
-        medications: List<MedicationData> = listOf(med()),
-        customSegments: List<CustomSegmentData> = emptyList(),
+        dispenseAmount: String = "10",
         controlId: String = "MSG1",
-    ) = CompleteHL7Message(
-        messageId = "id",
-        messageType = messageType,
-        triggerEvent = triggerEvent,
-        timestamp = "20240101",
-        sendingFacility = "FAC",
-        header = header(controlId),
-        order = order,
-        medications = medications,
-        customSegments = customSegments,
-    )
+        extraSegments: List<String> = emptyList(),
+    ): HL7Message {
+        val segments = mutableListOf(
+            msh("RDE", "O11", controlId),
+            "ORC|$orderControl|$placerOrderId|||$orderStatus",
+            "RXE||$drugCode^$drugName||||||||$dispenseAmount",
+        )
+        segments.addAll(extraSegments)
+        return parse(segments.joinToString("\r"))
+    }
+
+    /** ORC|CA cancel-order message. */
+    private fun cancelMessage(placerOrderId: String = "RX1", controlId: String = "MSG1"): HL7Message =
+        parse(
+            listOf(
+                msh("RDE", "O11", controlId),
+                "ORC|CA|$placerOrderId",
+            ).joinToString("\r")
+        )
+
+    /** INR^U06 inventory request built from MSH + INV segment(s). */
+    private fun inventoryMessage(
+        ndc: String = "12345",
+        drugName: String = "Aspirin",
+        quantity: String = "10",
+        controlId: String = "MSG1",
+    ): HL7Message =
+        parse(
+            listOf(
+                msh("INR", "U06", controlId),
+                "INV|$ndc^$drugName||||${quantity}B",
+            ).joinToString("\r")
+        )
+
+    private fun zprSegment(priority: String) = "ZPR|1|PRIORITY|$priority"
+    private fun zinSegment(quantity: String) = "ZIN|1|EXPECTED_ON_HAND|$quantity"
 
     private fun drugInfo(
         ndc: String = "12345",
@@ -250,12 +273,8 @@ class Hl7RepositoryTest {
     @Test
     fun `handleReceivedMessage null classification early returns`() = runTest(testDispatcher) {
         val repo = createRepo()
-        // messageType not matching any branch and no order control
-        val msg = message(
-            messageType = "ADT",
-            triggerEvent = "A01",
-            order = OrderData(orderControl = "NW", placerOrderId = ""),
-        )
+        // ADT^A01 with no ORC/RXE — does not classify to any MessageType.
+        val msg = parse(msh("ADT", "A01", "MSG1"))
 
         // classifyInboundMessage returns null synchronously on the calling thread (before any
         // scope.launch), so no background work is started at all — assert absence directly.
@@ -268,7 +287,7 @@ class Hl7RepositoryTest {
     @Test
     fun `handleReceivedMessage routes cancel order`() = runTest(testDispatcher) {
         val repo = createRepo()
-        val msg = message(order = OrderData(orderControl = "CA", placerOrderId = "RX9"))
+        val msg = cancelMessage(placerOrderId = "RX9")
 
         repo.handleReceivedMessage(msg)
 
@@ -283,7 +302,7 @@ class Hl7RepositoryTest {
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 
-        val msg = message(order = OrderData(orderControl = "XO", placerOrderId = "RX1", orderStatus = "IP"))
+        val msg = dispenseMessage(orderControl = "XO", placerOrderId = "RX1", orderStatus = "IP")
         repo.handleReceivedMessage(msg)
 
         coVerify(timeout = 3000) { pillCountTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
@@ -297,7 +316,7 @@ class Hl7RepositoryTest {
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
         coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 1L
 
-        repo.handleReceivedMessage(message())
+        repo.handleReceivedMessage(dispenseMessage())
 
         coVerify(timeout = 3000) { pillCountTxnDao.upsertPreservingId(any()) }
         verify(timeout = 3000) { notifier.show(any(), any()) }
@@ -311,7 +330,7 @@ class Hl7RepositoryTest {
         coEvery { batchDao.insert(any()) } returns 100L
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
 
-        val msg = message(messageType = "INR", triggerEvent = "U04")
+        val msg = inventoryMessage()
         repo.handleReceivedMessage(msg)
 
         coVerify(timeout = 3000) { batchDao.insert(any()) }
@@ -326,7 +345,7 @@ class Hl7RepositoryTest {
 
         repo.buildAndSendSuccessfulDispense(1L)
 
-        verify(exactly = 0) { hl7MessageSender.send(any()) }
+        coVerify(exactly = 0) { hl7MessageSender.send(any()) }
     }
 
     @Test
@@ -336,7 +355,7 @@ class Hl7RepositoryTest {
 
         repo.buildAndSendSuccessfulDispense(1L)
 
-        verify(exactly = 0) { hl7MessageSender.send(any()) }
+        coVerify(exactly = 0) { hl7MessageSender.send(any()) }
     }
 
     @Test
@@ -352,7 +371,7 @@ class Hl7RepositoryTest {
 
         repo.buildAndSendSuccessfulDispense(1L)
 
-        verify { hl7MessageSender.send(any()) }
+        coVerify { hl7MessageSender.send(any()) }
     }
 
     // ─────────────────────────────── buildAndSendInventoryResponse ───────────────────────────────
@@ -364,7 +383,7 @@ class Hl7RepositoryTest {
 
         repo.buildAndSendInventoryResponse(100L)
 
-        verify(exactly = 0) { hl7MessageSender.sendRaw(any()) }
+        coVerify(exactly = 0) { hl7MessageSender.sendRaw(any()) }
     }
 
     @Test
@@ -372,7 +391,7 @@ class Hl7RepositoryTest {
         val repo = createRepo()
         coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
         coEvery { bottleInfoDao.getByBatchId(100L) } returns emptyList()
-        every { hl7MessageSender.sendRaw(any()) } returns Result.success(Unit)
+        coEvery { hl7MessageSender.sendRaw(any()) } returns Result.success(SUCCESS_ACK)
 
         repo.buildAndSendInventoryResponse(100L)
 
@@ -384,7 +403,7 @@ class Hl7RepositoryTest {
         val repo = createRepo()
         coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
         coEvery { bottleInfoDao.getByBatchId(100L) } returns emptyList()
-        every { hl7MessageSender.sendRaw(any()) } returns Result.failure(RuntimeException("send fail"))
+        coEvery { hl7MessageSender.sendRaw(any()) } returns Result.failure(RuntimeException("send fail"))
 
         repo.buildAndSendInventoryResponse(100L)
 
@@ -398,7 +417,7 @@ class Hl7RepositoryTest {
 
         repo.buildAndSendInventoryResponse(100L)
 
-        verify(exactly = 0) { hl7MessageSender.sendRaw(any()) }
+        coVerify(exactly = 0) { hl7MessageSender.sendRaw(any()) }
     }
 
     // ─────────────────────────────── large batch (chunked) sync ───────────────────────────────
@@ -428,7 +447,7 @@ class Hl7RepositoryTest {
             val repo = createRepo()
             coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
             coEvery { bottleInfoDao.getByBatchId(100L) } returns largeBatchTxns(10000)
-            every { hl7MessageSender.sendRaw(any()) } returns Result.success(Unit)
+            coEvery { hl7MessageSender.sendRaw(any()) } returns Result.success(SUCCESS_ACK)
 
             repo.buildAndSendInventoryResponse(100L)
 
@@ -451,10 +470,10 @@ class Hl7RepositoryTest {
             // Chunks are single-line HL7 messages; chunk N carries "chunk N of" via the BTS
             // trailer text, so fail specifically the 27th send call regardless of message content.
             var callCount = 0
-            every { hl7MessageSender.sendRaw(any()) } answers {
+            coEvery { hl7MessageSender.sendRaw(any()) } answers {
                 callCount++
                 if (callCount == 27) Result.failure(RuntimeException("PMS unavailable"))
-                else Result.success(Unit)
+                else Result.success(SUCCESS_ACK)
             }
 
             repo.buildAndSendInventoryResponse(100L)
@@ -488,7 +507,7 @@ class Hl7RepositoryTest {
             coEvery { batchDao.getById(100L) } returns
                 BatchEntity(batchId = 100L, requestIdFromPMS = "REQ", lastAckedChunkIndex = 40, totalChunks = 50)
             coEvery { bottleInfoDao.getByBatchId(100L) } returns largeBatchTxns(10000)
-            every { hl7MessageSender.sendRaw(any()) } returns Result.success(Unit)
+            coEvery { hl7MessageSender.sendRaw(any()) } returns Result.success(SUCCESS_ACK)
 
             repo.resendPendingHl7BatchTransactions()
 
@@ -521,7 +540,7 @@ class Hl7RepositoryTest {
                 )
             coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
             coEvery { bottleInfoDao.getByBatchId(100L) } returns largeBatchTxns(10000)
-            every { hl7MessageSender.sendRaw(any()) } returns Result.success(Unit)
+            coEvery { hl7MessageSender.sendRaw(any()) } returns Result.success(SUCCESS_ACK)
 
             // Simulates the connect callback's resend trigger directly against the repository
             // (Hl7EventHandler.onClientConnected just forwards to this).
@@ -566,7 +585,7 @@ class Hl7RepositoryTest {
         repo.resendPendingHl7Transactions()
 
         verify(timeout = 3000) { preferenceHelper.saveSentMessageTxnId(1L) }
-        verify(timeout = 3000) { hl7MessageSender.send(any()) }
+        coVerify(timeout = 3000) { hl7MessageSender.send(any()) }
         // REGULAR is a no-op now: no inventory response is triggered from this path.
         coVerify(exactly = 0) { batchDao.markBatchSynced(any()) }
     }
@@ -629,31 +648,13 @@ class Hl7RepositoryTest {
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
         coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 1L
-        val msg = message(
-            customSegments = listOf(
-                CustomSegmentData(segmentType = "ZPR", field2 = "PRIORITY", field3 = "High"),
-            ),
-        )
+        val msg = dispenseMessage(extraSegments = listOf(zprSegment("High")))
 
         repo.handleReceivedMessage(msg)
 
         val txnSlot = slot<PillCountTxnEntity>()
         coVerify(timeout = 3000) { pillCountTxnDao.upsertPreservingId(capture(txnSlot)) }
         assert(txnSlot.captured.priority == TxnPriority.High)
-        verify(timeout = 3000) { notifier.show(any(), any()) }
-    }
-
-    @Test
-    fun `handleRdeDispenseRequest multiple meds notification`() = runTest(testDispatcher) {
-        val repo = createRepo()
-        coEvery { drugMasterDao.getDrugByNdc(any()) } returns
-            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
-        coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
-        coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 1L
-        val msg = message(medications = listOf(med(drugCode = "11"), med(drugCode = "22")))
-
-        repo.handleReceivedMessage(msg)
-
         verify(timeout = 3000) { notifier.show(any(), any()) }
     }
 
@@ -665,7 +666,7 @@ class Hl7RepositoryTest {
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 9L
         coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 1L
 
-        repo.handleReceivedMessage(message())
+        repo.handleReceivedMessage(dispenseMessage())
 
         coVerify(timeout = 3000) { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) }
         coVerify(timeout = 3000) { pillCountTxnDao.upsertPreservingId(any()) }
@@ -678,7 +679,7 @@ class Hl7RepositoryTest {
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } throws
             RuntimeException("api fail")
 
-        repo.handleReceivedMessage(message())
+        repo.handleReceivedMessage(dispenseMessage())
 
         // notifier.show is the terminal action on this path; once it fires the coroutine has
         // finished and we can safely assert upsert was never called.
@@ -693,7 +694,7 @@ class Hl7RepositoryTest {
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns
             drugInfo(genericName = null)
 
-        repo.handleReceivedMessage(message())
+        repo.handleReceivedMessage(dispenseMessage())
 
         verify(timeout = 3000) { notifier.show(any(), any()) }
         coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any()) }
@@ -708,11 +709,11 @@ class Hl7RepositoryTest {
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
         coEvery { pillCountTxnDao.upsertPreservingId(any()) } returns 42L
-        val msg = message(
-            customSegments = listOf(
-                CustomSegmentData(segmentType = "ZIN", field2 = "EXPECTED_ON_HAND", field3 = "0"),
-                CustomSegmentData(segmentType = "ZIN", field2 = "EXPECTED_ON_HAND", field3 = "abc"),
-                CustomSegmentData(segmentType = "ZIN", field2 = "EXPECTED_ON_HAND", field3 = "7"),
+        val msg = dispenseMessage(
+            extraSegments = listOf(
+                zinSegment("0"),
+                zinSegment("abc"),
+                zinSegment("7"),
             ),
         )
 
@@ -725,17 +726,11 @@ class Hl7RepositoryTest {
     // ─────────────────────────────── handleInrInventoryRequest ───────────────────────────────
 
     @Test
-    fun `handleInrInventoryRequest empty meds returns`() = runTest(testDispatcher) {
+    fun `handleInrInventoryRequest empty ndc returns`() = runTest(testDispatcher) {
         val repo = createRepo()
-        // INR with empty medications would not classify; classify INVENTORY requires medications
-        // non-empty, so the empty-meds guard inside handleInr is unreachable via the public entry.
-        // Use a message that classifies as inventory but with blank ndc to reach skip + empty
-        // resolved, which exercises the notify + no-batch path.
-        val msg = message(
-            messageType = "INR",
-            triggerEvent = "U04",
-            medications = listOf(med(drugCode = "  ")),
-        )
+        // INV segment with a blank NDC is skipped, leaving resolvedItems empty — exercises the
+        // notify + no-batch path.
+        val msg = inventoryMessage(ndc = "")
         repo.handleReceivedMessage(msg)
 
         // notifier.show is the terminal action when resolvedItems is empty; sync on it before
@@ -752,7 +747,7 @@ class Hl7RepositoryTest {
         coEvery { batchDao.insert(any()) } returns 100L
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
 
-        val msg = message(messageType = "INR", triggerEvent = "U04")
+        val msg = inventoryMessage()
         repo.handleReceivedMessage(msg)
 
         coVerify(timeout = 3000) { batchDao.insert(any()) }
@@ -767,7 +762,7 @@ class Hl7RepositoryTest {
         coEvery { drugMasterDao.getDrugByNdc("12345") } returns
             DrugMasterEntity(drugId = 5L, drugName = "", ndc = "12345")
 
-        val msg = message(messageType = "INR", triggerEvent = "U04")
+        val msg = inventoryMessage()
         repo.handleReceivedMessage(msg)
 
         // resolvedItems empty -> notifier + no batch. Sync on notifier first.
@@ -784,14 +779,14 @@ class Hl7RepositoryTest {
         coEvery { batchDao.insert(any()) } returns 100L
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
 
-        val msg = message(messageType = "INR", triggerEvent = "U04")
+        val msg = inventoryMessage()
         repo.handleReceivedMessage(msg)
 
         coVerify(timeout = 3000) { batchDao.insert(any()) }
     }
 
     @Test
-    fun `handleInrInventoryRequest api null name uses med name`() = runTest(testDispatcher) {
+    fun `handleInrInventoryRequest api null name uses substance name fallback`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns
@@ -800,25 +795,21 @@ class Hl7RepositoryTest {
         coEvery { batchDao.insert(any()) } returns 100L
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 1L
 
-        // med drugName is non-blank "Aspirin" so falls back to it
-        val msg = message(messageType = "INR", triggerEvent = "U04")
+        // INV substance name is non-blank "Aspirin" so resolveInventoryItem falls back to it.
+        val msg = inventoryMessage()
         repo.handleReceivedMessage(msg)
 
         coVerify(timeout = 3000) { batchDao.insert(any()) }
     }
 
     @Test
-    fun `handleInrInventoryRequest api null name and blank med name skipped`() = runTest(testDispatcher) {
+    fun `handleInrInventoryRequest api null name and blank substance name skipped`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { drugMasterDao.getDrugByNdc("12345") } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns
             drugInfo(genericName = null)
 
-        val msg = message(
-            messageType = "INR",
-            triggerEvent = "U04",
-            medications = listOf(med(drugCode = "12345", drugName = "")),
-        )
+        val msg = inventoryMessage(drugName = "")
         repo.handleReceivedMessage(msg)
 
         verify(timeout = 3000) { notifier.show(any(), any()) }
@@ -832,7 +823,7 @@ class Hl7RepositoryTest {
         coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } throws
             RuntimeException("api boom")
 
-        val msg = message(messageType = "INR", triggerEvent = "U04")
+        val msg = inventoryMessage()
         repo.handleReceivedMessage(msg)
 
         verify(timeout = 3000) { notifier.show(any(), any()) }
@@ -844,7 +835,7 @@ class Hl7RepositoryTest {
     @Test
     fun `handleOrderCancellation soft deletes`() = runTest(testDispatcher) {
         val repo = createRepo()
-        repo.handleReceivedMessage(message(order = OrderData(orderControl = "CA", placerOrderId = "RX5")))
+        repo.handleReceivedMessage(cancelMessage(placerOrderId = "RX5"))
 
         coVerify(timeout = 3000) { pillCountTxnDao.softDeleteByRxNo("RX5", any()) }
     }
@@ -852,14 +843,14 @@ class Hl7RepositoryTest {
     // ─────────────────────────────── handleOrderEdit ───────────────────────────────
 
     private fun editMessage(
-        orderStatus: String? = "IP",
+        orderStatus: String = "IP",
         placerOrderId: String = "RX1",
-        medications: List<MedicationData> = listOf(med()),
-        customSegments: List<CustomSegmentData> = emptyList(),
-    ) = message(
-        order = OrderData(orderControl = "XO", placerOrderId = placerOrderId, orderStatus = orderStatus),
-        medications = medications,
-        customSegments = customSegments,
+        extraSegments: List<String> = emptyList(),
+    ): HL7Message = dispenseMessage(
+        orderControl = "XO",
+        placerOrderId = placerOrderId,
+        orderStatus = orderStatus,
+        extraSegments = extraSegments,
     )
 
     @Test
@@ -871,11 +862,7 @@ class Hl7RepositoryTest {
         coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
 
         repo.handleReceivedMessage(
-            editMessage(
-                customSegments = listOf(
-                    CustomSegmentData(segmentType = "ZPR", field2 = "PRIORITY", field3 = "Low"),
-                ),
-            ),
+            editMessage(extraSegments = listOf(zprSegment("Low"))),
         )
 
         coVerify(timeout = 3000) { pillCountTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }

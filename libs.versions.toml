@@ -80,6 +80,7 @@ mockito-kotlin = "6.3.0"
 mockk = "1.14.9"
 turbine = "1.2.1"
 androidx-junit = "1.3.0"
+androidx-test-core = "1.7.0"
 espresso = "3.7.0"
 navigation-testing = "2.9.8"
 mockito-android = "5.23.0"
@@ -194,6 +195,7 @@ mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
 turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
 androidx-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidx-junit" }
+androidx-test-core = { group = "androidx.test", name = "core", version.ref = "androidx-test-core" }
 espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "espresso" }
 navigation-testing = { group = "androidx.navigation", name = "navigation-testing", version.ref = "navigation-testing" }
 mockito-android = { group = "org.mockito", name = "mockito-android", version.ref = "mockito-android" }
@@ -272,7 +274,8 @@ test-unit = [
     "mockito-kotlin",
     "mockk",
     "turbine",
-    "robolectric"
+    "robolectric",
+    "androidx-test-core"
 ]
 
 # Android instrumented test

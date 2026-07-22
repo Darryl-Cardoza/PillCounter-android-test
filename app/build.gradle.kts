@@ -78,7 +78,6 @@ android {
             )
         }
         debug {
-            enableUnitTestCoverage = true
 //            isMinifyEnabled = true
 //            proguardFiles(
 //                getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -99,6 +98,11 @@ android {
                     "--add-opens=java.base/java.lang.invoke=ALL-UNNAMED",
                     "--add-opens=java.base/java.lang.reflect=ALL-UNNAMED",
                 )
+                // Robolectric-backed DAO/service tests load a full Android framework jar per
+                // fork; the JVM's default heap is too small once enough of these run in one
+                // fork, causing spurious OutOfMemoryError failures unrelated to test logic.
+                it.maxHeapSize = "3g"
+                it.forkEvery = 25
             }
         }
     }

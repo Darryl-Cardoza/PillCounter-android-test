@@ -18,8 +18,9 @@ class SecurePreferences(context: Context,
     private val prefs: SharedPreferences =
         context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
 
-    private val keystore = KeyStore.getInstance("AndroidKeyStore")
-        .also { it.load(null) }
+    private val keystore by lazy {
+        KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
+    }
 
     private fun getOrCreateKey(): SecretKey {
         keystore.getKey(KEYSTORE_ALIAS, null)?.let { return it as SecretKey }

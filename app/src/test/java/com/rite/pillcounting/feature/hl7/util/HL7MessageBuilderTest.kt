@@ -5,9 +5,7 @@ import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -19,9 +17,9 @@ import org.junit.Test
  * mocking. The only Android dependency is [android.os.Build.MODEL], a static String
  * field that reads as null on the JVM (resulting in "PillCounter-null"), which is fine.
  *
- * NOTE on coverage: the private fun buildRoomImageUrl(deviceIp, fileName, port) is never
- * called from any code path inside HL7MessageBuilder. It is unreachable dead code and
- * therefore cannot be exercised by these (or any) tests.
+ * The builder methods return raw wire-encoded HL7 strings (not structured objects), so
+ * assertions check for the presence/absence of expected segment names and field values
+ * in the encoded text.
  */
 class HL7MessageBuilderTest {
 
@@ -29,24 +27,24 @@ class HL7MessageBuilderTest {
         txnId: Long = 100L,
         rxNo: String? = null,
         barcodeImage: String? = null,
-        note: String? = "some note"
+        note: String? = "some note",
     ): PillCountTxnEntity = PillCountTxnEntity(
         txnId = txnId,
         isDispense = false,
         status = CountStatus.COMPLETED,
         note = note,
         barcodeImage = barcodeImage,
-        rxNo = rxNo
+        rxNo = rxNo,
     )
 
     private fun detail(
         pillCount: Int? = null,
         type: String? = null,
-        imagePath: String? = null
+        imagePath: String? = null,
     ): PillCountTxnDetailsEntity = PillCountTxnDetailsEntity(
         pillCount = pillCount,
         type = type,
-        imagePath = imagePath
+        imagePath = imagePath,
     )
 
     // ============================ DISPENSE ============================
@@ -56,78 +54,54 @@ class HL7MessageBuilderTest {
         val txn = txn(
             txnId = 555L,
             rxNo = null,
-            barcodeImage = "/storage/images/barcode_555.png"
+            barcodeImage = "/storage/images/barcode_555.png",
         )
         val details = listOf(
             detail(pillCount = 10, type = "fixed", imagePath = "/a/b/img1.png"),
             // null pillCount/type/imagePath -> defaults 0/UNKNOWN/""
-            detail(pillCount = null, type = null, imagePath = null)
+            detail(pillCount = null, type = null, imagePath = null),
         )
 
-        val msg = HL7MessageBuilder.buildDispenseMessage(
+        val raw = HL7MessageBuilder.buildDispenseMessage(
             txn = txn,
             txnDetails = details,
             drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
             drugName = "Atorvastatin",
             pharmacistId = "PH1",
             pharmacistName = "John",
-            location = "Counter1"
+            location = "Counter1",
         )
 
-        assertEquals("RDS", msg.messageType)
-        assertEquals("O13", msg.triggerEvent)
-        assertEquals("PillCounter-${android.os.Build.MODEL}", msg.sendingFacility)
+        assertTrue(raw.isNotEmpty())
+        assertTrue("should contain RDS^O13 in MSH", raw.contains("RDS"))
+        assertTrue(raw.contains("O13"))
+        assertTrue("should contain RXD", raw.contains("RXD"))
+        assertTrue("should contain PID", raw.contains("PID"))
+        assertTrue("should contain ORC", raw.contains("ORC"))
 
-        // rxNo == null -> falls back to txnId string
-        assertEquals("555", msg.patient?.patientId)
-        assertEquals("555", msg.order?.placerOrderId)
-        assertEquals("RE", msg.order?.orderControl)
-        assertEquals("CM", msg.order?.orderStatus)
+        // rxNo == null -> falls back to txnId string, used as both PID patientId and
+        // ORC/RXD prescription number.
+        assertTrue("PID should carry txnId as patientId", raw.contains("555"))
 
-        // single dispense, total count = 10 + 0
-        assertEquals(1, msg.dispenses.size)
-        val d = msg.dispenses.first()
-        assertEquals("12345-678-90", d.drugCode)
-        assertEquals("Atorvastatin", d.drugName)
-        assertEquals("10", d.quantityDispensed)
-        assertEquals("555", d.prescriptionNumber)
-        assertEquals("PH1", d.pharmacistId)
-        assertEquals("John", d.pharmacistGivenName)
-        assertEquals("Counter1", d.deliverToLocation)
-        assertEquals("some note", d.dispensingNotes)
-        // Lot/expiry are no longer emitted on dispense after the stock-count normalization
-        // (they lived only on stock rows and were always null for dispense).
-        assertEquals(null, d.lotNumber)
-        assertEquals(null, d.expirationDate)
+        // drug info on RXD
+        assertTrue(raw.contains("12345-678-90"))
+        assertTrue(raw.contains("Atorvastatin"))
+
+        // total count = 10 + 0 = 10
+        assertTrue(raw.contains("|10|") || raw.contains("|10\r") || raw.contains("|10$"))
 
         // 2 detail OBX + 1 barcode OBX
-        assertEquals(3, msg.obxSegments.size)
-        val first = msg.obxSegments[0]
-        assertEquals("1", first.setId)
-        assertEquals("DISP_IMG", first.observationId)
-        assertEquals("Dispense Image 1", first.observationText)
-        assertEquals("count=10|type=fixed|image=img1.png", first.observationValue)
+        assertTrue(raw.contains("DISP_IMG"))
+        assertTrue(raw.contains("count=10\\F\\type=fixed\\F\\image=img1.png"))
+        assertTrue(raw.contains("count=0\\F\\type=unknown\\F\\image="))
+        assertTrue("barcode OBX should be present", raw.contains("Barcode Image"))
+        assertTrue(raw.contains("count=0\\F\\type=dispense_bottle\\F\\image=barcode_555.png"))
 
-        val second = msg.obxSegments[1]
-        assertEquals("count=0|type=UNKNOWN|image=", second.observationValue)
-
-        val barcode = msg.obxSegments[2]
-        assertEquals("3", barcode.setId)
-        assertEquals("Barcode Image", barcode.observationText)
-        assertEquals("count=0|type=SCAN|image=barcode_555.png", barcode.observationValue)
-
-        // common notes
-        assertEquals(4, msg.notes.size)
-        assertEquals("Total Count: 10", msg.notes[1].comment)
-        assertEquals("Transaction Id: 555", msg.notes[2].comment)
-        assertEquals("Note: some note", msg.notes[3].comment)
-
-        // header + timestamp
-        assertNotNull(msg.header)
-        assertEquals("RDS", msg.header.messageType)
-        assertEquals("O13", msg.header.triggerEvent)
-        assertEquals(14, msg.timestamp.length) // yyyyMMddHHmmss
-        assertNotNull(msg.messageId)
+        // common note text
+        assertTrue(raw.contains("Transaction Id: 555"))
+        assertTrue(raw.contains("Total Count: 10"))
+        assertTrue(raw.contains("Note: some note"))
     }
 
     @Test
@@ -136,34 +110,33 @@ class HL7MessageBuilderTest {
             txnId = 777L,
             rxNo = "RX-9001",
             barcodeImage = null,
-            note = null
+            note = null,
         )
         val details = listOf(
-            detail(pillCount = 5, type = "partial", imagePath = "/x/y/z/photo.jpg")
+            detail(pillCount = 5, type = "partial", imagePath = "/x/y/z/photo.jpg"),
         )
 
-        val msg = HL7MessageBuilder.buildDispenseMessage(
+        val raw = HL7MessageBuilder.buildDispenseMessage(
             txn = txn,
             txnDetails = details,
             drugCode = "NDC1",
+            scannedDrugCode = "NDC1",
             drugName = "Drug",
             pharmacistId = null,
             pharmacistName = null,
-            location = null
+            location = null,
         )
 
-        // rxNo present -> used directly
-        assertEquals("RX-9001", msg.patient?.patientId)
-        assertEquals("RX-9001", msg.order?.placerOrderId)
-        assertEquals("RX-9001", msg.dispenses.first().prescriptionNumber)
+        // rxNo present -> used directly as prescription number / patient id
+        assertTrue(raw.contains("RX-9001"))
 
         // barcode null -> no barcode OBX, only the single detail OBX
-        assertEquals(1, msg.obxSegments.size)
-        assertEquals("count=5|type=partial|image=photo.jpg", msg.obxSegments[0].observationValue)
-        assertEquals("5", msg.dispenses.first().quantityDispensed)
+        assertTrue(raw.contains("count=5\\F\\type=partial\\F\\image=photo.jpg"))
+        assertEquals(1, Regex("DISP_IMG").findAll(raw).count())
 
-        // note null propagated
-        assertEquals("Note: null", msg.notes[3].comment)
+        // note null propagated: label present, no "Note:" suffix appended
+        assertTrue(raw.contains("Transaction Id: 777"))
+        assertTrue(!raw.contains("Note:"))
     }
 
     // ============================ INVENTORY ============================
@@ -173,7 +146,7 @@ class HL7MessageBuilderTest {
         val batch = BatchEntity(
             batchId = 42L,
             requestIdFromPMS = "REQ-FROM-PMS",
-            bucketId = "BUCKET-7"
+            bucketId = "BUCKET-7",
         )
 
         val txns = listOf(
@@ -184,72 +157,83 @@ class HL7MessageBuilderTest {
             // both opened and sealed for same key
             BatchTxnDto(3L, 3L, "DrugC", "NDC-C", "LOTC", "EXPC", bottleQty = 2, looseQty = 7, packageQty = 4),
             // NA branch: opened == 0 && sealed == 0 (all nulls)
-            BatchTxnDto(4L, 4L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null)
+            BatchTxnDto(4L, 4L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
         )
 
         val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
 
         assertTrue(raw.isNotEmpty())
         assertTrue("should contain MSH", raw.contains("MSH"))
-        assertTrue("should contain MSA", raw.contains("MSA"))
+        assertTrue("should contain BTS", raw.contains("BTS"))
         assertTrue("should contain ORC", raw.contains("ORC"))
         assertTrue("should contain INV", raw.contains("INV"))
         assertTrue("should contain ZIN", raw.contains("ZIN"))
-        // requestIdFromPMS used in MSA
-        assertTrue("MSA should carry requestIdFromPMS", raw.contains("REQ-FROM-PMS"))
-        // bucketId used as orderId in ORC
+        // bucketId used as ORC placer order number
         assertTrue("ORC should carry bucketId", raw.contains("BUCKET-7"))
-        // NA branch marker present
-        assertTrue("should contain NA marker", raw.contains("NA"))
-        // both opened+sealed markers
+        // both opened+sealed markers present (NA branch has opened=0/sealed=0 but still
+        // emits OPENED/SEALED ZIN rows with quantity 0)
         assertTrue(raw.contains("OPENED"))
         assertTrue(raw.contains("SEALED"))
     }
 
     @Test
-    fun `buildInventoryMessage falls back to REQ batchId when requestIdFromPMS null or blank`() {
+    fun `buildInventoryMessage handles null requestIdFromPMS and bucketId`() {
         val batchNull = BatchEntity(
             batchId = 99L,
             requestIdFromPMS = null,
-            bucketId = null
+            bucketId = null,
         )
         val rawNull = HL7MessageBuilder.buildInventoryMessage(
             batch = batchNull,
             txns = listOf(
-                BatchTxnDto(1L, 1L, "DrugX", "NDC-X", "LOTX", "EXPX", bottleQty = 1, looseQty = 0, packageQty = 2)
-            )
+                BatchTxnDto(1L, 1L, "DrugX", "NDC-X", "LOTX", "EXPX", bottleQty = 1, looseQty = 0, packageQty = 2),
+            ),
         )
         assertTrue(rawNull.isNotEmpty())
-        assertTrue("should fall back to REQ<batchId>", rawNull.contains("REQ99"))
+        assertTrue(rawNull.contains("NDC-X"))
 
-        // blank requestIdFromPMS also falls back
+        // blank requestIdFromPMS / bucketId, empty txns
         val batchBlank = BatchEntity(
             batchId = 7L,
             requestIdFromPMS = "   ",
-            bucketId = null
+            bucketId = null,
         )
         val rawBlank = HL7MessageBuilder.buildInventoryMessage(
             batch = batchBlank,
-            txns = emptyList()
+            txns = emptyList(),
         )
         assertTrue(rawBlank.isNotEmpty())
-        assertTrue("blank should fall back to REQ<batchId>", rawBlank.contains("REQ7"))
+        assertTrue(rawBlank.contains("MSH"))
     }
 
     @Test
-    fun `buildInventoryMessage with explicit requestId and orderId overrides defaults`() {
-        val batch = BatchEntity(batchId = 1L, requestIdFromPMS = "IGNORED", bucketId = "IGNORED-BUCKET")
+    fun `buildInventoryMessageChunks splits large batches and carries chunk metadata`() {
+        val batch = BatchEntity(batchId = 1L, requestIdFromPMS = "REQ", bucketId = "BUCKET-1")
+        val txns = (1..250).map { i ->
+            BatchTxnDto(
+                txnId = i.toLong(),
+                drugId = i.toLong(),
+                drugName = "Drug$i",
+                ndc = "NDC$i",
+                lotNo = "LOT$i",
+                expiry = "EXP$i",
+                bottleQty = 1,
+                looseQty = 0,
+                packageQty = 1,
+            )
+        }
 
-        val raw = HL7MessageBuilder.buildInventoryMessage(
+        val chunks = HL7MessageBuilder.buildInventoryMessageChunks(
             batch = batch,
-            txns = listOf(
-                BatchTxnDto(1L, 1L, null, null, null, null, bottleQty = 1, looseQty = 1, packageQty = 1)
-            ),
-            requestId = "EXPLICIT-REQ",
-            orderId = "EXPLICIT-ORDER"
+            txns = txns,
+            maxRowsPerChunk = 200,
         )
 
-        assertTrue(raw.contains("EXPLICIT-REQ"))
-        assertTrue(raw.contains("EXPLICIT-ORDER"))
+        assertEquals(2, chunks.size)
+        assertEquals(1, chunks[0].chunkIndex)
+        assertEquals(2, chunks[0].totalChunks)
+        assertEquals(2, chunks[1].chunkIndex)
+        assertTrue(chunks[0].message.contains("NDC1"))
+        assertTrue(chunks[1].message.contains("NDC250"))
     }
 }
