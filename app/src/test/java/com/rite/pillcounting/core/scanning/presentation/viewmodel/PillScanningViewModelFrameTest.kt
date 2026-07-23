@@ -3,6 +3,7 @@ package com.rite.pillcounting.core.scanning.presentation.viewmodel
 import android.app.Application
 import androidx.camera.core.ImageProxy
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
@@ -64,6 +65,7 @@ class PillScanningViewModelFrameTest {
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
     private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
+    private val batchDao: BatchDao = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
 
@@ -83,6 +85,7 @@ class PillScanningViewModelFrameTest {
             pillCountTxnDao = pillCountTxnDao,
             stockTxnDao = stockTxnDao,
             bottleInfoDao = bottleInfoDao,
+            batchDao = batchDao,
             userDao = userDao,
             pillCountTxnDetailsDao = pillCountTxnDetailsDao,
             locationProvider = locationProvider,
