@@ -18,7 +18,9 @@ import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateResponse
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
+import com.rite.pillcounting.feature.profile.data.CountryData
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
+import com.rite.pillcounting.feature.profile.data.StateData
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
@@ -140,7 +142,7 @@ class ProfileViewModelTest {
         return HttpException(Response.error<Any>(code, responseBody))
     }
 
-    private fun userEntity() = UserEntity(
+    private fun userEntity(country: String? = null, state: String? = null) = UserEntity(
         localId = 1L,
         userId = "user-1",
         email = SecureString("john@x.com"),
@@ -149,6 +151,8 @@ class ProfileViewModelTest {
         phoneNumber = SecureString("1234567890"),
         pharmacyName = "Pharma",
         npiId = "123456",
+        country = country,
+        state = state,
     )
 
     // ────────────────────────────── init ──────────────────────────────
@@ -189,6 +193,26 @@ class ProfileViewModelTest {
         assertEquals("1234567890", vm.phoneNumber)
         assertEquals("john@x.com", vm.email)
         assertEquals("123456", vm.npi)
+    }
+
+    @Test
+    fun `init prefills selectedCountry from emitted user country`() = runTest(testDispatcher) {
+        every { userDao.observeByLocalId(1L) } returns flowOf(userEntity(country = "CA"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("CA", vm.selectedCountry?.code)
+    }
+
+    @Test
+    fun `init falls back to default country when user country is unknown`() = runTest(testDispatcher) {
+        every { userDao.observeByLocalId(1L) } returns flowOf(userEntity(country = "XX"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("US", vm.selectedCountry?.code)
     }
 
     @Test
@@ -245,6 +269,76 @@ class ProfileViewModelTest {
         vm.onTerminalSelected(otherTerminal)
 
         assertEquals("t2", vm.selectedTerminal?.terminalId)
+    }
+
+    @Test
+    fun `countries defaults to CountryData countries`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(CountryData.countries, vm.countries)
+    }
+
+    @Test
+    fun `selectedCountry defaults to US`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("US", vm.selectedCountry?.code)
+    }
+
+    @Test
+    fun `onCountrySelected updates selectedCountry`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val canada = CountryData.countries.first { it.code == "CA" }
+        vm.onCountrySelected(canada)
+
+        assertEquals("CA", vm.selectedCountry?.code)
+    }
+
+    @Test
+    fun `states defaults to StateData for default country`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(StateData.statesFor("US"), vm.states)
+        assertNull(vm.selectedState)
+    }
+
+    @Test
+    fun `onCountrySelected refreshes states for new country`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val canada = CountryData.countries.first { it.code == "CA" }
+        vm.onCountrySelected(canada)
+
+        assertEquals(StateData.statesFor("CA"), vm.states)
+        assertNull(vm.selectedState)
+    }
+
+    @Test
+    fun `onStateSelected updates selectedState`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val california = vm.states.first { it.code == "CA" }
+        vm.onStateSelected(california)
+
+        assertEquals("CA", vm.selectedState?.code)
+    }
+
+    @Test
+    fun `init prefills selectedState from emitted user state`() = runTest(testDispatcher) {
+        every { userDao.observeByLocalId(1L) } returns
+            flowOf(userEntity(country = "US", state = "NY"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("NY", vm.selectedState?.code)
     }
 
     @Test
@@ -329,6 +423,40 @@ class ProfileViewModelTest {
         coVerify { userDao.update(any<UserEntity>()) }
         verify { preferenceHelper.saveDoNotAskAgain(any()) }
         coVerify(exactly = 0) { terminalRepository.updateTerminal(any(), any()) }
+    }
+
+    @Test
+    fun `updateProfile sends selected country in request and persists it`() = runTest(testDispatcher) {
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val canada = vm.countries.first { it.code == "CA" }
+        vm.onCountrySelected(canada)
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        coVerify { repository.updateProfile(match { it.country == "CA" }) }
+        coVerify { userDao.update(match<UserEntity> { it.country == "CA" }) }
+    }
+
+    @Test
+    fun `updateProfile sends selected state in request and persists it`() = runTest(testDispatcher) {
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val california = vm.states.first { it.code == "CA" }
+        vm.onStateSelected(california)
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        coVerify { repository.updateProfile(match { it.state == "CA" }) }
+        coVerify { userDao.update(match<UserEntity> { it.state == "CA" }) }
     }
 
     @Test

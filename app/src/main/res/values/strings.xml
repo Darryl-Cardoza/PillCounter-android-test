@@ -382,6 +382,14 @@
     <string name="pharmacy_type_compounding">Compounding Pharmacy</string>
     <string name="pharmacy_type_specialty">Specialty Pharmacy</string>
 
+    <!-- Country -->
+    <string name="country">Country</string>
+    <string name="select_country">Select Country</string>
+
+    <!-- State -->
+    <string name="state">State</string>
+    <string name="select_state">Select State</string>
+
     <string name="verify_rx_details">Verify Rx Details</string>
     <string name="verify_stock_bottle_details">Verify Stock Bottle Details</string>
     <string name="hazardous_drug_warning">Hazardous Drug</string>

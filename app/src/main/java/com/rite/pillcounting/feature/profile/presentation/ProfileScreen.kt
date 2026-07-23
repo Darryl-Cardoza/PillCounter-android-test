@@ -483,6 +483,35 @@ private fun ResponsiveProfileFields(
         )
     }
 
+    // Country dropdown.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 20.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        LabeledDropdown(
+            label = stringResource(R.string.country),
+            selectedText = viewModel.selectedCountry?.let { "${it.code} - ${it.name}" },
+            placeholder = stringResource(R.string.select_country),
+            items = viewModel.countries,
+            itemLabel = { "${it.code} - ${it.name}" },
+            isSelected = { it.code == viewModel.selectedCountry?.code },
+            onItemSelected = { viewModel.onCountrySelected(it) },
+            modifier = Modifier.weight(1f)
+        )
+        LabeledDropdown(
+            label = stringResource(R.string.state),
+            selectedText = viewModel.selectedState?.let { "${it.code} - ${it.name}" },
+            placeholder = stringResource(R.string.select_state),
+            items = viewModel.states,
+            itemLabel = { "${it.code} - ${it.name}" },
+            isSelected = { it.code == viewModel.selectedState?.code },
+            onItemSelected = { viewModel.onStateSelected(it) },
+            modifier = Modifier.weight(1f)
+        )
+    }
+
 }
 
 

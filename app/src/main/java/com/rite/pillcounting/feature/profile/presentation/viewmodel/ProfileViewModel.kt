@@ -22,11 +22,15 @@ import com.rite.pillcounting.feature.dashboard.data.TerminalRepository
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
+import com.rite.pillcounting.feature.profile.data.CountryData
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
+import com.rite.pillcounting.feature.profile.data.StateData
+import com.rite.pillcounting.feature.profile.domain.model.Country
 import com.rite.pillcounting.feature.profile.domain.model.PharmacyType
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
+import com.rite.pillcounting.feature.profile.domain.model.State
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,6 +91,18 @@ class ProfileViewModel @Inject constructor(
     val pharmacyTypes: List<PharmacyType> = PharmacyType.entries
     var selectedPharmacyType by mutableStateOf<PharmacyType?>(null)
 
+    // Country selection
+    val countries: List<Country> = CountryData.countries
+    var selectedCountry by mutableStateOf<Country?>(
+        countries.firstOrNull { it.code == CountryData.DEFAULT_COUNTRY_CODE }
+    )
+
+    // State/province selection — options depend on selectedCountry.
+    var states by mutableStateOf<List<State>>(StateData.statesFor(selectedCountry?.code))
+        private set
+    var selectedState by mutableStateOf<State?>(null)
+        private set
+
     // ─────────────────────────── Validation Errors ───────────────────────────
     var firstNameError by mutableStateOf<Int?>(null)
     var lastNameError by mutableStateOf<Int?>(null)
@@ -146,6 +162,10 @@ class ProfileViewModel @Inject constructor(
                     email = it.email.plain().orEmpty()
                     npi = it.npiId.orEmpty()
                     doNotAskAgain = preferenceHelper.isDoNotAskAgain()
+                    selectedCountry = countries.firstOrNull { c -> c.code == it.country }
+                        ?: countries.firstOrNull { c -> c.code == CountryData.DEFAULT_COUNTRY_CODE }
+                    states = StateData.statesFor(selectedCountry?.code)
+                    selectedState = states.firstOrNull { s -> s.code == it.state }
                 }
             }
         }
@@ -159,6 +179,18 @@ class ProfileViewModel @Inject constructor(
     fun onPharmacyTypeSelected(pharmacyType: PharmacyType) {
         selectedPharmacyType = pharmacyType
         logger.i("Pharmacy type selected: ${pharmacyType.apiValue}")
+    }
+
+    fun onCountrySelected(country: Country) {
+        selectedCountry = country
+        states = StateData.statesFor(country.code)
+        selectedState = states.firstOrNull { it.code == selectedState?.code }
+        logger.i("Country selected: ${country.code}")
+    }
+
+    fun onStateSelected(state: State) {
+        selectedState = state
+        logger.i("State selected: ${state.code}")
     }
 
     fun onPhoneChanged(input: String) {
@@ -225,7 +257,9 @@ class ProfileViewModel @Inject constructor(
                     fName = firstName.trim(),
                     lName = lastName.trim(),
                     terminalId = selectedTerminal?.terminalId,
-                    pharmacyType = selectedPharmacyType?.apiValue
+                    pharmacyType = selectedPharmacyType?.apiValue,
+                    country = selectedCountry?.code,
+                    state = selectedState?.code
                 )
 
                 repository.updateProfile(request)
@@ -244,6 +278,8 @@ class ProfileViewModel @Inject constructor(
                                 pharmacyName = pharmacyName,
                                 npiId = npi,
                                 notifications = !doNotAskAgain,
+                                country = selectedCountry?.code,
+                                state = selectedState?.code,
                                 isVerified = true,
                                 isProfileCompleted = true,
                                 createdAt = System.currentTimeMillis()
