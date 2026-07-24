@@ -14,7 +14,9 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import org.rite.hl7.domain.model.CompleteHL7Message
+import org.rite.hl7.model.HL7Message
+import org.rite.hl7.parser.HL7ParseResult
+import org.rite.hl7.parser.HL7Parser
 
 class Hl7EventHandlerTest {
 
@@ -51,10 +53,15 @@ class Hl7EventHandlerTest {
         unmockkAll()
     }
 
-    private fun message(): CompleteHL7Message {
-        val msg = mockk<CompleteHL7Message>(relaxed = true)
-        every { msg.messageId } returns "MSG-1"
-        return msg
+    private val hl7Parser = HL7Parser.Builder().build()
+
+    private fun message(): HL7Message {
+        val raw = "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|MSG-1|P|2.5"
+        return when (val result = hl7Parser.parse(raw)) {
+            is HL7ParseResult.Success -> result.message
+            is HL7ParseResult.Failure -> result.partialMessage
+                ?: error("Failed to parse test HL7 message: ${result.errors}")
+        }
     }
 
     @Test

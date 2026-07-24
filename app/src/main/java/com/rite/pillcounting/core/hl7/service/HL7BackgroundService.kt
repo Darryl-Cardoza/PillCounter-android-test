@@ -403,7 +403,7 @@ class HL7Service : Service() {
      * 3. Build and return a wire-ready ACK string via [HL7.ack].
      *    On parse failure, returns an AA ACK derived from the raw MSH fields.
      */
-    private suspend fun handleIncomingMessage(raw: String): String {
+    private  fun handleIncomingMessage(raw: String): String {
         return try {
             logger.i("HL7 message received (${raw.length} chars)")
             logger.i("Plain HL7 received:\n$raw")
@@ -487,16 +487,11 @@ class HL7Service : Service() {
         }
     }
 
-    fun sendRawHl7Message(raw: String) {
-        serviceScope.launch {
-            try {
-                val ack = clientManager.send(raw)
-                listener?.onMessageSent(raw, "INR_RESPONSE")
-                listener?.onAckReceived(ack, "INR_RESPONSE")
-            } catch (e: Exception) {
-                listener?.onError("MESSAGE_SEND", e)
-            }
-        }
+    suspend fun sendRawHl7Message(raw: String): String {
+        val ack = clientManager.send(raw)
+        listener?.onMessageSent(raw, "INR_RESPONSE")
+        listener?.onAckReceived(ack, "INR_RESPONSE")
+        return ack
     }
 
     /* -------------------- NOTIFICATION -------------------- */

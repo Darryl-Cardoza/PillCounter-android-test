@@ -1,12 +1,14 @@
 package com.rite.pillcounting.core.scanning.presentation.viewmodel
 
 import android.app.Application
+import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
@@ -70,6 +72,7 @@ class PillScanningViewModelNdcScanTest {
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
     private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
+    private val batchDao: BatchDao = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
 
@@ -92,6 +95,7 @@ class PillScanningViewModelNdcScanTest {
             pillCountTxnDao = pillCountTxnDao,
             stockTxnDao = stockTxnDao,
             bottleInfoDao = bottleInfoDao,
+            batchDao = batchDao,
             userDao = userDao,
             pillCountTxnDetailsDao = pillCountTxnDetailsDao,
             locationProvider = locationProvider,
@@ -179,6 +183,77 @@ class PillScanningViewModelNdcScanTest {
         advanceUntilIdle()
 
         assertNotNull(viewModel.uiState.value.showErrorMessage)
+    }
+
+    // SCAN_VM_026
+    @Test
+    fun `onNdcScannedForStockCount lazily creates the batch when entered with batchId zero`() = runTest {
+        // SCAN PILLS with no batch yet — InventoryScanViewModel.onScanPillsForActive now
+        // passes batchId=0L instead of creating one eagerly. The batch must be created
+        // here, on the first successful NDC scan, not before.
+        viewModel.enterStockCountScanMode(batchId = 0L)
+        viewModel.getDrugInfo()
+        advanceUntilIdle()
+
+        val drug = DrugMasterEntity(drugId = 7L, ndc = VALID_GTIN)
+        every { barcodeDecoder.isGs1Barcode(VALID_GTIN) } returns false
+        every { barcodeDecoder.toGtin14(VALID_GTIN) } returns VALID_GTIN
+        coEvery { drugMasterDao.getDrugByGtin(VALID_GTIN) } returns drug
+        coEvery { batchDao.insert(any()) } returns 99L
+        coEvery { stockTxnDao.findByDrugInBatch(99L, 7L) } returns null
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 9L
+
+        coVerify(exactly = 0) { batchDao.insert(any()) }
+
+        viewModel.onNdcScannedForStockCount(VALID_GTIN)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { batchDao.insert(match<BatchEntity> { it.bucketId == null }) }
+        // Subsequent DB writes for this scan must use the newly created batch id,
+        // not the original 0L placeholder.
+        coVerify(exactly = 1) {
+            stockTxnDao.upsertPreservingId(match<StockTxnEntity> { it.drugId == 7L && it.batchId == 99L })
+        }
+    }
+
+    // SCAN_VM_027
+    @Test
+    fun `onNdcScannedForStockCount does not create a batch when one already exists`() = runTest {
+        viewModel.enterStockCountScanMode(batchId = BATCH_ID)
+        viewModel.getDrugInfo()
+        advanceUntilIdle()
+
+        val drug = DrugMasterEntity(drugId = 7L, ndc = VALID_GTIN)
+        every { barcodeDecoder.isGs1Barcode(VALID_GTIN) } returns false
+        every { barcodeDecoder.toGtin14(VALID_GTIN) } returns VALID_GTIN
+        coEvery { drugMasterDao.getDrugByGtin(VALID_GTIN) } returns drug
+        coEvery { stockTxnDao.findByDrugInBatch(BATCH_ID, 7L) } returns null
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 9L
+
+        viewModel.onNdcScannedForStockCount(VALID_GTIN)
+        advanceUntilIdle()
+
+        coVerify(exactly = 0) { batchDao.insert(any()) }
+    }
+
+    // SCAN_VM_028
+    @Test
+    fun `onNdcScannedForStockCount surfaces no_active_batch error when lazy batch creation fails`() = runTest {
+        viewModel.enterStockCountScanMode(batchId = 0L)
+        viewModel.getDrugInfo()
+        advanceUntilIdle()
+
+        val drug = DrugMasterEntity(drugId = 7L, ndc = VALID_GTIN)
+        every { barcodeDecoder.isGs1Barcode(VALID_GTIN) } returns false
+        every { barcodeDecoder.toGtin14(VALID_GTIN) } returns VALID_GTIN
+        coEvery { drugMasterDao.getDrugByGtin(VALID_GTIN) } returns drug
+        coEvery { batchDao.insert(any()) } returns 0L
+
+        viewModel.onNdcScannedForStockCount(VALID_GTIN)
+        advanceUntilIdle()
+
+        assertNotNull(viewModel.uiState.value.showErrorMessage)
+        coVerify(exactly = 0) { stockTxnDao.upsertPreservingId(any()) }
     }
 
     // ─────────────────────────── handleConfirmDone (via PillScanningEvent.ConfirmDone) ───────────────────────────

@@ -2,13 +2,10 @@
 
 import Screen
 import android.Manifest
-import android.content.pm.PackageManager
 import android.util.Log
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -47,7 +44,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import androidx.core.content.ContextCompat
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
@@ -72,6 +68,7 @@ import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsSheet
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyStockBottleSheet
+import com.rite.pillcounting.core.utils.permission.rememberPermissionStateDetailed
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BtScannerInputBar
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.DispenseQueuePanel
@@ -147,23 +144,33 @@ fun DispenseFlowScreen(
     var btScannerInput by remember { mutableStateOf("") }
     val btFocusRequester = remember { FocusRequester() }
 
-    var hasCameraPermission by remember {
-        mutableStateOf(
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.CAMERA
-            ) == PackageManager.PERMISSION_GRANTED
-        )
-    }
-
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
-        onResult = { hasCameraPermission = it }
+    val cameraPermissionState = rememberPermissionStateDetailed(
+        permission = Manifest.permission.CAMERA,
+        rationaleTitle = stringResource(R.string.permission_camera_title),
+        rationaleMessage = stringResource(R.string.permission_camera_rationale),
     )
+    val hasCameraPermission = cameraPermissionState.granted
 
-    LaunchedEffect(Unit) {
-        if (!hasCameraPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
+    // Dispense flow is unusable without the camera — bounce back to Dashboard
+    // once the permission request resolves to "denied" (including the
+    // permanently-denied "Not now" path), rather than showing a broken/blank
+    // screen. Gated on hasResponded so this doesn't fire while the system
+    // dialog is still pending, and on showingSettingsDialog so the redirect
+    // waits for the user to actually dismiss that dialog instead of racing it.
+    LaunchedEffect(
+        cameraPermissionState.hasResponded,
+        cameraPermissionState.granted,
+        cameraPermissionState.showingSettingsDialog,
+    ) {
+        if (cameraPermissionState.hasResponded &&
+            !cameraPermissionState.granted &&
+            !cameraPermissionState.showingSettingsDialog
+        ) {
+            showToast(context, "Camera permission is required for this action")
+            navController.navigate(Screen.Dashboard.route) {
+                popUpTo(0)
+                launchSingleTop = true
+            }
         }
     }
 

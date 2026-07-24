@@ -18,11 +18,11 @@ class Hl7MessageSender @Inject constructor(
      * Sends a pre-encoded HL7 wire string.
      * The message is forwarded verbatim via the MLLP client.
      */
-    fun send(raw: String): Result<Unit> {
+    suspend fun send(raw: String): Result<String> {
         return hl7ServiceManager.sendRawMessage(raw)
     }
 
-    fun sendRaw(raw: String): Result<Unit> {
+    suspend fun sendRaw(raw: String): Result<String> {
         return hl7ServiceManager.sendRawMessage(raw)
     }
 

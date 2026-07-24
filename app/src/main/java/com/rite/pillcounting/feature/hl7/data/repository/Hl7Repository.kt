@@ -31,6 +31,7 @@ import com.rite.pillcounting.feature.hl7.domain.model.MessageType
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
 import com.rite.pillcounting.feature.hl7.util.HL7Config
 import com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder
+import com.rite.pillcounting.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -238,16 +239,17 @@ class Hl7Repository @Inject constructor(
 
                 logger.i("Sending inventory chunk ${chunk.chunkIndex}/${chunk.totalChunks} for batchId=$batchId")
                 val result = hl7MessageSender.sendRaw(chunk.message)
+                val ackAccepted = result.getOrNull()?.let { isSuccessAck(it) } ?: false
 
-                if (result.isSuccess) {
+                if (result.isSuccess && ackAccepted) {
                     batchDao.markChunkAcked(batchId, chunk.chunkIndex)
                     logger.i("Chunk ${chunk.chunkIndex}/${chunk.totalChunks} ACKed for batchId=$batchId")
                 } else {
                     // Stop here — do not send later chunks out of order. The batch
                     // stays unsynced and will resume at this exact chunk next time.
                     logger.e(
-                        "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed for batchId=$batchId: " +
-                            "${result.exceptionOrNull()?.message}"
+                        "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed/NAKed for batchId=$batchId: " +
+                            "${result.exceptionOrNull()?.message ?: "non-success ACK"}"
                     )
                     return
                 }
@@ -400,16 +402,16 @@ class Hl7Repository @Inject constructor(
 
             resolvedNdc?.let {
                 val imagePath = drugImageDownloader.downloadAndSave(
-                    url = drugInfo?.imageUrl,
-                    drugName = resolvedDrugName ?: drugInfo?.ndc
+                    url = drugInfo.imageUrl,
+                    drugName = resolvedDrugName
                 )
                 DrugMasterEntity(
                     ndc = it,
                     drugName = resolvedDrugName,
-                    drugType = drugInfo?.drugType,
-                    isHazardous = drugInfo?.isHazardous ?: false,
-                    strength = drugInfo?.strength,
-                    dosageForm = drugInfo?.dosageForm,
+                    drugType = drugInfo.drugType,
+                    isHazardous = drugInfo.isHazardous ?: false,
+                    strength = drugInfo.strength,
+                    dosageForm = drugInfo.dosageForm,
                     drugImagePath = imagePath,
                 )
             }
@@ -963,7 +965,8 @@ class Hl7Repository @Inject constructor(
     // ─────────────────────────── INBOUND HANDLER: ORC|CA (CANCEL) ───────────────────────────
 
     private suspend fun handleOrderCancellation(message: HL7Message) {
-        val rxNo = message.segment<ORCSegment>(ORCSegment.NAME)?.placerOrderNumber ?: return
+        val rxNo = message.segment<ORCSegment>(ORCSegment.NAME)?.placerOrderNumber
+            ?.takeIf { it.isNotBlank() } ?: return
         logger.i("Received ORC|CA for rxNo=$rxNo — soft-deleting transaction")
         pillCountTxnDao.softDeleteByRxNo(rxNo)
         logger.i("Transaction with rxNo=$rxNo marked as deleted")
@@ -1042,16 +1045,16 @@ class Hl7Repository @Inject constructor(
                     return
                 }
                 val imagePath = drugImageDownloader.downloadAndSave(
-                    url = drugInfo?.imageUrl,
-                    drugName = resolvedName ?: drugInfo?.ndc
+                    url = drugInfo.imageUrl,
+                    drugName = resolvedName
                 )
                 DrugMasterEntity(
-                    ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: hl7Ndc,
+                    ndc = drugInfo.ndc.takeIf { it.isNotBlank() } ?: hl7Ndc,
                     drugName = resolvedName,
-                    drugType = drugInfo?.drugType,
-                    isHazardous = drugInfo?.isHazardous ?: false,
-                    strength = drugInfo?.strength,
-                    dosageForm = drugInfo?.dosageForm,
+                    drugType = drugInfo.drugType,
+                    isHazardous = drugInfo.isHazardous ?: false,
+                    strength = drugInfo.strength,
+                    dosageForm = drugInfo.dosageForm,
                     drugImagePath = imagePath,
                 )
             } catch (e: Exception) {
@@ -1134,25 +1137,8 @@ class Hl7Repository @Inject constructor(
         scope.launch {
             pillCountTxnDao.observePendingHl7Txn()
                 .collect { pendingTxn ->
-
                     logger.i("HL7 observer fired, pending=${pendingTxn.size}")
-
-//                    val hasPendingNow = pendingTxn.isNotEmpty()
-//                    if (hasPendingNow) {
-//                        logger.i("Pending HL7 txn detected, initiating connection")
-//                        hl7MessageSender.connect()
                     resendPendingHl7Transactions()
-//                    }
-                }
-        }
-    }
-
-    private fun observePendingHl7BatchTransactions() {
-        scope.launch {
-            batchDao.observeUnsyncedCompletedBatches()
-                .collect { pendingBatches ->
-                    logger.i("HL7 batch observer fired, pending=${pendingBatches.size}")
-                    resendPendingHl7BatchTransactions()
                 }
         }
     }

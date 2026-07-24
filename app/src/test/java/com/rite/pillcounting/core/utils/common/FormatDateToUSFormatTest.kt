@@ -49,4 +49,52 @@ class FormatDateToUSFormatTest {
     fun emptyInput_returnsEmpty() {
         assertEquals("", formatDateToUSFormat(""))
     }
+
+    @Test
+    fun invalidMonthValue_rejectedByStrictParsing_returnsCleanInput() {
+        // isLenient = false must reject month 13 in both candidate formats.
+        assertEquals("13-15-2024", formatDateToUSFormat("13-15-2024"))
+    }
+
+    @Test
+    fun invalidDayValue_rejectedByStrictParsing_returnsCleanInput() {
+        // February never has 30 days; strict parser must reject it.
+        assertEquals("02-30-2024", formatDateToUSFormat("02-30-2024"))
+    }
+
+    @Test
+    fun leapDayOnLeapYear_parsesSuccessfully() {
+        assertEquals("02-29-2024", formatDateToUSFormat("02-29-2024"))
+    }
+
+    @Test
+    fun leapDayOnNonLeapYear_rejectedByStrictParsing_returnsCleanInput() {
+        // 2023 is not a leap year; Feb 29 must be rejected under isLenient = false.
+        assertEquals("02-29-2023", formatDateToUSFormat("02-29-2023"))
+    }
+
+    @Test
+    fun startOfYearBoundary_parsesSuccessfully() {
+        assertEquals("01-01-2024", formatDateToUSFormat("01-01-2024"))
+    }
+
+    @Test
+    fun dateTimeFormat_invalidHourValue_returnsCleanInput() {
+        // Hour 25 is invalid for hh (1-12) pattern; both formats must fail to parse.
+        assertEquals("12-31-2024 25:00 AM", formatDateToUSFormat("12-31-2024 25:00 AM"))
+    }
+
+    @Test
+    fun malformedOutputPattern_exceptionCaught_returnsOriginalUntrimmedInput() {
+        // SimpleDateFormat throws for unknown pattern letters (e.g. 'q' repeated oddly);
+        // the catch block must return the original, untrimmed input, not cleanInput.
+        val result = formatDateToUSFormat("  12-31-2024  ", "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq")
+        assertEquals("  12-31-2024  ", result)
+    }
+
+    @Test
+    fun customOutputPattern_appliedToDateTimeInput() {
+        val result = formatDateToUSFormat("12-31-2024 10:30 AM", "yyyy-MM-dd")
+        assertEquals("2024-12-31", result)
+    }
 }

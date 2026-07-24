@@ -3,6 +3,7 @@ package com.rite.pillcounting.core.scanning.presentation.viewmodel
 import android.app.Application
 import androidx.camera.core.ImageProxy
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
@@ -64,6 +65,7 @@ class PillScanningViewModelFrameTest {
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
     private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
+    private val batchDao: BatchDao = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
 
@@ -83,6 +85,7 @@ class PillScanningViewModelFrameTest {
             pillCountTxnDao = pillCountTxnDao,
             stockTxnDao = stockTxnDao,
             bottleInfoDao = bottleInfoDao,
+            batchDao = batchDao,
             userDao = userDao,
             pillCountTxnDetailsDao = pillCountTxnDetailsDao,
             locationProvider = locationProvider,
@@ -137,13 +140,15 @@ class PillScanningViewModelFrameTest {
 
     // SCAN_VM_017
     @Test
-    fun `getDrugInfo with no txn and forceStartOnScan=false resolves currentStep to CONTAINER_INITIATE`() = runTest {
-        // Relaxed mocks: getTxnWithDetails → null, getLatestType → null
-        // null drugType → equals("null", true) == false → falls back to CONTAINER_INITIATE
+    fun `getDrugInfo with no txn and forceStartOnScan=false resolves currentStep to TARGET_VERIFICATION`() = runTest {
+        // Relaxed mocks: getTxnWithDetails → null, getLatestType → null.
+        // drugInfo is null (no txn -> no drugId), so drugType.isNullOrEmpty() is true,
+        // which falls back to TARGET_VERIFICATION (not CONTAINER_INITIATE, which is only
+        // reached when drugType is a known non-blank, non-"null" value).
         viewModel.getDrugInfo()
         advanceUntilIdle()
 
-        assertEquals(StepState.CONTAINER_INITIATE, viewModel.currentStep.value)
+        assertEquals(StepState.TARGET_VERIFICATION, viewModel.currentStep.value)
     }
 
     // SCAN_VM_018

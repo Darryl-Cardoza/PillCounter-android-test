@@ -6,6 +6,7 @@ import com.rite.pillcounting.core.hl7.core.Hl7EventListener
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
+import com.rite.pillcounting.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -94,20 +95,6 @@ class Hl7EventHandler @Inject constructor(
         } else {
             logger.w("Non-success ACK | msgId=$messageId — leaving transaction unsynced for retry")
         }
-    }
-
-    /**
-     * Returns true when the raw HL7 ACK carries a success acknowledgment code in MSA-1.
-     * Accepts "AA" (Application Accept) and "CA" (Commit Accept, enhanced mode); "AE"/"AR"
-     * (error/reject) and a missing MSA segment are treated as non-success.
-     */
-    private fun isSuccessAck(ackRaw: String): Boolean {
-        val msaSegment = ackRaw
-            .split('\r', '\n')
-            .firstOrNull { it.startsWith("MSA|") }
-            ?: return false
-        val code = msaSegment.split('|').getOrNull(1)?.trim()?.uppercase()
-        return code == "AA" || code == "CA"
     }
 
 
