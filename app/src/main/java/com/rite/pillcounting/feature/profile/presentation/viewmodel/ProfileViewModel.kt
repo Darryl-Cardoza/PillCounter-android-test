@@ -22,9 +22,7 @@ import com.rite.pillcounting.feature.dashboard.data.TerminalRepository
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
-import com.rite.pillcounting.feature.profile.data.CountryData
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
-import com.rite.pillcounting.feature.profile.data.StateData
 import com.rite.pillcounting.feature.profile.domain.model.Country
 import com.rite.pillcounting.feature.profile.domain.model.PharmacyType
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
@@ -40,6 +38,9 @@ import retrofit2.HttpException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import javax.inject.Inject
+
+/** ISO 3166-1 alpha-2 code preselected when no country is otherwise known. */
+private const val DEFAULT_COUNTRY_CODE = "US"
 
 /**
  * ViewModel for managing Profile UI state, validation, and business logic.
@@ -91,14 +92,15 @@ class ProfileViewModel @Inject constructor(
     val pharmacyTypes: List<PharmacyType> = PharmacyType.entries
     var selectedPharmacyType by mutableStateOf<PharmacyType?>(null)
 
-    // Country selection
-    val countries: List<Country> = CountryData.countries
+    // Country selection — prefilled from cache immediately, refreshed from the API in init.
+    var countries by mutableStateOf<List<Country>>(preferenceHelper.getCountries())
+        private set
     var selectedCountry by mutableStateOf<Country?>(
-        countries.firstOrNull { it.code == CountryData.DEFAULT_COUNTRY_CODE }
+        countries.firstOrNull { it.code == DEFAULT_COUNTRY_CODE }
     )
 
-    // State/province selection — options depend on selectedCountry.
-    var states by mutableStateOf<List<State>>(StateData.statesFor(selectedCountry?.code))
+    // State/province selection — options come from the selected country's nested list.
+    var states by mutableStateOf<List<State>>(selectedCountry?.states.orEmpty())
         private set
     var selectedState by mutableStateOf<State?>(null)
         private set
@@ -139,6 +141,37 @@ class ProfileViewModel @Inject constructor(
         // Restore previously selected pharmacy type
         selectedPharmacyType = PharmacyType.fromApiValue(preferenceHelper.getPharmacyType())
         logger.i("Loaded pharmacy type: ${selectedPharmacyType?.apiValue}")
+
+        fetchCountries()
+    }
+
+    /**
+     * Refreshes the countries/states reference list from the API on every profile screen load.
+     *
+     * Cached values (loaded synchronously in the [countries] initializer) are shown immediately
+     * so the dropdown never blocks on the network; a successful response then replaces the
+     * cache and re-resolves the current selection against the fresh list.
+     */
+    private fun fetchCountries() {
+        viewModelScope.launch {
+            repository.getCountries()
+                .onSuccess { fetched ->
+                    if (fetched.isEmpty()) return@onSuccess
+
+                    countries = fetched
+                    preferenceHelper.saveCountries(fetched)
+
+                    selectedCountry = fetched.firstOrNull { it.code == selectedCountry?.code }
+                        ?: fetched.firstOrNull { it.code == DEFAULT_COUNTRY_CODE }
+                    states = selectedCountry?.states.orEmpty()
+                    selectedState = states.firstOrNull { it.code == selectedState?.code }
+
+                    logger.i("Countries refreshed from API (count=${fetched.size})")
+                }
+                .onFailure { e ->
+                    logger.w("Failed to refresh countries from API, keeping cached list: ${e.message}")
+                }
+        }
     }
 
     fun toggleDoNotAskAgain(value: Boolean) {
@@ -163,8 +196,8 @@ class ProfileViewModel @Inject constructor(
                     npi = it.npiId.orEmpty()
                     doNotAskAgain = preferenceHelper.isDoNotAskAgain()
                     selectedCountry = countries.firstOrNull { c -> c.code == it.country }
-                        ?: countries.firstOrNull { c -> c.code == CountryData.DEFAULT_COUNTRY_CODE }
-                    states = StateData.statesFor(selectedCountry?.code)
+                        ?: countries.firstOrNull { c -> c.code == DEFAULT_COUNTRY_CODE }
+                    states = selectedCountry?.states.orEmpty()
                     selectedState = states.firstOrNull { s -> s.code == it.state }
                 }
             }
@@ -183,7 +216,7 @@ class ProfileViewModel @Inject constructor(
 
     fun onCountrySelected(country: Country) {
         selectedCountry = country
-        states = StateData.statesFor(country.code)
+        states = country.states
         selectedState = states.firstOrNull { it.code == selectedState?.code }
         logger.i("Country selected: ${country.code}")
     }

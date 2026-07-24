@@ -74,6 +74,12 @@ import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
 import com.rite.pillcounting.feature.profile.presentation.viewmodel.ProfileViewModel
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
 import com.rite.pillcounting.ui.theme.AppTheme
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 
 @Composable
 fun ProfileScreen(
@@ -508,7 +514,8 @@ private fun ResponsiveProfileFields(
             itemLabel = { "${it.code} - ${it.name}" },
             isSelected = { it.code == viewModel.selectedState?.code },
             onItemSelected = { viewModel.onStateSelected(it) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            isSearchable = true
         )
     }
 
@@ -534,9 +541,23 @@ private fun <T> LabeledDropdown(
     modifier: Modifier = Modifier,
     isSelected: (T) -> Boolean = { false },
     enabled: Boolean = true,
-    onDisabledClick: () -> Unit = {}
+    onDisabledClick: () -> Unit = {},
+    isSearchable: Boolean = false,
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var expanded by remember { mutableStateOf(false) }
+    var searchQuery by remember(selectedText) { mutableStateOf(selectedText ?: "") }
+    var debouncedQuery by remember { mutableStateOf("") }
+
+    LaunchedEffect(searchQuery) {
+        delay(300)
+        debouncedQuery = searchQuery
+    }
+
+    LaunchedEffect(expanded) {
+        searchQuery = if (expanded) "" else (selectedText ?: "")
+    }
 
     val contentAlpha = if (enabled) 1f else 0.4f
     val accent = MaterialTheme.colorScheme.primary
@@ -553,49 +574,120 @@ private fun <T> LabeledDropdown(
         },
         modifier = modifier,
     ) {
-        Box(
-            modifier = Modifier
-                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
-                .fillMaxWidth()
-                .height(AppTheme.dimens.profileTextFieldHeight)
-                .clip(shape)
-                .background(AppTheme.extendedColors.inputBackground)
-                .border(
-                    width = if (expanded && enabled) 1.5.dp else 1.dp,
-                    color = if (expanded && enabled) accent
-                    else AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
-                    shape = shape
+        val anchorModifier = Modifier
+            .fillMaxWidth()
+            .height(AppTheme.dimens.profileTextFieldHeight)
+            .clip(shape)
+            .background(AppTheme.extendedColors.inputBackground)
+            .border(
+                width = if (expanded && enabled) 1.5.dp else 1.dp,
+                color = if (expanded && enabled) accent
+                else AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
+                shape = shape
+            )
+            .padding(horizontal = 15.dp)
+
+        if (isSearchable && enabled) {
+            BasicTextField(
+                value = searchQuery,
+                onValueChange = {
+                    searchQuery = it
+                    expanded = true
+                },
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = 16.sp,
+                ),
+                cursorBrush = SolidColor(accent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                modifier = Modifier
+                    .menuAnchor(MenuAnchorType.PrimaryEditable, true)
+                    .then(anchorModifier),
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = label,
+                            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(top = 6.dp),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(bottom = 10.dp, end = 28.dp),
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = placeholder,
+                                    color = AppTheme.extendedColors.textColor.copy(alpha = 0.4f),
+                                    fontSize = 16.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            innerTextField()
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = AppTheme.extendedColors.textColor,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .rotate(arrowRotation),
+                        )
+                    }
+                }
+            )
+        } else {
+            Box(
+                modifier = Modifier
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                    .then(anchorModifier),
+            ) {
+                Text(
+                    text = label,
+                    color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f * contentAlpha),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = 6.dp),
                 )
-                .padding(horizontal = 15.dp),
-        ) {
-            Text(
-                text = label,
-                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f * contentAlpha),
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 6.dp),
-            )
-            Text(
-                text = selectedText ?: placeholder,
-                color = if (selectedText == null)
-                    AppTheme.extendedColors.textColor.copy(alpha = 0.4f * contentAlpha)
-                else AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(bottom = 10.dp, end = 28.dp),
-            )
-            Icon(
-                imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = null,
-                tint = AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
-                modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .rotate(arrowRotation),
-            )
+                Text(
+                    text = selectedText ?: placeholder,
+                    color = if (selectedText == null)
+                        AppTheme.extendedColors.textColor.copy(alpha = 0.4f * contentAlpha)
+                    else AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(bottom = 10.dp, end = 28.dp),
+                )
+                Icon(
+                    imageVector = Icons.Default.ArrowDropDown,
+                    contentDescription = null,
+                    tint = AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .rotate(arrowRotation),
+                )
+            }
+        }
+
+        val filteredItems = if (isSearchable && debouncedQuery.isNotBlank()) {
+            val result = mutableListOf<T>()
+            for (item in items) {
+                if (itemLabel(item).contains(debouncedQuery, ignoreCase = true)) {
+                    result.add(item)
+                }
+            }
+            result
+        } else {
+            items
         }
 
         // Custom-styled menu: white rounded surface, compact rows, selected highlight.
@@ -606,7 +698,7 @@ private fun <T> LabeledDropdown(
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.heightIn(max = 280.dp),
         ) {
-            items.forEachIndexed { index, item ->
+            filteredItems.forEachIndexed { index, item ->
                 val selected = isSelected(item)
                 DropdownMenuItem(
                     text = {
@@ -629,10 +721,14 @@ private fun <T> LabeledDropdown(
                     onClick = {
                         onItemSelected(item)
                         expanded = false
+                        if (isSearchable) {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                        }
                     },
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
                 )
-                if (index < items.lastIndex) {
+                if (index < filteredItems.lastIndex) {
                     HorizontalDivider(
                         color = AppTheme.extendedColors.textColor.copy(alpha = 0.08f),
                         modifier = Modifier.padding(horizontal = 12.dp)

@@ -18,14 +18,14 @@ import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateResponse
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
-import com.rite.pillcounting.feature.profile.data.CountryData
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
-import com.rite.pillcounting.feature.profile.data.StateData
+import com.rite.pillcounting.feature.profile.domain.model.Country
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
+import com.rite.pillcounting.feature.profile.domain.model.State
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -73,6 +73,13 @@ class ProfileViewModelTest {
     private val otherTerminal =
         Terminal(terminalId = "t2", terminalName = "Back Desk", isActive = false)
 
+    private val usStates = listOf(State("CA", "California"), State("NY", "New York"))
+    private val caStates = listOf(State("ON", "Ontario"))
+    private val testCountries = listOf(
+        Country("US", "United States", usStates),
+        Country("CA", "Canada", caStates)
+    )
+
     private val updateResponse = ProfileUpdateResponse(200, "ok", true)
     private val deleteResponse = ProfileDeleteResponse(200, "ok", true)
     private val terminalResponse = TerminalUpdateResponse(message = "ok", success = true)
@@ -111,6 +118,8 @@ class ProfileViewModelTest {
         every { preferenceHelper.getSelectedTerminalId() } returns null
         every { preferenceHelper.getUserId() } returns "user-1"
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
+        every { preferenceHelper.getCountries() } returns testCountries
+        coEvery { repository.getCountries() } returns Result.success(testCountries)
 
         // Validation success by default
         every { validator.validateRequiredName(any()) } returns ValidationResult(true, null)
@@ -272,11 +281,11 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `countries defaults to CountryData countries`() = runTest(testDispatcher) {
+    fun `countries defaults to cached countries`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        assertEquals(CountryData.countries, vm.countries)
+        assertEquals(testCountries, vm.countries)
     }
 
     @Test
@@ -292,18 +301,18 @@ class ProfileViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        val canada = CountryData.countries.first { it.code == "CA" }
+        val canada = testCountries.first { it.code == "CA" }
         vm.onCountrySelected(canada)
 
         assertEquals("CA", vm.selectedCountry?.code)
     }
 
     @Test
-    fun `states defaults to StateData for default country`() = runTest(testDispatcher) {
+    fun `states defaults to default country's states`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        assertEquals(StateData.statesFor("US"), vm.states)
+        assertEquals(usStates, vm.states)
         assertNull(vm.selectedState)
     }
 
@@ -312,10 +321,10 @@ class ProfileViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        val canada = CountryData.countries.first { it.code == "CA" }
+        val canada = testCountries.first { it.code == "CA" }
         vm.onCountrySelected(canada)
 
-        assertEquals(StateData.statesFor("CA"), vm.states)
+        assertEquals(caStates, vm.states)
         assertNull(vm.selectedState)
     }
 
