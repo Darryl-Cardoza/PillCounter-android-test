@@ -126,6 +126,31 @@ class ProfileViewModel @Inject constructor(
         val savedPharmacyTypeCode = preferenceHelper.getPharmacyType()
         selectedPharmacyType = pharmacyTypes.firstOrNull { it.code == savedPharmacyTypeCode }
         logger.i("Loaded ${pharmacyTypes.size} pharmacy types, selected: ${selectedPharmacyType?.code}")
+
+        if (pharmacyTypes.isEmpty()) {
+            fetchPharmacyTypes()
+        }
+    }
+
+    /**
+     * Fetches the selectable pharmacy-type options and caches them in prefs.
+     * Called once per install (guarded by an empty-cache check) so the
+     * dropdown doesn't hit the network on every profile screen visit.
+     */
+    private fun fetchPharmacyTypes() {
+        viewModelScope.launch {
+            repository.getPharmacyTypes()
+                .onSuccess { response ->
+                    val options = response.data?.pharmacyTypes.orEmpty()
+                    preferenceHelper.savePharmacyTypes(options)
+                    pharmacyTypes = options
+                    selectedPharmacyType = options.firstOrNull { it.code == preferenceHelper.getPharmacyType() }
+                    logger.i("Fetched and cached ${options.size} pharmacy types")
+                }
+                .onFailure { e ->
+                    logger.e("Failed to fetch pharmacy types", e)
+                }
+        }
     }
 
     fun toggleDoNotAskAgain(value: Boolean) {
