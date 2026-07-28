@@ -39,9 +39,6 @@ import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 import javax.inject.Inject
 
-/** ISO 3166-1 alpha-2 code preselected when no country is otherwise known. */
-private const val DEFAULT_COUNTRY_CODE = "US"
-
 /**
  * ViewModel for managing Profile UI state, validation, and business logic.
  *
@@ -95,9 +92,14 @@ class ProfileViewModel @Inject constructor(
     // Country selection — prefilled from cache immediately, refreshed from the API in init.
     var countries by mutableStateOf<List<Country>>(preferenceHelper.getCountries())
         private set
-    var selectedCountry by mutableStateOf<Country?>(
-        countries.firstOrNull { it.code == DEFAULT_COUNTRY_CODE }
-    )
+    var selectedCountry by mutableStateOf<Country?>(null)
+        private set
+
+    // Raw country/state codes from the user's saved profile row, kept independent of
+    // [selectedCountry]/[selectedState] so they survive being resolved against an
+    // empty (not-yet-fetched) [countries] cache and can be re-resolved once populated.
+    private var userCountryCode: String? = null
+    private var userStateCode: String? = null
 
     // State/province selection — options come from the selected country's nested list.
     var states by mutableStateOf<List<State>>(selectedCountry?.states.orEmpty())
@@ -112,6 +114,10 @@ class ProfileViewModel @Inject constructor(
     var phoneError by mutableStateOf<Int?>(null)
     var emailError by mutableStateOf<Int?>(null)
     var npiError by mutableStateOf<Int?>(null)
+    var countryError by mutableStateOf<Int?>(null)
+        private set
+    var stateError by mutableStateOf<Int?>(null)
+        private set
 
     init {
         val localId = preferenceHelper.getLocalId()
@@ -161,10 +167,13 @@ class ProfileViewModel @Inject constructor(
                     countries = fetched
                     preferenceHelper.saveCountries(fetched)
 
-                    selectedCountry = fetched.firstOrNull { it.code == selectedCountry?.code }
-                        ?: fetched.firstOrNull { it.code == DEFAULT_COUNTRY_CODE }
+                    selectedCountry = fetched.firstOrNull {
+                        it.code == (selectedCountry?.code ?: userCountryCode)
+                    }
                     states = selectedCountry?.states.orEmpty()
-                    selectedState = states.firstOrNull { it.code == selectedState?.code }
+                    selectedState = states.firstOrNull {
+                        it.code == (selectedState?.code ?: userStateCode)
+                    }
 
                     logger.i("Countries refreshed from API (count=${fetched.size})")
                 }
@@ -195,8 +204,9 @@ class ProfileViewModel @Inject constructor(
                     email = it.email.plain().orEmpty()
                     npi = it.npiId.orEmpty()
                     doNotAskAgain = preferenceHelper.isDoNotAskAgain()
+                    userCountryCode = it.country
+                    userStateCode = it.state
                     selectedCountry = countries.firstOrNull { c -> c.code == it.country }
-                        ?: countries.firstOrNull { c -> c.code == DEFAULT_COUNTRY_CODE }
                     states = selectedCountry?.states.orEmpty()
                     selectedState = states.firstOrNull { s -> s.code == it.state }
                 }
@@ -216,7 +226,7 @@ class ProfileViewModel @Inject constructor(
 
     fun onCountrySelected(country: Country) {
         selectedCountry = country
-        states = country.states
+        states = country.states.orEmpty()
         selectedState = states.firstOrNull { it.code == selectedState?.code }
         logger.i("Country selected: ${country.code}")
     }
@@ -255,10 +265,20 @@ class ProfileViewModel @Inject constructor(
         phoneError = validator.validatePhone(phoneNumber).errorMessageResId
         emailError = validator.validateEmail(email).errorMessageResId
         npiError = validator.validateNpi(npi).errorMessageResId
+        countryError = if (selectedCountry?.code.isNullOrBlank()) {
+            R.string.please_select_country
+        } else {
+            null
+        }
+        stateError = if (states.isNotEmpty() && selectedState?.code.isNullOrBlank()) {
+            R.string.please_select_state
+        } else {
+            null
+        }
 
         return listOf(
             firstNameError, lastNameError, pharmacyNameError,
-            phoneError, emailError, npiError
+            phoneError, emailError, npiError, countryError, stateError
         ).all { it == null }
     }
 

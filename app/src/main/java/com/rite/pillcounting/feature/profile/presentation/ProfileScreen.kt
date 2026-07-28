@@ -45,6 +45,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -81,6 +84,9 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 
+/** Delay before a [LabeledDropdown] search query is applied to the filtered list. */
+private const val SEARCH_DEBOUNCE_MS = 300L
+
 @Composable
 fun ProfileScreen(
     navController: NavController,
@@ -97,6 +103,8 @@ fun ProfileScreen(
 
     // Local state for delete confirmation
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val countryFocusRequester = remember { FocusRequester() }
+    val stateFocusRequester = remember { FocusRequester() }
 
     // Determine navigation type
     val cameFromDashboard =
@@ -154,7 +162,9 @@ fun ProfileScreen(
             // -------------------- INPUT FIELDS --------------------
             ResponsiveProfileFields(
                 isLandscape = isLandscape,
-                viewModel = viewModel
+                viewModel = viewModel,
+                countryFocusRequester = countryFocusRequester,
+                stateFocusRequester = stateFocusRequester
             )
 
             Spacer(Modifier.height(10.dp))
@@ -270,7 +280,14 @@ fun ProfileScreen(
                 )
                 ActionButtonPrimary(
                     text = stringResource(R.string.save),
-                    onClick = { viewModel.updateProfile() },
+                    onClick = {
+                        viewModel.updateProfile()
+                        if (viewModel.countryError != null) {
+                            countryFocusRequester.requestFocus()
+                        } else if (viewModel.stateError != null) {
+                            stateFocusRequester.requestFocus()
+                        }
+                    },
                 )
             }
 
@@ -351,7 +368,9 @@ private fun ProfileTextField(
 @Composable
 private fun ResponsiveProfileFields(
     isLandscape: Boolean,
-    viewModel: ProfileViewModel
+    viewModel: ProfileViewModel,
+    countryFocusRequester: FocusRequester,
+    stateFocusRequester: FocusRequester
 ) {
     val fields = listOf(
         ProfileField(
@@ -498,24 +517,33 @@ private fun ResponsiveProfileFields(
     ) {
         LabeledDropdown(
             label = stringResource(R.string.country),
-            selectedText = viewModel.selectedCountry?.let { "${it.code} - ${it.name}" },
+            selectedText = viewModel.selectedCountry?.let {
+                stringResource(R.string.code_name_format, it.code.orEmpty(), it.name.orEmpty())
+            },
             placeholder = stringResource(R.string.select_country),
             items = viewModel.countries,
-            itemLabel = { "${it.code} - ${it.name}" },
+            itemLabel = { stringResource(R.string.code_name_format, it.code.orEmpty(), it.name.orEmpty()) },
             isSelected = { it.code == viewModel.selectedCountry?.code },
             onItemSelected = { viewModel.onCountrySelected(it) },
-            modifier = Modifier.weight(1f)
+            modifier = Modifier.weight(1f),
+            isSearchable = true,
+            error = viewModel.countryError?.let { stringResource(it) },
+            focusRequester = countryFocusRequester
         )
         LabeledDropdown(
             label = stringResource(R.string.state),
-            selectedText = viewModel.selectedState?.let { "${it.code} - ${it.name}" },
+            selectedText = viewModel.selectedState?.let {
+                stringResource(R.string.code_name_format, it.code.orEmpty(), it.name.orEmpty())
+            },
             placeholder = stringResource(R.string.select_state),
             items = viewModel.states,
-            itemLabel = { "${it.code} - ${it.name}" },
+            itemLabel = { stringResource(R.string.code_name_format, it.code.orEmpty(), it.name.orEmpty()) },
             isSelected = { it.code == viewModel.selectedState?.code },
             onItemSelected = { viewModel.onStateSelected(it) },
             modifier = Modifier.weight(1f),
-            isSearchable = true
+            isSearchable = true,
+            error = viewModel.stateError?.let { stringResource(it) },
+            focusRequester = stateFocusRequester
         )
     }
 
@@ -543,20 +571,29 @@ private fun <T> LabeledDropdown(
     enabled: Boolean = true,
     onDisabledClick: () -> Unit = {},
     isSearchable: Boolean = false,
+    error: String? = null,
+    focusRequester: FocusRequester? = null,
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
     var expanded by remember { mutableStateOf(false) }
-    var searchQuery by remember(selectedText) { mutableStateOf(selectedText ?: "") }
+    var searchQuery by remember { mutableStateOf(selectedText ?: "") }
     var debouncedQuery by remember { mutableStateOf("") }
 
     LaunchedEffect(searchQuery) {
-        delay(300)
+        delay(SEARCH_DEBOUNCE_MS)
         debouncedQuery = searchQuery
     }
 
-    LaunchedEffect(expanded) {
-        searchQuery = if (expanded) "" else (selectedText ?: "")
+    // Single source of truth for searchQuery/debouncedQuery once collapsed —
+    // reruns on either the dropdown closing or the underlying selection changing.
+    LaunchedEffect(expanded, selectedText) {
+        if (!expanded) {
+            searchQuery = selectedText ?: ""
+            debouncedQuery = ""
+        } else {
+            searchQuery = ""
+        }
     }
 
     val contentAlpha = if (enabled) 1f else 0.4f
@@ -567,13 +604,14 @@ private fun <T> LabeledDropdown(
         label = "dropdownArrow"
     )
 
-    ExposedDropdownMenuBox(
-        expanded = expanded && enabled,
-        onExpandedChange = {
-            if (enabled) expanded = !expanded else onDisabledClick()
-        },
-        modifier = modifier,
-    ) {
+    Column(modifier = modifier) {
+        ExposedDropdownMenuBox(
+            expanded = expanded && enabled,
+            onExpandedChange = {
+                if (enabled) expanded = !expanded else onDisabledClick()
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
         val anchorModifier = Modifier
             .fillMaxWidth()
             .height(AppTheme.dimens.profileTextFieldHeight)
@@ -603,7 +641,9 @@ private fun <T> LabeledDropdown(
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier
                     .menuAnchor(MenuAnchorType.PrimaryEditable, true)
-                    .then(anchorModifier),
+                    .then(anchorModifier)
+                    .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
+                    .onFocusChanged { if (it.isFocused) expanded = true },
                 decorationBox = { innerTextField ->
                     Box(modifier = Modifier.fillMaxWidth()) {
                         Text(
@@ -678,16 +718,15 @@ private fun <T> LabeledDropdown(
             }
         }
 
-        val filteredItems = if (isSearchable && debouncedQuery.isNotBlank()) {
-            val result = mutableListOf<T>()
-            for (item in items) {
-                if (itemLabel(item).contains(debouncedQuery, ignoreCase = true)) {
-                    result.add(item)
-                }
+        val itemLabels = items.map { itemLabel(it) }
+        val filteredItems = remember(items, debouncedQuery, itemLabels) {
+            if (isSearchable && debouncedQuery.isNotBlank()) {
+                items.zip(itemLabels)
+                    .filter { (_, label) -> label.contains(debouncedQuery, ignoreCase = true) }
+                    .map { (item, _) -> item }
+            } else {
+                items
             }
-            result
-        } else {
-            items
         }
 
         // Custom-styled menu: white rounded surface, compact rows, selected highlight.
@@ -735,6 +774,15 @@ private fun <T> LabeledDropdown(
                     )
                 }
             }
+        }
+    }
+        if (!error.isNullOrEmpty()) {
+            Text(
+                text = error,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+            )
         }
     }
 }

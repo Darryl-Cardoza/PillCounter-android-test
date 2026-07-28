@@ -8,5 +8,5 @@ import com.squareup.moshi.JsonClass
  */
 @JsonClass(generateAdapter = true)
 data class CountriesData(
-    @Json(name = "countries") val countries: List<Country>
+    @Json(name = "countries") val countries: List<Country>? = null
 )

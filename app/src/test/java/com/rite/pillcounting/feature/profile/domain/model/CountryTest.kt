@@ -1,28 +1,45 @@
 package com.rite.pillcounting.feature.profile.domain.model
 
+import com.rite.pillcounting.core.di.NetworkModule
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class CountryTest {
 
+    private val moshi = NetworkModule.provideMoshi()
+    private val adapter = moshi.adapter(Country::class.java)
+
     @Test
-    fun getters_returnValues() {
-        val country = Country(code = "US", name = "United States")
-        assertEquals("US", country.code)
-        assertEquals("United States", country.name)
+    fun `parses full json into Country with nested states`() {
+        val json = """
+            {"code":"US","name":"United States","states":[{"code":"CA","name":"California"}]}
+        """.trimIndent()
+
+        val country = adapter.fromJson(json)
+
+        assertEquals("US", country?.code)
+        assertEquals("United States", country?.name)
+        assertEquals("CA", country?.states?.first()?.code)
     }
 
     @Test
-    fun equals_and_hashCode_forSameValues() {
-        val a = Country("US", "United States")
-        val b = Country("US", "United States")
-        assertEquals(a, b)
-        assertEquals(a.hashCode(), b.hashCode())
+    fun `missing fields deserialize to null instead of throwing`() {
+        val country = adapter.fromJson("{}")
+
+        assertNull(country?.code)
+        assertNull(country?.name)
+        assertNull(country?.states)
     }
 
     @Test
-    fun copy_overridesCode() {
-        val country = Country("US", "United States")
-        assertEquals("CA", country.copy(code = "CA").code)
+    fun `explicit json nulls deserialize to null instead of throwing`() {
+        val json = """{"code":null,"name":null,"states":null}"""
+
+        val country = adapter.fromJson(json)
+
+        assertNull(country?.code)
+        assertNull(country?.name)
+        assertNull(country?.states)
     }
 }
