@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.history.presentation.compose
 
 import android.annotation.SuppressLint
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -19,6 +20,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,6 +30,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -50,6 +54,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.colorResource
 import androidx.compose.ui.res.painterResource
@@ -86,6 +91,7 @@ fun DrugInfoSection(
     drugName: String,
     expiry: String,
     lotNo: String,
+    serialNo: String = "",
     date: String,
     time: String,
     note: String,
@@ -99,6 +105,31 @@ fun DrugInfoSection(
     requestedNdc: String = "",
     onImagePreview: (String) -> Unit = {},
 ) {
+    val configuration = LocalConfiguration.current
+    val isTabletLandscape = configuration.smallestScreenWidthDp >= 600 &&
+        configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    if (isTabletLandscape) {
+        TabletLandscapeDrugInfo(
+            ndc = ndc,
+            drugName = drugName,
+            expiry = expiry,
+            lotNo = lotNo,
+            serialNo = serialNo,
+            date = date,
+            time = time,
+            note = note,
+            barcodeImage = barcodeImage,
+            targetCount = targetCount,
+            transactionDetails = transactionDetails,
+            drugType = drugType,
+            requestedDrugName = requestedDrugName,
+            requestedNdc = requestedNdc,
+            onImagePreview = onImagePreview,
+        )
+        return
+    }
+
     val scrollState = rememberScrollState()
 
     Box(modifier = Modifier.fillMaxSize()) {
@@ -323,11 +354,326 @@ fun DrugInfoSection(
     } // outer Box
 }
 
+/**
+ * Tablet-landscape layout: left column shows Requested/Dispensed drug details + notes,
+ * right column shows the QR/vial capture images and the count sections (Initial Container
+ * Count, Pill Count, Pill Recount, Remaining Pill Count) gated by which [StepState]s the
+ * transaction actually recorded.
+ *
+ * The Dispensed Drug Details card is a [HorizontalPager] with dot paging so a future
+ * multi-record data source (more than one dispensed drug per transaction) can be plugged
+ * in without a UI rework; today it always renders exactly one page.
+ */
+@Composable
+private fun TabletLandscapeDrugInfo(
+    ndc: String,
+    drugName: String,
+    expiry: String,
+    lotNo: String,
+    serialNo: String,
+    date: String,
+    time: String,
+    note: String,
+    barcodeImage: String?,
+    targetCount: Int?,
+    transactionDetails: List<TxnDetailInfo>,
+    drugType: String?,
+    requestedDrugName: String,
+    requestedNdc: String,
+    onImagePreview: (String) -> Unit,
+) {
+    val leftScrollState = rememberScrollState()
+    val rightScrollState = rememberScrollState()
+    val dispensedPages = remember(drugName, ndc, expiry, lotNo, serialNo, date, time) {
+        listOf(
+            DispensedRecord(
+                drugName = drugName,
+                ndc = ndc,
+                date = date,
+                time = time,
+                expiry = expiry,
+                lotNo = lotNo,
+                serialNo = serialNo,
+            )
+        )
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(AppTheme.extendedColors.secondaryBackground)
+            .padding(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .weight(0.42f)
+                .fillMaxHeight()
+                .verticalScroll(leftScrollState),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            SectionBox(
+                title = stringResource(R.string.requested_drug_details),
+                allowCollapse = false,
+                defaultExpanded = true
+            ) {
+                KeyValueList(
+                    rows = listOf(
+                        stringResource(R.string.drug_name) to requestedDrugName.ifBlank { drugName },
+                        stringResource(R.string.ndc).uppercase() to requestedNdc.ifBlank { ndc },
+                    )
+                )
+            }
+
+            DispensedDrugDetailsPager(pages = dispensedPages)
+
+            SectionBox(
+                title = stringResource(R.string.notes),
+                allowCollapse = false,
+                defaultExpanded = true
+            ) {
+                Text(
+                    text = note.ifBlank { "—" },
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
+        }
+
+        Column(
+            modifier = Modifier
+                .weight(0.58f)
+                .fillMaxHeight()
+                .verticalScroll(rightScrollState),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                SectionBox(
+                    title = stringResource(R.string.container_qr_code),
+                    allowCollapse = false,
+                    defaultExpanded = true,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    VialBatchCard(
+                        imagePath = barcodeImage,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(responsiveDp(80.dp)),
+                        onClick = {
+                            barcodeImage?.takeIf { it.isNotBlank() }?.let(onImagePreview)
+                        }
+                    )
+                }
+
+                val vialImage = transactionDetails.forStep(StepState.VIAL).firstOrNull()?.imagePath
+                SectionBox(
+                    title = stringResource(R.string.vial_capture),
+                    allowCollapse = false,
+                    defaultExpanded = true,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    VialBatchCard(
+                        imagePath = vialImage,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(responsiveDp(80.dp)),
+                        onClick = {
+                            vialImage?.takeIf { it.isNotBlank() }?.let(onImagePreview)
+                        }
+                    )
+                }
+            }
+
+            if (drugType.toString().equals("null")) {
+                if (transactionDetails.hasStep(StepState.TARGET_VERIFICATION)) {
+                    LandscapeCountSection(
+                        title = stringResource(R.string.pill_count),
+                        count = transactionDetails.sumForStep(StepState.TARGET_VERIFICATION),
+                        targetCount = targetCount,
+                        batches = transactionDetails.forStep(StepState.TARGET_VERIFICATION),
+                        onBatchImageClick = onImagePreview,
+                    )
+                }
+            } else {
+                if (transactionDetails.hasStep(StepState.CONTAINER_INITIATE)) {
+                    LandscapeCountSection(
+                        title = stringResource(R.string.initial_stock_bottle_count),
+                        count = transactionDetails.sumForStep(StepState.CONTAINER_INITIATE),
+                        targetCount = null,
+                        batches = transactionDetails.forStep(StepState.CONTAINER_INITIATE),
+                        onBatchImageClick = onImagePreview,
+                    )
+                }
+
+                if (transactionDetails.hasStep(StepState.TARGET_VERIFICATION)) {
+                    LandscapeCountSection(
+                        title = stringResource(R.string.pill_count),
+                        count = transactionDetails.sumForStep(StepState.TARGET_VERIFICATION),
+                        targetCount = targetCount,
+                        batches = transactionDetails.forStep(StepState.TARGET_VERIFICATION),
+                        onBatchImageClick = onImagePreview,
+                    )
+                }
+
+                if (transactionDetails.hasStep(StepState.TARGET_REVERIFICATION)) {
+                    LandscapeCountSection(
+                        title = stringResource(R.string.pill_recount),
+                        count = transactionDetails.sumForStep(StepState.TARGET_REVERIFICATION),
+                        targetCount = targetCount,
+                        batches = transactionDetails.forStep(StepState.TARGET_REVERIFICATION),
+                        onBatchImageClick = onImagePreview,
+                    )
+                }
+
+                if (transactionDetails.hasStep(StepState.CONTAINER_PENDING)) {
+                    LandscapeCountSection(
+                        title = stringResource(R.string.remaining_stock_bottle_count),
+                        count = transactionDetails.sumForStep(StepState.CONTAINER_PENDING),
+                        targetCount = null,
+                        batches = transactionDetails.forStep(StepState.CONTAINER_PENDING),
+                        onBatchImageClick = onImagePreview,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Tablet-landscape count section: total (or count/target) rendered in the header instead of
+ * the portrait layout's separate image+number row, with just the per-batch thumbnail strip
+ * as the body — matches the design where no standalone drug image is shown per count.
+ */
+@Composable
+private fun LandscapeCountSection(
+    title: String,
+    count: Int,
+    targetCount: Int?,
+    batches: List<TxnDetailInfo>,
+    onBatchImageClick: (String) -> Unit,
+) {
+    SectionBox(
+        title = title,
+        allowCollapse = false,
+        defaultExpanded = true,
+        headerTrailing = {
+            Text(
+                text = if (targetCount != null) "$count/$targetCount" else "$count",
+                color = MaterialTheme.colorScheme.primary,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    ) {
+        if (batches.isNotEmpty()) {
+            LazyRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 2.dp)
+            ) {
+                itemsIndexed(
+                    items = batches,
+                    key = { index, batch -> batch.imagePath ?: "idx-$index" },
+                ) { _, batch ->
+                    TrayBatchCard(
+                        imagePath = batch.imagePath,
+                        count = batch.pillCount ?: 0,
+                        onClick = {
+                            batch.imagePath?.takeIf { it.isNotBlank() }?.let(onBatchImageClick)
+                        }
+                    )
+                }
+            }
+        } else {
+            Text(
+                text = stringResource(R.string.no_batches_recorded),
+                color = AppTheme.extendedColors.textColor,
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
+private data class DispensedRecord(
+    val drugName: String,
+    val ndc: String,
+    val date: String,
+    val time: String,
+    val expiry: String,
+    val lotNo: String,
+    val serialNo: String,
+)
+
+@Composable
+private fun DispensedDrugDetailsPager(pages: List<DispensedRecord>) {
+    val pagerState = rememberPagerState(pageCount = { pages.size })
+
+    SectionBox(
+        title = stringResource(R.string.dispense_drug_details),
+        allowCollapse = false,
+        defaultExpanded = true,
+        headerTrailing = if (pages.size > 1) {
+            {
+                Text(
+                    text = "${pagerState.currentPage + 1} of ${pages.size}",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+            }
+        } else null
+    ) {
+        HorizontalPager(
+            state = pagerState,
+            userScrollEnabled = pages.size > 1,
+        ) { page ->
+            val record = pages[page]
+            KeyValueList(
+                rows = listOf(
+                    stringResource(R.string.dispensed_drug) to record.drugName,
+                    stringResource(R.string.ndc).uppercase() to record.ndc,
+                    stringResource(R.string.date_and_time) to
+                        "${formatDateToUSFormat(record.date, DateFormats.MM_DD_YYYY)} ${record.time}".trim(),
+                    stringResource(R.string.expiry) to record.expiry,
+                    stringResource(R.string.lotNo) to record.lotNo,
+                    stringResource(R.string.serial_no) to record.serialNo,
+                )
+            )
+        }
+
+        if (pages.size > 1) {
+            Spacer(Modifier.height(8.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center
+            ) {
+                repeat(pages.size) { index ->
+                    Box(
+                        modifier = Modifier
+                            .padding(horizontal = 3.dp)
+                            .size(if (index == pagerState.currentPage) 8.dp else 6.dp)
+                            .background(
+                                if (index == pagerState.currentPage) MaterialTheme.colorScheme.primary
+                                else AppTheme.extendedColors.textColor.copy(alpha = 0.3f),
+                                CircleShape
+                            )
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Composable
 private fun SectionBox(
     title: String,
     allowCollapse: Boolean = true,
     defaultExpanded: Boolean = false,
+    headerTrailing: (@Composable () -> Unit)? = null,
+    modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     var expanded by remember {
@@ -341,7 +687,7 @@ private fun SectionBox(
     )
 
     Column(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .background(AppTheme.extendedColors.primaryBackground, RoundedCornerShape(8.dp))
     ) {
@@ -363,6 +709,8 @@ private fun SectionBox(
                 letterSpacing = 0.8.sp,
                 modifier = Modifier.weight(1f)
             )
+
+            headerTrailing?.invoke()
 
             if (allowCollapse) {
                 Icon(
@@ -602,13 +950,14 @@ private fun TrayBatchCard(
 private fun VialBatchCard(
     imagePath: String?,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier
+        .width(responsiveDp(90.dp))
+        .height(responsiveDp(60.dp)),
 ) {
     val context = LocalContext.current
 
     Box(
-        modifier = Modifier
-            .width(responsiveDp(90.dp))
-            .height(responsiveDp(60.dp))
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .clickable(enabled = !imagePath.isNullOrBlank()) { onClick() },
         contentAlignment = Alignment.Center

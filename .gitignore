@@ -56,3 +56,8 @@ _cleanup_archive/
 local.properties
 .claude/settings.local.json
 keystore.properties
+
+graphify-out
+.claude
+.agents
+docs

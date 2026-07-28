@@ -69,6 +69,7 @@ fun HistoryDetailScreen(
             // normalized stock tables); dispense never populated them, so these stay blank.
             expiry = "",
             lotNo = "",
+            serialNo = "",
             date = uiState.txnInfo?.createdAt?.toDateString() ?: "",
             time = uiState.txnInfo?.createdAt?.toTimeString() ?: "",
             note = uiState.txnInfo?.note ?: "",

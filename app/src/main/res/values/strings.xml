@@ -305,6 +305,10 @@
     <string name="notes">NOTES</string>
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
+    <string name="container_qr_code">CONTAINER QR CODE</string>
+    <string name="serial_no">Serial No</string>
+    <string name="date_and_time">Date and Time</string>
+    <string name="dispensed_drug">Dispensed Drug</string>
     <string name="stock_count_dialog_title">What would you like to do?</string>
     <string name="stock_count_dialog_option_first">Create a new Batch</string>
     <string name="stock_count_dialog_option_second">Continue last Batch</string>
