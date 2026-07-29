@@ -27,7 +27,6 @@ data class DispenseFlowUiState(
     val refillNo: String? = null,
     val qty: String? = null,
     val selectedBucketId: String = "",
-    val barcodeImagePath: String? = null,
 
     // GS1 lot/exp/serial decoded off the NDC container scan, staged here until the
     // scan resolves (auto-confirm or after the NDC/equivalence sheet), then written

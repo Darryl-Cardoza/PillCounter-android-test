@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
@@ -363,7 +364,8 @@ class DispenseFlowViewModel @Inject constructor(
                         )
                         val entity = DrugMasterEntity(
                             ndc = info.ndc,
-                            drugName = info.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug",
+                            drugName = info.genericName?.takeIf { it.isNotBlank() }
+                                ?: appContext.getString(R.string.unknown_drug),
                             drugType = info.drugType,
                             packageQty = info.qty,
                             isHazardous = info.isHazardous ?: false,
@@ -571,7 +573,6 @@ class DispenseFlowViewModel @Inject constructor(
                             ndcScannedValue = localDrug!!.ndc,
                             ndcDrugName = localDrug.drugName ?: it.drugName,
                             ndcPackageQty = localDrug.packageQty,
-                            barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcDetails = needsSheet,
                             isHazardous = localDrug.isHazardous,
                         )
@@ -628,7 +629,6 @@ class DispenseFlowViewModel @Inject constructor(
                             ndcStrength = drugInfo.strength,
                             drugImage = drugInfo.imageUrl ?: it.drugImage,
                             ndcDosageForm = drugInfo.dosageForm,
-                            barcodeImagePath = imagePath ?: it.barcodeImagePath,
                             showNdcEquivalenceDialog = true,
                             isHazardous = drugInfo.isHazardous ?: false,
                         )
@@ -664,7 +664,6 @@ class DispenseFlowViewModel @Inject constructor(
                         ndcStrength = drugInfo.strength,
                         drugImage = drugInfo.imageUrl ?: it.drugImage,
                         ndcDosageForm = drugInfo.dosageForm,
-                        barcodeImagePath = imagePath ?: it.barcodeImagePath,
                         showNdcDetails = needsSheet,
                         isHazardous = drugInfo.isHazardous ?: false,
                     )

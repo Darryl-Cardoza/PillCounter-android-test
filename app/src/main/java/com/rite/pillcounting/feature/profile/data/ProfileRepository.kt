@@ -24,7 +24,7 @@ import javax.inject.Inject
  * - Authorization headers via [PreferenceHelper].
  * - Token refresh when encountering HTTP 401 (Invalid or expired token).
  */
-class   ProfileRepository @Inject constructor(
+class ProfileRepository @Inject constructor(
     private val profileApi: IProfileApi,
     private val ioDispatcher: CoroutineDispatcher,
     private val preferenceHelper: PreferenceHelper,

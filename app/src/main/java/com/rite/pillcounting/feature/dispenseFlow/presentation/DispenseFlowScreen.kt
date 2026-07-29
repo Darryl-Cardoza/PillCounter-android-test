@@ -520,6 +520,16 @@ fun DispenseFlowScreen(
         onDispose { barcodeAnalyzer.pause() }
     }
 
+    // One-shot toast ticks fire once per scan result, but both scan inputs
+    // (camera + BT) would otherwise be ready to read again the instant
+    // isLoading clears — same physical label under the camera, or the same
+    // BT scanner still primed — so the same result fires again almost
+    // instantly and the toast looks continuous. scanCooldownActive pauses
+    // BOTH inputs briefly after ANY of these ticks (regardless of which one)
+    // so the user has a moment before the next read — folded into the gate
+    // LaunchedEffect below so a dialog opening mid-cooldown still wins.
+    var scanCooldownActive by remember { mutableStateOf(false) }
+
     // NDC not in PMS allowlist — show the correct toast and explicitly resume
     // the barcode analyzer. Without the explicit resume here the analyzer stays
     // self-paused (from the MLKit hit) because the isLoading true→false
@@ -560,6 +570,7 @@ fun DispenseFlowScreen(
         dispenseState.showNdcEquivalenceDialog,
         dispenseState.showRxScannedInStockCountDialog,
         dispenseState.isLoading,
+        scanCooldownActive,
     ) {
         // Pre-stages scan for the RX / NDC labels; the VIAL step scans the vial
         // label to auto-capture when its RX matches the active transaction; the
@@ -575,7 +586,8 @@ fun DispenseFlowScreen(
                 !dispenseState.showInvalidScanDialog &&
                 !dispenseState.showNdcEquivalenceDialog &&
                 !dispenseState.showRxScannedInStockCountDialog &&
-                !dispenseState.isLoading
+                !dispenseState.isLoading &&
+                !scanCooldownActive
         if (shouldRun) barcodeAnalyzer.resume() else barcodeAnalyzer.pause()
     }
 
@@ -759,15 +771,6 @@ fun DispenseFlowScreen(
         }
     }
 
-    // One-shot toast ticks fire once per scan result, but both scan inputs
-    // (camera + BT) would otherwise be ready to read again the instant
-    // isLoading clears — same physical label under the camera, or the same
-    // BT scanner still primed — so the same result fires again almost
-    // instantly and the toast looks continuous. scanCooldownActive pauses
-    // BOTH inputs briefly after ANY of these ticks (regardless of which one)
-    // so the user has a moment before the next read — one fix point shared
-    // by camera and BT, not per-input or per-toast.
-    var scanCooldownActive by remember { mutableStateOf(false) }
     LaunchedEffect(
         dispenseState.ndcMismatchToastTick,
         dispenseState.scanNdcToastTick,
@@ -782,9 +785,7 @@ fun DispenseFlowScreen(
                 dispenseState.ndcNotAllowedToastTick
         if (anyToastTick > 0) {
             scanCooldownActive = true
-            barcodeAnalyzer.pause()
             delay(1500)
-            barcodeAnalyzer.resume()
             scanCooldownActive = false
         }
     }
@@ -1507,7 +1508,6 @@ internal fun handleBarcode(
                         java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
                     ),
                     serialNumber = decoded?.serialNumber,
-                    txnId = 0L, // placeholder — the real txnId is stamped in onNdcBarcodeRead once the txn row is known
                     barcodeImagePath = imagePath,
                 )
                 onNdc(finalGtin14, imagePath, firstBottle)

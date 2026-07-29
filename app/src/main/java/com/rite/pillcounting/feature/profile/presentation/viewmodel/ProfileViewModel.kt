@@ -25,7 +25,6 @@ import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
 import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeOption
 import com.rite.pillcounting.feature.profile.domain.model.Country
-import com.rite.pillcounting.feature.profile.domain.model.PharmacyType
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
@@ -152,15 +151,15 @@ class ProfileViewModel @Inject constructor(
         selectedPharmacyType = pharmacyTypes.firstOrNull { it.code == savedPharmacyTypeCode }
         logger.i("Loaded ${pharmacyTypes.size} pharmacy types, selected: ${selectedPharmacyType?.code}")
 
-        if (pharmacyTypes.isEmpty()) {
-            fetchPharmacyTypes()
-        }
+        fetchPharmacyTypes()
+
+        fetchCountries()
     }
 
     /**
-     * Fetches the selectable pharmacy-type options and caches them in prefs.
-     * Called once per install (guarded by an empty-cache check) so the
-     * dropdown doesn't hit the network on every profile screen visit.
+     * Refreshes the selectable pharmacy-type options from the API on every profile screen load
+     * and re-caches them, so server-side label/list changes are picked up and a saved code that
+     * was missing from a stale cache can resolve to a selection.
      */
     private fun fetchPharmacyTypes() {
         viewModelScope.launch {
@@ -176,11 +175,6 @@ class ProfileViewModel @Inject constructor(
                     logger.e("Failed to fetch pharmacy types", e)
                 }
         }
-        // Restore previously selected pharmacy type
-        selectedPharmacyType = PharmacyType.fromApiValue(preferenceHelper.getPharmacyType())
-        logger.i("Loaded pharmacy type: ${selectedPharmacyType?.apiValue}")
-
-        fetchCountries()
     }
 
     /**
@@ -375,10 +369,10 @@ class ProfileViewModel @Inject constructor(
                     timezone = "Asia/Kolkata",
                     fName = firstName.trim(),
                     lName = lastName.trim(),
+                    pharmacyType = selectedPharmacyType?.code ?: preferenceHelper.getPharmacyType(),
                     terminalId = selectedTerminal?.terminalId,
                     country = selectedCountry?.code,
                     state = selectedState?.code
-                    pharmacyType = selectedPharmacyType?.code
                 )
 
                 repository.updateProfile(request)

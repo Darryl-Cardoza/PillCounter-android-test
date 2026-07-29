@@ -510,7 +510,7 @@ class PreferenceHelper @Inject constructor(
     fun getPharmacyTypes(): List<PharmacyTypeOption> {
         val json = prefs.getString(KEY_PHARMACY_TYPES_LIST) ?: return emptyList()
         val array = gson.fromJson(json, Array<PharmacyTypeOption>::class.java)
-        return array.toList()
+        return array?.toList() ?: emptyList()
     }
 
     // ─────────────────────────── HAZARDOUS DRUG ───────────────────────────

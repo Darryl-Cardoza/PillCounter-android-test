@@ -23,7 +23,7 @@ data class BottleInfo(
     val serialNumber: String? = null,
     val txnDetailsIds: List<Long> = emptyList(),
     val scannedAt: Long = System.currentTimeMillis(),
-    val txnId: Long,
+    val txnId: Long = 0L,
     val barcodeImagePath: String? = null,
 )
 

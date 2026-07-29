@@ -19,9 +19,6 @@ data class PharmacyTypeData(
 
 @JsonClass(generateAdapter = true)
 data class PharmacyTypeOption(
-    @Json(name = "code") val code: String,
-    @Json(name = "label") val label: String,
-) {
-    val id: String
-        get() = code
-}
+    val code: String,
+    val label: String,
+)
