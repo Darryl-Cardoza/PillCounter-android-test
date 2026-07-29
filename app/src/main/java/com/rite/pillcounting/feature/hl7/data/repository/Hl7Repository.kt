@@ -20,6 +20,7 @@ import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.scanning.data.DrugRepository
@@ -36,6 +37,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.HL7MessageKind
 import org.rite.hl7.model.segment.INVSegment
@@ -69,6 +72,11 @@ class Hl7Repository @Inject constructor(
 
     private val logger = AppLogger.create<Hl7Repository>()
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+
+    // Guards resendPendingHl7Transactions() so the Room-flow observer and the
+    // onClientConnected trigger can never run concurrently and double-send the
+    // same pending txn's HL7 message before either ACK returns.
+    private val resendMutex = Mutex()
 
     companion object {
         /**
@@ -162,7 +170,7 @@ class Hl7Repository @Inject constructor(
 //        if (totalCount == 0) {
 //            return
 //        }
-        val user = userDao.getByUserId(txn.localId?.toString().orEmpty())
+        val user = txn.localId?.let { userDao.getByLocalId(it) }
         val location = locationProvider.getCurrentLocationAsString()
 
         val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
@@ -180,11 +188,23 @@ class Hl7Repository @Inject constructor(
             pharmacistId = user?.userId,
             pharmacistName = listOfNotNull(user?.fName, user?.lName)
                 .joinToString(" "),
+            pharmacistLastName = user?.lName,
+            pharmacistFirstName = user?.fName,
             location = location,
+            isControlledSubstance = isControlledDrugType(drug.drugType),
+            isHazardousDrug = drug.isHazardous,
             config = currentHl7Config()
         )
-        logger.i("HL7dispence message tooooooo" + message)
-        hl7MessageSender.send(message)
+        val result = hl7MessageSender.send(message)
+        val ack = result.getOrNull()
+        if (result.isSuccess && ack != null && isSuccessAck(ack)) {
+            markTransactionSynced(txnId)
+        } else {
+            logger.w(
+                "Dispense HL7 send for txnId=$txnId failed or NAKed: " +
+                    "${result.exceptionOrNull()?.message ?: "non-success ACK"} — leaving unsynced for retry"
+            )
+        }
     }
 
     /**
@@ -262,21 +282,29 @@ class Hl7Repository @Inject constructor(
         }
     }
 
+    /**
+     * Resends every pending (unsynced, HL7-originated, completed) transaction's HL7
+     * message, one at a time, waiting for each ACK before moving to the next.
+     * [resendMutex] ensures the Room-flow observer and onClientConnected triggers can
+     * never overlap and send the same txn's message twice concurrently.
+     */
     fun resendPendingHl7Transactions() {
         scope.launch {
-            val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
-            if (pendingTxn.isEmpty()) {
-                logger.i("No pending HL7 transactions to sync")
+            if (resendMutex.isLocked) {
+                logger.i("resendPendingHl7Transactions already in progress — skipping duplicate trigger")
                 return@launch
             }
-            logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
-            for (txn in pendingTxn) {
-                preferenceHelper.saveSentMessageTxnId(txn.txnId)
-                if (txn.isDispense) {
-                    //Change this condition because we have transaction status that we are handling from pms
-//                        if (txn.targetCount != null) {
-                            buildAndSendSuccessfulDispense(txnId = txn.txnId)
-//                        }
+            resendMutex.withLock {
+                val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
+                if (pendingTxn.isEmpty()) {
+                    logger.i("No pending HL7 transactions to sync")
+                    return@withLock
+                }
+                logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
+                for (txn in pendingTxn) {
+                    if (txn.isDispense) {
+                        buildAndSendSuccessfulDispense(txnId = txn.txnId)
+                    }
                 }
             }
         }
@@ -296,13 +324,16 @@ class Hl7Repository @Inject constructor(
         }
     }
 
-    fun markTransactionSynced() {
+    /**
+     * Marks [txnId] synced. Called only on a success ACK for the exact message that
+     * was sent for this txn — never from a shared "last sent" slot, so concurrent
+     * in-flight sends can't mark the wrong transaction synced.
+     */
+    private fun markTransactionSynced(txnId: Long) {
         scope.launch {
-            val txnId = preferenceHelper.getSentMessageTxnId()
-            // Reached only on a success ACK (see Hl7EventHandler.onAckReceived). Flag the txn
-            // synced first, then — when the server disallows local storage — delete it. The PMS
-            // pulls images from the device image server before sending the success ACK, so the
-            // images are already retrieved by the time we delete here.
+            // Flag the txn synced first, then — when the server disallows local storage —
+            // delete it. The PMS pulls images from the device image server before sending
+            // the success ACK, so the images are already retrieved by the time we delete here.
             pillCountTxnDao.markTxnSynced(txnId)
             if (!preferenceHelper.isAllowLocalStorage()) {
                 // Wait before deleting: the PMS pulls the transaction images from the device
@@ -439,6 +470,7 @@ class Hl7Repository @Inject constructor(
             isSynced = false,
             isNdcVerified = false,
             rxNo = rxNo,
+            transactionOrderId = rxNo,
             priority = priority,
             hl7MessageControlId = message.messageControlId.takeIf { it.isNotBlank() },
             hl7SequenceNumber = message.sequenceNumber.takeIf { it.isNotBlank() }
@@ -479,10 +511,8 @@ class Hl7Repository @Inject constructor(
         val hl7Ndc = orderPacket.ndc.trim()
         val hl7DrugName = orderPacket.drugName
         val targetCount = orderPacket.dispenseAmount.trim().toDoubleOrNull()?.toInt()
-        // Eyecon's rx-only lookup falls back to ZNI's Prescription Number when no
-        // filler order number is present.
-        val rxNo = orderPacket.fillerOrderNumber.takeIf { it.isNotBlank() }
-            ?: orderPacket.prescriptionNumber.takeIf { it.isNotBlank() }
+        val rxNo = orderPacket.prescriptionNumber.takeIf { it.isNotBlank() }
+        val transactionOrderId = orderPacket.fillerOrderNumber.takeIf { it.isNotBlank() }
         val fillNo = orderPacket.fillNumber.takeIf { it.isNotBlank() }
 
         if (hl7Ndc.isBlank()) {
@@ -561,6 +591,7 @@ class Hl7Repository @Inject constructor(
             isSynced = false,
             isNdcVerified = false,
             rxNo = rxNo,
+            transactionOrderId = transactionOrderId,
             refillNo = fillNo,
             priority = priority,
             hl7MessageControlId = message.messageControlId.takeIf { it.isNotBlank() },
@@ -1141,4 +1172,9 @@ class Hl7Repository @Inject constructor(
                 }
         }
     }
+}
+
+private fun isControlledDrugType(drugType: String?): Boolean {
+    val code = drugType?.trim()?.uppercase() ?: return false
+    return ScheduleCode.entries.any { it.name == code }
 }

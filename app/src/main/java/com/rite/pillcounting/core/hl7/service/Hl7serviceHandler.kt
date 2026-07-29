@@ -94,6 +94,11 @@ class Hl7serviceHandler @Inject constructor(
                 putExtra(EXTRA_NSD_DISCOVERY_TYPE, currentConfig?.nsdDiscoveryType)
                 putExtra(EXTRA_IMAGE_SERVICE_PORT, currentConfig?.imageServicePort)
                 putExtra(EXTRA_IMAGE_SERVICE_SECURE_PORT, currentConfig?.imageServiceSecurePort)
+                putExtra(EXTRA_USE_STATIC_PMS_CONNECTION, currentConfig?.useStaticPmsConnection ?: false)
+                putExtra(EXTRA_PMS_IP, currentConfig?.pmsIp)
+                putExtra(EXTRA_PMS_PORT, currentConfig?.pmsPort ?: 0)
+                putExtra(EXTRA_BYPASS_TLS, currentConfig?.bypassTls ?: false)
+                putExtra(EXTRA_HL7_VERSION, currentConfig?.hl7Version)
             }
 
             context.startForegroundService(intent)
@@ -214,5 +219,10 @@ class Hl7serviceHandler @Inject constructor(
         const val EXTRA_KEYSTORE_PASSWORD = "extra_keystore_password"
         const val EXTRA_IMAGE_SERVICE_PORT = "extra_image_service_port"
         const val EXTRA_IMAGE_SERVICE_SECURE_PORT = "extra_image_service_secure_port"
+        const val EXTRA_USE_STATIC_PMS_CONNECTION = "extra_use_static_pms_connection"
+        const val EXTRA_PMS_IP = "extra_pms_ip"
+        const val EXTRA_PMS_PORT = "extra_pms_port"
+        const val EXTRA_BYPASS_TLS = "extra_bypass_tls"
+        const val EXTRA_HL7_VERSION = "extra_hl7_version"
     }
 }

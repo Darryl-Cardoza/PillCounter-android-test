@@ -45,6 +45,7 @@ class RdsO13Scope : MessageScope() {
     fun zsn(block: (ZSNBuilder) -> Unit) = add(ZSNBuilder(), block)   // repeating
     fun zsv(block: (ZSVBuilder) -> Unit) = add(ZSVBuilder(), block)
     fun zui(block: (ZUIDispenseBuilder) -> Unit) = add(ZUIDispenseBuilder(), block)
+    fun zuiEyeCon(block: (ZUIEyeConBuilder) -> Unit) = add(ZUIEyeConBuilder(), block)
     fun zni(block: (ZNIBuilder) -> Unit) = add(ZNIBuilder(), block)
 }
 

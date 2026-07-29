@@ -399,7 +399,12 @@ class ProfileViewModel @Inject constructor(
             nsdBroadcastType = broadCastServiceName,
             nsdDiscoveryType = discoverServiceName,
             imageServicePort = 8080,
-            imageServiceSecurePort = 8443
+            imageServiceSecurePort = 8443,
+            hl7Version = preferenceHelper.getHl7Version(),
+            bypassTls = preferenceHelper.isBypassTlsEnabled(),
+            useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),
+            pmsIp = preferenceHelper.getPmsIP(),
+            pmsPort = preferenceHelper.getPmsPort(),
         )
 
         hl7ServiceManager.updateConfigAndRebroadcast(config)

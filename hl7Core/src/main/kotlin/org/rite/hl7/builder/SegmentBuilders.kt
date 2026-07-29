@@ -123,13 +123,16 @@ class RXDBuilder : HL7SegmentBuilder("RXD") {
     var actualDispenseUnits: String? = null
     var prescriptionNumber: String? = null
     var dispensingProviderId: String? = null
+    var dispensingProviderLastName: String? = null
+    var dispensingProviderFirstName: String? = null
     var lotNumber: String? = null
     var expirationDate: String? = null
     override fun apply() {
         set(1, dispenseSubIdCounter)
         set(2, 1, dispenseGiveCode); set(2, 2, dispenseGiveName); set(2, 3, dispenseGiveCodeSystem)
         set(3, dateTimeDispensed); set(4, actualDispenseAmount); set(5, 1, actualDispenseUnits)
-        set(7, prescriptionNumber); set(10, 1, dispensingProviderId)
+        set(7, prescriptionNumber)
+        set(10, 1, dispensingProviderId); set(10, 2, dispensingProviderLastName); set(10, 3, dispensingProviderFirstName)
         set(15, lotNumber); set(16, expirationDate)
     }
 }
@@ -158,12 +161,21 @@ class OBXBuilder : HL7SegmentBuilder("OBX") {
     var valueType: String? = null
     var observationId: String? = null
     var observationText: String? = null
+    var observationIdCodingSystem: String? = null
     var observationValue: String? = null
+    var observationValueText: String? = null
+    var observationValueCodingSystem: String? = null
     var units: String? = null
     var resultStatus: String? = null
     override fun apply() {
-        set(1, setId); set(2, valueType); set(3, 1, observationId); set(3, 2, observationText)
-        set(5, observationValue); set(6, 1, units); set(11, resultStatus)
+        set(1, setId); set(2, valueType)
+        set(3, 1, observationId); set(3, 2, observationText); set(3, 3, observationIdCodingSystem)
+        if (observationValueText != null || observationValueCodingSystem != null) {
+            set(5, 1, observationValue); set(5, 2, observationValueText); set(5, 3, observationValueCodingSystem)
+        } else {
+            set(5, observationValue)
+        }
+        set(6, 1, units); set(11, resultStatus)
     }
 }
 
@@ -330,15 +342,36 @@ class ZUIDispenseBuilder : HL7SegmentBuilder("ZUI") {
     var fillNumber: String? = null
     var dispensedQuantity: String? = null
     var transactionStatus: String? = null
-    var drugImage: String? = null
+    /** Each entry: [batchInfo, countInfo, base64Data] — one per tray photo. */
+    var drugImages: List<List<String>>? = null
     var drugLotNumber: String? = null
     var drugSerialNumber: String? = null
     var drugExpirationDate: String? = null
     override fun apply() {
         set(1, ndc); set(2, vividUserName); set(3, transactionOrderId)
         set(4, rxNumber); set(5, fillNumber); set(6, dispensedQuantity)
-        set(7, transactionStatus); set(8, drugImage); set(9, drugLotNumber)
+        set(7, transactionStatus); setComponentGroups(8, drugImages); set(9, drugLotNumber)
         set(10, drugSerialNumber); set(11, drugExpirationDate)
+    }
+}
+
+/**
+ * ZUI EyeCon dispense-result builder (EyeCon → PMS RDS response). EyeCon's wire
+ * layout only populates fields 6/11/18/19/21 — all other positions are left
+ * blank placeholders per the EyeCon spec, so only those fields are exposed here.
+ */
+class ZUIEyeConBuilder : HL7SegmentBuilder("ZUI") {
+    var verifiedBy: String? = null          // ZUI-6
+    var orderId: String? = null             // ZUI-11 (RxNo-RefillNo composite)
+    var dispensedQuantity: String? = null   // ZUI-18
+    var fillStatus: String? = null          // ZUI-19
+    var ndc: String? = null                 // ZUI-21
+    override fun apply() {
+        set(6, verifiedBy)
+        set(11, orderId)
+        set(18, dispensedQuantity)
+        set(19, fillStatus)
+        set(21, ndc)
     }
 }
 

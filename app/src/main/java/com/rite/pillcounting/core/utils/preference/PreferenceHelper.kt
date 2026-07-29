@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.utils.preference
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -33,7 +34,6 @@ private const val KEY_DO_NOT_ASK_AGAIN = "do_not_ask_again"
 private const val KEY_SHOW_NOTES_DIALOG = "key_show_notes_dialog"
 private const val KEY_RECENT_LOGINS = "recent_logins"
 private const val KEY_HISTORY_RETENTION = "history_retention"
-private const val KEY_SENT_TXN_ID = "last_txn_id"
 
 // HL7
 private const val KEY_NSD_BROADCAST_TYPE = "key_nsd_broadcast_type"
@@ -60,6 +60,11 @@ private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
 private const val KEY_HL7_VERSION = "key_hl7_version"
 private const val KEY_BYPASS_TLS = "key_bypass_tls"
 private const val KEY_HL7_FORMAT = "key_hl7_format"
+
+// PMS Connection
+private const val KEY_USE_STATIC_PMS_CONNECTION = "key_use_static_pms_connection"
+private const val KEY_PMS_IP = "key_pms_ip"
+private const val KEY_PMS_PORT = "key_pms_port"
 
 @Singleton
 class PreferenceHelper @Inject constructor(
@@ -256,15 +261,6 @@ class PreferenceHelper @Inject constructor(
         logger.d("Retrieved history retention: $days days")
         return days
     }
-
-    // ─────────────────────────── HL7 MESSAGE TRACKING ───────────────────────────
-
-    fun saveSentMessageTxnId(txnId: Long) {
-        prefs.putLong(KEY_SENT_TXN_ID, txnId)
-    }
-
-    fun getSentMessageTxnId(): Long =
-        prefs.getLong(KEY_SENT_TXN_ID, -1L)
 
     // ─────────────────────────── NSD / HL7 SETTINGS ───────────────────────────
 
@@ -584,6 +580,46 @@ class PreferenceHelper @Inject constructor(
         val format = name?.let { runCatching { Hl7Format.valueOf(it) }.getOrNull() } ?: Hl7Format.DEFAULT
         logger.d("Retrieved HL7 format: $format")
         return format
+    }
+
+    // ─────────────────────────── PMS CONNECTION ───────────────────────────
+
+    fun setUseStaticPmsConnection(enabled: Boolean) {
+        prefs.putBoolean(KEY_USE_STATIC_PMS_CONNECTION, enabled)
+        logger.i("Set useStaticPmsConnection: $enabled")
+    }
+
+    fun isUseStaticPmsConnection(): Boolean =
+        prefs.getBoolean(KEY_USE_STATIC_PMS_CONNECTION, false)
+
+    fun savePmsIP(pmsIP: String) {
+        prefs.putString(KEY_PMS_IP, pmsIP)
+        logger.i("Saved PMS IP")
+    }
+
+    fun getPmsIP(): String? =
+        prefs.getString(KEY_PMS_IP)
+
+    fun savePmsPort(pmsPort: Int) {
+        prefs.putInt(KEY_PMS_PORT, pmsPort)
+        logger.i("Saved PMS port: $pmsPort")
+    }
+
+    fun getPmsPort(): Int =
+        prefs.getInt(KEY_PMS_PORT, 0)
+
+    /** Key used for [KEY_PMS_IP] change notifications via [registerOnChangeListener]. */
+    val pmsIpKey: String get() = KEY_PMS_IP
+
+    /** Key used for [KEY_PMS_PORT] change notifications via [registerOnChangeListener]. */
+    val pmsPortKey: String get() = KEY_PMS_PORT
+
+    fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnChangeListener(listener)
+    }
+
+    fun unregisterOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnChangeListener(listener)
     }
 
     companion object {

@@ -59,6 +59,14 @@ class MllpConnectionManager(
     fun isConnected(): Boolean = state == ConnectionState.Connected
 
     suspend fun connect(ip: String, port: Int) {
+        // Skip entirely if already connected to this exact host:port — connecting again
+        // would tear down (closeInternal()) and re-establish a perfectly live socket for
+        // no reason, which looks like a connect/disconnect flap to anything observing
+        // connection state (e.g. the foreground notification, a manual "test connection").
+        if (isConnected() && this.ip == ip && this.port == port) {
+            logger.d("connect() — already connected to $ip:$port, skipping")
+            return
+        }
         logger.d("connect() called — ip=$ip port=$port")
         mutex.withLock {
             this.ip = ip
@@ -122,13 +130,27 @@ class MllpConnectionManager(
 
     // ── Private ──────────────────────────────────────────────────────────────
 
+    // Tracks whether onDisconnected has already fired for the current disconnected
+    // stretch, so repeated failed-retry attempts (Disconnected → Connecting →
+    // Disconnected) don't re-invoke the callback — and re-post the foreground
+    // notification — on every single retry/backoff cycle.
+    private var disconnectedNotified = false
+
     private fun updateState(newState: ConnectionState) {
         if (state == newState) return
         logger.i("state: $state → $newState")
         state = newState
         when (newState) {
-            ConnectionState.Connected -> onConnected?.invoke()
-            ConnectionState.Disconnected -> onDisconnected?.invoke()
+            ConnectionState.Connected -> {
+                disconnectedNotified = false
+                onConnected?.invoke()
+            }
+            ConnectionState.Disconnected -> {
+                if (!disconnectedNotified) {
+                    disconnectedNotified = true
+                    onDisconnected?.invoke()
+                }
+            }
             else -> {}
         }
     }

@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.settings.presentation.viewmodel
 
+import android.content.SharedPreferences
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -23,9 +24,13 @@ import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.callbackFlow
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.io.File
@@ -59,6 +64,11 @@ class MainActivityViewModel @Inject constructor(
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
 
+    // Guards startHl7Service() against being invoked more than once per process —
+    // both evaluateHl7State() and startHl7AfterTerminalLoaded() can independently
+    // decide HL7 should start; only the first one to actually run may proceed.
+    private var hl7StartRequested = false
+
     // Holds the current state of "Ask to Add Notes"
     private val _isAskToAddNotes = MutableStateFlow(preferenceHelper.getShowNotesDialogSetting())
     val isAskToAddNotes: StateFlow<Boolean> = _isAskToAddNotes
@@ -74,6 +84,88 @@ class MainActivityViewModel @Inject constructor(
 
     /** HL7 toggle from the portal (cached in prefs). */
     fun isHl7Enabled(): Boolean = preferenceHelper.isHl7Enabled()
+
+    fun isUseStaticPmsConnection(): Boolean = preferenceHelper.isUseStaticPmsConnection()
+
+    fun getPmsIP(): String = preferenceHelper.getPmsIP().orEmpty()
+
+    fun getPmsPort(): String = preferenceHelper.getPmsPort().takeIf { it != 0 }?.toString().orEmpty()
+
+    /**
+     * Live PMS ip/port, so [ConnectionInfoScreen][com.rite.pillcounting.feature.settings.presentation.ConnectionInfoScreen]
+     * reflects changes made elsewhere (e.g. profile sync) without needing to be re-entered.
+     */
+    val pmsConnection: StateFlow<Pair<String, String>> = callbackFlow {
+        fun currentValue() = preferenceHelper.getPmsIP().orEmpty() to
+            preferenceHelper.getPmsPort().takeIf { it != 0 }?.toString().orEmpty()
+
+        trySend(currentValue())
+
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == preferenceHelper.pmsIpKey || key == preferenceHelper.pmsPortKey) {
+                trySend(currentValue())
+            }
+        }
+
+        preferenceHelper.registerOnChangeListener(listener)
+        awaitClose { preferenceHelper.unregisterOnChangeListener(listener) }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        preferenceHelper.getPmsIP().orEmpty() to preferenceHelper.getPmsPort().takeIf { it != 0 }?.toString().orEmpty()
+    )
+
+    private val _pmsTestConnectionState = MutableStateFlow<PmsTestConnectionState>(PmsTestConnectionState.Idle)
+    val pmsTestConnectionState: StateFlow<PmsTestConnectionState> = _pmsTestConnectionState
+
+    /** Resets test-connection result — call when [ConnectionInfoScreen][com.rite.pillcounting.feature.settings.presentation.ConnectionInfoScreen] is (re-)entered. */
+    fun resetPmsTestConnectionState() {
+        _pmsTestConnectionState.value = PmsTestConnectionState.Idle
+    }
+
+    /**
+     * Reports whether the app can reach the configured PMS static IP/port.
+     *
+     * If the live MLLP client (owned by [Hl7ServiceManager]/[HL7Service]) is already
+     * connected, reports success immediately instead of opening a second, independent
+     * TCP socket to the same host:port — most PMS/MLLP listeners only accept one active
+     * connection per client and will drop the live connection when a second competing
+     * socket connects, which looked like the connection flapping during a test.
+     * Only opens a standalone probe socket when the live client isn't already connected.
+     */
+    fun testPmsConnection() {
+        val host = preferenceHelper.getPmsIP()
+        val port = preferenceHelper.getPmsPort()
+
+        if (host.isNullOrBlank() || port <= 0) {
+            _pmsTestConnectionState.value = PmsTestConnectionState.Failed("PMS IP/port not configured")
+            return
+        }
+
+        if (hl7EventHandler.connectionState.value) {
+            _pmsTestConnectionState.value = PmsTestConnectionState.Success
+            return
+        }
+
+        _pmsTestConnectionState.value = PmsTestConnectionState.Testing
+
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                java.net.Socket().use { socket ->
+                    socket.connect(java.net.InetSocketAddress(host, port), PMS_TEST_CONNECTION_TIMEOUT_MS)
+                }
+                _pmsTestConnectionState.value = PmsTestConnectionState.Success
+            } catch (e: Exception) {
+                logger.w("testPmsConnection() — failed to reach $host:$port: ${e.message}")
+                _pmsTestConnectionState.value =
+                    PmsTestConnectionState.Failed("Unable to reach PMS server")
+            }
+        }
+    }
+
+    companion object {
+        private const val PMS_TEST_CONNECTION_TIMEOUT_MS = 5_000
+    }
 
     private val _uiState = MutableStateFlow(ApplicationSettingsUiState())
     override val uiState = _uiState.asStateFlow()
@@ -376,8 +468,18 @@ class MainActivityViewModel @Inject constructor(
 
     /**
      * Configures and starts the HL7 service and its event consumer.
+     *
+     * Guarded by [hl7StartRequested] so the two independent triggers — [evaluateHl7State]
+     * (fires at ViewModel init, covers an app relaunch with terminal info already cached)
+     * and [startHl7AfterTerminalLoaded] (fires once auth/me returns, covers a fresh login) —
+     * can never both call through to [Hl7ServiceManager.initialize] for the same process.
      */
     private fun startHl7Service() {
+        if (hl7StartRequested) {
+            logger.i("startHl7Service() — already requested this session, skipping duplicate init")
+            return
+        }
+        hl7StartRequested = true
 
         val broadCastServiceName = _uiState.value.nsdBroadcastType ?: return
         val discoverServiceName = _uiState.value.nsdDiscoveryType ?: return
@@ -391,7 +493,12 @@ class MainActivityViewModel @Inject constructor(
             nsdBroadcastType = broadCastServiceName,
             nsdDiscoveryType = discoverServiceName,
             imageServicePort = 8080,
-            imageServiceSecurePort = 8443
+            imageServiceSecurePort = 8443,
+            hl7Version = preferenceHelper.getHl7Version(),
+            bypassTls = preferenceHelper.isBypassTlsEnabled(),
+            useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),
+            pmsIp = preferenceHelper.getPmsIP(),
+            pmsPort = preferenceHelper.getPmsPort(),
         )
         hl7ServiceManager.initialize(config, hl7EventHandler)
     }
@@ -408,9 +515,17 @@ class MainActivityViewModel @Inject constructor(
         if (state.isHl7Enabled != true || !preferenceHelper.isUserLoggedIn()) {
             logger.i("HL7 disabled or user not logged in - stopping HL7 service")
             stopHl7Service()
+        } else if (!preferenceHelper.getSelectedTerminalName().isNullOrEmpty()) {
+            // Terminal name is already cached from a previous session (app relaunch while
+            // still logged in) — start immediately here instead of waiting on
+            // startHl7AfterTerminalLoaded(), which previously only fired from a
+            // DashboardScreen Compose LaunchedEffect and so silently never ran at all if
+            // Dashboard wasn't the screen composed at the moment terminal info loaded.
+            logger.i("HL7 enabled, user logged in, terminal already cached — starting HL7 now")
+            startHl7Service()
         } else {
             logger.i("HL7 enabled and user logged in - waiting for terminal info from auth/me")
-            // Don't start automatically - wait for terminal info
+            // Don't start automatically - wait for terminal info (fresh login / first launch)
         }
     }
 
@@ -442,6 +557,7 @@ class MainActivityViewModel @Inject constructor(
      */
     private fun stopHl7Service() {
         hl7ServiceManager.shutdown()
+        hl7StartRequested = false
         logger.i("HL7 STOPPED")
     }
 
@@ -525,4 +641,12 @@ class MainActivityViewModel @Inject constructor(
         logger.i("Tray color classification lists cleared from Settings")
     }
 
+}
+
+/** Result of a "Test Connection" attempt against the configured PMS static IP/port. */
+sealed interface PmsTestConnectionState {
+    data object Idle : PmsTestConnectionState
+    data object Testing : PmsTestConnectionState
+    data object Success : PmsTestConnectionState
+    data class Failed(val reason: String) : PmsTestConnectionState
 }

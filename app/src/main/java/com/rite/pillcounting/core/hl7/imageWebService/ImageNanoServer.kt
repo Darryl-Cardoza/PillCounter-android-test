@@ -20,6 +20,10 @@ import org.json.JSONObject
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URLDecoder
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.zip.CRC32
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
 import javax.net.ssl.SSLServerSocketFactory
@@ -57,9 +61,34 @@ class ImageNanoServer(
     }
 
     override fun serve(session: IHTTPSession): Response {
-        logger.d("Request: ${session.method} ${session.uri}")
+        logger.d("Request: ${session.method} ${session.uri}${queryStringOf(session)}")
 
-        val segments = session.uri.trim('/').split("/")
+        val rawUri = session.uri.trim('/')
+
+        // PMS sends query params with no leading "?", e.g. "/pic=*&format=zip&orderId=...&Last".
+        // Treat everything after the leading "/" as the query string when it contains "=";
+        // otherwise fall back to NanoHTTPD's own path/query split (proper "?query" form).
+        val (pathPart, queryPart) = if (rawUri.contains("=")) {
+            "" to rawUri
+        } else {
+            rawUri to (session.queryParameterString ?: "")
+        }
+        val segments = pathPart.split("/").filter { it.isNotEmpty() }
+        val params = if (queryPart.isNotEmpty()) parseQuery(queryPart) else
+            session.parameters.mapValues { it.value.firstOrNull().orEmpty() }
+
+        // GET /images?pic=*&format=zip&orderid=<transactionOrderId>
+        // GET /?pic=*&format=zip&orderid=<transactionOrderId>[&Last]
+        // GET /pic=*&format=zip&orderid=<transactionOrderId>[&Last]   (no leading "?")
+        // `pic` accepted but ignored (future: select which images; "*" = all).
+        // `Last` (or any other bare flag) is accepted but ignored.
+        val isRootOrImages = segments.isEmpty() || (segments.size == 1 && segments[0] == "images")
+        val orderId = params["orderid"]
+        if (isRootOrImages && params["format"]?.lowercase() == "zip" && !orderId.isNullOrBlank()) {
+            return handleTxnLookup(zipFileName = "$orderId.zip", naming = ZipNaming.PMS_FILE_NAMING) {
+                txnDao.getByTransactionOrderId(orderId)
+            }
+        }
 
         return when {
             session.uri == "/health"      -> handleHealth()
@@ -90,8 +119,25 @@ class ImageNanoServer(
         }
     }
 
+    private fun queryStringOf(session: IHTTPSession): String =
+        if (session.queryParameterString.isNullOrBlank()) "" else "?${session.queryParameterString}"
+
     private fun decode(segment: String): String =
         URLDecoder.decode(segment, "UTF-8")
+
+    /** Parses a raw query string (`a=1&b=2`) into a lowercase-keyed map. Later duplicate keys win. */
+    private fun parseQuery(query: String): Map<String, String> {
+        val result = mutableMapOf<String, String>()
+        for (pair in query.split("&")) {
+            if (pair.isEmpty()) continue
+            val idx = pair.indexOf("=")
+            val rawKey = if (idx >= 0) pair.substring(0, idx) else pair
+            val rawValue = if (idx >= 0) pair.substring(idx + 1) else ""
+            val key = decode(rawKey).lowercase()
+            result[key] = decode(rawValue)
+        }
+        return result
+    }
 
     // ----------------------------------------------------------------
     // Handlers
@@ -162,7 +208,16 @@ class ImageNanoServer(
     // Transaction image-zip lookups (getby* endpoints)
     // ----------------------------------------------------------------
 
-    private fun handleTxnLookup(lookup: suspend () -> PillCountTxnEntity?): Response {
+    /** Which zip entry naming scheme to use. [LEGACY] is the existing `getby*` route naming
+     * (unchanged); [PMS_FILE_NAMING] is the PMS-facing `Rx_ID_YYYY-MM-DD_HH-MM-SS_TTTT#.jpg`
+     * convention (aka Eyecon naming) used only by the `pic=*&format=zip&orderid=...` endpoint. */
+    private enum class ZipNaming { LEGACY, PMS_FILE_NAMING }
+
+    private fun handleTxnLookup(
+        zipFileName: String = "images.zip",
+        naming: ZipNaming = ZipNaming.LEGACY,
+        lookup: suspend () -> PillCountTxnEntity?
+    ): Response {
         return try {
             val txn = runBlocking { lookup() }
                 ?: return errorResponse(Response.Status.NOT_FOUND, "Transaction not found")
@@ -172,7 +227,13 @@ class ImageNanoServer(
                 return errorResponse(Response.Status.NOT_FOUND, "No images found for transaction")
             }
 
-            zipResponse(entries)
+            zipResponse(
+                entries,
+                zipFileName = zipFileName,
+                naming = naming,
+                rxNo = txn.rxNo.orEmpty(),
+                orderId = txn.transactionOrderId.orEmpty()
+            )
         } catch (e: Exception) {
             logger.e("Transaction image lookup failed", e)
             errorResponse(Response.Status.INTERNAL_ERROR, "Failed to build image archive")
@@ -180,13 +241,13 @@ class ImageNanoServer(
     }
 
     /** One image, resolved to bytes, with the naming metadata needed for the zip entry. */
-    private data class ImageEntry(val type: String, val pillCount: Int, val file: File)
+    private data class ImageEntry(val type: String, val pillCount: Int, val file: File, val createdAt: Long)
 
     private suspend fun collectImageEntries(txn: PillCountTxnEntity): List<ImageEntry> {
         val entries = mutableListOf<ImageEntry>()
 
         txn.barcodeImage?.takeIf { it.isNotBlank() }?.let { path ->
-            resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it)) }
+            resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it, txn.createdAt)) }
         }
 
         val details = txnDetailsDao.getAllForTxn(txn.txnId.toString())
@@ -196,42 +257,89 @@ class ImageNanoServer(
         for (detail: PillCountTxnDetailsEntity in details) {
             val path = detail.imagePath?.takeIf { it.isNotBlank() } ?: continue
             val file = resolveFile(path) ?: continue
-            entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, file))
+            entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, file, detail.createdAt))
         }
 
         return entries
     }
 
-    private fun zipResponse(entries: List<ImageEntry>): Response {
-        // Batch position/total is per label: e.g. two CONTAINER_PENDING images are 1B2/2B2,
-        // while a lone VIAL image is 1B1. Overall sequence is the position across all entries.
-        val labels = entries.map { it.type.toImageLabel() }
-        val batchTotalsByLabel = labels.groupingBy { it }.eachCount()
-        val batchCounters = mutableMapOf<String, Int>()
+    /** Maps an internal detail/entry type to its PMS (Eyecon) TTTT code. */
+    private fun pmsTypeCode(type: String): String = when (type) {
+        "SCAN", "BARCODE" -> "CoVL"
+        "CONTAINER_INITIATE", "TARGET_VERIFICATION" -> "BWTP"
+        "TARGET_REVERIFICATION" -> "BWDC"
+        "VIAL" -> "CoSS"
+        "CONTAINER_PENDING" -> "BWBC"
+        else -> "BWTP"
+    }
 
+    private val pmsFileNamingDateFormat: SimpleDateFormat
+        get() = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
+
+    private fun zipResponse(
+        entries: List<ImageEntry>,
+        zipFileName: String = "images.zip",
+        naming: ZipNaming = ZipNaming.LEGACY,
+        rxNo: String = "",
+        orderId: String = ""
+    ): Response {
         val baos = ByteArrayOutputStream()
         ZipOutputStream(baos).use { zip ->
-            entries.forEachIndexed { index, entry ->
-                val seq = index + 1
-                val label = labels[index]
-                val batchNum = (batchCounters[label] ?: 0) + 1
-                batchCounters[label] = batchNum
-                val batchTotal = batchTotalsByLabel[label] ?: 1
-                val ext = entry.file.extension.ifBlank { "jpg" }
-                zip.putNextEntry(
-                    ZipEntry("${seq}_rx_${label}_${batchNum}B${batchTotal}_qty${entry.pillCount}.$ext")
-                )
-                zip.write(readImageBytes(entry.file))
-                zip.closeEntry()
+            when (naming) {
+                ZipNaming.LEGACY -> {
+                    // Batch position/total is per label: e.g. two CONTAINER_PENDING images are
+                    // 1B2/2B2, while a lone VIAL image is 1B1. Overall sequence is the position
+                    // across all entries.
+                    val labels = entries.map { it.type.toImageLabel() }
+                    val batchTotalsByLabel = labels.groupingBy { it }.eachCount()
+                    val batchCounters = mutableMapOf<String, Int>()
+
+                    entries.forEachIndexed { index, entry ->
+                        val seq = index + 1
+                        val label = labels[index]
+                        val batchNum = (batchCounters[label] ?: 0) + 1
+                        batchCounters[label] = batchNum
+                        val batchTotal = batchTotalsByLabel[label] ?: 1
+                        val ext = entry.file.extension.ifBlank { "jpg" }
+                        zip.putNextEntry(
+                            ZipEntry("${seq}_rx_${label}_${batchNum}B${batchTotal}_qty${entry.pillCount}.$ext")
+                        )
+                        zip.write(readImageBytes(entry.file))
+                        zip.closeEntry()
+                    }
+                }
+
+                ZipNaming.PMS_FILE_NAMING -> {
+                    val codes = entries.map { pmsTypeCode(it.type) }
+                    val codeCounters = mutableMapOf<String, Int>()
+
+                    entries.forEachIndexed { index, entry ->
+                        val code = codes[index]
+                        val number = (codeCounters[code] ?: 0) + 1
+                        codeCounters[code] = number
+                        val timestamp = pmsFileNamingDateFormat.format(Date(entry.createdAt))
+                        // `entry.file` is the on-disk (encrypted) file — the zip entry holds
+                        // already-decrypted jpeg bytes, so always name it `.jpg`.
+                        zip.putNextEntry(
+                            ZipEntry("${rxNo}_${orderId}_${timestamp}_${code}${number}.jpg")
+                        )
+                        zip.write(readImageBytes(entry.file))
+                        zip.closeEntry()
+                    }
+                }
             }
         }
         val bytes = baos.toByteArray()
+        val crc = CRC32().apply { update(bytes) }.value
         return newFixedLengthResponse(
             Response.Status.OK,
             "application/zip",
             bytes.inputStream(),
             bytes.size.toLong()
-        )
+        ).apply {
+            addHeader("Content-Disposition", "attachment; filename=\"$zipFileName\"")
+            addHeader("CRC", crc.toString())
+        }
     }
 
     private fun readImageBytes(file: File): ByteArray {

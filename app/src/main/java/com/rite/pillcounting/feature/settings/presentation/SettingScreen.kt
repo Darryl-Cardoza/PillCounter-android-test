@@ -5,6 +5,7 @@ import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -67,8 +68,10 @@ fun SettingsScreen(
     val selectedSchedules by viewModel.selectedSchedules.collectAsState()
     val isSoundOverrideEnable by viewModel.isSoundOverride.collectAsState()
     val isHazardousDrug by viewModel.isHazardousDrug.collectAsState()
+    val isUseStaticPmsConnection = viewModel.isUseStaticPmsConnection()
     val dimens = LocalDimens.current
     val context = LocalContext.current
+    var showConnectionInfo by remember { mutableStateOf(false) }
 
     // HL7 disabled from the portal: these settings depend on HL7/PMS, so disable
     // them (dimmed + non-interactive) and surface a toast on tap.
@@ -76,6 +79,7 @@ fun SettingsScreen(
     val disabledAlpha = 0.4f
     val onHl7DisabledTap = { showToast(context, R.string.enable_hl7_from_portal_toast) }
 
+    Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -227,6 +231,8 @@ fun SettingsScreen(
                 onDisabledClick = onHl7DisabledTap
             )
 
+
+
             HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
             Text(
@@ -242,6 +248,20 @@ fun SettingsScreen(
                     }
                     .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
             )
+
+            if (isUseStaticPmsConnection) {
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                Text(
+                    text = stringResource(R.string.setting_pms_connection),
+                    fontSize = 16.sp,
+                    color = extendedColors.textColor,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showConnectionInfo = true }
+                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+                )
+            }
 
             HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
@@ -285,6 +305,11 @@ fun SettingsScreen(
             },
             onCancel = { showClearTrayColorListsDialog = false }
         )
+    }
+
+    if (showConnectionInfo) {
+        ConnectionInfoScreen(onBackClick = { showConnectionInfo = false })
+    }
     }
 }
 

@@ -446,7 +446,7 @@ object UserInterfaceUtils {
     /** Displays a simple back button that navigates up or runs a custom action. */
     @Composable
     fun BackButton(
-        navController: NavController,
+        navController: NavController? = null,
         modifier: Modifier = Modifier,
         backIcon: Int = R.drawable.back,
         showBox: Boolean = false,
@@ -454,8 +454,7 @@ object UserInterfaceUtils {
     ) {
         val dimens = AppTheme.dimens
         val clickAction = {
-            if (onClick != null) onClick.invoke()
-            else navController.popBackStackSafely()
+            onClick?.invoke() ?: navController?.popBackStackSafely()
         }
 
         if (showBox) {

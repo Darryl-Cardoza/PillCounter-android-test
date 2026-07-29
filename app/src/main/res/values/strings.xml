@@ -71,6 +71,21 @@
     <string name="clear_tray_color_lists_confirm">Are you sure you want to clear the hazardous tray color classification?</string>
     <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
     <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
+    <string name="setting_pms_connection">PMS Connection</string>
+    <string name="connection_info_title" translatable="false">CONNECTION INFO</string>
+    <string name="this_device_dispenser_server">THIS DEVICE (DISPENSER SERVER)</string>
+    <string name="ip_address">IP Address</string>
+    <string name="listener_port">Listener Port</string>
+    <string name="pms_server">PMS SERVER</string>
+    <string name="pms_ip_address">PMS IP Address</string>
+    <string name="pms_port">PMS Port</string>
+    <string name="test_connection">Test Connection</string>
+    <string name="testing_connection">Testing</string>
+    <string name="connection_successful">Connected to %1$s successfully</string>
+    <string name="connection_failed_reason">Connection failed: %1$s</string>
+    <string name="no_wifi_connection">No Wi-Fi connection</string>
+    <string name="pms_not_configured">PMS IP/port not set. Configure it on the portal.</string>
+    <string name="check_wifi_before_testing">Connect to Wi-Fi before testing the connection</string>
 
     <string-array name="history_options">
         <item>1 Week (Default)</item>

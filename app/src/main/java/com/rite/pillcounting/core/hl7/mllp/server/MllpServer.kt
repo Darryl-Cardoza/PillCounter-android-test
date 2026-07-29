@@ -1,10 +1,12 @@
 package com.rite.pillcounting.core.hl7.mllp.server
 
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsKeystoreUtil
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.rite.hl7.encoding.Mllp
+import java.io.BufferedInputStream
 import java.io.EOFException
 import java.io.InputStream
 import java.net.ServerSocket
@@ -39,6 +41,7 @@ class MllpServer(
     private val onHl7Message: suspend (raw: String) -> String
 ) {
 
+    private val logger = AppLogger("MllpServer")
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
     private val running = AtomicBoolean(false)
@@ -68,18 +71,22 @@ class MllpServer(
         }
     }
 
-    private suspend fun acceptLoop() {
+    private fun acceptLoop() {
         while (running.get()) {
             try {
                 val socket = serverSocket!!.accept()
                 val id = UUID.randomUUID().toString()
                 clients[id] = socket
+                logger.i("Client connected: ${socket.inetAddress?.hostAddress}")
 
                 scope.launch {
                     handleClient(socket)
                     clients.remove(id)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (running.get()) {
+                    logger.e("acceptLoop() error", e)
+                }
             }
         }
     }
@@ -88,18 +95,32 @@ class MllpServer(
         try {
             if (socket is SSLSocket) socket.startHandshake()
 
-            val input = socket.inputStream
+            val input = BufferedInputStream(socket.inputStream)
             val output = socket.outputStream
 
             while (!socket.isClosed) {
                 val msg = readMllp(input)
-                val ack = onHl7Message(msg)
+                logger.i("Received MLLP message (${msg.length} chars) from ${socket.inetAddress?.hostAddress}")
+                val ack = try {
+                    onHl7Message(msg)
+                } catch (e: Exception) {
+                    // A crash inside message handling must not silently kill this client's
+                    // read loop with no trace — previously this was swallowed by the outer
+                    // catch below, so a message could arrive, fail to parse/process, and
+                    // look exactly like "the server never received anything."
+                    logger.e("onHl7Message() threw while handling received message — no ACK will be sent", e)
+                    throw e
+                }
                 if (ack.isNotEmpty()) {
                     output.write(Mllp.wrap(ack))
                     output.flush()
+                    logger.i("Sent ACK (${ack.length} chars) to ${socket.inetAddress?.hostAddress}")
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: EOFException) {
+            logger.d("Client closed connection: ${socket.inetAddress?.hostAddress}")
+        } catch (e: Exception) {
+            logger.e("handleClient() error for ${socket.inetAddress?.hostAddress}", e)
         } finally {
             socket.close()
         }

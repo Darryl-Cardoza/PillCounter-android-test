@@ -131,6 +131,14 @@ class SecurePreferences(context: Context,
 
     fun contains(key: String): Boolean = prefs.contains(key)
 
+    fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnSharedPreferenceChangeListener(listener)
+    }
+
+    fun unregisterOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnSharedPreferenceChangeListener(listener)
+    }
+
     fun remove(key: String) {
         prefs.edit { remove(key) }
     }

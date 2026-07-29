@@ -115,6 +115,15 @@ interface UserDao {
     fun observeByLocalId(localId: Long): Flow<UserEntity?>
 
     /**
+     * Retrieves a user record using the Room primary key (`localId`), synchronously.
+     *
+     * @param localId The Room primary key for the user.
+     * @return The matching [UserEntity], or `null` if not found.
+     */
+    @Query("SELECT * FROM users WHERE localId = :localId LIMIT 1")
+    suspend fun getByLocalId(localId: Long): UserEntity?
+
+    /**
      * Retrieves a user record using the external or business identifier (`userId`).
      *
      * - Typically used during login or sync operations.

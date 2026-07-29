@@ -19,4 +19,7 @@ data class UserSettings(
     @Json(name = "allow_local_storage") val allowLocalStorage: Boolean? = null,
     @Json(name = "bypass_ssl") val bypassSSL: Boolean? = null,
     @Json(name = "hl7_message_spec") val hl7MessageSpec: String? = null,
+    @Json(name = "use_static_pms_connection") val useStaticPmsConnection: Boolean? = null,
+    @Json(name = "pms_ip") val pmsIP: String? = null,
+    @Json(name = "pms_port") val pmsPort: String? = null,
 )

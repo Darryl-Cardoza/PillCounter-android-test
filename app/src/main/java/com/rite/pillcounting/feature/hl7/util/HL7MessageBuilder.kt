@@ -1,7 +1,10 @@
 package com.rite.pillcounting.feature.hl7.util
 
 
+import android.util.Base64
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.models.toImageLabel
+import com.rite.pillcounting.core.security.ImageCrypto
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.BatchEntity
@@ -110,6 +113,8 @@ object HL7MessageBuilder {
         drugName: String,
         pharmacistId: String?,
         pharmacistName: String?,
+        pharmacistLastName: String? = null,
+        pharmacistFirstName: String? = null,
         location: String? = null,
         // Optional fields that may not yet exist on every PillCountTxnEntity build;
         // passed explicitly until Room entities are confirmed to carry them.
@@ -117,6 +122,8 @@ object HL7MessageBuilder {
         expirationDate: String? = null,
         serialNumber: String? = null,
         isNdcVerified: Boolean = false,
+        isControlledSubstance: Boolean = false,
+        isHazardousDrug: Boolean = false,
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
     ): String {
 
@@ -143,6 +150,14 @@ object HL7MessageBuilder {
             ?: txn.targetCount
             ?: 0
         val orderId = txn.rxNo ?: txn.txnId.toString()
+        val vividOrderId = txn.refillNo?.takeIf { it.isNotBlank() }?.let { "$orderId-$it" } ?: orderId
+
+        // Vivid/EyeCon ZUI/ZSN lot/expiry/serial fall back to the first scanned bottle's
+        // data when the caller doesn't supply explicit override values.
+        val firstBottle = bottles.firstOrNull()
+        val effectiveLotNumber = lotNumber ?: firstBottle?.lotNumber
+        val effectiveExpirationDate = expirationDate ?: firstBottle?.expirationDate
+        val effectiveSerialNumber = serialNumber ?: firstBottle?.serialNumber
 
 
         val message = builder.rdsO13 {
@@ -155,6 +170,52 @@ object HL7MessageBuilder {
                 msh.messageControlId = messageId
                 msh.processingId = "P"
                 msh.versionId = config.versionId
+            }
+
+            when (config.sendingApplication) {
+                // Field mapping verified against Vivid's response-parse spec (ZUI-1 drugId,
+                // ZUI-2 VerifiedBy truncated to 10 chars, ZUI-4 RxNo-RefillNo composite,
+                // ZUI-6 qtyDispensed, ZUI-7 fill status, ZUI-9/10/11 lot/serial/expiry).
+                // ZUI-8 (Base64 tray image log) intentionally not populated yet — see
+                // conversation: needs new batch/count-sequence data model, tracked separately.
+                Hl7Format.VIVID.sendingApplication -> zui { z ->
+                    z.ndc = drugCode.replace("-", "")
+                    z.vividUserName = pharmacistName?.split("^")?.firstOrNull().orEmpty()
+                        .let { if (it.length > 10) it.substring(0, 10) else it }
+                    z.transactionOrderId = orderId
+                    z.rxNumber = vividOrderId
+                    z.dispensedQuantity = totalCount.toString()
+                    z.transactionStatus = ZuiTransactionStatus.DONE
+                    z.drugImages = buildZuiImagePayload(barcodeImage = txn.barcodeImage, details = txnDetails)
+                    z.drugLotNumber = effectiveLotNumber
+                    z.drugSerialNumber = effectiveSerialNumber
+                    z.drugExpirationDate = effectiveExpirationDate
+                }
+                Hl7Format.EYECON.sendingApplication -> {
+//                    zni { z ->
+//                        z.ndc = drugCode
+//                        z.drugName = drugName
+//                        z.userName = pharmacistName
+//                        z.fillerOrderNumber = orderId
+//                        z.dispenseAmount = totalCount.toString()
+//                        z.prescriptionNumber = orderId
+//                        z.resultStatus = "F"
+//                    }
+                    // EyeCon ZUI (per EyeCon HL7 spec): only fields 6/11/18/19/21 are populated —
+                    // ZUI-6 VerifiedBy (name truncated to 10 chars), ZUI-11 RxNo-RefillNo composite,
+                    // ZUI-18 dispensed qty, ZUI-19 fill status, ZUI-21 NDC (hyphens stripped).
+                    val verifiedBy = pharmacistName?.split("^")?.firstOrNull().orEmpty()
+                        .let { if (it.length > 10) it.substring(0, 10) else it }
+                    val eyeConOrderId = txn.refillNo?.takeIf { it.isNotBlank() }
+                        ?.let { "$orderId-$it" } ?: orderId
+                    zuiEyeCon { z ->
+                        z.verifiedBy = verifiedBy
+                        z.orderId = eyeConOrderId
+                        z.dispensedQuantity = totalCount.toString()
+                        z.fillStatus = "F"
+                        z.ndc = drugCode.replace("-", "")
+                    }
+                }
             }
 
             orc { orc ->
@@ -179,11 +240,17 @@ object HL7MessageBuilder {
                 rxd.lotNumber = lotNumber
                 rxd.expirationDate = expirationDate
                 rxd.dispensingProviderId = pharmacistId
+                rxd.dispensingProviderLastName = pharmacistLastName
+                rxd.dispensingProviderFirstName = pharmacistFirstName
                 rxd.dispenseSubIdCounter = "1"
             }
 
-            buildCommonNotes(txnId = txn.txnId.toString(), note = txn.note, totalCount = totalCount)
-                .forEach { note ->
+            buildCommonNotes(
+                txnId = txn.txnId.toString(),
+                note = txn.note,
+                totalCount = totalCount,
+                expectedCount = txn.targetCount
+            ).forEach { note ->
                     nte { nte ->
                         nte.setId = note.setId
                         nte.sourceOfComment = note.sourceOfComment
@@ -192,18 +259,25 @@ object HL7MessageBuilder {
                     }
                 }
 
-            buildImageOBX(
+            val imageObxRows = buildImageOBX(
                 barcodeImage = txn.barcodeImage,
-                details = txnDetails,
-                observationId = "DISP_IMG",
-                label = "Dispense Image"
-            ).forEach { obx ->
+                details = txnDetails
+            )
+            val controlledHazardousObxRows = buildControlledHazardousOBX(
+                setIdStart = imageObxRows.size + 1,
+                isControlledSubstance = isControlledSubstance,
+                isHazardousDrug = isHazardousDrug
+            )
+            (imageObxRows + controlledHazardousObxRows).forEach { obx ->
                 obx { b ->
                     b.setId = obx.setId
                     b.valueType = obx.valueType
                     b.observationId = obx.observationId
                     b.observationText = obx.observationText
+                    b.observationIdCodingSystem = obx.observationIdCodingSystem
                     b.observationValue = obx.observationValue
+                    b.observationValueText = obx.observationValueText
+                    b.observationValueCodingSystem = obx.observationValueCodingSystem
                     b.resultStatus = obx.resultStatus
                     b.units = obx.units
                 }
@@ -250,29 +324,6 @@ object HL7MessageBuilder {
                 z.validator = zsv.validator
                 z.validationTimestamp = zsv.validationTimestamp
                 z.matchStrength = zsv.matchStrength
-            }
-
-            when (config.sendingApplication) {
-                Hl7Format.VIVID.sendingApplication -> zui { z ->
-                    z.ndc = drugCode
-                    z.vividUserName = pharmacistName
-                    z.transactionOrderId = orderId
-                    z.rxNumber = txn.hl7SequenceNumber?.takeIf { it.isNotBlank() } ?: orderId
-                    z.dispensedQuantity = totalCount.toString()
-                    z.transactionStatus = ZuiTransactionStatus.DONE
-                    z.drugLotNumber = lotNumber
-                    z.drugSerialNumber = serialNumber
-                    z.drugExpirationDate = expirationDate
-                }
-                Hl7Format.EYECON.sendingApplication -> zni { z ->
-                    z.ndc = drugCode
-                    z.drugName = drugName
-                    z.userName = pharmacistName
-                    z.fillerOrderNumber = orderId
-                    z.dispenseAmount = totalCount.toString()
-                    z.prescriptionNumber = orderId
-                    z.resultStatus = "F"
-                }
             }
         }
 
@@ -475,41 +526,73 @@ object HL7MessageBuilder {
         val observationText: String?,
         val observationValue: String,
         val resultStatus: String,
-        val units: String?
+        val units: String?,
+        val observationIdCodingSystem: String? = null,
+        val observationValueText: String? = null,
+        val observationValueCodingSystem: String? = null
     )
+
+    /**
+     * Builds ZUI-8's tray-photo payload: one [batchInfo, countInfo, base64Data] group
+     * per image (`&`-joined on the wire, images `^`-joined). Sourced from the barcode
+     * image plus the target-verification (dispense count) and vial-step images —
+     * not the full detail set (no before/after stock-bottle or recount images).
+     *
+     * Batch/count numbering: the app has no batching (multi-tray split) or
+     * double-count (recount) tracking yet — every image is reported as
+     * "batch 1 of 1", count 1 of 1. Revisit once those features add real fields.
+     */
+    private fun buildZuiImagePayload(
+        barcodeImage: String?,
+        details: List<PillCountTxnDetailsEntity>
+    ): List<List<String>>? {
+        val stepImages = details
+            .filter { it.type == StepState.TARGET_VERIFICATION.name || it.type == StepState.VIAL.name }
+            .mapNotNull { it.imagePath }
+        val imagePaths = stepImages + listOfNotNull(barcodeImage)
+        if (imagePaths.isEmpty()) return null
+
+        val countTotal = imagePaths.size
+        return imagePaths.mapIndexedNotNull { index, path ->
+            val base64 = runCatching { File(path).readBytes() }
+                .mapCatching { bytes -> if (ImageCrypto.isEncrypted(bytes)) ImageCrypto.decrypt(bytes) else bytes }
+                .getOrNull()
+                ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+                ?: return@mapIndexedNotNull null
+            val countIndex = index + 1
+            // "1B1" = batch 1 of 1 (no batching feature yet); "${countIndex}C$countTotal" =
+            // this image's count-attempt index of the total image count, per Vivid spec format.
+            listOf("1B1", "${countIndex}C$countTotal", base64)
+        }.takeIf { it.isNotEmpty() }
+    }
 
     private fun buildImageOBX(
         barcodeImage: String?,
-        details: List<PillCountTxnDetailsEntity>,
-        observationId: String,
-        label: String
+        details: List<PillCountTxnDetailsEntity>
     ): List<ObxRow> {
 
         val detailRows = details.mapIndexed { index, detail ->
-            val count = detail.pillCount ?: 0
             val type = detail.type.toImageLabel()
-            val fileName = detail.imagePath?.let { File(it).name } ?: ""
+            val imagePath = detail.imagePath?.let { "images/${File(it).name}" } ?: ""
 
             ObxRow(
                 setId = (index + 1).toString(),
-                valueType = "ST",
-                observationId = observationId,
-                observationText = "$label ${index + 1}",
-                observationValue = "count=$count|type=$type|image=$fileName",
+                valueType = "RP",
+                observationId = "IMG${(index + 1).toString().padStart(3, '0')}",
+                observationText = type,
+                observationValue = imagePath,
                 resultStatus = "F",
                 units = null
             )
         }
 
-        val barcodeFileName = barcodeImage?.let { File(it).name }.orEmpty()
-
-        val barcodeRow = if (barcodeFileName.isNotEmpty()) {
+        val barcodeRow = if (!barcodeImage.isNullOrEmpty()) {
             ObxRow(
                 setId = (detailRows.size + 1).toString(),
-                valueType = "ST",
-                observationId = observationId,
+                valueType = "RP",
+                observationId = "IMG${(detailRows.size + 1).toString().padStart(3, '0')}",
                 observationText = "Barcode Image",
-                observationValue = "count=0|type=${"SCAN".toImageLabel()}|image=$barcodeFileName",
+                observationValue = "images/${File(barcodeImage).name}",
                 resultStatus = "F",
                 units = null
             )
@@ -517,6 +600,41 @@ object HL7MessageBuilder {
 
         return if (barcodeRow != null) detailRows + barcodeRow else detailRows
     }
+
+    /**
+     * OBX-3 = CONTROLLED_SUBSTANCE/HAZARDOUS_DRUG identifier, OBX-5 = Y/N per HL70136,
+     * e.g. `OBX|4|CE|CONTROLLED_SUBSTANCE^Controlled Substance^L||Y^Yes^HL70136`.
+     */
+    private fun buildControlledHazardousOBX(
+        setIdStart: Int,
+        isControlledSubstance: Boolean,
+        isHazardousDrug: Boolean
+    ): List<ObxRow> = listOf(
+        ObxRow(
+            setId = setIdStart.toString(),
+            valueType = "CE",
+            observationId = "CONTROLLED_SUBSTANCE",
+            observationText = "Controlled Substance",
+            observationValue = if (isControlledSubstance) "Y" else "N",
+            observationValueText = if (isControlledSubstance) "Yes" else "No",
+            observationValueCodingSystem = "HL70136",
+            resultStatus = "F",
+            units = null,
+            observationIdCodingSystem = "L"
+        ),
+        ObxRow(
+            setId = (setIdStart + 1).toString(),
+            valueType = "CE",
+            observationId = "HAZARDOUS_DRUG",
+            observationText = "Hazardous Drug",
+            observationValue = if (isHazardousDrug) "Y" else "N",
+            observationValueText = if (isHazardousDrug) "Yes" else "No",
+            observationValueCodingSystem = "HL70136",
+            resultStatus = "F",
+            units = null,
+            observationIdCodingSystem = "L"
+        )
+    )
 
     private data class ZsnRow(
         val setId: String,
@@ -615,10 +733,16 @@ object HL7MessageBuilder {
         txnId: String,
         note: String?,
         totalCount: Int,
-        isBatch: Boolean = false
+        isBatch: Boolean = false,
+        expectedCount: Int? = null
     ): List<NoteRow> {
         val label = if (isBatch) "Batch Id" else "Transaction Id"
         var comment = "$label: $txnId | Status: Completed | Total Count: $totalCount"
+
+        if (expectedCount != null && expectedCount != totalCount) {
+            val diff = totalCount - expectedCount
+            comment += " | Count Mismatch: Expected $expectedCount, Counted $totalCount, Diff $diff"
+        }
 
         note?.trim()?.takeIf { it.isNotEmpty() }?.let {
             comment += " | Note: $it"
