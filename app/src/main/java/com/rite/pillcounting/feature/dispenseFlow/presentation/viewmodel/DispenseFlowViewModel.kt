@@ -329,10 +329,40 @@ class DispenseFlowViewModel @Inject constructor(
                 }
 
                 // Check if this RX has an active local transaction (PARTIAL or ON_HOLD).
-                val existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
+                var existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
                 if (existingTxn == null) {
-                    _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
-                    return@launch
+                    // No PMS-created transaction found. In standalone mode (with PMS
+                    // integration still configured) the app is expected to originate
+                    // the dispense itself off the scanned Rx label, rather than wait
+                    // on an HL7 order that will never arrive.
+                    if (preferenceHelper.isStandaloneMode() && preferenceHelper.isHl7Enabled()) {
+                        // Resolve the drug for the NDC parsed off the Rx label — local DB
+                        // first, then the server (reusing the same resolve-and-cache helper
+                        // the allowlist check uses) — so the txn carries a drugId and the RX
+                        // verification sheet can show a drug name / NDC / strength just
+                        // like the PMS/HL7 path does with its expected drug.
+                        val resolvedDrug = drugMasterDao.getDrugByNdc(parsedNdc)
+                            ?: drugMasterDao.getDrugByGtin(parsedNdc)
+                            ?: resolveNdcFromServer(parsedNdc)?.let { drugMasterDao.getDrugByNdc(it) }
+                        val newTxn = PillCountTxnEntity(
+                            localId = preferenceHelper.getLocalId(),
+                            drugId = resolvedDrug?.drugId,
+                            isDispense = true,
+                            targetCount = qty.toIntOrNull(),
+                            status = CountStatus.PARTIAL,
+                            isComingFromHL7 = false,
+                            isSynced = false,
+                            isNdcVerified = false,
+                            rxNo = rxNo,
+                            bucketId = bucket,
+                        )
+                        val txnId = pillCountTxnDao.upsertPreservingId(newTxn)
+                        existingTxn = pillCountTxnDao.getById(txnId)
+                    }
+                    if (existingTxn == null) {
+                        _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
+                        return@launch
+                    }
                 }
                 when (existingTxn.status) {
                     CountStatus.ON_HOLD -> {

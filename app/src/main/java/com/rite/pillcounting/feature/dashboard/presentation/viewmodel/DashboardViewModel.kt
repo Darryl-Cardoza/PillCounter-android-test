@@ -148,6 +148,10 @@ class DashboardViewModel @Inject constructor(
         return preferenceHelper.isHl7Enabled()
     }
 
+    fun isStandaloneMode(): Boolean {
+        return preferenceHelper.isStandaloneMode()
+    }
+
     fun getBucketList(): List<String> = preferenceHelper.getBucketList()
 
 //    suspend fun getLastInProgressBatch() = batchDao.getLatest()
@@ -372,6 +376,10 @@ class DashboardViewModel @Inject constructor(
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.settings?.bucket ?: emptyList())
                             preferenceHelper.setHl7Enabled(entity.isHl7Enable)
+                            // Persist is_standalone so the RX-scan flow knows whether it may
+                            // create dispense transactions locally (without waiting on PMS/HL7)
+                            // and so the dashboard can disable the PMS-dependent KPI cards.
+                            preferenceHelper.setStandaloneMode(detail.settings?.isStandalone ?: false)
                             // Persist the HL7 spec version from the server so the HL7 parser and
                             // builder resolve the correct trigger events (e.g. RDS^O13 vs RDS^O01).
                             // Falls back to the current/default version when the server omits it.

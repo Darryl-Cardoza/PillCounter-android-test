@@ -104,6 +104,8 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                     counts = uiState.kpiCounts,
                     activeFilter = uiState.activeKpiFilter,
                     onTap = params.onKpiFilterTapped,
+                    disabledFilters = params.disabledKpiFilters,
+                    onDisabledTap = params.onDisabledKpiFilterTapped,
                     cardHeight = 150.dp,
                 )
 

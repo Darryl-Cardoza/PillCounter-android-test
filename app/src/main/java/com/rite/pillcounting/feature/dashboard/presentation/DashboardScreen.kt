@@ -28,6 +28,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.compose.GlobalLoadingOverlay
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.presentation.model.DashboardVariantParams
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhoneLandscape
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhonePortrait
@@ -156,6 +157,17 @@ fun DashboardScreen(
     // recompositions — variants and their LazyColumn rows can skip re-render when only
     // `uiState` / `isPmsConnected` change.
     val onKpiFilterTapped = remember(viewModel) { viewModel::onKpiFilterTapped }
+    val isStandaloneMode = viewModel.isStandaloneMode()
+    val disabledKpiFilters = remember(isStandaloneMode) {
+        if (isStandaloneMode) {
+            setOf(KpiFilter.DISP_HIGH_PRIORITY, KpiFilter.INV_CYCLE_COUNT)
+        } else {
+            emptySet()
+        }
+    }
+    val onDisabledKpiFilterTapped = remember(context) {
+        { _: KpiFilter -> showToast(context, R.string.standalone_kpi_disabled_message) }
+    }
     val onTabSelected = remember(viewModel) { viewModel::onTabSelected }
     val onDispenseQuickAction = remember(viewModel, navController) {
         {
@@ -212,6 +224,8 @@ fun DashboardScreen(
         isHl7Enabled = viewModel.isHl7Enabled(),
         navController = navController,
         onKpiFilterTapped = onKpiFilterTapped,
+        disabledKpiFilters = disabledKpiFilters,
+        onDisabledKpiFilterTapped = onDisabledKpiFilterTapped,
         onTabSelected = onTabSelected,
         onDispenseQuickAction = onDispenseQuickAction,
         onInventoryQuickAction = onInventoryQuickAction,
