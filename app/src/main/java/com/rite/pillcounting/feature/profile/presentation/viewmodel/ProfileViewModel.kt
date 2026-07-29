@@ -236,6 +236,40 @@ class ProfileViewModel @Inject constructor(
         logger.i("State selected: ${state.code}")
     }
 
+    /**
+     * Invalidates the confirmed country selection once the user edits the search text
+     * without picking an item from the dropdown, so a stale selection can't be saved
+     * under mismatched displayed text.
+     *
+     * @param query Raw text currently typed into the country search field.
+     *
+     * Example Usage:
+     * onCountryQueryChanged("Ind")
+     */
+    fun onCountryQueryChanged(query: String) {
+        if (selectedCountry != null) {
+            selectedCountry = null
+            states = emptyList()
+            selectedState = null
+        }
+    }
+
+    /**
+     * Invalidates the confirmed state selection once the user edits the search text
+     * without picking an item from the dropdown, so a stale selection can't be saved
+     * under mismatched displayed text.
+     *
+     * @param query Raw text currently typed into the state search field.
+     *
+     * Example Usage:
+     * onStateQueryChanged("Cal")
+     */
+    fun onStateQueryChanged(query: String) {
+        if (selectedState != null) {
+            selectedState = null
+        }
+    }
+
     fun onPhoneChanged(input: String) {
         val digits = input.filter { it.isDigit() }
 

@@ -528,7 +528,8 @@ private fun ResponsiveProfileFields(
             modifier = Modifier.weight(1f),
             isSearchable = true,
             error = viewModel.countryError?.let { stringResource(it) },
-            focusRequester = countryFocusRequester
+            focusRequester = countryFocusRequester,
+            onQueryChanged = { viewModel.onCountryQueryChanged(it) }
         )
         LabeledDropdown(
             label = stringResource(R.string.state),
@@ -543,7 +544,8 @@ private fun ResponsiveProfileFields(
             modifier = Modifier.weight(1f),
             isSearchable = true,
             error = viewModel.stateError?.let { stringResource(it) },
-            focusRequester = stateFocusRequester
+            focusRequester = stateFocusRequester,
+            onQueryChanged = { viewModel.onStateQueryChanged(it) }
         )
     }
 
@@ -573,6 +575,7 @@ private fun <T> LabeledDropdown(
     isSearchable: Boolean = false,
     error: String? = null,
     focusRequester: FocusRequester? = null,
+    onQueryChanged: (String) -> Unit = {},
 ) {
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
@@ -631,6 +634,7 @@ private fun <T> LabeledDropdown(
                 onValueChange = {
                     searchQuery = it
                     expanded = true
+                    onQueryChanged(it)
                 },
                 singleLine = true,
                 textStyle = TextStyle(
