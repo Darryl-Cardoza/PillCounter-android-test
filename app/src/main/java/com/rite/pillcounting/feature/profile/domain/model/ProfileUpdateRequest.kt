@@ -16,5 +16,7 @@ data class ProfileUpdateRequest(
     @Json(name = "language") val language: String,
     @Json(name = "timezone") val timezone: String,
     @Json(name = "terminal_id") val terminalId: String? = null,
-    @Json(name = "pharmacy_type") val pharmacyType: String? = null
+    @Json(name = "pharmacy_type") val pharmacyType: String? = null,
+    @Json(name = "country") val country: String? = null,
+    @Json(name = "state") val state: String? = null
 )

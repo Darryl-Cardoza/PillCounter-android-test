@@ -6,6 +6,7 @@ import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.hl7.util.Hl7Format
+import com.rite.pillcounting.feature.profile.domain.model.Country
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -61,6 +62,9 @@ private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
 private const val KEY_HL7_VERSION = "key_hl7_version"
 private const val KEY_BYPASS_TLS = "key_bypass_tls"
 private const val KEY_HL7_FORMAT = "key_hl7_format"
+
+// Reference Data
+private const val KEY_COUNTRIES = "key_countries"
 
 @Singleton
 class PreferenceHelper @Inject constructor(
@@ -596,6 +600,32 @@ class PreferenceHelper @Inject constructor(
         val format = name?.let { runCatching { Hl7Format.valueOf(it) }.getOrNull() } ?: Hl7Format.DEFAULT
         logger.d("Retrieved HL7 format: $format")
         return format
+    }
+
+    // ─────────────────────────── COUNTRIES REFERENCE DATA ───────────────────────────
+
+    /**
+     * Saves the reference list of countries (with nested states) as JSON.
+     * @param countries List of Country objects to persist.
+     */
+    fun saveCountries(countries: List<Country>) {
+        val json = gson.toJson(countries)
+        prefs.putString(KEY_COUNTRIES, json)
+        logger.i("Saved countries list (size=${countries.size})")
+    }
+
+    /**
+     * Retrieves the cached reference list of countries.
+     * @return List of Country objects, or empty list if none cached yet.
+     */
+    fun getCountries(): List<Country> {
+        val json = prefs.getString(KEY_COUNTRIES, null)
+        return if (json != null) {
+            gson.fromJson(json, Array<Country>::class.java).toList()
+        } else {
+            logger.d("No countries found in preferences")
+            emptyList()
+        }
     }
 
     companion object {
