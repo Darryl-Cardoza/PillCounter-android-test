@@ -78,5 +78,11 @@ import com.rite.pillcounting.core.security.models.SecureString
          * Local timestamp (epoch millis) when this record was created/updated.
          */
         val createdAt: Long = System.currentTimeMillis(),
-        val isHl7Enable: Boolean = false
+        val isHl7Enable: Boolean = false,
+
+        /** Country code (e.g., "US", "CA"). */
+        val country: String? = null,
+
+        /** State/province code (e.g., "CA", "AB"). */
+        val state: String? = null
     )

@@ -7,6 +7,7 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.profile.data.remote.IProfileApi
 import com.rite.pillcounting.feature.profile.domain.data.IProfileRepository
+import com.rite.pillcounting.feature.profile.domain.model.Country
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
@@ -90,6 +91,22 @@ class ProfileRepository @Inject constructor(
             Result.failure(e)
         } catch (e: Exception) {
             logger.e("Profile deletion failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetches the reference list of countries and their states/provinces.
+     *
+     * @return [Result] containing the list of [Country], or an exception on failure.
+     */
+    override suspend fun getCountries(): Result<List<Country>> = withContext(ioDispatcher) {
+        try {
+            logger.i("Fetching countries reference list.")
+            val response = profileApi.getCountries()
+            Result.success(response.data?.countries.orEmpty())
+        } catch (e: Exception) {
+            logger.e("Failed to fetch countries reference list", e)
             Result.failure(e)
         }
     }

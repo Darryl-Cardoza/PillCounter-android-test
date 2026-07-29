@@ -56,3 +56,14 @@ _cleanup_archive/
 local.properties
 .claude/settings.local.json
 keystore.properties
+
+.claude/
+.agents/
+
+DrugCatalogStressSeeder.swift
+DrugCatalogSeeder.kt
+
+graphify-out/
+
+# Claude-authored notes/docs, not part of the shipped project docs
+docs/claude/
