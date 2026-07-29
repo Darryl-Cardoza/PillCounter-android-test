@@ -1,7 +1,9 @@
 package com.rite.pillcounting.feature.profile.data.remote
 
+import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.utils.constants.URLConstant
 import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeResponse
+import com.rite.pillcounting.feature.profile.domain.model.CountriesData
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
@@ -47,4 +49,12 @@ interface IProfileApi {
     suspend fun getPharmacyTypes(
         @Header("Authorization") authorization: String,
     ): PharmacyTypeResponse
+
+    /**
+     * Fetches the reference list of countries and their states/provinces.
+     *
+     * @return [ApiResponse] wrapping [CountriesData].
+     */
+    @GET(URLConstant.GET_COUNTRIES)
+    suspend fun getCountries(): ApiResponse<CountriesData>
 }

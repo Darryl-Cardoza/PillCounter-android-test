@@ -36,6 +36,9 @@ object URLConstant {
     /** API endpoint for fetching the list of selectable pharmacy types. */
     const val GET_PHARMACY_TYPES = "/users/pharmacy-types"
 
+    /** API endpoint for fetching the reference list of countries and their states/provinces. */
+    const val GET_COUNTRIES = "/reference/countries"
+
     /** Common HTTP Content-Type header value for all JSON-based API calls. */
     const val CONTENT_TYPE = "application/json"
 }

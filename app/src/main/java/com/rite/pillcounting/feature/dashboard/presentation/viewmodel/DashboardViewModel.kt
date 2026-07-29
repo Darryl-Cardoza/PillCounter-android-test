@@ -586,6 +586,8 @@ private fun UserEntity.toUserDetail(
         notificationsEnabled = this.notifications,
         language = this.language,
         timezone = this.timezone,
+        country = this.country,
+        state = this.state,
         terminals = terminals,
     )
     return UserDetail(profile = profile, settings = settings)
@@ -612,6 +614,8 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         language = this.settings?.language,
         timezone = this.settings?.timezone,
         notifications = this.settings?.notificationsEnabled,
+        country = this.settings?.country,
+        state = this.settings?.state,
         createdAt = System.currentTimeMillis(),
         isHl7Enable = this.settings?.isPMSIntegrated ?: false
     )

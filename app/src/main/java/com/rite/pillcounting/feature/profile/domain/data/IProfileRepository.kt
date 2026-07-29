@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.profile.domain.data
 
 import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeResponse
+import com.rite.pillcounting.feature.profile.domain.model.Country
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
@@ -33,4 +34,11 @@ interface IProfileRepository {
      * @return [Result] containing [PharmacyTypeResponse] or an exception on failure.
      */
     suspend fun getPharmacyTypes(): Result<PharmacyTypeResponse>
+
+    /**
+     * Fetches the reference list of countries and their states/provinces from the server.
+     *
+     * @return [Result] containing the list of [Country] or an exception on failure.
+     */
+    suspend fun getCountries(): Result<List<Country>>
 }
