@@ -400,6 +400,155 @@ class DispenseFlowViewModelTest {
         coVerify(exactly = 1) { pillCountTxnDao.getActiveByRxNo("RX999") }
     }
 
+    // ───────────────────────────── onRxBarcodeRead: standalone mode ─────────────────────────────
+    // When no PMS/HL7 transaction exists yet for the scanned RX, standalone mode (with PMS
+    // integration still flagged on) originates the dispense locally instead of leaving the
+    // user stuck waiting on an order that will never arrive.
+
+    @Test
+    fun `onRxBarcodeRead standalone disabled keeps not-found behavior`() = runTest(testDispatcher) {
+        // preferenceHelper is relaxed-mocked, so isStandaloneMode()/isHl7Enabled() default
+        // to false — the standalone branch must not run and no txn should be created.
+        coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+        val vm = createViewModel()
+        vm.onRxBarcodeRead("gtin", null)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
+        coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
+    }
+
+    @Test
+    fun `onRxBarcodeRead standalone mode without PMS integration keeps not-found behavior`() =
+        runTest(testDispatcher) {
+            // Standalone alone isn't enough — PMS integration (isHl7Enabled) must also be on.
+            every { preferenceHelper.isStandaloneMode() } returns true
+            every { preferenceHelper.isHl7Enabled() } returns false
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
+            coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
+        }
+
+    @Test
+    fun `onRxBarcodeRead standalone creates txn using locally resolved drug`() = runTest(testDispatcher) {
+        every { preferenceHelper.isStandaloneMode() } returns true
+        every { preferenceHelper.isHl7Enabled() } returns true
+        coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
+        coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 200L
+        coEvery { pillCountTxnDao.getById(200L) } returns
+            txn(txnId = 200L, drugId = 55L, status = CountStatus.PARTIAL, isNdcVerified = false)
+        coEvery { drugMasterDao.getDrugById(55L) } returns drug(drugId = 55L, ndc = "NDC123")
+
+        val vm = createViewModel()
+        vm.onRxBarcodeRead("gtin", null)
+        advanceUntilIdle()
+
+        coVerify {
+            pillCountTxnDao.upsertPreservingId(match<PillCountTxnEntity> {
+                it.drugId == 55L &&
+                    it.rxNo == "RX999" &&
+                    it.bucketId == "B1" &&
+                    it.targetCount == 10 &&
+                    it.isDispense &&
+                    it.isComingFromHL7 == false &&
+                    it.isSynced == false &&
+                    it.isNdcVerified == false &&
+                    it.status == CountStatus.PARTIAL
+            })
+        }
+        // Server fallback must be skipped once the drug resolves locally.
+        coVerify(exactly = 0) { drugRepository.getDrugInfoByNdc(any()) }
+        assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
+        assertTrue(vm.uiState.value.showRxDetails)
+        assertEquals("Aspirin", vm.uiState.value.drugName)
+        assertEquals("NDC123", vm.uiState.value.hl7ExpectedNdc)
+    }
+
+    @Test
+    fun `onRxBarcodeRead standalone falls back to server when drug not found locally`() =
+        runTest(testDispatcher) {
+            every { preferenceHelper.isStandaloneMode() } returns true
+            every { preferenceHelper.isHl7Enabled() } returns true
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
+            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
+            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
+                brandName = null, genericName = "ServerDrug", ndc = "NDC123",
+                is_ndc_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
+            )
+            coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
+            // getDrugByNdc is called twice: once for the initial local miss, once after the
+            // server resolve-and-cache to pick the freshly upserted row back up.
+            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returnsMany listOf(
+                null,
+                drug(drugId = 77L, ndc = "NDC123", drugName = "ServerDrug"),
+            )
+            coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 201L
+            coEvery { pillCountTxnDao.getById(201L) } returns
+                txn(txnId = 201L, drugId = 77L, status = CountStatus.PARTIAL, isNdcVerified = false)
+            coEvery { drugMasterDao.getDrugById(77L) } returns drug(drugId = 77L, ndc = "NDC123", drugName = "ServerDrug")
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            coVerify { drugRepository.getDrugInfoByNdc(any()) }
+            coVerify {
+                pillCountTxnDao.upsertPreservingId(match<PillCountTxnEntity> { it.drugId == 77L })
+            }
+            assertEquals("ServerDrug", vm.uiState.value.drugName)
+        }
+
+    @Test
+    fun `onRxBarcodeRead standalone creates txn even when drug cannot be resolved`() =
+        runTest(testDispatcher) {
+            every { preferenceHelper.isStandaloneMode() } returns true
+            every { preferenceHelper.isHl7Enabled() } returns true
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
+            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
+            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
+            coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 202L
+            coEvery { pillCountTxnDao.getById(202L) } returns
+                txn(txnId = 202L, drugId = null, status = CountStatus.PARTIAL, isNdcVerified = false)
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            coVerify {
+                pillCountTxnDao.upsertPreservingId(match<PillCountTxnEntity> { it.drugId == null })
+            }
+            // Txn still resolves and the RX sheet still shows (just without drug details).
+            assertTrue(vm.uiState.value.showRxDetails)
+            assertFalse(vm.uiState.value.txnNotFoundToastTick > 0)
+        }
+
+    @Test
+    fun `onRxBarcodeRead standalone new txn ON_HOLD status shows on-hold dialog`() =
+        runTest(testDispatcher) {
+            // Defensive: if the freshly created txn is somehow read back as ON_HOLD
+            // (e.g. a concurrent update), the existing status dispatch must still apply.
+            every { preferenceHelper.isStandaloneMode() } returns true
+            every { preferenceHelper.isHl7Enabled() } returns true
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
+            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
+            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
+            coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 203L
+            coEvery { pillCountTxnDao.getById(203L) } returns
+                txn(txnId = 203L, drugId = null, status = CountStatus.ON_HOLD)
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.showOnHoldDialog)
+        }
+
     // ───────────────────────────── onNdcBarcodeRead ─────────────────────────────
 
     private fun ndcVm(): DispenseFlowViewModel {
