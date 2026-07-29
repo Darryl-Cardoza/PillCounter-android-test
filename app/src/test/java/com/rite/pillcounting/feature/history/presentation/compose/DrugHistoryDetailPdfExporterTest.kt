@@ -76,7 +76,7 @@ class DrugHistoryDetailPdfExporterTest {
         targetCount = targetCount,
         note = note,
         createdAt = System.currentTimeMillis(),
-        barcodeImage = null,
+        bottleInfoListJson = null,
         totalPillCount = 30,
         isDispense = true,
         drugType = drugType,

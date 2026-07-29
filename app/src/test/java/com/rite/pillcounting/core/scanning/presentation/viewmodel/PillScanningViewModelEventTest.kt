@@ -221,7 +221,7 @@ class PillScanningViewModelEventTest {
         val txnInfo = TxnWithDetails(
             txnId = 1L, drugName = null, drugId = 1L, ndc = null,
             targetCount = 10, note = null,
-            createdAt = 0L, barcodeImage = null, totalPillCount = 0,
+            createdAt = 0L, bottleInfoListJson = null, totalPillCount = 0,
             isDispense = false, drugType = null,
             txnDetails = emptyList(), isComingFromHL7 = false,
         )
@@ -240,7 +240,7 @@ class PillScanningViewModelEventTest {
         val txnInfo = TxnWithDetails(
             txnId = 1L, drugName = null, drugId = 1L, ndc = null,
             targetCount = 10, note = null,
-            createdAt = 0L, barcodeImage = null, totalPillCount = 0,
+            createdAt = 0L, bottleInfoListJson = null, totalPillCount = 0,
             isDispense = true, drugType = null,
             txnDetails = emptyList(), isComingFromHL7 = false,
         )

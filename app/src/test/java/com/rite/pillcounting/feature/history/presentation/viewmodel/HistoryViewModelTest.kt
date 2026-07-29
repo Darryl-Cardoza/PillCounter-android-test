@@ -66,7 +66,7 @@ class HistoryViewModelTest {
         note: String? = null
     ) = TxnWithDrugDto(
         txnId = id, isDispense = true, status = CountStatus.COMPLETED,
-        pillCount = 10, drugName = drugName, ndc = ndc, barcodeImage = null,
+        pillCount = 10, drugName = drugName, ndc = ndc, bottleInfoListJson = null,
         createdAt = 1000L, targetCount = 10, note = note, bucketId = null, drugType = null
     )
 

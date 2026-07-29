@@ -19,7 +19,7 @@ class PillCountWithDrugAndTotalTest {
         bucketId = "bucket",
         createdAt = 100L,
         targetCount = 50,
-        barcodeImage = "bc.png",
+        bottleInfoListJson = "bc.png",
         totalPillCount = 30,
         isComingFromHL7 = true,
         isNdcVerified = true,
@@ -38,7 +38,7 @@ class PillCountWithDrugAndTotalTest {
             bucketId = null,
             createdAt = 0L,
             targetCount = null,
-            barcodeImage = null,
+            bottleInfoListJson = null,
             totalPillCount = 0,
             isComingFromHL7 = false,
             isNdcVerified = false,
@@ -51,7 +51,7 @@ class PillCountWithDrugAndTotalTest {
         assertNull(d.drugType)
         assertNull(d.bucketId)
         assertNull(d.targetCount)
-        assertNull(d.barcodeImage)
+        assertNull(d.bottleInfoListJson)
         assertNull(d.priority)
     }
 
@@ -65,7 +65,7 @@ class PillCountWithDrugAndTotalTest {
         assertEquals("bucket", d.bucketId)
         assertEquals(100L, d.createdAt)
         assertEquals(50, d.targetCount)
-        assertEquals("bc.png", d.barcodeImage)
+        assertEquals("bc.png", d.bottleInfoListJson)
         assertEquals(30, d.totalPillCount)
         assertTrue(d.isComingFromHL7)
         assertTrue(d.isNdcVerified)
