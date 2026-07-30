@@ -30,6 +30,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.utils.common.DateFormats
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.core.utils.common.formatDateToUSFormat
@@ -84,7 +85,7 @@ fun UnsyncedTransactionList(
                     items(dispenseList, key = { "dispense_${it.id}" }) { item ->
                         DrugCountRow(
                             data = DrugCountRowData(
-                                barcodeImage = item.barcodeImage,
+                                barcodeImage = BottleInfoJson.decode(item.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
                                 ndc = item.ndc,
                                 drugType = item.drugType,
                                 drugName = item.name,

@@ -57,7 +57,7 @@ class HistoryDetailsViewModelTest {
             targetCount = 10,
             note = null,
             createdAt = 1_000_000L,
-            barcodeImage = null,
+            bottleInfoListJson = null,
             totalPillCount = 10,
             isDispense = true,
             drugType = null,

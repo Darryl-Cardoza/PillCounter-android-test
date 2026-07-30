@@ -38,9 +38,14 @@ class TlsSocketFactory(
             return Socket(ip, port)
         }
 
-        return (socketFactory.createSocket(ip, port) as SSLSocket).apply {
-            TlsProvider.configureClientSocket(this, debugMode = BuildConfig.DEBUG)
-            startHandshake()
+        val sslSocket = socketFactory.createSocket(ip, port) as SSLSocket
+        return try {
+            TlsProvider.configureClientSocket(sslSocket, debugMode = BuildConfig.DEBUG)
+            sslSocket.startHandshake()
+            sslSocket
+        } catch (e: Exception) {
+            sslSocket.close()
+            throw e
         }
     }
 

@@ -52,6 +52,8 @@ fun CountModeTabletLandscape(
     bucket: String,
     showHistory: () -> Unit,
     drugImage: String? = "",
+    showGloveIcon: Boolean = false,
+    glovesDetected: Boolean = false,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val stepType by viewModel.currentStep.collectAsState()
@@ -75,7 +77,9 @@ fun CountModeTabletLandscape(
             drugName = drugName,
             strength = strength,
             bucket = bucket,
-            drugImage = drugImage
+            drugImage = drugImage,
+            showGloveIcon = showGloveIcon,
+            glovesDetected = glovesDetected,
         )
 
         CountModeCenterCircle(

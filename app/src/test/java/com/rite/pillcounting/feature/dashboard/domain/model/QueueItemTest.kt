@@ -26,7 +26,7 @@ class QueueItemTest {
         bucketId = bucketId,
         createdAt = createdAt,
         targetCount = 30,
-        barcodeImage = "img",
+        bottleInfoListJson = "img",
         totalPillCount = 10,
         isComingFromHL7 = false,
         isNdcVerified = true,

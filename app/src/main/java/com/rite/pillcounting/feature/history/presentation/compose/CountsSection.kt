@@ -36,6 +36,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
@@ -215,7 +216,7 @@ fun CountsSection(
                             items(dispensedCounts, key = { it.txnId }) { rowData ->
                                 DrugCountRow(
                                     data = DrugCountRowData(
-                                        barcodeImage = rowData.barcodeImage,
+                                        barcodeImage = BottleInfoJson.decode(rowData.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
                                         ndc = rowData.ndc,
                                         drugType = rowData.drugType,
                                         drugName = rowData.drugName ?: "",
@@ -254,7 +255,7 @@ fun CountsSection(
                             items(filteredDispensed, key = { it.txnId }) { rowData ->
                                 DrugCountRow(
                                     data = DrugCountRowData(
-                                        barcodeImage = rowData.barcodeImage,
+                                        barcodeImage = BottleInfoJson.decode(rowData.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
                                         ndc = rowData.ndc,
                                         drugType = rowData.drugType,
                                         drugName = rowData.drugName ?: "",

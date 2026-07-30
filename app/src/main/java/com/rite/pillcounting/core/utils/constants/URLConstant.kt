@@ -33,6 +33,9 @@ object URLConstant {
     /** API endpoint for updating terminal settings. The terminal ID is appended to the path. */
     const val UPDATE_TERMINAL = "/terminals/update/"
 
+    /** API endpoint for fetching the list of selectable pharmacy types. */
+    const val GET_PHARMACY_TYPES = "/users/pharmacy-types"
+
     /** API endpoint for fetching the reference list of countries and their states/provinces. */
     const val GET_COUNTRIES = "/reference/countries"
 
