@@ -336,7 +336,7 @@ class DispenseFlowViewModel @Inject constructor(
                     // integration still configured) the app is expected to originate
                     // the dispense itself off the scanned Rx label, rather than wait
                     // on an HL7 order that will never arrive.
-                    if (preferenceHelper.isStandaloneMode() && preferenceHelper.isHl7Enabled()) {
+                    if (preferenceHelper.isStandaloneMode() || preferenceHelper.isHl7Enabled()) {
                         // Resolve the drug for the NDC parsed off the Rx label — local DB
                         // first, then the server (reusing the same resolve-and-cache helper
                         // the allowlist check uses) — so the txn carries a drugId and the RX

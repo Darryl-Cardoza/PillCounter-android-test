@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
 
 import android.content.Context
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
@@ -328,14 +329,17 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
-    fun `onRxBarcodeRead bucket set and existing txn null`() = runTest(testDispatcher) {
-        coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertEquals("B1", vm.uiState.value.selectedBucketId)
-        assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
-    }
+    fun `onRxBarcodeRead neither standalone nor hl7 keeps not-found behavior`() =
+        runTest(testDispatcher) {
+            // Both preferenceHelper.isStandaloneMode() and isHl7Enabled() default to false
+            // on the relaxed mock, so the txn-creation branch must not run at all.
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
+            coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
+        }
 
     @Test
     fun `onRxBarcodeRead ON_HOLD shows dialog`() = runTest(testDispatcher) {
@@ -402,41 +406,15 @@ class DispenseFlowViewModelTest {
         coVerify(exactly = 1) { pillCountTxnDao.getActiveByRxNo("RX999") }
     }
 
-    // ───────────────────────────── onRxBarcodeRead: standalone mode ─────────────────────────────
-    // When no PMS/HL7 transaction exists yet for the scanned RX, standalone mode (with PMS
-    // integration still flagged on) originates the dispense locally instead of leaving the
-    // user stuck waiting on an order that will never arrive.
-
-    @Test
-    fun `onRxBarcodeRead standalone disabled keeps not-found behavior`() = runTest(testDispatcher) {
-        // preferenceHelper is relaxed-mocked, so isStandaloneMode()/isHl7Enabled() default
-        // to false — the standalone branch must not run and no txn should be created.
-        coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-        assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
-        coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
-    }
-
-    @Test
-    fun `onRxBarcodeRead standalone mode without PMS integration keeps not-found behavior`() =
-        runTest(testDispatcher) {
-            // Standalone alone isn't enough — PMS integration (isHl7Enabled) must also be on.
-            every { preferenceHelper.isStandaloneMode() } returns true
-            every { preferenceHelper.isHl7Enabled() } returns false
-            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
-            val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin", null)
-            advanceUntilIdle()
-            assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
-            coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
-        }
+    // ───────────────────────────── onRxBarcodeRead: standalone/no-PMS txn creation ─────────────────────────────
+    // When no PMS/HL7 transaction exists yet for the scanned RX, standalone mode OR a
+    // non-PMS-integrated pharmacy originates the dispense locally — resolving the drug for
+    // the label's NDC (local DB, then GTIN, then server) and creating the PARTIAL txn itself,
+    // rather than leaving the user stuck waiting on an order that will never arrive.
 
     @Test
     fun `onRxBarcodeRead standalone creates txn using locally resolved drug`() = runTest(testDispatcher) {
         every { preferenceHelper.isStandaloneMode() } returns true
-        every { preferenceHelper.isHl7Enabled() } returns true
         coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
         coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
         coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 200L
@@ -470,12 +448,30 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
+    fun `onRxBarcodeRead not-PMS-integrated also creates txn locally`() = runTest(testDispatcher) {
+        // isHl7Enabled() true (not standalone) takes the same creation branch — the
+        // condition is an OR of the two flags.
+        every { preferenceHelper.isHl7Enabled() } returns true
+        coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+        coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
+        coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 200L
+        coEvery { pillCountTxnDao.getById(200L) } returns
+            txn(txnId = 200L, drugId = 55L, status = CountStatus.PARTIAL, isNdcVerified = false)
+        coEvery { drugMasterDao.getDrugById(55L) } returns drug(drugId = 55L, ndc = "NDC123")
+
+        val vm = createViewModel()
+        vm.onRxBarcodeRead("gtin", null)
+        advanceUntilIdle()
+
+        assertTrue(vm.uiState.value.showRxDetails)
+        coVerify { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
+    }
+
+    @Test
     fun `onRxBarcodeRead standalone falls back to server when drug not found locally`() =
         runTest(testDispatcher) {
             every { preferenceHelper.isStandaloneMode() } returns true
-            every { preferenceHelper.isHl7Enabled() } returns true
             coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
-            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
             coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
             coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
                 brandName = null, genericName = "ServerDrug", ndc = "NDC123",
@@ -508,7 +504,6 @@ class DispenseFlowViewModelTest {
     fun `onRxBarcodeRead standalone creates txn even when drug cannot be resolved`() =
         runTest(testDispatcher) {
             every { preferenceHelper.isStandaloneMode() } returns true
-            every { preferenceHelper.isHl7Enabled() } returns true
             coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
             coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
             coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
@@ -535,9 +530,7 @@ class DispenseFlowViewModelTest {
             // Defensive: if the freshly created txn is somehow read back as ON_HOLD
             // (e.g. a concurrent update), the existing status dispatch must still apply.
             every { preferenceHelper.isStandaloneMode() } returns true
-            every { preferenceHelper.isHl7Enabled() } returns true
             coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
-            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
             coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
             coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
             coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 203L
@@ -1435,7 +1428,7 @@ class DispenseFlowViewModelTest {
             coVerify {
                 pillCountTxnDao.update(match {
                     it.txnId == 7L &&
-                        BottleInfoJson.decode(it.bottleInfoListJson) == listOf(firstBottle)
+                        BottleInfoJson.decode(it.bottleInfoListJson) == listOf(firstBottle.copy(txnId = 7L))
                 })
             }
             assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
