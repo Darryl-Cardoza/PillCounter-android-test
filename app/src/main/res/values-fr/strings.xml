@@ -304,6 +304,8 @@
     <string name="notes">NOTES</string>
     <string name="total_re_count">RECOMPTAGE TOTAL</string>
     <string name="no_batches_recorded">Aucun lot enregistré</string>
+    <string name="bottle_page_indicator">%1$d sur %2$d</string>
+    <string name="serial_no">N° de série</string>
     <string name="stock_count_dialog_title">Que souhaitez-vous faire ?</string>
     <string name="stock_count_dialog_option_first">Créer un nouveau lot</string>
     <string name="stock_count_dialog_option_second">Continuer le dernier lot</string>
@@ -367,19 +369,11 @@
     <string name="terminal">Terminal</string>
     <string name="select_terminal">Sélectionner le terminal</string>
     <string name="unknown">Inconnu</string>
+    <string name="unknown_drug">Médicament inconnu</string>
 
     <!-- Pharmacy type -->
     <string name="pharmacy_type">Type de pharmacie</string>
     <string name="select_pharmacy_type">Sélectionner le type de pharmacie</string>
-    <string name="pharmacy_type_chain">Pharmacie de chaîne</string>
-    <string name="pharmacy_type_supermarket">Supermarché / Grande surface</string>
-    <string name="pharmacy_type_independent">Pharmacie indépendante</string>
-    <string name="pharmacy_type_mail_order">Pharmacie par correspondance / en ligne</string>
-    <string name="pharmacy_type_hospital">Pharmacie hospitalière</string>
-    <string name="pharmacy_type_clinic">Pharmacie de clinique</string>
-    <string name="pharmacy_type_long_term_care">Pharmacie de soins de longue durée</string>
-    <string name="pharmacy_type_compounding">Pharmacie de préparation magistrale</string>
-    <string name="pharmacy_type_specialty">Pharmacie spécialisée</string>
 
     <!-- Country -->
     <string name="country">Pays</string>

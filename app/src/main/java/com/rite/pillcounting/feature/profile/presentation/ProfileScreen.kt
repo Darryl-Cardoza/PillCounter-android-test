@@ -469,43 +469,70 @@ private fun ResponsiveProfileFields(
         }
     }
 
-    // Terminal and Pharmacy Type dropdowns side by side.
+    // Terminal and Pharmacy Type dropdowns: side by side in landscape, each on
+    // its own row in portrait.
     val context = LocalContext.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 20.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        // Terminal selection is HL7/PMS-driven — disable the dropdown when HL7 is
-        // turned off in the portal and surface a toast on tap. Only shown when
-        // terminals are available.
-        if (viewModel.terminals.isNotEmpty()) {
-            val hl7Enabled = viewModel.isHl7Enabled()
-            LabeledDropdown(
-                label = stringResource(R.string.terminal),
-                selectedText = viewModel.selectedTerminal?.terminalName,
-                placeholder = stringResource(R.string.select_terminal),
-                items = viewModel.terminals,
-                itemLabel = { it.terminalName ?: stringResource(R.string.unknown) },
-                isSelected = { it.terminalId == viewModel.selectedTerminal?.terminalId },
-                onItemSelected = { viewModel.onTerminalSelected(it) },
-                enabled = hl7Enabled,
-                onDisabledClick = { showToast(context, R.string.enable_hl7_from_portal_toast) },
-                modifier = Modifier.weight(1f)
-            )
-        }
+    val showTerminalDropdown = viewModel.terminals.isNotEmpty()
 
+    val terminalDropdown: @Composable (Modifier) -> Unit = { modifier ->
+        val hl7Enabled = viewModel.isHl7Enabled()
+        LabeledDropdown(
+            label = stringResource(R.string.terminal),
+            selectedText = viewModel.selectedTerminal?.terminalName,
+            placeholder = stringResource(R.string.select_terminal),
+            items = viewModel.terminals,
+            itemLabel = { it.terminalName ?: stringResource(R.string.unknown) },
+            isSelected = { it.terminalId == viewModel.selectedTerminal?.terminalId },
+            onItemSelected = { viewModel.onTerminalSelected(it) },
+            enabled = hl7Enabled,
+            onDisabledClick = { showToast(context, R.string.enable_hl7_from_portal_toast) },
+            modifier = modifier
+        )
+    }
+
+    val pharmacyTypeDropdown: @Composable (Modifier) -> Unit = { modifier ->
         LabeledDropdown(
             label = stringResource(R.string.pharmacy_type),
-            selectedText = viewModel.selectedPharmacyType?.let { stringResource(it.labelRes) },
+            selectedText = viewModel.selectedPharmacyType?.label,
             placeholder = stringResource(R.string.select_pharmacy_type),
             items = viewModel.pharmacyTypes,
-            itemLabel = { stringResource(it.labelRes) },
+            itemLabel = { it.label },
             isSelected = { it == viewModel.selectedPharmacyType },
             onItemSelected = { viewModel.onPharmacyTypeSelected(it) },
-            modifier = Modifier.weight(1f)
+            modifier = modifier
         )
+    }
+
+    if (isLandscape) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (showTerminalDropdown) {
+                terminalDropdown(Modifier.weight(1f))
+            }
+            pharmacyTypeDropdown(Modifier.weight(1f))
+        }
+    } else {
+        if (showTerminalDropdown) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
+                terminalDropdown(Modifier.fillMaxWidth())
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+        ) {
+            pharmacyTypeDropdown(Modifier.fillMaxWidth())
+        }
     }
 
     // Country dropdown.

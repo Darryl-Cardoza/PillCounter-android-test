@@ -10,7 +10,7 @@ data class TxnWithDrugDto(
     val pillCount: Int?,
     val drugName: String?,
     val ndc: String?,
-    val barcodeImage: String?,
+    val bottleInfoListJson: String?,
     val createdAt: Long,
     val targetCount: Int?,
     val note: String?,

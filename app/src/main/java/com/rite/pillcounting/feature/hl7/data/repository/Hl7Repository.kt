@@ -10,6 +10,7 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
@@ -325,7 +326,7 @@ class Hl7Repository @Inject constructor(
         try {
             val txn = pillCountTxnDao.getById(txnId)
             val filesToDelete = mutableListOf<String>()
-            txn?.barcodeImage?.let { filesToDelete.add(it) }
+            BottleInfoJson.decode(txn?.bottleInfoListJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
             filesToDelete.addAll(pillCountTxnDao.getTransactionDetailsImages(txnId))
 
             pillCountTxnDao.deleteTransaction(txnId)

@@ -20,7 +20,6 @@ class PillCountTxnEntityTest {
         targetCount = 50,
         status = CountStatus.COMPLETED,
         note = "note",
-        barcodeImage = "bc.png",
         isSubstitute = true,
         rxNo = "rx1",
         refillNo = "rf1",
@@ -49,7 +48,6 @@ class PillCountTxnEntityTest {
         assertNull(e.targetCount)
         assertEquals(CountStatus.PARTIAL, e.status)
         assertNull(e.note)
-        assertNull(e.barcodeImage)
         assertFalse(e.isSubstitute)
         assertNull(e.rxNo)
         assertNull(e.refillNo)
@@ -78,7 +76,6 @@ class PillCountTxnEntityTest {
         assertEquals(50, e.targetCount)
         assertEquals(CountStatus.COMPLETED, e.status)
         assertEquals("note", e.note)
-        assertEquals("bc.png", e.barcodeImage)
         assertTrue(e.isSubstitute)
         assertEquals("rx1", e.rxNo)
         assertEquals("rf1", e.refillNo)
@@ -126,22 +123,21 @@ class PillCountTxnEntityTest {
         assertEquals(50, e.component5())        // targetCount
         assertEquals(CountStatus.COMPLETED, e.component6())
         assertEquals("note", e.component7())
-        assertEquals("bc.png", e.component8())  // barcodeImage
-        assertEquals(true, e.component9())      // isSubstitute
-        assertEquals("rx1", e.component10())
-        assertEquals("rf1", e.component11())
-        assertEquals("John", e.component12())   // patientName
-        assertEquals(true, e.component13())     // isDeleted
-        assertEquals(100L, e.component14())     // createdAt
-        assertEquals(200L, e.component15())     // updatedAt
-        assertEquals(true, e.component16())     // isComingFromHL7
-        assertEquals(true, e.component17())     // isSynced
-        assertEquals(true, e.component18())     // isNdcVerified
-        assertEquals("bucket", e.component19()) // bucketId
-        assertEquals(7L, e.component20())       // substitutedDrugId
-        assertEquals("step", e.component21())   // workflowStep
-        assertEquals(TxnPriority.High, e.component22())
-        assertEquals(true, e.component23())     // isGlovesPresent
-        assertEquals(true, e.component24())     // hazardousTrayDetected
+        assertEquals(true, e.component8())      // isSubstitute
+        assertEquals("rx1", e.component9())
+        assertEquals("rf1", e.component10())
+        assertEquals("John", e.component11())   // patientName
+        assertEquals(true, e.component12())     // isDeleted
+        assertEquals(100L, e.component13())     // createdAt
+        assertEquals(200L, e.component14())     // updatedAt
+        assertEquals(true, e.component15())     // isComingFromHL7
+        assertEquals(true, e.component16())     // isSynced
+        assertEquals(true, e.component17())     // isNdcVerified
+        assertEquals("bucket", e.component18()) // bucketId
+        assertEquals(7L, e.component19())       // substitutedDrugId
+        assertEquals("step", e.component20())   // workflowStep
+        assertEquals(TxnPriority.High, e.component21())
+        assertEquals(true, e.component22())     // isGlovesPresent
+        assertEquals(true, e.component23())     // hazardousTrayDetected
     }
 }

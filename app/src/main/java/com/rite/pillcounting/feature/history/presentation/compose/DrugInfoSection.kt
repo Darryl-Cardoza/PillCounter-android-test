@@ -64,8 +64,11 @@ import coil.request.ImageRequest
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.dtos.TxnDetailInfo
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
 import com.rite.pillcounting.core.utils.common.DateFormats
 import com.rite.pillcounting.core.utils.common.formatDateToUSFormat
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.isLandscape
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.isTablet
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
@@ -97,9 +100,13 @@ fun DrugInfoSection(
     isSubstituted: Boolean = false,
     requestedDrugName: String = "",
     requestedNdc: String = "",
+    bottleList: List<BottleInfo> = emptyList(),
     onImagePreview: (String) -> Unit = {},
 ) {
     val scrollState = rememberScrollState()
+    val tablet = isTablet()
+    val landscape = isLandscape()
+    val useGrid = tablet && landscape
 
     Box(modifier = Modifier.fillMaxSize()) {
 
@@ -137,43 +144,29 @@ fun DrugInfoSection(
                                     targetCount = targetCount,
                                     batches = transactionDetails.forStep(StepState.TARGET_VERIFICATION),
                                     isVial = false,
+                                    useGrid = false,
                                     onBatchImageClick = { imagePath -> onImagePreview(imagePath) },
                                     stringResource(R.string.total_count).uppercase()
                                 )
                             }
                         }
 
-                        if (isSubstituted) {
-                            SectionBox(title = stringResource(R.string.requested_drug_details)) {
-                                KeyValueList(
-                                    rows = listOf(
-                                        stringResource(R.string.drug_name) to requestedDrugName,
-                                        stringResource(R.string.ndc).uppercase() to requestedNdc,
-                                    )
-                                )
-                            }
-                        }
-
-                        val title = if (isSubstituted) stringResource(R.string.substitute_drug_details) else stringResource(R.string.dispense_drug_details)
-                        val drugNameTitle = stringResource(R.string.drug_name)
-                        SectionBox(title = title) {
-                            KeyValueList(
-                                rows = listOf(
-                                    drugNameTitle to drugName,
-                                    stringResource(R.string.ndc).uppercase() to ndc,
-                                    stringResource(R.string.expiry) to expiry,
-                                    stringResource(R.string.lotNo) to lotNo,
-                                    stringResource(R.string.date) to formatDateToUSFormat(
-                                        date,
-                                        DateFormats.MM_DD_YYYY
-                                    ),
-                                    stringResource(R.string.time) to time,
-                                )
-                            )
-                        }
+                        DispenseDrugDetailsSection(
+                            tablet = tablet,
+                            isSubstituted = isSubstituted,
+                            requestedDrugName = requestedDrugName,
+                            requestedNdc = requestedNdc,
+                            drugName = drugName,
+                            ndc = ndc,
+                            expiry = expiry,
+                            lotNo = lotNo,
+                            date = date,
+                            time = time,
+                            bottleList = bottleList,
+                        )
 
                         if (transactionDetails.hasStep(StepState.VIAL)) {
-                            SectionBox(title = stringResource(R.string.vial_capture)) {
+                            SectionBox(title = stringResource(R.string.vial_capture), allowCollapse = !tablet) {
                                 CountSectionContent(
                                     barcodeImage = null,
                                     count = 0,
@@ -181,13 +174,14 @@ fun DrugInfoSection(
                                     targetCount = null,
                                     batches = transactionDetails.forStep(StepState.VIAL),
                                     isVial = true,
+                                    useGrid = false,
                                     onBatchImageClick = { imagePath -> onImagePreview(imagePath) },
                                     stringResource(R.string.total_re_count).uppercase()
                                 )
                             }
                         }
 
-                        SectionBox(title = stringResource(R.string.notes)) {
+                        SectionBox(title = stringResource(R.string.notes), allowCollapse = !tablet) {
                             Text(
                                 text = note.ifBlank { "—" },
                                 color = AppTheme.extendedColors.textColor,
@@ -210,43 +204,29 @@ fun DrugInfoSection(
                                     targetCount = null,
                                     batches = transactionDetails.forStep(StepState.CONTAINER_INITIATE),
                                     isVial = false,
+                                    useGrid = useGrid,
                                     onBatchImageClick = { imagePath -> onImagePreview(imagePath) },
                                     stringResource(R.string.total_count).uppercase()
                                 )
                             }
                         }
 
-                        if (isSubstituted) {
-                            SectionBox(title = stringResource(R.string.requested_drug_details)) {
-                                KeyValueList(
-                                    rows = listOf(
-                                        stringResource(R.string.drug_name) to requestedDrugName,
-                                        stringResource(R.string.ndc).uppercase() to requestedNdc,
-                                    )
-                                )
-                            }
-                        }
-
-                        val title = if (isSubstituted) stringResource(R.string.substitute_drug_details) else stringResource(R.string.dispense_drug_details)
-                        val drugNameTitle = stringResource(R.string.drug_name)
-                        SectionBox(title = title) {
-                            KeyValueList(
-                                rows = listOf(
-                                    drugNameTitle to drugName,
-                                    stringResource(R.string.ndc).uppercase() to ndc,
-                                    stringResource(R.string.expiry) to expiry,
-                                    stringResource(R.string.lotNo) to lotNo,
-                                    stringResource(R.string.date) to formatDateToUSFormat(
-                                        date,
-                                        DateFormats.MM_DD_YYYY
-                                    ),
-                                    stringResource(R.string.time) to time,
-                                )
-                            )
-                        }
+                        DispenseDrugDetailsSection(
+                            tablet = tablet,
+                            isSubstituted = isSubstituted,
+                            requestedDrugName = requestedDrugName,
+                            requestedNdc = requestedNdc,
+                            drugName = drugName,
+                            ndc = ndc,
+                            expiry = expiry,
+                            lotNo = lotNo,
+                            date = date,
+                            time = time,
+                            bottleList = bottleList,
+                        )
 
                         if (transactionDetails.hasStep(StepState.TARGET_VERIFICATION)) {
-                            SectionBox(title = stringResource(R.string.pill_count)) {
+                            SectionBox(title = stringResource(R.string.pill_count), allowCollapse = !tablet) {
                                 CountSectionContent(
                                     barcodeImage = barcodeImage,
                                     count = transactionDetails.sumForStep(StepState.TARGET_VERIFICATION),
@@ -254,6 +234,7 @@ fun DrugInfoSection(
                                     targetCount = targetCount,
                                     batches = transactionDetails.forStep(StepState.TARGET_VERIFICATION),
                                     isVial = false,
+                                    useGrid = useGrid,
                                     onBatchImageClick = { imagePath -> onImagePreview(imagePath) },
                                     stringResource(R.string.total_count).uppercase()
                                 )
@@ -261,7 +242,7 @@ fun DrugInfoSection(
                         }
 
                         if (transactionDetails.hasStep(StepState.TARGET_REVERIFICATION)) {
-                            SectionBox(title = stringResource(R.string.pill_recount)) {
+                            SectionBox(title = stringResource(R.string.pill_recount), allowCollapse = !tablet) {
                                 CountSectionContent(
                                     barcodeImage = barcodeImage,
                                     count = transactionDetails.sumForStep(StepState.TARGET_REVERIFICATION),
@@ -269,6 +250,7 @@ fun DrugInfoSection(
                                     targetCount = targetCount,
                                     batches = transactionDetails.forStep(StepState.TARGET_REVERIFICATION),
                                     isVial = false,
+                                    useGrid = useGrid,
                                     onBatchImageClick = { imagePath -> onImagePreview(imagePath) },
                                     stringResource(R.string.total_re_count).uppercase()
                                 )
@@ -276,7 +258,7 @@ fun DrugInfoSection(
                         }
 
                         if (transactionDetails.hasStep(StepState.VIAL)) {
-                            SectionBox(title = stringResource(R.string.vial_capture)) {
+                            SectionBox(title = stringResource(R.string.vial_capture), allowCollapse = !tablet) {
                                 CountSectionContent(
                                     barcodeImage = null,
                                     count = 0,
@@ -284,6 +266,7 @@ fun DrugInfoSection(
                                     targetCount = null,
                                     batches = transactionDetails.forStep(StepState.VIAL),
                                     isVial = true,
+                                    useGrid = false,
                                     onBatchImageClick = { imagePath -> onImagePreview(imagePath) },
                                     stringResource(R.string.total_re_count).uppercase()
                                 )
@@ -291,7 +274,7 @@ fun DrugInfoSection(
                         }
 
                         if (transactionDetails.hasStep(StepState.CONTAINER_PENDING)) {
-                            SectionBox(title = stringResource(R.string.remaining_stock_bottle_count)) {
+                            SectionBox(title = stringResource(R.string.remaining_stock_bottle_count), allowCollapse = !tablet) {
                                 CountSectionContent(
                                     barcodeImage = barcodeImage,
                                     count = transactionDetails.sumForStep(StepState.CONTAINER_PENDING),
@@ -299,13 +282,14 @@ fun DrugInfoSection(
                                     targetCount = null,
                                     batches = transactionDetails.forStep(StepState.CONTAINER_PENDING),
                                     isVial = false,
+                                    useGrid = useGrid,
                                     onBatchImageClick = { imagePath -> onImagePreview(imagePath) },
                                     stringResource(R.string.total_count).uppercase()
                                 )
                             }
                         }
 
-                        SectionBox(title = stringResource(R.string.notes)) {
+                        SectionBox(title = stringResource(R.string.notes), allowCollapse = !tablet) {
                             Text(
                                 text = note.ifBlank { "—" },
                                 color = AppTheme.extendedColors.textColor,
@@ -391,6 +375,62 @@ private fun SectionBox(
     }
 }
 
+/**
+ * Requested/Dispense (or Substitute) Drug Details block. On tablet, the dispense-details
+ * body becomes a swipeable [BottleDetailsPager] — one page per scanned bottle, showing
+ * that bottle's own expiry/lot/serial alongside the shared drug name/NDC/date/time. On
+ * phone it stays a single static [KeyValueList] (no bottle-list plumbing needed there).
+ */
+@Composable
+private fun DispenseDrugDetailsSection(
+    tablet: Boolean,
+    isSubstituted: Boolean,
+    requestedDrugName: String,
+    requestedNdc: String,
+    drugName: String,
+    ndc: String,
+    expiry: String,
+    lotNo: String,
+    date: String,
+    time: String,
+    bottleList: List<BottleInfo>,
+) {
+    if (isSubstituted) {
+        SectionBox(title = stringResource(R.string.requested_drug_details), allowCollapse = !tablet) {
+            KeyValueList(
+                rows = listOf(
+                    stringResource(R.string.drug_name) to requestedDrugName,
+                    stringResource(R.string.ndc).uppercase() to requestedNdc,
+                )
+            )
+        }
+    }
+
+    val title = if (isSubstituted) stringResource(R.string.substitute_drug_details) else stringResource(R.string.dispense_drug_details)
+    SectionBox(title = title, allowCollapse = !tablet) {
+        if (tablet) {
+            BottleDetailsPager(
+                drugName = drugName,
+                ndc = ndc,
+                date = date,
+                time = time,
+                bottles = bottleList,
+            )
+        } else {
+            KeyValueList(
+                rows = listOf(
+                    stringResource(R.string.drug_name) to drugName,
+                    stringResource(R.string.ndc).uppercase() to ndc,
+                    stringResource(R.string.expiry) to expiry,
+                    stringResource(R.string.lotNo) to lotNo,
+                    stringResource(R.string.date) to formatDateToUSFormat(date, DateFormats.MM_DD_YYYY),
+                    stringResource(R.string.time) to time,
+                )
+            )
+        }
+    }
+}
+
 @Composable
 private fun CountSectionContent(
     barcodeImage: String?,
@@ -399,9 +439,11 @@ private fun CountSectionContent(
     targetCount: Int?,
     batches: List<TxnDetailInfo>,
     isVial: Boolean,
+    useGrid: Boolean,
     onBatchImageClick: (String) -> Unit,
     totalCountTitle: String?
 ) {
+    val dedupedBatches = batches.distinctBy { it.imagePath }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
         if (!isVial) {
@@ -471,30 +513,38 @@ private fun CountSectionContent(
             }
         }
 
-        if (batches.isNotEmpty()) {
-            LazyRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 2.dp)
-            ) {
-                itemsIndexed(
-                    items = batches,
-                    key = { index, batch -> batch.imagePath ?: "idx-$index" },
-                ) { _, batch ->
-                    if (isVial) {
-                        VialBatchCard(
-                            imagePath = batch.imagePath,
-                            onClick = {
-                                batch.imagePath?.takeIf { it.isNotBlank() }?.let(onBatchImageClick)
-                            }
-                        )
-                    } else {
-                        TrayBatchCard(
-                            imagePath = batch.imagePath,
-                            count = batch.pillCount ?: 0,
-                            onClick = {
-                                batch.imagePath?.takeIf { it.isNotBlank() }?.let(onBatchImageClick)
-                            }
-                        )
+        if (dedupedBatches.isNotEmpty()) {
+            if (useGrid) {
+                BatchImageGrid(
+                    batches = dedupedBatches,
+                    isVial = isVial,
+                    onBatchImageClick = onBatchImageClick,
+                )
+            } else {
+                LazyRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    contentPadding = PaddingValues(vertical = 2.dp)
+                ) {
+                    itemsIndexed(
+                        items = dedupedBatches,
+                        key = { index, batch -> batch.imagePath ?: "idx-$index" },
+                    ) { _, batch ->
+                        if (isVial) {
+                            VialBatchCard(
+                                imagePath = batch.imagePath,
+                                onClick = {
+                                    batch.imagePath?.takeIf { it.isNotBlank() }?.let(onBatchImageClick)
+                                }
+                            )
+                        } else {
+                            TrayBatchCard(
+                                imagePath = batch.imagePath,
+                                count = batch.pillCount ?: 0,
+                                onClick = {
+                                    batch.imagePath?.takeIf { it.isNotBlank() }?.let(onBatchImageClick)
+                                }
+                            )
+                        }
                     }
                 }
             }
@@ -551,7 +601,7 @@ private fun DrugImageCard(
 }
 
 @Composable
-private fun TrayBatchCard(
+internal fun TrayBatchCard(
     imagePath: String?,
     count: Int,
     onClick: () -> Unit,
@@ -599,7 +649,7 @@ private fun TrayBatchCard(
 }
 
 @Composable
-private fun VialBatchCard(
+internal fun VialBatchCard(
     imagePath: String?,
     onClick: () -> Unit,
 ) {
@@ -655,7 +705,7 @@ private fun VialBatchCard(
 }
 
 @Composable
-private fun KeyValueList(rows: List<Pair<String, String>>) {
+internal fun KeyValueList(rows: List<Pair<String, String>>) {
     Column {
         rows.forEachIndexed { i, (key, value) ->
             Row(

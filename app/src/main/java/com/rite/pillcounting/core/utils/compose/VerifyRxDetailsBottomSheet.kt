@@ -1156,6 +1156,13 @@ private fun DrugImageTile(
     Box(
         modifier = Modifier
             .width(tileSize)
+            // Unlike SquareTile (whose content sits in an explicitly-heighted
+            // inner Box), this Box has no intrinsic height of its own — with no
+            // caller-supplied height it wraps to zero and the image never shows.
+            // DetailsGrid (portrait's SheetBody) calls this with no modifier at
+            // all, so this default height is what actually makes it visible there;
+            // callers that pass their own .height() (e.g. tablet grids) override it.
+            .height(tileSize)
             .then(modifier)
             .clip(RoundedCornerShape(12.dp))
             .background(AppTheme.extendedColors.primaryBackground),

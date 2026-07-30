@@ -23,7 +23,6 @@ import com.rite.pillcounting.core.room.models.enums.TxnPriority
  * @property targetCount  Expected/target count for reconciliation.
  * @property status       Transaction status (requires a TypeConverter).
  * @property note         Free-form note for the transaction.
- * @property barcodeImage Path/URI to a barcode image, if captured.
  * @property isSubstitute Whether a substitute drug was used.
  * @property rxNo         Prescription number.
  * @property refillNo     Refill number or code.
@@ -74,7 +73,6 @@ data class PillCountTxnEntity(
     val status: CountStatus,
 
     val note: String? = null,
-    val barcodeImage: String? = null,
     val isSubstitute: Boolean = false,
     val rxNo: String? = null,
     val refillNo: String? = null,

@@ -8,6 +8,7 @@ import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.profile.data.remote.IProfileApi
 import com.rite.pillcounting.feature.profile.domain.data.IProfileRepository
 import com.rite.pillcounting.feature.profile.domain.model.Country
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
@@ -107,6 +108,36 @@ class ProfileRepository @Inject constructor(
             Result.success(response.data?.countries.orEmpty())
         } catch (e: Exception) {
             logger.e("Failed to fetch countries reference list", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetch the list of selectable pharmacy types from the remote server.
+     *
+     * @return [Result] containing [PharmacyTypeResponse] on success, or an exception on failure.
+     */
+    override suspend fun getPharmacyTypes(): Result<PharmacyTypeResponse> = withContext(ioDispatcher) {
+        try {
+            logger.i("Fetching pharmacy types.")
+            val token = preferenceHelper.getAccessToken().orEmpty()
+            val response = profileApi.getPharmacyTypes("Bearer $token")
+            logger.i("Pharmacy types fetched successfully.")
+            Result.success(response)
+
+        } catch (e: HttpException) {
+            if (e.code() == 401) {
+                logger.w("Access token invalid or expired. Attempting refresh...")
+
+                return@withContext handleTokenRefreshAndRetry {
+                    val newToken = preferenceHelper.getAccessToken().orEmpty()
+                    profileApi.getPharmacyTypes("Bearer $newToken")
+                }
+            }
+            logger.e("Fetching pharmacy types failed with HttpException", e)
+            Result.failure(e)
+        } catch (e: Exception) {
+            logger.e("Fetching pharmacy types failed", e)
             Result.failure(e)
         }
     }

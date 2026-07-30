@@ -1164,7 +1164,7 @@ class DispenseFlowViewModelTest {
     fun `observeDispenseQueue maps txns to queue items`() = runTest(testDispatcher) {
         val dto = PillCountWithDrugAndTotal(
             txnId = 1L, drugName = "D", ndc = "N", drugType = "CII", bucketId = "b",
-            createdAt = 1L, targetCount = 5, barcodeImage = null, totalPillCount = 0,
+            createdAt = 1L, targetCount = 5, bottleInfoListJson = null, totalPillCount = 0,
             isComingFromHL7 = false, isNdcVerified = false, isDispense = true,
             priority = TxnPriority.High, isHazardous = true,
         )

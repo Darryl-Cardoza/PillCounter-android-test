@@ -9,10 +9,11 @@ import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
-import com.rite.pillcounting.core.models.ScheduleCode
+import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -280,7 +281,7 @@ class DashboardViewModel @Inject constructor(
                             bucketId = t.bucketId,
                             createdAt = t.createdAt,
                             targetCount = t.targetCount,
-                            barcodeImage = t.barcodeImage,
+                            bottleInfoListJson = t.bottleInfoListJson,
                             totalPillCount = t.pillCount ?: 0,
                             isComingFromHL7 = false,
                             isNdcVerified = false,
@@ -403,6 +404,10 @@ class DashboardViewModel @Inject constructor(
                             // effect on the next dashboard launch / refresh.
                             cleanupSyncedTransactionsIfNotAllowed()
 
+                            // Persist the currently-selected pharmacy type code so the
+                            // profile screen's dropdown prefills from the server value.
+                            detail.profile?.pharmacyType?.let { preferenceHelper.savePharmacyType(it) }
+
                             // Save terminals to SharedPreferences
                             detail.settings?.terminals?.let { terminals ->
                                 preferenceHelper.saveTerminals(terminals)
@@ -507,7 +512,7 @@ class DashboardViewModel @Inject constructor(
 
             syncedTransactions.forEach { txn ->
                 val filesToDelete = mutableListOf<String>()
-                txn.barcodeImage?.let { filesToDelete.add(it) }
+                BottleInfoJson.decode(txn.bottleInfoListJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
                 filesToDelete.addAll(pillCountTxnDao.getTransactionDetailsImages(txn.txnId))
 
                 // Delete transaction (cascade deletes details)
@@ -559,12 +564,6 @@ class DashboardViewModel @Inject constructor(
         _uiState.update { it.copy(pendingStockCountBucketId = null) }
     }
 
-}
-
-/** True when `drug_master.drugType` matches a DEA controlled-substance schedule ([ScheduleCode]). */
-private fun isControlledDrugType(drugType: String?): Boolean {
-    val code = drugType?.trim()?.uppercase() ?: return false
-    return ScheduleCode.entries.any { it.name == code }
 }
 
 /* ───────────────────────────── Mappers ───────────────────────────── */
