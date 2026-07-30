@@ -306,9 +306,10 @@
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
     <string name="container_qr_code">CONTAINER QR CODE</string>
-    <string name="serial_no">Serial No</string>
     <string name="date_and_time">Date and Time</string>
     <string name="dispensed_drug">Dispensed Drug</string>
+    <string name="bottle_page_indicator">%1$d of %2$d</string>
+    <string name="serial_no">Serial No.</string>
     <string name="stock_count_dialog_title">What would you like to do?</string>
     <string name="stock_count_dialog_option_first">Create a new Batch</string>
     <string name="stock_count_dialog_option_second">Continue last Batch</string>
@@ -372,19 +373,22 @@
     <string name="terminal">Terminal</string>
     <string name="select_terminal">Select Terminal</string>
     <string name="unknown">Unknown</string>
+    <string name="unknown_drug">Unknown Drug</string>
 
     <!-- Pharmacy type -->
     <string name="pharmacy_type">Pharmacy Type</string>
     <string name="select_pharmacy_type">Select Pharmacy Type</string>
-    <string name="pharmacy_type_chain">Chain Pharmacy</string>
-    <string name="pharmacy_type_supermarket">Supermarket / Big Box Pharmacy</string>
-    <string name="pharmacy_type_independent">Independent Pharmacy</string>
-    <string name="pharmacy_type_mail_order">Mail Order / Online Pharmacy</string>
-    <string name="pharmacy_type_hospital">Hospital Pharmacy</string>
-    <string name="pharmacy_type_clinic">Clinic Pharmacy</string>
-    <string name="pharmacy_type_long_term_care">Long Term Care Pharmacy</string>
-    <string name="pharmacy_type_compounding">Compounding Pharmacy</string>
-    <string name="pharmacy_type_specialty">Specialty Pharmacy</string>
+
+    <!-- Country -->
+    <string name="country">Country</string>
+    <string name="select_country">Select Country</string>
+    <string name="please_select_country">Please select a country</string>
+
+    <!-- State -->
+    <string name="state">State</string>
+    <string name="select_state">Select State</string>
+    <string name="please_select_state">Please select a state</string>
+    <string name="code_name_format">%1$s - %2$s</string>
 
     <string name="verify_rx_details">Verify Rx Details</string>
     <string name="verify_stock_bottle_details">Verify Stock Bottle Details</string>

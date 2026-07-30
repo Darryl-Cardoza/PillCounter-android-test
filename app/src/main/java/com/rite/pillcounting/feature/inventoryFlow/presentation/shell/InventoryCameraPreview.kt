@@ -44,7 +44,6 @@ fun InventoryScanScope.CameraPreview(
                 isCameraPaused = false,
                 imageFrameWidth = cameraUiState.imageFrameWidth,
                 imageFrameHeight = cameraUiState.imageFrameHeight,
-                showGloveIcon = false,
                 onFrame = { imageProxy ->
                     val n = frameCounter.incrementAndGet()
                     if (n % 30 == 0L) logger.d("INV_SCAN($frameTag) onFrame tick=$n")

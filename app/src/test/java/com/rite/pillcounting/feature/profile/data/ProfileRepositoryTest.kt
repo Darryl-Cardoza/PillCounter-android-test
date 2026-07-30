@@ -1,10 +1,13 @@
 package com.rite.pillcounting.feature.profile.data
 
 import android.util.Log
+import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenResponse
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.profile.data.remote.IProfileApi
+import com.rite.pillcounting.feature.profile.domain.model.Country
+import com.rite.pillcounting.feature.profile.domain.model.CountriesData
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
@@ -376,5 +379,51 @@ class ProfileRepositoryTest {
         assertTrue(result.isFailure)
         assertSame(retryError, result.exceptionOrNull())
         verify(exactly = 1) { preferenceHelper.saveTokens("newToken", "newRefresh") }
+    }
+
+    // ══════════════════════════════════ getCountries ══════════════════════════════════
+
+    @Test
+    fun `getCountries returns the countries list on success`() = runTest {
+        val countries = listOf(Country(code = "US", name = "United States"))
+        coEvery { profileApi.getCountries() } returns
+            ApiResponse(200, true, "ok", null, CountriesData(countries))
+
+        val result = repository.getCountries()
+
+        assertTrue(result.isSuccess)
+        assertEquals(countries, result.getOrNull())
+    }
+
+    @Test
+    fun `getCountries returns empty list when data is null`() = runTest {
+        coEvery { profileApi.getCountries() } returns ApiResponse(200, true, "ok", null, null)
+
+        val result = repository.getCountries()
+
+        assertTrue(result.isSuccess)
+        assertEquals(emptyList<Country>(), result.getOrNull())
+    }
+
+    @Test
+    fun `getCountries returns empty list when countries field is null`() = runTest {
+        coEvery { profileApi.getCountries() } returns
+            ApiResponse(200, true, "ok", null, CountriesData(null))
+
+        val result = repository.getCountries()
+
+        assertTrue(result.isSuccess)
+        assertEquals(emptyList<Country>(), result.getOrNull())
+    }
+
+    @Test
+    fun `getCountries returns failure on exception`() = runTest {
+        val exception = RuntimeException("boom")
+        coEvery { profileApi.getCountries() } throws exception
+
+        val result = repository.getCountries()
+
+        assertTrue(result.isFailure)
+        assertSame(exception, result.exceptionOrNull())
     }
 }

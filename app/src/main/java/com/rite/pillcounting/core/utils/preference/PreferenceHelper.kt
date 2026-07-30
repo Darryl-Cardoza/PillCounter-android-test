@@ -6,6 +6,8 @@ import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.hl7.util.Hl7Format
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeOption
+import com.rite.pillcounting.feature.profile.domain.model.Country
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -52,6 +54,7 @@ private const val KEY_TERMINALS="key_terminals"
 private const val KEY_SELECTED_TERMINAL_ID="key_selected_terminal_id"
 private const val KEY_SELECTED_TERMINAL_NAME="key_selected_terminal_name"
 private const val KEY_PHARMACY_TYPE="key_pharmacy_type"
+private const val KEY_PHARMACY_TYPES_LIST = "key_pharmacy_types_list"
 private const val KEY_HAZARDOUS_DRUG = "key_hazardous_drug"
 private const val KEY_HAZARDOUS_TRAY_COLOR = "key_hazardous_tray_color"
 private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
@@ -60,6 +63,9 @@ private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
 private const val KEY_HL7_VERSION = "key_hl7_version"
 private const val KEY_BYPASS_TLS = "key_bypass_tls"
 private const val KEY_HL7_FORMAT = "key_hl7_format"
+
+// Reference Data
+private const val KEY_COUNTRIES = "key_countries"
 
 @Singleton
 class PreferenceHelper @Inject constructor(
@@ -487,6 +493,26 @@ class PreferenceHelper @Inject constructor(
         return value
     }
 
+    /**
+     * Saves the list of selectable pharmacy types fetched from `/users/pharmacy-types`,
+     * so the profile screen's dropdown can be populated without re-fetching every launch.
+     */
+    fun savePharmacyTypes(pharmacyTypes: List<PharmacyTypeOption>) {
+        val json = gson.toJson(pharmacyTypes)
+        prefs.putString(KEY_PHARMACY_TYPES_LIST, json)
+        logger.i("Saved pharmacy types list (size=${pharmacyTypes.size})")
+    }
+
+    /**
+     * Retrieves the cached list of selectable pharmacy types.
+     * @return List of [PharmacyTypeOption], or empty list if never fetched.
+     */
+    fun getPharmacyTypes(): List<PharmacyTypeOption> {
+        val json = prefs.getString(KEY_PHARMACY_TYPES_LIST) ?: return emptyList()
+        val array = gson.fromJson(json, Array<PharmacyTypeOption>::class.java)
+        return array?.toList() ?: emptyList()
+    }
+
     // ─────────────────────────── HAZARDOUS DRUG ───────────────────────────
 
     fun setHazardousDrugEnabled(enabled: Boolean) {
@@ -584,6 +610,32 @@ class PreferenceHelper @Inject constructor(
         val format = name?.let { runCatching { Hl7Format.valueOf(it) }.getOrNull() } ?: Hl7Format.DEFAULT
         logger.d("Retrieved HL7 format: $format")
         return format
+    }
+
+    // ─────────────────────────── COUNTRIES REFERENCE DATA ───────────────────────────
+
+    /**
+     * Saves the reference list of countries (with nested states) as JSON.
+     * @param countries List of Country objects to persist.
+     */
+    fun saveCountries(countries: List<Country>) {
+        val json = gson.toJson(countries)
+        prefs.putString(KEY_COUNTRIES, json)
+        logger.i("Saved countries list (size=${countries.size})")
+    }
+
+    /**
+     * Retrieves the cached reference list of countries.
+     * @return List of Country objects, or empty list if none cached yet.
+     */
+    fun getCountries(): List<Country> {
+        val json = prefs.getString(KEY_COUNTRIES, null)
+        return if (json != null) {
+            gson.fromJson(json, Array<Country>::class.java).toList()
+        } else {
+            logger.d("No countries found in preferences")
+            emptyList()
+        }
     }
 
     companion object {

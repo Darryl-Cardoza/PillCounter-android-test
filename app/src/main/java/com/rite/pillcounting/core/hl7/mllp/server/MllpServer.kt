@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.hl7.mllp.server
 
+import android.util.Log
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsKeystoreUtil
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -50,20 +51,26 @@ class MllpServer(
         mutex.withLock {
             if (running.get()) return@withContext
 
-            serverSocket = if (bypassTls) {
-                ServerSocket(port)
-            } else {
-                TlsKeystoreUtil.ensureKeyExists()
-                val sslContext = TlsKeystoreUtil.createServerSslContext()
+            try {
+                serverSocket = if (bypassTls) {
+                    ServerSocket(port)
+                } else {
+                    TlsKeystoreUtil.ensureKeyExists()
+                    val sslContext = TlsKeystoreUtil.createServerSslContext()
 
-                (sslContext.serverSocketFactory.createServerSocket(port) as SSLServerSocket).apply {
-                    enabledProtocols = arrayOf("TLSv1.2", "TLSv1.3")
-                    enabledCipherSuites = supportedCipherSuites
-                    needClientAuth = false
+                    (sslContext.serverSocketFactory.createServerSocket(port) as SSLServerSocket).apply {
+                        enabledProtocols = arrayOf("TLSv1.2", "TLSv1.3")
+                        enabledCipherSuites = supportedCipherSuites
+                        needClientAuth = false
+                    }
                 }
+            } catch (e: Exception) {
+                Log.e(TAG, "Server failed to start on port $port: ${e.message}", e)
+                throw e
             }
 
             running.set(true)
+            Log.i(TAG, "Server started, listening on port $port (bypassTls=$bypassTls)")
             scope.launch { acceptLoop() }
         }
     }
@@ -74,17 +81,21 @@ class MllpServer(
                 val socket = serverSocket!!.accept()
                 val id = UUID.randomUUID().toString()
                 clients[id] = socket
+                Log.i(TAG, "Client connected: ${socket.remoteSocketAddress} (id=$id)")
 
                 scope.launch {
-                    handleClient(socket)
+                    handleClient(socket, id)
                     clients.remove(id)
                 }
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                if (running.get()) {
+                    Log.e(TAG, "Accept failed / connection rejected: ${e.message}", e)
+                }
             }
         }
     }
 
-    private suspend fun handleClient(socket: Socket) {
+    private suspend fun handleClient(socket: Socket, id: String) {
         try {
             if (socket is SSLSocket) socket.startHandshake()
 
@@ -99,15 +110,18 @@ class MllpServer(
                     output.flush()
                 }
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            Log.w(TAG, "Client connection closed/errored: ${socket.remoteSocketAddress} (id=$id): ${e.message}")
         } finally {
             socket.close()
+            Log.i(TAG, "Client disconnected: ${socket.remoteSocketAddress} (id=$id)")
         }
     }
 
     suspend fun stop() = withContext(Dispatchers.IO) {
         mutex.withLock {
             running.set(false)
+            Log.i(TAG, "Server stopping, closing ${clients.size} client connection(s)")
             clients.values.forEach { it.close() }
             clients.clear()
             serverSocket?.close()
@@ -130,7 +144,9 @@ class MllpServer(
                 }
                 EB -> {
                     input.read() // consume trailing CR
-                    return buffer.toByteArray().decodeToString()
+                    val raw = buffer.toByteArray().decodeToString()
+                    Log.d(TAG, "Raw HL7 received:\n$raw")
+                    return raw
                 }
                 else -> if (started) buffer.write(b)
             }
@@ -138,6 +154,7 @@ class MllpServer(
     }
 
     companion object {
+        private const val TAG = "MllpServer"
         private const val SB: Byte = 0x0B  // Start Block (VT)
         private const val EB: Byte = 0x1C  // End Block (FS)
     }

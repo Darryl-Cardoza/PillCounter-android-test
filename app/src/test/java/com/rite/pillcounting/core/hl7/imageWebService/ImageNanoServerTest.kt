@@ -8,6 +8,8 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import dagger.hilt.EntryPoints
 import fi.iki.elonen.NanoHTTPD
 import io.mockk.coEvery
@@ -56,7 +58,9 @@ class ImageNanoServerTest {
         txnId = txnId,
         isDispense = true,
         status = CountStatus.COMPLETED,
-        barcodeImage = barcodeImage,
+        bottleInfoListJson = barcodeImage?.let {
+            BottleInfoJson.encode(listOf(BottleInfo(txnId = txnId, barcodeImagePath = it)))
+        },
     )
 
     private fun newDetail(

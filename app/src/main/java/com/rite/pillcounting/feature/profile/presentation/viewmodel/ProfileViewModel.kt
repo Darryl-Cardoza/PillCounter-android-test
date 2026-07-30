@@ -23,10 +23,12 @@ import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
-import com.rite.pillcounting.feature.profile.domain.model.PharmacyType
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeOption
+import com.rite.pillcounting.feature.profile.domain.model.Country
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
+import com.rite.pillcounting.feature.profile.domain.model.State
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,8 +86,27 @@ class ProfileViewModel @Inject constructor(
     private var initialTerminal: Terminal? = null // Track initial value to detect changes
 
     // Pharmacy type selection
-    val pharmacyTypes: List<PharmacyType> = PharmacyType.entries
-    var selectedPharmacyType by mutableStateOf<PharmacyType?>(null)
+    var pharmacyTypes by mutableStateOf<List<PharmacyTypeOption>>(emptyList())
+        private set
+    var selectedPharmacyType by mutableStateOf<PharmacyTypeOption?>(null)
+
+    // Country selection — prefilled from cache immediately, refreshed from the API in init.
+    var countries by mutableStateOf<List<Country>>(preferenceHelper.getCountries())
+        private set
+    var selectedCountry by mutableStateOf<Country?>(null)
+        private set
+
+    // Raw country/state codes from the user's saved profile row, kept independent of
+    // [selectedCountry]/[selectedState] so they survive being resolved against an
+    // empty (not-yet-fetched) [countries] cache and can be re-resolved once populated.
+    private var userCountryCode: String? = null
+    private var userStateCode: String? = null
+
+    // State/province selection — options come from the selected country's nested list.
+    var states by mutableStateOf<List<State>>(selectedCountry?.states.orEmpty())
+        private set
+    var selectedState by mutableStateOf<State?>(null)
+        private set
 
     // ─────────────────────────── Validation Errors ───────────────────────────
     var firstNameError by mutableStateOf<Int?>(null)
@@ -94,6 +115,10 @@ class ProfileViewModel @Inject constructor(
     var phoneError by mutableStateOf<Int?>(null)
     var emailError by mutableStateOf<Int?>(null)
     var npiError by mutableStateOf<Int?>(null)
+    var countryError by mutableStateOf<Int?>(null)
+        private set
+    var stateError by mutableStateOf<Int?>(null)
+        private set
 
     init {
         val localId = preferenceHelper.getLocalId()
@@ -120,9 +145,68 @@ class ProfileViewModel @Inject constructor(
         
         logger.i("Loaded ${terminals.size} terminals, selected: ${selectedTerminal?.terminalName}")
 
-        // Restore previously selected pharmacy type
-        selectedPharmacyType = PharmacyType.fromApiValue(preferenceHelper.getPharmacyType())
-        logger.i("Loaded pharmacy type: ${selectedPharmacyType?.apiValue}")
+        // Load cached pharmacy type options and restore the previously selected one
+        pharmacyTypes = preferenceHelper.getPharmacyTypes()
+        val savedPharmacyTypeCode = preferenceHelper.getPharmacyType()
+        selectedPharmacyType = pharmacyTypes.firstOrNull { it.code == savedPharmacyTypeCode }
+        logger.i("Loaded ${pharmacyTypes.size} pharmacy types, selected: ${selectedPharmacyType?.code}")
+
+        fetchPharmacyTypes()
+
+        fetchCountries()
+    }
+
+    /**
+     * Refreshes the selectable pharmacy-type options from the API on every profile screen load
+     * and re-caches them, so server-side label/list changes are picked up and a saved code that
+     * was missing from a stale cache can resolve to a selection.
+     */
+    private fun fetchPharmacyTypes() {
+        viewModelScope.launch {
+            repository.getPharmacyTypes()
+                .onSuccess { response ->
+                    val options = response.data?.pharmacyTypes.orEmpty()
+                    preferenceHelper.savePharmacyTypes(options)
+                    pharmacyTypes = options
+                    selectedPharmacyType = options.firstOrNull { it.code == preferenceHelper.getPharmacyType() }
+                    logger.i("Fetched and cached ${options.size} pharmacy types")
+                }
+                .onFailure { e ->
+                    logger.e("Failed to fetch pharmacy types", e)
+                }
+        }
+    }
+
+    /**
+     * Refreshes the countries/states reference list from the API on every profile screen load.
+     *
+     * Cached values (loaded synchronously in the [countries] initializer) are shown immediately
+     * so the dropdown never blocks on the network; a successful response then replaces the
+     * cache and re-resolves the current selection against the fresh list.
+     */
+    private fun fetchCountries() {
+        viewModelScope.launch {
+            repository.getCountries()
+                .onSuccess { fetched ->
+                    if (fetched.isEmpty()) return@onSuccess
+
+                    countries = fetched
+                    preferenceHelper.saveCountries(fetched)
+
+                    selectedCountry = fetched.firstOrNull {
+                        it.code == (selectedCountry?.code ?: userCountryCode)
+                    }
+                    states = selectedCountry?.states.orEmpty()
+                    selectedState = states.firstOrNull {
+                        it.code == (selectedState?.code ?: userStateCode)
+                    }
+
+                    logger.i("Countries refreshed from API (count=${fetched.size})")
+                }
+                .onFailure { e ->
+                    logger.w("Failed to refresh countries from API, keeping cached list: ${e.message}")
+                }
+        }
     }
 
     fun toggleDoNotAskAgain(value: Boolean) {
@@ -146,6 +230,11 @@ class ProfileViewModel @Inject constructor(
                     email = it.email.plain().orEmpty()
                     npi = it.npiId.orEmpty()
                     doNotAskAgain = preferenceHelper.isDoNotAskAgain()
+                    userCountryCode = it.country
+                    userStateCode = it.state
+                    selectedCountry = countries.firstOrNull { c -> c.code == it.country }
+                    states = selectedCountry?.states.orEmpty()
+                    selectedState = states.firstOrNull { s -> s.code == it.state }
                 }
             }
         }
@@ -156,9 +245,55 @@ class ProfileViewModel @Inject constructor(
         logger.i("Terminal selected: ${terminal.terminalName} (ID: ${terminal.terminalId})")
     }
 
-    fun onPharmacyTypeSelected(pharmacyType: PharmacyType) {
+    fun onPharmacyTypeSelected(pharmacyType: PharmacyTypeOption) {
         selectedPharmacyType = pharmacyType
-        logger.i("Pharmacy type selected: ${pharmacyType.apiValue}")
+        logger.i("Pharmacy type selected: ${pharmacyType.code}")
+    }
+
+    fun onCountrySelected(country: Country) {
+        selectedCountry = country
+        states = country.states.orEmpty()
+        selectedState = states.firstOrNull { it.code == selectedState?.code }
+        logger.i("Country selected: ${country.code}")
+    }
+
+    fun onStateSelected(state: State) {
+        selectedState = state
+        logger.i("State selected: ${state.code}")
+    }
+
+    /**
+     * Invalidates the confirmed country selection once the user edits the search text
+     * without picking an item from the dropdown, so a stale selection can't be saved
+     * under mismatched displayed text.
+     *
+     * @param query Raw text currently typed into the country search field.
+     *
+     * Example Usage:
+     * onCountryQueryChanged("Ind")
+     */
+    fun onCountryQueryChanged(query: String) {
+        if (selectedCountry != null) {
+            selectedCountry = null
+            states = emptyList()
+            selectedState = null
+        }
+    }
+
+    /**
+     * Invalidates the confirmed state selection once the user edits the search text
+     * without picking an item from the dropdown, so a stale selection can't be saved
+     * under mismatched displayed text.
+     *
+     * @param query Raw text currently typed into the state search field.
+     *
+     * Example Usage:
+     * onStateQueryChanged("Cal")
+     */
+    fun onStateQueryChanged(query: String) {
+        if (selectedState != null) {
+            selectedState = null
+        }
     }
 
     fun onPhoneChanged(input: String) {
@@ -190,10 +325,20 @@ class ProfileViewModel @Inject constructor(
         phoneError = validator.validatePhone(phoneNumber).errorMessageResId
         emailError = validator.validateEmail(email).errorMessageResId
         npiError = validator.validateNpi(npi).errorMessageResId
+        countryError = if (selectedCountry?.code.isNullOrBlank()) {
+            R.string.please_select_country
+        } else {
+            null
+        }
+        stateError = if (states.isNotEmpty() && selectedState?.code.isNullOrBlank()) {
+            R.string.please_select_state
+        } else {
+            null
+        }
 
         return listOf(
             firstNameError, lastNameError, pharmacyNameError,
-            phoneError, emailError, npiError
+            phoneError, emailError, npiError, countryError, stateError
         ).all { it == null }
     }
 
@@ -224,8 +369,10 @@ class ProfileViewModel @Inject constructor(
                     timezone = "Asia/Kolkata",
                     fName = firstName.trim(),
                     lName = lastName.trim(),
+                    pharmacyType = selectedPharmacyType?.code ?: preferenceHelper.getPharmacyType(),
                     terminalId = selectedTerminal?.terminalId,
-                    pharmacyType = selectedPharmacyType?.apiValue
+                    country = selectedCountry?.code,
+                    state = selectedState?.code
                 )
 
                 repository.updateProfile(request)
@@ -244,6 +391,8 @@ class ProfileViewModel @Inject constructor(
                                 pharmacyName = pharmacyName,
                                 npiId = npi,
                                 notifications = !doNotAskAgain,
+                                country = selectedCountry?.code,
+                                state = selectedState?.code,
                                 isVerified = true,
                                 isProfileCompleted = true,
                                 createdAt = System.currentTimeMillis()
@@ -256,7 +405,7 @@ class ProfileViewModel @Inject constructor(
 
                         // Persist selected pharmacy type so it prefills on next visit
                         selectedPharmacyType?.let {
-                            preferenceHelper.savePharmacyType(it.apiValue)
+                            preferenceHelper.savePharmacyType(it.code)
                         }
 
                         // Update terminal if it has changed

@@ -11,7 +11,7 @@ data class PillCountWithDrugAndTotal(
     val bucketId: String?,
     val createdAt: Long,
     val targetCount: Int?,
-    val barcodeImage: String?,
+    val bottleInfoListJson: String?,
     val totalPillCount: Int,
     val isComingFromHL7 : Boolean,
     val isNdcVerified: Boolean,

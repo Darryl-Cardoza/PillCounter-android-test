@@ -45,6 +45,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -74,6 +77,15 @@ import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
 import com.rite.pillcounting.feature.profile.presentation.viewmodel.ProfileViewModel
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
 import com.rite.pillcounting.ui.theme.AppTheme
+import kotlinx.coroutines.delay
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+
+/** Delay before a [LabeledDropdown] search query is applied to the filtered list. */
+private const val SEARCH_DEBOUNCE_MS = 300L
 
 @Composable
 fun ProfileScreen(
@@ -91,6 +103,8 @@ fun ProfileScreen(
 
     // Local state for delete confirmation
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val countryFocusRequester = remember { FocusRequester() }
+    val stateFocusRequester = remember { FocusRequester() }
 
     // Determine navigation type
     val cameFromDashboard =
@@ -148,7 +162,9 @@ fun ProfileScreen(
             // -------------------- INPUT FIELDS --------------------
             ResponsiveProfileFields(
                 isLandscape = isLandscape,
-                viewModel = viewModel
+                viewModel = viewModel,
+                countryFocusRequester = countryFocusRequester,
+                stateFocusRequester = stateFocusRequester
             )
 
             Spacer(Modifier.height(10.dp))
@@ -264,7 +280,14 @@ fun ProfileScreen(
                 )
                 ActionButtonPrimary(
                     text = stringResource(R.string.save),
-                    onClick = { viewModel.updateProfile() },
+                    onClick = {
+                        viewModel.updateProfile()
+                        if (viewModel.countryError != null) {
+                            countryFocusRequester.requestFocus()
+                        } else if (viewModel.stateError != null) {
+                            stateFocusRequester.requestFocus()
+                        }
+                    },
                 )
             }
 
@@ -345,7 +368,9 @@ private fun ProfileTextField(
 @Composable
 private fun ResponsiveProfileFields(
     isLandscape: Boolean,
-    viewModel: ProfileViewModel
+    viewModel: ProfileViewModel,
+    countryFocusRequester: FocusRequester,
+    stateFocusRequester: FocusRequester
 ) {
     val fields = listOf(
         ProfileField(
@@ -444,42 +469,110 @@ private fun ResponsiveProfileFields(
         }
     }
 
-    // Terminal and Pharmacy Type dropdowns side by side.
+    // Terminal and Pharmacy Type dropdowns: side by side in landscape, each on
+    // its own row in portrait.
     val context = LocalContext.current
+    val showTerminalDropdown = viewModel.terminals.isNotEmpty()
+
+    val terminalDropdown: @Composable (Modifier) -> Unit = { modifier ->
+        val hl7Enabled = viewModel.isHl7Enabled()
+        LabeledDropdown(
+            label = stringResource(R.string.terminal),
+            selectedText = viewModel.selectedTerminal?.terminalName,
+            placeholder = stringResource(R.string.select_terminal),
+            items = viewModel.terminals,
+            itemLabel = { it.terminalName ?: stringResource(R.string.unknown) },
+            isSelected = { it.terminalId == viewModel.selectedTerminal?.terminalId },
+            onItemSelected = { viewModel.onTerminalSelected(it) },
+            enabled = hl7Enabled,
+            onDisabledClick = { showToast(context, R.string.enable_hl7_from_portal_toast) },
+            modifier = modifier
+        )
+    }
+
+    val pharmacyTypeDropdown: @Composable (Modifier) -> Unit = { modifier ->
+        LabeledDropdown(
+            label = stringResource(R.string.pharmacy_type),
+            selectedText = viewModel.selectedPharmacyType?.label,
+            placeholder = stringResource(R.string.select_pharmacy_type),
+            items = viewModel.pharmacyTypes,
+            itemLabel = { it.label },
+            isSelected = { it == viewModel.selectedPharmacyType },
+            onItemSelected = { viewModel.onPharmacyTypeSelected(it) },
+            modifier = modifier
+        )
+    }
+
+    if (isLandscape) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (showTerminalDropdown) {
+                terminalDropdown(Modifier.weight(1f))
+            }
+            pharmacyTypeDropdown(Modifier.weight(1f))
+        }
+    } else {
+        if (showTerminalDropdown) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
+            ) {
+                terminalDropdown(Modifier.fillMaxWidth())
+            }
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 8.dp),
+        ) {
+            pharmacyTypeDropdown(Modifier.fillMaxWidth())
+        }
+    }
+
+    // Country dropdown.
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 20.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        // Terminal selection is HL7/PMS-driven — disable the dropdown when HL7 is
-        // turned off in the portal and surface a toast on tap. Only shown when
-        // terminals are available.
-        if (viewModel.terminals.isNotEmpty()) {
-            val hl7Enabled = viewModel.isHl7Enabled()
-            LabeledDropdown(
-                label = stringResource(R.string.terminal),
-                selectedText = viewModel.selectedTerminal?.terminalName,
-                placeholder = stringResource(R.string.select_terminal),
-                items = viewModel.terminals,
-                itemLabel = { it.terminalName ?: stringResource(R.string.unknown) },
-                isSelected = { it.terminalId == viewModel.selectedTerminal?.terminalId },
-                onItemSelected = { viewModel.onTerminalSelected(it) },
-                enabled = hl7Enabled,
-                onDisabledClick = { showToast(context, R.string.enable_hl7_from_portal_toast) },
-                modifier = Modifier.weight(1f)
-            )
-        }
-
         LabeledDropdown(
-            label = stringResource(R.string.pharmacy_type),
-            selectedText = viewModel.selectedPharmacyType?.let { stringResource(it.labelRes) },
-            placeholder = stringResource(R.string.select_pharmacy_type),
-            items = viewModel.pharmacyTypes,
-            itemLabel = { stringResource(it.labelRes) },
-            isSelected = { it == viewModel.selectedPharmacyType },
-            onItemSelected = { viewModel.onPharmacyTypeSelected(it) },
-            modifier = Modifier.weight(1f)
+            label = stringResource(R.string.country),
+            selectedText = viewModel.selectedCountry?.let {
+                stringResource(R.string.code_name_format, it.code.orEmpty(), it.name.orEmpty())
+            },
+            placeholder = stringResource(R.string.select_country),
+            items = viewModel.countries,
+            itemLabel = { stringResource(R.string.code_name_format, it.code.orEmpty(), it.name.orEmpty()) },
+            isSelected = { it.code == viewModel.selectedCountry?.code },
+            onItemSelected = { viewModel.onCountrySelected(it) },
+            modifier = Modifier.weight(1f),
+            isSearchable = true,
+            error = viewModel.countryError?.let { stringResource(it) },
+            focusRequester = countryFocusRequester,
+            onQueryChanged = { viewModel.onCountryQueryChanged(it) }
+        )
+        LabeledDropdown(
+            label = stringResource(R.string.state),
+            selectedText = viewModel.selectedState?.let {
+                stringResource(R.string.code_name_format, it.code.orEmpty(), it.name.orEmpty())
+            },
+            placeholder = stringResource(R.string.select_state),
+            items = viewModel.states,
+            itemLabel = { stringResource(R.string.code_name_format, it.code.orEmpty(), it.name.orEmpty()) },
+            isSelected = { it.code == viewModel.selectedState?.code },
+            onItemSelected = { viewModel.onStateSelected(it) },
+            modifier = Modifier.weight(1f),
+            isSearchable = true,
+            error = viewModel.stateError?.let { stringResource(it) },
+            focusRequester = stateFocusRequester,
+            onQueryChanged = { viewModel.onStateQueryChanged(it) }
         )
     }
 
@@ -505,9 +598,33 @@ private fun <T> LabeledDropdown(
     modifier: Modifier = Modifier,
     isSelected: (T) -> Boolean = { false },
     enabled: Boolean = true,
-    onDisabledClick: () -> Unit = {}
+    onDisabledClick: () -> Unit = {},
+    isSearchable: Boolean = false,
+    error: String? = null,
+    focusRequester: FocusRequester? = null,
+    onQueryChanged: (String) -> Unit = {},
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     var expanded by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf(selectedText ?: "") }
+    var debouncedQuery by remember { mutableStateOf("") }
+
+    LaunchedEffect(searchQuery) {
+        delay(SEARCH_DEBOUNCE_MS)
+        debouncedQuery = searchQuery
+    }
+
+    // Single source of truth for searchQuery/debouncedQuery once collapsed —
+    // reruns on either the dropdown closing or the underlying selection changing.
+    LaunchedEffect(expanded, selectedText) {
+        if (!expanded) {
+            searchQuery = selectedText ?: ""
+            debouncedQuery = ""
+        } else {
+            searchQuery = ""
+        }
+    }
 
     val contentAlpha = if (enabled) 1f else 0.4f
     val accent = MaterialTheme.colorScheme.primary
@@ -517,56 +634,130 @@ private fun <T> LabeledDropdown(
         label = "dropdownArrow"
     )
 
-    ExposedDropdownMenuBox(
-        expanded = expanded && enabled,
-        onExpandedChange = {
-            if (enabled) expanded = !expanded else onDisabledClick()
-        },
-        modifier = modifier,
-    ) {
-        Box(
-            modifier = Modifier
-                .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
-                .fillMaxWidth()
-                .height(AppTheme.dimens.profileTextFieldHeight)
-                .clip(shape)
-                .background(AppTheme.extendedColors.inputBackground)
-                .border(
-                    width = if (expanded && enabled) 1.5.dp else 1.dp,
-                    color = if (expanded && enabled) accent
-                    else AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
-                    shape = shape
-                )
-                .padding(horizontal = 15.dp),
+    Column(modifier = modifier) {
+        ExposedDropdownMenuBox(
+            expanded = expanded && enabled,
+            onExpandedChange = {
+                if (enabled) expanded = !expanded else onDisabledClick()
+            },
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(
-                text = label,
-                color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f * contentAlpha),
-                fontSize = 12.sp,
-                modifier = Modifier
-                    .align(Alignment.TopStart)
-                    .padding(top = 6.dp),
+        val anchorModifier = Modifier
+            .fillMaxWidth()
+            .height(AppTheme.dimens.profileTextFieldHeight)
+            .clip(shape)
+            .background(AppTheme.extendedColors.inputBackground)
+            .border(
+                width = if (expanded && enabled) 1.5.dp else 1.dp,
+                color = if (expanded && enabled) accent
+                else AppTheme.extendedColors.textColor.copy(alpha = 0.12f),
+                shape = shape
             )
-            Text(
-                text = selectedText ?: placeholder,
-                color = if (selectedText == null)
-                    AppTheme.extendedColors.textColor.copy(alpha = 0.4f * contentAlpha)
-                else AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
-                fontSize = 16.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+            .padding(horizontal = 15.dp)
+
+        if (isSearchable && enabled) {
+            BasicTextField(
+                value = searchQuery,
+                onValueChange = {
+                    searchQuery = it
+                    expanded = true
+                    onQueryChanged(it)
+                },
+                singleLine = true,
+                textStyle = TextStyle(
+                    color = AppTheme.extendedColors.textColor,
+                    fontSize = 16.sp,
+                ),
+                cursorBrush = SolidColor(accent),
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(bottom = 10.dp, end = 28.dp),
+                    .menuAnchor(MenuAnchorType.PrimaryEditable, true)
+                    .then(anchorModifier)
+                    .let { m -> if (focusRequester != null) m.focusRequester(focusRequester) else m }
+                    .onFocusChanged { if (it.isFocused) expanded = true },
+                decorationBox = { innerTextField ->
+                    Box(modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            text = label,
+                            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
+                            fontSize = 12.sp,
+                            modifier = Modifier
+                                .align(Alignment.TopStart)
+                                .padding(top = 6.dp),
+                        )
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(bottom = 10.dp, end = 28.dp),
+                        ) {
+                            if (searchQuery.isEmpty()) {
+                                Text(
+                                    text = placeholder,
+                                    color = AppTheme.extendedColors.textColor.copy(alpha = 0.4f),
+                                    fontSize = 16.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            innerTextField()
+                        }
+                        Icon(
+                            imageVector = Icons.Default.ArrowDropDown,
+                            contentDescription = null,
+                            tint = AppTheme.extendedColors.textColor,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .rotate(arrowRotation),
+                        )
+                    }
+                }
             )
-            Icon(
-                imageVector = Icons.Default.ArrowDropDown,
-                contentDescription = null,
-                tint = AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
+        } else {
+            Box(
                 modifier = Modifier
-                    .align(Alignment.CenterEnd)
-                    .rotate(arrowRotation),
-            )
+                    .menuAnchor(MenuAnchorType.PrimaryNotEditable, true)
+                    .then(anchorModifier),
+            ) {
+                Text(
+                    text = label,
+                    color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f * contentAlpha),
+                    fontSize = 12.sp,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(top = 6.dp),
+                )
+                Text(
+                    text = selectedText ?: placeholder,
+                    color = if (selectedText == null)
+                        AppTheme.extendedColors.textColor.copy(alpha = 0.4f * contentAlpha)
+                    else AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
+                    fontSize = 16.sp,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .align(Alignment.BottomStart)
+                        .padding(bottom = 10.dp, end = 28.dp),
+                )
+                Icon(
+                    imageVector = Icons.Default.ArrowDropDown,
+                    contentDescription = null,
+                    tint = AppTheme.extendedColors.textColor.copy(alpha = contentAlpha),
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .rotate(arrowRotation),
+                )
+            }
+        }
+
+        val itemLabels = items.map { itemLabel(it) }
+        val filteredItems = remember(items, debouncedQuery, itemLabels) {
+            if (isSearchable && debouncedQuery.isNotBlank()) {
+                items.zip(itemLabels)
+                    .filter { (_, label) -> label.contains(debouncedQuery, ignoreCase = true) }
+                    .map { (item, _) -> item }
+            } else {
+                items
+            }
         }
 
         // Custom-styled menu: white rounded surface, compact rows, selected highlight.
@@ -577,7 +768,7 @@ private fun <T> LabeledDropdown(
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.heightIn(max = 280.dp),
         ) {
-            items.forEachIndexed { index, item ->
+            filteredItems.forEachIndexed { index, item ->
                 val selected = isSelected(item)
                 DropdownMenuItem(
                     text = {
@@ -600,16 +791,29 @@ private fun <T> LabeledDropdown(
                     onClick = {
                         onItemSelected(item)
                         expanded = false
+                        if (isSearchable) {
+                            focusManager.clearFocus()
+                            keyboardController?.hide()
+                        }
                     },
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
                 )
-                if (index < items.lastIndex) {
+                if (index < filteredItems.lastIndex) {
                     HorizontalDivider(
                         color = AppTheme.extendedColors.textColor.copy(alpha = 0.08f),
                         modifier = Modifier.padding(horizontal = 12.dp)
                     )
                 }
             }
+        }
+    }
+        if (!error.isNullOrEmpty()) {
+            Text(
+                text = error,
+                color = MaterialTheme.colorScheme.error,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(start = 4.dp, top = 2.dp)
+            )
         }
     }
 }

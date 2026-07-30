@@ -12,6 +12,7 @@ import org.junit.Test
 class TxnWithDetailsTest {
 
     private fun detail() = TxnDetailInfo(
+        txnDetailsId = 5L,
         txnId = 1L,
         pillCount = 10,
         imagePath = "img.png",
@@ -27,7 +28,7 @@ class TxnWithDetailsTest {
         targetCount = 50,
         note = "note",
         createdAt = 100L,
-        barcodeImage = "bc.png",
+        bottleInfoListJson = "bc.png",
         totalPillCount = 30,
         isDispense = true,
         drugType = "tablet",
@@ -54,6 +55,7 @@ class TxnWithDetailsTest {
     @Test
     fun detail_getters() {
         val d = detail()
+        assertEquals(5L, d.txnDetailsId)
         assertEquals(1L, d.txnId)
         assertEquals(10, d.pillCount)
         assertEquals("img.png", d.imagePath)
@@ -69,11 +71,12 @@ class TxnWithDetailsTest {
         assertTrue(detail().toString().contains("txnId=1"))
         assertEquals(99, detail().copy(pillCount = 99).pillCount)
         val d = detail()
-        assertEquals(1L, d.component1())
-        assertEquals(10, d.component2())
-        assertEquals("img.png", d.component3())
-        assertEquals(StepState.SCAN, d.component4())
-        assertEquals(true, d.component5())
+        assertEquals(5L, d.component1())
+        assertEquals(1L, d.component2())
+        assertEquals(10, d.component3())
+        assertEquals("img.png", d.component4())
+        assertEquals(StepState.SCAN, d.component5())
+        assertEquals(true, d.component6())
     }
 
     // ---------- TxnWithDetails ----------
@@ -88,7 +91,7 @@ class TxnWithDetailsTest {
             targetCount = null,
             note = null,
             createdAt = 0L,
-            barcodeImage = null,
+            bottleInfoListJson = null,
             totalPillCount = 0,
             isDispense = false,
             drugType = null,
@@ -112,7 +115,7 @@ class TxnWithDetailsTest {
         assertEquals(50, t.targetCount)
         assertEquals("note", t.note)
         assertEquals(100L, t.createdAt)
-        assertEquals("bc.png", t.barcodeImage)
+        assertEquals("bc.png", t.bottleInfoListJson)
         assertEquals(30, t.totalPillCount)
         assertEquals(true, t.isDispense)
         assertEquals("tablet", t.drugType)
@@ -153,7 +156,7 @@ class TxnWithDetailsTest {
         assertEquals(50, t.component5())        // targetCount
         assertEquals("note", t.component6())    // note
         assertEquals(100L, t.component7())      // createdAt
-        assertEquals("bc.png", t.component8())  // barcodeImage
+        assertEquals("bc.png", t.component8())  // bottleInfoListJson
         assertEquals(30, t.component9())        // totalPillCount
         assertEquals(true, t.component10())
         assertEquals("tablet", t.component11()) // drugType

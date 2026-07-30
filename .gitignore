@@ -61,3 +61,9 @@ graphify-out
 .claude
 .agents
 docs
+
+DrugCatalogStressSeeder.swift
+DrugCatalogSeeder.kt
+
+# Claude-authored notes/docs, not part of the shipped project docs
+docs/claude/

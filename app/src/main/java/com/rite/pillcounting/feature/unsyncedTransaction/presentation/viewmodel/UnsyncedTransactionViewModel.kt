@@ -98,7 +98,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
         bucketId = bucketId,
         pillCount = totalPillCount,
         target = targetCount ?: 0,
-        barcodeImage = barcodeImage,
+        bottleInfoListJson = bottleInfoListJson,
         date = createdAt.toFormattedDate(),
         isComingFromHL7 = isComingFromHL7,
         isNdcVerified = isNdcVerified,

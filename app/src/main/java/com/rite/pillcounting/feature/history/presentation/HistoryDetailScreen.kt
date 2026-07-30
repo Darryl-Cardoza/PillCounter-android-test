@@ -17,6 +17,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.utils.common.FullScreenImageDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toDateString
@@ -62,6 +63,7 @@ fun HistoryDetailScreen(
             showPdfIcon = false,
         )
         } // if previewImagePath == null
+        val bottleList = BottleInfoJson.decode(uiState.txnInfo?.bottleInfoListJson)
         DrugInfoSection(
             ndc = uiState.txnInfo?.ndc ?: "",
             drugName = uiState.txnInfo?.drugName ?: "",
@@ -73,7 +75,7 @@ fun HistoryDetailScreen(
             date = uiState.txnInfo?.createdAt?.toDateString() ?: "",
             time = uiState.txnInfo?.createdAt?.toTimeString() ?: "",
             note = uiState.txnInfo?.note ?: "",
-            barcodeImage = uiState.txnInfo?.barcodeImage,
+            barcodeImage = bottleList.firstOrNull()?.barcodeImagePath,
             targetCount = uiState.txnInfo?.targetCount,
             transactionDetails = uiState.txnInfo?.txnDetails ?: emptyList(),
             drugType = uiState.txnInfo?.drugType,
@@ -81,6 +83,7 @@ fun HistoryDetailScreen(
             isSubstituted = uiState.txnInfo?.isSubstitute ?: false,
             requestedDrugName = uiState.txnInfo?.requestedDrugName ?: "",
             requestedNdc = uiState.txnInfo?.requestedNdc ?: "",
+            bottleList = bottleList,
             onImagePreview = { previewImagePath = it }
         )
 

@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FrontHand
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -84,6 +86,8 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
     strength: String,
     bucket: String,
     drugImage: String? = "",
+    showGloveIcon: Boolean = false,
+    glovesDetected: Boolean = false,
 ) {
     Row(
         modifier = Modifier
@@ -141,6 +145,29 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
 
         // Keep the (ellipsized) drug name from butting up against the Form column.
         Spacer(Modifier.width(16.dp))
+
+        if (showGloveIcon) {
+            val handTint = if (glovesDetected) Color.Green else Color.Red
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.15f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.FrontHand,
+                    contentDescription = if (glovesDetected) {
+                        stringResource(R.string.cd_gloves_detected)
+                    } else {
+                        stringResource(R.string.cd_no_gloves_detected)
+                    },
+                    tint = handTint,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
+            Spacer(Modifier.width(16.dp))
+        }
 
         // Right: Strength / Bucket
         if (strength.isNotBlank()) {

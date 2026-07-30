@@ -297,7 +297,7 @@ class PillScanningViewModelTest {
     fun `onNdcRescannedDuringCount is a no-op when currentStep is not a counting step`() = runTest {
         setCurrentStep(StepState.VIAL)
 
-        viewModel.onNdcRescannedDuringCount("012345")
+        viewModel.onNdcRescannedDuringCount("012345", null)
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.showAddBottleDialog)

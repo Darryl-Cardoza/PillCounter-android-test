@@ -25,7 +25,7 @@ data class CountItem(
     val bucketId: String?,
     val pillCount: Int,
     val target: Int,
-    val barcodeImage: String?,
+    val bottleInfoListJson: String?,
     val date: String,
     val image: Int = R.drawable.logo,
     val isComingFromHL7: Boolean,

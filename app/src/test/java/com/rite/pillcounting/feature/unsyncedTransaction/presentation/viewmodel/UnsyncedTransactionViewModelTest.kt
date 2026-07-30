@@ -89,7 +89,7 @@ class UnsyncedTransactionViewModelTest {
         bucketId = "bucket-1",
         createdAt = 1_700_000_000_000L,
         targetCount = targetCount,
-        barcodeImage = "barcode.png",
+        bottleInfoListJson = "barcode.png",
         totalPillCount = 42,
         isComingFromHL7 = true,
         isNdcVerified = true,
@@ -120,7 +120,7 @@ class UnsyncedTransactionViewModelTest {
                 assertEquals("bucket-1", item.bucketId)
                 assertEquals(42, item.pillCount)
                 assertEquals(50, item.target)
-                assertEquals("barcode.png", item.barcodeImage)
+                assertEquals("barcode.png", item.bottleInfoListJson)
                 assertTrue(item.isComingFromHL7)
                 assertTrue(item.isNdcVerified)
                 assertEquals(true, item.isDispense)
