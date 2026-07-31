@@ -293,7 +293,7 @@
     <string name="no_unsynced_transactions">No hay transacciones sin sincronizar</string>
     <string name="pills_count_should_be_greater_than_target_count">El conteo de pastillas debe ser mayor que el conteo objetivo</string>
     <string name="pill_count">CONTEO DE PASTILLAS</string>
-    <string name="initial_stock_bottle_count">CONTEO INICIAL DEL FRASCO DE STOCK</string>
+    <string name="initial_stock_bottle_count">CONTEO INICIAL DEL CONTENEDOR</string>
     <string name="substitute_drug_details">DETALLES DEL MEDICAMENTO SUSTITUTO</string>
     <string name="requested_drug_details">DETALLES DEL MEDICAMENTO SOLICITADO</string>
     <string name="dispense_drug_details">DETALLES DEL MEDICAMENTO DISPENSADO</string>

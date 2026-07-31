@@ -293,7 +293,7 @@
     <string name="no_unsynced_transactions">Aucune transaction non synchronisée</string>
     <string name="pills_count_should_be_greater_than_target_count">Le nombre de pilules doit être supérieur au comptage cible</string>
     <string name="pill_count">COMPTAGE DE PILULES</string>
-    <string name="initial_stock_bottle_count">COMPTAGE INITIAL DU FLACON DE STOCK</string>
+    <string name="initial_stock_bottle_count">COMPTAGE INITIAL DU CONTENANT</string>
     <string name="substitute_drug_details">DÉTAILS DU MÉDICAMENT DE SUBSTITUTION</string>
     <string name="requested_drug_details">DÉTAILS DU MÉDICAMENT DEMANDÉ</string>
     <string name="dispense_drug_details">DÉTAILS DU MÉDICAMENT DISPENSÉ</string>

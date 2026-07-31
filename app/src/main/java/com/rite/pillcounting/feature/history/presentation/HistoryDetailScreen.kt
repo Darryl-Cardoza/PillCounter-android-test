@@ -80,7 +80,7 @@ fun HistoryDetailScreen(
             transactionDetails = uiState.txnInfo?.txnDetails ?: emptyList(),
             drugType = uiState.txnInfo?.drugType,
             isFromHl7 = uiState.txnInfo?.isComingFromHL7 ?: false,
-            isSubstituted = uiState.txnInfo?.isSubstitute ?: false,
+            isSubstitute = uiState.txnInfo?.isSubstitute ?: false,
             requestedDrugName = uiState.txnInfo?.requestedDrugName ?: "",
             requestedNdc = uiState.txnInfo?.requestedNdc ?: "",
             bottleList = bottleList,
