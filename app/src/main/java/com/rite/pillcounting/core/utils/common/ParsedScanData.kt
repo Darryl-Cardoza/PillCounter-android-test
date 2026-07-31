@@ -4,37 +4,40 @@ private val logger = AppLogger("ParsedScanData")
 
 data class ParsedScanData(
     val rxNo: String? = null,
+    val refillNo: String? = null,
     val ndcNo: String? = null,
     val qty: String? = null,
     val bucket: String? = null,
     val rawMap: Map<String, String> = emptyMap()
 )
 
+private val NAMED_GROUP_NAME = Regex("""\(\?<([a-zA-Z][a-zA-Z0-9]*)>""")
+
 fun parseScanData(template: String, actualValue: String): ParsedScanData {
     return try {
-        val keys = Regex("""\{(.*?)\}""")
-            .findAll(template)
-            .map { it.groupValues[1].trim().uppercase() }
+        val regex = Regex(template)
+
+        val match = regex.matchEntire(actualValue.trim())
+            ?: run {
+                logger.e("Scan data does not match label format: $actualValue")
+                return ParsedScanData()
+            }
+
+        val groupNames = NAMED_GROUP_NAME.findAll(template)
+            .map { it.groupValues[1] }
             .toList()
 
-        val values = actualValue
-            .split('|')
-            .map { it.trim() }
-
-        if (keys.isEmpty() || values.isEmpty()) {
-            return ParsedScanData()
-        }
-
-        val mappedData = keys.mapIndexedNotNull { index, key ->
-            values.getOrNull(index)?.let { key to it }
+        val rawMap = groupNames.mapNotNull { name ->
+            match.groups[name]?.value?.trim()?.let { name.uppercase() to it }
         }.toMap()
 
         ParsedScanData(
-            rxNo = mappedData["RXNO"],
-            ndcNo = mappedData["NDCNO"],
-            qty = mappedData["QTY"],
-            bucket = mappedData["BUCKET"],
-            rawMap = mappedData
+            rxNo = rawMap["RXNO"],
+            refillNo = rawMap["REFILLNO"],
+            ndcNo = rawMap["NDCNO"],
+            qty = rawMap["QTY"],
+            bucket = rawMap["BUCKET"],
+            rawMap = rawMap
         )
     } catch (e: Exception) {
         logger.e("Error parsing scan data: ${e.message}")
