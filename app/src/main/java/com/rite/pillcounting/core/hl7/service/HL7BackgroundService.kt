@@ -49,6 +49,7 @@ import org.rite.hl7.model.HL7Message
  * uses to decide trigger events (e.g. RDS^O13 vs RDS^O01) when building outbound messages.
  */
 class HL7Service : Service() {
+
     companion object {
         private const val CHANNEL_ID = "hl7_bg"
         private const val NOTIFICATION_ID = 7001
@@ -327,7 +328,6 @@ class HL7Service : Service() {
         serviceScope.launch {
             try {
                 server.start()
-                logger.i("MLLP server listening on ${config.serverPort} (bypassTls=${config.bypassTls})")
                 listener?.onServerStarted(config.serverPort)
             } catch (e: Exception) {
                 // A silent failure here (e.g. port already bound by a leftover instance,

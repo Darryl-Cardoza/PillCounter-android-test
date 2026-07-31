@@ -93,7 +93,11 @@ class MllpServer(
 
     private suspend fun handleClient(socket: Socket) {
         try {
-            if (socket is SSLSocket) socket.startHandshake()
+            if (socket is SSLSocket) {
+                logger.i("Starting TLS handshake with ${socket.inetAddress?.hostAddress}")
+                socket.startHandshake()
+                logger.i("TLS handshake complete with ${socket.inetAddress?.hostAddress}")
+            }
 
             val input = BufferedInputStream(socket.inputStream)
             val output = socket.outputStream
@@ -139,9 +143,14 @@ class MllpServer(
     private fun readMllp(input: InputStream): String {
         val buffer = java.io.ByteArrayOutputStream()
         var started = false
+        var firstByte = true
 
         while (true) {
             val b = input.read()
+            if (firstByte) {
+                logger.i("First byte read from socket: $b (expected SB=11)")
+                firstByte = false
+            }
             if (b == -1) throw EOFException()
 
             when (b.toByte()) {

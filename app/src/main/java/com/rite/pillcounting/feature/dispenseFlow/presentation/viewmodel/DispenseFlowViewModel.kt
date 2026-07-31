@@ -539,7 +539,7 @@ class DispenseFlowViewModel @Inject constructor(
 
                 val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() }
                     ?: "Unknown Drug"
-                val imagePath = drugImageDownloader.downloadAndSave(
+                val drugImagePath = drugImageDownloader.downloadAndSave(
                     url = drugInfo.imageUrl,
                     drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
                 )
@@ -553,7 +553,7 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drugInfo.isHazardous ?: false,
                         strength = drugInfo.strength,
                         dosageForm = drugInfo.dosageForm,
-                        drugImagePath = imagePath,
+                        drugImagePath = drugImagePath,
                     )
                 )
 
