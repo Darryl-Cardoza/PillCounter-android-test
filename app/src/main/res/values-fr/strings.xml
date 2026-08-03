@@ -50,7 +50,7 @@
     <string name="kpi_hazardous">Dangereux</string>
     <string name="kpi_cycle_count">Comptage cyclique</string>
     <string name="kpi_pending_batch">Lot en attente</string>
-    <string name="standalone_kpi_disabled_message">Non disponible en mode autonome.</string>
+    <string name="standalone_kpi_disabled_message">Fonctionnalité non applicable</string>
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title" translatable="false">SETTINGS</string>
