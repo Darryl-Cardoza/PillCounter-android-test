@@ -3,9 +3,6 @@ package com.rite.pillcounting.core.room.models
 import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
-import androidx.room.TypeConverters
-import com.rite.pillcounting.core.security.SecureStringConverter
-import com.rite.pillcounting.core.security.models.SecureString
 
 /**
      * Room entity representing a user account, persisted locally for offline access.
@@ -29,16 +26,14 @@ import com.rite.pillcounting.core.security.models.SecureString
         // ───── Profile fields ─────
 
         /** Email address of the user. */
-        @TypeConverters(SecureStringConverter::class)
-        val email: SecureString? = null,
+        val email: String? = null,
 
         /** Full name of the user. */
         val fName: String? = null,
         val lName: String? = null,
 
         /** Contact phone number. */
-        @TypeConverters(SecureStringConverter::class)
-        val phoneNumber: SecureString? = null,
+        val phoneNumber: String? = null,
 
         /** Avatar/profile image URL. */
         val avatarUrl: String? = null,

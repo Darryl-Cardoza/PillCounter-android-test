@@ -20,7 +20,6 @@ import androidx.core.net.toUri
 import com.rite.pillcounting.core.room.models.dtos.StatusTypeCount
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.security.models.SecureString
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.menu.domain.model.CountBuckets
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
@@ -215,11 +214,5 @@ object HelperFunctions {
         canvas.drawBitmap(src, 0f, 0f, paint)
         return gray
     }
-
-    /** Wraps a plain string into a [SecureString] for encrypted Room storage. */
-    fun String.secure() = SecureString(this)
-
-    /** Unwraps a [SecureString] into its decrypted plain text value. */
-    fun SecureString?.plain(): String? = this?.value
 
 }

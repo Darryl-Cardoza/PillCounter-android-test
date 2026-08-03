@@ -18,7 +18,6 @@ import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.UserEntity
-import com.rite.pillcounting.core.security.SecureStringConverter
 
 /**
  * Main Room database for the application.
@@ -56,7 +55,6 @@ import com.rite.pillcounting.core.security.SecureStringConverter
     exportSchema = true
 )
 @TypeConverters(
-    SecureStringConverter::class,
     BatchConverters::class
 )
 abstract class AppDatabase : RoomDatabase() {

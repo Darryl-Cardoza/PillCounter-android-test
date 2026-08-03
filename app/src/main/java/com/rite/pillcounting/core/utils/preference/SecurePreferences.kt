@@ -6,6 +6,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -15,15 +16,22 @@ import javax.crypto.spec.GCMParameterSpec
 class SecurePreferences(context: Context,
                         prefsName: String = PREF_NAME ) {
 
+    private val logger = AppLogger.create<SecurePreferences>()
+
     private val prefs: SharedPreferences =
         context.getSharedPreferences(prefsName, Context.MODE_PRIVATE)
+
+    // Per-prefsName alias so different prefs files (e.g. the DB's wrapped-DEK
+    // storage vs auth-token storage) are cryptographically isolated — a key
+    // compromise or future auth requirement on one doesn't affect the other.
+    private val keystoreAlias = "$KEYSTORE_ALIAS_PREFIX$prefsName"
 
     private val keystore by lazy {
         KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
     }
 
     private fun getOrCreateKey(): SecretKey {
-        keystore.getKey(KEYSTORE_ALIAS, null)?.let { return it as SecretKey }
+        keystore.getKey(keystoreAlias, null)?.let { return it as SecretKey }
 
         KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES,
@@ -31,7 +39,7 @@ class SecurePreferences(context: Context,
         ).apply {
             init(
                 KeyGenParameterSpec.Builder(
-                    KEYSTORE_ALIAS,
+                    keystoreAlias,
                     KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
                 )
                     .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
@@ -44,8 +52,15 @@ class SecurePreferences(context: Context,
 
         return KeyStore.getInstance("AndroidKeyStore")
             .also { it.load(null) }
-            .getKey(KEYSTORE_ALIAS, null) as SecretKey
+            .getKey(keystoreAlias, null) as SecretKey
     }
+
+    /**
+     * Key used only to decrypt values written before the per-prefsName alias migration,
+     * when every [SecurePreferences] instance shared one legacy alias. Never used to encrypt.
+     */
+    private fun legacySharedKeyOrNull(): SecretKey? =
+        keystore.getKey(LEGACY_SHARED_ALIAS, null) as? SecretKey
 
     // ── Encryption / Decryption ───────────────────────────────────────────
 
@@ -60,15 +75,30 @@ class SecurePreferences(context: Context,
         }"
     }
 
+    private fun decryptWith(key: SecretKey, iv: ByteArray, ciphertext: ByteArray): String {
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
+        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+    }
+
+    /**
+     * Decrypts [stored]. Values written before the per-prefsName alias migration were
+     * encrypted under the old shared alias — fall back to that key so existing installs
+     * don't lose data (DB DEK wrapper, auth tokens) on upgrade. Falls through to the
+     * per-prefsName key for anything written after the migration.
+     */
     private fun decrypt(stored: String): String {
         val parts = stored.split(":")
         require(parts.size == 2) { "Invalid encrypted value format" }
         val iv = Base64.decode(parts[0], Base64.NO_WRAP)
         val ciphertext = Base64.decode(parts[1], Base64.NO_WRAP)
-        val key = getOrCreateKey()
-        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
-        cipher.init(Cipher.DECRYPT_MODE, key, GCMParameterSpec(128, iv))
-        return String(cipher.doFinal(ciphertext), Charsets.UTF_8)
+
+        return try {
+            decryptWith(getOrCreateKey(), iv, ciphertext)
+        } catch (e: Exception) {
+            val legacyKey = legacySharedKeyOrNull() ?: throw e
+            decryptWith(legacyKey, iv, ciphertext)
+        }
     }
 
     // ── Public API ────────────────────────────────────────────────────────
@@ -86,7 +116,8 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored)
         } catch (e: Exception) {
-            stored
+            logger.e("Failed to decrypt pref '$key', returning default", e)
+            default
         }
     }
 
@@ -99,6 +130,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toBoolean()
         } catch (e: Exception) {
+            logger.e("Failed to decrypt pref '$key', returning default", e)
             default
         }
     }
@@ -112,6 +144,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toInt()
         } catch (e: Exception) {
+            logger.e("Failed to decrypt pref '$key', returning default", e)
             default
         }
     }
@@ -125,6 +158,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toLong()
         } catch (e: Exception) {
+            logger.e("Failed to decrypt pref '$key', returning default", e)
             default
         }
     }
@@ -141,6 +175,7 @@ class SecurePreferences(context: Context,
 
     companion object {
         private const val PREF_NAME = "pillcounting_secure_prefs"
-        private const val KEYSTORE_ALIAS = "com.rite.pillcounting.prefs_key"
+        private const val KEYSTORE_ALIAS_PREFIX = "com.rite.pillcounting.prefs_key."
+        private const val LEGACY_SHARED_ALIAS = "com.rite.pillcounting.prefs_key"
     }
 }

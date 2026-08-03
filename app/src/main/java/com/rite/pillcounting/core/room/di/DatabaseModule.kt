@@ -44,7 +44,7 @@ object DatabaseModule {
             // IMPORTANT
             System.loadLibrary("sqlcipher")
 
-            val dbKey = DatabaseKeyProvider.getOrCreateDatabaseKey(context)
+            val dbKey = DatabaseKeyProvider.getOrCreateDatabasePassphrase(context)
             val passphrase = Base64.encodeToString(dbKey, Base64.NO_WRAP).toByteArray(Charsets.UTF_8)
             builder.openHelperFactory(SupportOpenHelperFactory(passphrase))
         }

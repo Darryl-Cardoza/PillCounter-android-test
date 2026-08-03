@@ -8,9 +8,9 @@ import com.squareup.moshi.JsonClass
  */
 @JsonClass(generateAdapter = true)
 data class UserDetail(
-
     @Json(name = "profile") val profile: UserProfile?,
-    @Json(name = "settings") val settings: UserSettings?
+    @Json(name = "settings") val settings: UserSettings?,
+    @Json(name = "kek") val kek: KekInfo? = null
 )
 
 

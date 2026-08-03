@@ -10,7 +10,6 @@ import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.models.ValidationResult
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.UserEntity
-import com.rite.pillcounting.core.security.models.SecureString
 import com.rite.pillcounting.core.utils.common.NetworkUtils
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.validator.CredentialsValidator
@@ -161,10 +160,10 @@ class ProfileViewModelTest {
     private fun userEntity(country: String? = null, state: String? = null) = UserEntity(
         localId = 1L,
         userId = "user-1",
-        email = SecureString("john@x.com"),
+        email = "john@x.com",
         fName = "John",
         lName = "Doe",
-        phoneNumber = SecureString("1234567890"),
+        phoneNumber = "1234567890",
         pharmacyName = "Pharma",
         npiId = "123456",
         country = country,
