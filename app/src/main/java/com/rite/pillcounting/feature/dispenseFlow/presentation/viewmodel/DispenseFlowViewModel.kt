@@ -324,41 +324,45 @@ class DispenseFlowViewModel @Inject constructor(
                 val refillNo = parsed.refillNo
                 val bucket = parsed.bucket
 
-                if (parsedNdc.isNullOrBlank() || qty.isNullOrBlank() || rxNo.isNullOrBlank()) {
+                val qtyInt = qty?.toIntOrNull()
+                if (parsedNdc.isNullOrBlank() || qty.isNullOrBlank() || rxNo.isNullOrBlank() || qtyInt == null) {
                     _uiState.update { it.copy(isLoading = false, showInvalidScanDialog = true) }
+                    return@launch
+                }
+
+                // Block re-dispensing a fill that's already gone out. getActiveByRxNo (below)
+                // only matches PARTIAL/ON_HOLD, so without this check a COMPLETED Rx would
+                // silently fall through to "no active txn" and spawn a brand new PARTIAL txn
+                // on every rescan. Keyed by (rxNo, refillNo) when the label carries a fill
+                // number, so a genuinely new refill isn't blocked by the prior fill's
+                // COMPLETED status — only falls back to the bare rxNo lookup when the label
+                // doesn't encode a refill number at all.
+                val mostRecentTxn = if (!refillNo.isNullOrBlank()) {
+                    pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo)
+                } else {
+                    pillCountTxnDao.getMostRecentByRxNo(rxNo)
+                }
+                if (mostRecentTxn?.status == CountStatus.COMPLETED || mostRecentTxn?.status == CountStatus.FORCE_COMPLETED) {
+                    _uiState.update {
+                        it.copy(isLoading = false, rxAlreadyCompletedToastTick = it.rxAlreadyCompletedToastTick + 1)
+                    }
                     return@launch
                 }
 
                 // Check if this RX has an active local transaction (PARTIAL or ON_HOLD).
                 var existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
                 if (existingTxn == null) {
-                    // No PMS-created transaction found. In standalone mode (with PMS
-                    // integration still configured) the app is expected to originate
-                    // the dispense itself off the scanned Rx label, rather than wait
-                    // on an HL7 order that will never arrive.
-                    if (preferenceHelper.isStandaloneMode() || preferenceHelper.isHl7Enabled()) {
-                        // Resolve the drug for the NDC parsed off the Rx label — local DB
-                        // first, then the server (reusing the same resolve-and-cache helper
-                        // the allowlist check uses) — so the txn carries a drugId and the RX
-                        // verification sheet can show a drug name / NDC / strength just
-                        // like the PMS/HL7 path does with its expected drug.
-                        val resolvedDrug = drugMasterDao.getDrugByNdc(parsedNdc)
-                            ?: drugMasterDao.getDrugByGtin(parsedNdc)
-                            ?: resolveNdcFromServer(parsedNdc)?.let { drugMasterDao.getDrugByNdc(it) }
-                        val newTxn = PillCountTxnEntity(
-                            localId = preferenceHelper.getLocalId(),
-                            drugId = resolvedDrug?.drugId,
-                            isDispense = true,
-                            targetCount = qty.toIntOrNull(),
-                            status = CountStatus.PARTIAL,
-                            isComingFromHL7 = false,
-                            isSynced = false,
-                            isNdcVerified = false,
+                    // No PMS-created transaction found. In standalone mode, no PMS will
+                    // ever send this txn, so the app is expected to originate the
+                    // dispense itself off the scanned Rx label, rather than wait on an
+                    // HL7 order that will never arrive.
+                    if (preferenceHelper.isStandaloneMode()) {
+                        existingTxn = createStandaloneDispenseTxn(
+                            parsedNdc = parsedNdc,
                             rxNo = rxNo,
-                            bucketId = bucket,
+                            bucket = bucket,
+                            targetCount = qtyInt,
                         )
-                        val txnId = pillCountTxnDao.upsertPreservingId(newTxn)
-                        existingTxn = pillCountTxnDao.getById(txnId)
                     }
                     if (existingTxn == null) {
                         _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
@@ -421,6 +425,47 @@ class DispenseFlowViewModel @Inject constructor(
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }
+    }
+
+    /**
+     * Creates a PARTIAL dispense txn directly from a scanned Rx label when standalone mode
+     * (with PMS integration still configured) means no PMS/HL7 order will ever arrive for it.
+     *
+     * Resolves the drug for [parsedNdc] — local DB first, then GTIN, then the server (reusing
+     * the same resolve-and-cache helper the allowlist check uses) — so the txn carries a
+     * drugId and the RX verification sheet can show a drug name / NDC / strength just like the
+     * PMS/HL7 path does with its expected drug. If the drug can't be resolved anywhere,
+     * [resolvedDrug] is null and the txn is still created without drug details — the user can
+     * still proceed and the container scan will resolve the drug.
+     *
+     * @return the newly created and re-fetched txn, or null if the insert didn't persist.
+     */
+    private suspend fun createStandaloneDispenseTxn(
+        parsedNdc: String,
+        rxNo: String,
+        bucket: String?,
+        targetCount: Int,
+    ): PillCountTxnEntity? {
+        val resolvedDrug = drugMasterDao.getDrugByNdc(parsedNdc)
+            ?: drugMasterDao.getDrugByGtin(parsedNdc)
+            ?: resolveNdcFromServer(parsedNdc)?.let { drugMasterDao.getDrugByNdc(it) }
+        if (resolvedDrug == null) {
+            logger.w("Standalone dispense: drug could not be resolved for ndc=$parsedNdc rxNo=$rxNo — creating txn without drug details")
+        }
+        val newTxn = PillCountTxnEntity(
+            localId = preferenceHelper.getLocalId(),
+            drugId = resolvedDrug?.drugId,
+            isDispense = true,
+            targetCount = targetCount,
+            status = CountStatus.PARTIAL,
+            isComingFromHL7 = false,
+            isSynced = false,
+            isNdcVerified = false,
+            rxNo = rxNo,
+            bucketId = bucket,
+        )
+        val txnId = pillCountTxnDao.upsertPreservingId(newTxn)
+        return pillCountTxnDao.getById(txnId)
     }
 
     /**

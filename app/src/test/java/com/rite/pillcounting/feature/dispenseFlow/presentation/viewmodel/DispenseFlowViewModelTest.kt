@@ -110,7 +110,8 @@ class DispenseFlowViewModelTest {
         qty: String? = "10",
         rxNo: String? = "RX999",
         bucket: String? = "B1",
-    ) = ParsedScanData(rxNo = rxNo, ndcNo = ndcNo, qty = qty, bucket = bucket)
+        refillNo: String? = null,
+    ) = ParsedScanData(rxNo = rxNo, ndcNo = ndcNo, qty = qty, bucket = bucket, refillNo = refillNo)
 
     private fun drug(
         drugId: Long = 10L,
@@ -406,11 +407,24 @@ class DispenseFlowViewModelTest {
         coVerify(exactly = 1) { pillCountTxnDao.getActiveByRxNo("RX999") }
     }
 
-    // ───────────────────────────── onRxBarcodeRead: standalone/no-PMS txn creation ─────────────────────────────
-    // When no PMS/HL7 transaction exists yet for the scanned RX, standalone mode OR a
-    // non-PMS-integrated pharmacy originates the dispense locally — resolving the drug for
-    // the label's NDC (local DB, then GTIN, then server) and creating the PARTIAL txn itself,
-    // rather than leaving the user stuck waiting on an order that will never arrive.
+    // ───────────────────────────── onRxBarcodeRead: standalone txn creation ─────────────────────────────
+    // When no PMS/HL7 transaction exists yet for the scanned RX, standalone mode originates
+    // the dispense locally — resolving the drug for the label's NDC (local DB, then GTIN, then
+    // server) and creating the PARTIAL txn itself, rather than leaving the user stuck waiting
+    // on an order that will never arrive. isHl7Enabled() is unrelated to this gate: standalone
+    // pharmacies commonly have no PMS at all, so isHl7Enabled() defaults true/false independent
+    // of standalone mode and must not block local txn creation.
+
+    @Test
+    fun `onRxBarcodeRead not standalone keeps not-found behavior`() = runTest(testDispatcher) {
+        // preferenceHelper is relaxed-mocked, so isStandaloneMode() defaults to false.
+        coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+        val vm = createViewModel()
+        vm.onRxBarcodeRead("gtin", null)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
+        coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
+    }
 
     @Test
     fun `onRxBarcodeRead standalone creates txn using locally resolved drug`() = runTest(testDispatcher) {
@@ -445,26 +459,6 @@ class DispenseFlowViewModelTest {
         assertTrue(vm.uiState.value.showRxDetails)
         assertEquals("Aspirin", vm.uiState.value.drugName)
         assertEquals("NDC123", vm.uiState.value.hl7ExpectedNdc)
-    }
-
-    @Test
-    fun `onRxBarcodeRead not-PMS-integrated also creates txn locally`() = runTest(testDispatcher) {
-        // isHl7Enabled() true (not standalone) takes the same creation branch — the
-        // condition is an OR of the two flags.
-        every { preferenceHelper.isHl7Enabled() } returns true
-        coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
-        coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
-        coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 200L
-        coEvery { pillCountTxnDao.getById(200L) } returns
-            txn(txnId = 200L, drugId = 55L, status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(55L) } returns drug(drugId = 55L, ndc = "NDC123")
-
-        val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin", null)
-        advanceUntilIdle()
-
-        assertTrue(vm.uiState.value.showRxDetails)
-        coVerify { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
     }
 
     @Test
@@ -543,6 +537,84 @@ class DispenseFlowViewModelTest {
 
             assertTrue(vm.uiState.value.showOnHoldDialog)
         }
+
+    // ───────────────────────────── onRxBarcodeRead: already-completed Rx guard ─────────────────────────────
+
+    @Test
+    fun `onRxBarcodeRead most recent txn COMPLETED blocks re-dispense`() = runTest(testDispatcher) {
+        coEvery { pillCountTxnDao.getMostRecentByRxNo("RX999") } returns
+            txn(status = CountStatus.COMPLETED)
+        val vm = createViewModel()
+        vm.onRxBarcodeRead("gtin", null)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.rxAlreadyCompletedToastTick > 0)
+        coVerify(exactly = 0) { pillCountTxnDao.getActiveByRxNo(any()) }
+        coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
+    }
+
+    @Test
+    fun `onRxBarcodeRead most recent txn FORCE_COMPLETED blocks re-dispense`() = runTest(testDispatcher) {
+        coEvery { pillCountTxnDao.getMostRecentByRxNo("RX999") } returns
+            txn(status = CountStatus.FORCE_COMPLETED)
+        val vm = createViewModel()
+        vm.onRxBarcodeRead("gtin", null)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.rxAlreadyCompletedToastTick > 0)
+    }
+
+    @Test
+    fun `onRxBarcodeRead most recent txn PARTIAL does not block`() = runTest(testDispatcher) {
+        coEvery { pillCountTxnDao.getMostRecentByRxNo("RX999") } returns
+            txn(status = CountStatus.PARTIAL)
+        coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
+            txn(status = CountStatus.PARTIAL, isNdcVerified = false)
+        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
+        val vm = createViewModel()
+        vm.onRxBarcodeRead("gtin", null)
+        advanceUntilIdle()
+        assertEquals(0, vm.uiState.value.rxAlreadyCompletedToastTick)
+        assertTrue(vm.uiState.value.showRxDetails)
+    }
+
+    @Test
+    fun `onRxBarcodeRead label with refillNo checks that specific fill, not the whole rxNo`() =
+        runTest(testDispatcher) {
+            // Same rxNo, but refill 0 already went out — scanning refill 1's label must NOT
+            // be blocked by refill 0's COMPLETED status. getByRxNoAndFillNo keys on both.
+            every { parseScanData(any(), any()) } returns validParsed(refillNo = "1")
+            coEvery { pillCountTxnDao.getByRxNoAndFillNo("RX999", "1") } returns null
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+            assertEquals(0, vm.uiState.value.rxAlreadyCompletedToastTick)
+            coVerify(exactly = 0) { pillCountTxnDao.getMostRecentByRxNo(any()) }
+        }
+
+    @Test
+    fun `onRxBarcodeRead label with refillNo blocks when that specific fill is completed`() =
+        runTest(testDispatcher) {
+            every { parseScanData(any(), any()) } returns validParsed(refillNo = "0")
+            coEvery { pillCountTxnDao.getByRxNoAndFillNo("RX999", "0") } returns
+                txn(status = CountStatus.COMPLETED)
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+            assertTrue(vm.uiState.value.rxAlreadyCompletedToastTick > 0)
+        }
+
+    // ───────────────────────────── onRxBarcodeRead: invalid numeric qty ─────────────────────────────
+
+    @Test
+    fun `onRxBarcodeRead non-numeric qty shows invalid scan dialog`() = runTest(testDispatcher) {
+        every { parseScanData(any(), any()) } returns validParsed(qty = "not-a-number")
+        val vm = createViewModel()
+        vm.onRxBarcodeRead("gtin", null)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.showInvalidScanDialog)
+        assertFalse(vm.uiState.value.isLoading)
+        coVerify(exactly = 0) { pillCountTxnDao.getActiveByRxNo(any()) }
+    }
 
     // ───────────────────────────── onNdcBarcodeRead ─────────────────────────────
 

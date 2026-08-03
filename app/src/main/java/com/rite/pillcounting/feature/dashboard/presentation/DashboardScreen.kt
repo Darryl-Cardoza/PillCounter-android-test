@@ -157,14 +157,6 @@ fun DashboardScreen(
     // recompositions — variants and their LazyColumn rows can skip re-render when only
     // `uiState` / `isPmsConnected` change.
     val onKpiFilterTapped = remember(viewModel) { viewModel::onKpiFilterTapped }
-    val isStandaloneMode = viewModel.isStandaloneMode()
-    val disabledKpiFilters = remember(isStandaloneMode) {
-        if (isStandaloneMode) {
-            setOf(KpiFilter.DISP_HIGH_PRIORITY, KpiFilter.INV_CYCLE_COUNT)
-        } else {
-            emptySet()
-        }
-    }
     val onDisabledKpiFilterTapped = remember(context) {
         { _: KpiFilter -> showToast(context, R.string.standalone_kpi_disabled_message) }
     }
@@ -224,7 +216,7 @@ fun DashboardScreen(
         isHl7Enabled = viewModel.isHl7Enabled(),
         navController = navController,
         onKpiFilterTapped = onKpiFilterTapped,
-        disabledKpiFilters = disabledKpiFilters,
+        disabledKpiFilters = uiState.disabledKpiFilters,
         onDisabledKpiFilterTapped = onDisabledKpiFilterTapped,
         onTabSelected = onTabSelected,
         onDispenseQuickAction = onDispenseQuickAction,

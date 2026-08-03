@@ -39,6 +39,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -272,7 +274,8 @@ internal fun ScaffoldKpiRow(
                 iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
                 isDisabled = isDisabled,
-                onClick = { if (isDisabled) onDisabledTap(spec.filter) else onTap(spec.filter) },
+                onClick = { onTap(spec.filter) },
+                onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = cardModifier,
             )
         }
@@ -312,7 +315,8 @@ internal fun ScaffoldKpiColumn(
                 iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
                 isDisabled = isDisabled,
-                onClick = { if (isDisabled) onDisabledTap(spec.filter) else onTap(spec.filter) },
+                onClick = { onTap(spec.filter) },
+                onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = cardModifier,
             )
         }
@@ -351,7 +355,8 @@ internal fun ScaffoldKpiScrollColumn(
                 iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
                 isDisabled = isDisabled,
-                onClick = { if (isDisabled) onDisabledTap(spec.filter) else onTap(spec.filter) },
+                onClick = { onTap(spec.filter) },
+                onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = cardModifier,
                 singleLabelLine = true,
             )
@@ -389,7 +394,8 @@ internal fun ScaffoldKpiScrollRow(
                 iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
                 isDisabled = isDisabled,
-                onClick = { if (isDisabled) onDisabledTap(spec.filter) else onTap(spec.filter) },
+                onClick = { onTap(spec.filter) },
+                onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = Modifier
                     .width(cardWidth)
                     .height(cardHeight),
@@ -410,6 +416,7 @@ internal fun ScaffoldKpiCard(
     modifier: Modifier = Modifier,
     singleLabelLine: Boolean = false,
     isDisabled: Boolean = false,
+    onDisabledClick: () -> Unit = {},
 ) {
     // Selection is shown by a primary border plus an all-around primary-tinted
     // shadow, both strictly keyed on isActive so deselecting fully reverts.
@@ -429,15 +436,10 @@ internal fun ScaffoldKpiCard(
                     Modifier
                 },
             )
-            .clickable { onClick() },
+            .semantics { if (isDisabled) disabled() }
+            .clickable { if (isDisabled) onDisabledClick() else onClick() },
         shape = shape,
-        colors = CardDefaults.cardColors(
-            containerColor = if (isDisabled) {
-                extendedColors.secondaryBackground.copy(alpha = 0.5f)
-            } else {
-                extendedColors.secondaryBackground
-            },
-        ),
+        colors = CardDefaults.cardColors(containerColor = extendedColors.secondaryBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
         border = if (isActive) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
     ) {

@@ -103,6 +103,11 @@ class PreferenceHelper @Inject constructor(
     fun clearTokens() {
         prefs.remove(KEY_ACCESS_TOKEN)
         prefs.remove(KEY_REFRESH_TOKEN)
+        // Standalone mode is per-user (set from the auth/me response) and is only
+        // otherwise re-written on the next successful settings fetch. Without resetting
+        // it here, a user switch or re-login before that fetch lands would leave the
+        // next user running under the previous user's standalone flag.
+        setStandaloneMode(false)
         logger.w("Cleared authentication tokens from secure storage.")
     }
 

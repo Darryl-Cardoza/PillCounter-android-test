@@ -44,6 +44,12 @@ data class DashboardUiState(
     /** Counts displayed on the 6 KPI shortcut cards. Computed from the unfiltered queue. */
     val kpiCounts: Map<KpiFilter, Int> = emptyMap(),
 
+    /**
+     * KPI cards not available in standalone mode (Disp. High Priority, Inv. Cycle Count —
+     * both depend on PMS-supplied data that standalone pharmacies never receive).
+     */
+    val disabledKpiFilters: Set<KpiFilter> = emptySet(),
+
     /** Currently active KPI filter, or null when "all" is selected. */
     val activeKpiFilter: KpiFilter? = null,
 

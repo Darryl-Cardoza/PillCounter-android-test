@@ -38,6 +38,8 @@ class DashboardVariantParamsTest {
         onRecentBatchClick = onRecentBatchClick,
         onQueueDispenseClick = onQueueDispenseClick,
         onQueueInventoryClick = onQueueInventoryClick,
+        disabledKpiFilters = emptySet(),
+        onDisabledKpiFilterTapped = {},
     )
 
     @Test
@@ -122,6 +124,8 @@ class DashboardVariantParamsTest {
             onRecentBatchClick = { recentBatchId = it },
             onQueueDispenseClick = { queueDispenseId = it },
             onQueueInventoryClick = { queueInventoryId = it },
+            disabledKpiFilters = emptySet(),
+            onDisabledKpiFilterTapped = {},
         )
 
         p.onKpiFilterTapped(KpiFilter.DISP_PENDING)

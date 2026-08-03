@@ -771,18 +771,28 @@ fun DispenseFlowScreen(
         }
     }
 
+    // Scanned RX's most recent transaction is already dispensed — block re-dispensing.
+    val rxAlreadyCompletedToastText = stringResource(R.string.rx_already_completed_message)
+    LaunchedEffect(dispenseState.rxAlreadyCompletedToastTick) {
+        if (dispenseState.rxAlreadyCompletedToastTick > 0) {
+            showToast(context, rxAlreadyCompletedToastText, Toast.LENGTH_SHORT)
+        }
+    }
+
     LaunchedEffect(
         dispenseState.ndcMismatchToastTick,
         dispenseState.scanNdcToastTick,
         dispenseState.txnNotFoundToastTick,
         dispenseState.vialRxMismatchToastTick,
         dispenseState.ndcNotAllowedToastTick,
+        dispenseState.rxAlreadyCompletedToastTick,
     ) {
         val anyToastTick = dispenseState.ndcMismatchToastTick +
                 dispenseState.scanNdcToastTick +
                 dispenseState.txnNotFoundToastTick +
                 dispenseState.vialRxMismatchToastTick +
-                dispenseState.ndcNotAllowedToastTick
+                dispenseState.ndcNotAllowedToastTick +
+                dispenseState.rxAlreadyCompletedToastTick
         if (anyToastTick > 0) {
             scanCooldownActive = true
             delay(1500)
