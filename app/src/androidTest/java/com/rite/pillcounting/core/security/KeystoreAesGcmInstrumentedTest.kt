@@ -76,7 +76,7 @@ class KeystoreAesGcmInstrumentedTest {
         var threw = false
         try {
             KeystoreAesGcm.unwrap(alias, tampered)
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             threw = true
         }
         assertTrue("Tampered ciphertext must fail GCM auth tag check", threw)

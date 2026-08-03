@@ -22,7 +22,6 @@ import com.rite.pillcounting.feature.profile.data.ProfileRepository
 import com.rite.pillcounting.feature.profile.domain.model.Country
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
-import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
 import com.rite.pillcounting.feature.profile.domain.model.State
