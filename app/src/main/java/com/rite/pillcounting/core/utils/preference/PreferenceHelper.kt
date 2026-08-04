@@ -40,6 +40,7 @@ private const val KEY_SENT_TXN_ID = "last_txn_id"
 // HL7
 private const val KEY_NSD_BROADCAST_TYPE = "key_nsd_broadcast_type"
 private const val KEY_NSD_DISCOVERY_TYPE = "key_nsd_discovery_type"
+private const val KEY_STANDALONE_MODE = "key_standalone_mode"
 private const val KEY_HL7_ENABLED = "key_hl7_enabled"
 private const val KEY_SOUND = "key_pill_count_sound_enabled"
 private const val KEY_HAPTIC = "key_pill_count_haptic_enabled"
@@ -102,6 +103,11 @@ class PreferenceHelper @Inject constructor(
     fun clearTokens() {
         prefs.remove(KEY_ACCESS_TOKEN)
         prefs.remove(KEY_REFRESH_TOKEN)
+        // Standalone mode is per-user (set from the auth/me response) and is only
+        // otherwise re-written on the next successful settings fetch. Without resetting
+        // it here, a user switch or re-login before that fetch lands would leave the
+        // next user running under the previous user's standalone flag.
+        setStandaloneMode(false)
         logger.w("Cleared authentication tokens from secure storage.")
     }
 
@@ -298,6 +304,17 @@ class PreferenceHelper @Inject constructor(
     fun isHl7Enabled(): Boolean {
         val enabled = prefs.getBoolean(KEY_HL7_ENABLED, true)
         logger.d("HL7 enabled: $enabled")
+        return enabled
+    }
+
+    fun setStandaloneMode(enabled: Boolean) {
+        prefs.putBoolean(KEY_STANDALONE_MODE, enabled)
+        logger.i("Standalone mode set to: $enabled")
+    }
+
+    fun isStandaloneMode(): Boolean {
+        val enabled = prefs.getBoolean(KEY_STANDALONE_MODE, false)
+        logger.d("Standalone mode: $enabled")
         return enabled
     }
 

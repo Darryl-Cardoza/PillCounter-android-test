@@ -50,6 +50,7 @@
     <string name="kpi_hazardous">Peligrosos</string>
     <string name="kpi_cycle_count">Conteo cíclico</string>
     <string name="kpi_pending_batch">Lote pendiente</string>
+    <string name="standalone_kpi_disabled_message">Función no aplicable</string>
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title" translatable="false">SETTINGS</string>

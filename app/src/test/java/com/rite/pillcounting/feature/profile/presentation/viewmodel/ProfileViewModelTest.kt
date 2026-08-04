@@ -26,6 +26,9 @@ import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeData
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeOption
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeResponse
 import com.rite.pillcounting.feature.profile.domain.model.State
 import io.mockk.coEvery
 import io.mockk.coVerify
@@ -121,6 +124,14 @@ class ProfileViewModelTest {
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
         every { preferenceHelper.getCountries() } returns testCountries
         coEvery { repository.getCountries() } returns Result.success(testCountries)
+        every { preferenceHelper.getPharmacyType() } returns null
+        coEvery { repository.getPharmacyTypes() } returns Result.success(
+            PharmacyTypeResponse(
+                data = PharmacyTypeData(
+                    pharmacyTypes = listOf(PharmacyTypeOption("retail", "Retail"))
+                )
+            )
+        )
 
         // Validation success by default
         every { validator.validateRequiredName(any()) } returns ValidationResult(true, null)

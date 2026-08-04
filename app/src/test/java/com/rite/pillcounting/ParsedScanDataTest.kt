@@ -106,9 +106,10 @@ class ParsedScanDataTest {
 
         // component functions
         Assert.assertEquals("R", a.component1())
-        Assert.assertEquals("N", a.component2())
-        Assert.assertEquals("1", a.component3())
-        Assert.assertEquals("B", a.component4())
-        Assert.assertEquals(mapOf("X" to "Y"), a.component5())
+        Assert.assertNull(a.component2()) // refillNo, not set in this fixture
+        Assert.assertEquals("N", a.component3())
+        Assert.assertEquals("1", a.component4())
+        Assert.assertEquals("B", a.component5())
+        Assert.assertEquals(mapOf("X" to "Y"), a.component6())
     }
 }

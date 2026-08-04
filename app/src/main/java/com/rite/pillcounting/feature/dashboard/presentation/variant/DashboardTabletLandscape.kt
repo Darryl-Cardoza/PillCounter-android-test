@@ -168,6 +168,8 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                         counts = uiState.kpiCounts,
                         activeFilter = uiState.activeKpiFilter,
                         onTap = params.onKpiFilterTapped,
+                        disabledFilters = params.disabledKpiFilters,
+                        onDisabledTap = params.onDisabledKpiFilterTapped,
                         modifier = Modifier
                             .weight(0.16f)
                             .fillMaxHeight(),

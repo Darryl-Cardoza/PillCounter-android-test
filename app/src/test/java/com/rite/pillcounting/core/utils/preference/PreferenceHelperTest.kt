@@ -126,6 +126,26 @@ class PreferenceHelperTest {
     }
 
     @Test
+    fun `isStandaloneMode defaults to false`() {
+        assertFalse(helper.isStandaloneMode())
+    }
+
+    @Test
+    fun `setStandaloneMode persists the flag`() {
+        helper.setStandaloneMode(true)
+        assertTrue(helper.isStandaloneMode())
+        helper.setStandaloneMode(false)
+        assertFalse(helper.isStandaloneMode())
+    }
+
+    @Test
+    fun `clearTokens resets standalone mode so the next user doesn't inherit it`() {
+        helper.setStandaloneMode(true)
+        helper.clearTokens()
+        assertFalse(helper.isStandaloneMode())
+    }
+
+    @Test
     fun `saveTokens handles empty strings`() {
         helper.saveTokens("", "")
         assertEquals("", helper.getAccessToken())
