@@ -190,7 +190,7 @@ object HL7MessageBuilder {
                     z.rxNumber = vividOrderId
                     z.dispensedQuantity = totalCount.toString()
                     z.transactionStatus = ZuiTransactionStatus.DONE
-                    z.drugImages = buildZuiImagePayload(barcodeImage = txn.barcodeImage, details = txnDetails)
+                    z.drugImages = buildZuiImagePayload(bottles = bottles, details = txnDetails)
                     z.drugLotNumber = effectiveLotNumber
                     z.drugSerialNumber = effectiveSerialNumber
                     z.drugExpirationDate = effectiveExpirationDate
@@ -555,13 +555,14 @@ object HL7MessageBuilder {
      * "batch 1 of 1", count 1 of 1. Revisit once those features add real fields.
      */
     private fun buildZuiImagePayload(
-        barcodeImage: String?,
+        bottles: List<BottleInfo>,
         details: List<PillCountTxnDetailsEntity>
     ): List<List<String>>? {
         val stepImages = details
             .filter { it.type == StepState.TARGET_VERIFICATION.name || it.type == StepState.VIAL.name }
             .mapNotNull { it.imagePath }
-        val imagePaths = stepImages + listOfNotNull(barcodeImage)
+        val barcodeImages = bottles.mapNotNull { it.barcodeImagePath }
+        val imagePaths = stepImages + barcodeImages
         if (imagePaths.isEmpty()) return null
 
         val countTotal = imagePaths.size
@@ -602,23 +603,19 @@ object HL7MessageBuilder {
             val barcodeFileName = bottle.barcodeImagePath?.let { File(it).name }.orEmpty()
             if (barcodeFileName.isEmpty()) return@mapIndexedNotNull null
 
+            val setId = detailRows.size + index + 1
             ObxRow(
-                setId = (detailRows.size + 1).toString(),
+                setId = setId.toString(),
                 valueType = "RP",
-                observationId = "IMG${(detailRows.size + 1).toString().padStart(3, '0')}",
-                observationText = "Barcode Image",
-                observationValue = "images/${File(barcodeImage).name}",
-                setId = (detailRows.size + index + 1).toString(),
-                valueType = "ST",
-                observationId = observationId,
+                observationId = "IMG${setId.toString().padStart(3, '0')}",
                 observationText = "Barcode Image ${index + 1}",
-                observationValue = "count=0|type=${"SCAN".toImageLabel()}|image=$barcodeFileName",
+                observationValue = "images/$barcodeFileName",
                 resultStatus = "F",
                 units = null
             )
-        } else null
+        }
 
-        return if (barcodeRow != null) detailRows + barcodeRow else detailRows
+        return detailRows + barcodeRows
     }
 
     /**

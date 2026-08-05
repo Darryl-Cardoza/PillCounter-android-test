@@ -247,9 +247,11 @@ class ImageNanoServer(
     private suspend fun collectImageEntries(txn: PillCountTxnEntity): List<ImageEntry> {
         val entries = mutableListOf<ImageEntry>()
 
-        txn.barcodeImage?.takeIf { it.isNotBlank() }?.let { path ->
-            resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it)) }
-        }
+        BottleInfoJson.decode(txn.bottleInfoListJson)
+            .mapNotNull { it.barcodeImagePath?.takeIf { path -> path.isNotBlank() } }
+            .forEach { path ->
+                resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it, txn.createdAt)) }
+            }
 
         val details = txnDetailsDao.getAllForTxn(txn.txnId.toString())
             .filter { !it.isDeleted }
