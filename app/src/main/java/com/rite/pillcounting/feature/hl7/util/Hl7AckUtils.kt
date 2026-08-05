@@ -13,3 +13,17 @@ fun isSuccessAck(ackRaw: String): Boolean {
     val code = msaSegment.split('|').getOrNull(1)?.trim()?.uppercase()
     return code == "AA" || code == "CA"
 }
+
+/**
+ * Returns true when the raw HL7 ACK carries an explicit reject code (MSA-1 == "AR")
+ * in MSA-1 — PMS rejected the message itself, as opposed to a missing ACK/timeout,
+ * which is a transient transport failure and should still be retried.
+ */
+fun isRejectAck(ackRaw: String): Boolean {
+    val msaSegment = ackRaw
+        .split('\r', '\n')
+        .firstOrNull { it.startsWith("MSA|") }
+        ?: return false
+    val code = msaSegment.split('|').getOrNull(1)?.trim()?.uppercase()
+    return code == "AR"
+}

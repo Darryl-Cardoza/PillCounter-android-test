@@ -24,6 +24,7 @@ import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -68,6 +69,12 @@ class MainActivityViewModel @Inject constructor(
     // both evaluateHl7State() and startHl7AfterTerminalLoaded() can independently
     // decide HL7 should start; only the first one to actually run may proceed.
     private var hl7StartRequested = false
+
+    // The NSD/terminal identity HL7 last started with, so a later settings fetch that
+    // returns different values (e.g. HL7 was preloaded from stale cached prefs on a cold
+    // launch, then the network fetch lands with an updated terminal/service name) can
+    // detect the mismatch and restart HL7 with the fresh config.
+    private var hl7StartedWithIdentity: Triple<String, String, String>? = null
 
     // Holds the current state of "Ask to Add Notes"
     private val _isAskToAddNotes = MutableStateFlow(preferenceHelper.getShowNotesDialogSetting())
@@ -197,12 +204,33 @@ class MainActivityViewModel @Inject constructor(
         // Load cached/fallback theme instantly
         loadCachedOrFallbackTheme()
 
-        // Start fetching remote theme in background
+        // Start HL7 immediately from whatever's already cached in prefs (previous
+        // successful fetch), instead of waiting on the network call below — a slow/failed
+        // settings fetch on a cold app process (fresh install/build) must not block HL7
+        // startup for the whole session. If the fetch below later returns different
+        // NSD/terminal values, evaluateHl7State()'s config-changed check restarts HL7.
+        preloadCachedHl7StateAndStart()
+
+        // Start fetching remote theme/settings in background; reconciles HL7 config
+        // once it lands.
         fetchApplicationSettings()
 
         viewModelScope.launch(Dispatchers.IO) {
             deleteOldTransactions()
         }
+    }
+
+    /** Populates [_uiState]'s HL7 fields from cached prefs (if any) and starts HL7 right away. */
+    private fun preloadCachedHl7StateAndStart() {
+        if (!preferenceHelper.isHl7ConfigFetched()) return
+        _uiState.update {
+            it.copy(
+                nsdBroadcastType = preferenceHelper.getHl7PillCounterHost(),
+                nsdDiscoveryType = preferenceHelper.getHl7PmsHost(),
+                isHl7Enabled = preferenceHelper.isHl7Enabled()
+            )
+        }
+        evaluateHl7State()
     }
 
     /**
@@ -475,17 +503,23 @@ class MainActivityViewModel @Inject constructor(
      * can never both call through to [Hl7ServiceManager.initialize] for the same process.
      */
     private fun startHl7Service() {
-        if (hl7StartRequested) {
-            logger.i("startHl7Service() — already requested this session, skipping duplicate init")
-            return
-        }
-        hl7StartRequested = true
-
         val broadCastServiceName = _uiState.value.nsdBroadcastType ?: return
         val discoverServiceName = _uiState.value.nsdDiscoveryType ?: return
-
         // Use terminal name from preferences, fallback to device model if not available
         val terminalName = preferenceHelper.getSelectedTerminalName() ?: "PillCounter-${Build.MODEL}"
+        val identity = Triple(broadCastServiceName, discoverServiceName, terminalName)
+
+        if (hl7StartRequested) {
+            if (identity == hl7StartedWithIdentity) {
+                logger.i("startHl7Service() — already running with this identity, skipping duplicate init")
+                return
+            }
+            logger.i("startHl7Service() — identity changed since last start (preloaded cache vs fresh fetch), restarting HL7")
+            hl7ServiceManager.shutdown()
+        }
+        hl7StartRequested = true
+        hl7StartedWithIdentity = identity
+
         val config = HL7Config(
             serverPort = 2575,
             autoResponseDelayMs = 10_000L,
@@ -558,6 +592,7 @@ class MainActivityViewModel @Inject constructor(
     private fun stopHl7Service() {
         hl7ServiceManager.shutdown()
         hl7StartRequested = false
+        hl7StartedWithIdentity = null
         logger.i("HL7 STOPPED")
     }
 

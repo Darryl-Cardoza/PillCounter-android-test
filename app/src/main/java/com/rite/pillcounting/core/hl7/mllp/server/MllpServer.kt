@@ -53,13 +53,19 @@ class MllpServer(
         mutex.withLock {
             if (running.get()) return@withContext
 
+            // Bind explicitly to the IPv4 wildcard — some Android network stacks hand back
+            // an IPv6-only [::] listener for a bare ServerSocket(port), which silently
+            // refuses connections from IPv4-only clients on the same LAN (e.g. a test
+            // script) even though the app-side code never sees the attempt.
+            val bindAddress = java.net.InetAddress.getByName("0.0.0.0")
+
             serverSocket = if (bypassTls) {
-                ServerSocket(port)
+                ServerSocket(port, 50, bindAddress)
             } else {
                 TlsKeystoreUtil.ensureKeyExists()
                 val sslContext = TlsKeystoreUtil.createServerSslContext()
 
-                (sslContext.serverSocketFactory.createServerSocket(port) as SSLServerSocket).apply {
+                (sslContext.serverSocketFactory.createServerSocket(port, 50, bindAddress) as SSLServerSocket).apply {
                     enabledProtocols = arrayOf("TLSv1.2", "TLSv1.3")
                     enabledCipherSuites = supportedCipherSuites
                     needClientAuth = false
@@ -159,7 +165,13 @@ class MllpServer(
                     buffer.reset()
                 }
                 EB -> {
-                    input.read() // consume trailing CR
+                    // Trailing CR after FS is optional depending on sender (some PMS clients
+                    // omit it). Only consume it if already buffered — never block waiting for
+                    // a byte that may never arrive, or the read stalls until the peer times out.
+                    if (input.available() > 0) {
+                        input.mark(1)
+                        if (input.read() != CR.toInt()) input.reset()
+                    }
                     return buffer.toByteArray().decodeToString()
                 }
                 else -> if (started) buffer.write(b)
@@ -170,5 +182,6 @@ class MllpServer(
     companion object {
         private const val SB: Byte = 0x0B  // Start Block (VT)
         private const val EB: Byte = 0x1C  // End Block (FS)
+        private const val CR: Byte = 0x0D  // Carriage Return
     }
 }

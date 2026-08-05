@@ -65,7 +65,9 @@ data class HL7Config(
     val sendingFacility: String,
     val receivingApplication: String,
     val receivingFacility: String,
-    val versionId: String
+    val versionId: String,
+    /** Which body segments (ZUI/ZNI/etc) to emit — independent of [sendingApplication], which is always this app's name. */
+    val messageFormat: Hl7Format = Hl7Format.DEFAULT
 ) {
     companion object {
         /**
@@ -78,13 +80,15 @@ data class HL7Config(
             selectedTerminalName: String,
             pmsHostName: String,
             hl7Version: String = PreferenceHelper.DEFAULT_HL7_VERSION,
-            hl7Format: Hl7Format = Hl7Format.DEFAULT
+            hl7Format: Hl7Format = Hl7Format.DEFAULT,
+            sendingApplicationName: String = Hl7Format.DISPENSESURE.sendingApplication
         ) = HL7Config(
-            sendingApplication = hl7Format.sendingApplication,
+            sendingApplication = sendingApplicationName,
             sendingFacility = selectedTerminalName,
-            receivingApplication = "PMS",
+            receivingApplication = "client",
             receivingFacility = pmsHostName,
-            versionId = hl7Version
+            versionId = hl7Version,
+            messageFormat = hl7Format
         )
     }
 }
@@ -172,7 +176,7 @@ object HL7MessageBuilder {
                 msh.versionId = config.versionId
             }
 
-            when (config.sendingApplication) {
+            when (config.messageFormat.sendingApplication) {
                 // Field mapping verified against Vivid's response-parse spec (ZUI-1 drugId,
                 // ZUI-2 VerifiedBy truncated to 10 chars, ZUI-4 RxNo-RefillNo composite,
                 // ZUI-6 qtyDispensed, ZUI-7 fill status, ZUI-9/10/11 lot/serial/expiry).
@@ -201,19 +205,27 @@ object HL7MessageBuilder {
 //                        z.prescriptionNumber = orderId
 //                        z.resultStatus = "F"
 //                    }
-                    // EyeCon ZUI (per EyeCon HL7 spec): only fields 6/11/18/19/21 are populated —
-                    // ZUI-6 VerifiedBy (name truncated to 10 chars), ZUI-11 RxNo-RefillNo composite,
-                    // ZUI-18 dispensed qty, ZUI-19 fill status, ZUI-21 NDC (hyphens stripped).
-                    val verifiedBy = pharmacistName?.split("^")?.firstOrNull().orEmpty()
+                    // EyeCon ZUI — 25-field raw layout; fields 6/18/19/21 are what PMS's
+                    // C# parser reads, rest are context fields per EyeCon spec. ZUI-11
+                    // (transactionOrderId) is the RxNo-RefillNo composite, same as vividOrderId.
+                    val eyeConNdc = drugCode.replace("-", "")
+                    val eyeConUserFirstName = pharmacistName?.split("^")?.firstOrNull().orEmpty()
+                    val verifiedBy = eyeConUserFirstName
                         .let { if (it.length > 10) it.substring(0, 10) else it }
-                    val eyeConOrderId = txn.refillNo?.takeIf { it.isNotBlank() }
-                        ?.let { "$orderId-$it" } ?: orderId
                     zuiEyeCon { z ->
+                        z.ndc = eyeConNdc
+                        z.drugName = drugName
+                        z.userName = eyeConUserFirstName
+                        z.prescriptionNumber = orderId
+                        z.fillNumber = "1"
                         z.verifiedBy = verifiedBy
-                        z.orderId = eyeConOrderId
+                        z.stockBottleVerification = if (isNdcVerified) "A" else "N"
+                        z.packetVersion = "1"
+                        z.techName = eyeConUserFirstName
+                        z.transactionOrderId = vividOrderId
                         z.dispensedQuantity = totalCount.toString()
-                        z.fillStatus = "F"
-                        z.ndc = drugCode.replace("-", "")
+                        z.fillStatus = "complete"
+                        z.stockBottleBarcodeNdc = eyeConNdc
                     }
                 }
             }

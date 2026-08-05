@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.hl7.imageWebService.ImageWebServer
 import com.rite.pillcounting.core.hl7.imageWebService.NetworkUtils
 import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.utils.common.NetworkUtils.rememberIsNetworkAvailable
@@ -48,6 +49,8 @@ fun ConnectionInfoScreen(
     val pmsConnection by viewModel.pmsConnection.collectAsState()
     val pmsIpAddress = pmsConnection.first
     val pmsPort = pmsConnection.second
+
+    val imageServerPort = ImageWebServer.PORT.toString()
 
     // Live network state: reflects Wi-Fi connect/disconnect immediately, no manual refresh.
     val isNetworkAvailable = rememberIsNetworkAvailable()
@@ -107,6 +110,11 @@ fun ConnectionInfoScreen(
             ConnectionInfoRow(
                 label = stringResource(R.string.listener_port),
                 value = listenerPort
+            )
+
+            ConnectionInfoRow(
+                label = stringResource(R.string.image_server_port),
+                value = imageServerPort
             )
 
             HorizontalDivider(

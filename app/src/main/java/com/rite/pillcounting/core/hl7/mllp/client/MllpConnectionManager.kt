@@ -36,6 +36,13 @@ class MllpConnectionManager(
         private const val RETRY_DELAY_MS = 3_000L
         private const val MAX_RETRY_DELAY_MS = 30_000L  // cap backoff at 30s
         private const val RECONNECT_CHECK_MS = 15_000L
+
+        // How long a connection must hold before it's treated as "really" connected —
+        // i.e. before onConnected (resend pending + notify) fires. A flapping server
+        // (accept → drop within seconds) never reaches this, so it never spams resend/notify;
+        // only a connection that actually stabilizes does. Raw state/isConnected() still
+        // flips instantly — this only gates the onConnected callback.
+        private const val CONNECT_SETTLE_MS = 10_000L
     }
 
     private val mutex = Mutex()
@@ -52,6 +59,7 @@ class MllpConnectionManager(
 
     private var readerJob: Job? = null       // passive reader — detects disconnect
     private var reconnectJob: Job? = null
+    private var settleJob: Job? = null       // pending onConnected fire, cancelled if disconnect precedes settle
 
     @Volatile
     private var state: ConnectionState = ConnectionState.Disconnected
@@ -143,9 +151,18 @@ class MllpConnectionManager(
         when (newState) {
             ConnectionState.Connected -> {
                 disconnectedNotified = false
-                onConnected?.invoke()
+                // Don't fire onConnected immediately — a flapping server (accept then drop
+                // within seconds) would otherwise re-trigger resend-pending + notification
+                // on every micro-reconnect. Only fire once the connection has held for
+                // CONNECT_SETTLE_MS; a disconnect before then cancels this and nothing fires.
+                settleJob?.cancel()
+                settleJob = scope.launch {
+                    delay(CONNECT_SETTLE_MS)
+                    onConnected?.invoke()
+                }
             }
             ConnectionState.Disconnected -> {
+                settleJob?.cancel()
                 if (!disconnectedNotified) {
                     disconnectedNotified = true
                     onDisconnected?.invoke()

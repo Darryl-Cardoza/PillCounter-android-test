@@ -356,22 +356,44 @@ class ZUIDispenseBuilder : HL7SegmentBuilder("ZUI") {
 }
 
 /**
- * ZUI EyeCon dispense-result builder (EyeCon → PMS RDS response). EyeCon's wire
- * layout only populates fields 6/11/18/19/21 — all other positions are left
- * blank placeholders per the EyeCon spec, so only those fields are exposed here.
+ * ZUI EyeCon dispense-result builder (EyeCon → PMS RDS response), 25-field
+ * raw layout per EyeCon spec. Fields 6/18/19/21 are the ones EyeCon's PMS-side
+ * parser actually reads (verified against its C# parsing code) — those indices
+ * must not move. All other positions are context fields or blank placeholders
+ * per the EyeCon spec.
  */
 class ZUIEyeConBuilder : HL7SegmentBuilder("ZUI") {
-    var verifiedBy: String? = null          // ZUI-6
-    var orderId: String? = null             // ZUI-11 (RxNo-RefillNo composite)
-    var dispensedQuantity: String? = null   // ZUI-18
-    var fillStatus: String? = null          // ZUI-19
-    var ndc: String? = null                 // ZUI-21
+    var ndc: String? = null                    // ZUI-1
+    var drugName: String? = null                // ZUI-2
+    var userName: String? = null                // ZUI-3 (patient/user first name)
+    var prescriptionNumber: String? = null       // ZUI-4
+    var fillNumber: String? = null               // ZUI-5
+    var verifiedBy: String? = null               // ZUI-6 (parsed by PMS)
+    var stockBottleVerification: String? = null  // ZUI-7
+    var packetVersion: String? = null            // ZUI-9
+    var techName: String? = null                 // ZUI-10
+    var transactionOrderId: String? = null        // ZUI-11
+    var dispensedQuantity: String? = null        // ZUI-18 (parsed by PMS)
+    var fillStatus: String? = null               // ZUI-19 (parsed by PMS)
+    var stockBottleBarcodeNdc: String? = null     // ZUI-21 (parsed by PMS)
     override fun apply() {
+        set(1, ndc)
+        set(2, drugName)
+        set(3, userName)
+        set(4, prescriptionNumber)
+        set(5, fillNumber)
         set(6, verifiedBy)
-        set(11, orderId)
+        set(7, stockBottleVerification)
+        set(9, packetVersion)
+        set(10, techName)
+        set(11, transactionOrderId)
         set(18, dispensedQuantity)
         set(19, fillStatus)
-        set(21, ndc)
+        set(21, stockBottleBarcodeNdc)
+        // EyeCon spec segment is a fixed 25-field layout; this blank placeholder
+        // pins the trailing field count so the segment always emits all 25 tokens
+        // even though field 25 itself carries no value.
+        set(25, "")
     }
 }
 

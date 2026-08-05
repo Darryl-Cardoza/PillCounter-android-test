@@ -86,7 +86,7 @@ class Hl7EventHandler @Inject constructor(
      */
     override fun onAckReceived(ackRaw: String, messageId: String) {
         val isSuccess = isSuccessAck(ackRaw)
-        logger.i("HL7 ACK received | msgId=$messageId | success=$isSuccess")
+        logger.i("HL7 ACK received | msgId=$messageId | success=$isSuccess | raw=${ackRaw.replace("\r", "\\r")}")
         // Dispense sends are marked synced inline by Hl7Repository.buildAndSendSuccessfulDispense
         // right after its own send() call returns, using the exact txnId that was sent — not
         // from this generic callback, which has no reliable txnId correlation and previously

@@ -30,7 +30,9 @@ import com.rite.pillcounting.feature.hl7.core.Hl7MessageSender
 import com.rite.pillcounting.feature.hl7.domain.model.MessageType
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
 import com.rite.pillcounting.feature.hl7.util.HL7Config
+import com.rite.pillcounting.feature.hl7.util.Hl7Format
 import com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder
+import com.rite.pillcounting.feature.hl7.util.isRejectAck
 import com.rite.pillcounting.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -77,6 +79,13 @@ class Hl7Repository @Inject constructor(
     // onClientConnected trigger can never run concurrently and double-send the
     // same pending txn's HL7 message before either ACK returns.
     private val resendMutex = Mutex()
+
+    // txnIds explicitly rejected (MSA|AR) by PMS this session. PMS closes its TCP
+    // connection after every transaction regardless of outcome, which triggers our
+    // auto-reconnect, which re-triggers a resend pass — an AR'd txn would otherwise get
+    // resent unchanged on every one of those reconnects, forever. In-memory only
+    // (no DB): cleared on app restart, not persisted.
+    private val rejectedTxnIds = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
 
     companion object {
         /**
@@ -151,12 +160,25 @@ class Hl7Repository @Inject constructor(
      * preferences, so RDS/INR messages are versioned per the value fetched from
      * auth/me (settings.hl7Version) rather than the hardcoded default.
      */
-    private fun currentHl7Config(): HL7Config = HL7Config.current(
-        selectedTerminalName = preferenceHelper.getSelectedTerminalName() ?: "PILLCOUNTER",
-        pmsHostName = preferenceHelper.getHl7PmsHost().ifBlank { "PMS" },
-        hl7Version = preferenceHelper.getHl7Version(),
-        hl7Format = preferenceHelper.getHl7Format()
-    )
+    private fun currentHl7Config(): HL7Config {
+        val hl7Format = preferenceHelper.getHl7Format()
+        // Eyecon's PMS-side routing keys off MSH-3 == "EYECON" (its own format
+        // name) rather than this app's display name — DispenseSure/Vivid keep
+        // using the app's display name (context.getString(R.string.app_name)),
+        // unchanged, since PMS already matches on that for those formats.
+        val sendingApplicationName = if (hl7Format == Hl7Format.EYECON) {
+            hl7Format.sendingApplication
+        } else {
+            context.getString(R.string.app_name)
+        }
+        return HL7Config.current(
+            selectedTerminalName = preferenceHelper.getSelectedTerminalName() ?: "PILLCOUNTER",
+            pmsHostName = preferenceHelper.getHl7PmsHost().ifBlank { "PMS" },
+            hl7Version = preferenceHelper.getHl7Version(),
+            hl7Format = hl7Format,
+            sendingApplicationName = sendingApplicationName
+        )
+    }
 
     @SuppressLint("SimpleDateFormat")
     suspend fun buildAndSendSuccessfulDispense(
@@ -199,6 +221,14 @@ class Hl7Repository @Inject constructor(
         val ack = result.getOrNull()
         if (result.isSuccess && ack != null && isSuccessAck(ack)) {
             markTransactionSynced(txnId)
+        } else if (result.isSuccess && ack != null && isRejectAck(ack)) {
+            // Explicit reject (MSA|AR) — PMS rejected this exact message, not a transport
+            // failure. PMS closes its TCP connection right after, which triggers our
+            // auto-reconnect; without this, the next auto-reconnect's resend pass would
+            // resend this same message and get rejected again, forever. Skip it from
+            // automatic resend until the app restarts.
+            rejectedTxnIds.add(txnId)
+            logger.w("Dispense HL7 send for txnId=$txnId rejected (AR) — excluding from automatic resend: $ack")
         } else {
             logger.w(
                 "Dispense HL7 send for txnId=$txnId failed or NAKed: " +
@@ -296,6 +326,7 @@ class Hl7Repository @Inject constructor(
             }
             resendMutex.withLock {
                 val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
+                    .filterNot { it.txnId in rejectedTxnIds }
                 if (pendingTxn.isEmpty()) {
                     logger.i("No pending HL7 transactions to sync")
                     return@withLock

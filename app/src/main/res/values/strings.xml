@@ -73,9 +73,10 @@
     <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
     <string name="setting_pms_connection">PMS Connection</string>
     <string name="connection_info_title" translatable="false">CONNECTION INFO</string>
-    <string name="this_device_dispenser_server">THIS DEVICE (DISPENSER SERVER)</string>
+    <string name="this_device_dispenser_server">THIS DEVICE (DISPENSESURE)</string>
     <string name="ip_address">IP Address</string>
     <string name="listener_port">Listener Port</string>
+    <string name="image_server_port">Image Server Port</string>
     <string name="pms_server">PMS SERVER</string>
     <string name="pms_ip_address">PMS IP Address</string>
     <string name="pms_port">PMS Port</string>
