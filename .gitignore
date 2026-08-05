@@ -66,4 +66,10 @@ DrugCatalogSeeder.kt
 graphify-out/
 
 # Claude-authored notes/docs, not part of the shipped project docs
-docs/claude/
+docs
+
+# Face recognition model file
+standalone_face_tf.py
+
+# Android logs file for reference for ai 
+logs.txt

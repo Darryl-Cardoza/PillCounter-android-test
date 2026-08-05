@@ -2,9 +2,11 @@ package com.rite.pillcounting
 
 import android.Manifest
 import android.content.Intent
+import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.view.MotionEvent
 import android.view.WindowManager
 import com.rite.pillcounting.core.utils.permission.isPermanentlyDenied
 import com.rite.pillcounting.core.utils.permission.markPermissionRequested
@@ -14,6 +16,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.LaunchedEffect
@@ -25,10 +28,12 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.security.RuntimeUnit
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import com.rite.pillcounting.feature.faceAuth.presentation.SessionLockOverlayScreen
 import com.rite.pillcounting.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.rite.pillcounting.core.utils.common.HelperFunctions.getStartDestination
@@ -40,6 +45,7 @@ import com.rite.pillcounting.core.utils.compose.MaintenanceScreen
 import com.rite.pillcounting.core.utils.compose.UpdateScreen
 import com.rite.pillcounting.core.utils.notification.FCMService
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
 import com.rite.pillcounting.navigation.AppNavGraph
 import com.rite.pillcounting.ui.theme.ExtendedColors
 import com.rite.pillcounting.ui.theme.PillCountingNewModelsTheme
@@ -67,6 +73,9 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var preferenceHelper: PreferenceHelper
+
+    @Inject
+    lateinit var sessionLockController: SessionLockController
 
     private lateinit var navController: NavController
 
@@ -109,6 +118,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Phones stay portrait-only; tablets (smallestScreenWidthDp >= 600, same
+        // breakpoint the theme uses for tabletDimens) are free to rotate.
+        requestedOrientation = if (resources.configuration.smallestScreenWidthDp >= 600) {
+            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+        } else {
+            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+        }
 
         // ── Block tap-jacking via overlays ────────────────────────────────
         // NOTE: FLAG_SECURE (which blocked screenshots/screen-recording and
@@ -207,18 +224,41 @@ class MainActivity : ComponentActivity() {
                                     onUpdateClick = { openPlayStore(this) }
                                 )
 
-                                else -> AppNavGraph(
-                                    navController    = navController as NavHostController,
-                                    startDestination = startDestination,
-                                    onLogin          = {
-                                        settingsViewModel.onUserLoginOrLogOut()
-                                        if (!permissionChainInProgress) {
-                                            permissionChainInProgress = true
-                                            requestNotificationPermission()
-                                        }
-                                    },
-                                    onLogOut         = { settingsViewModel.onUserLoginOrLogOut() }
-                                )
+                                else -> Box {
+                                    AppNavGraph(
+                                        navController    = navController as NavHostController,
+                                        startDestination = startDestination,
+                                        onLogin          = {
+                                            settingsViewModel.onUserLoginOrLogOut()
+                                            if (!permissionChainInProgress) {
+                                                permissionChainInProgress = true
+                                                requestNotificationPermission()
+                                            }
+                                        },
+                                        onLogOut         = { settingsViewModel.onUserLoginOrLogOut() }
+                                    )
+
+                                    val isLocked by sessionLockController.isLocked.collectAsStateWithLifecycle()
+                                    val timeoutMinutes by settingsViewModel.faceLockTimeoutMinutes.collectAsStateWithLifecycle()
+                                    if (isLocked) {
+                                        SessionLockOverlayScreen(
+                                            timeoutMinutes = timeoutMinutes,
+                                            onUnlocked = { sessionLockController.unlock() },
+                                            onLogout = {
+                                                // Local-only logout (no refresh-token network call), same
+                                                // fallback path MenuScreen uses when no token is available —
+                                                // this overlay sits above the nav graph, not inside a
+                                                // LoginViewModel-scoped screen.
+                                                preferenceHelper.clearTokens()
+                                                preferenceHelper.setUserLoggedIn(false)
+                                                sessionLockController.unlock()
+                                                navController.navigate(AUTH_GRAPH_ROUTE) {
+                                                    popUpTo(0) { inclusive = true }
+                                                }
+                                            }
+                                        )
+                                    }
+                                }
                             }
                         }
 
@@ -242,6 +282,14 @@ class MainActivity : ComponentActivity() {
             permissionChainInProgress = true
             requestNotificationPermission()
         }
+    }
+
+    // Resets the idle-lock clock on every touch, app-wide — this is the only
+    // hook that can see activity across every screen without threading a
+    // callback through each one individually (see SessionLockController).
+    override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
+        sessionLockController.onUserActivity()
+        return super.dispatchTouchEvent(ev)
     }
 
     override fun onResume() {

@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.settings.viewmodel
 
+import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
@@ -49,6 +50,7 @@ class MainActivityViewModelTest {
     private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val hl7ServiceManager: Hl7ServiceManager = mockk(relaxed = true)
     private val hl7EventHandler: Hl7EventHandler = mockk(relaxed = true)
+    private val sessionLockController: SessionLockController = mockk(relaxed = true)
 
     private lateinit var viewModel: MainActivityViewModel
 
@@ -76,6 +78,7 @@ class MainActivityViewModelTest {
             bottleInfoDao = bottleInfoDao,
             hl7ServiceManager = hl7ServiceManager,
             hl7EventHandler = hl7EventHandler,
+            sessionLockController = sessionLockController,
         )
     }
 

@@ -7,6 +7,8 @@ import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
+import com.rite.pillcounting.core.room.dao.FaceEmbeddingDao
+import com.rite.pillcounting.core.room.dao.FaceProfileDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
@@ -85,4 +87,12 @@ object DatabaseModule {
     @Provides
     fun provideBottleInfoDao(db: AppDatabase): BottleInfoDao =
         db.bottleInfoDao()
+
+    /** Provides the [FaceProfileDao]. */
+    @Provides
+    fun provideFaceProfileDao(db: AppDatabase): FaceProfileDao = db.faceProfileDao()
+
+    /** Provides the [FaceEmbeddingDao]. */
+    @Provides
+    fun provideFaceEmbeddingDao(db: AppDatabase): FaceEmbeddingDao = db.faceEmbeddingDao()
 }

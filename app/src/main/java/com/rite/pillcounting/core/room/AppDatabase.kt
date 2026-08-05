@@ -6,6 +6,8 @@ import androidx.room.TypeConverters
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
+import com.rite.pillcounting.core.room.dao.FaceEmbeddingDao
+import com.rite.pillcounting.core.room.dao.FaceProfileDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
@@ -14,6 +16,8 @@ import com.rite.pillcounting.core.room.di.BatchConverters
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
+import com.rite.pillcounting.core.room.models.FaceEmbeddingEntity
+import com.rite.pillcounting.core.room.models.FaceProfileEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
@@ -50,9 +54,11 @@ import com.rite.pillcounting.core.security.SecureStringConverter
         PillCountTxnDetailsEntity::class,
         BatchEntity::class,
         StockTxnEntity::class,
-        BottleInfoEntity::class
+        BottleInfoEntity::class,
+        FaceProfileEntity::class,
+        FaceEmbeddingEntity::class
     ],
-    version = 1,
+    version = 2,
     exportSchema = true
 )
 @TypeConverters(
@@ -82,5 +88,9 @@ abstract class AppDatabase : RoomDatabase() {
     /** DAO for managing [BottleInfoEntity] stock bottle lines. */
     abstract fun bottleInfoDao(): BottleInfoDao
 
+    /** DAO for managing [FaceProfileEntity] records. */
+    abstract fun faceProfileDao(): FaceProfileDao
 
+    /** DAO for managing [FaceEmbeddingEntity] records. */
+    abstract fun faceEmbeddingDao(): FaceEmbeddingDao
 }

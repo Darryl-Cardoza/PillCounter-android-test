@@ -49,6 +49,7 @@ private const val KEY_REQUIRE_DOUBLE_COUNT = "key_require_double_count"
 private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
 private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED = "key_control_drug_types_initialized"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
+private const val KEY_FACE_LOCK_TIMEOUT_MINUTES = "key_face_lock_timeout_minutes"
 private const val KEY_BARCODE_REGEX="key_barcode_regex"
 private const val KEY_BUCKET_LIST="key_bucket_list"
 private const val KEY_TERMINALS="key_terminals"
@@ -267,6 +268,19 @@ class PreferenceHelper @Inject constructor(
         val days = prefs.getInt(KEY_HISTORY_RETENTION, 7)
         logger.d("Retrieved history retention: $days days")
         return days
+    }
+
+    // ─────────────────────────── FACE LOCK TIMEOUT ───────────────────────────
+
+    fun saveFaceLockTimeoutMinutes(minutes: Int) {
+        prefs.putInt(KEY_FACE_LOCK_TIMEOUT_MINUTES, minutes)
+        logger.i("Saved face lock timeout: $minutes minutes")
+    }
+
+    fun getFaceLockTimeoutMinutes(): Int {
+        val minutes = prefs.getInt(KEY_FACE_LOCK_TIMEOUT_MINUTES, 2)
+        logger.d("Retrieved face lock timeout: $minutes minutes")
+        return minutes
     }
 
     // ─────────────────────────── HL7 MESSAGE TRACKING ───────────────────────────
