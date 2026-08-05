@@ -5,6 +5,8 @@ import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.CountStatus
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -28,20 +30,33 @@ class HL7MessageBuilderTest {
         rxNo: String? = null,
         barcodeImage: String? = null,
         note: String? = "some note",
+        bottleTxnDetailsIds: List<Long> = emptyList(),
     ): PillCountTxnEntity = PillCountTxnEntity(
         txnId = txnId,
         isDispense = false,
         status = CountStatus.COMPLETED,
         note = note,
-        barcodeImage = barcodeImage,
+        bottleInfoListJson = barcodeImage?.let {
+            BottleInfoJson.encode(
+                listOf(
+                    BottleInfo(
+                        txnId = txnId,
+                        barcodeImagePath = it,
+                        txnDetailsIds = bottleTxnDetailsIds,
+                    )
+                )
+            )
+        },
         rxNo = rxNo,
     )
 
     private fun detail(
+        txnDetailsId: Long = 0L,
         pillCount: Int? = null,
         type: String? = null,
         imagePath: String? = null,
     ): PillCountTxnDetailsEntity = PillCountTxnDetailsEntity(
+        txnDetailsId = txnDetailsId,
         pillCount = pillCount,
         type = type,
         imagePath = imagePath,
@@ -51,15 +66,16 @@ class HL7MessageBuilderTest {
 
     @Test
     fun `buildDispenseMessage with rxNo null uses txnId and adds barcode obx`() {
+        val details = listOf(
+            detail(txnDetailsId = 1L, pillCount = 10, type = "fixed", imagePath = "/a/b/img1.png"),
+            // null pillCount/type/imagePath -> defaults 0/UNKNOWN/""
+            detail(txnDetailsId = 2L, pillCount = null, type = null, imagePath = null),
+        )
         val txn = txn(
             txnId = 555L,
             rxNo = null,
             barcodeImage = "/storage/images/barcode_555.png",
-        )
-        val details = listOf(
-            detail(pillCount = 10, type = "fixed", imagePath = "/a/b/img1.png"),
-            // null pillCount/type/imagePath -> defaults 0/UNKNOWN/""
-            detail(pillCount = null, type = null, imagePath = null),
+            bottleTxnDetailsIds = listOf(1L, 2L),
         )
 
         val raw = HL7MessageBuilder.buildDispenseMessage(

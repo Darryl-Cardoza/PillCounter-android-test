@@ -271,8 +271,8 @@ object HL7MessageBuilder {
                     }
                 }
 
-            val imageObxRows = buildImageOBX(
-                barcodeImage = txn.barcodeImage,
+            val imageObxRows =   buildImageOBX(
+                bottles = bottles,
                 details = txnDetails
             )
             val controlledHazardousObxRows = buildControlledHazardousOBX(
@@ -579,7 +579,7 @@ object HL7MessageBuilder {
     }
 
     private fun buildImageOBX(
-        barcodeImage: String?,
+        bottles: List<BottleInfo>,
         details: List<PillCountTxnDetailsEntity>
     ): List<ObxRow> {
 
@@ -598,13 +598,21 @@ object HL7MessageBuilder {
             )
         }
 
-        val barcodeRow = if (!barcodeImage.isNullOrEmpty()) {
+        val barcodeRows = bottles.mapIndexedNotNull { index, bottle ->
+            val barcodeFileName = bottle.barcodeImagePath?.let { File(it).name }.orEmpty()
+            if (barcodeFileName.isEmpty()) return@mapIndexedNotNull null
+
             ObxRow(
                 setId = (detailRows.size + 1).toString(),
                 valueType = "RP",
                 observationId = "IMG${(detailRows.size + 1).toString().padStart(3, '0')}",
                 observationText = "Barcode Image",
                 observationValue = "images/${File(barcodeImage).name}",
+                setId = (detailRows.size + index + 1).toString(),
+                valueType = "ST",
+                observationId = observationId,
+                observationText = "Barcode Image ${index + 1}",
+                observationValue = "count=0|type=${"SCAN".toImageLabel()}|image=$barcodeFileName",
                 resultStatus = "F",
                 units = null
             )

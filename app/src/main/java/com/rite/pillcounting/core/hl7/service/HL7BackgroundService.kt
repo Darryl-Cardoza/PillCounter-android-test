@@ -278,6 +278,7 @@ class HL7Service : Service() {
             },
 
             onDisconnected = {
+                logger.w("${lastDiscoveredServiceName} DISCONNECTED")
                 listener?.onClientDisconnected()
                 updateNotification("Listening & responding to HL7")
             },
@@ -511,21 +512,24 @@ class HL7Service : Service() {
      */
     private  fun handleIncomingMessage(raw: String): String {
         return try {
-            logger.i("HL7 message received (${raw} chars)")
+            logger.i("HL7 message received (${raw.length} chars)")
+            logger.i("Plain HL7 received:\n$raw")
 
             val parseResult = hl7.parse(raw)
             val message = parseResult.messageOrNull
-            
+
             if (message == null) {
                 val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
                 logger.e("HL7 parse failed, no partial message: $errors")
                 return buildFallbackAck(raw, "Parse Failed")
             }
-            
+
             if (!parseResult.isSuccess) {
                 val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
                 logger.w("HL7 parse had errors but partial message available: $errors")
             }
+
+            logger.i("HL7 parsed OK: type=${message.messageType}, controlId=${message.messageControlId}")
 
             val key = message.messageControlId.ifBlank { System.currentTimeMillis().toString() }
             listener?.onMessageReceived(parsed = message, idempotencyKey = key)

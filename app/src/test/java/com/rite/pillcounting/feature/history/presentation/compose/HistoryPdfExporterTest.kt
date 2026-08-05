@@ -48,7 +48,7 @@ class HistoryPdfExporterTest {
         pillCount = pillCount,
         drugName = drugName,
         ndc = ndc,
-        barcodeImage = null,
+        bottleInfoListJson = null,
         createdAt = createdAt,
         targetCount = null,
         note = null,

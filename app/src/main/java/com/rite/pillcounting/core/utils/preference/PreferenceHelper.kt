@@ -7,6 +7,8 @@ import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.hl7.util.Hl7Format
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeOption
+import com.rite.pillcounting.feature.profile.domain.model.Country
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -34,10 +36,12 @@ private const val KEY_DO_NOT_ASK_AGAIN = "do_not_ask_again"
 private const val KEY_SHOW_NOTES_DIALOG = "key_show_notes_dialog"
 private const val KEY_RECENT_LOGINS = "recent_logins"
 private const val KEY_HISTORY_RETENTION = "history_retention"
+private const val KEY_SENT_TXN_ID = "last_txn_id"
 
 // HL7
 private const val KEY_NSD_BROADCAST_TYPE = "key_nsd_broadcast_type"
 private const val KEY_NSD_DISCOVERY_TYPE = "key_nsd_discovery_type"
+private const val KEY_STANDALONE_MODE = "key_standalone_mode"
 private const val KEY_HL7_ENABLED = "key_hl7_enabled"
 private const val KEY_SOUND = "key_pill_count_sound_enabled"
 private const val KEY_HAPTIC = "key_pill_count_haptic_enabled"
@@ -52,6 +56,7 @@ private const val KEY_TERMINALS="key_terminals"
 private const val KEY_SELECTED_TERMINAL_ID="key_selected_terminal_id"
 private const val KEY_SELECTED_TERMINAL_NAME="key_selected_terminal_name"
 private const val KEY_PHARMACY_TYPE="key_pharmacy_type"
+private const val KEY_PHARMACY_TYPES_LIST = "key_pharmacy_types_list"
 private const val KEY_HAZARDOUS_DRUG = "key_hazardous_drug"
 private const val KEY_HAZARDOUS_TRAY_COLOR = "key_hazardous_tray_color"
 private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
@@ -65,6 +70,9 @@ private const val KEY_HL7_FORMAT = "key_hl7_format"
 private const val KEY_USE_STATIC_PMS_CONNECTION = "key_use_static_pms_connection"
 private const val KEY_PMS_IP = "key_pms_ip"
 private const val KEY_PMS_PORT = "key_pms_port"
+
+// Reference Data
+private const val KEY_COUNTRIES = "key_countries"
 
 @Singleton
 class PreferenceHelper @Inject constructor(
@@ -101,6 +109,11 @@ class PreferenceHelper @Inject constructor(
     fun clearTokens() {
         prefs.remove(KEY_ACCESS_TOKEN)
         prefs.remove(KEY_REFRESH_TOKEN)
+        // Standalone mode is per-user (set from the auth/me response) and is only
+        // otherwise re-written on the next successful settings fetch. Without resetting
+        // it here, a user switch or re-login before that fetch lands would leave the
+        // next user running under the previous user's standalone flag.
+        setStandaloneMode(false)
         logger.w("Cleared authentication tokens from secure storage.")
     }
 
@@ -288,6 +301,17 @@ class PreferenceHelper @Inject constructor(
     fun isHl7Enabled(): Boolean {
         val enabled = prefs.getBoolean(KEY_HL7_ENABLED, true)
         logger.d("HL7 enabled: $enabled")
+        return enabled
+    }
+
+    fun setStandaloneMode(enabled: Boolean) {
+        prefs.putBoolean(KEY_STANDALONE_MODE, enabled)
+        logger.i("Standalone mode set to: $enabled")
+    }
+
+    fun isStandaloneMode(): Boolean {
+        val enabled = prefs.getBoolean(KEY_STANDALONE_MODE, false)
+        logger.d("Standalone mode: $enabled")
         return enabled
     }
 
@@ -483,6 +507,26 @@ class PreferenceHelper @Inject constructor(
         return value
     }
 
+    /**
+     * Saves the list of selectable pharmacy types fetched from `/users/pharmacy-types`,
+     * so the profile screen's dropdown can be populated without re-fetching every launch.
+     */
+    fun savePharmacyTypes(pharmacyTypes: List<PharmacyTypeOption>) {
+        val json = gson.toJson(pharmacyTypes)
+        prefs.putString(KEY_PHARMACY_TYPES_LIST, json)
+        logger.i("Saved pharmacy types list (size=${pharmacyTypes.size})")
+    }
+
+    /**
+     * Retrieves the cached list of selectable pharmacy types.
+     * @return List of [PharmacyTypeOption], or empty list if never fetched.
+     */
+    fun getPharmacyTypes(): List<PharmacyTypeOption> {
+        val json = prefs.getString(KEY_PHARMACY_TYPES_LIST) ?: return emptyList()
+        val array = gson.fromJson(json, Array<PharmacyTypeOption>::class.java)
+        return array?.toList() ?: emptyList()
+    }
+
     // ─────────────────────────── HAZARDOUS DRUG ───────────────────────────
 
     fun setHazardousDrugEnabled(enabled: Boolean) {
@@ -582,6 +626,33 @@ class PreferenceHelper @Inject constructor(
         return format
     }
 
+    // ─────────────────────────── COUNTRIES REFERENCE DATA ───────────────────────────
+
+    /**
+     * Saves the reference list of countries (with nested states) as JSON.
+     * @param countries List of Country objects to persist.
+     */
+    fun saveCountries(countries: List<Country>) {
+        val json = gson.toJson(countries)
+        prefs.putString(KEY_COUNTRIES, json)
+        logger.i("Saved countries list (size=${countries.size})")
+    }
+
+    /**
+     * Retrieves the cached reference list of countries.
+     * @return List of Country objects, or empty list if none cached yet.
+     */
+    fun getCountries(): List<Country> {
+        val json = prefs.getString(KEY_COUNTRIES, null)
+        return if (json != null) {
+            gson.fromJson(json, Array<Country>::class.java).toList()
+        } else {
+            logger.d("No countries found in preferences")
+            emptyList()
+        }
+    }
+
+
     // ─────────────────────────── PMS CONNECTION ───────────────────────────
 
     fun setUseStaticPmsConnection(enabled: Boolean) {
@@ -621,6 +692,8 @@ class PreferenceHelper @Inject constructor(
     fun unregisterOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.unregisterOnChangeListener(listener)
     }
+
+
 
     companion object {
         /** Default HL7 spec version used by parser and builder when not explicitly configured. */

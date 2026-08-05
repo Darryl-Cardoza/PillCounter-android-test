@@ -19,11 +19,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FrontHand
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.Icon
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -45,9 +41,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
@@ -56,7 +50,6 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
-import com.rite.pillcounting.core.scanning.logic.GloveDetector
 import com.rite.pillcounting.core.scanning.logic.TrayClass
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import kotlinx.coroutines.flow.conflate
@@ -76,7 +69,6 @@ fun CameraPreviewSection(
     onFrame: (ImageProxy) -> Unit,
     onFilteredCountChanged: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    showGloveIcon: Boolean = true,
     onPreviewStarted: (() -> Unit)? = null,
     onPreviewSizeKnown: ((width: Int, height: Int) -> Unit)? = null
 ) {
@@ -114,10 +106,6 @@ fun CameraPreviewSection(
     // does not need to pass them as a parameter — the wiring is self-contained.
     val trayDetections by viewModel.trayDetections.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
-    val gloveDetections = uiState.gloveDetections
-    // Sticky once the workflow has seen gloves at high confidence; reset only when
-    // the workflow resumes from idle (see PillScanningViewModel.resetGloveDetection).
-    val glovesDetectedSticky by viewModel.glovesDetected.collectAsState()
 
     // ── Start camera + begin collecting frames ────────────────────────────────
     LaunchedEffect(cameraHelper) {
@@ -184,22 +172,6 @@ fun CameraPreviewSection(
     // frame of detection updates, and allocating Paint/Rect inside the draw loop
     // is the kind of per-frame churn that wrecks frame budget on weak devices.
     // Paints are immutable per-class so we can share them across frames.
-    val textPaint = remember {
-        android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
-            textSize = 36f
-            isAntiAlias = true
-            typeface = android.graphics.Typeface.DEFAULT_BOLD
-        }
-    }
-    val glovesBgPaint = remember {
-        android.graphics.Paint().apply { color = android.graphics.Color.argb(200, 0, 180, 0) }
-    }
-    val noGlovesBgPaint = remember {
-        android.graphics.Paint().apply { color = android.graphics.Color.argb(200, 180, 0, 0) }
-    }
-    val labelBounds = remember { android.graphics.Rect() }
-
     // Resume live camera when the captured still is cleared, but NOT while the
     // confirm-completion dialog is open — processCapturedImage() nulls the bitmap
     // just before the dialog appears, which would restart the camera underneath it.
@@ -210,9 +182,6 @@ fun CameraPreviewSection(
             cameraHelper.resumeCamera(previewView)
         }
     }
-
-    val glovesDetectedDesc = stringResource(R.string.cd_gloves_detected)
-    val noGlovesDetectedDesc = stringResource(R.string.cd_no_gloves_detected)
 
     // =========================================================
     // MAIN LAYOUT
@@ -264,37 +233,6 @@ fun CameraPreviewSection(
                     key(popKey) { AddCountBubble(text = popText) }
                 }
 
-                // ── GLOVE STATUS HAND ICON ────────────────────────────────────
-                // Only shown for hazardous drugs (showGloveIcon = true). Green hand
-                // once gloves are confirmed; red until then.
-                if (showGloveIcon) {
-                    val handTint = if (glovesDetectedSticky) Color.Green else Color.Red
-                    val gloveConfig = LocalConfiguration.current
-                    val gloveIsLandscape = gloveConfig.orientation ==
-                            android.content.res.Configuration.ORIENTATION_LANDSCAPE
-                    val gloveEndPadding = if (gloveIsLandscape) {
-                        (gloveConfig.screenWidthDp * 0.3f).dp + 16.dp
-                    } else {
-                        16.dp
-                    }
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 100.dp, end = gloveEndPadding)
-                            .size(44.dp)
-                            .background(Color.Black.copy(alpha = 0.35f), CircleShape)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Filled.FrontHand,
-                            contentDescription = if (glovesDetectedSticky) glovesDetectedDesc else noGlovesDetectedDesc,
-                            tint = handTint,
-                            modifier = Modifier
-                                .align(Alignment.Center)
-                                .size(26.dp)
-                        )
-                    }
-                }
-
                 // ── OVERLAY CANVAS ────────────────────────────────────────────
                 Canvas(modifier = Modifier.matchParentSize()) {
 
@@ -330,7 +268,6 @@ fun CameraPreviewSection(
                     val cornerStrokePx = 4.dp.toPx()
                     val pillOuterRadiusPx = 7.dp.toPx()
                     val pillStrokePx = 2.dp.toPx()
-                    val gloveStrokePx = 3.dp.toPx()
 
                     // ─────────────────────────────────────────────────────────
                     // 1.  TRAY BOUNDING BOX (chute is detected for exclusion
@@ -481,72 +418,6 @@ fun CameraPreviewSection(
                         }
                     }
 
-                    // ─────────────────────────────────────────────────────────
-                    // 3.  GLOVE DETECTION BOXES
-                    //     gloveDetection.rect values are in original image pixel
-                    //     coordinates — same space as tray boxes above.
-                    //     green = gloves detected, red = no_gloves.
-                    // ─────────────────────────────────────────────────────────
-                    drawIntoCanvas { canvas ->
-                        gloveDetections.forEach { glove ->
-                            val sLeft = imgX(glove.rect.left)
-                            val sTop = imgY(glove.rect.top)
-                            val sRight = imgX(glove.rect.right)
-                            val sBottom = imgY(glove.rect.bottom)
-                            val sWidth = sRight - sLeft
-                            val sHeight = sBottom - sTop
-
-                            if (sRight <= 0f || sLeft >= previewW ||
-                                sBottom <= 0f || sTop >= previewH
-                            ) return@forEach
-
-                            val boxColor = when (glove.className) {
-                                GloveDetector.CLASS_GLOVES -> Color.Green
-                                GloveDetector.CLASS_NO_GLOVES -> Color.Red
-                                else -> Color.White
-                            }
-
-                            // Semi-transparent fill
-                            drawRect(
-                                color = boxColor.copy(alpha = 0.15f),
-                                topLeft = Offset(sLeft, sTop),
-                                size = Size(sWidth, sHeight)
-                            )
-                            // Solid border
-                            drawRect(
-                                color = boxColor,
-                                topLeft = Offset(sLeft, sTop),
-                                size = Size(sWidth, sHeight),
-                                style = Stroke(width = gloveStrokePx)
-                            )
-
-                            // Label: "gloves 87%"  /  "no_gloves 72%"
-                            // Paints + rect are hoisted via remember above so we
-                            // don't allocate them every frame per glove.
-                            val label = "${glove.className} ${(glove.confidence * 100).toInt()}%"
-                            val bgPaint = if (glove.className == GloveDetector.CLASS_GLOVES) {
-                                glovesBgPaint
-                            } else {
-                                noGlovesBgPaint
-                            }
-                            textPaint.getTextBounds(label, 0, label.length, labelBounds)
-                            val labelW = labelBounds.width() + 12f
-                            val labelH = labelBounds.height() + 8f
-                            val labelTop = (sTop - labelH).coerceAtLeast(0f)
-
-                            canvas.nativeCanvas.drawRect(
-                                sLeft, labelTop,
-                                sLeft + labelW, labelTop + labelH,
-                                bgPaint
-                            )
-                            canvas.nativeCanvas.drawText(
-                                label,
-                                sLeft + 6f,
-                                labelTop + labelH - 4f,
-                                textPaint
-                            )
-                        }
-                    }
                 }
 
                 // ── WORKFLOW STEPPER ──────────────────────────────────────────

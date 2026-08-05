@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import app.cash.turbine.test
 import com.google.gson.Gson
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.models.ValidationResult
@@ -19,11 +20,16 @@ import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateReques
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateResponse
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
+import com.rite.pillcounting.feature.profile.domain.model.Country
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeData
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeOption
+import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeResponse
+import com.rite.pillcounting.feature.profile.domain.model.State
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -71,6 +77,13 @@ class ProfileViewModelTest {
     private val otherTerminal =
         Terminal(terminalId = "t2", terminalName = "Back Desk", isActive = false)
 
+    private val usStates = listOf(State("CA", "California"), State("NY", "New York"))
+    private val caStates = listOf(State("ON", "Ontario"))
+    private val testCountries = listOf(
+        Country("US", "United States", usStates),
+        Country("CA", "Canada", caStates)
+    )
+
     private val updateResponse = ProfileUpdateResponse(200, "ok", true)
     private val deleteResponse = ProfileDeleteResponse(200, "ok", true)
     private val terminalResponse = TerminalUpdateResponse(message = "ok", success = true)
@@ -109,6 +122,16 @@ class ProfileViewModelTest {
         every { preferenceHelper.getSelectedTerminalId() } returns null
         every { preferenceHelper.getUserId() } returns "user-1"
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
+        every { preferenceHelper.getCountries() } returns testCountries
+        coEvery { repository.getCountries() } returns Result.success(testCountries)
+        every { preferenceHelper.getPharmacyType() } returns null
+        coEvery { repository.getPharmacyTypes() } returns Result.success(
+            PharmacyTypeResponse(
+                data = PharmacyTypeData(
+                    pharmacyTypes = listOf(PharmacyTypeOption("retail", "Retail"))
+                )
+            )
+        )
 
         // Validation success by default
         every { validator.validateRequiredName(any()) } returns ValidationResult(true, null)
@@ -140,7 +163,13 @@ class ProfileViewModelTest {
         return HttpException(Response.error<Any>(code, responseBody))
     }
 
-    private fun userEntity() = UserEntity(
+    /** Selects US/CA so [ProfileViewModel.validateInputs] country/state checks pass. */
+    private fun selectValidLocation(vm: ProfileViewModel) {
+        vm.onCountrySelected(testCountries.first { it.code == "US" })
+        vm.onStateSelected(vm.states.first { it.code == "CA" })
+    }
+
+    private fun userEntity(country: String? = null, state: String? = null) = UserEntity(
         localId = 1L,
         userId = "user-1",
         email = SecureString("john@x.com"),
@@ -149,6 +178,8 @@ class ProfileViewModelTest {
         phoneNumber = SecureString("1234567890"),
         pharmacyName = "Pharma",
         npiId = "123456",
+        country = country,
+        state = state,
     )
 
     // ────────────────────────────── init ──────────────────────────────
@@ -189,6 +220,62 @@ class ProfileViewModelTest {
         assertEquals("1234567890", vm.phoneNumber)
         assertEquals("john@x.com", vm.email)
         assertEquals("123456", vm.npi)
+    }
+
+    @Test
+    fun `init prefills selectedCountry from emitted user country`() = runTest(testDispatcher) {
+        every { userDao.observeByLocalId(1L) } returns flowOf(userEntity(country = "CA"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("CA", vm.selectedCountry?.code)
+    }
+
+    @Test
+    fun `init leaves selectedCountry null when user country is unknown`() = runTest(testDispatcher) {
+        every { userDao.observeByLocalId(1L) } returns flowOf(userEntity(country = "XX"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertNull(vm.selectedCountry)
+    }
+
+    @Test
+    fun `init resolves user country against fresh cache when local cache was empty`() = runTest(testDispatcher) {
+        every { preferenceHelper.getCountries() } returns emptyList()
+        every { userDao.observeByLocalId(1L) } returns flowOf(userEntity(country = "CA", state = "ON"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("CA", vm.selectedCountry?.code)
+        assertEquals("ON", vm.selectedState?.code)
+    }
+
+    @Test
+    fun `fetchCountries failure keeps the cached list and selection`() = runTest(testDispatcher) {
+        coEvery { repository.getCountries() } returns Result.failure(RuntimeException("network"))
+        every { userDao.observeByLocalId(1L) } returns flowOf(userEntity(country = "US"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(testCountries, vm.countries)
+        assertEquals("US", vm.selectedCountry?.code)
+    }
+
+    @Test
+    fun `fetchCountries empty response leaves current selection as is`() = runTest(testDispatcher) {
+        coEvery { repository.getCountries() } returns Result.success(emptyList())
+        every { userDao.observeByLocalId(1L) } returns flowOf(userEntity(country = "US"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(testCountries, vm.countries)
+        assertEquals("US", vm.selectedCountry?.code)
     }
 
     @Test
@@ -248,6 +335,77 @@ class ProfileViewModelTest {
     }
 
     @Test
+    fun `countries defaults to cached countries`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(testCountries, vm.countries)
+    }
+
+    @Test
+    fun `selectedCountry defaults to null`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertNull(vm.selectedCountry)
+    }
+
+    @Test
+    fun `onCountrySelected updates selectedCountry`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val canada = testCountries.first { it.code == "CA" }
+        vm.onCountrySelected(canada)
+
+        assertEquals("CA", vm.selectedCountry?.code)
+    }
+
+    @Test
+    fun `states defaults to empty when no country selected`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(emptyList<State>(), vm.states)
+        assertNull(vm.selectedState)
+    }
+
+    @Test
+    fun `onCountrySelected refreshes states for new country`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val canada = testCountries.first { it.code == "CA" }
+        vm.onCountrySelected(canada)
+
+        assertEquals(caStates, vm.states)
+        assertNull(vm.selectedState)
+    }
+
+    @Test
+    fun `onStateSelected updates selectedState`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onCountrySelected(testCountries.first { it.code == "US" })
+
+        val california = vm.states.first { it.code == "CA" }
+        vm.onStateSelected(california)
+
+        assertEquals("CA", vm.selectedState?.code)
+    }
+
+    @Test
+    fun `init prefills selectedState from emitted user state`() = runTest(testDispatcher) {
+        every { userDao.observeByLocalId(1L) } returns
+            flowOf(userEntity(country = "US", state = "NY"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("NY", vm.selectedState?.code)
+    }
+
+    @Test
     fun `onPhoneChanged filters digits and limits to 10`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
@@ -296,11 +454,39 @@ class ProfileViewModelTest {
     }
 
     @Test
+    fun `updateProfile aborts when no country selected`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        assertEquals(ProfileUpdateUiState.Idle, vm.updateUiState.value)
+        assertEquals(R.string.please_select_country, vm.countryError)
+        coVerify(exactly = 0) { repository.updateProfile(any()) }
+    }
+
+    @Test
+    fun `updateProfile aborts when country selected but state is not`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onCountrySelected(testCountries.first { it.code == "US" })
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        assertEquals(ProfileUpdateUiState.Idle, vm.updateUiState.value)
+        assertEquals(R.string.please_select_state, vm.stateError)
+        coVerify(exactly = 0) { repository.updateProfile(any()) }
+    }
+
+    @Test
     fun `updateProfile errors when no internet`() = runTest(testDispatcher) {
         every { NetworkUtils.isNetworkAvailable(any()) } returns false
 
         val vm = createViewModel()
         advanceUntilIdle()
+        selectValidLocation(vm)
 
         vm.updateProfile()
         advanceUntilIdle()
@@ -316,6 +502,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
+        selectValidLocation(vm)
 
         vm.updateUiState.test {
             assertEquals(ProfileUpdateUiState.Idle, awaitItem())
@@ -332,12 +519,49 @@ class ProfileViewModelTest {
     }
 
     @Test
+    fun `updateProfile sends selected country in request and persists it`() = runTest(testDispatcher) {
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val canada = vm.countries.first { it.code == "CA" }
+        vm.onCountrySelected(canada)
+        vm.onStateSelected(vm.states.first { it.code == "ON" })
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        coVerify { repository.updateProfile(match { it.country == "CA" }) }
+        coVerify { userDao.update(match<UserEntity> { it.country == "CA" }) }
+    }
+
+    @Test
+    fun `updateProfile sends selected state in request and persists it`() = runTest(testDispatcher) {
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onCountrySelected(testCountries.first { it.code == "US" })
+
+        val california = vm.states.first { it.code == "CA" }
+        vm.onStateSelected(california)
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        coVerify { repository.updateProfile(match { it.state == "CA" }) }
+        coVerify { userDao.update(match<UserEntity> { it.state == "CA" }) }
+    }
+
+    @Test
     fun `updateProfile success skips user update when localId zero`() = runTest(testDispatcher) {
         every { preferenceHelper.getLocalId() } returns 0L
         coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
 
         val vm = createViewModel()
         advanceUntilIdle()
+        selectValidLocation(vm)
 
         vm.updateProfile()
         advanceUntilIdle()
@@ -360,6 +584,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
+        selectValidLocation(vm)
         vm.onTerminalSelected(otherTerminal) // change to t2
 
         vm.updateProfile()
@@ -381,6 +606,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
+        selectValidLocation(vm)
         vm.onTerminalSelected(otherTerminal)
 
         vm.updateProfile()
@@ -401,6 +627,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
+        selectValidLocation(vm)
         vm.onTerminalSelected(otherTerminal)
 
         vm.updateProfile()
@@ -422,6 +649,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
+        selectValidLocation(vm)
         vm.onTerminalSelected(otherTerminal)
 
         vm.updateProfile()
@@ -437,6 +665,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
+        selectValidLocation(vm)
 
         vm.updateProfile()
         advanceUntilIdle()
@@ -653,6 +882,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
+        selectValidLocation(vm)
         vm.updateProfile()
         advanceUntilIdle()
         assertTrue(vm.updateUiState.value is ProfileUpdateUiState.Error)

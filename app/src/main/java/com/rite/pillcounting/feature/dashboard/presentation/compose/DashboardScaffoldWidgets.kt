@@ -34,10 +34,13 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.disabled
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,6 +49,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.MenuButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -251,6 +255,8 @@ internal fun ScaffoldKpiRow(
     modifier: Modifier = Modifier,
     cardWidth: Dp? = null,
     cardHeight: Dp? = null,
+    disabledFilters: Set<KpiFilter> = emptySet(),
+    onDisabledTap: (KpiFilter) -> Unit = {},
 ) {
     Row(
         modifier = modifier,
@@ -260,13 +266,16 @@ internal fun ScaffoldKpiRow(
             var cardModifier = Modifier.weight(1f)
             if (cardWidth != null) cardModifier = cardModifier.width(cardWidth)
             if (cardHeight != null) cardModifier = cardModifier.height(cardHeight)
+            val isDisabled = spec.filter in disabledFilters
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
                 lineOne = stringResource(spec.lineOneRes),
                 lineTwo = stringResource(spec.lineTwoRes),
                 iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
+                isDisabled = isDisabled,
                 onClick = { onTap(spec.filter) },
+                onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = cardModifier,
             )
         }
@@ -285,6 +294,8 @@ internal fun ScaffoldKpiColumn(
     modifier: Modifier = Modifier,
     cardWidth: Dp? = null,
     cardHeight: Dp? = null,
+    disabledFilters: Set<KpiFilter> = emptySet(),
+    onDisabledTap: (KpiFilter) -> Unit = {},
 ) {
     // Each card claims an equal vertical share. This bounds the height every card sees,
     // which is required because ScaffoldKpiCard's inner Box uses fillMaxSize() — without a
@@ -296,13 +307,16 @@ internal fun ScaffoldKpiColumn(
         DefaultKpiCards.forEach { spec ->
             var cardModifier: Modifier = if (cardWidth != null) Modifier.width(cardWidth) else Modifier.fillMaxWidth()
             cardModifier = if (cardHeight != null) cardModifier.height(cardHeight) else cardModifier.weight(1f)
+            val isDisabled = spec.filter in disabledFilters
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
                 lineOne = stringResource(spec.lineOneRes),
                 lineTwo = stringResource(spec.lineTwoRes),
                 iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
+                isDisabled = isDisabled,
                 onClick = { onTap(spec.filter) },
+                onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = cardModifier,
             )
         }
@@ -322,6 +336,8 @@ internal fun ScaffoldKpiScrollColumn(
     modifier: Modifier = Modifier,
     cardWidth: Dp? = null,
     cardHeight: Dp = 72.dp,
+    disabledFilters: Set<KpiFilter> = emptySet(),
+    onDisabledTap: (KpiFilter) -> Unit = {},
 ) {
     val scrollState = androidx.compose.foundation.rememberScrollState()
     Column(
@@ -331,13 +347,16 @@ internal fun ScaffoldKpiScrollColumn(
         DefaultKpiCards.forEach { spec ->
             var cardModifier: Modifier = if (cardWidth != null) Modifier.width(cardWidth) else Modifier.fillMaxWidth()
             cardModifier = cardModifier.height(cardHeight)
+            val isDisabled = spec.filter in disabledFilters
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
                 lineOne = stringResource(spec.lineOneRes),
                 lineTwo = stringResource(spec.lineTwoRes),
                 iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
+                isDisabled = isDisabled,
                 onClick = { onTap(spec.filter) },
+                onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = cardModifier,
                 singleLabelLine = true,
             )
@@ -358,6 +377,8 @@ internal fun ScaffoldKpiScrollRow(
     modifier: Modifier = Modifier,
     cardWidth: Dp = 108.dp,
     cardHeight: Dp = 96.dp,
+    disabledFilters: Set<KpiFilter> = emptySet(),
+    onDisabledTap: (KpiFilter) -> Unit = {},
 ) {
     val scrollState = androidx.compose.foundation.rememberScrollState()
     Row(
@@ -365,13 +386,16 @@ internal fun ScaffoldKpiScrollRow(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DefaultKpiCards.forEach { spec ->
+            val isDisabled = spec.filter in disabledFilters
             ScaffoldKpiCard(
                 count = counts[spec.filter] ?: 0,
                 lineOne = stringResource(spec.lineOneRes),
                 lineTwo = stringResource(spec.lineTwoRes),
                 iconRes = spec.iconRes,
                 isActive = activeFilter == spec.filter,
+                isDisabled = isDisabled,
                 onClick = { onTap(spec.filter) },
+                onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = Modifier
                     .width(cardWidth)
                     .height(cardHeight),
@@ -390,7 +414,9 @@ internal fun ScaffoldKpiCard(
     isActive: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    singleLabelLine: Boolean = false
+    singleLabelLine: Boolean = false,
+    isDisabled: Boolean = false,
+    onDisabledClick: () -> Unit = {},
 ) {
     // Selection is shown by a primary border plus an all-around primary-tinted
     // shadow, both strictly keyed on isActive so deselecting fully reverts.
@@ -410,7 +436,8 @@ internal fun ScaffoldKpiCard(
                     Modifier
                 },
             )
-            .clickable { onClick() },
+            .semantics { if (isDisabled) disabled() }
+            .clickable { if (isDisabled) onDisabledClick() else onClick() },
         shape = shape,
         colors = CardDefaults.cardColors(containerColor = extendedColors.secondaryBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
@@ -419,7 +446,8 @@ internal fun ScaffoldKpiCard(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(12.dp),
+                .padding(12.dp)
+                .then(if (isDisabled) Modifier.alpha(0.5f) else Modifier),
         ) {
             Icon(
                 painter = painterResource(id = iconRes),
@@ -569,7 +597,7 @@ internal fun ScaffoldQueueList(
             when (item) {
                 is QueueItem.Dispense -> DrugCountRow(
                     data = DrugCountRowData(
-                        barcodeImage = item.txn.barcodeImage,
+                        barcodeImage = BottleInfoJson.decode(item.txn.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
                         ndc = item.txn.ndc,
                         drugType = item.txn.drugType,
                         drugName = item.txn.drugName ?: "—",

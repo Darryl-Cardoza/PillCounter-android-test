@@ -9,10 +9,11 @@ import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
-import com.rite.pillcounting.core.models.ScheduleCode
+import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -106,6 +107,23 @@ class DashboardViewModel @Inject constructor(
     }
 
     /**
+     * Recomputes which KPI cards are unavailable given the current standalone-mode flag.
+     * Called after [fetchUserDetail] persists the (possibly changed) flag from the server, so
+     * the dashboard reflects a standalone-mode change without needing a full app restart.
+     * Deliberately NOT called at init time: the flag hasn't been refreshed for this session
+     * yet at that point, and [clearTokens] already resets it to false on logout, so the
+     * default `emptySet()` in [DashboardUiState] is the correct value until the fetch lands.
+     */
+    private fun refreshDisabledKpiFilters() {
+        val disabled = if (preferenceHelper.isStandaloneMode()) {
+            setOf(KpiFilter.DISP_HIGH_PRIORITY, KpiFilter.INV_CYCLE_COUNT)
+        } else {
+            emptySet()
+        }
+        _uiState.update { it.copy(disabledKpiFilters = disabled) }
+    }
+
+    /**
      * Room is the single source of truth for the top bar: map each cached [UserEntity]
      * (terminals come from prefs, not Room) into `uiState.userDetail`. [fetchUserDetail]
      * only writes to Room; its upsert re-emits here. No-ops until `localId` exists.
@@ -146,6 +164,10 @@ class DashboardViewModel @Inject constructor(
 
     fun isHl7Enabled(): Boolean {
         return preferenceHelper.isHl7Enabled()
+    }
+
+    fun isStandaloneMode(): Boolean {
+        return preferenceHelper.isStandaloneMode()
     }
 
     fun getBucketList(): List<String> = preferenceHelper.getBucketList()
@@ -276,7 +298,7 @@ class DashboardViewModel @Inject constructor(
                             bucketId = t.bucketId,
                             createdAt = t.createdAt,
                             targetCount = t.targetCount,
-                            barcodeImage = t.barcodeImage,
+                            bottleInfoListJson = t.bottleInfoListJson,
                             totalPillCount = t.pillCount ?: 0,
                             isComingFromHL7 = false,
                             isNdcVerified = false,
@@ -372,6 +394,11 @@ class DashboardViewModel @Inject constructor(
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.settings?.bucket ?: emptyList())
                             preferenceHelper.setHl7Enabled(entity.isHl7Enable)
+                            // Persist is_standalone so the RX-scan flow knows whether it may
+                            // create dispense transactions locally (without waiting on PMS/HL7)
+                            // and so the dashboard can disable the PMS-dependent KPI cards.
+                            preferenceHelper.setStandaloneMode(detail.settings?.isStandalone ?: false)
+                            refreshDisabledKpiFilters()
                             // Persist the HL7 spec version from the server so the HL7 parser and
                             // builder resolve the correct trigger events (e.g. RDS^O13 vs RDS^O01).
                             // Falls back to the current/default version when the server omits it.
@@ -399,6 +426,10 @@ class DashboardViewModel @Inject constructor(
                             // true). Runs on each auth/me response, so a true → false change takes
                             // effect on the next dashboard launch / refresh.
                             cleanupSyncedTransactionsIfNotAllowed()
+
+                            // Persist the currently-selected pharmacy type code so the
+                            // profile screen's dropdown prefills from the server value.
+                            detail.profile?.pharmacyType?.let { preferenceHelper.savePharmacyType(it) }
 
                             // Save terminals to SharedPreferences
                             detail.settings?.terminals?.let { terminals ->
@@ -504,7 +535,7 @@ class DashboardViewModel @Inject constructor(
 
             syncedTransactions.forEach { txn ->
                 val filesToDelete = mutableListOf<String>()
-                txn.barcodeImage?.let { filesToDelete.add(it) }
+                BottleInfoJson.decode(txn.bottleInfoListJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
                 filesToDelete.addAll(pillCountTxnDao.getTransactionDetailsImages(txn.txnId))
 
                 // Delete transaction (cascade deletes details)
@@ -558,12 +589,6 @@ class DashboardViewModel @Inject constructor(
 
 }
 
-/** True when `drug_master.drugType` matches a DEA controlled-substance schedule ([ScheduleCode]). */
-private fun isControlledDrugType(drugType: String?): Boolean {
-    val code = drugType?.trim()?.uppercase() ?: return false
-    return ScheduleCode.entries.any { it.name == code }
-}
-
 /* ───────────────────────────── Mappers ───────────────────────────── */
 
 /**
@@ -592,6 +617,8 @@ private fun UserEntity.toUserDetail(
         notificationsEnabled = this.notifications,
         language = this.language,
         timezone = this.timezone,
+        country = this.country,
+        state = this.state,
         terminals = terminals,
     )
     return UserDetail(profile = profile, settings = settings)
@@ -618,6 +645,8 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         language = this.settings?.language,
         timezone = this.settings?.timezone,
         notifications = this.settings?.notificationsEnabled,
+        country = this.settings?.country,
+        state = this.settings?.state,
         createdAt = System.currentTimeMillis(),
         isHl7Enable = this.settings?.isPMSIntegrated ?: false
     )

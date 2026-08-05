@@ -83,13 +83,12 @@ class MllpServer(
                 val socket = serverSocket!!.accept()
                 val id = UUID.randomUUID().toString()
                 clients[id] = socket
-                logger.i("Client connected: ${socket.inetAddress?.hostAddress}")
 
                 scope.launch {
-                    handleClient(socket)
+                    handleClient(socket, id)
                     clients.remove(id)
                 }
-            } catch (e: Exception) {
+            }catch (e: Exception) {
                 if (running.get()) {
                     logger.e("acceptLoop() error", e)
                 }
@@ -97,15 +96,11 @@ class MllpServer(
         }
     }
 
-    private suspend fun handleClient(socket: Socket) {
+    private suspend fun handleClient(socket: Socket, id: String) {
         try {
-            if (socket is SSLSocket) {
-                logger.i("Starting TLS handshake with ${socket.inetAddress?.hostAddress}")
-                socket.startHandshake()
-                logger.i("TLS handshake complete with ${socket.inetAddress?.hostAddress}")
-            }
+            if (socket is SSLSocket) socket.startHandshake()
 
-            val input = BufferedInputStream(socket.inputStream)
+            val input = socket.inputStream
             val output = socket.outputStream
 
             while (!socket.isClosed) {
@@ -124,7 +119,6 @@ class MllpServer(
                 if (ack.isNotEmpty()) {
                     output.write(Mllp.wrap(ack))
                     output.flush()
-                    logger.i("Sent ACK (${ack.length} chars) to ${socket.inetAddress?.hostAddress}")
                 }
             }
         } catch (e: EOFException) {
@@ -149,14 +143,9 @@ class MllpServer(
     private fun readMllp(input: InputStream): String {
         val buffer = java.io.ByteArrayOutputStream()
         var started = false
-        var firstByte = true
 
         while (true) {
             val b = input.read()
-            if (firstByte) {
-                logger.i("First byte read from socket: $b (expected SB=11)")
-                firstByte = false
-            }
             if (b == -1) throw EOFException()
 
             when (b.toByte()) {

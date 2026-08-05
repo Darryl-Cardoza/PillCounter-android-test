@@ -8,6 +8,7 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.security.ImageCrypto
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import dagger.hilt.EntryPoint
@@ -247,7 +248,7 @@ class ImageNanoServer(
         val entries = mutableListOf<ImageEntry>()
 
         txn.barcodeImage?.takeIf { it.isNotBlank() }?.let { path ->
-            resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it, txn.createdAt)) }
+            resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it)) }
         }
 
         val details = txnDetailsDao.getAllForTxn(txn.txnId.toString())

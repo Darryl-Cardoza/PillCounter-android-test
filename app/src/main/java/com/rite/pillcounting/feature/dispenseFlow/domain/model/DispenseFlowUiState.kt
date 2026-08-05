@@ -24,9 +24,9 @@ data class DispenseFlowUiState(
     val drugImage: String = "",
     val ndc: String = "",
     val rxNo: String? = null,
+    val refillNo: String? = null,
     val qty: String? = null,
     val selectedBucketId: String = "",
-    val barcodeImagePath: String? = null,
 
     // GS1 lot/exp/serial decoded off the NDC container scan, staged here until the
     // scan resolves (auto-confirm or after the NDC/equivalence sheet), then written
@@ -65,6 +65,9 @@ data class DispenseFlowUiState(
     // Fired during the VIAL step when a scanned vial barcode's RX does not match
     // the active transaction's RX number.
     val vialRxMismatchToastTick: Int = 0,
+    // Fired when a scanned RX label's most recent transaction is already COMPLETED /
+    // FORCE_COMPLETED — blocks re-dispensing the same fill instead of creating a duplicate.
+    val rxAlreadyCompletedToastTick: Int = 0,
 
     val isLoading: Boolean = false,
     val error: String? = null,

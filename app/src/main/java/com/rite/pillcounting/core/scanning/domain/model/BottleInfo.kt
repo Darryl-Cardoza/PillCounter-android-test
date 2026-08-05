@@ -14,6 +14,8 @@ import com.google.gson.Gson
  *   isDeleted = 0`, computed live wherever it's needed — so deleting/redoing a count is
  *   automatically reflected, with no snapshot that can go stale.
  * @property scannedAt When this bottle was scanned (epoch millis).
+ * @property txnId The `PillCountTxnEntity.txnId` this bottle belongs to.
+ * @property barcodeImagePath Path to the barcode-scan image captured for this bottle, if any.
  */
 data class BottleInfo(
     val lotNumber: String? = null,
@@ -21,6 +23,8 @@ data class BottleInfo(
     val serialNumber: String? = null,
     val txnDetailsIds: List<Long> = emptyList(),
     val scannedAt: Long = System.currentTimeMillis(),
+    val txnId: Long = 0L,
+    val barcodeImagePath: String? = null,
 )
 
 /** (De)serializes a [PillCountTxnEntity.bottleInfoListJson] column value. */

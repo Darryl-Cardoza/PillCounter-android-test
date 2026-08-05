@@ -19,7 +19,7 @@ class CountItemTest {
         bucketId: String? = "bucket-1",
         pillCount: Int = 30,
         target: Int = 60,
-        barcodeImage: String? = "barcode.png",
+        bottleInfoListJson: String? = "barcode.png",
         date: String = "2026-06-17",
         image: Int = R.drawable.logo,
         isComingFromHL7: Boolean = false,
@@ -34,7 +34,7 @@ class CountItemTest {
         bucketId = bucketId,
         pillCount = pillCount,
         target = target,
-        barcodeImage = barcodeImage,
+        bottleInfoListJson = bottleInfoListJson,
         date = date,
         image = image,
         isComingFromHL7 = isComingFromHL7,
@@ -53,7 +53,7 @@ class CountItemTest {
             bucketId = "bucket-1",
             pillCount = 30,
             target = 60,
-            barcodeImage = "barcode.png",
+            bottleInfoListJson = "barcode.png",
             date = "2026-06-17",
             isComingFromHL7 = false,
             isNdcVerified = true
@@ -74,7 +74,7 @@ class CountItemTest {
             bucketId = null,
             pillCount = 12,
             target = 24,
-            barcodeImage = null,
+            bottleInfoListJson = null,
             date = "2026-01-01",
             image = R.drawable.logo,
             isComingFromHL7 = true,
@@ -90,7 +90,7 @@ class CountItemTest {
         assertNull(item.bucketId)
         assertEquals(12, item.pillCount)
         assertEquals(24, item.target)
-        assertNull(item.barcodeImage)
+        assertNull(item.bottleInfoListJson)
         assertEquals("2026-01-01", item.date)
         assertEquals(R.drawable.logo, item.image)
         assertTrue(item.isComingFromHL7)
@@ -138,7 +138,7 @@ class CountItemTest {
             bucketId = "bucket",
             pillCount = 7,
             target = 14,
-            barcodeImage = "img",
+            bottleInfoListJson = "img",
             date = "date",
             image = R.drawable.logo,
             isComingFromHL7 = true,

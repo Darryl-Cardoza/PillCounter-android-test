@@ -10,6 +10,8 @@ import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
+import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
@@ -536,7 +538,9 @@ class MainActivityViewModelTest {
             txnId = 5L,
             isDispense = true,
             status = CountStatus.COMPLETED,
-            barcodeImage = "C:/nonexistent/barcode.png",
+            bottleInfoListJson = BottleInfoJson.encode(
+                listOf(BottleInfo(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png"))
+            ),
         )
         coEvery { txnDao.getTransactionsBefore(any()) } returns listOf(txn)
         coEvery { txnDao.getTransactionDetailsImages(5L) } returns listOf("C:/nonexistent/detail.png")
