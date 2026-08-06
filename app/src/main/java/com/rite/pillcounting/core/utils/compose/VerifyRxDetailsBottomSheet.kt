@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -1153,17 +1154,17 @@ private fun DrugImageTile(
 ) {
     val tileSize = if (compact) 70.dp else 84.dp
 
+    // Match SquareTile's width behavior, but use defaultMinSize (not a hard
+    // .height()) so grid callers that pass their own height via `modifier`
+    // aren't clamped to tileSize — a hardcoded .height() here would render
+    // this tile smaller than its siblings regardless of the caller's weight.
+    // DetailsGrid (which passes no modifier) still gets a visible tileSize
+    // square from the minimum.
     Box(
         modifier = Modifier
             .width(tileSize)
-            // Unlike SquareTile (whose content sits in an explicitly-heighted
-            // inner Box), this Box has no intrinsic height of its own — with no
-            // caller-supplied height it wraps to zero and the image never shows.
-            // DetailsGrid (portrait's SheetBody) calls this with no modifier at
-            // all, so this default height is what actually makes it visible there;
-            // callers that pass their own .height() (e.g. tablet grids) override it.
-            .height(tileSize)
             .then(modifier)
+            .defaultMinSize(minHeight = tileSize)
             .clip(RoundedCornerShape(12.dp))
             .background(AppTheme.extendedColors.primaryBackground),
         contentAlignment = Alignment.Center
@@ -1172,7 +1173,7 @@ private fun DrugImageTile(
             Image(
                 painter = rememberAsyncImagePainter(File(drugImagePath)),
                 contentDescription = stringResource(R.string.drug_image),
-                contentScale = ContentScale.FillBounds,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxSize()
             )
         } else {
