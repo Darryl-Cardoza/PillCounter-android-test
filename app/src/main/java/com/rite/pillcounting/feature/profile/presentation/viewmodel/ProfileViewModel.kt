@@ -451,33 +451,19 @@ class ProfileViewModel @Inject constructor(
 
                                 val claimDeviceKey = claimDeviceKeyForCheck ?: deviceKeyProvider.getDeviceKey()
 
-                                // This device can only hold one terminal at a time — release
-                                // whichever terminal it currently held before claiming the new
-                                // one, otherwise the claim 409s ("already holds terminal X").
+                                // Single update call claims the new terminal directly — no
+                                // separate release call for the old one. Server assigns
+                                // deviceKey to the new terminal; old terminal's deviceKey is
+                                // just cleared locally so the UI reflects the swap immediately.
                                 // Runs in the same coroutine as the profile save (not a nested
                                 // viewModelScope.launch) so it can't be cancelled by the scope
                                 // finishing/navigating away right after Success is set.
                                 logger.i("Terminal claim flow: heldTerminal=${heldTerminal?.terminalId}(${heldTerminal?.terminalName}) newTerminal=$terminalId(${selectedTerminal?.terminalName}) claimDeviceKey=$claimDeviceKey")
-                                val releaseSucceeded = if (heldTerminal?.terminalId != null) {
-                                    val releaseRequest = TerminalUpdateRequest(
-                                        terminalName = heldTerminal.terminalName ?: "Unknown",
-                                        isActive = heldTerminal.isActive ?: true,
-                                        deviceKey = null
-                                    )
-                                    terminalRepository.updateTerminal(heldTerminal.terminalId, releaseRequest)
-                                        .onFailure { e ->
-                                            logger.e("Failed to release terminal ${heldTerminal.terminalName}", e)
-                                        }.isSuccess
-                                } else {
-                                    true
-                                }
-
-                                if (releaseSucceeded) {
-                                    val terminalRequest = TerminalUpdateRequest(
-                                        terminalName = selectedTerminal?.terminalName ?: "Unknown",
-                                        isActive = true,
-                                        deviceKey = claimDeviceKey
-                                    )
+                                val terminalRequest = TerminalUpdateRequest(
+                                    terminalName = selectedTerminal?.terminalName ?: "Unknown",
+                                    isActive = true,
+                                    deviceKey = claimDeviceKey
+                                )
 
                                 viewModelScope.launch {
                                     terminalRepository.updateTerminal(terminalId, terminalRequest)
@@ -498,21 +484,22 @@ class ProfileViewModel @Inject constructor(
                                                 }
                                             }
 
-                                        // Save updated terminal selection to preferences
-                                        preferenceHelper.saveSelectedTerminalId(terminalId)
-                                        preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: "Unknown")
-                                        preferenceHelper.saveTerminals(terminals)
+                                            // Save updated terminal selection to preferences
+                                            preferenceHelper.saveSelectedTerminalId(terminalId)
+                                            preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: "Unknown")
+                                            preferenceHelper.saveTerminals(terminals)
 
-                                        // Update initial terminal to current selection
-                                        initialTerminal = selectedTerminal
+                                            // Update initial terminal to current selection
+                                            initialTerminal = selectedTerminal
 
-                                        // Update HL7 service with new terminal name and rebroadcast NSD
-                                        updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: "Unknown")
-                                    }
-                                    .onFailure { e ->
-                                        logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
-                                        // Don't fail the entire profile update if terminal update fails
-                                    }
+                                            // Update HL7 service with new terminal name and rebroadcast NSD
+                                            updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: "Unknown")
+                                        }
+                                        .onFailure { e ->
+                                            logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
+                                            // Don't fail the entire profile update if terminal update fails
+                                        }
+                                }
                             }
                         } else {
                             logger.i("Terminal unchanged, skipping terminal update API call")
