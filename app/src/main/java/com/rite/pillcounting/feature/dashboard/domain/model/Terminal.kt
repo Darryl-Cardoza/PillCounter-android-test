@@ -11,6 +11,8 @@ data class Terminal(
     @Json(name = "terminal_id") val terminalId: String? = null,
     @Json(name = "terminal_name") val terminalName: String? = null,
     @Json(name = "is_active") val isActive: Boolean? = null,
+    @Json(name = "device_key") val deviceKey: String? = null,
+    @Json(name = "device_claimed_at") val deviceClaimedAt: String? = null,
     @Json(name = "created_at") val createdAt: String? = null,
     @Json(name = "updated_at") val updatedAt: String? = null
 )

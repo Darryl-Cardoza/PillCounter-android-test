@@ -24,6 +24,9 @@ private const val KEY_USER_ID = "user_id"
 private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 
+// Device Identity
+private const val KEY_DEVICE_KEY = "device_key"
+
 // Transactions
 private const val KEY_TXN_ID = "txn_id"
 
@@ -166,6 +169,20 @@ class PreferenceHelper @Inject constructor(
         val allow = prefs.getBoolean(KEY_ALLOW_LOCAL_STORAGE, true)
         logger.d("Retrieved allowLocalStorage: $allow")
         return allow
+    }
+
+    // ─────────────────────────── DEVICE IDENTITY ───────────────────────────
+
+    /** Caches the device_key (Firebase Installations ID) so it is fetched at most once per install. */
+    fun saveDeviceKey(deviceKey: String) {
+        prefs.putString(KEY_DEVICE_KEY, deviceKey)
+        logger.i("Saved device key (length=${deviceKey.length})")
+    }
+
+    fun getDeviceKey(): String? {
+        val key = prefs.getString(KEY_DEVICE_KEY)
+        logger.d("Device key retrieved (exists=${key != null})")
+        return key
     }
 
     // ─────────────────────────── TRANSACTIONS ───────────────────────────
