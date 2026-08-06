@@ -479,37 +479,40 @@ class ProfileViewModel @Inject constructor(
                                         deviceKey = claimDeviceKey
                                     )
 
+                                viewModelScope.launch {
                                     terminalRepository.updateTerminal(terminalId, terminalRequest)
                                         .onSuccess { _ ->
                                             logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
 
-                                            // Update the released and claimed terminals locally —
-                                            // is_active/device_key are no longer exclusive to one
-                                            // terminal, so no other terminal's state is touched here.
-                                            terminals = currentTerminals.map { t ->
-                                                when (t.terminalId) {
-                                                    terminalId -> t.copy(isActive = true, deviceKey = claimDeviceKey)
-                                                    heldTerminal?.terminalId -> t.copy(deviceKey = null)
-                                                    else -> t
+                                            // Update local terminals list - mark selected as active, others as inactive
+                                            terminals = currentTerminals.map { terminal ->
+                                                when (terminal.terminalId) {
+                                                    terminalId -> terminal.copy(
+                                                        isActive = true,
+                                                        deviceKey = claimDeviceKey
+                                                    )
+                                                    heldTerminal?.terminalId -> terminal.copy(
+                                                        deviceKey = null
+                                                    )
+                                                    else -> terminal
                                                 }
                                             }
 
-                                            // Save updated terminal selection to preferences
-                                            preferenceHelper.saveSelectedTerminalId(terminalId)
-                                            preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: "Unknown")
-                                            preferenceHelper.saveTerminals(terminals)
+                                        // Save updated terminal selection to preferences
+                                        preferenceHelper.saveSelectedTerminalId(terminalId)
+                                        preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: "Unknown")
+                                        preferenceHelper.saveTerminals(terminals)
 
-                                            // Update initial terminal to current selection
-                                            initialTerminal = selectedTerminal
+                                        // Update initial terminal to current selection
+                                        initialTerminal = selectedTerminal
 
-                                            // Update HL7 service with new terminal name and rebroadcast NSD
-                                            updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: "Unknown")
-                                        }
-                                        .onFailure { e ->
-                                            logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
-                                            // Don't fail the entire profile update if terminal update fails
-                                        }
-                                }
+                                        // Update HL7 service with new terminal name and rebroadcast NSD
+                                        updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: "Unknown")
+                                    }
+                                    .onFailure { e ->
+                                        logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
+                                        // Don't fail the entire profile update if terminal update fails
+                                    }
                             }
                         } else {
                             logger.i("Terminal unchanged, skipping terminal update API call")

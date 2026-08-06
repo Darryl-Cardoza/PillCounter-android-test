@@ -1019,8 +1019,10 @@ object UserInterfaceUtils {
         boxCount: Int = 4,
         boxSize: Dp = 56.dp,
         cornerRadius: Dp = 8.dp,
+        spacing: Dp = 12.dp,
         boxBackground: Color = AppTheme.extendedColors.inputBackground,
-        textColor: Color = AppTheme.extendedColors.textColor
+        textColor: Color = AppTheme.extendedColors.textColor,
+        modifier: Modifier = Modifier
     ) {
         // focus requesters for each box
         val focusRequesters = remember { List(boxCount) { FocusRequester() } }
@@ -1053,7 +1055,7 @@ object UserInterfaceUtils {
             focusRequesters[desiredFocusIndex()].requestFocus()
         }
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Row(modifier = modifier, horizontalArrangement = Arrangement.spacedBy(spacing)) {
             for (i in 0 until boxCount) {
                 val char = otp.getOrNull(i)?.toString() ?: ""
 
