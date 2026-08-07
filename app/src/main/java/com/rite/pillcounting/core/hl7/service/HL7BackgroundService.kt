@@ -138,6 +138,15 @@ class HL7Service : Service() {
 
     override fun onDestroy() {
         logger.i("Service destroying")
+        // Unregister NSD synchronously, before the process can be torn down —
+        // otherwise the mDNS goodbye packet never goes out, the stale
+        // advertisement lingers in the PMS's cache, and the next registration
+        // of the same terminal name gets auto-renamed ("Terminal 1 (2)", ...)
+        // because Android's NSD responder sees what looks like a name conflict.
+        try {
+            nsdHelper.shutdown()
+        } catch (_: Exception) {
+        }
         serviceScope.launch { cleanup() }
         super.onDestroy()
     }
@@ -149,10 +158,6 @@ class HL7Service : Service() {
         }
         try {
             clientManager.shutdown()
-        } catch (_: Exception) {
-        }
-        try {
-            nsdHelper.shutdown()
         } catch (_: Exception) {
         }
         try {
