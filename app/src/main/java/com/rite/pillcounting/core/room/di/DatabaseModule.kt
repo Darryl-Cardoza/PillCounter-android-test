@@ -34,7 +34,7 @@ object DatabaseModule {
         val builder = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
-            "pill_counting_db"
+            DatabaseKeyProvider.DATABASE_NAME
         )
             // Stock-count normalization (v3 → v4) restructures local tables; existing local
             // rows are disposable (synced to PMS), so recreate rather than migrate.

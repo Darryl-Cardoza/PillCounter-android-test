@@ -20,6 +20,8 @@ import java.security.SecureRandom
  */
 object DatabaseKeyProvider {
 
+    const val DATABASE_NAME = "pill_counting_db"
+
     private const val PREFS_NAME = "pillcounting_db_key_prefs"
     private const val KEY_DEK_WRAPPED = "dek_wrapped"
     private const val KEY_KEK_ID = "dek_kek_id"
@@ -55,8 +57,11 @@ object DatabaseKeyProvider {
             } catch (e: Exception) {
                 // Keystore key missing/invalidated (e.g. partial data clear) — local txn data is
                 // disposable/synced to PMS, so recover by re-keying rather than failing to open the DB.
+                // The old DB file is encrypted under the now-unrecoverable DEK, so it must be
+                // deleted too — otherwise SQLCipher would fail to open it with the new passphrase.
                 logger.e("Failed to unwrap DEK, re-keying database", e)
                 prefs.clear()
+                context.deleteDatabase(DATABASE_NAME)
                 generateAndBootstrapWrapDek(prefs)
             }
         }
