@@ -187,6 +187,15 @@ class Hl7Repository @Inject constructor(
         val substitutedDrug = if (txn.isSubstitute) txn.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } else null
         val scannedNdc = substitutedDrug?.ndc ?: drug.ndc
 
+        // Locally-scanned dispenses (isComingFromHL7 = false) have no inbound MSH-10 to reuse,
+        // so HL7MessageBuilder falls back to txnId as the outbound control id. Persist that
+        // here so the ACK handler's getByMessageControlId lookup (see markTransactionSynced)
+        // can find this exact row later — without this write the DB column stays null forever
+        // and the ACK correlation always misses.
+        if (txn.hl7MessageControlId.isNullOrBlank()) {
+            txnDao.updateHl7MessageControlId(txnId, txnId.toString())
+        }
+
         val message = HL7MessageBuilder.buildDispenseMessage(
             txn = txn,
             txnDetails = txnDetails,
@@ -201,7 +210,7 @@ class Hl7Repository @Inject constructor(
             location = location,
             config = currentHl7Config()
         )
-        logger.i("HL7dispence message tooooooo" + message)
+        logger.i("Dispense HL7 message built for txn $txnId: $message")
         hl7MessageSender.send(message)
             .onSuccess { ack -> logger.i("Dispense HL7 sent for txn $txnId — ACK: ${ack.take(120)}") }
             .onFailure { e -> logger.w("Dispense HL7 send failed for txn $txnId — stays pending: ${e.message}") }
@@ -299,7 +308,6 @@ class Hl7Repository @Inject constructor(
     fun sendDispenseNow(txnId: Long) {
         scope.launch {
             logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
-            preferenceHelper.saveSentMessageTxnId(txnId)
             buildAndSendSuccessfulDispense(txnId = txnId)
         }
     }
@@ -313,7 +321,6 @@ class Hl7Repository @Inject constructor(
             }
             logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
             for (txn in pendingTxn) {
-                preferenceHelper.saveSentMessageTxnId(txn.txnId)
                 if (txn.isDispense) {
                     //Change this condition because we have transaction status that we are handling from pms
 //                        if (txn.targetCount != null) {
@@ -338,13 +345,25 @@ class Hl7Repository @Inject constructor(
         }
     }
 
-    fun markTransactionSynced() {
+    /**
+     * Marks the transaction that produced [messageId] (the ACKed message's MSH-10, matched
+     * via [PillCountTxnDao.getByMessageControlId]) as synced. Reached only on a success ACK
+     * (see Hl7EventHandler.onAckReceived) — a single shared "last sent txn id" preference used
+     * to stand in for this correlation, which broke whenever two sends were in flight at once
+     * (e.g. a reconnect-triggered resend racing a fresh sendDispenseNow): the ACK for the first
+     * send would resolve against whichever txn id the second send had since overwritten.
+     */
+    fun markTransactionSynced(messageId: String) {
         scope.launch {
-            val txnId = preferenceHelper.getSentMessageTxnId()
-            // Reached only on a success ACK (see Hl7EventHandler.onAckReceived). Flag the txn
-            // synced first, then — when the server disallows local storage — delete it. The PMS
-            // pulls images from the device image server before sending the success ACK, so the
-            // images are already retrieved by the time we delete here.
+            val txn = pillCountTxnDao.getByMessageControlId(messageId)
+            if (txn == null) {
+                logger.w("ACK received for unknown messageId=$messageId — no matching transaction to sync")
+                return@launch
+            }
+            val txnId = txn.txnId
+            // Flag the txn synced first, then — when the server disallows local storage —
+            // delete it. The PMS pulls images from the device image server before sending the
+            // success ACK, so the images are already retrieved by the time we delete here.
             pillCountTxnDao.markTxnSynced(txnId)
             if (!preferenceHelper.isAllowLocalStorage()) {
                 // Wait before deleting: the PMS pulls the transaction images from the device

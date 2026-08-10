@@ -58,6 +58,7 @@ import org.junit.Before
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
+import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
@@ -313,7 +314,7 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `init keeps terminals empty when getTerminals fails`() = runTest(testDispatcher) {
+    fun `init falls back to empty cache when getTerminals fails and no cache exists`() = runTest(testDispatcher) {
         coEvery { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) } returns
             Result.failure(RuntimeException("network"))
 
@@ -322,6 +323,46 @@ class ProfileViewModelTest {
 
         assertTrue(vm.terminals.isEmpty())
         assertNull(vm.selectedTerminal)
+    }
+
+    @Test
+    fun `init falls back to cached terminals when getTerminals fails`() = runTest(testDispatcher) {
+        coEvery { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) } returns
+            Result.failure(RuntimeException("network"))
+        every { preferenceHelper.getTerminals() } returns listOf(activeTerminal, otherTerminal)
+        every { preferenceHelper.getSelectedTerminalId() } returns "t2"
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(2, vm.terminals.size)
+        assertEquals("t1", vm.selectedTerminal?.terminalId) // matches by deviceKey first
+    }
+
+    @Test
+    fun `init cached fallback matches by saved terminal id when no deviceKey match`() = runTest(testDispatcher) {
+        coEvery { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) } returns
+            Result.failure(RuntimeException("network"))
+        every { preferenceHelper.getTerminals() } returns
+            listOf(activeTerminal.copy(deviceKey = null), otherTerminal)
+        every { preferenceHelper.getSelectedTerminalId() } returns "t2"
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("t2", vm.selectedTerminal?.terminalId)
+    }
+
+    @Test
+    fun `init does not crash when device key fetch fails while loading terminals`() = runTest(testDispatcher) {
+        coEvery { deviceKeyProvider.getDeviceKey() } throws IOException("firebase down")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.terminals.isEmpty())
+        assertNull(vm.selectedTerminal)
+        coVerify(exactly = 0) { terminalRepository.getTerminals(any(), any()) }
     }
 
     // ────────────────────────────── simple setters ──────────────────────────────
@@ -529,6 +570,8 @@ class ProfileViewModelTest {
         coVerify { userDao.update(any<UserEntity>()) }
         verify { preferenceHelper.saveDoNotAskAgain(any()) }
         coVerify(exactly = 0) { terminalRepository.updateTerminal(any(), any()) }
+        // Only the init-time loadTerminals() call — terminal unchanged should not re-fetch.
+        coVerify(exactly = 1) { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) }
     }
 
     @Test
@@ -627,6 +670,26 @@ class ProfileViewModelTest {
         advanceUntilIdle()
 
         assertEquals(ProfileUpdateUiState.Success, vm.updateUiState.value)
+        verify(exactly = 0) { hl7ServiceManager.updateTerminalName(any()) }
+    }
+
+    @Test
+    fun `updateProfile terminal changed does not crash when device key fetch fails`() = runTest(testDispatcher) {
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        selectValidLocation(vm)
+        vm.onTerminalSelected(otherTerminal) // change from t1 (held) to t2
+
+        // Device key fetch succeeded during init's loadTerminals(); fails now, during the claim.
+        coEvery { deviceKeyProvider.getDeviceKey() } throws IOException("firebase down")
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        assertEquals(ProfileUpdateUiState.Success, vm.updateUiState.value)
+        coVerify(exactly = 0) { terminalRepository.updateTerminal(any(), any()) }
         verify(exactly = 0) { hl7ServiceManager.updateTerminalName(any()) }
     }
 

@@ -1,5 +1,7 @@
 package com.rite.pillcounting.feature.otp.data
 
+import com.rite.pillcounting.core.utils.constants.AppConstants
+import com.rite.pillcounting.core.utils.notification.FCMService
 import com.rite.pillcounting.feature.verifyPin.data.remote.IVerifyPinAPI
 import com.rite.pillcounting.feature.verifyPin.domain.data.IVerifyPinRepository
 import com.rite.pillcounting.feature.verifyPin.domain.model.VerifyPinRequest
@@ -15,10 +17,12 @@ import javax.inject.Inject
  * verification by communicating with the remote server.
  *
  * @property verifyPinApi The Retrofit service for making network authentication requests, which includes the verify endpoint.
+ * @property fcmService Supplies this install's current FCM registration token.
  * @property ioDispatcher The coroutine dispatcher for running all network operations on a background thread.
  */
 class VerifyPinRepository @Inject constructor(
     private val verifyPinApi: IVerifyPinAPI,
+    private val fcmService: FCMService,
     private val ioDispatcher: CoroutineDispatcher
 ) : IVerifyPinRepository {
 
@@ -43,9 +47,9 @@ class VerifyPinRepository @Inject constructor(
                 val request = VerifyPinRequest(
                     email = email,
                     otp = otp,
-                    fcmToken = "",
+                    fcmToken = fcmService.getToken().orEmpty(),
                     deviceKey = deviceKey,
-                    platform = "android",
+                    platform = AppConstants.PLATFORM_ANDROID,
                     appVersion = appVersion
                 )
 

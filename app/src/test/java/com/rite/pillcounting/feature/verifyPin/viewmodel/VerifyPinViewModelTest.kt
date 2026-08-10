@@ -218,6 +218,22 @@ class VerifyPinViewModelTest {
         coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
     }
 
+    // ───────────────────────────── device key fetch failure ─────────────────────────────
+
+    @Test
+    fun `verifyPin sets Error instead of crashing when device key fetch fails`() = runTest {
+        coEvery { deviceKeyProvider.getDeviceKey() } throws IOException("firebase down")
+        every { context.getString(R.string.error_server_unavailable) } returns "server-unavailable"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state is VerifyPinUiState.Error)
+        assertEquals("server-unavailable", (state as VerifyPinUiState.Error).message)
+        coVerify(exactly = 0) { repository.verifyPin(any(), any(), any(), any()) }
+    }
+
     // ─────────────── failure: mapExceptionToUserMessage branches ───────────────
 
     @Test

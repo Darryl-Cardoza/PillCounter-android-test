@@ -593,10 +593,10 @@ class Hl7RepositoryTest {
 
         repo.resendPendingHl7Transactions()
 
-        // Synchronize on the coroutine having read the pending list before asserting the
-        // save was never invoked.
+        // Synchronize on the coroutine having read the pending list before asserting no
+        // dispense send was attempted.
         coVerify(timeout = 3000) { pillCountTxnDao.getPendingHl7TxnOnce() }
-        verify(exactly = 0) { preferenceHelper.saveSentMessageTxnId(any()) }
+        coVerify(exactly = 0) { txnDao.getById(any()) }
     }
 
     @Test
@@ -619,8 +619,10 @@ class Hl7RepositoryTest {
 
         repo.resendPendingHl7Transactions()
 
-        verify(timeout = 3000) { preferenceHelper.saveSentMessageTxnId(1L) }
         coVerify(timeout = 3000) { hl7MessageSender.send(any()) }
+        // The outbound MSH-10 is persisted as the txnId itself so a later ACK can correlate
+        // back to this exact row via getByMessageControlId.
+        coVerify(timeout = 3000) { txnDao.updateHl7MessageControlId(1L, "1", any()) }
         // REGULAR is a no-op now: no inventory response is triggered from this path.
         coVerify(exactly = 0) { batchDao.markBatchSynced(any()) }
     }
@@ -665,13 +667,25 @@ class Hl7RepositoryTest {
     // ─────────────────────────────── markTransactionSynced ───────────────────────────────
 
     @Test
-    fun `markTransactionSynced delegates`() = runTest(testDispatcher) {
+    fun `markTransactionSynced looks up txn by messageControlId and marks it synced`() = runTest(testDispatcher) {
         val repo = createRepo()
-        every { preferenceHelper.getSentMessageTxnId() } returns 7L
+        coEvery { pillCountTxnDao.getByMessageControlId("7") } returns txnEntity(txnId = 7L)
+        every { preferenceHelper.isAllowLocalStorage() } returns true
 
-        repo.markTransactionSynced()
+        repo.markTransactionSynced("7")
 
         coVerify(timeout = 3000) { pillCountTxnDao.markTxnSynced(7L, any()) }
+    }
+
+    @Test
+    fun `markTransactionSynced with unknown messageControlId does not crash`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { pillCountTxnDao.getByMessageControlId("unknown") } returns null
+
+        repo.markTransactionSynced("unknown")
+
+        coVerify(timeout = 3000) { pillCountTxnDao.getByMessageControlId("unknown") }
+        coVerify(exactly = 0) { pillCountTxnDao.markTxnSynced(any(), any()) }
     }
 
     // ─────────────────────────────── handleRdeDispenseRequest ───────────────────────────────

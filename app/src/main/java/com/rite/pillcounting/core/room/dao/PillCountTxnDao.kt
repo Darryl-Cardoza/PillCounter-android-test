@@ -433,6 +433,13 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
+    @Query("UPDATE pill_count_txn SET hl7MessageControlId = :messageControlId, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateHl7MessageControlId(
+        txnId: Long,
+        messageControlId: String,
+        now: Long = System.currentTimeMillis()
+    )
+
     @Query("UPDATE pill_count_txn SET isGlovesPresent = :value, updatedAt = :now WHERE txnId = :txnId")
     suspend fun updateGlovesPresent(
         txnId: Long,
@@ -633,10 +640,18 @@ interface PillCountTxnDao {
 
 
     /**
-     * Observe HL7 transactions that are completed but NOT synced with PMS.
+     * Observe dispense transactions that are completed but NOT synced with PMS — exists solely
+     * to trigger [Hl7Repository.resendPendingHl7Transactions][com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository.resendPendingHl7Transactions]
+     * on emission, so its filter must match that query's [getPendingHl7TxnOnce] exactly.
+     *
+     * Selects on isDispense, not isComingFromHL7, for the same reason [getPendingHl7TxnOnce]
+     * does: gating on isComingFromHL7 = 1 made this Flow blind to a locally-scanned dispense
+     * (isComingFromHL7 = 0, isDispense = 1) whose send failed — nothing would ever wake the
+     * resend sweep for it, and it stayed unsynced until an unrelated HL7-originated row
+     * happened to change and wake the flow instead.
      *
      * This Flow emits whenever:
-     * - a new HL7 txn is completed
+     * - a new dispense txn is completed
      * - isSynced changes
      * - txn status changes
      */
@@ -645,7 +660,7 @@ interface PillCountTxnDao {
     SELECT *
     FROM pill_count_txn
     WHERE isDeleted = 0
-      AND isComingFromHL7 = 1
+      AND isDispense = 1
       AND status = :completedStatus
       AND (isSynced IS NULL OR isSynced = 0)
     ORDER BY updatedAt ASC

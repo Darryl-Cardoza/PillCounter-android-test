@@ -38,7 +38,6 @@ private const val KEY_DO_NOT_ASK_AGAIN = "do_not_ask_again"
 private const val KEY_SHOW_NOTES_DIALOG = "key_show_notes_dialog"
 private const val KEY_RECENT_LOGINS = "recent_logins"
 private const val KEY_HISTORY_RETENTION = "history_retention"
-private const val KEY_SENT_TXN_ID = "last_txn_id"
 
 // HL7
 private const val KEY_NSD_BROADCAST_TYPE = "key_nsd_broadcast_type"
@@ -285,15 +284,6 @@ class PreferenceHelper @Inject constructor(
         logger.d("Retrieved history retention: $days days")
         return days
     }
-
-    // ─────────────────────────── HL7 MESSAGE TRACKING ───────────────────────────
-
-    fun saveSentMessageTxnId(txnId: Long) {
-        prefs.putLong(KEY_SENT_TXN_ID, txnId)
-    }
-
-    fun getSentMessageTxnId(): Long =
-        prefs.getLong(KEY_SENT_TXN_ID, -1L)
 
     // ─────────────────────────── NSD / HL7 SETTINGS ───────────────────────────
 

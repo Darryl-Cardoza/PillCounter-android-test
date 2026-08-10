@@ -42,7 +42,7 @@ class TerminalRepository @Inject constructor(
         request: TerminalUpdateRequest
     ): Result<TerminalUpdateResponse> = withContext(ioDispatcher) {
         try {
-            logger.i("Updating terminal: $terminalId with name: ${request.terminalName}, active: ${request.isActive}, deviceKey: ${request.deviceKey}")
+            logger.i("Updating terminal: $terminalId with name: ${request.terminalName}, active: ${request.isActive}")
             val token = preferenceHelper.getAccessToken().orEmpty()
             val response = terminalApi.updateTerminal("Bearer $token", terminalId, request)
             logger.i("Terminal update successful.")

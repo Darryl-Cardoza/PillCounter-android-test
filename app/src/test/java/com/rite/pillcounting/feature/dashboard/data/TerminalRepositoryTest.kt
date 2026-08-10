@@ -38,7 +38,7 @@ class TerminalRepositoryTest {
     private lateinit var repository: TerminalRepository
 
     private val terminalId = "terminal-123"
-    private val request = TerminalUpdateRequest(terminalName = "Front Desk", isActive = true)
+    private val request = TerminalUpdateRequest(terminalName = "Front Desk", isActive = true, deviceKey = "device-key")
     private val successResponse = TerminalUpdateResponse(message = "ok", isSuccess = true)
 
     @Before

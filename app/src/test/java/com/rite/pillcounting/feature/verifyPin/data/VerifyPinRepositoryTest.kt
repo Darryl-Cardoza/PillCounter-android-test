@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.verifyPin.data
 
+import com.rite.pillcounting.core.utils.notification.FCMService
 import com.rite.pillcounting.feature.otp.data.VerifyPinRepository
 import com.rite.pillcounting.feature.verifyPin.data.remote.IVerifyPinAPI
 import com.rite.pillcounting.feature.verifyPin.domain.model.VerifyPinRequest
@@ -23,18 +24,20 @@ import java.io.IOException
 class VerifyPinRepositoryTest {
 
     private val verifyPinApi: IVerifyPinAPI = mockk()
+    private val fcmService: FCMService = mockk()
     private val testDispatcher = UnconfinedTestDispatcher()
 
     private lateinit var repository: VerifyPinRepository
 
     private val deviceKey = "device-key"
     private val appVersion = "1.0.0"
+    private val fcmToken = "fcm-token"
 
     /** Mirrors the payload the repository composes — fcmToken and platform are fixed by it. */
     private fun expectedRequest(email: String, otp: String) = VerifyPinRequest(
         email = email,
         otp = otp,
-        fcmToken = "",
+        fcmToken = fcmToken,
         deviceKey = deviceKey,
         platform = "android",
         appVersion = appVersion
@@ -42,7 +45,8 @@ class VerifyPinRepositoryTest {
 
     @Before
     fun setup() {
-        repository = VerifyPinRepository(verifyPinApi, testDispatcher)
+        coEvery { fcmService.getToken() } returns fcmToken
+        repository = VerifyPinRepository(verifyPinApi, fcmService, testDispatcher)
     }
 
     // VP_REPO_001
@@ -114,5 +118,17 @@ class VerifyPinRepositoryTest {
                 }
             )
         }
+    }
+
+    /** A failed token fetch shouldn't block verification — it just goes out with an empty token. */
+    // VP_REPO_006
+    @Test
+    fun `verifyPin falls back to empty fcmToken when FCMService returns null`() = runTest {
+        coEvery { fcmService.getToken() } returns null
+        coEvery { verifyPinApi.verifyPin(any()) } returns VerifyPinResponse()
+
+        repository.verifyPin("admin@rite.com", "5678", deviceKey, appVersion)
+
+        coVerify { verifyPinApi.verifyPin(match { it.fcmToken == "" }) }
     }
 }

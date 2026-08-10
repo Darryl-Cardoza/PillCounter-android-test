@@ -91,7 +91,7 @@ class Hl7EventHandler @Inject constructor(
         // allow_local_storage is false, delete) only then. An error/reject ACK leaves the
         // transaction unsynced so it is retried on the next reconnect.
         if (isSuccess) {
-            hl7Repository.markTransactionSynced()
+            hl7Repository.markTransactionSynced(messageId)
         } else {
             logger.w("Non-success ACK | msgId=$messageId — leaving transaction unsynced for retry")
         }

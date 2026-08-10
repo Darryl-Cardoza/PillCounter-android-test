@@ -80,7 +80,13 @@ class VerifyPinViewModel @Inject constructor(
             logger.i("Attempting OTP verification for email: $email")
             _uiState.value = VerifyPinUiState.Loading
 
-            val deviceKey = deviceKeyProvider.getDeviceKey()
+            val deviceKey = try {
+                deviceKeyProvider.getDeviceKey()
+            } catch (e: Exception) {
+                logger.e("Failed to fetch device key for OTP verification", e)
+                _uiState.value = VerifyPinUiState.Error(mapExceptionToUserMessage(e))
+                return@launch
+            }
 
             repository.verifyPin(email, otp, deviceKey, BuildConfig.VERSION_NAME)
                 .onSuccess { response ->

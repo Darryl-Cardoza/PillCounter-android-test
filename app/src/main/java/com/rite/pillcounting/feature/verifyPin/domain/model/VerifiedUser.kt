@@ -47,13 +47,5 @@ data class VerifiedUser(
 
     /** Whether the account runs in standalone mode */
     @Json(name = "is_standalone")
-    val isStandalone: Boolean? = null,
-
-    /** Maximum number of terminals allowed for this account */
-    @Json(name = "terminal_limit")
-    val terminalLimit: Int? = null,
-
-    /** Maximum number of devices allowed for this account */
-    @Json(name = "device_limit")
-    val deviceLimit: Int? = null
+    val isStandalone: Boolean? = null
 )

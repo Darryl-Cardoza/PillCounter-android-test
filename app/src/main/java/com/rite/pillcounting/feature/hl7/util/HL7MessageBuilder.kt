@@ -129,8 +129,12 @@ object HL7MessageBuilder {
         val builder = hl7.build()
 
         val now = now()
+        // Falls back to the txnId (not a timestamp) so the outbound MSH-10 is deterministic
+        // per transaction — the ACK handler correlates back to this exact txn via
+        // PillCountTxnDao.getByMessageControlId, which only works if resends of the same
+        // txn always carry the same control id.
         val messageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
-            ?: System.currentTimeMillis().toString()
+            ?: txn.txnId.toString()
 
         val txnDetails = txnDetails.filter { !it.isDeleted }
         // Each bottle's true pill count is live-summed here from its own txnDetailsIds against

@@ -261,9 +261,12 @@ class HL7Service : Service() {
         }
     }
 
-    fun updateConfig(newConfig: HL7Config) {
-        logger.i("Updating config: $newConfig")
+    /** Returns true when [newConfig] actually differs from what's currently running. */
+    fun updateConfig(newConfig: HL7Config): Boolean {
+        val changed = config != newConfig
+        logger.i("Updating config: $newConfig (changed=$changed)")
         this.config = newConfig
+        return changed
     }
 
     /* -------------------- INITIALIZATION -------------------- */

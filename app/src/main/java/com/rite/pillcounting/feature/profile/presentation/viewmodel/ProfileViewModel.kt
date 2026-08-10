@@ -15,6 +15,7 @@ import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.utils.common.HelperFunctions.plain
 import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.common.NetworkUtils
+import com.rite.pillcounting.core.utils.constants.AppConstants
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -245,7 +246,12 @@ class ProfileViewModel @Inject constructor(
      */
     private fun loadTerminals() {
         viewModelScope.launch {
-            val deviceKey = deviceKeyProvider.getDeviceKey()
+            val deviceKey = try {
+                deviceKeyProvider.getDeviceKey()
+            } catch (e: Exception) {
+                logger.e("Failed to fetch device key while loading terminals", e)
+                return@launch
+            }
             terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey)
                 .onSuccess { response ->
                     terminals = response.data?.terminals.orEmpty()
@@ -262,7 +268,16 @@ class ProfileViewModel @Inject constructor(
                     logger.i("Loaded ${terminals.size} terminals, selected: ${selectedTerminal?.terminalName}")
                 }
                 .onFailure { e ->
-                    logger.e("Failed to load terminals", e)
+                    logger.e("Failed to load terminals, falling back to cached list", e)
+
+                    val cachedTerminals = preferenceHelper.getTerminals()
+                    val savedTerminalId = preferenceHelper.getSelectedTerminalId()
+                    terminals = cachedTerminals
+                    selectedTerminal = cachedTerminals.firstOrNull { it.deviceKey == deviceKey }
+                        ?: cachedTerminals.firstOrNull { it.terminalId == savedTerminalId }
+                    initialTerminal = selectedTerminal
+
+                    logger.i("Loaded ${terminals.size} cached terminals, selected: ${selectedTerminal?.terminalName}")
                 }
         }
     }
@@ -431,12 +446,15 @@ class ProfileViewModel @Inject constructor(
                         }
 
                         // Update terminal if the newly selected terminal isn't the one this
-                        // device currently holds. Re-fetches the terminal list right here
-                        // (rather than trusting `terminals`/`initialTerminal`, which are
-                        // populated asynchronously by loadTerminals() at init) so a stale or
-                        // not-yet-loaded local cache can't cause the release step below to be
-                        // wrongly skipped — that would leave the device still holding its old
-                        // terminal server-side and make the claim 409.
+                        // device currently holds. Skips straight past when selectedTerminal
+                        // equals initialTerminal — otherwise every profile save re-fetches the
+                        // terminal list even though nothing changed. Only when they differ does
+                        // it re-fetch the terminal list right here (rather than trusting
+                        // `terminals`/`initialTerminal`, which are populated asynchronously by
+                        // loadTerminals() at init) so a stale or not-yet-loaded local cache can't
+                        // cause the release step below to be wrongly skipped — that would leave
+                        // the device still holding its old terminal server-side and make the
+                        // claim 409.
                         // The whole claim runs under NonCancellable. Leaving the Profile screen
                         // cancels viewModelScope, and this block spans several suspension
                         // points; a cancellation landing in the middle used to abort it after
@@ -444,69 +462,88 @@ class ProfileViewModel @Inject constructor(
                         // recorded it, leaving the two permanently disagreeing — the device
                         // held Terminal 2 server-side while every local reader still saw none.
                         withContext(NonCancellable) {
-                            val claimDeviceKeyForCheck = if (selectedTerminal != null) deviceKeyProvider.getDeviceKey() else null
-                            val currentTerminals = if (claimDeviceKeyForCheck != null) {
-                                terminalRepository.getTerminals(availableOnly = true, deviceKey = claimDeviceKeyForCheck)
-                                    .getOrNull()?.data?.terminals ?: terminals
-                            } else {
-                                terminals
-                            }
-                            val heldTerminal = currentTerminals.firstOrNull { it.deviceKey == claimDeviceKeyForCheck }
-                                ?: initialTerminal
-                            if (selectedTerminal != null && selectedTerminal?.terminalId != heldTerminal?.terminalId) {
-                                val terminalId = selectedTerminal?.terminalId
-                                if (terminalId != null) {
-                                    logger.i("Terminal changed from ${heldTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
+                            if (selectedTerminal?.terminalId != initialTerminal?.terminalId) {
+                                val claimDeviceKeyForCheck = try {
+                                    if (selectedTerminal != null) deviceKeyProvider.getDeviceKey() else null
+                                } catch (e: Exception) {
+                                    logger.e("Failed to fetch device key during terminal claim check", e)
+                                    null
+                                }
+                                val currentTerminals = if (claimDeviceKeyForCheck != null) {
+                                    terminalRepository.getTerminals(availableOnly = true, deviceKey = claimDeviceKeyForCheck)
+                                        .getOrNull()?.data?.terminals ?: terminals
+                                } else {
+                                    terminals
+                                }
+                                val heldTerminal = currentTerminals.firstOrNull { it.deviceKey == claimDeviceKeyForCheck }
+                                    ?: initialTerminal
+                                if (selectedTerminal != null && selectedTerminal?.terminalId != heldTerminal?.terminalId) {
+                                    val terminalId = selectedTerminal?.terminalId
+                                    if (terminalId != null) {
+                                        logger.i("Terminal changed from ${heldTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
 
-                                    val claimDeviceKey = claimDeviceKeyForCheck ?: deviceKeyProvider.getDeviceKey()
+                                        val claimDeviceKey = try {
+                                            claimDeviceKeyForCheck ?: deviceKeyProvider.getDeviceKey()
+                                        } catch (e: Exception) {
+                                            logger.e("Failed to fetch device key during terminal claim", e)
+                                            null
+                                        }
 
-                                    // Single update call claims the new terminal directly — no
-                                    // separate release call for the old one. Server assigns
-                                    // deviceKey to the new terminal; old terminal's deviceKey is
-                                    // just cleared locally so the UI reflects the swap immediately.
-                                    logger.i("Terminal claim flow: heldTerminal=${heldTerminal?.terminalId}(${heldTerminal?.terminalName}) newTerminal=$terminalId(${selectedTerminal?.terminalName}) claimDeviceKey=$claimDeviceKey")
-                                    val terminalRequest = TerminalUpdateRequest(
-                                        terminalName = selectedTerminal?.terminalName ?: "Unknown",
-                                        isActive = true,
-                                        deviceKey = claimDeviceKey
-                                    )
+                                        if (claimDeviceKey == null) {
+                                            logger.w("Skipping terminal claim: device key unavailable")
+                                            return@withContext
+                                        }
 
-                                    terminalRepository.updateTerminal(terminalId, terminalRequest)
-                                        .onSuccess { _ ->
-                                            logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
+                                        // Single update call claims the new terminal directly — no
+                                        // separate release call for the old one. Server assigns
+                                        // deviceKey to the new terminal; old terminal's deviceKey is
+                                        // just cleared locally so the UI reflects the swap immediately.
+                                        logger.i("Terminal claim flow: heldTerminal=${heldTerminal?.terminalId}(${heldTerminal?.terminalName}) newTerminal=$terminalId(${selectedTerminal?.terminalName})")
+                                        val terminalRequest = TerminalUpdateRequest(
+                                            terminalName = selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME,
+                                            isActive = true,
+                                            deviceKey = claimDeviceKey
+                                        )
 
-                                            // Update local terminals list - mark selected as active, others as inactive
-                                            terminals = currentTerminals.map { terminal ->
-                                                when (terminal.terminalId) {
-                                                    terminalId -> terminal.copy(
-                                                        isActive = true,
-                                                        deviceKey = claimDeviceKey
-                                                    )
-                                                    heldTerminal?.terminalId -> terminal.copy(
-                                                        deviceKey = null
-                                                    )
-                                                    else -> terminal
+                                        terminalRepository.updateTerminal(terminalId, terminalRequest)
+                                            .onSuccess { _ ->
+                                                logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
+
+                                                // Update local terminals list - mark selected as active, others as inactive
+                                                terminals = currentTerminals.map { terminal ->
+                                                    when (terminal.terminalId) {
+                                                        terminalId -> terminal.copy(
+                                                            isActive = true,
+                                                            deviceKey = claimDeviceKey
+                                                        )
+                                                        heldTerminal?.terminalId -> terminal.copy(
+                                                            deviceKey = null
+                                                        )
+                                                        else -> terminal
+                                                    }
                                                 }
+
+                                                // Save updated terminal selection to preferences
+                                                preferenceHelper.saveSelectedTerminalId(terminalId)
+                                                preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
+                                                preferenceHelper.saveTerminals(terminals)
+
+                                                // Update initial terminal to current selection
+                                                initialTerminal = selectedTerminal
+
+                                                // Update HL7 service with new terminal name and rebroadcast NSD
+                                                updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
                                             }
-
-                                            // Save updated terminal selection to preferences
-                                            preferenceHelper.saveSelectedTerminalId(terminalId)
-                                            preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: "Unknown")
-                                            preferenceHelper.saveTerminals(terminals)
-
-                                            // Update initial terminal to current selection
-                                            initialTerminal = selectedTerminal
-
-                                            // Update HL7 service with new terminal name and rebroadcast NSD
-                                            updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: "Unknown")
-                                        }
-                                        .onFailure { e ->
-                                            logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
-                                            // Don't fail the entire profile update if terminal update fails
-                                        }
+                                            .onFailure { e ->
+                                                logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
+                                                // Don't fail the entire profile update if terminal update fails
+                                            }
+                                    }
+                                } else {
+                                    logger.i("Terminal unchanged, skipping terminal update API call")
                                 }
                             } else {
-                                logger.i("Terminal unchanged, skipping terminal update API call")
+                                logger.i("Selected terminal matches initial terminal, skipping getTerminals re-fetch")
                             }
                         }
 
