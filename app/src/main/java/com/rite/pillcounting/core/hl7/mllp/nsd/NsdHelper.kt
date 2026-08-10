@@ -491,7 +491,8 @@ class NsdHelper(context: Context) {
     }
 
     private fun sameSubnet(a: Inet4Address, b: Inet4Address, prefixLength: Short): Boolean {
-        val mask = if (prefixLength.toInt() == 0) 0 else -1 shl (32 - prefixLength)
+        val prefix = prefixLength.toInt().coerceIn(0, 32)
+        val mask = if (prefix == 0) 0 else -1 shl (32 - prefix)
         val aBits = a.address.fold(0) { acc, byte -> (acc shl 8) or (byte.toInt() and 0xFF) }
         val bBits = b.address.fold(0) { acc, byte -> (acc shl 8) or (byte.toInt() and 0xFF) }
         return (aBits and mask) == (bBits and mask)

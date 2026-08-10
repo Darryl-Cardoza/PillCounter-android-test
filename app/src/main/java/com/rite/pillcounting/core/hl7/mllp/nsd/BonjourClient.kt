@@ -6,10 +6,12 @@ import android.net.nsd.NsdServiceInfo
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import androidx.annotation.RequiresExtension
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import java.net.InetSocketAddress
 import java.net.Socket
 import java.util.concurrent.Executor
+import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -39,6 +41,7 @@ class BonjourClient(context: Context) {
     private val nsdManager =
         context.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val ioExecutor = Executors.newSingleThreadExecutor()
 
     private var discoveryListener: NsdManager.DiscoveryListener? = null
     private val isDiscovering = AtomicBoolean(false)
@@ -129,7 +132,8 @@ class BonjourClient(context: Context) {
 
     private fun resolveModern(serviceInfo: NsdServiceInfo, completion: (ConnectionResult) -> Unit) {
         val executor = Executor { it.run() }
-        val callback = object : NsdManager.ServiceInfoCallback {
+        val callback = @RequiresExtension(extension = Build.VERSION_CODES.TIRAMISU, version = 7)
+        object : NsdManager.ServiceInfoCallback {
             override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
                 logger.e("Resolve callback registration failed: $errorCode")
             }
@@ -165,13 +169,16 @@ class BonjourClient(context: Context) {
         val host = rawHost.substringBefore('%') // strip IPv6 scope id, e.g. fe80::1%wlan0
 
         logger.d("verifyAndFinish() — probing $host:$port")
-        Socket().use { socket ->
-            try {
-                socket.connect(InetSocketAddress(host, port), 5_000)
-                logger.i("verifyAndFinish() — connected to $host:$port")
-                finish(ConnectionResult.Success(host, port), completion)
-            } catch (e: Exception) {
-                logger.e("verifyAndFinish() — probe connect to $host:$port failed: ${e.message}", e)
+        ioExecutor.execute {
+            Socket().use { socket ->
+                try {
+                    socket.connect(InetSocketAddress(host, port), 5_000)
+                    logger.i("verifyAndFinish() — connected to $host:$port")
+                    finish(ConnectionResult.Success(host, port), completion)
+                } catch (e: Exception) {
+                    logger.e("verifyAndFinish() — probe connect to $host:$port failed: ${e.message}", e)
+                    finish(ConnectionResult.Failure("Probe connect to $host:$port failed: ${e.message}"), completion)
+                }
             }
         }
     }
