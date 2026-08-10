@@ -51,6 +51,18 @@ class Hl7serviceHandler @Inject constructor(
             listener?.let { hl7Service?.setListener(it) }
             bound = true
             logger.i("Successfully bound to HL7 Service")
+
+            // Hand over whatever config accumulated while unbound. updateConfig() drops writes
+            // when there is nothing to write to, so a terminal renamed before the binding
+            // landed would otherwise leave the service running on the previous name — still
+            // advertising it and still stamping it into MSH-4. NsdHelper treats a config that
+            // has not actually changed as a duplicate and ignores it, so this is safe to run
+            // on every connect.
+            currentConfig?.let { config ->
+                hl7Service?.updateConfig(config)
+                hl7Service?.rebroadcastNsd()
+                logger.i("Applied pending config on bind: ${config.nsdBroadcastServiceName}")
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {

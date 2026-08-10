@@ -110,6 +110,11 @@ object HL7MessageBuilder {
         drugName: String,
         pharmacistId: String?,
         pharmacistName: String?,
+        // RXD-10 carries the operator as ID^Family^Given. The joined [pharmacistName] is kept
+        // for the segments that want one display string (ORC-12, Z-segments); these two feed the
+        // structured components a receiver needs to render an operator name.
+        pharmacistFamilyName: String? = null,
+        pharmacistGivenName: String? = null,
         location: String? = null,
         // Optional fields that may not yet exist on every PillCountTxnEntity build;
         // passed explicitly until Room entities are confirmed to carry them.
@@ -179,6 +184,8 @@ object HL7MessageBuilder {
                 rxd.lotNumber = lotNumber
                 rxd.expirationDate = expirationDate
                 rxd.dispensingProviderId = pharmacistId
+                rxd.dispensingProviderFamilyName = pharmacistFamilyName
+                rxd.dispensingProviderGivenName = pharmacistGivenName
                 rxd.dispenseSubIdCounter = "1"
             }
 

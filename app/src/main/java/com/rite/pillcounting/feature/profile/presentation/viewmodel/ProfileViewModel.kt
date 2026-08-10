@@ -32,9 +32,11 @@ import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
 import com.rite.pillcounting.feature.profile.domain.model.State
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -435,37 +437,40 @@ class ProfileViewModel @Inject constructor(
                         // not-yet-loaded local cache can't cause the release step below to be
                         // wrongly skipped — that would leave the device still holding its old
                         // terminal server-side and make the claim 409.
-                        val claimDeviceKeyForCheck = if (selectedTerminal != null) deviceKeyProvider.getDeviceKey() else null
-                        val currentTerminals = if (claimDeviceKeyForCheck != null) {
-                            terminalRepository.getTerminals(availableOnly = true, deviceKey = claimDeviceKeyForCheck)
-                                .getOrNull()?.data?.terminals ?: terminals
-                        } else {
-                            terminals
-                        }
-                        val heldTerminal = currentTerminals.firstOrNull { it.deviceKey == claimDeviceKeyForCheck }
-                            ?: initialTerminal
-                        if (selectedTerminal != null && selectedTerminal?.terminalId != heldTerminal?.terminalId) {
-                            val terminalId = selectedTerminal?.terminalId
-                            if (terminalId != null) {
-                                logger.i("Terminal changed from ${heldTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
+                        // The whole claim runs under NonCancellable. Leaving the Profile screen
+                        // cancels viewModelScope, and this block spans several suspension
+                        // points; a cancellation landing in the middle used to abort it after
+                        // the server had already granted the terminal but before the phone
+                        // recorded it, leaving the two permanently disagreeing — the device
+                        // held Terminal 2 server-side while every local reader still saw none.
+                        withContext(NonCancellable) {
+                            val claimDeviceKeyForCheck = if (selectedTerminal != null) deviceKeyProvider.getDeviceKey() else null
+                            val currentTerminals = if (claimDeviceKeyForCheck != null) {
+                                terminalRepository.getTerminals(availableOnly = true, deviceKey = claimDeviceKeyForCheck)
+                                    .getOrNull()?.data?.terminals ?: terminals
+                            } else {
+                                terminals
+                            }
+                            val heldTerminal = currentTerminals.firstOrNull { it.deviceKey == claimDeviceKeyForCheck }
+                                ?: initialTerminal
+                            if (selectedTerminal != null && selectedTerminal?.terminalId != heldTerminal?.terminalId) {
+                                val terminalId = selectedTerminal?.terminalId
+                                if (terminalId != null) {
+                                    logger.i("Terminal changed from ${heldTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
 
-                                val claimDeviceKey = claimDeviceKeyForCheck ?: deviceKeyProvider.getDeviceKey()
+                                    val claimDeviceKey = claimDeviceKeyForCheck ?: deviceKeyProvider.getDeviceKey()
 
-                                // Single update call claims the new terminal directly — no
-                                // separate release call for the old one. Server assigns
-                                // deviceKey to the new terminal; old terminal's deviceKey is
-                                // just cleared locally so the UI reflects the swap immediately.
-                                // Runs in the same coroutine as the profile save (not a nested
-                                // viewModelScope.launch) so it can't be cancelled by the scope
-                                // finishing/navigating away right after Success is set.
-                                logger.i("Terminal claim flow: heldTerminal=${heldTerminal?.terminalId}(${heldTerminal?.terminalName}) newTerminal=$terminalId(${selectedTerminal?.terminalName}) claimDeviceKey=$claimDeviceKey")
-                                val terminalRequest = TerminalUpdateRequest(
-                                    terminalName = selectedTerminal?.terminalName ?: "Unknown",
-                                    isActive = true,
-                                    deviceKey = claimDeviceKey
-                                )
+                                    // Single update call claims the new terminal directly — no
+                                    // separate release call for the old one. Server assigns
+                                    // deviceKey to the new terminal; old terminal's deviceKey is
+                                    // just cleared locally so the UI reflects the swap immediately.
+                                    logger.i("Terminal claim flow: heldTerminal=${heldTerminal?.terminalId}(${heldTerminal?.terminalName}) newTerminal=$terminalId(${selectedTerminal?.terminalName}) claimDeviceKey=$claimDeviceKey")
+                                    val terminalRequest = TerminalUpdateRequest(
+                                        terminalName = selectedTerminal?.terminalName ?: "Unknown",
+                                        isActive = true,
+                                        deviceKey = claimDeviceKey
+                                    )
 
-                                viewModelScope.launch {
                                     terminalRepository.updateTerminal(terminalId, terminalRequest)
                                         .onSuccess { _ ->
                                             logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
@@ -500,9 +505,9 @@ class ProfileViewModel @Inject constructor(
                                             // Don't fail the entire profile update if terminal update fails
                                         }
                                 }
+                            } else {
+                                logger.i("Terminal unchanged, skipping terminal update API call")
                             }
-                        } else {
-                            logger.i("Terminal unchanged, skipping terminal update API call")
                         }
 
                         _updateUiState.value = ProfileUpdateUiState.Success
@@ -584,28 +589,23 @@ class ProfileViewModel @Inject constructor(
      * and triggers NSD rebroadcast.
      */
     private fun updateHl7ConfigWithNewTerminal(terminalName: String) {
-        // Check if HL7 is enabled and user is logged in
+        // Every gate below used to return silently. When one of them tripped, the terminal was
+        // renamed in the account and in prefs while the device carried on advertising the old
+        // name and stamping it into MSH-4 — with nothing in the log to say why. Say so instead.
         if (!preferenceHelper.isHl7Enabled() || !preferenceHelper.isUserLoggedIn()) {
+            logger.w(
+                "Not rebroadcasting '$terminalName': hl7Enabled=${preferenceHelper.isHl7Enabled()} " +
+                    "loggedIn=${preferenceHelper.isUserLoggedIn()}"
+            )
             return
         }
 
-        val broadCastServiceName = preferenceHelper.getNsdBroadcastType()
-        val discoverServiceName = preferenceHelper.getNsdDiscoveryType()
+        logger.i("Terminal renamed to '$terminalName' — rebroadcasting NSD")
 
-        if (broadCastServiceName.isEmpty() || discoverServiceName.isEmpty()) {
-            return
-        }
-
-        val config = HL7Config(
-            serverPort = 2575,
-            autoResponseDelayMs = 10_000L,
-            nsdBroadcastServiceName = terminalName,
-            nsdBroadcastType = broadCastServiceName,
-            nsdDiscoveryType = discoverServiceName,
-            imageServicePort = 8080,
-            imageServiceSecurePort = 8443
-        )
-
-        hl7ServiceManager.updateConfigAndRebroadcast(config)
+        // Only the name changed. Rebuilding the config here meant re-reading the NSD service
+        // types from preferences, where they are not reliably stored — they came back empty and
+        // the rename never reached the network. Hand the name to the manager and let it amend
+        // the config the service is actually running.
+        hl7ServiceManager.updateTerminalName(terminalName)
     }
 }

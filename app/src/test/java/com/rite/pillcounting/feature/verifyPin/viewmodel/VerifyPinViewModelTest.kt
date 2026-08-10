@@ -5,6 +5,7 @@ import android.util.Log
 import app.cash.turbine.test
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.NetworkUtils
+import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.otp.data.VerifyPinRepository
 import com.rite.pillcounting.feature.verifyPin.domain.model.VerifiedUser
@@ -51,10 +52,12 @@ class VerifyPinViewModelTest {
     private lateinit var repository: VerifyPinRepository
     private lateinit var context: Context
     private lateinit var prefs: PreferenceHelper
+    private lateinit var deviceKeyProvider: DeviceKeyProvider
     private lateinit var viewModel: VerifyPinViewModel
 
     private val email = "user@test.com"
     private val otp = "123456"
+    private val testDeviceKey = "test-device-key"
 
     @Before
     fun setup() {
@@ -76,10 +79,12 @@ class VerifyPinViewModelTest {
         repository = mockk()
         context = mockk()
         prefs = mockk(relaxed = true)
+        deviceKeyProvider = mockk(relaxed = true)
+        coEvery { deviceKeyProvider.getDeviceKey() } returns testDeviceKey
 
         every { context.getString(any()) } returns "msg"
 
-        viewModel = VerifyPinViewModel(repository, context, prefs)
+        viewModel = VerifyPinViewModel(repository, context, prefs, deviceKeyProvider)
     }
 
     @After
@@ -110,7 +115,7 @@ class VerifyPinViewModelTest {
         val state = viewModel.uiState.value
         assertTrue(state is VerifyPinUiState.Error)
         assertEquals("invalid-otp", (state as VerifyPinUiState.Error).message)
-        coVerify(exactly = 0) { repository.verifyPin(any(), any()) }
+        coVerify(exactly = 0) { repository.verifyPin(any(), any(), any(), any()) }
     }
 
     // ───────────────────────────── already-loading guard ─────────────────────────────
@@ -120,7 +125,7 @@ class VerifyPinViewModelTest {
         // Suspend the first repository call so the VM stays in Loading, then issue a
         // second call which must hit the already-loading guard and return early.
         val gate = CompletableDeferred<Result<VerifyPinResponse>>()
-        coEvery { repository.verifyPin(email, otp) } coAnswers { gate.await() }
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } coAnswers { gate.await() }
 
         viewModel.verifyPin(email, otp) // schedules coroutine #1
         advanceUntilIdle()              // coroutine #1 runs: sets Loading, suspends on gate
@@ -133,7 +138,7 @@ class VerifyPinViewModelTest {
         gate.complete(Result.success(VerifyPinResponse(data = VerifyPinData())))
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.verifyPin(email, otp) }
+        coVerify(exactly = 1) { repository.verifyPin(email, otp, testDeviceKey, any()) }
     }
 
     // ───────────────────────────── no internet ─────────────────────────────
@@ -149,7 +154,7 @@ class VerifyPinViewModelTest {
         val state = viewModel.uiState.value
         assertTrue(state is VerifyPinUiState.Error)
         assertEquals("no-internet", (state as VerifyPinUiState.Error).message)
-        coVerify(exactly = 0) { repository.verifyPin(any(), any()) }
+        coVerify(exactly = 0) { repository.verifyPin(any(), any(), any(), any()) }
     }
 
     // ───────────────────────────── success branches ─────────────────────────────
@@ -158,7 +163,7 @@ class VerifyPinViewModelTest {
     fun `verifyPin success with both tokens and non-null user saves tokens`() = runTest {
         val user = VerifiedUser(email = email, isVerified = true)
         val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
 
         viewModel.uiState.test {
@@ -177,7 +182,7 @@ class VerifyPinViewModelTest {
     fun `verifyPin success with missing token and null user does not save tokens`() = runTest {
         // accessToken null -> warn branch; user null -> warn branch
         val data = VerifyPinData(accessToken = null, refreshToken = null, user = null)
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(status = 200, data = data))
 
         viewModel.verifyPin(email, otp)
@@ -191,7 +196,7 @@ class VerifyPinViewModelTest {
     fun `verifyPin success with blank refresh token hits missing-token branch`() = runTest {
         val user = VerifiedUser(email = email)
         val data = VerifyPinData(accessToken = "access", refreshToken = "", user = user)
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(data = data))
 
         viewModel.verifyPin(email, otp)
@@ -203,7 +208,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin success with null data treats tokens and user as missing`() = runTest {
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.success(VerifyPinResponse(status = 200, data = null))
 
         viewModel.verifyPin(email, otp)
@@ -217,7 +222,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin failure IOException maps to server unavailable`() = runTest {
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.failure(IOException("conn reset"))
         every { context.getString(R.string.error_server_unavailable) } returns "server-unavailable"
 
@@ -229,7 +234,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin failure HttpException 401 maps to invalid otp`() = runTest {
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.failure(httpException(401, invalidJson))
         every { context.getString(R.string.error_invalid_otp) } returns "invalid-otp"
 
@@ -241,7 +246,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin failure HttpException 400 with parsed message`() = runTest {
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.failure(httpException(400, validErrorJson))
 
         viewModel.verifyPin(email, otp)
@@ -253,7 +258,7 @@ class VerifyPinViewModelTest {
     @Test
     fun `verifyPin failure HttpException 400 with unparseable body falls back to invalid otp`() =
         runTest {
-            coEvery { repository.verifyPin(email, otp) } returns
+            coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
                 Result.failure(httpException(400, invalidJson))
             every { context.getString(R.string.error_invalid_otp) } returns "invalid-otp"
 
@@ -265,7 +270,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin failure HttpException 5xx maps to server down`() = runTest {
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.failure(httpException(503, invalidJson))
         every { context.getString(R.string.error_server_down) } returns "server-down"
 
@@ -277,7 +282,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin failure HttpException else-code with parsed message`() = runTest {
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.failure(httpException(418, validErrorJson))
 
         viewModel.verifyPin(email, otp)
@@ -289,7 +294,7 @@ class VerifyPinViewModelTest {
     @Test
     fun `verifyPin failure HttpException else-code with null parsed message falls back to unknown`() =
         runTest {
-            coEvery { repository.verifyPin(email, otp) } returns
+            coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
                 Result.failure(httpException(418, invalidJson))
             every { context.getString(R.string.error_unknown) } returns "unknown"
 
@@ -301,7 +306,7 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin failure generic exception maps to unknown`() = runTest {
-        coEvery { repository.verifyPin(email, otp) } returns
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
             Result.failure(RuntimeException("boom"))
         every { context.getString(R.string.error_unknown) } returns "unknown"
 

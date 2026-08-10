@@ -6,6 +6,7 @@ import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
@@ -58,6 +59,7 @@ class DashboardViewModelTest {
     private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
     private val hl7EventHandler: Hl7EventHandler = mockk(relaxed = true)
     private val hl7ServiceManager: Hl7ServiceManager = mockk(relaxed = true)
+    private val deviceKeyProvider: DeviceKeyProvider = mockk(relaxed = true)
 
     @Before
     fun setup() {
@@ -79,6 +81,7 @@ class DashboardViewModelTest {
         pillCountTxnDao = pillCountTxnDao,
         hl7EventHandler = hl7EventHandler,
         hl7ServiceManager = hl7ServiceManager,
+        deviceKeyProvider = deviceKeyProvider,
     )
 
     // Consumes turbine items until the predicate is satisfied, then returns the matching item.
@@ -109,12 +112,21 @@ class DashboardViewModelTest {
     @Test
     fun `fetchUserDetail persists user saves prefs and sets terminalInfoLoaded on API success`() = runTest {
         val token = "access-tok"
-        val terminal = Terminal(terminalId = "T1", terminalName = "Main Terminal", isActive = true)
+        // The terminal must carry this install's device_key to be adopted. is_active alone marks
+        // it enabled for the account and is shared by every device signed into that account, so
+        // selecting on it handed all of them the same terminal.
+        val terminal = Terminal(
+            terminalId = "T1",
+            terminalName = "Main Terminal",
+            isActive = true,
+            deviceKey = "device-A"
+        )
         val profile = UserProfile(userId = "u1", isProfileCompleted = true)
         val userDetail = UserDetail(profile = profile, settings = UserSettings(terminals = listOf(terminal)))
         val apiResponse = ApiResponse(status = 200, isSuccess = true, message = "OK", token = null, data = userDetail)
 
         every { preferenceHelper.getAccessToken() } returns token
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
         coEvery { repository.getUserDetail(token) } returns Result.success(apiResponse)
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 42L
         every { userDao.observeByLocalId(any()) } returns flowOf(null)

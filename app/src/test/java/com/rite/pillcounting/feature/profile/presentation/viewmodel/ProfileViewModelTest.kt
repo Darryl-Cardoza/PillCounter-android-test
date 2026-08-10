@@ -12,6 +12,7 @@ import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.security.models.SecureString
 import com.rite.pillcounting.core.utils.common.NetworkUtils
+import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.validator.CredentialsValidator
 import com.rite.pillcounting.feature.dashboard.data.TerminalRepository
@@ -70,6 +71,7 @@ class ProfileViewModelTest {
     private lateinit var userDao: UserDao
     private lateinit var validator: CredentialsValidator
     private lateinit var hl7ServiceManager: Hl7ServiceManager
+    private lateinit var deviceKeyProvider: DeviceKeyProvider
     private lateinit var context: Context
 
     private val activeTerminal =
@@ -86,7 +88,7 @@ class ProfileViewModelTest {
 
     private val updateResponse = ProfileUpdateResponse(200, "ok", true)
     private val deleteResponse = ProfileDeleteResponse(200, "ok", true)
-    private val terminalResponse = TerminalUpdateResponse(message = "ok", success = true)
+    private val terminalResponse = TerminalUpdateResponse(message = "ok", isSuccess = true)
 
     @Before
     fun setup() {
@@ -111,6 +113,8 @@ class ProfileViewModelTest {
         userDao = mockk(relaxed = true)
         validator = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
+        deviceKeyProvider = mockk(relaxed = true)
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "test-device-key"
         context = mockk(relaxed = true)
 
         every { context.getString(any()) } returns "msg"
@@ -155,6 +159,7 @@ class ProfileViewModelTest {
             userDao,
             validator,
             hl7ServiceManager,
+            deviceKeyProvider,
             context
         )
 

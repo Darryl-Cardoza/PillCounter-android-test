@@ -39,7 +39,7 @@ class TerminalRepositoryTest {
 
     private val terminalId = "terminal-123"
     private val request = TerminalUpdateRequest(terminalName = "Front Desk", isActive = true)
-    private val successResponse = TerminalUpdateResponse(message = "ok", success = true)
+    private val successResponse = TerminalUpdateResponse(message = "ok", isSuccess = true)
 
     @Before
     fun setup() {

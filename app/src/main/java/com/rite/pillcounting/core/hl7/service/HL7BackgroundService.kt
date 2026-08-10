@@ -81,6 +81,9 @@ class HL7Service : Service() {
     private lateinit var imageServer: ImageWebServer
     private var serverStarted = false
 
+    /** Guards [initializeCoreComponents] against repeat onStartCommand deliveries. */
+    private var coreInitialized = false
+
     @Volatile
     private var lastConnectedHost: String? = null
 
@@ -105,7 +108,18 @@ class HL7Service : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        intent?.let { loadConfigFromIntent(it) }
+        // START_STICKY restarts this service with a null intent. `intent?.let { … }` then left
+        // `config` at its constructed default, whose nsdBroadcastServiceName is
+        // "PillCounter-${Build.MODEL}" — so a restarted service silently stopped advertising the
+        // pharmacist's terminal and started advertising the phone model instead. Two handsets of
+        // the same model then collided on that identical name and the responder renamed one to
+        // " (2)". The identity has to survive a restart, so it is persisted on every good intent
+        // and read back when there is none.
+        if (intent != null) {
+            loadConfigFromIntent(intent)
+        } else {
+            restoreConfigFromPreferences()
+        }
 
         startForeground(NOTIFICATION_ID, buildNotification())
 
@@ -200,6 +214,51 @@ class HL7Service : Service() {
                 config.imageServiceSecurePort
             )
         )
+
+        persistIdentity(config)
+    }
+
+    /**
+     * Stores the fields that identify this terminal on the network, so a restart driven by
+     * START_STICKY (null intent) can recover them instead of falling back to the model name.
+     * These are also the values other screens read when they need the NSD service types.
+     */
+    private fun persistIdentity(config: HL7Config) {
+        try {
+            val prefs = PreferenceHelper(applicationContext)
+            prefs.saveNsdBroadcastType(config.nsdBroadcastType)
+            prefs.saveNsdDiscoveryType(config.nsdDiscoveryType)
+        } catch (e: Exception) {
+            logger.e("Could not persist NSD identity — a restart will fall back to defaults", e)
+        }
+    }
+
+    /**
+     * Rebuilds [config] after a restart with no intent. The terminal name comes from the saved
+     * selection rather than [HL7Config]'s model-name default; without a saved selection there is
+     * no terminal to advertise, and the default is used only as a last resort.
+     */
+    private fun restoreConfigFromPreferences() {
+        try {
+            val prefs = PreferenceHelper(applicationContext)
+            val terminalName = prefs.getSelectedTerminalName()
+            val broadcastType = prefs.getNsdBroadcastType().ifBlank { config.nsdBroadcastType }
+            val discoveryType = prefs.getNsdDiscoveryType().ifBlank { config.nsdDiscoveryType }
+
+            if (terminalName.isNullOrBlank()) {
+                logger.w("Restarted with no intent and no saved terminal — advertising ${config.nsdBroadcastServiceName}")
+                return
+            }
+
+            config = config.copy(
+                nsdBroadcastServiceName = terminalName,
+                nsdBroadcastType = broadcastType,
+                nsdDiscoveryType = discoveryType
+            )
+            logger.i("Restarted with no intent — restored terminal '$terminalName' from preferences")
+        } catch (e: Exception) {
+            logger.e("Could not restore config from preferences", e)
+        }
     }
 
     fun updateConfig(newConfig: HL7Config) {
@@ -210,6 +269,20 @@ class HL7Service : Service() {
     /* -------------------- INITIALIZATION -------------------- */
 
     private fun initializeCoreComponents() {
+        // onStartCommand can run more than once on the same service instance — START_STICKY
+        // redelivery, or another startForegroundService while this one is already up. Rebuilding
+        // everything each time replaced nsdHelper, clientManager and networkIpMonitor while the
+        // previous ones were still live: the old NSD registration became unreachable (its owner
+        // was gone, so nothing could unregister it) and the fresh network monitor immediately
+        // re-reported the connected Wi-Fi, asking for another broadcast. NsdHelper now keeps its
+        // registration state process-wide so it survives that, but building a second connection
+        // manager and monitor is still pure leak.
+        if (coreInitialized) {
+            logger.d("Core components already initialized — skipping rebuild")
+            return
+        }
+        coreInitialized = true
+
         // Build the hl7Core facade with the persisted HL7 version preference.
         // PreferenceHelper is injected via Hilt in production; for the service
         // we access it directly via the application context.
@@ -309,16 +382,21 @@ class HL7Service : Service() {
         logger.i("│ Protocol: MLLP/TLS")
         logger.i("└──────────────────────────────────────────────────────┘")
 
+        // Report from the daemon's callback, not from here. Registration is asynchronous and
+        // may be refused or renamed, so announcing success inline logged a registration that
+        // had not happened yet — and logged it again for every duplicate request that
+        // registerService correctly swallowed.
         nsdHelper.registerService(
             port = config.serverPort,
             serviceName = config.nsdBroadcastServiceName,
             serviceType = config.nsdBroadcastType,
-            txtRecords = mapOf("protocol" to "MLLP/TLS")
+            txtRecords = mapOf("protocol" to "MLLP/TLS"),
+            onRegistered = { grantedName ->
+                listener?.onNsdRegistered(grantedName)
+                logger.i("✓ NSD broadcast registered successfully")
+                logger.i("NSD broadcast registered: $grantedName ${config.nsdBroadcastType}")
+            }
         )
-
-        listener?.onNsdRegistered(config.nsdBroadcastServiceName)
-        logger.i("✓ NSD broadcast registered successfully")
-        logger.i("NSD broadcast registered: ${config.nsdBroadcastServiceName} ${config.nsdBroadcastType}")
     }
 
     /**
@@ -341,17 +419,19 @@ class HL7Service : Service() {
 
         logger.w("Rebroadcasting NSD service with name: ${config.nsdBroadcastServiceName}")
 
-        nsdHelper.stopRegistration()
-        logger.w("  ✓ NSD registration stopped")
-
-        /** Small delay avoids NSD race conditions on Android */
-        logger.w("  → Step 2: Waiting 500ms to avoid race conditions...")
-        Handler(Looper.getMainLooper()).postDelayed({
+        // Wait for the daemon to confirm the instance name is free instead of guessing a
+        // delay. A fixed 500ms wait was not enough on real devices: the old record was still
+        // live, so re-registering the same name collided with it and the responder renamed us
+        // to "<name> (2)", then "(3)" on the next rebroadcast. That is where the suffixes in
+        // the Companion's terminal list came from.
+        logger.w("  → Step 2: Waiting for the name to be released...")
+        nsdHelper.stopRegistration {
+            logger.w("  ✓ NSD registration released")
             logger.w("  → Step 3: Starting new NSD broadcast...")
             startNsdBroadcast()
             logger.w("  ✓ NSD rebroadcast complete!")
             logger.w("═══════════════════════════════════════════════════════════")
-        }, 500)
+        }
     }
 
 

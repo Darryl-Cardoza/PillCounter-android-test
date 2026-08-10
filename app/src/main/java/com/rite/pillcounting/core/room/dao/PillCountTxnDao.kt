@@ -658,13 +658,18 @@ interface PillCountTxnDao {
 
     /**
      * One-shot fetch (non-reactive) for resend-on-connect logic.
+     *
+     * Selects on isDispense, not isComingFromHL7: the consumer only ever sends dispense
+     * messages, and requiring isComingFromHL7 = 1 silently excluded dispenses started by
+     * scanning an Rx label on the device — those are 0, so they stayed unsynced forever and
+     * the PMS never received them.
      */
     @Query(
         """
         SELECT *
         FROM pill_count_txn
         WHERE isDeleted = 0
-          AND isComingFromHL7 = 1
+          AND isDispense = 1
           AND status = :completedStatus
           AND (isSynced IS NULL OR isSynced = 0)
         ORDER BY updatedAt ASC

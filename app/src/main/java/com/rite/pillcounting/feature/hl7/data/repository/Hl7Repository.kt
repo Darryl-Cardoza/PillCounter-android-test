@@ -156,18 +156,33 @@ class Hl7Repository @Inject constructor(
         txnId: Long
     ) {
         val txn = txnDao.getById(txnId)
-            ?: return
+            ?: run {
+                logger.w("Dispense HL7 skipped — txn $txnId not found")
+                return
+            }
         val txnDetails = txnDetailsDao.getAllForTxn(txnId.toString())
         //Change this condition because we have transaction status that we are handling from pms
 //        val totalCount = txnDetails.sumOf { it.pillCount ?: 0 }
 //        if (totalCount == 0) {
 //            return
 //        }
-        val user = userDao.getByUserId(txn.localId?.toString().orEmpty())
+        // txn.localId is a FK to UserEntity.localId, not the business userId. Resolving it with
+        // getByUserId compared a Room row id against a JWT-derived string, so it never matched:
+        // the operator was always null, RXD-10 was omitted, and every dispense arrived at the
+        // Companion with a blank Operator column.
+        val user = txn.localId?.let { userDao.getByLocalId(it) }
+        if (user == null) {
+            logger.w("Dispense $txnId has no resolvable operator (localId=${txn.localId}) — RXD-10 will be empty")
+        }
         val location = locationProvider.getCurrentLocationAsString()
 
         val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
-            ?: return
+            ?: run {
+                // Without a drug row there is no NDC to put in RXD-2, so the message cannot be
+                // built — but say so: this txn will sit unsynced forever and someone will ask why.
+                logger.w("Dispense HL7 skipped — txn $txnId has no drug (drugId=${txn.drugId})")
+                return
+            }
 
         val substitutedDrug = if (txn.isSubstitute) txn.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } else null
         val scannedNdc = substitutedDrug?.ndc ?: drug.ndc
@@ -181,11 +196,15 @@ class Hl7Repository @Inject constructor(
             pharmacistId = user?.userId,
             pharmacistName = listOfNotNull(user?.fName, user?.lName)
                 .joinToString(" "),
+            pharmacistFamilyName = user?.lName,
+            pharmacistGivenName = user?.fName,
             location = location,
             config = currentHl7Config()
         )
         logger.i("HL7dispence message tooooooo" + message)
         hl7MessageSender.send(message)
+            .onSuccess { ack -> logger.i("Dispense HL7 sent for txn $txnId — ACK: ${ack.take(120)}") }
+            .onFailure { e -> logger.w("Dispense HL7 send failed for txn $txnId — stays pending: ${e.message}") }
     }
 
     /**
@@ -260,6 +279,28 @@ class Hl7Repository @Inject constructor(
 
         } catch (e: Exception) {
             logger.e("buildAndSendInventoryResponse failed for batchId=$batchId", e)
+        }
+    }
+
+    /**
+     * Sends one dispense the moment it completes.
+     *
+     * Until now the only trigger for outbound dispense HL7 was
+     * [resendPendingHl7Transactions], which runs when the MLLP client (re)connects. That is a
+     * recovery path, not a primary one: a dispense completed while the connection was already
+     * up sat unsynced until the socket happened to bounce, and a locally scanned dispense
+     * (isComingFromHL7 = 0) never qualified for the resend query at all — the pharmacist
+     * finished the count and the PMS never heard about it. This is the primary path; the
+     * resend-on-connect sweep remains as retry for sends that fail here.
+     *
+     * The txnId is recorded before sending because the success ACK is handled asynchronously
+     * ([markTransactionSynced] reads it back to know which row to flag).
+     */
+    fun sendDispenseNow(txnId: Long) {
+        scope.launch {
+            logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
+            preferenceHelper.saveSentMessageTxnId(txnId)
+            buildAndSendSuccessfulDispense(txnId = txnId)
         }
     }
 
