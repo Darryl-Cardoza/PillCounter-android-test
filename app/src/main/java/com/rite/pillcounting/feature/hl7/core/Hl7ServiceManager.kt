@@ -175,10 +175,6 @@ class Hl7ServiceManager @Inject constructor(
     }
 
     /**
-     * Update HL7 configuration and rebroadcast NSD.
-     * Called when terminal name changes.
-     */
-    /**
      * Re-advertises under a new terminal name, keeping every other setting as-is.
      *
      * Callers used to rebuild the whole [HL7Config] from preferences to do this, which meant

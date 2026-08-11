@@ -306,9 +306,13 @@ class Hl7Repository @Inject constructor(
      * ([markTransactionSynced] reads it back to know which row to flag).
      */
     fun sendDispenseNow(txnId: Long) {
-        scope.launch {
-            logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
-            buildAndSendSuccessfulDispense(txnId = txnId)
+        if (preferenceHelper.isHl7Enabled()) {
+            scope.launch {
+                logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
+                buildAndSendSuccessfulDispense(txnId = txnId)
+            }
+        } else {
+            logger.i("HL7 disabled — skipping dispense send, txnId=$txnId")
         }
     }
 

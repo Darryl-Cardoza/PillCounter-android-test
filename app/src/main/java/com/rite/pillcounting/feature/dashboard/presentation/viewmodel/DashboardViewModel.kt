@@ -131,12 +131,6 @@ class DashboardViewModel @Inject constructor(
      * default `emptySet()` in [DashboardUiState] is the correct value until the fetch lands.
      */
     private fun refreshDisabledKpiFilters() {
-        // High Priority and Cycle Count are now available in standalone mode too.
-        // val disabled = if (preferenceHelper.isStandaloneMode()) {
-        //     setOf(KpiFilter.DISP_HIGH_PRIORITY, KpiFilter.INV_CYCLE_COUNT)
-        // } else {
-        //     emptySet()
-        // }
         val disabled = emptySet<KpiFilter>()
         _uiState.update { it.copy(disabledKpiFilters = disabled) }
     }
