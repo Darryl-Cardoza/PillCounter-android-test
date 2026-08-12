@@ -65,8 +65,8 @@ DrugCatalogSeeder.kt
 
 graphify-out/
 
-# Claude-authored notes/docs, not part of the shipped project docs
-docs
+# # Claude-authored notes/docs, not part of the shipped project docs
+# docs
 
 # Face recognition model file
 standalone_face_tf.py
