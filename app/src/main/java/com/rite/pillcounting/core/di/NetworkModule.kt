@@ -6,6 +6,7 @@ import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.core.api.interfaceDetail.HeaderInterceptor
 import com.rite.pillcounting.core.refreshToken.data.TokenAuthenticator
 import com.rite.pillcounting.core.security.RuntimeUnit
+import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequestAdapter
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import dagger.Module
@@ -17,13 +18,9 @@ import okhttp3.OkHttpClient
 import okhttp3.logging.HttpLoggingInterceptor
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
 import java.util.concurrent.TimeUnit
 import javax.inject.Singleton
-import javax.net.ssl.SSLContext
-import javax.net.ssl.TrustManager
-import javax.net.ssl.X509TrustManager
+
 
 /**
  * **NetworkModule**
@@ -97,6 +94,7 @@ object NetworkModule {
     @Singleton
     fun provideMoshi(): Moshi =
         Moshi.Builder()
+            .add(TerminalUpdateRequestAdapter())
             .add(KotlinJsonAdapterFactory())
             .build()
 

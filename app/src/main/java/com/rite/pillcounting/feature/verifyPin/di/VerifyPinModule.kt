@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.verifyPin.di
 
+import com.rite.pillcounting.core.utils.notification.FCMService
 import com.rite.pillcounting.feature.otp.data.VerifyPinRepository
 import com.rite.pillcounting.feature.verifyPin.data.remote.IVerifyPinAPI
 import com.rite.pillcounting.feature.verifyPin.domain.data.IVerifyPinRepository
@@ -55,6 +56,7 @@ object VerifyPinModule {
      * and verifying PIN codes asynchronously.
      *
      * @param verifyPinApi The [IVerifyPinAPI] instance for performing network operations.
+     * @param fcmService Supplies this install's current FCM registration token.
      * @param ioDispatcher The [CoroutineDispatcher] used to handle I/O operations off the main thread.
      * @return A concrete implementation of [IVerifyPinRepository].
      */
@@ -62,10 +64,12 @@ object VerifyPinModule {
     @Singleton
     fun provideVerifyPinRepository(
         verifyPinApi: IVerifyPinAPI,
+        fcmService: FCMService,
         ioDispatcher: CoroutineDispatcher,
     ): IVerifyPinRepository =
         VerifyPinRepository(
             verifyPinApi = verifyPinApi,
+            fcmService = fcmService,
             ioDispatcher = ioDispatcher,
         )
 }

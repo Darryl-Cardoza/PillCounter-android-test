@@ -5,17 +5,19 @@ import android.util.Log
 import app.cash.turbine.test
 import com.google.gson.Gson
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.models.ValidationResult
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.security.models.SecureString
 import com.rite.pillcounting.core.utils.common.NetworkUtils
+import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.validator.CredentialsValidator
 import com.rite.pillcounting.feature.dashboard.data.TerminalRepository
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
+import com.rite.pillcounting.feature.dashboard.domain.model.TerminalListData
+import com.rite.pillcounting.feature.dashboard.domain.model.TerminalListResponse
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateResponse
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
@@ -56,6 +58,7 @@ import org.junit.Before
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
+import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
@@ -70,12 +73,14 @@ class ProfileViewModelTest {
     private lateinit var userDao: UserDao
     private lateinit var validator: CredentialsValidator
     private lateinit var hl7ServiceManager: Hl7ServiceManager
+    private lateinit var deviceKeyProvider: DeviceKeyProvider
     private lateinit var context: Context
 
+    private val deviceKey = "test-device-key"
     private val activeTerminal =
-        Terminal(terminalId = "t1", terminalName = "Front Desk", isActive = true)
+        Terminal(terminalId = "t1", terminalName = "Front Desk", isActive = true, deviceKey = deviceKey)
     private val otherTerminal =
-        Terminal(terminalId = "t2", terminalName = "Back Desk", isActive = false)
+        Terminal(terminalId = "t2", terminalName = "Back Desk", isActive = false, deviceKey = null)
 
     private val usStates = listOf(State("CA", "California"), State("NY", "New York"))
     private val caStates = listOf(State("ON", "Ontario"))
@@ -86,7 +91,7 @@ class ProfileViewModelTest {
 
     private val updateResponse = ProfileUpdateResponse(200, "ok", true)
     private val deleteResponse = ProfileDeleteResponse(200, "ok", true)
-    private val terminalResponse = TerminalUpdateResponse(message = "ok", success = true)
+    private val terminalResponse = TerminalUpdateResponse(message = "ok", isSuccess = true)
 
     @Before
     fun setup() {
@@ -111,6 +116,8 @@ class ProfileViewModelTest {
         userDao = mockk(relaxed = true)
         validator = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
+        deviceKeyProvider = mockk(relaxed = true)
+        coEvery { deviceKeyProvider.getDeviceKey() } returns deviceKey
         context = mockk(relaxed = true)
 
         every { context.getString(any()) } returns "msg"
@@ -118,8 +125,10 @@ class ProfileViewModelTest {
         // Default init stubs
         every { preferenceHelper.getLocalId() } returns 1L
         every { preferenceHelper.isDoNotAskAgain() } returns false
-        every { preferenceHelper.getTerminals() } returns listOf(activeTerminal, otherTerminal)
-        every { preferenceHelper.getSelectedTerminalId() } returns null
+        coEvery { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) } returns
+            Result.success(
+                TerminalListResponse(data = TerminalListData(terminals = listOf(activeTerminal, otherTerminal)))
+            )
         every { preferenceHelper.getUserId() } returns "user-1"
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
         every { preferenceHelper.getCountries() } returns testCountries
@@ -155,6 +164,7 @@ class ProfileViewModelTest {
             userDao,
             validator,
             hl7ServiceManager,
+            deviceKeyProvider,
             context
         )
 
@@ -279,36 +289,80 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `init resolves selected terminal by saved id`() = runTest(testDispatcher) {
+    fun `init resolves selected terminal by matching device key`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("t1", vm.selectedTerminal?.terminalId)
+        verify { preferenceHelper.saveSelectedTerminalName("Front Desk") }
+        verify { preferenceHelper.saveSelectedTerminalId("t1") }
+    }
+
+    @Test
+    fun `init selectedTerminal null when no terminal matches this device key`() = runTest(testDispatcher) {
+        coEvery { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) } returns
+            Result.success(
+                TerminalListResponse(
+                    data = TerminalListData(terminals = listOf(otherTerminal.copy(deviceKey = null)))
+                )
+            )
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertNull(vm.selectedTerminal)
+    }
+
+    @Test
+    fun `init falls back to empty cache when getTerminals fails and no cache exists`() = runTest(testDispatcher) {
+        coEvery { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) } returns
+            Result.failure(RuntimeException("network"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.terminals.isEmpty())
+        assertNull(vm.selectedTerminal)
+    }
+
+    @Test
+    fun `init falls back to cached terminals when getTerminals fails`() = runTest(testDispatcher) {
+        coEvery { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) } returns
+            Result.failure(RuntimeException("network"))
+        every { preferenceHelper.getTerminals() } returns listOf(activeTerminal, otherTerminal)
+        every { preferenceHelper.getSelectedTerminalId() } returns "t2"
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(2, vm.terminals.size)
+        assertEquals("t1", vm.selectedTerminal?.terminalId) // matches by deviceKey first
+    }
+
+    @Test
+    fun `init cached fallback matches by saved terminal id when no deviceKey match`() = runTest(testDispatcher) {
+        coEvery { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) } returns
+            Result.failure(RuntimeException("network"))
+        every { preferenceHelper.getTerminals() } returns
+            listOf(activeTerminal.copy(deviceKey = null), otherTerminal)
         every { preferenceHelper.getSelectedTerminalId() } returns "t2"
 
         val vm = createViewModel()
         advanceUntilIdle()
 
         assertEquals("t2", vm.selectedTerminal?.terminalId)
-        verify { preferenceHelper.saveSelectedTerminalName("Back Desk") }
     }
 
     @Test
-    fun `init falls back to active terminal when no saved id matches`() = runTest(testDispatcher) {
-        every { preferenceHelper.getSelectedTerminalId() } returns "nope"
+    fun `init does not crash when device key fetch fails while loading terminals`() = runTest(testDispatcher) {
+        coEvery { deviceKeyProvider.getDeviceKey() } throws IOException("firebase down")
 
         val vm = createViewModel()
         advanceUntilIdle()
 
-        assertEquals("t1", vm.selectedTerminal?.terminalId)
-    }
-
-    @Test
-    fun `init selectedTerminal null when no match and none active`() = runTest(testDispatcher) {
-        every { preferenceHelper.getSelectedTerminalId() } returns null
-        every { preferenceHelper.getTerminals() } returns
-            listOf(otherTerminal.copy(isActive = false))
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
+        assertTrue(vm.terminals.isEmpty())
         assertNull(vm.selectedTerminal)
+        coVerify(exactly = 0) { terminalRepository.getTerminals(any(), any()) }
     }
 
     // ────────────────────────────── simple setters ──────────────────────────────
@@ -516,6 +570,8 @@ class ProfileViewModelTest {
         coVerify { userDao.update(any<UserEntity>()) }
         verify { preferenceHelper.saveDoNotAskAgain(any()) }
         coVerify(exactly = 0) { terminalRepository.updateTerminal(any(), any()) }
+        // Only the init-time loadTerminals() call — terminal unchanged should not re-fetch.
+        coVerify(exactly = 1) { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) }
     }
 
     @Test
@@ -572,34 +628,35 @@ class ProfileViewModelTest {
 
     @Test
     fun `updateProfile terminal changed success updates terminals and hl7`() = runTest(testDispatcher) {
-        every { preferenceHelper.getSelectedTerminalId() } returns "t1" // initial = t1
         coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
         coEvery { terminalRepository.updateTerminal("t2", any()) } returns
             Result.success(terminalResponse)
         // Enable HL7 full path
         every { preferenceHelper.isHl7Enabled() } returns true
         every { preferenceHelper.isUserLoggedIn() } returns true
-        every { preferenceHelper.getNsdBroadcastType() } returns "_pc._tcp"
-        every { preferenceHelper.getNsdDiscoveryType() } returns "_srv._tcp"
 
         val vm = createViewModel()
         advanceUntilIdle()
         selectValidLocation(vm)
-        vm.onTerminalSelected(otherTerminal) // change to t2
+        vm.onTerminalSelected(otherTerminal) // change from t1 (held) to t2
 
         vm.updateProfile()
         advanceUntilIdle()
 
         assertEquals(ProfileUpdateUiState.Success, vm.updateUiState.value)
-        coVerify { terminalRepository.updateTerminal("t2", any<TerminalUpdateRequest>()) }
+        coVerify {
+            terminalRepository.updateTerminal(
+                "t2",
+                match<TerminalUpdateRequest> { it.deviceKey == deviceKey && it.isActive == true }
+            )
+        }
         verify { preferenceHelper.saveSelectedTerminalId("t2") }
         verify { preferenceHelper.saveTerminals(any()) }
-        verify { hl7ServiceManager.updateConfigAndRebroadcast(any<HL7Config>()) }
+        verify { hl7ServiceManager.updateTerminalName("Back Desk") }
     }
 
     @Test
     fun `updateProfile terminal changed but update fails does not crash`() = runTest(testDispatcher) {
-        every { preferenceHelper.getSelectedTerminalId() } returns "t1"
         coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
         coEvery { terminalRepository.updateTerminal("t2", any()) } returns
             Result.failure(RuntimeException("terminal boom"))
@@ -613,12 +670,31 @@ class ProfileViewModelTest {
         advanceUntilIdle()
 
         assertEquals(ProfileUpdateUiState.Success, vm.updateUiState.value)
-        verify(exactly = 0) { hl7ServiceManager.updateConfigAndRebroadcast(any()) }
+        verify(exactly = 0) { hl7ServiceManager.updateTerminalName(any()) }
+    }
+
+    @Test
+    fun `updateProfile terminal changed does not crash when device key fetch fails`() = runTest(testDispatcher) {
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        selectValidLocation(vm)
+        vm.onTerminalSelected(otherTerminal) // change from t1 (held) to t2
+
+        // Device key fetch succeeded during init's loadTerminals(); fails now, during the claim.
+        coEvery { deviceKeyProvider.getDeviceKey() } throws IOException("firebase down")
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        assertEquals(ProfileUpdateUiState.Success, vm.updateUiState.value)
+        coVerify(exactly = 0) { terminalRepository.updateTerminal(any(), any()) }
+        verify(exactly = 0) { hl7ServiceManager.updateTerminalName(any()) }
     }
 
     @Test
     fun `updateProfile hl7 early return when disabled`() = runTest(testDispatcher) {
-        every { preferenceHelper.getSelectedTerminalId() } returns "t1"
         coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
         coEvery { terminalRepository.updateTerminal("t2", any()) } returns
             Result.success(terminalResponse)
@@ -633,19 +709,16 @@ class ProfileViewModelTest {
         vm.updateProfile()
         advanceUntilIdle()
 
-        verify(exactly = 0) { hl7ServiceManager.updateConfigAndRebroadcast(any()) }
+        verify(exactly = 0) { hl7ServiceManager.updateTerminalName(any()) }
     }
 
     @Test
-    fun `updateProfile hl7 early return when service names empty`() = runTest(testDispatcher) {
-        every { preferenceHelper.getSelectedTerminalId() } returns "t1"
+    fun `updateProfile hl7 early return when not logged in`() = runTest(testDispatcher) {
         coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
         coEvery { terminalRepository.updateTerminal("t2", any()) } returns
             Result.success(terminalResponse)
         every { preferenceHelper.isHl7Enabled() } returns true
-        every { preferenceHelper.isUserLoggedIn() } returns true
-        every { preferenceHelper.getNsdBroadcastType() } returns ""
-        every { preferenceHelper.getNsdDiscoveryType() } returns ""
+        every { preferenceHelper.isUserLoggedIn() } returns false
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -655,7 +728,7 @@ class ProfileViewModelTest {
         vm.updateProfile()
         advanceUntilIdle()
 
-        verify(exactly = 0) { hl7ServiceManager.updateConfigAndRebroadcast(any()) }
+        verify(exactly = 0) { hl7ServiceManager.updateTerminalName(any()) }
     }
 
     @Test

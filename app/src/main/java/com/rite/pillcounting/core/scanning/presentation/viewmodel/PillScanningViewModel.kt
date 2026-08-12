@@ -45,6 +45,7 @@ import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
+import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
@@ -102,6 +103,7 @@ class PillScanningViewModel @Inject constructor(
     private val barcodeDecoder: BarcodeDecoder,
     private val drugRepository: IDrugRepository,
     private val drugImageDownloader: DrugImageDownloader,
+    private val hl7Repository: Hl7Repository,
 ) : AndroidViewModel(app) {
 
     private val logger = AppLogger("PillScanningVM")
@@ -1446,6 +1448,15 @@ class PillScanningViewModel @Inject constructor(
                 pillCountTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)
             } else {
                 pillCountTxnDao.updateTxnStatus(txnId, status)
+            }
+
+            // Send the dispense to the PMS now, not on the next reconnect. Completion used to
+            // only persist the status; the HL7 message went out when the MLLP connection next
+            // re-established, so a pharmacist finishing a count on a stable connection saw
+            // nothing arrive at the Companion. Failures are fine — the row stays unsynced and
+            // the resend-on-connect sweep retries it.
+            if (txn.isDispense) {
+                hl7Repository.sendDispenseNow(txnId)
             }
 
             _capturedBitmap.value = null
