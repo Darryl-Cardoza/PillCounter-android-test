@@ -11,7 +11,6 @@ import com.rite.pillcounting.core.faceAuth.logic.FaceQualityGate
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.FaceProfileEntity
-import com.rite.pillcounting.core.utils.common.HelperFunctions.plain
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.faceAuth.domain.model.RegistrationState
@@ -49,7 +48,7 @@ class SessionEmailProvider @Inject constructor(
     suspend operator fun invoke(): String? {
         val localId = preferenceHelper.getLocalId()
         if (localId <= 0) return null
-        return userDao.getByLocalId(localId)?.email?.plain()
+        return userDao.getByLocalId(localId)?.email
     }
 }
 
