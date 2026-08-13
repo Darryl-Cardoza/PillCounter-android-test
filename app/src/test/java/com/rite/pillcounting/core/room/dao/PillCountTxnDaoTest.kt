@@ -511,12 +511,12 @@ class PillCountTxnDaoTest {
     // ───────────────────────── HL7 sync flows ─────────────────────────
 
     @Test
-    fun `observePendingHl7Txn emits only completed unsynced hl7 rows`() = runTest {
+    fun `observePendingHl7Txn emits only completed unsynced dispense rows`() = runTest {
         dao.observePendingHl7Txn().test {
             assertTrue(awaitItem().isEmpty())
 
             val id = dao.insertIgnore(
-                baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = false)
+                baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = false)
             )
             val list = awaitItem()
             assertEquals(1, list.size)
@@ -525,10 +525,26 @@ class PillCountTxnDaoTest {
     }
 
     @Test
-    fun `observePendingHl7Txn excludes synced non hl7 or non completed rows`() = runTest {
-        dao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = true))
-        dao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = false, isSynced = false))
-        dao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, isComingFromHL7 = true, isSynced = false))
+    fun `observePendingHl7Txn emits a locally-scanned dispense that is not from hl7`() = runTest {
+        // isComingFromHL7 = false (locally scanned): the flow that triggers the resend sweep
+        // must not be blind to this, since resendPendingHl7Transactions() sends it too.
+        dao.observePendingHl7Txn().test {
+            assertTrue(awaitItem().isEmpty())
+
+            val id = dao.insertIgnore(
+                baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = false, isSynced = false)
+            )
+            val list = awaitItem()
+            assertEquals(1, list.size)
+            assertEquals(id, list.first().txnId)
+        }
+    }
+
+    @Test
+    fun `observePendingHl7Txn excludes synced non dispense or non completed rows`() = runTest {
+        dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = true))
+        dao.insertIgnore(baseTxn(isDispense = false, status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = false))
+        dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.PARTIAL, isComingFromHL7 = true, isSynced = false))
 
         dao.observePendingHl7Txn().test {
             assertTrue(awaitItem().isEmpty())
@@ -538,7 +554,17 @@ class PillCountTxnDaoTest {
     @Test
     fun `getPendingHl7TxnOnce returns snapshot of pending rows`() = runTest {
         val id = dao.insertIgnore(
-            baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = null)
+            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = null)
+        )
+        val result = dao.getPendingHl7TxnOnce()
+        assertEquals(1, result.size)
+        assertEquals(id, result.first().txnId)
+    }
+
+    @Test
+    fun `getPendingHl7TxnOnce includes locally-scanned dispense not from hl7`() = runTest {
+        val id = dao.insertIgnore(
+            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = false, isSynced = null)
         )
         val result = dao.getPendingHl7TxnOnce()
         assertEquals(1, result.size)

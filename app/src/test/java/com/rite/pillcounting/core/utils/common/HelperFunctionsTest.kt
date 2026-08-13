@@ -2,16 +2,11 @@ package com.rite.pillcounting.core.utils.common
 
 import com.rite.pillcounting.core.room.models.dtos.StatusTypeCount
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.security.models.SecureString
-import com.rite.pillcounting.core.utils.common.HelperFunctions.plain
-import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
 import io.mockk.every
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
 import org.junit.Test
 
 /**
@@ -19,7 +14,6 @@ import org.junit.Test
  *  - maskEmail (all branches: null/blank, no/edge @, normal masking)
  *  - getStartDestination (logged-in vs not)
  *  - mapCounts (all CountType x CountStatus combinations incl. else branch)
- *  - String.secure() / SecureString?.plain() extensions
  *
  * Android-dependent members (exitApp, enableImmersiveFullscreen, openPlayStore,
  * saveBitmapToFile, toGrayscaleBitmap) are NOT tested here — see the report's skip list.
@@ -143,27 +137,4 @@ class HelperFunctionsTest {
         assertEquals(0, result.regularPartial)
     }
 
-    // ───────────────────────────── secure / plain extensions ─────────────────────────────
-
-    @Test
-    fun stringSecure_wrapsValue() {
-        val secured: SecureString = "topsecret".secure()
-        assertEquals("topsecret", secured.value)
-    }
-
-    @Test
-    fun secureStringPlain_unwrapsValue() {
-        assertEquals("hello", SecureString("hello").plain())
-    }
-
-    @Test
-    fun secureStringPlain_null_returnsNull() {
-        val nullSecure: SecureString? = null
-        assertNull(nullSecure.plain())
-    }
-
-    @Test
-    fun secureStringPlain_wrappedNullValue_returnsNull() {
-        assertNull(SecureString(null).plain())
-    }
 }

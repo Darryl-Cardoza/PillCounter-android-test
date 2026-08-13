@@ -16,6 +16,17 @@ data class DashboardUiState(
     /** Represents the currently authenticated user's details. */
     val userDetail: UserDetail? = null,
 
+    /**
+     * Name of the terminal THIS install holds, as persisted by whoever last resolved
+     * ownership (auth/me keyed on device_key, or the Profile screen's claim). Null when
+     * this device owns no terminal — the top bar then shows no terminal segment.
+     *
+     * Deliberately NOT derived from `userDetail.settings.terminals` at render time:
+     * that list is account-wide and every row carries `is_active = true`, so scanning it
+     * for "the active one" always returned the first row (Terminal 1) on every device.
+     */
+    val selectedTerminalName: String? = null,
+
     /** Triggers navigation to Profile screen if profile details are incomplete. */
     val navigateToProfile: Boolean = false,
     val logoutUser: Boolean = false,

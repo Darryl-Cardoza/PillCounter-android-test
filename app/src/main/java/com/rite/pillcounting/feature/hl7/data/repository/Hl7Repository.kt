@@ -156,21 +156,45 @@ class Hl7Repository @Inject constructor(
         txnId: Long
     ) {
         val txn = txnDao.getById(txnId)
-            ?: return
+            ?: run {
+                logger.w("Dispense HL7 skipped — txn $txnId not found")
+                return
+            }
         val txnDetails = txnDetailsDao.getAllForTxn(txnId.toString())
         //Change this condition because we have transaction status that we are handling from pms
 //        val totalCount = txnDetails.sumOf { it.pillCount ?: 0 }
 //        if (totalCount == 0) {
 //            return
 //        }
-        val user = userDao.getByUserId(txn.localId?.toString().orEmpty())
+        // txn.localId is a FK to UserEntity.localId, not the business userId. Resolving it with
+        // getByUserId compared a Room row id against a JWT-derived string, so it never matched:
+        // the operator was always null, RXD-10 was omitted, and every dispense arrived at the
+        // Companion with a blank Operator column.
+        val user = txn.localId?.let { userDao.getByLocalId(it) }
+        if (user == null) {
+            logger.w("Dispense $txnId has no resolvable operator (localId=${txn.localId}) — RXD-10 will be empty")
+        }
         val location = locationProvider.getCurrentLocationAsString()
 
         val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
-            ?: return
+            ?: run {
+                // Without a drug row there is no NDC to put in RXD-2, so the message cannot be
+                // built — but say so: this txn will sit unsynced forever and someone will ask why.
+                logger.w("Dispense HL7 skipped — txn $txnId has no drug (drugId=${txn.drugId})")
+                return
+            }
 
         val substitutedDrug = if (txn.isSubstitute) txn.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } else null
         val scannedNdc = substitutedDrug?.ndc ?: drug.ndc
+
+        // Locally-scanned dispenses (isComingFromHL7 = false) have no inbound MSH-10 to reuse,
+        // so HL7MessageBuilder falls back to txnId as the outbound control id. Persist that
+        // here so the ACK handler's getByMessageControlId lookup (see markTransactionSynced)
+        // can find this exact row later — without this write the DB column stays null forever
+        // and the ACK correlation always misses.
+        if (txn.hl7MessageControlId.isNullOrBlank()) {
+            txnDao.updateHl7MessageControlId(txnId, txnId.toString())
+        }
 
         val message = HL7MessageBuilder.buildDispenseMessage(
             txn = txn,
@@ -181,11 +205,15 @@ class Hl7Repository @Inject constructor(
             pharmacistId = user?.userId,
             pharmacistName = listOfNotNull(user?.fName, user?.lName)
                 .joinToString(" "),
+            pharmacistFamilyName = user?.lName,
+            pharmacistGivenName = user?.fName,
             location = location,
             config = currentHl7Config()
         )
-        logger.i("HL7dispence message tooooooo" + message)
+        logger.i("Dispense HL7 message built for txn $txnId: $message")
         hl7MessageSender.send(message)
+            .onSuccess { ack -> logger.i("Dispense HL7 sent for txn $txnId — ACK: ${ack.take(120)}") }
+            .onFailure { e -> logger.w("Dispense HL7 send failed for txn $txnId — stays pending: ${e.message}") }
     }
 
     /**
@@ -263,6 +291,31 @@ class Hl7Repository @Inject constructor(
         }
     }
 
+    /**
+     * Sends one dispense the moment it completes.
+     *
+     * Until now the only trigger for outbound dispense HL7 was
+     * [resendPendingHl7Transactions], which runs when the MLLP client (re)connects. That is a
+     * recovery path, not a primary one: a dispense completed while the connection was already
+     * up sat unsynced until the socket happened to bounce, and a locally scanned dispense
+     * (isComingFromHL7 = 0) never qualified for the resend query at all — the pharmacist
+     * finished the count and the PMS never heard about it. This is the primary path; the
+     * resend-on-connect sweep remains as retry for sends that fail here.
+     *
+     * The txnId is recorded before sending because the success ACK is handled asynchronously
+     * ([markTransactionSynced] reads it back to know which row to flag).
+     */
+    fun sendDispenseNow(txnId: Long) {
+        if (preferenceHelper.isHl7Enabled()) {
+            scope.launch {
+                logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
+                buildAndSendSuccessfulDispense(txnId = txnId)
+            }
+        } else {
+            logger.i("HL7 disabled — skipping dispense send, txnId=$txnId")
+        }
+    }
+
     fun resendPendingHl7Transactions() {
         scope.launch {
             val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
@@ -272,7 +325,6 @@ class Hl7Repository @Inject constructor(
             }
             logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
             for (txn in pendingTxn) {
-                preferenceHelper.saveSentMessageTxnId(txn.txnId)
                 if (txn.isDispense) {
                     //Change this condition because we have transaction status that we are handling from pms
 //                        if (txn.targetCount != null) {
@@ -297,13 +349,25 @@ class Hl7Repository @Inject constructor(
         }
     }
 
-    fun markTransactionSynced() {
+    /**
+     * Marks the transaction that produced [messageId] (the ACKed message's MSH-10, matched
+     * via [PillCountTxnDao.getByMessageControlId]) as synced. Reached only on a success ACK
+     * (see Hl7EventHandler.onAckReceived) — a single shared "last sent txn id" preference used
+     * to stand in for this correlation, which broke whenever two sends were in flight at once
+     * (e.g. a reconnect-triggered resend racing a fresh sendDispenseNow): the ACK for the first
+     * send would resolve against whichever txn id the second send had since overwritten.
+     */
+    fun markTransactionSynced(messageId: String) {
         scope.launch {
-            val txnId = preferenceHelper.getSentMessageTxnId()
-            // Reached only on a success ACK (see Hl7EventHandler.onAckReceived). Flag the txn
-            // synced first, then — when the server disallows local storage — delete it. The PMS
-            // pulls images from the device image server before sending the success ACK, so the
-            // images are already retrieved by the time we delete here.
+            val txn = pillCountTxnDao.getByMessageControlId(messageId)
+            if (txn == null) {
+                logger.w("ACK received for unknown messageId=$messageId — no matching transaction to sync")
+                return@launch
+            }
+            val txnId = txn.txnId
+            // Flag the txn synced first, then — when the server disallows local storage —
+            // delete it. The PMS pulls images from the device image server before sending the
+            // success ACK, so the images are already retrieved by the time we delete here.
             pillCountTxnDao.markTxnSynced(txnId)
             if (!preferenceHelper.isAllowLocalStorage()) {
                 // Wait before deleting: the PMS pulls the transaction images from the device

@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.verifyPin.di
 
+import com.rite.pillcounting.core.utils.notification.FCMService
 import com.rite.pillcounting.feature.otp.data.VerifyPinRepository
 import com.rite.pillcounting.feature.verifyPin.data.remote.IVerifyPinAPI
 import com.rite.pillcounting.feature.verifyPin.domain.data.IVerifyPinRepository
@@ -33,10 +34,12 @@ class VerifyPinModuleTest {
     @Test
     fun `provideVerifyPinRepository returns non-null VerifyPinRepository`() {
         val verifyPinApi = mockk<IVerifyPinAPI>(relaxed = true)
+        val fcmService = mockk<FCMService>(relaxed = true)
         val ioDispatcher = UnconfinedTestDispatcher()
 
         val repository: IVerifyPinRepository = VerifyPinModule.provideVerifyPinRepository(
             verifyPinApi = verifyPinApi,
+            fcmService = fcmService,
             ioDispatcher = ioDispatcher
         )
 

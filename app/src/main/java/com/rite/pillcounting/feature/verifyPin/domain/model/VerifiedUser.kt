@@ -31,5 +31,21 @@ data class VerifiedUser(
 
     /** Whether the user have access to hl7 service or not **/
     @Json(name = "is_hl7_enabled")
-    val isHl7Enabled: Boolean? = null
+    val isHl7Enabled: Boolean? = null,
+
+    /** Whether the user has completed their profile setup */
+    @Json(name = "is_profile_completed")
+    val isProfileCompleted: Boolean? = null,
+
+    /** Whether the user's pharmacy is PMS integrated */
+    @Json(name = "is_pms_integrated")
+    val isPmsIntegrated: Boolean? = null,
+
+    /** Whether SSL certificate verification should be bypassed */
+    @Json(name = "bypass_ssl")
+    val bypassSsl: Boolean? = null,
+
+    /** Whether the account runs in standalone mode */
+    @Json(name = "is_standalone")
+    val isStandalone: Boolean? = null
 )

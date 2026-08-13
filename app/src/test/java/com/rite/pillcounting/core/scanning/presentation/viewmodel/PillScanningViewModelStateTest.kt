@@ -9,6 +9,7 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
+import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
@@ -65,6 +66,7 @@ class PillScanningViewModelStateTest {
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
     private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
+    private val hl7Repository: Hl7Repository = mockk(relaxed = true)
     private val batchDao: BatchDao = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
@@ -93,6 +95,7 @@ class PillScanningViewModelStateTest {
             barcodeDecoder = barcodeDecoder,
             drugRepository = drugRepository,
             drugImageDownloader = drugImageDownloader,
+            hl7Repository = hl7Repository,
         )
     }
 

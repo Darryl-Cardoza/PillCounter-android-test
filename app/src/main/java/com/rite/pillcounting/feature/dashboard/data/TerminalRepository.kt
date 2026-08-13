@@ -6,6 +6,7 @@ import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInt
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.data.remote.ITerminalApi
+import com.rite.pillcounting.feature.dashboard.domain.model.TerminalListResponse
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateResponse
 import kotlinx.coroutines.CoroutineDispatcher
@@ -60,6 +61,39 @@ class TerminalRepository @Inject constructor(
             Result.failure(e)
         } catch (e: Exception) {
             logger.e("Terminal update failed", e)
+            Result.failure(e)
+        }
+    }
+
+    /**
+     * Fetches the list of terminals for the pharmacy.
+     *
+     * @param availableOnly When true, restricts to free terminals plus the one [deviceKey] already holds.
+     * @param deviceKey Stable per-install device identifier (Firebase Installations ID).
+     * @return [Result] containing [TerminalListResponse] on success, or an exception on failure.
+     */
+    suspend fun getTerminals(
+        availableOnly: Boolean,
+        deviceKey: String
+    ): Result<TerminalListResponse> = withContext(ioDispatcher) {
+        try {
+            logger.i("Fetching terminals (availableOnly=$availableOnly)")
+            val token = preferenceHelper.getAccessToken().orEmpty()
+            val response = terminalApi.getTerminals("Bearer $token", availableOnly, deviceKey)
+            Result.success(response)
+        } catch (e: HttpException) {
+            if (e.code() == 401) {
+                logger.w("Access token invalid or expired. Attempting refresh...")
+
+                return@withContext handleTokenRefreshAndRetry {
+                    val newToken = preferenceHelper.getAccessToken().orEmpty()
+                    terminalApi.getTerminals("Bearer $newToken", availableOnly, deviceKey)
+                }
+            }
+            logger.e("Fetching terminals failed with HttpException", e)
+            Result.failure(e)
+        } catch (e: Exception) {
+            logger.e("Fetching terminals failed", e)
             Result.failure(e)
         }
     }

@@ -14,7 +14,7 @@ import org.junit.Test
  * [ModelKeyUnit.material] rely on `KeyStore.getInstance("AndroidKeyStore")`, which is
  * only available on a real device/emulator (Robolectric does not provide a functional
  * AndroidKeyStore security provider) — consistent with the existing precedent in
- * CryptoHelperTest for the same constraint. Those paths are exercised on-device /
+ * KeystoreAesGcmInstrumentedTest for the same constraint. Those paths are exercised on-device /
  * instrumented instead. Here we use reflection to invoke the private pure helper
  * methods directly, since they contain the only branching/validation logic that is
  * deterministic and does not touch Android Keystore, SharedPreferences, or Cipher.

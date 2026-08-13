@@ -24,6 +24,9 @@ private const val KEY_USER_ID = "user_id"
 private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 
+// Device Identity
+private const val KEY_DEVICE_KEY = "device_key"
+
 // Transactions
 private const val KEY_TXN_ID = "txn_id"
 
@@ -35,7 +38,6 @@ private const val KEY_DO_NOT_ASK_AGAIN = "do_not_ask_again"
 private const val KEY_SHOW_NOTES_DIALOG = "key_show_notes_dialog"
 private const val KEY_RECENT_LOGINS = "recent_logins"
 private const val KEY_HISTORY_RETENTION = "history_retention"
-private const val KEY_SENT_TXN_ID = "last_txn_id"
 
 // HL7
 private const val KEY_NSD_BROADCAST_TYPE = "key_nsd_broadcast_type"
@@ -169,6 +171,20 @@ class PreferenceHelper @Inject constructor(
         return allow
     }
 
+    // ─────────────────────────── DEVICE IDENTITY ───────────────────────────
+
+    /** Caches the device_key (Firebase Installations ID) so it is fetched at most once per install. */
+    fun saveDeviceKey(deviceKey: String) {
+        prefs.putString(KEY_DEVICE_KEY, deviceKey)
+        logger.i("Saved device key (length=${deviceKey.length})")
+    }
+
+    fun getDeviceKey(): String? {
+        val key = prefs.getString(KEY_DEVICE_KEY)
+        logger.d("Device key retrieved (exists=${key != null})")
+        return key
+    }
+
     // ─────────────────────────── TRANSACTIONS ───────────────────────────
 
     fun saveTxnId(txnId: Long) {
@@ -282,15 +298,6 @@ class PreferenceHelper @Inject constructor(
         logger.d("Retrieved face lock timeout: $minutes minutes")
         return minutes
     }
-
-    // ─────────────────────────── HL7 MESSAGE TRACKING ───────────────────────────
-
-    fun saveSentMessageTxnId(txnId: Long) {
-        prefs.putLong(KEY_SENT_TXN_ID, txnId)
-    }
-
-    fun getSentMessageTxnId(): Long =
-        prefs.getLong(KEY_SENT_TXN_ID, -1L)
 
     // ─────────────────────────── NSD / HL7 SETTINGS ───────────────────────────
 
