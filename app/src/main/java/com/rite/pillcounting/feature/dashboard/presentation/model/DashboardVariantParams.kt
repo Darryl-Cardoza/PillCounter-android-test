@@ -42,4 +42,8 @@ data class DashboardVariantParams(
     val onQueueDispenseClick: (txnId: Long) -> Unit,
     /** Tap on an in-progress inventory batch in Today's Queue — resumes the new InventoryScan. */
     val onQueueInventoryClick: (batchId: Long) -> Unit,
+    /** KPI cards not available in standalone mode (Disp. High Priority, Inv. Cycle Count). */
+    val disabledKpiFilters: Set<KpiFilter>,
+    /** Tap on a disabled KPI card — surfaces why it's unavailable instead of filtering. */
+    val onDisabledKpiFilterTapped: (KpiFilter) -> Unit,
 )
