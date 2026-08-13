@@ -419,32 +419,30 @@ class ProfileViewModel @Inject constructor(
                                     isActive = true
                                 )
 
-                                viewModelScope.launch {
-                                    terminalRepository.updateTerminal(terminalId, terminalRequest)
-                                        .onSuccess { _ ->
-                                            logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
+                                terminalRepository.updateTerminal(terminalId, terminalRequest)
+                                    .onSuccess { _ ->
+                                        logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
 
-                                            // Update local terminals list - mark selected as active, others as inactive
-                                            terminals = terminals.map { t ->
-                                                t.copy(isActive = t.terminalId == terminalId)
-                                            }
-
-                                            // Save updated terminal selection to preferences
-                                            preferenceHelper.saveSelectedTerminalId(terminalId)
-                                            preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: "Unknown")
-                                            preferenceHelper.saveTerminals(terminals)
-
-                                            // Update initial terminal to current selection
-                                            initialTerminal = selectedTerminal
-
-                                            // Update HL7 service with new terminal name and rebroadcast NSD
-                                            updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: "Unknown")
+                                        // Update local terminals list - mark selected as active, others as inactive
+                                        terminals = terminals.map { t ->
+                                            t.copy(isActive = t.terminalId == terminalId)
                                         }
-                                        .onFailure { e ->
-                                            logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
-                                            // Don't fail the entire profile update if terminal update fails
-                                        }
-                                }
+
+                                        // Save updated terminal selection to preferences
+                                        preferenceHelper.saveSelectedTerminalId(terminalId)
+                                        preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: "Unknown")
+                                        preferenceHelper.saveTerminals(terminals)
+
+                                        // Update initial terminal to current selection
+                                        initialTerminal = selectedTerminal
+
+                                        // Update HL7 service with new terminal name and rebroadcast NSD
+                                        updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: "Unknown")
+                                    }
+                                    .onFailure { e ->
+                                        logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
+                                        // Don't fail the entire profile update if terminal update fails
+                                    }
                             }
                         } else {
                             logger.i("Terminal unchanged, skipping terminal update API call")
