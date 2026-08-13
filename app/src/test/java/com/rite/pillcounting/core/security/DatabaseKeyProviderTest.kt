@@ -3,7 +3,6 @@ package com.rite.pillcounting.core.security
 import android.content.Context
 import android.util.Base64
 import com.rite.pillcounting.core.utils.preference.SecurePreferences
-import com.rite.pillcounting.feature.dashboard.domain.model.KekInfo
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor

@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.dashboard.domain.model
 
+import com.rite.pillcounting.core.security.KekInfo
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 

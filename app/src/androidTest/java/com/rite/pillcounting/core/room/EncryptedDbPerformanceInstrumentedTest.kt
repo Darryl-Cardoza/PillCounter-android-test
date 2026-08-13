@@ -11,6 +11,7 @@ import com.rite.pillcounting.core.security.DatabaseKeyProvider
 import kotlinx.coroutines.runBlocking
 import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 import org.junit.After
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import kotlin.system.measureTimeMillis
@@ -113,12 +114,14 @@ class EncryptedDbPerformanceInstrumentedTest {
         // regression that makes it drastically (>20x) slower than plain SQLite would indicate a
         // real bug (e.g. re-deriving the key per row) rather than expected crypto cost.
         val ceiling = 20L
-        assert(plainWriteMs == 0L || encryptedWriteMs < plainWriteMs * ceiling) {
-            "Encrypted writes are >${ceiling}x slower than plain (encrypted=${encryptedWriteMs}ms, plain=${plainWriteMs}ms) — investigate for a real perf regression, not just crypto overhead."
-        }
-        assert(plainReadMs == 0L || encryptedReadMs < plainReadMs * ceiling) {
-            "Encrypted reads are >${ceiling}x slower than plain (encrypted=${encryptedReadMs}ms, plain=${plainReadMs}ms) — investigate for a real perf regression, not just crypto overhead."
-        }
+        assertTrue(
+            "Encrypted writes are >${ceiling}x slower than plain (encrypted=${encryptedWriteMs}ms, plain=${plainWriteMs}ms) — investigate for a real perf regression, not just crypto overhead.",
+            plainWriteMs == 0L || encryptedWriteMs < plainWriteMs * ceiling
+        )
+        assertTrue(
+            "Encrypted reads are >${ceiling}x slower than plain (encrypted=${encryptedReadMs}ms, plain=${plainReadMs}ms) — investigate for a real perf regression, not just crypto overhead.",
+            plainReadMs == 0L || encryptedReadMs < plainReadMs * ceiling
+        )
     }
 
     /**
@@ -154,8 +157,9 @@ class EncryptedDbPerformanceInstrumentedTest {
         )
 
         val ceiling = 20L
-        assert(plainMs == 0L || encryptedMs < plainMs * ceiling) {
-            "Single-transaction encrypted bulk write is >${ceiling}x slower than plain (encrypted=${encryptedMs}ms, plain=${plainMs}ms)."
-        }
+        assertTrue(
+            "Single-transaction encrypted bulk write is >${ceiling}x slower than plain (encrypted=${encryptedMs}ms, plain=${plainMs}ms).",
+            plainMs == 0L || encryptedMs < plainMs * ceiling
+        )
     }
 }

@@ -2,7 +2,6 @@ package com.rite.pillcounting.core.security
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
-import com.rite.pillcounting.feature.dashboard.domain.model.KekInfo
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals

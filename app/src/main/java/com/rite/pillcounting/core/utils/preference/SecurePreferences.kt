@@ -103,11 +103,11 @@ class SecurePreferences(context: Context,
 
     // ── Public API ────────────────────────────────────────────────────────
 
-    fun putString(key: String, value: String?) {
+    fun putString(key: String, value: String?, commit: Boolean = false) {
         if (value == null) {
-            prefs.edit { remove(key) }
+            prefs.edit(commit) { remove(key) }
         } else {
-            prefs.edit { putString(key, encrypt(value)) }
+            prefs.edit(commit) { putString(key, encrypt(value)) }
         }
     }
 
@@ -135,8 +135,8 @@ class SecurePreferences(context: Context,
         }
     }
 
-    fun putInt(key: String, value: Int) {
-        prefs.edit { putString(key, encrypt(value.toString())) }
+    fun putInt(key: String, value: Int, commit: Boolean = false) {
+        prefs.edit(commit) { putString(key, encrypt(value.toString())) }
     }
 
     fun getInt(key: String, default: Int = 0): Int {

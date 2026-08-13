@@ -4,7 +4,6 @@ import android.content.Context
 import android.util.Base64
 import com.rite.pillcounting.core.utils.preference.SecurePreferences
 import com.rite.pillcounting.core.utils.logger.AppLogger
-import com.rite.pillcounting.feature.dashboard.domain.model.KekInfo
 import java.security.SecureRandom
 
 /**
@@ -104,9 +103,13 @@ object DatabaseKeyProvider {
             val dek = KeystoreAesGcm.unwrap(aliasFor(oldKekId), Base64.decode(oldWrappedB64, Base64.NO_WRAP))
             val newWrapped = KeystoreAesGcm.wrap(newAlias, dek)
 
-            prefs.putString(KEY_DEK_WRAPPED, Base64.encodeToString(newWrapped, Base64.NO_WRAP))
-            prefs.putString(KEY_KEK_ID, kekInfo.keyId)
-            prefs.putInt(KEY_KEK_VERSION, kekInfo.version)
+            // commit() (synchronous) rather than apply(): the old KEK alias is deleted right
+            // after this returns, so prefs must durably point at the new alias before that
+            // happens — otherwise process death in between forces the wipe-and-resync recovery
+            // path in getOrCreateDatabasePassphrase.
+            prefs.putString(KEY_DEK_WRAPPED, Base64.encodeToString(newWrapped, Base64.NO_WRAP), commit = true)
+            prefs.putString(KEY_KEK_ID, kekInfo.keyId, commit = true)
+            prefs.putInt(KEY_KEK_VERSION, kekInfo.version, commit = true)
             logger.d("Rotated DB KEK to ${kekInfo.keyId} (version ${kekInfo.version})")
         } catch (e: Exception) {
             logger.e("KEK rotation failed, keeping previous key", e)
