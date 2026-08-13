@@ -51,6 +51,24 @@ class Hl7serviceHandler @Inject constructor(
             listener?.let { hl7Service?.setListener(it) }
             bound = true
             logger.i("Successfully bound to HL7 Service")
+
+            // Hand over whatever config accumulated while unbound. A terminal renamed before
+            // the binding landed would otherwise leave the service running on the previous
+            // name — still advertising it and still stamping it into MSH-4. Only rebroadcast
+            // when updateConfig() reports the value actually changed: rebroadcastNsd() always
+            // tears down and re-registers unconditionally (it doesn't check first), so calling
+            // it on every bind — including the very first cold-start bind, when the service's
+            // own startup registration may still be in flight — raced that registration and
+            // forced a needless stop/start cycle every launch.
+            currentConfig?.let { config ->
+                val changed = hl7Service?.updateConfig(config) ?: false
+                if (changed) {
+                    hl7Service?.rebroadcastNsd()
+                    logger.i("Applied changed config on bind: ${config.nsdBroadcastServiceName}")
+                } else {
+                    logger.i("Config unchanged on bind — skipping rebroadcast")
+                }
+            }
         }
 
         override fun onServiceDisconnected(name: ComponentName?) {

@@ -43,6 +43,10 @@ class NsdHelperTest {
 
     @Before
     fun setup() {
+        // Registration state is process-wide by design (it mirrors the NSD daemon's namespace,
+        // which outlives any single helper instance), so it leaks between tests unless cleared.
+        NsdHelper.resetRegistrationStateForTest()
+
         mockkStatic(Log::class)
         every { Log.d(any(), any(), any()) } returns 0
         every { Log.i(any(), any(), any()) } returns 0

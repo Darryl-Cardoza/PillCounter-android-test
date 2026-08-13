@@ -207,6 +207,38 @@ class Hl7serviceHandlerTest {
     }
 
     @Test
+    fun `onServiceConnected skips rebroadcast when config unchanged`() {
+        val binderSlot = slot<ServiceConnection>()
+        every { context.bindService(any<Intent>(), capture(binderSlot), any<Int>()) } returns true
+        handler.updateConfig(config)
+        handler.bindService()
+
+        val service = mockk<HL7Service>(relaxed = true)
+        every { service.updateConfig(config) } returns false
+        val binder = mockk<HL7Service.LocalBinder>()
+        every { binder.getService() } returns service
+        binderSlot.captured.onServiceConnected(mockk<ComponentName>(), binder)
+
+        verify(exactly = 0) { service.rebroadcastNsd() }
+    }
+
+    @Test
+    fun `onServiceConnected rebroadcasts when config changed`() {
+        val binderSlot = slot<ServiceConnection>()
+        every { context.bindService(any<Intent>(), capture(binderSlot), any<Int>()) } returns true
+        handler.updateConfig(config)
+        handler.bindService()
+
+        val service = mockk<HL7Service>(relaxed = true)
+        every { service.updateConfig(config) } returns true
+        val binder = mockk<HL7Service.LocalBinder>()
+        every { binder.getService() } returns service
+        binderSlot.captured.onServiceConnected(mockk<ComponentName>(), binder)
+
+        verify(exactly = 1) { service.rebroadcastNsd() }
+    }
+
+    @Test
     fun `bindService is no-op when already bound`() {
         val binderSlot = slot<ServiceConnection>()
         every { context.bindService(any<Intent>(), capture(binderSlot), any<Int>()) } returns true

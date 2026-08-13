@@ -4,9 +4,11 @@ import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
+import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.utils.common.NetworkUtils
+import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.otp.data.VerifyPinRepository
@@ -34,12 +36,14 @@ import javax.inject.Inject
  * @param repository The [VerifyPinRepository] handling OTP verification API.
  * @param context The application context, used for localized messages.
  * @param prefs Secure storage for tokens and login state.
+ * @param deviceKeyProvider Supplies the stable per-install device_key.
  */
 @HiltViewModel
 class VerifyPinViewModel @Inject constructor(
     private val repository: VerifyPinRepository,
     @ApplicationContext private val context: Context,
-    private val prefs: PreferenceHelper
+    private val prefs: PreferenceHelper,
+    private val deviceKeyProvider: DeviceKeyProvider
 ) : ViewModel() {
 
     private val logger = AppLogger.create<VerifyPinViewModel>()
@@ -76,7 +80,15 @@ class VerifyPinViewModel @Inject constructor(
             logger.i("Attempting OTP verification for email: $email")
             _uiState.value = VerifyPinUiState.Loading
 
-            repository.verifyPin(email, otp)
+            val deviceKey = try {
+                deviceKeyProvider.getDeviceKey()
+            } catch (e: Exception) {
+                logger.e("Failed to fetch device key for OTP verification", e)
+                _uiState.value = VerifyPinUiState.Error(mapExceptionToUserMessage(e))
+                return@launch
+            }
+
+            repository.verifyPin(email, otp, deviceKey, BuildConfig.VERSION_NAME)
                 .onSuccess { response ->
                     logger.i("OTP verification success: ${response.status} / ${response.message}")
 

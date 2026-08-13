@@ -12,7 +12,9 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.suspendCancellableCoroutine
 import javax.inject.Inject
+import kotlin.coroutines.resume
 
 /**
  * Handles all Firebase Cloud Messaging responsibilities.
@@ -38,6 +40,18 @@ class FCMService @Inject constructor(
             logger.i("FCM Token retrieved (length=${task.result?.length ?: 0})")
 
             // Optionally send this token to your backend
+        }
+    }
+
+    /** Fetches the current FCM registration token, or null if it can't be retrieved. */
+    suspend fun getToken(): String? = suspendCancellableCoroutine { continuation ->
+        FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
+            if (task.isSuccessful) {
+                continuation.resume(task.result)
+            } else {
+                logger.e("Failed to fetch FCM token", task.exception)
+                continuation.resume(null)
+            }
         }
     }
 
