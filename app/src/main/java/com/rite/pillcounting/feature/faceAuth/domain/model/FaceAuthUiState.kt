@@ -11,7 +11,7 @@ sealed interface RegistrationState {
     data class Failed(val message: String) : RegistrationState
 }
 
-/** State of an in-progress verify (manual test) flow. */
+/** State of an in-progress verify flow. */
 sealed interface VerifyState {
     data object Idle : VerifyState
     data object Scanning : VerifyState

@@ -12,7 +12,6 @@ import com.rite.pillcounting.feature.dashboard.presentation.DashboardScreen
 import com.rite.pillcounting.feature.dispenseFlow.presentation.DispenseFlowScreen
 import com.rite.pillcounting.feature.faceAuth.presentation.FaceRegistrationScreen
 import com.rite.pillcounting.feature.faceAuth.presentation.FaceUsersListScreen
-import com.rite.pillcounting.feature.faceAuth.presentation.FaceVerifyScreen
 import com.rite.pillcounting.feature.inventoryFlow.presentation.InventoryFlowScreen
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.history.presentation.BatchHistoryDetailScreen
@@ -190,10 +189,6 @@ fun AppNavGraph(
 
         composable(route = Screen.FaceRecognitionUsers.route) {
             FaceUsersListScreen(navController = navController)
-        }
-
-        composable(route = Screen.FaceVerify.route) {
-            FaceVerifyScreen(navController = navController)
         }
 
     }

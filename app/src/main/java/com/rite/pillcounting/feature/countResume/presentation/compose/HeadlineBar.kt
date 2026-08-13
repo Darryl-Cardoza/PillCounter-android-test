@@ -51,6 +51,7 @@ fun HeadlineBar(
     onPdfClick: (() -> Unit)? = null,
     onBackClick: (() -> Unit)? = null,
     bottomBarDeleteMode: Boolean = false,
+    deleteModeTitle: String = stringResource(R.string.delete_counts),
 ) {
     Row(
         modifier = Modifier
@@ -197,7 +198,7 @@ fun HeadlineBar(
                     Spacer(Modifier.width(4.dp))
 
                     Text(
-                        text = stringResource(R.string.delete_counts).uppercase(),
+                        text = deleteModeTitle.uppercase(),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = AppTheme.extendedColors.textColor,

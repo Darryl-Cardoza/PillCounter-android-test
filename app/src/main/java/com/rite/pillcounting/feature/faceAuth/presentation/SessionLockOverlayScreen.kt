@@ -62,7 +62,7 @@ private enum class LockStage { LOCKED, SCANNING }
  * @param timeoutMinutes The configured idle timeout, shown in the idle screen's subtitle.
  * @param onUnlocked Called once a live face verify matches an enrolled profile.
  * @param onLogout Called when the user gives up recognizing and chooses to log out instead.
- * @param viewModel Supplies verify state and the start/verify actions (same engine the manual test screen uses).
+ * @param viewModel Supplies verify state and the start/verify actions.
  */
 @Composable
 fun SessionLockOverlayScreen(

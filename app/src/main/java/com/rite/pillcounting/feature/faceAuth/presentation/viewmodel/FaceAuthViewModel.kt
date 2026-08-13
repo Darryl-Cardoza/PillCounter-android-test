@@ -53,7 +53,7 @@ class SessionEmailProvider @Inject constructor(
 }
 
 /**
- * Drives the Face Recognition registration, list, and manual-verify-test flows.
+ * Drives the Face Recognition registration, list, and verify flows.
  *
  * Description:
  * Orchestrates [FaceEngine] (detect/embed) and [FaceProfileRepository]
@@ -220,7 +220,7 @@ class FaceAuthViewModel @Inject constructor(
 
     private var autoVerifyJob: Job? = null
 
-    /** Resets verify state before a new manual-test verify attempt. */
+    /** Resets verify state before a new verify attempt. */
     fun startVerify() {
         _verifyState.value = VerifyState.Scanning
         autoVerifyJob?.cancel()

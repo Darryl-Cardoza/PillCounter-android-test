@@ -56,7 +56,9 @@ import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.feature.faceAuth.domain.model.RegistrationState
 import com.rite.pillcounting.feature.faceAuth.presentation.viewmodel.FaceAuthViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
@@ -108,7 +110,6 @@ fun FaceRegistrationScreen(
             }
 
             state is RegistrationState.Enrolled -> {
-                BackButton(navController = navController, modifier = Modifier.padding(16.dp))
                 EnrolledStep(
                     onAddUser = {
                         nameEntered = false
@@ -315,20 +316,52 @@ private fun ScanFaceStep(
 
 @Composable
 private fun EnrolledStep(onAddUser: () -> Unit, onDone: () -> Unit) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(text = stringResource(R.string.face_registration_enrolled_title), style = MaterialTheme.typography.headlineSmall)
-        Text(text = stringResource(R.string.face_registration_enrolled_body), modifier = Modifier.padding(top = 8.dp))
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(onClick = onAddUser, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.face_registration_add_user))
+    Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
+        Column(
+            modifier = Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(150.dp)
+                    .border(width = 2.dp, color = MaterialTheme.colorScheme.primary, shape = CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.size(72.dp)
+                )
+            }
+            Spacer(modifier = Modifier.height(24.dp))
+            Text(
+                text = stringResource(R.string.face_registration_enrolled_title),
+                color = MaterialTheme.colorScheme.secondary,
+                style = MaterialTheme.typography.titleLarge
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.face_registration_enrolled_body),
+                color = AppTheme.extendedColors.textColor,
+                textAlign = TextAlign.Center,
+                style = MaterialTheme.typography.bodyMedium
+            )
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) {
-            Text(stringResource(R.string.face_registration_done))
+        Row(
+            modifier = Modifier.align(Alignment.BottomCenter),
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            HollowButton(
+                text = stringResource(R.string.face_registration_add_user).uppercase(),
+                onClick = onAddUser,
+                color = MaterialTheme.colorScheme.primary
+            )
+            ActionButtonPrimary(
+                text = stringResource(R.string.face_registration_done).uppercase(),
+                onClick = onDone,
+                color = MaterialTheme.colorScheme.primary
+            )
         }
     }
 }

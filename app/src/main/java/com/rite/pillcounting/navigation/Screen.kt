@@ -270,10 +270,6 @@ sealed interface Screen {
         override val route: String = "face_recognition_users"
     }
 
-    data object FaceVerify : Screen {
-        override val route: String = "face_verify"
-    }
-
 }
 
 
