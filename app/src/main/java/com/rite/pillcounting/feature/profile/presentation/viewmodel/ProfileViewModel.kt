@@ -12,8 +12,6 @@ import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.UserEntity
-import com.rite.pillcounting.core.utils.common.HelperFunctions.plain
-import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.common.NetworkUtils
 import com.rite.pillcounting.core.utils.constants.AppConstants
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
@@ -219,8 +217,8 @@ class ProfileViewModel @Inject constructor(
                     firstName = it.fName ?: ""
                     lastName = it.lName ?: ""
                     pharmacyName = it.pharmacyName.orEmpty()
-                    phoneNumber = it.phoneNumber.plain().orEmpty()
-                    email = it.email.plain().orEmpty()
+                    phoneNumber = it.phoneNumber.orEmpty()
+                    email = it.email.orEmpty()
                     npi = it.npiId.orEmpty()
                     doNotAskAgain = preferenceHelper.isDoNotAskAgain()
                     userCountryCode = it.country
@@ -421,10 +419,10 @@ class ProfileViewModel @Inject constructor(
                             val entity = UserEntity(
                                 localId = localId,
                                 userId = preferenceHelper.getUserId().orEmpty(),
-                                email = email.secure(),
+                                email = email,
                                 fName = firstName.trim(),
                                 lName = lastName.trim(),
-                                phoneNumber = phoneNumber.secure(),
+                                phoneNumber = phoneNumber,
                                 pharmacyName = pharmacyName,
                                 npiId = npi,
                                 notifications = !doNotAskAgain,

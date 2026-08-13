@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.dashboard.domain.model
 
+import com.rite.pillcounting.core.security.KekInfo
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass
 
@@ -8,9 +9,9 @@ import com.squareup.moshi.JsonClass
  */
 @JsonClass(generateAdapter = true)
 data class UserDetail(
-
     @Json(name = "profile") val profile: UserProfile?,
-    @Json(name = "settings") val settings: UserSettings?
+    @Json(name = "settings") val settings: UserSettings?,
+    @Json(name = "kek") val kek: KekInfo? = null
 )
 
 

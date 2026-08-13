@@ -9,7 +9,6 @@ import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.models.ValidationResult
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.UserEntity
-import com.rite.pillcounting.core.security.models.SecureString
 import com.rite.pillcounting.core.utils.common.NetworkUtils
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -25,7 +24,6 @@ import com.rite.pillcounting.feature.profile.data.ProfileRepository
 import com.rite.pillcounting.feature.profile.domain.model.Country
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
-import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateRequest
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateResponse
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
 import com.rite.pillcounting.feature.profile.domain.model.PharmacyTypeData
@@ -182,10 +180,10 @@ class ProfileViewModelTest {
     private fun userEntity(country: String? = null, state: String? = null) = UserEntity(
         localId = 1L,
         userId = "user-1",
-        email = SecureString("john@x.com"),
+        email = "john@x.com",
         fName = "John",
         lName = "Doe",
-        phoneNumber = SecureString("1234567890"),
+        phoneNumber = "1234567890",
         pharmacyName = "Pharma",
         npiId = "123456",
         country = country,

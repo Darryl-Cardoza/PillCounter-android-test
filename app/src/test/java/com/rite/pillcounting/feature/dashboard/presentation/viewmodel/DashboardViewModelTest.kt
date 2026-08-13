@@ -3,7 +3,6 @@ package com.rite.pillcounting.feature.dashboard.presentation.viewmodel
 import android.util.Log
 import app.cash.turbine.test
 import com.rite.pillcounting.core.models.ApiResponse
-import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
@@ -12,7 +11,6 @@ import com.rite.pillcounting.core.room.models.dtos.BatchSummaryDto
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.security.models.SecureString
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
@@ -20,7 +18,6 @@ import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
-import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
 import com.rite.pillcounting.feature.dashboard.domain.model.UserProfile
@@ -196,10 +193,10 @@ class DashboardViewModelTest {
     private fun userEntity(localId: Long = 1L) = UserEntity(
         localId = localId,
         userId = "u-$localId",
-        email = SecureString("a@b.com"),
+        email = "a@b.com",
         fName = "First",
         lName = "Last",
-        phoneNumber = SecureString("123"),
+        phoneNumber = "123",
         avatarUrl = "url",
         role = "admin",
         isVerified = true,

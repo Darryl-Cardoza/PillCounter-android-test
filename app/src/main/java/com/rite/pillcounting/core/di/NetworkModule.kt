@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.di
 
 import android.content.Context
+import android.util.Log
 import com.chuckerteam.chucker.api.ChuckerInterceptor
 import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.core.api.interfaceDetail.HeaderInterceptor
@@ -47,11 +48,19 @@ object NetworkModule {
     //private const val MAIN_API_BASE_URL = "https://pill.ccrlindia.com:8000/"
     //private const val MAIN_API_BASE_URL = "http://192.168.0.78:8000/"
 
-    /** Provides an HTTP logger for debugging API traffic. */
+    /** Matches `"key_material":"<value>"` (any quoted value) so it can be redacted from logs. */
+    private val KEY_MATERIAL_REGEX = Regex("\"key_material\"\\s*:\\s*\"[^\"]*\"")
+
+    /** Provides an HTTP logger for debugging API traffic, with KEK key material redacted. */
     @Provides
     @Singleton
     fun provideLoggingInterceptor(): HttpLoggingInterceptor =
-        HttpLoggingInterceptor().apply {
+        HttpLoggingInterceptor { message ->
+            Log.d(
+                "OkHttp",
+                KEY_MATERIAL_REGEX.replace(message, "\"key_material\":\"***REDACTED***\"")
+            )
+        }.apply {
             level = if (BuildConfig.DEBUG) {
                 HttpLoggingInterceptor.Level.BODY
             } else {

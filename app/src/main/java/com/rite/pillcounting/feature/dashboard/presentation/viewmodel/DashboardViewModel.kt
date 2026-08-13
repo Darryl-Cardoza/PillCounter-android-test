@@ -14,8 +14,8 @@ import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.models.isControlledDrugType
-import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
+import com.rite.pillcounting.core.security.DatabaseKeyProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
@@ -507,6 +507,13 @@ class DashboardViewModel @Inject constructor(
                             }
                             preferenceHelper.saveLocalId(localId)
                             logger.i("User persisted locally with localId=$localId")
+
+                            // Re-wrap the DB DEK under the server-issued KEK if it's a newer
+                            // version than what's currently stored (no-op otherwise, since
+                            // auth/me is polled repeatedly with an unchanged KEK).
+                            detail.kek?.let { kekInfo ->
+                                DatabaseKeyProvider.rotateKekIfNewer(preferenceHelper.getContext(), kekInfo)
+                            }
                         }
 
                         // Check if profile is incomplete
@@ -647,8 +654,8 @@ private fun UserEntity.toUserDetail(
     val profile = UserProfile(
         fName = this.fName,
         lName = this.lName,
-        email = this.email?.value,
-        phoneNumber = this.phoneNumber?.value,
+        email = this.email,
+        phoneNumber = this.phoneNumber,
         avatarUrl = this.avatarUrl,
         isProfileCompleted = this.isProfileCompleted,
         pharmacyName = this.pharmacyName,
@@ -675,10 +682,10 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
     val pk = jwtUserId ?: this.profile?.email.orEmpty()
     return UserEntity(
         userId = pk,
-        email = this.profile?.email?.secure(),
+        email = this.profile?.email,
         fName = this.profile?.fName,
         lName = this.profile?.lName,
-        phoneNumber = this.profile?.phoneNumber?.secure(),
+        phoneNumber = this.profile?.phoneNumber,
         avatarUrl = this.profile?.avatarUrl,
         role = this.profile?.role?.name,
         isVerified = this.profile?.isVerified ?: false,
