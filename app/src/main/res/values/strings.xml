@@ -69,6 +69,13 @@
     <string name="face_intro_body">Sign in to the pharmacy counter in a glance. Enroll your face once — no badges, no passwords to type at the bench.</string>
     <string name="face_intro_skip">Skip for Now</string>
     <string name="face_intro_get_started">Get Started</string>
+    <string name="face_scan_id_title">Scan Photo ID</string>
+    <string name="face_scan_id_hint">Hold your photo ID or driver\'s license inside the frame</string>
+    <string name="face_scan_id_enter_manually">Enter Manually</string>
+    <string name="face_scan_id_suggestions_label">%1$s Suggestions</string>
+    <string name="face_scan_id_status_scanning">Scanning for ID…</string>
+    <string name="face_scan_id_status_paused">Scanning paused</string>
+    <string name="face_scan_id_status_restarting">Restarting camera…</string>
     <string name="face_registration_first_name">First Name</string>
     <string name="face_registration_last_name">Last Name</string>
     <string name="face_registration_continue">Continue</string>

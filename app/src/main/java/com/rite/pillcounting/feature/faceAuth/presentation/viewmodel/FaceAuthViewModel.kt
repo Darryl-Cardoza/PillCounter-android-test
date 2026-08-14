@@ -8,6 +8,7 @@ import com.rite.pillcounting.core.faceAuth.logic.AutoCaptureController
 import com.rite.pillcounting.core.faceAuth.logic.FaceEngine
 import com.rite.pillcounting.core.faceAuth.logic.FaceMatcher
 import com.rite.pillcounting.core.faceAuth.logic.FaceQualityGate
+import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.FaceProfileEntity
@@ -75,8 +76,24 @@ class FaceAuthViewModel @Inject constructor(
     private val faceProfileRepository: FaceProfileRepository,
     private val sessionEmailProvider: SessionEmailProvider,
     private val faceQualityGate: FaceQualityGate,
-    private val autoCaptureController: AutoCaptureController
+    private val autoCaptureController: AutoCaptureController,
+    private val sessionLockController: SessionLockController,
+    private val preferenceHelper: PreferenceHelper
 ) : ViewModel() {
+
+    /** App-wide session lock state, so flow UI (e.g. the ID-scan sheet) can yield to the overlay. */
+    val isSessionLocked: StateFlow<Boolean> = sessionLockController.isLocked
+
+    /** Voiceover setting for the step-title chip — same preference the dispense flow reads. */
+    val isVoiceoverEnabled: Boolean
+        get() = preferenceHelper.isSoundOverride()
+
+    /**
+     * Resets the idle-lock clock. Needed by UI in a dialog window (bottom
+     * sheets): its touches never reach the activity's dispatchTouchEvent, so
+     * without this the session would lock mid-interaction.
+     */
+    fun onSessionActivity() = sessionLockController.onUserActivity()
 
     // TEMPORARY diagnostic for the enroll/verify score mismatch investigation —
     // remove once the root cause is found. Filter logcat on this tag to see the

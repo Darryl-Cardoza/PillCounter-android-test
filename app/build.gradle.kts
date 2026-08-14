@@ -196,6 +196,7 @@ dependencies {
 
     // --- ML Kit ---
     implementation(libs.mlkit.barcode.scanning)
+    implementation(libs.mlkit.text.recognition)
 
     // --- TensorFlow Lite ---
     // org.tensorflow:tensorflow-lite-* maxes out at 2.17.0 — after that, Google

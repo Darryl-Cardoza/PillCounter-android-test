@@ -73,3 +73,5 @@ standalone_face_tf.py
 
 # Android logs file for reference for ai 
 logs.txt
+# macOS Finder metadata
+.DS_Store

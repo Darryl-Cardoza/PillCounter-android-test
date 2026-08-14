@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.feature.dispenseFlow.presentation.compose
+package com.rite.pillcounting.core.utils.compose
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -18,14 +18,27 @@ import com.rite.pillcounting.core.models.titleRes
 import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.ui.theme.AppTheme
 
+/**
+ * The pill-shaped scanning-step title chip shared by the camera screens
+ * ("Scan Rx Label", "Scan Photo ID", …), with optional voiceover of the title.
+ *
+ * @param isSoundOverride Whether to speak the title aloud (voiceover setting).
+ * @param stepType Dispense-flow step whose title to show; only the entry/capture
+ *   steps render a header. Pass null when using [titleResOverride] alone.
+ * @param titleResOverride Explicit title, always shown; takes precedence over [stepType].
+ */
 @Composable
 fun StepTitleWithSpeech(
-    stepType: StepState,
     isSoundOverride: Boolean,
+    stepType: StepState? = null,
     titleResOverride: Int? = null
 ) {
     val context = LocalContext.current
-    val title = if (titleResOverride != null) stringResource(titleResOverride) else stringResource(stepType.titleRes())
+    val title = when {
+        titleResOverride != null -> stringResource(titleResOverride)
+        stepType != null -> stringResource(stepType.titleRes())
+        else -> return
+    }
 
     // The header title is only shown for these entry/capture steps. All other
     // steps (e.g. CONTAINER_INITIATE, TARGET_VERIFICATION) suppress it — they

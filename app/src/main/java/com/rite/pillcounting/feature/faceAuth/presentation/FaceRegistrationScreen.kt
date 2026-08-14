@@ -32,7 +32,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -41,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,16 +62,15 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.feature.faceAuth.domain.model.RegistrationState
 import com.rite.pillcounting.feature.faceAuth.presentation.viewmodel.FaceAuthViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
-import com.rite.pillcounting.ui.theme.PrimaryBackground
-import com.rite.pillcounting.ui.theme.inputBackground
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
 /**
- * Face registration flow: name entry, then Scan Face for each of the 3 angles.
+ * Face registration flow: Scan Photo ID for the name, then Scan Face for each
+ * of the 3 angles.
  *
  * Description:
- * Implements the "Face Access Onboarding" mockups' name-entry and Scan Face
+ * Implements the "Face Access Onboarding" mockups' Scan Photo ID and Scan Face
  * steps, driven by [FaceAuthViewModel]. Camera frames come from the existing
  * [CameraHelper] (the same wrapper the pill-scanning flow uses).
  *
@@ -89,17 +88,33 @@ fun FaceRegistrationScreen(
     val scope = rememberCoroutineScope()
     val state by viewModel.registrationState.collectAsState()
 
-    var firstName by remember { mutableStateOf("") }
-    var lastName by remember { mutableStateOf("") }
-    var nameEntered by remember { mutableStateOf(false) }
+    // rememberSaveable: a scanned/typed name survives activity recreation and
+    // process death while the user is still mid-enrollment.
+    var firstName by rememberSaveable { mutableStateOf("") }
+    var lastName by rememberSaveable { mutableStateOf("") }
+    var nameEntered by rememberSaveable { mutableStateOf(false) }
+
+    // After process death these flags are restored but the ViewModel's pending
+    // names are not — re-seed it, or the face scan would enroll a blank name.
+    // No-op on config changes: the surviving ViewModel is past Idle by then.
+    LaunchedEffect(Unit) {
+        if (nameEntered && state is RegistrationState.Idle) {
+            viewModel.startRegistration(firstName, lastName)
+        }
+    }
 
     Column(modifier = Modifier.fillMaxSize()) {
         when {
             !nameEntered -> {
-                BackButton(navController = navController, modifier = Modifier.padding(16.dp))
-                NameEntryStep(
+                val isSessionLocked by viewModel.isSessionLocked.collectAsState()
+                ScanPhotoIdStep(
+                    cameraHelper = cameraHelper,
+                    navController = navController,
                     firstName = firstName,
                     lastName = lastName,
+                    isSessionLocked = isSessionLocked,
+                    isVoiceoverEnabled = viewModel.isVoiceoverEnabled,
+                    onUserInteraction = viewModel::onSessionActivity,
                     onFirstNameChange = { firstName = it },
                     onLastNameChange = { lastName = it },
                     onContinue = {
@@ -140,45 +155,6 @@ fun FaceRegistrationScreen(
                 },
                 onFinish = { scope.launch { viewModel.finishRegistration() } }
             )
-        }
-    }
-}
-
-@Composable
-private fun NameEntryStep(
-    firstName: String,
-    lastName: String,
-    onFirstNameChange: (String) -> Unit,
-    onLastNameChange: (String) -> Unit,
-    onContinue: () -> Unit
-) {
-    Column(
-        modifier = Modifier.fillMaxSize().padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(text = stringResource(R.string.face_registration_title), style = MaterialTheme.typography.headlineSmall)
-        Spacer(modifier = Modifier.height(24.dp))
-        OutlinedTextField(
-            value = firstName,
-            onValueChange = onFirstNameChange,
-            label = { Text(stringResource(R.string.face_registration_first_name)) },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        OutlinedTextField(
-            value = lastName,
-            onValueChange = onLastNameChange,
-            label = { Text(stringResource(R.string.face_registration_last_name)) },
-            modifier = Modifier.fillMaxWidth()
-        )
-        Spacer(modifier = Modifier.height(24.dp))
-        Button(
-            onClick = onContinue,
-            enabled = firstName.isNotBlank() && lastName.isNotBlank(),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            Text(stringResource(R.string.face_registration_continue))
         }
     }
 }
@@ -243,7 +219,7 @@ private fun ScanFaceStep(
                 .width(350.dp)
                 .padding(12.dp),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = PrimaryBackground)
+            colors = CardDefaults.cardColors(containerColor = AppTheme.extendedColors.primaryBackground)
         ) {
             Column(
                 modifier = Modifier.padding(20.dp),
