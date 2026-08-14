@@ -66,6 +66,9 @@
     <string name="voice_feedback">Voice Feedback</string>
     <!-- ================== FACE RECOGNITION ================== -->
     <string name="face_registration_title">Setup Quick Access</string>
+    <string name="face_intro_body">Sign in to the pharmacy counter in a glance. Enroll your face once — no badges, no passwords to type at the bench.</string>
+    <string name="face_intro_skip">Skip for Now</string>
+    <string name="face_intro_get_started">Get Started</string>
     <string name="face_registration_first_name">First Name</string>
     <string name="face_registration_last_name">Last Name</string>
     <string name="face_registration_continue">Continue</string>
