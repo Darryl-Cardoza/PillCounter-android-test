@@ -30,13 +30,15 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.ui.theme.AppTheme
 
 /**
- * "Setup Quick Access" intro screen shown before face enrollment.
- * Not wired into navigation yet — hook up [onSkip] and [onGetStarted] when integrating.
+ * "Setup Quick Access" intro screen shown after the first-login profile step.
+ *
+ * @param onSkip Closes the intro (back to the dashboard).
+ * @param onGetStarted Starts face enrollment (photo ID scan).
  */
 @Composable
 fun FaceIntroScreen(
-    onSkip: () -> Unit = {},
-    onGetStarted: () -> Unit = {}
+    onSkip: () -> Unit,
+    onGetStarted: () -> Unit
 ) {
     Box(
         modifier = Modifier

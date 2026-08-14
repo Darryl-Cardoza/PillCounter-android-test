@@ -262,6 +262,10 @@ sealed interface Screen {
         override val route: String = "require_double_count"
     }
 
+    data object FaceIntro : Screen {
+        override val route: String = "face_intro"
+    }
+
     data object FaceRegistration : Screen {
         override val route: String = "face_registration"
     }
