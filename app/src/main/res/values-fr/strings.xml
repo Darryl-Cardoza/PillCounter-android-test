@@ -305,6 +305,9 @@
     <string name="total_re_count">RECOMPTAGE TOTAL</string>
     <string name="no_batches_recorded">Aucun lot enregistré</string>
     <string name="bottle_page_indicator">%1$d sur %2$d</string>
+    <string name="container_qr_code">CODE QR DU CONTENANT</string>
+    <string name="date_and_time">Date et Heure</string>
+    <string name="dispensed_drug">Médicament Dispensé</string>
     <string name="serial_no">N° de série</string>
     <string name="stock_count_dialog_title">Que souhaitez-vous faire ?</string>
     <string name="stock_count_dialog_option_first">Créer un nouveau lot</string>

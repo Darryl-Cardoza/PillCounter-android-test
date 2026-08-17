@@ -91,7 +91,6 @@ fun DrugInfoSection(
     barcodeImage: String?,
     targetCount: Int?,
     transactionDetails: List<TxnDetailInfo>,
-    isFromHl7: Boolean,
     drugType: String?,
     isSubstitute: Boolean = false,
     requestedDrugName: String = "",
@@ -337,7 +336,7 @@ private fun TabletDrugInfoRightContent(
         }
     }
 
-    if (drugType.toString().equals("null")) {
+    if (drugType == null) {
         if (transactionDetails.hasStep(StepState.TARGET_VERIFICATION)) {
             LandscapeCountSection(
                 title = stringResource(R.string.pill_count),
@@ -526,7 +525,7 @@ private fun DispensedDrugDetailsPager(
         headerTrailing = if (pages.size > 1) {
             {
                 Text(
-                    text = "${pagerState.currentPage + 1} of ${pages.size}",
+                    text = stringResource(R.string.bottle_page_indicator, pagerState.currentPage + 1, pages.size),
                     color = MaterialTheme.colorScheme.primary,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold

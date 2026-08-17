@@ -12,7 +12,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
@@ -36,7 +35,6 @@ fun HistoryDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var previewImagePath by remember { mutableStateOf<String?>(null) }
-    val context = LocalContext.current
     Box(modifier = Modifier.fillMaxSize()) {
     Column(
         modifier = Modifier
@@ -79,7 +77,6 @@ fun HistoryDetailScreen(
             targetCount = uiState.txnInfo?.targetCount,
             transactionDetails = uiState.txnInfo?.txnDetails ?: emptyList(),
             drugType = uiState.txnInfo?.drugType,
-            isFromHl7 = uiState.txnInfo?.isComingFromHL7 ?: false,
             isSubstitute = uiState.txnInfo?.isSubstitute ?: false,
             requestedDrugName = uiState.txnInfo?.requestedDrugName ?: "",
             requestedNdc = uiState.txnInfo?.requestedNdc ?: "",
