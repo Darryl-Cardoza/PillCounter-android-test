@@ -86,7 +86,7 @@ class Hl7EventHandlerTest {
 
         handler.onAckReceived(successAck, "MSG-3")
 
-        verify(exactly = 1) { hl7Repository.markTransactionSynced() }
+        verify(exactly = 1) { hl7Repository.markTransactionSynced("MSG-3") }
     }
 
     @Test
@@ -95,7 +95,7 @@ class Hl7EventHandlerTest {
 
         handler.onAckReceived(errorAck, "MSG-3")
 
-        verify(exactly = 0) { hl7Repository.markTransactionSynced() }
+        verify(exactly = 0) { hl7Repository.markTransactionSynced(any()) }
     }
 
     @Test

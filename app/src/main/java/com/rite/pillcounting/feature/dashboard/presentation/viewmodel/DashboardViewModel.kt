@@ -14,7 +14,8 @@ import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.models.isControlledDrugType
-import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
+import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
+import com.rite.pillcounting.core.security.DatabaseKeyProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
@@ -68,6 +69,7 @@ class DashboardViewModel @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
     private val hl7EventHandler: Hl7EventHandler,
     private val hl7ServiceManager: Hl7ServiceManager,
+    private val deviceKeyProvider: DeviceKeyProvider,
 
 ) : ViewModel() {
 
@@ -103,7 +105,34 @@ class DashboardViewModel @Inject constructor(
             observeQueue()
         }
         observeUserDetail()
+        publishSelectedTerminal()
         fetchUserDetail()
+    }
+
+    /**
+     * Mirror the persisted terminal selection into [uiState] so the top bar renders the
+     * terminal this device actually holds. Reads the pref rather than inspecting the
+     * account-wide terminals list, which cannot distinguish one install from another.
+     */
+    private fun publishSelectedTerminal() {
+        val name = preferenceHelper.getSelectedTerminalName()
+        _uiState.update { current ->
+            if (current.selectedTerminalName == name) current
+            else current.copy(selectedTerminalName = name)
+        }
+    }
+
+    /**
+     * Recomputes which KPI cards are unavailable given the current standalone-mode flag.
+     * Called after [fetchUserDetail] persists the (possibly changed) flag from the server, so
+     * the dashboard reflects a standalone-mode change without needing a full app restart.
+     * Deliberately NOT called at init time: the flag hasn't been refreshed for this session
+     * yet at that point, and [clearTokens] already resets it to false on logout, so the
+     * default `emptySet()` in [DashboardUiState] is the correct value until the fetch lands.
+     */
+    private fun refreshDisabledKpiFilters() {
+        val disabled = emptySet<KpiFilter>()
+        _uiState.update { it.copy(disabledKpiFilters = disabled) }
     }
 
     /**
@@ -130,14 +159,19 @@ class DashboardViewModel @Inject constructor(
      */
     fun refreshTerminalsFromPrefs() {
         val terminals = preferenceHelper.getTerminals()
+        val selectedName = preferenceHelper.getSelectedTerminalName()
         _uiState.update { current ->
-            val detail = current.userDetail ?: return@update current
-            // Only update if the active terminal actually changed, to avoid
-            // needless recompositions.
-            val currentActive = detail.settings?.terminals?.firstOrNull { it.isActive == true }?.terminalId
-            val newActive = terminals.firstOrNull { it.isActive == true }?.terminalId
-            if (currentActive == newActive) current
+            val detail = current.userDetail ?: return@update current.copy(
+                selectedTerminalName = selectedName
+            )
+            // Only update if the held terminal or the list actually changed, to avoid
+            // needless recompositions. Keyed on the persisted selection rather than
+            // is_active, which the server sets on every terminal of the account.
+            val unchanged = current.selectedTerminalName == selectedName &&
+                detail.settings?.terminals == terminals
+            if (unchanged) current
             else current.copy(
+                selectedTerminalName = selectedName,
                 userDetail = detail.copy(
                     settings = (detail.settings ?: UserSettings()).copy(terminals = terminals)
                 )
@@ -147,6 +181,10 @@ class DashboardViewModel @Inject constructor(
 
     fun isHl7Enabled(): Boolean {
         return preferenceHelper.isHl7Enabled()
+    }
+
+    fun isStandaloneMode(): Boolean {
+        return preferenceHelper.isStandaloneMode()
     }
 
     fun getBucketList(): List<String> = preferenceHelper.getBucketList()
@@ -373,6 +411,11 @@ class DashboardViewModel @Inject constructor(
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.settings?.bucket ?: emptyList())
                             preferenceHelper.setHl7Enabled(entity.isHl7Enable)
+                            // Persist is_standalone so the RX-scan flow knows whether it may
+                            // create dispense transactions locally (without waiting on PMS/HL7)
+                            // and so the dashboard can disable the PMS-dependent KPI cards.
+                            preferenceHelper.setStandaloneMode(detail.settings?.isStandalone ?: false)
+                            refreshDisabledKpiFilters()
                             // Persist the HL7 spec version from the server so the HL7 parser and
                             // builder resolve the correct trigger events (e.g. RDS^O13 vs RDS^O01).
                             // Falls back to the current/default version when the server omits it.
@@ -405,19 +448,50 @@ class DashboardViewModel @Inject constructor(
                                 preferenceHelper.saveTerminals(terminals)
                                 logger.i("Saved ${terminals.size} terminals to preferences")
 
-                                // Find and save the active terminal
-                                val activeTerminal = terminals.firstOrNull { it.isActive == true }
-                                if (activeTerminal != null) {
-                                    activeTerminal.terminalId?.let { id ->
+                                // Pick the terminal THIS install holds, keyed on device_key.
+                                //
+                                // terminals[] is account-wide: signing one account into several
+                                // phones returns an identical list to each of them, and is_active
+                                // marks a terminal enabled for the account — it says nothing about
+                                // which device is using it. Selecting on is_active alone therefore
+                                // handed every phone the same row: three devices all identified as
+                                // "Terminal 1", all advertised that name over Bonjour (which
+                                // deduplicated them into "Terminal 1 (2)", "(3)" …), and every
+                                // dispense went out with the same MSH-4. Worse, it ran on each
+                                // auth/me response, so choosing a different terminal in Profile was
+                                // silently reverted on the next dashboard refresh. device_key is the
+                                // only field that distinguishes this install from the others.
+                                val deviceKey = runCatching { deviceKeyProvider.getDeviceKey() }
+                                    .onFailure { logger.e("Could not read device key — keeping local terminal selection", it) }
+                                    .getOrNull()
+                                val claimedTerminal = deviceKey?.let { key ->
+                                    terminals.firstOrNull { !it.deviceKey.isNullOrBlank() && it.deviceKey == key }
+                                }
+
+                                if (claimedTerminal != null) {
+                                    claimedTerminal.terminalId?.let { id ->
                                         preferenceHelper.saveSelectedTerminalId(id)
                                     }
-                                    activeTerminal.terminalName?.let { name ->
+                                    claimedTerminal.terminalName?.let { name ->
                                         preferenceHelper.saveSelectedTerminalName(name)
                                     }
-                                    logger.i("Active terminal found and saved: ${activeTerminal.terminalName} (ID: ${activeTerminal.terminalId})")
+                                    logger.i("Terminal claimed by this device: ${claimedTerminal.terminalName} (ID: ${claimedTerminal.terminalId})")
                                 } else {
-                                    logger.w("No active terminal found in auth/me response")
+                                    // Nothing is bound to this install. Leave any existing local
+                                    // selection alone rather than adopting another device's
+                                    // terminal — that substitution is the bug above. With no local
+                                    // selection either, HL7 stays down until one is picked in
+                                    // Profile, which is correct: broadcasting a terminal identity
+                                    // this device does not own is what misrouted image fetches.
+                                    logger.w(
+                                        "No terminal claimed by this device (deviceKeyKnown=${deviceKey != null}) — " +
+                                            "keeping local selection=${preferenceHelper.getSelectedTerminalName() ?: "none"}"
+                                    )
                                 }
+
+                                // Push whatever selection now stands (claimed above, or the
+                                // untouched local one) into uiState so the top bar matches.
+                                publishSelectedTerminal()
 
                                 // Signal that terminal info is loaded
                                 _terminalInfoLoaded.value = true
@@ -433,6 +507,13 @@ class DashboardViewModel @Inject constructor(
                             }
                             preferenceHelper.saveLocalId(localId)
                             logger.i("User persisted locally with localId=$localId")
+
+                            // Re-wrap the DB DEK under the server-issued KEK if it's a newer
+                            // version than what's currently stored (no-op otherwise, since
+                            // auth/me is polled repeatedly with an unchanged KEK).
+                            detail.kek?.let { kekInfo ->
+                                DatabaseKeyProvider.rotateKekIfNewer(preferenceHelper.getContext(), kekInfo)
+                            }
                         }
 
                         // Check if profile is incomplete
@@ -573,8 +654,8 @@ private fun UserEntity.toUserDetail(
     val profile = UserProfile(
         fName = this.fName,
         lName = this.lName,
-        email = this.email?.value,
-        phoneNumber = this.phoneNumber?.value,
+        email = this.email,
+        phoneNumber = this.phoneNumber,
         avatarUrl = this.avatarUrl,
         isProfileCompleted = this.isProfileCompleted,
         pharmacyName = this.pharmacyName,
@@ -601,10 +682,10 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
     val pk = jwtUserId ?: this.profile?.email.orEmpty()
     return UserEntity(
         userId = pk,
-        email = this.profile?.email?.secure(),
+        email = this.profile?.email,
         fName = this.profile?.fName,
         lName = this.profile?.lName,
-        phoneNumber = this.profile?.phoneNumber?.secure(),
+        phoneNumber = this.profile?.phoneNumber,
         avatarUrl = this.profile?.avatarUrl,
         role = this.profile?.role?.name,
         isVerified = this.profile?.isVerified ?: false,

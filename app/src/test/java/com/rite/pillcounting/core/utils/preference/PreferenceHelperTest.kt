@@ -126,6 +126,26 @@ class PreferenceHelperTest {
     }
 
     @Test
+    fun `isStandaloneMode defaults to false`() {
+        assertFalse(helper.isStandaloneMode())
+    }
+
+    @Test
+    fun `setStandaloneMode persists the flag`() {
+        helper.setStandaloneMode(true)
+        assertTrue(helper.isStandaloneMode())
+        helper.setStandaloneMode(false)
+        assertFalse(helper.isStandaloneMode())
+    }
+
+    @Test
+    fun `clearTokens resets standalone mode so the next user doesn't inherit it`() {
+        helper.setStandaloneMode(true)
+        helper.clearTokens()
+        assertFalse(helper.isStandaloneMode())
+    }
+
+    @Test
     fun `saveTokens handles empty strings`() {
         helper.saveTokens("", "")
         assertEquals("", helper.getAccessToken())
@@ -320,19 +340,6 @@ class PreferenceHelperTest {
     fun `saveHistoryRetention accepts zero boundary`() {
         helper.saveHistoryRetention(0)
         assertEquals(0, helper.getHistoryRetention())
-    }
-
-    // ─────────────────────────── HL7 MESSAGE TRACKING ───────────────────────────
-
-    @Test
-    fun `getSentMessageTxnId defaults to negative one`() {
-        assertEquals(-1L, helper.getSentMessageTxnId())
-    }
-
-    @Test
-    fun `saveSentMessageTxnId then getSentMessageTxnId returns value`() {
-        helper.saveSentMessageTxnId(555L)
-        assertEquals(555L, helper.getSentMessageTxnId())
     }
 
     // ─────────────────────────── NSD / HL7 SETTINGS ───────────────────────────

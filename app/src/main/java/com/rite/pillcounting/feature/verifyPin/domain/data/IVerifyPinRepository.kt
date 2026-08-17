@@ -11,7 +11,14 @@ interface IVerifyPinRepository {
      *
      * @param email The user's email address.
      * @param otp The one-time password.
+     * @param deviceKey Stable per-install device identifier (Firebase Installations ID).
+     * @param appVersion The app's version name.
      * @return A [Result] wrapper containing the [VerifyPinResponse] on success or an exception on failure.
      */
-    suspend fun verifyPin(email: String, otp: String): Result<VerifyPinResponse>
+    suspend fun verifyPin(
+        email: String,
+        otp: String,
+        deviceKey: String,
+        appVersion: String
+    ): Result<VerifyPinResponse>
 }

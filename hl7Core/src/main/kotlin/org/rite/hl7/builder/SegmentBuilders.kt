@@ -123,13 +123,21 @@ class RXDBuilder : HL7SegmentBuilder("RXD") {
     var actualDispenseUnits: String? = null
     var prescriptionNumber: String? = null
     var dispensingProviderId: String? = null
+
+    // RXD-10 is an XCN: ID^FamilyName^GivenName. Only the ID component used to be emitted, so a
+    // receiver had nothing to render as an operator name — the Companion composes its Operator
+    // column from the family and given names and shows nothing when both are absent.
+    var dispensingProviderFamilyName: String? = null
+    var dispensingProviderGivenName: String? = null
     var lotNumber: String? = null
     var expirationDate: String? = null
     override fun apply() {
         set(1, dispenseSubIdCounter)
         set(2, 1, dispenseGiveCode); set(2, 2, dispenseGiveName); set(2, 3, dispenseGiveCodeSystem)
         set(3, dateTimeDispensed); set(4, actualDispenseAmount); set(5, 1, actualDispenseUnits)
-        set(7, prescriptionNumber); set(10, 1, dispensingProviderId)
+        set(7, prescriptionNumber)
+        set(10, 1, dispensingProviderId)
+        set(10, 2, dispensingProviderFamilyName); set(10, 3, dispensingProviderGivenName)
         set(15, lotNumber); set(16, expirationDate)
     }
 }

@@ -125,14 +125,28 @@ class Hl7ServiceManager @Inject constructor(
      */
     suspend fun sendRawMessage(raw: String): Result<String> {
         return try {
-            if (!serviceManager.isServiceStarted())
+            // Each guard logs before failing. These returns used to be silent, and the caller
+            // discards the Result — so a dispense that failed here vanished without a single
+            // log line, which is exactly how "the Companion never receives my transaction"
+            // stayed undiagnosed. The not-bound case also rebinds: the send arriving before
+            // the binder handshake completes is a normal startup race, and rebinding makes the
+            // retry (resend-on-connect) actually able to succeed.
+            if (!serviceManager.isServiceStarted()) {
+                logger.w("HL7 send dropped — service not started (message stays pending for resend)")
                 return Result.failure(IllegalStateException("HL7 service not started"))
+            }
 
-            if (!serviceManager.isBound())
+            if (!serviceManager.isBound()) {
+                logger.w("HL7 send dropped — service not bound; rebinding (message stays pending for resend)")
+                serviceManager.bindService()
                 return Result.failure(IllegalStateException("HL7 service not bound"))
+            }
 
             val service = serviceManager.getService()
-                ?: return Result.failure(IllegalStateException("HL7 service unavailable"))
+                ?: run {
+                    logger.w("HL7 send dropped — bound but service reference is null")
+                    return Result.failure(IllegalStateException("HL7 service unavailable"))
+                }
 
             logger.i("Sending raw HL7 message:\n$raw")
             val ack = service.sendRawHl7Message(raw)
@@ -161,12 +175,51 @@ class Hl7ServiceManager @Inject constructor(
     }
 
     /**
-     * Update HL7 configuration and rebroadcast NSD.
-     * Called when terminal name changes.
+     * Re-advertises under a new terminal name, keeping every other setting as-is.
+     *
+     * Callers used to rebuild the whole [HL7Config] from preferences to do this, which meant
+     * re-deriving the NSD service types — and those are not reliably in preferences. They were
+     * read back empty, the caller returned early, and the terminal was renamed everywhere
+     * except on the network: the device kept advertising the old name and kept stamping it into
+     * MSH-4. The running config is the authority here, because a rename changes the name and
+     * nothing else.
      */
+    fun updateTerminalName(terminalName: String) {
+        val existing = currentConfig
+        if (existing == null) {
+            logger.w("Cannot apply terminal name '$terminalName' — HL7 has not been initialized")
+            return
+        }
+
+        if (existing.nsdBroadcastServiceName == terminalName) {
+            logger.i("Terminal name is already '$terminalName' — nothing to rebroadcast")
+            return
+        }
+
+        updateConfigAndRebroadcast(existing.copy(nsdBroadcastServiceName = terminalName))
+    }
+
     fun updateConfigAndRebroadcast(config: HL7Config) {
         currentConfig = config
         serviceManager.updateConfig(config)
-        serviceManager.getService()?.rebroadcastNsd()
+
+        val service = serviceManager.getService()
+        if (service == null) {
+            // The `?.` here used to swallow this case. Both updateConfig and rebroadcastNsd
+            // need the binding, so with the service unbound the rename was applied to prefs
+            // and the server while the device kept advertising — and stamping into MSH-4 —
+            // the previous terminal name, with nothing logged. Rebinding is what actually
+            // fixes it: the service already holds the old config, so it must be told.
+            logger.w(
+                "Cannot rebroadcast '${config.nsdBroadcastServiceName}' — HL7 service is not bound " +
+                    "(started=${serviceManager.isServiceStarted()} bound=${serviceManager.isBound()}). " +
+                    "Rebinding; the new name is applied when the binding lands."
+            )
+            serviceManager.bindService()
+            return
+        }
+
+        logger.i("Rebroadcasting NSD as '${config.nsdBroadcastServiceName}'")
+        service.rebroadcastNsd()
     }
 }

@@ -13,6 +13,7 @@ import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
@@ -39,6 +40,7 @@ import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import org.junit.Assert.assertEquals
 import org.junit.After
 import org.junit.Before
 import org.junit.Test
@@ -132,6 +134,9 @@ class Hl7RepositoryTest {
         every { preferenceHelper.isHl7Enabled() } returns false
         every { preferenceHelper.getLocalId() } returns 1L
         coEvery { hl7MessageSender.sendRaw(any()) } returns Result.success(SUCCESS_ACK)
+        // send() must be stubbed, not left relaxed: the dispense path logs the returned ACK, and
+        // a relaxed Result<String> hands back a non-String that blows up on first use.
+        coEvery { hl7MessageSender.send(any()) } returns Result.success(SUCCESS_ACK)
     }
 
     @After
@@ -364,7 +369,7 @@ class Hl7RepositoryTest {
         coEvery { txnDao.getById(1L) } returns txnEntity(drugId = 5L)
         coEvery { txnDetailsDao.getAllForTxn("1") } returns
             listOf(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5))
-        coEvery { userDao.getByUserId(any()) } returns null
+        coEvery { userDao.getByLocalId(any()) } returns null
         coEvery { locationProvider.getCurrentLocationAsString() } returns "loc"
         coEvery { drugMasterDao.getDrugById(5L) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
@@ -373,6 +378,35 @@ class Hl7RepositoryTest {
 
         coVerify { hl7MessageSender.send(any()) }
     }
+
+    /**
+     * The operator is resolved through the transaction's localId, which is a FK to
+     * UserEntity.localId. It used to be looked up with getByUserId — a Room row id compared
+     * against a JWT-derived string — so it never resolved and RXD-10 went out empty, leaving the
+     * Companion's Operator column blank on every dispense.
+     */
+    @Test
+    fun `buildAndSendSuccessfulDispense puts the operator in RXD-10 as ID caret family caret given`() =
+        runTest(testDispatcher) {
+            val repo = createRepo()
+            coEvery { txnDao.getById(1L) } returns txnEntity(drugId = 5L)
+            coEvery { txnDetailsDao.getAllForTxn("1") } returns
+                listOf(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5))
+            coEvery { userDao.getByLocalId(1L) } returns
+                UserEntity(localId = 1L, userId = "u-77", fName = "Yash", lName = "Wadajkar")
+            coEvery { locationProvider.getCurrentLocationAsString() } returns "loc"
+            coEvery { drugMasterDao.getDrugById(5L) } returns
+                DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+
+            val sent = slot<String>()
+            coEvery { hl7MessageSender.send(capture(sent)) } returns Result.success("ACK")
+
+            repo.buildAndSendSuccessfulDispense(1L)
+
+            val rxd = sent.captured.split("\r").first { it.startsWith("RXD|") }
+            val rxd10 = rxd.split("|")[10]
+            assertEquals("u-77^Wadajkar^Yash", rxd10)
+        }
 
     // ─────────────────────────────── buildAndSendInventoryResponse ───────────────────────────────
 
@@ -559,10 +593,10 @@ class Hl7RepositoryTest {
 
         repo.resendPendingHl7Transactions()
 
-        // Synchronize on the coroutine having read the pending list before asserting the
-        // save was never invoked.
+        // Synchronize on the coroutine having read the pending list before asserting no
+        // dispense send was attempted.
         coVerify(timeout = 3000) { pillCountTxnDao.getPendingHl7TxnOnce() }
-        verify(exactly = 0) { preferenceHelper.saveSentMessageTxnId(any()) }
+        coVerify(exactly = 0) { txnDao.getById(any()) }
     }
 
     @Test
@@ -579,13 +613,16 @@ class Hl7RepositoryTest {
         // FIXED -> buildAndSendSuccessfulDispense
         coEvery { txnDao.getById(1L) } returns txnEntity(txnId = 1L, drugId = 5L)
         coEvery { txnDetailsDao.getAllForTxn("1") } returns emptyList()
+        coEvery { userDao.getByLocalId(any()) } returns null
         coEvery { drugMasterDao.getDrugById(5L) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
 
         repo.resendPendingHl7Transactions()
 
-        verify(timeout = 3000) { preferenceHelper.saveSentMessageTxnId(1L) }
         coVerify(timeout = 3000) { hl7MessageSender.send(any()) }
+        // The outbound MSH-10 is persisted as the txnId itself so a later ACK can correlate
+        // back to this exact row via getByMessageControlId.
+        coVerify(timeout = 3000) { txnDao.updateHl7MessageControlId(1L, "1", any()) }
         // REGULAR is a no-op now: no inventory response is triggered from this path.
         coVerify(exactly = 0) { batchDao.markBatchSynced(any()) }
     }
@@ -630,13 +667,25 @@ class Hl7RepositoryTest {
     // ─────────────────────────────── markTransactionSynced ───────────────────────────────
 
     @Test
-    fun `markTransactionSynced delegates`() = runTest(testDispatcher) {
+    fun `markTransactionSynced looks up txn by messageControlId and marks it synced`() = runTest(testDispatcher) {
         val repo = createRepo()
-        every { preferenceHelper.getSentMessageTxnId() } returns 7L
+        coEvery { pillCountTxnDao.getByMessageControlId("7") } returns txnEntity(txnId = 7L)
+        every { preferenceHelper.isAllowLocalStorage() } returns true
 
-        repo.markTransactionSynced()
+        repo.markTransactionSynced("7")
 
         coVerify(timeout = 3000) { pillCountTxnDao.markTxnSynced(7L, any()) }
+    }
+
+    @Test
+    fun `markTransactionSynced with unknown messageControlId does not crash`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { pillCountTxnDao.getByMessageControlId("unknown") } returns null
+
+        repo.markTransactionSynced("unknown")
+
+        coVerify(timeout = 3000) { pillCountTxnDao.getByMessageControlId("unknown") }
+        coVerify(exactly = 0) { pillCountTxnDao.markTxnSynced(any(), any()) }
     }
 
     // ─────────────────────────────── handleRdeDispenseRequest ───────────────────────────────

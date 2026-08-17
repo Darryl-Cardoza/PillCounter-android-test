@@ -34,7 +34,7 @@ object DatabaseModule {
         val builder = Room.databaseBuilder(
             context,
             AppDatabase::class.java,
-            "pill_counting_db"
+            DatabaseKeyProvider.DATABASE_NAME
         )
             // Stock-count normalization (v3 → v4) restructures local tables; existing local
             // rows are disposable (synced to PMS), so recreate rather than migrate.
@@ -44,7 +44,7 @@ object DatabaseModule {
             // IMPORTANT
             System.loadLibrary("sqlcipher")
 
-            val dbKey = DatabaseKeyProvider.getOrCreateDatabaseKey(context)
+            val dbKey = DatabaseKeyProvider.getOrCreateDatabasePassphrase(context)
             val passphrase = Base64.encodeToString(dbKey, Base64.NO_WRAP).toByteArray(Charsets.UTF_8)
             builder.openHelperFactory(SupportOpenHelperFactory(passphrase))
         }

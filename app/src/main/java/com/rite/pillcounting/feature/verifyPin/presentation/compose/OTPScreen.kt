@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -141,15 +142,36 @@ fun OTPScreen(
 
                     Spacer(Modifier.height(50.dp))
 
-                    OTPTextField(
-                        otp = otp,
-                        onOtpChange = {
-                            otp = it
-                            viewModel.resetState()
-                        },
-                        boxCount = 6,
-                        boxSize = 56.dp
-                    )
+                    val otpBoxCount = 6
+                    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                        // Fit boxCount boxes (+ spacing) within the available width so small
+                        // phones in portrait or landscape don't overflow.
+                        val maxBoxSize = 56.dp
+                        val minBoxSize = 36.dp
+                        val spacing = 12.dp
+                        val availableWidth = maxWidth
+                        val computedBoxSize =
+                            ((availableWidth - spacing * (otpBoxCount - 1)) / otpBoxCount)
+                                .coerceIn(minBoxSize, maxBoxSize)
+                        val computedSpacing = if (computedBoxSize == minBoxSize) {
+                            ((availableWidth - minBoxSize * otpBoxCount) / (otpBoxCount - 1))
+                                .coerceAtLeast(4.dp)
+                        } else {
+                            spacing
+                        }
+
+                        OTPTextField(
+                            otp = otp,
+                            onOtpChange = {
+                                otp = it
+                                viewModel.resetState()
+                            },
+                            boxCount = otpBoxCount,
+                            boxSize = computedBoxSize,
+                            spacing = computedSpacing,
+                            modifier = Modifier.align(Alignment.Center)
+                        )
+                    }
 
                     Spacer(Modifier.height(40.dp))
 

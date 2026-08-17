@@ -17,6 +17,7 @@ data class UserSettings(
     @Json(name = "terminals") val terminals: List<Terminal>? = null,
     @Json(name = "bucket") val bucket: List<String>? = null,
     @Json(name = "is_pms_integrated") val isPMSIntegrated: Boolean? = null,
+    @Json(name = "is_standalone") val isStandalone: Boolean? = null,
     @Json(name = "allow_local_storage") val allowLocalStorage: Boolean? = null,
     @Json(name = "bypass_ssl") val bypassSSL: Boolean? = null,
     @Json(name = "hl7_message_spec") val hl7MessageSpec: String? = null,

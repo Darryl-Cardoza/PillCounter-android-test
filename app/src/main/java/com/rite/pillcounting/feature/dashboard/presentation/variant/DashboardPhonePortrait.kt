@@ -106,6 +106,8 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     onTap = params.onKpiFilterTapped,
                     cardWidth = 108.dp,
                     cardHeight = 96.dp,
+                    disabledFilters = params.disabledKpiFilters,
+                    onDisabledTap = params.onDisabledKpiFilterTapped,
                 )
 
                 HorizontalDivider(

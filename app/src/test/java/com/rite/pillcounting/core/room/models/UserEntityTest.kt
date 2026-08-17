@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.room.models
 
-import com.rite.pillcounting.core.security.models.SecureString
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -13,10 +12,10 @@ class UserEntityTest {
     private fun sample() = UserEntity(
         localId = 1L,
         userId = "u1",
-        email = SecureString("a@b.com"),
+        email = "a@b.com",
         fName = "First",
         lName = "Last",
-        phoneNumber = SecureString("12345"),
+        phoneNumber = "12345",
         avatarUrl = "url",
         role = "admin",
         isVerified = true,
@@ -55,10 +54,10 @@ class UserEntityTest {
         val e = sample()
         assertEquals(1L, e.localId)
         assertEquals("u1", e.userId)
-        assertEquals(SecureString("a@b.com"), e.email)
+        assertEquals("a@b.com", e.email)
         assertEquals("First", e.fName)
         assertEquals("Last", e.lName)
-        assertEquals(SecureString("12345"), e.phoneNumber)
+        assertEquals("12345", e.phoneNumber)
         assertEquals("url", e.avatarUrl)
         assertEquals("admin", e.role)
         assertTrue(e.isVerified)
@@ -93,10 +92,10 @@ class UserEntityTest {
         val e = sample()
         assertEquals(1L, e.component1())
         assertEquals("u1", e.component2())
-        assertEquals(SecureString("a@b.com"), e.component3())
+        assertEquals("a@b.com", e.component3())
         assertEquals("First", e.component4())
         assertEquals("Last", e.component5())
-        assertEquals(SecureString("12345"), e.component6())
+        assertEquals("12345", e.component6())
         assertEquals("url", e.component7())
         assertEquals("admin", e.component8())
         assertEquals(true, e.component9())

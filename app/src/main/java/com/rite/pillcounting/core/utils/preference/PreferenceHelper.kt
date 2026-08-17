@@ -24,6 +24,9 @@ private const val KEY_USER_ID = "user_id"
 private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 
+// Device Identity
+private const val KEY_DEVICE_KEY = "device_key"
+
 // Transactions
 private const val KEY_TXN_ID = "txn_id"
 
@@ -35,11 +38,11 @@ private const val KEY_DO_NOT_ASK_AGAIN = "do_not_ask_again"
 private const val KEY_SHOW_NOTES_DIALOG = "key_show_notes_dialog"
 private const val KEY_RECENT_LOGINS = "recent_logins"
 private const val KEY_HISTORY_RETENTION = "history_retention"
-private const val KEY_SENT_TXN_ID = "last_txn_id"
 
 // HL7
 private const val KEY_NSD_BROADCAST_TYPE = "key_nsd_broadcast_type"
 private const val KEY_NSD_DISCOVERY_TYPE = "key_nsd_discovery_type"
+private const val KEY_STANDALONE_MODE = "key_standalone_mode"
 private const val KEY_HL7_ENABLED = "key_hl7_enabled"
 private const val KEY_SOUND = "key_pill_count_sound_enabled"
 private const val KEY_HAPTIC = "key_pill_count_haptic_enabled"
@@ -102,6 +105,11 @@ class PreferenceHelper @Inject constructor(
     fun clearTokens() {
         prefs.remove(KEY_ACCESS_TOKEN)
         prefs.remove(KEY_REFRESH_TOKEN)
+        // Standalone mode is per-user (set from the auth/me response) and is only
+        // otherwise re-written on the next successful settings fetch. Without resetting
+        // it here, a user switch or re-login before that fetch lands would leave the
+        // next user running under the previous user's standalone flag.
+        setStandaloneMode(false)
         logger.w("Cleared authentication tokens from secure storage.")
     }
 
@@ -160,6 +168,20 @@ class PreferenceHelper @Inject constructor(
         val allow = prefs.getBoolean(KEY_ALLOW_LOCAL_STORAGE, true)
         logger.d("Retrieved allowLocalStorage: $allow")
         return allow
+    }
+
+    // ─────────────────────────── DEVICE IDENTITY ───────────────────────────
+
+    /** Caches the device_key (Firebase Installations ID) so it is fetched at most once per install. */
+    fun saveDeviceKey(deviceKey: String) {
+        prefs.putString(KEY_DEVICE_KEY, deviceKey)
+        logger.i("Saved device key (length=${deviceKey.length})")
+    }
+
+    fun getDeviceKey(): String? {
+        val key = prefs.getString(KEY_DEVICE_KEY)
+        logger.d("Device key retrieved (exists=${key != null})")
+        return key
     }
 
     // ─────────────────────────── TRANSACTIONS ───────────────────────────
@@ -263,15 +285,6 @@ class PreferenceHelper @Inject constructor(
         return days
     }
 
-    // ─────────────────────────── HL7 MESSAGE TRACKING ───────────────────────────
-
-    fun saveSentMessageTxnId(txnId: Long) {
-        prefs.putLong(KEY_SENT_TXN_ID, txnId)
-    }
-
-    fun getSentMessageTxnId(): Long =
-        prefs.getLong(KEY_SENT_TXN_ID, -1L)
-
     // ─────────────────────────── NSD / HL7 SETTINGS ───────────────────────────
 
     fun saveNsdBroadcastType(type: String) {
@@ -298,6 +311,17 @@ class PreferenceHelper @Inject constructor(
     fun isHl7Enabled(): Boolean {
         val enabled = prefs.getBoolean(KEY_HL7_ENABLED, true)
         logger.d("HL7 enabled: $enabled")
+        return enabled
+    }
+
+    fun setStandaloneMode(enabled: Boolean) {
+        prefs.putBoolean(KEY_STANDALONE_MODE, enabled)
+        logger.i("Standalone mode set to: $enabled")
+    }
+
+    fun isStandaloneMode(): Boolean {
+        val enabled = prefs.getBoolean(KEY_STANDALONE_MODE, false)
+        logger.d("Standalone mode: $enabled")
         return enabled
     }
 
