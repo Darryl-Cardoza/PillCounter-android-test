@@ -3,10 +3,10 @@ package com.rite.pillcounting.core.faceAuth.logic
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.test.runTest
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
-import kotlin.test.assertFailsWith
 
 @RunWith(RobolectricTestRunner::class)
 class FaceModelLoaderTest {
@@ -18,6 +18,12 @@ class FaceModelLoaderTest {
 
         // No yunet_640x640_float16.tflite.enc / sface_112x112_float16.tflite.enc in test assets
         // (they aren't checked into the repo — see the plan's Prerequisite section) — must fail loudly, not silently.
-        assertFailsWith<Exception> { loader.getOrLoadInterpreters() }
+        var threw = false
+        try {
+            loader.getOrLoadInterpreters()
+        } catch (e: Exception) {
+            threw = true
+        }
+        assertTrue(threw)
     }
 }

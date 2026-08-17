@@ -25,6 +25,7 @@ import androidx.room.PrimaryKey
  * @param isEnabled Whether this profile currently participates in verify matching.
  * @param createdAt Epoch millis when the profile was created.
  * @param lastUsedAt Epoch millis of the last successful verify match, or null if never matched.
+ * @param faceImagePath Absolute path to the saved FRONT-angle face JPEG in internal storage, or null if not captured.
  *
  * Example Usage:
  * val profile = FaceProfileEntity(firstName = "Bruce", lastName = "Wayne", email = null, createdAt = System.currentTimeMillis())
@@ -38,5 +39,6 @@ data class FaceProfileEntity(
     val email: String?,
     val isEnabled: Boolean = true,
     val createdAt: Long,
-    val lastUsedAt: Long? = null
+    val lastUsedAt: Long? = null,
+    val faceImagePath: String? = null
 )

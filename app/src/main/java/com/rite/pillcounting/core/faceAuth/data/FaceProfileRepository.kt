@@ -50,6 +50,7 @@ class FaceProfileRepository @Inject constructor(
      * @param email Snapshot of the logged-in session's account email, or null if unavailable.
      * @param embeddingsByAngle One 128-float embedding per [FaceCaptureAngle] captured.
      * @param now Epoch millis to stamp as `createdAt`.
+     * @param faceImagePath Absolute path to the FRONT-angle face JPEG in internal storage, or null if not available.
      * @return The new profile's Room id.
      *
      * Example Usage:
@@ -60,10 +61,17 @@ class FaceProfileRepository @Inject constructor(
         lastName: String,
         email: String?,
         embeddingsByAngle: Map<FaceCaptureAngle, FloatArray>,
-        now: Long
+        now: Long,
+        faceImagePath: String? = null
     ): Long {
         val id = profileDao.insert(
-            FaceProfileEntity(firstName = firstName, lastName = lastName, email = email, createdAt = now)
+            FaceProfileEntity(
+                firstName = firstName,
+                lastName = lastName,
+                email = email,
+                createdAt = now,
+                faceImagePath = faceImagePath
+            )
         )
         embeddingDao.insertAll(
             embeddingsByAngle.map { (angle, vec) ->

@@ -53,11 +53,11 @@ class AutoCaptureController @Inject constructor(
         /** A live hint for what's currently wrong ("move closer", "tilt your face a bit more left", ...). */
         data class Guidance(val message: String) : CaptureEvent
 
-        /** The best frame found has been selected; its embedding is ready to store. */
-        data class Committed(val embedding: FloatArray) : CaptureEvent
+        /** The best frame found has been selected; its embedding and source bitmap are ready. */
+        data class Committed(val embedding: FloatArray, val bitmap: Bitmap) : CaptureEvent
     }
 
-    private data class Candidate(val embedding: FloatArray, val score: Float)
+    private data class Candidate(val embedding: FloatArray, val bitmap: Bitmap, val score: Float)
 
     /**
      * Samples [frames] for [angle] until a best frame is committed.
@@ -83,7 +83,7 @@ class AutoCaptureController @Inject constructor(
             val now = clock()
             val currentDeadline = deadline
             if (currentDeadline != null && now >= currentDeadline) {
-                emit(CaptureEvent.Committed(best!!.embedding))
+                emit(CaptureEvent.Committed(best!!.embedding, best!!.bitmap))
                 return@transformWhile false
             }
 
@@ -110,7 +110,7 @@ class AutoCaptureController @Inject constructor(
 
             val score = scoreOf(bitmap, face, yaw, angle, isFrontCamera)
             if (best == null || score > best!!.score) {
-                best = Candidate(faceEngine.embed(bitmap, face), score)
+                best = Candidate(faceEngine.embed(bitmap, face), bitmap, score)
                 deadline = now + SETTLE_WINDOW_MS
             }
             true

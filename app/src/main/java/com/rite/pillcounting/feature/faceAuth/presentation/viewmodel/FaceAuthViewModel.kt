@@ -1,7 +1,9 @@
 package com.rite.pillcounting.feature.faceAuth.presentation.viewmodel
 
+import android.content.Context
 import android.graphics.Bitmap
 import androidx.lifecycle.ViewModel
+import dagger.hilt.android.qualifiers.ApplicationContext
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.faceAuth.data.FaceProfileRepository
 import com.rite.pillcounting.core.faceAuth.logic.AutoCaptureController
@@ -72,6 +74,7 @@ class SessionEmailProvider @Inject constructor(
  */
 @HiltViewModel
 class FaceAuthViewModel @Inject constructor(
+    @ApplicationContext private val context: Context,
     private val faceEngine: FaceEngine,
     private val faceProfileRepository: FaceProfileRepository,
     private val sessionEmailProvider: SessionEmailProvider,
@@ -112,6 +115,7 @@ class FaceAuthViewModel @Inject constructor(
     private var pendingFirstName: String = ""
     private var pendingLastName: String = ""
     private val capturedEmbeddings = mutableMapOf<FaceCaptureAngle, FloatArray>()
+    private var pendingFrontBitmap: Bitmap? = null
 
     private var autoCaptureJob: Job? = null
     private var autoCaptureFrames: Flow<Bitmap>? = null
@@ -127,6 +131,7 @@ class FaceAuthViewModel @Inject constructor(
         pendingFirstName = firstName
         pendingLastName = lastName
         capturedEmbeddings.clear()
+        pendingFrontBitmap = null
         autoCaptureJob?.cancel()
         autoCaptureFrames = null
         _registrationState.value = RegistrationState.Capturing(FaceCaptureAngle.FRONT, 0)
@@ -163,6 +168,9 @@ class FaceAuthViewModel @Inject constructor(
 
                         is AutoCaptureController.CaptureEvent.Committed -> {
                             capturedEmbeddings[angle] = event.embedding
+                            if (angle == FaceCaptureAngle.FRONT) {
+                                pendingFrontBitmap = event.bitmap
+                            }
                             _registrationState.value = RegistrationState.Capturing(angle, capturedEmbeddings.size)
                         }
                     }
@@ -192,6 +200,9 @@ class FaceAuthViewModel @Inject constructor(
             }
             if (capturedEmbeddings.containsKey(angle)) return@launch // auto-capture already won this step
             capturedEmbeddings[angle] = faceEngine.embed(bitmap, face)
+            if (angle == FaceCaptureAngle.FRONT) {
+                pendingFrontBitmap = bitmap
+            }
             _registrationState.value = RegistrationState.Capturing(angle, capturedEmbeddings.size)
             resumeAutoCapture() // cancel the now-stale in-flight angle, advance the loop
         }
@@ -205,14 +216,49 @@ class FaceAuthViewModel @Inject constructor(
                 return@launch
             }
             val email = sessionEmailProvider()
+            val faceImagePath = pendingFrontBitmap?.let { saveFaceImage(it) }
             faceProfileRepository.registerProfile(
                 firstName = pendingFirstName,
                 lastName = pendingLastName,
                 email = email,
                 embeddingsByAngle = capturedEmbeddings.toMap(),
-                now = System.currentTimeMillis()
+                now = System.currentTimeMillis(),
+                faceImagePath = faceImagePath
             )
             _registrationState.value = RegistrationState.Enrolled
+        }
+    }
+
+    /**
+     * Saves a face bitmap to internal storage as a JPEG.
+     *
+     * Description:
+     * Writes the bitmap to `<filesDir>/faces/face_<timestamp>.jpg`. Creates the
+     * `faces/` directory if it does not exist.
+     *
+     * What it does:
+     * - Resolves the `faces/` directory under `context.filesDir`.
+     * - Creates it if absent.
+     * - Compresses the bitmap to JPEG at 90% quality.
+     * - Returns the absolute path of the written file, or null on failure.
+     *
+     * @param bitmap The face bitmap to persist.
+     * @return Absolute path of the saved JPEG, or null if the write failed.
+     *
+     * Example Usage:
+     * val path = saveFaceImage(pendingFrontBitmap ?: return)
+     */
+    private fun saveFaceImage(bitmap: Bitmap): String? {
+        return try {
+            val dir = java.io.File(context.filesDir, "faces")
+            dir.mkdirs()
+            val file = java.io.File(dir, "face_${System.currentTimeMillis()}.jpg")
+            file.outputStream().use { out ->
+                bitmap.compress(Bitmap.CompressFormat.JPEG, 90, out)
+            }
+            file.absolutePath
+        } catch (e: Exception) {
+            null
         }
     }
 
@@ -227,12 +273,15 @@ class FaceAuthViewModel @Inject constructor(
     }
 
     /**
-     * Deletes an enrolled profile.
+     * Deletes an enrolled profile and its saved face image file.
      *
      * @param profile The profile to remove.
      */
     fun deleteProfile(profile: FaceProfileEntity) {
-        viewModelScope.launch { faceProfileRepository.deleteProfile(profile) }
+        viewModelScope.launch {
+            profile.faceImagePath?.let { path -> java.io.File(path).delete() }
+            faceProfileRepository.deleteProfile(profile)
+        }
     }
 
     private var autoVerifyJob: Job? = null

@@ -30,9 +30,11 @@ class AutoCaptureControllerTest {
         controller.clock = { fakeNow }
         coEvery { faceEngine.detectPrimary(bitmap) } returns null
 
+        // Set fakeNow BEFORE each emit so clock() reads the advanced time when the frame is processed.
+        // The throttle (MIN_FRAME_INTERVAL_MS=150, lastProcessedAt=0) requires now >= 150 to process.
         val frames = flow {
-            emit(bitmap); fakeNow += 200
-            emit(bitmap); fakeNow += 200
+            fakeNow = 200; emit(bitmap)
+            fakeNow = 400; emit(bitmap)
         }
 
         val events = controller.run(FaceCaptureAngle.FRONT, frames, isFrontCamera = false).toList()
@@ -52,7 +54,8 @@ class AutoCaptureControllerTest {
         every { headPoseEstimator.matchesAngle(0f, FaceCaptureAngle.TILT_LEFT, false) } returns false
         every { headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT) } returns "tilt your face a bit more to the left"
 
-        val frames = flow { emit(bitmap) }
+        // Advance past the throttle window before emitting.
+        val frames = flow { fakeNow = 200; emit(bitmap) }
 
         val events = controller.run(FaceCaptureAngle.TILT_LEFT, frames, isFrontCamera = false).toList()
 
@@ -86,10 +89,14 @@ class AutoCaptureControllerTest {
         every { headPoseEstimator.closeness(0f, FaceCaptureAngle.FRONT, false) } returns 0.9f
         coEvery { faceEngine.embed(bitmapStrong, strongFace) } returns floatArrayOf(1f)
 
+        // Set fakeNow BEFORE each emit so the throttle (MIN_FRAME_INTERVAL_MS=150) doesn't skip frames.
+        // bitmapStrong: processed at 200, best=(strongEmbed, bitmapStrong), deadline=200+900=1100
+        // bitmapWeak:   processed at 500, lower score, best unchanged
+        // tickBitmap:   read at 1100 >= deadline=1100 -> commit before processing the frame
         val frames = flow {
-            emit(bitmapStrong); fakeNow = 100     // becomes best, deadline = 1000
-            emit(bitmapWeak); fakeNow = 500        // scores lower than best (weaker sharpness), best unchanged
-            emit(tickBitmap); fakeNow = 1000       // deadline reached -> commit before even looking at this frame
+            fakeNow = 200; emit(bitmapStrong)
+            fakeNow = 500; emit(bitmapWeak)
+            fakeNow = 1100; emit(tickBitmap)
         }
 
         val events = controller.run(FaceCaptureAngle.FRONT, frames, isFrontCamera = false).toList()

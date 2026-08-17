@@ -119,13 +119,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Phones stay portrait-only; tablets (smallestScreenWidthDp >= 600, same
-        // breakpoint the theme uses for tabletDimens) are free to rotate.
-        requestedOrientation = if (resources.configuration.smallestScreenWidthDp >= 600) {
-            ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
-        } else {
-            ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-        }
+        // Both phones and tablets are free to rotate by default.
+        // Specific screens (e.g. face registration) lock to portrait on phones via
+        // DisposableEffect and restore UNSPECIFIED on exit.
+        requestedOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 
         // ── Block tap-jacking via overlays ────────────────────────────────
         // NOTE: FLAG_SECURE (which blocked screenshots/screen-recording and

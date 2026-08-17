@@ -31,6 +31,7 @@ private class FakeProfileDao : FaceProfileDao {
         val i = saved.indexOfFirst { it.id == id }
         if (i >= 0) saved[i] = saved[i].copy(lastUsedAt = timestamp)
     }
+    override suspend fun getById(id: Long): FaceProfileEntity? = saved.firstOrNull { it.id == id }
 }
 
 private class FakeEmbeddingDao : FaceEmbeddingDao {
