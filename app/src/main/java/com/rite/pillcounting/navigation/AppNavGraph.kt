@@ -10,6 +10,9 @@ import androidx.navigation.compose.composable
 import com.rite.pillcounting.feature.batchCount.presentation.BatchScreen
 import com.rite.pillcounting.feature.dashboard.presentation.DashboardScreen
 import com.rite.pillcounting.feature.dispenseFlow.presentation.DispenseFlowScreen
+import com.rite.pillcounting.feature.faceAuth.presentation.FaceIntroScreen
+import com.rite.pillcounting.feature.faceAuth.presentation.FaceRegistrationScreen
+import com.rite.pillcounting.feature.faceAuth.presentation.FaceUsersListScreen
 import com.rite.pillcounting.feature.inventoryFlow.presentation.InventoryFlowScreen
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.history.presentation.BatchHistoryDetailScreen
@@ -181,6 +184,24 @@ fun AppNavGraph(
             SaveCsDoubleCountScreen(navController = navController)
         }
 
+        composable(route = Screen.FaceIntro.route) {
+            FaceIntroScreen(
+                onSkip = { navController.popBackStack() },
+                onGetStarted = {
+                    navController.navigate(Screen.FaceRegistration.route) {
+                        popUpTo(Screen.FaceIntro.route) { inclusive = true }
+                    }
+                }
+            )
+        }
+
+        composable(route = Screen.FaceRegistration.route) {
+            FaceRegistrationScreen(navController = navController)
+        }
+
+        composable(route = Screen.FaceRecognitionUsers.route) {
+            FaceUsersListScreen(navController = navController)
+        }
 
     }
 }

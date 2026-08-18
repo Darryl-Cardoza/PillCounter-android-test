@@ -47,6 +47,7 @@ camerax = "1.6.1"
 
 # --- ML Kit ---
 mlkit-barcode = "17.3.0"
+mlkit-text = "16.0.1"
 
 # --- TensorFlow Lite ---
 tensorflow-lite = "2.17.0"
@@ -158,6 +159,7 @@ camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "
 
 # --- ML Kit ---
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkit-barcode" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkit-text" }
 
 # --- TensorFlow Lite ---
 tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tensorflow-lite" }

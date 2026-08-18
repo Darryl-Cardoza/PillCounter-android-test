@@ -110,13 +110,20 @@ fun ProfileScreen(
     val cameFromDashboard =
         fromRoute?.contains(Screen.Dashboard.route, ignoreCase = true) == true
     val context = LocalContext.current
+    // First-login flow (came from the dashboard prompt): whether the profile is
+    // saved or skipped, offer face enrollment next. Profile is popped so the
+    // intro sits directly above the dashboard.
+    val navigateToFaceIntro: () -> Unit = {
+        navController.navigate(Screen.FaceIntro.route) {
+            popUpTo(Screen.Dashboard.route)
+            launchSingleTop = true
+        }
+    }
+
     // Back handling for system back press
     BackHandler {
         if (cameFromDashboard) {
-            navController.navigate(Screen.Dashboard.route) {
-                popUpTo(Screen.Dashboard.route) { inclusive = true }
-                launchSingleTop = true
-            }
+            navigateToFaceIntro()
         } else {
             navController.popBackStack()
         }
@@ -141,10 +148,7 @@ fun ProfileScreen(
                 BackButton(navController) {
                     // BackButton click behavior
                     if (cameFromDashboard) {
-                        navController.navigate(Screen.Dashboard.route) {
-                            popUpTo(Screen.Dashboard.route) { inclusive = true }
-                            launchSingleTop = true
-                        }
+                        navigateToFaceIntro()
                     } else {
                         navController.popBackStack()
                     }
@@ -210,9 +214,13 @@ fun ProfileScreen(
                         duration = Toast.LENGTH_SHORT
                     )
                     LaunchedEffect(updateUiState) {
-                        navController.navigate(Screen.Menu.route) {
-                            popUpTo(Screen.Menu.route) { inclusive = true }
-                            launchSingleTop = true
+                        if (cameFromDashboard) {
+                            navigateToFaceIntro()
+                        } else {
+                            navController.navigate(Screen.Menu.route) {
+                                popUpTo(Screen.Menu.route) { inclusive = true }
+                                launchSingleTop = true
+                            }
                         }
                         viewModel.resetUpdateState()
                     }
