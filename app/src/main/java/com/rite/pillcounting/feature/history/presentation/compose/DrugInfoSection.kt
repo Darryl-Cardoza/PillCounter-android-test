@@ -190,6 +190,7 @@ private fun DrugDetailLayout(
     }
     val barcodeImages = remember(bottleList, barcodeImage) {
         bottleList.mapNotNull { it.barcodeImagePath?.takeIf(String::isNotBlank) }
+            .distinct()
             .ifEmpty { listOfNotNull(barcodeImage?.takeIf(String::isNotBlank)) }
     }
     val vialImage = transactionDetails.forStep(StepState.VIAL).firstOrNull()?.imagePath
@@ -421,13 +422,16 @@ private fun LandscapeCountSection(
             )
         }
     ) {
-        if (batches.isNotEmpty()) {
+        // Dedup by image path: the same batch photo can be recorded across bottle steps,
+        // and duplicate non-null paths would collide as LazyRow keys.
+        val dedupedBatches = batches.distinctBy { it.imagePath }
+        if (dedupedBatches.isNotEmpty()) {
             LazyRow(
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 2.dp)
             ) {
                 itemsIndexed(
-                    items = batches,
+                    items = dedupedBatches,
                     key = { index, batch -> batch.imagePath ?: "idx-$index" },
                 ) { _, batch ->
                     LandscapeSquareImage(
@@ -653,7 +657,7 @@ private fun SectionBox(
 }
 
 @Composable
-internal fun KeyValueList(rows: List<Pair<String, String>>) {
+private fun KeyValueList(rows: List<Pair<String, String>>) {
     Column {
         rows.forEachIndexed { i, (key, value) ->
             Row(

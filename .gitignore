@@ -57,13 +57,16 @@ local.properties
 .claude/settings.local.json
 keystore.properties
 
-graphify-out
-.claude
-.agents
-docs
+.claude/
+.agents/
+
+# Local planning/working notes, not part of the shipped project
+plans/
 
 DrugCatalogStressSeeder.swift
 DrugCatalogSeeder.kt
+
+graphify-out/
 
 # Claude-authored notes/docs, not part of the shipped project docs
 docs/claude/

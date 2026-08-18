@@ -300,7 +300,7 @@
     <string name="dispense_drug_details">DÉTAILS DU MÉDICAMENT DISPENSÉ</string>
     <string name="pill_recount">RECOMPTAGE DE PILULES</string>
     <string name="vial_capture">FLACON DISPENSÉ</string>
-    <string name="remaining_stock_bottle_count">COMPTAGE RESTANT DU FLACON DE STOCK</string>
+    <string name="remaining_stock_bottle_count">COMPTAGE RESTANT DU CONTENANT</string>
     <string name="notes">NOTES</string>
     <string name="total_re_count">RECOMPTAGE TOTAL</string>
     <string name="no_batches_recorded">Aucun lot enregistré</string>

@@ -300,7 +300,7 @@
     <string name="dispense_drug_details">DETALLES DEL MEDICAMENTO DISPENSADO</string>
     <string name="pill_recount">RECONTEO DE PASTILLAS</string>
     <string name="vial_capture">FRASCO DISPENSADO</string>
-    <string name="remaining_stock_bottle_count">CONTEO RESTANTE DEL FRASCO DE STOCK</string>
+    <string name="remaining_stock_bottle_count">CONTEO RESTANTE DEL CONTENEDOR</string>
     <string name="notes">NOTAS</string>
     <string name="total_re_count">RECONTEO TOTAL</string>
     <string name="no_batches_recorded">No hay lotes registrados</string>

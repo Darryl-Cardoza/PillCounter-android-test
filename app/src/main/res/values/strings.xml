@@ -301,7 +301,7 @@
     <string name="dispense_drug_details">DISPENSE DRUG DETAILS</string>
     <string name="pill_recount">PILL RECOUNT</string>
     <string name="vial_capture">DISPENSED VIAL</string>
-    <string name="remaining_stock_bottle_count">REMAINING STOCK BOTTLE COUNT</string>
+    <string name="remaining_stock_bottle_count">REMAINING CONTAINER COUNT</string>
     <string name="notes">NOTES</string>
     <string name="total_re_count">TOTAL RECOUNT</string>
     <string name="no_batches_recorded">No batches recorded</string>
