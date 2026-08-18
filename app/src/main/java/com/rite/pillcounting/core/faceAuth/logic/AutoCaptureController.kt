@@ -3,6 +3,7 @@ package com.rite.pillcounting.core.faceAuth.logic
 import android.graphics.Bitmap
 import com.rite.pillcounting.core.faceAuth.model.FaceBox
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
+import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.transformWhile
 import javax.inject.Inject
@@ -39,8 +40,6 @@ class AutoCaptureController @Inject constructor(
         /** How long to keep sampling for a better frame after the first candidate, before committing the best one. */
         const val SETTLE_WINDOW_MS = 900L
 
-        private const val NO_FACE_GUIDANCE = "no face detected"
-
         private const val SHARPNESS_WEIGHT = 0.4f
         private const val CLOSENESS_WEIGHT = 0.6f
     }
@@ -50,8 +49,8 @@ class AutoCaptureController @Inject constructor(
 
     /** What [run] emits while watching for a good frame. */
     sealed interface CaptureEvent {
-        /** A live hint for what's currently wrong ("move closer", "tilt your face a bit more left", ...). */
-        data class Guidance(val message: String) : CaptureEvent
+        /** A live hint for what's currently wrong (move closer, tilt more, ...). */
+        data class Guidance(val guidance: FaceGuidance) : CaptureEvent
 
         /** The best frame found has been selected; its embedding and source bitmap are ready. */
         data class Committed(val embedding: FloatArray, val bitmap: Bitmap) : CaptureEvent
@@ -92,7 +91,7 @@ class AutoCaptureController @Inject constructor(
 
             val face = faceEngine.detectPrimary(bitmap)
             if (face == null) {
-                emit(CaptureEvent.Guidance(NO_FACE_GUIDANCE))
+                emit(CaptureEvent.Guidance(FaceGuidance.NO_FACE))
                 return@transformWhile true
             }
 

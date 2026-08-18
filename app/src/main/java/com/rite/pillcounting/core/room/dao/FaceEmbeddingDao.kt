@@ -1,33 +1,22 @@
 package com.rite.pillcounting.core.room.dao
 
 import androidx.room.Dao
-import androidx.room.Insert
 import androidx.room.Query
 import com.rite.pillcounting.core.room.models.FaceEmbeddingEntity
 
 /**
- * Data Access Object for [FaceEmbeddingEntity] rows.
+ * Data Access Object for [FaceEmbeddingEntity] reads.
  *
  * Description:
- * Stores and retrieves the 3 per-angle embeddings belonging to each face profile.
+ * Retrieves the per-angle embeddings belonging to each face profile. Writes go
+ * through [FaceProfileDao.insertWithEmbeddings] so profile + embeddings land in
+ * one transaction.
  *
  * What it does:
- * - [insertAll] persists the 3 embeddings captured at registration in one call.
  * - [getForEnabledProfiles] is the read `FaceMatcher` uses to build its match gallery.
- *
- * Example Usage:
- * faceEmbeddingDao.insertAll(listOf(frontEmbedding, leftEmbedding, rightEmbedding))
  */
 @Dao
 interface FaceEmbeddingDao {
-
-    /**
-     * Inserts multiple embeddings in one transaction-backed call.
-     *
-     * @param embeddings The embeddings to insert.
-     */
-    @Insert
-    suspend fun insertAll(embeddings: List<FaceEmbeddingEntity>)
 
     /**
      * Reads every embedding belonging to profiles that are currently enabled.

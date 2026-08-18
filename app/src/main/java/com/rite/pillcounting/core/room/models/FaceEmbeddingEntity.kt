@@ -2,6 +2,7 @@ package com.rite.pillcounting.core.room.models
 
 import androidx.room.Entity
 import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
@@ -35,7 +36,8 @@ import androidx.room.PrimaryKey
             childColumns = ["faceProfileId"],
             onDelete = ForeignKey.CASCADE
         )
-    ]
+    ],
+    indices = [Index("faceProfileId")]
 )
 data class FaceEmbeddingEntity(
     @PrimaryKey(autoGenerate = true)

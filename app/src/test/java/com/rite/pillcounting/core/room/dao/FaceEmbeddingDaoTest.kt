@@ -41,7 +41,7 @@ class FaceEmbeddingDaoTest {
         val disabledId = profileDao.insert(
             FaceProfileEntity(firstName = "Clark", lastName = "Kent", email = null, isEnabled = false, createdAt = 0L)
         )
-        embeddingDao.insertAll(listOf(
+        profileDao.insertEmbeddings(listOf(
             FaceEmbeddingEntity(faceProfileId = enabledId, angle = "FRONT", vec = ByteArray(4)),
             FaceEmbeddingEntity(faceProfileId = disabledId, angle = "FRONT", vec = ByteArray(4)),
         ))

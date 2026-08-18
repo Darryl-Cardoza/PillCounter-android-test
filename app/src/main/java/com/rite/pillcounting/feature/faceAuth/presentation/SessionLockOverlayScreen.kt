@@ -21,6 +21,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -74,6 +75,12 @@ fun SessionLockOverlayScreen(
     var stage by remember { mutableStateOf(LockStage.LOCKED) }
     val verifyState by viewModel.verifyState.collectAsState()
 
+    // The ViewModel is activity-scoped (this overlay sits above the nav graph),
+    // so the verify loop must be cancelled explicitly when the overlay goes away.
+    DisposableEffect(Unit) {
+        onDispose { viewModel.stopAutoVerify() }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         when {
             stage == LockStage.LOCKED -> LockedStep(
@@ -111,6 +118,11 @@ private fun ScanCameraStep(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val cameraHelper = remember { CameraHelper(context, lifecycleOwner, ContextCompat.getMainExecutor(context)) }
+    // The lifecycle owner here is the Activity (not a nav destination), so the
+    // camera would stay bound after unlock without an explicit unbind.
+    DisposableEffect(Unit) {
+        onDispose { cameraHelper.pauseCamera() }
+    }
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         ScanningStep(onCaptureRequested = onCaptureRequested, onAutoVerifyReady = onAutoVerifyReady, cameraHelper = cameraHelper)
     }

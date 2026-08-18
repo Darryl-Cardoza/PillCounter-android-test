@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.RectF
 import com.rite.pillcounting.core.faceAuth.model.FaceBox
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
+import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -41,7 +42,7 @@ class AutoCaptureControllerTest {
 
         assertTrue(events.all { it is AutoCaptureController.CaptureEvent.Guidance })
         assertEquals(2, events.size)
-        assertEquals("no face detected", (events[0] as AutoCaptureController.CaptureEvent.Guidance).message)
+        assertEquals(FaceGuidance.NO_FACE, (events[0] as AutoCaptureController.CaptureEvent.Guidance).guidance)
     }
 
     @Test
@@ -52,7 +53,7 @@ class AutoCaptureControllerTest {
         every { faceQualityGate.evaluate(bitmap, faceBox) } returns null
         every { headPoseEstimator.estimateYaw(faceBox.landmarks) } returns 0f
         every { headPoseEstimator.matchesAngle(0f, FaceCaptureAngle.TILT_LEFT, false) } returns false
-        every { headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT) } returns "tilt your face a bit more to the left"
+        every { headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT) } returns FaceGuidance.TILT_MORE_LEFT
 
         // Advance past the throttle window before emitting.
         val frames = flow { fakeNow = 200; emit(bitmap) }
@@ -61,8 +62,8 @@ class AutoCaptureControllerTest {
 
         assertEquals(1, events.size)
         assertEquals(
-            "tilt your face a bit more to the left",
-            (events[0] as AutoCaptureController.CaptureEvent.Guidance).message
+            FaceGuidance.TILT_MORE_LEFT,
+            (events[0] as AutoCaptureController.CaptureEvent.Guidance).guidance
         )
     }
 

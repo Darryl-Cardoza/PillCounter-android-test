@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executor
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -53,6 +54,10 @@ class CameraHelper(
     private var boundCamera: Camera? = null
     private var previewView: PreviewView? = null
     private var boundCameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+    // Reused across rebinds (lens switch, rotation, stall watchdog) — a fresh
+    // executor per bind leaked one thread each time. Shut down in [pauseCamera].
+    private var analyzerExecutor: ExecutorService? = null
 
     private val isBound = AtomicBoolean(false)
     private val isStreaming = AtomicBoolean(true)
@@ -160,7 +165,9 @@ class CameraHelper(
                     .setTargetRotation(initialRotation)
                     .build()
                     .also { analysis ->
-                        analysis.setAnalyzer(Executors.newSingleThreadExecutor()) {
+                        val analyzerExec = analyzerExecutor?.takeUnless { it.isShutdown }
+                            ?: Executors.newSingleThreadExecutor().also { analyzerExecutor = it }
+                        analysis.setAnalyzer(analyzerExec) {
                             processImageProxy(it)
                         }
                     }
@@ -417,6 +424,8 @@ class CameraHelper(
         boundCamera = null
         isBound.set(false)
         isStreaming.set(false)
+        analyzerExecutor?.shutdown()
+        analyzerExecutor = null
     }
 
     fun resumeCamera(

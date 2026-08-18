@@ -7,9 +7,11 @@ import com.rite.pillcounting.core.faceAuth.logic.AutoCaptureController
 import com.rite.pillcounting.core.faceAuth.logic.FaceEngine
 import com.rite.pillcounting.core.faceAuth.logic.FaceQualityGate
 import com.rite.pillcounting.core.faceAuth.logic.GalleryEntry
+import com.rite.pillcounting.core.faceAuth.logic.HeadPoseEstimator
 import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.faceAuth.model.FaceBox
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
+import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 import com.rite.pillcounting.core.room.models.FaceProfileEntity
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.faceAuth.domain.model.RegistrationState
@@ -58,10 +60,15 @@ class FaceAuthViewModelTest {
         repo: FaceProfileRepository = mockk(relaxed = true),
         sessionEmailProvider: SessionEmailProvider = mockk(relaxed = true),
         faceQualityGate: FaceQualityGate = mockk(),
+        // Pose check passes by default so manual-capture tests exercise the paths they target.
+        headPoseEstimator: HeadPoseEstimator = mockk {
+            every { estimateYaw(any()) } returns 0f
+            every { matchesAngle(any(), any(), any()) } returns true
+        },
         autoCaptureController: AutoCaptureController = mockk(relaxed = true),
         sessionLockController: SessionLockController = mockk(relaxed = true),
         preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    ) = FaceAuthViewModel(context, engine, repo, sessionEmailProvider, faceQualityGate, autoCaptureController, sessionLockController, preferenceHelper)
+    ) = FaceAuthViewModel(context, engine, repo, sessionEmailProvider, faceQualityGate, headPoseEstimator, autoCaptureController, sessionLockController, preferenceHelper)
 
     @Test
     fun `capturing all three angles then finishing enrolls the profile`() = runTest {
@@ -88,7 +95,7 @@ class FaceAuthViewModelTest {
         val engine = mockk<FaceEngine>()
         val faceQualityGate = mockk<FaceQualityGate>()
         coEvery { engine.detectPrimary(fakeBitmap) } returns fakeFace
-        every { faceQualityGate.evaluate(fakeBitmap, fakeFace) } returns "hold still / more light"
+        every { faceQualityGate.evaluate(fakeBitmap, fakeFace) } returns FaceGuidance.HOLD_STILL
 
         val vm = viewModel(engine = engine, faceQualityGate = faceQualityGate)
         vm.startRegistration("Bruce", "Wayne")
@@ -96,7 +103,7 @@ class FaceAuthViewModelTest {
 
         val state = vm.registrationState.value
         assertTrue(state is RegistrationState.Rejected)
-        assertEquals("hold still / more light", (state as RegistrationState.Rejected).reason)
+        assertEquals(FaceGuidance.HOLD_STILL, (state as RegistrationState.Rejected).reason)
     }
 
     @Test
@@ -161,7 +168,7 @@ class FaceAuthViewModelTest {
         // Non-completing flow: emits the guidance event then suspends so the collect never
         // returns and the loop never advances to TILT_LEFT (which would be unstubbed).
         every { autoCaptureController.run(FaceCaptureAngle.FRONT, any(), true) } returns
-            flow { emit(AutoCaptureController.CaptureEvent.Guidance("move closer")); awaitCancellation() }
+            flow { emit(AutoCaptureController.CaptureEvent.Guidance(FaceGuidance.MOVE_CLOSER)); awaitCancellation() }
 
         val vm = viewModel(autoCaptureController = autoCaptureController)
         vm.startRegistration("Bruce", "Wayne")
@@ -169,7 +176,7 @@ class FaceAuthViewModelTest {
 
         val state = vm.registrationState.value
         assertTrue(state is RegistrationState.Capturing)
-        assertEquals("move closer", (state as RegistrationState.Capturing).guidance)
+        assertEquals(FaceGuidance.MOVE_CLOSER, (state as RegistrationState.Capturing).guidance)
     }
 
     @Test

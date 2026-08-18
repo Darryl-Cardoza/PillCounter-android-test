@@ -59,6 +59,7 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
+import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
@@ -92,6 +93,7 @@ fun FaceRegistrationScreen(
     val cameraHelper = remember { CameraHelper(context, lifecycleOwner, ContextCompat.getMainExecutor(context)) }
     val scope = rememberCoroutineScope()
     val state by viewModel.registrationState.collectAsState()
+    val isSessionLocked by viewModel.isSessionLocked.collectAsState()
 
     // Camera-based face/ID capture requires portrait framing on phones. Tablets keep
     // free rotation because their landscape layout is intentionally supported.
@@ -122,7 +124,6 @@ fun FaceRegistrationScreen(
     Column(modifier = Modifier.fillMaxSize()) {
         when {
             !nameEntered -> {
-                val isSessionLocked by viewModel.isSessionLocked.collectAsState()
                 ScanPhotoIdStep(
                     cameraHelper = cameraHelper,
                     navController = navController,
@@ -155,6 +156,7 @@ fun FaceRegistrationScreen(
                 state = state,
                 cameraHelper = cameraHelper,
                 navController = navController,
+                isSessionLocked = isSessionLocked,
                 onCaptureRequested = { angle ->
                     cameraHelper.captureImage { bitmap -> viewModel.captureFrame(bitmap, angle) }
                 },
@@ -180,6 +182,7 @@ private fun ScanFaceStep(
     state: RegistrationState,
     cameraHelper: CameraHelper,
     navController: NavController,
+    isSessionLocked: Boolean,
     onCaptureRequested: (FaceCaptureAngle) -> Unit,
     onCameraReady: (isFrontCamera: Boolean) -> Unit,
     onFinish: () -> Unit
@@ -192,7 +195,7 @@ private fun ScanFaceStep(
         FaceCaptureAngle.TILT_LEFT -> stringResource(R.string.face_registration_scan_tilt_left)
         FaceCaptureAngle.TILT_RIGHT -> stringResource(R.string.face_registration_scan_tilt_right)
     }
-    val prompt = capturing?.guidance ?: staticPrompt
+    val prompt = capturing?.guidance?.let { guidanceText(it) } ?: staticPrompt
 
     var isFrontCamera by remember { mutableStateOf(true) }
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
@@ -204,6 +207,26 @@ private fun ScanFaceStep(
                 cameraSelector = if (isFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
             )
             onCameraReady(isFrontCamera)
+        }
+    }
+
+    // The lock overlay's own camera bind calls unbindAll(), killing this
+    // screen's use cases — without an explicit rebind on unlock the preview
+    // stays dead and auto-capture never commits (mirrors ScanPhotoIdStep).
+    var wasLocked by remember { mutableStateOf(false) }
+    LaunchedEffect(isSessionLocked) {
+        if (isSessionLocked) {
+            wasLocked = true
+            cameraHelper.pauseCamera()
+        } else if (wasLocked) {
+            wasLocked = false
+            previewView?.let {
+                cameraHelper.switchCamera(
+                    it,
+                    cameraSelector = if (isFrontCamera) CameraSelector.DEFAULT_FRONT_CAMERA else CameraSelector.DEFAULT_BACK_CAMERA
+                )
+                onCameraReady(isFrontCamera)
+            }
         }
     }
 
@@ -250,7 +273,7 @@ private fun ScanFaceStep(
                 )
                 if (state is RegistrationState.Rejected) {
                     Text(
-                        text = state.reason,
+                        text = guidanceText(state.reason),
                         color = MaterialTheme.colorScheme.error,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
@@ -305,6 +328,21 @@ private fun ScanFaceStep(
         }
     }
 }
+
+/** Localized text for a [FaceGuidance] emitted by the capture logic. */
+@Composable
+private fun guidanceText(guidance: FaceGuidance): String = stringResource(
+    when (guidance) {
+        FaceGuidance.NO_FACE -> R.string.face_guidance_no_face
+        FaceGuidance.MOVE_CLOSER -> R.string.face_guidance_move_closer
+        FaceGuidance.MOVE_BACK -> R.string.face_guidance_move_back
+        FaceGuidance.FACE_CROP_FAILED -> R.string.face_guidance_crop_failed
+        FaceGuidance.HOLD_STILL -> R.string.face_guidance_hold_still
+        FaceGuidance.LOOK_STRAIGHT -> R.string.face_guidance_look_straight
+        FaceGuidance.TILT_MORE_LEFT -> R.string.face_guidance_tilt_more_left
+        FaceGuidance.TILT_MORE_RIGHT -> R.string.face_guidance_tilt_more_right
+    }
+)
 
 @Composable
 private fun EnrolledStep(onAddUser: () -> Unit, onDone: () -> Unit) {

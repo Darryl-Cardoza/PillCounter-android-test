@@ -69,7 +69,6 @@ class HeadPoseEstimatorTest {
     fun `guidanceFor returns a distinct hint per angle`() {
         val hints = FaceCaptureAngle.entries.map { estimator.guidanceFor(it) }
         assertEquals(hints.size, hints.toSet().size)
-        assertTrue(hints.all { it.isNotBlank() })
     }
 
     @Test

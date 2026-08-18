@@ -54,7 +54,6 @@
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title" translatable="false">SETTINGS</string>
     <string name="setting_ask_to_add_notes">Always ask to add Notes</string>
-    <string name="setting_face_recognition">Face Recognition</string>
     <string name="setting_face_recognition_users">Face Recognition Users</string>
     <string name="setting_save_history_for">Save history for</string>
     <string name="pill_counting_sound">Pill Counting Sound</string>
@@ -82,6 +81,14 @@
     <string name="face_registration_scan_front">Place your face inside the square</string>
     <string name="face_registration_scan_tilt_left">Tilt face to your left</string>
     <string name="face_registration_scan_tilt_right">Tilt face to your right</string>
+    <string name="face_guidance_no_face">no face detected</string>
+    <string name="face_guidance_move_closer">move closer</string>
+    <string name="face_guidance_move_back">move back</string>
+    <string name="face_guidance_crop_failed">face crop failed</string>
+    <string name="face_guidance_hold_still">hold still / more light</string>
+    <string name="face_guidance_look_straight">look straight ahead</string>
+    <string name="face_guidance_tilt_more_left">tilt your face a bit more to the left</string>
+    <string name="face_guidance_tilt_more_right">tilt your face a bit more to the right</string>
     <string name="face_registration_enrolled_title">Face enrolled</string>
     <string name="face_registration_enrolled_body">You\'re all set. You can now unlock the counter with a glance.</string>
     <string name="face_registration_add_user">+ Add User</string>
@@ -91,14 +98,12 @@
     <string name="face_users_empty">No faces registered yet.</string>
     <string name="face_users_delete_title">Delete Users</string>
     <string name="face_users_last_used">Last used: %1$s</string>
-    <string name="face_verify_prompt">Place your face inside the square</string>
     <string name="face_verify_capture_button">Capture Face</string>
     <string name="face_verify_not_recognized_title">We couldn\'t recognize you</string>
     <string name="face_verify_not_recognized_body">Make sure your face is well lit and\ncentered, then try again.</string>
     <string name="face_verify_try_again">Try Again</string>
     <string name="face_verify_cancel">Cancel</string>
     <string name="face_flip_camera">Flip camera</string>
-    <string name="face_verify_log_out">Log Out</string>
     <string name="session_locked_title">Session Locked</string>
     <string name="session_locked_subtitle">Idle for %1$d min.\nVerify your face to pick up\nwhere you left off.</string>
     <string name="session_locked_verify_button">Verify With Face</string>

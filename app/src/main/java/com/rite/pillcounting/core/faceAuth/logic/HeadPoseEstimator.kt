@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.faceAuth.logic
 
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
+import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 import javax.inject.Inject
 import kotlin.math.abs
 
@@ -107,18 +108,18 @@ class HeadPoseEstimator @Inject constructor() {
     }
 
     /**
-     * User-facing hint for why [angle]'s pose check is currently failing.
+     * Hint for why [angle]'s pose check is currently failing.
      *
      * @param angle The registration step being captured for.
-     * @return A short instruction to show the user (e.g. "look straight ahead").
+     * @return The [FaceGuidance] the UI should show for that angle.
      *
      * Example Usage:
      * val hint = headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT)
      */
-    fun guidanceFor(angle: FaceCaptureAngle): String = when (angle) {
-        FaceCaptureAngle.FRONT -> "look straight ahead"
-        FaceCaptureAngle.TILT_LEFT -> "tilt your face a bit more to the left"
-        FaceCaptureAngle.TILT_RIGHT -> "tilt your face a bit more to the right"
+    fun guidanceFor(angle: FaceCaptureAngle): FaceGuidance = when (angle) {
+        FaceCaptureAngle.FRONT -> FaceGuidance.LOOK_STRAIGHT
+        FaceCaptureAngle.TILT_LEFT -> FaceGuidance.TILT_MORE_LEFT
+        FaceCaptureAngle.TILT_RIGHT -> FaceGuidance.TILT_MORE_RIGHT
     }
 
     private fun deviation(yaw: Float, angle: FaceCaptureAngle, isFrontCamera: Boolean): Float {

@@ -128,7 +128,10 @@ class FaceEngine @Inject constructor(
             buffer.putFloat(((p shr 16) and 0xFF).toFloat()) // R
         }
         buffer.rewind()
-        resized.recycle(); canvas.recycle()
+        // createScaledBitmap returns the source itself when it's already newW×newH —
+        // recycling it then would kill the caller's frame mid-pipeline.
+        if (resized !== bitmap) resized.recycle()
+        canvas.recycle()
         return buffer to (1f / scaleToFit)
     }
 

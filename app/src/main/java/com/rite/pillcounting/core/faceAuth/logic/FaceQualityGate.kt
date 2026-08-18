@@ -2,6 +2,7 @@ package com.rite.pillcounting.core.faceAuth.logic
 
 import android.graphics.Bitmap
 import com.rite.pillcounting.core.faceAuth.model.FaceBox
+import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.CvType
@@ -18,8 +19,8 @@ import kotlin.math.min
  * Description:
  * Direct Kotlin port of `standalone_face_tf.py`'s `quality_gate()` (plus its
  * `face_crop()`/`sharpness()` helpers) — same three checks, same thresholds:
- * face too small ("move closer"), face too close/filling the frame ("move
- * back"), and blurry/low-light crops (Laplacian-variance sharpness).
+ * face too small, face too close/filling the frame, and blurry/low-light
+ * crops (Laplacian-variance sharpness).
  *
  * What it does:
  * - [evaluate] runs all three checks in order and returns the first failure
@@ -41,17 +42,17 @@ class FaceQualityGate @Inject constructor() {
      *
      * @param frame The full camera frame [face] was detected in.
      * @param face The detected face to quality-gate.
-     * @return A rejection reason ("move closer" / "move back" / "hold still / more light"), or null if acceptable.
+     * @return A rejection [FaceGuidance], or null if acceptable.
      *
      * Example Usage:
      * val reason = faceQualityGate.evaluate(frame, face)
      */
-    fun evaluate(frame: Bitmap, face: FaceBox): String? {
-        if (face.rect.width() < MIN_FACE_WIDTH_PX) return "move closer"
-        if (face.rect.width() > frame.width * MAX_FACE_WIDTH_RATIO) return "move back"
+    fun evaluate(frame: Bitmap, face: FaceBox): FaceGuidance? {
+        if (face.rect.width() < MIN_FACE_WIDTH_PX) return FaceGuidance.MOVE_CLOSER
+        if (face.rect.width() > frame.width * MAX_FACE_WIDTH_RATIO) return FaceGuidance.MOVE_BACK
 
-        val crop = faceCrop(frame, face) ?: return "face crop failed"
-        if (sharpness(crop) < ENROLL_MIN_SHARPNESS) return "hold still / more light"
+        val crop = faceCrop(frame, face) ?: return FaceGuidance.FACE_CROP_FAILED
+        if (sharpness(crop) < ENROLL_MIN_SHARPNESS) return FaceGuidance.HOLD_STILL
         return null
     }
 
@@ -62,7 +63,7 @@ class FaceQualityGate @Inject constructor() {
      *
      * @param frame The full camera frame [face] was detected in.
      * @param face The detected face to score.
-     * @return The crop's sharpness value, or null if the crop itself failed (mirrors [evaluate]'s "face crop failed" case).
+     * @return The crop's sharpness value, or null if the crop itself failed (mirrors [evaluate]'s [FaceGuidance.FACE_CROP_FAILED] case).
      *
      * Example Usage:
      * val sharpness = faceQualityGate.sharpnessScore(frame, face)

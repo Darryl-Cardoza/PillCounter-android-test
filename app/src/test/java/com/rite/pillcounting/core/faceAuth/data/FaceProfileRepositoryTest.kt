@@ -14,12 +14,14 @@ import org.junit.Test
 
 private class FakeProfileDao : FaceProfileDao {
     val saved = mutableListOf<FaceProfileEntity>()
+    val savedEmbeddings = mutableListOf<FaceEmbeddingEntity>()
     private var nextId = 1L
     override suspend fun insert(profile: FaceProfileEntity): Long {
         val id = nextId++
         saved.add(profile.copy(id = id))
         return id
     }
+    override suspend fun insertEmbeddings(embeddings: List<FaceEmbeddingEntity>) { savedEmbeddings.addAll(embeddings) }
     override suspend fun update(profile: FaceProfileEntity) {
         val i = saved.indexOfFirst { it.id == profile.id }
         if (i >= 0) saved[i] = profile
@@ -34,10 +36,9 @@ private class FakeProfileDao : FaceProfileDao {
     override suspend fun getById(id: Long): FaceProfileEntity? = saved.firstOrNull { it.id == id }
 }
 
-private class FakeEmbeddingDao : FaceEmbeddingDao {
-    val saved = mutableListOf<FaceEmbeddingEntity>()
-    override suspend fun insertAll(embeddings: List<FaceEmbeddingEntity>) { saved.addAll(embeddings) }
-    override suspend fun getForEnabledProfiles(): List<FaceEmbeddingEntity> = saved
+/** Reads whatever [FakeProfileDao.savedEmbeddings] has accumulated — writes go through the profile DAO now. */
+private class FakeEmbeddingDao(private val embeddings: List<FaceEmbeddingEntity>) : FaceEmbeddingDao {
+    override suspend fun getForEnabledProfiles(): List<FaceEmbeddingEntity> = embeddings
 }
 
 class FaceProfileRepositoryTest {
@@ -45,8 +46,7 @@ class FaceProfileRepositoryTest {
     @Test
     fun `registerProfile stores the profile and one embedding per angle`() = runTest {
         val profileDao = FakeProfileDao()
-        val embeddingDao = FakeEmbeddingDao()
-        val repo = FaceProfileRepository(profileDao, embeddingDao)
+        val repo = FaceProfileRepository(profileDao, FakeEmbeddingDao(profileDao.savedEmbeddings))
 
         val id = repo.registerProfile(
             firstName = "Bruce", lastName = "Wayne", email = "bruce@rite.com",
@@ -60,15 +60,14 @@ class FaceProfileRepositoryTest {
 
         assertEquals(1, profileDao.saved.size)
         assertEquals(id, profileDao.saved[0].id)
-        assertEquals(3, embeddingDao.saved.size)
-        assertTrue(embeddingDao.saved.all { it.faceProfileId == id })
+        assertEquals(3, profileDao.savedEmbeddings.size)
+        assertTrue(profileDao.savedEmbeddings.all { it.faceProfileId == id })
     }
 
     @Test
     fun `loadGallery returns every embedding as a float array of length 128`() = runTest {
         val profileDao = FakeProfileDao()
-        val embeddingDao = FakeEmbeddingDao()
-        val repo = FaceProfileRepository(profileDao, embeddingDao)
+        val repo = FaceProfileRepository(profileDao, FakeEmbeddingDao(profileDao.savedEmbeddings))
 
         repo.registerProfile(
             "Bruce", "Wayne", null,

@@ -63,26 +63,22 @@ class FaceProfileRepository @Inject constructor(
         embeddingsByAngle: Map<FaceCaptureAngle, FloatArray>,
         now: Long,
         faceImagePath: String? = null
-    ): Long {
-        val id = profileDao.insert(
-            FaceProfileEntity(
-                firstName = firstName,
-                lastName = lastName,
-                email = email,
-                createdAt = now,
-                faceImagePath = faceImagePath
+    ): Long = profileDao.insertWithEmbeddings(
+        FaceProfileEntity(
+            firstName = firstName,
+            lastName = lastName,
+            email = email,
+            createdAt = now,
+            faceImagePath = faceImagePath
+        )
+    ) { id ->
+        embeddingsByAngle.map { (angle, vec) ->
+            storageLogger.i(
+                "WRITE faceProfileId=$id angle=${angle.name} dims=${vec.size} " +
+                    "l2norm=${l2Norm(vec)} first5=${vec.take(5).joinToString(",")}"
             )
-        )
-        embeddingDao.insertAll(
-            embeddingsByAngle.map { (angle, vec) ->
-                storageLogger.i(
-                    "WRITE faceProfileId=$id angle=${angle.name} dims=${vec.size} " +
-                        "l2norm=${l2Norm(vec)} first5=${vec.take(5).joinToString(",")}"
-                )
-                FaceEmbeddingEntity(faceProfileId = id, angle = angle.name, vec = floatArrayToBytes(vec))
-            }
-        )
-        return id
+            FaceEmbeddingEntity(faceProfileId = id, angle = angle.name, vec = floatArrayToBytes(vec))
+        }
     }
 
     /**
