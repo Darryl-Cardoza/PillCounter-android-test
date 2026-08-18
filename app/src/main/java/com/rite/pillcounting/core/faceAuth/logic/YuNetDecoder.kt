@@ -4,6 +4,8 @@ import android.graphics.RectF
 import com.rite.pillcounting.core.faceAuth.model.FaceBox
 import com.rite.pillcounting.core.scanning.logic.Detection
 import com.rite.pillcounting.core.scanning.logic.NMS
+import java.util.Collections
+import java.util.IdentityHashMap
 import kotlin.math.exp
 import kotlin.math.sqrt
 
@@ -130,9 +132,12 @@ object YuNetDecoder {
 
         if (candidates.isEmpty()) return emptyList()
 
+        // Identity set, not equality: NMS.run returns the same instances it was given,
+        // and equality-matching would resurrect a suppressed duplicate whose rect+score
+        // happen to equal a kept one.
         val detections = candidates.map { Detection(it.rect, it.score) }
         val kept = NMS.run(detections, nmsThreshold)
-        val keptSet = kept.toHashSet()
-        return candidates.filter { Detection(it.rect, it.score) in keptSet }
+        val keptSet = Collections.newSetFromMap(IdentityHashMap<Detection, Boolean>()).apply { addAll(kept) }
+        return candidates.filterIndexed { i, _ -> detections[i] in keptSet }
     }
 }

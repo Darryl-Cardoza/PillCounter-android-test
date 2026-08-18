@@ -12,12 +12,12 @@ import org.robolectric.RobolectricTestRunner
 class FaceModelLoaderTest {
 
     @Test
-    fun `getOrLoadInterpreters throws when encrypted assets are missing`() = runTest {
+    fun `getOrLoadInterpreters fails loudly when models cannot be loaded`() = runTest {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val loader = FaceModelLoader(context)
 
-        // No yunet_640x640_float16.tflite.enc / sface_112x112_float16.tflite.enc in test assets
-        // (they aren't checked into the repo — see the plan's Prerequisite section) — must fail loudly, not silently.
+        // Robolectric has no AndroidKeyStore, so decrypting the .enc assets can't
+        // succeed here — the load must fail loudly, not hand back broken interpreters.
         var threw = false
         try {
             loader.getOrLoadInterpreters()

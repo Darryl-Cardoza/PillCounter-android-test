@@ -43,7 +43,10 @@ class FaceModelLoader @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
     private val mutex = Mutex()
-    private val modelKeyUnit = ModelKeyUnit(context).also { it.activateIfNeeded() }
+
+    // Lazy: keystore activation belongs to the first model load (on Dispatchers.IO),
+    // not DI-graph construction time.
+    private val modelKeyUnit by lazy { ModelKeyUnit(context).also { it.activateIfNeeded() } }
     private var cached: FaceInterpreters? = null
 
     // TEMPORARY diagnostics for the enroll/verify mismatch investigation — remove

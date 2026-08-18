@@ -3,7 +3,12 @@ package com.rite.pillcounting.core.faceAuth.logic
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
 
+// Robolectric for a real RectF: the plain-JUnit android.jar stubs (returnDefaultValues)
+// no-op its constructor, leaving every box 0,0,0,0.
+@RunWith(RobolectricTestRunner::class)
 class YuNetDecoderTest {
 
     private val strides = intArrayOf(8, 16, 32)
