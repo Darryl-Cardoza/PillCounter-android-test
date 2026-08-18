@@ -60,14 +60,16 @@ keystore.properties
 .claude/
 .agents/
 
+# Local planning/working notes, not part of the shipped project
+plans/
+
 DrugCatalogStressSeeder.swift
 DrugCatalogSeeder.kt
 
 graphify-out/
 
-# Claude-authored notes/docs/plans, not part of the shipped project docs
+# Claude-authored notes/docs, not part of the shipped project docs
 docs/claude/
-plans/
 
 # Face recognition model reference script (local only)
 standalone_face_tf.py
