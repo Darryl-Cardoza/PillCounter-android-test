@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.concurrent.Executor
+import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -52,6 +53,11 @@ class CameraHelper(
     private var preview: Preview? = null
     private var boundCamera: Camera? = null
     private var previewView: PreviewView? = null
+    private var boundCameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+    // Reused across rebinds (lens switch, rotation, stall watchdog) — a fresh
+    // executor per bind leaked one thread each time. Shut down in [pauseCamera].
+    private var analyzerExecutor: ExecutorService? = null
 
     private val isBound = AtomicBoolean(false)
     private val isStreaming = AtomicBoolean(true)
@@ -74,7 +80,10 @@ class CameraHelper(
      */
     private val autofocusIntervalMs = 1500L
 
-    private val _frameChannel = Channel<ImageProxy>(Channel.CONFLATED)
+    // onUndeliveredElement closes any frame the CONFLATED buffer overwrites before a slow
+    // collector reads it — without it, ImageAnalysis's KEEP_ONLY_LATEST strategy stalls
+    // forever once its buffer pool is exhausted by never-closed ImageProxy instances.
+    private val _frameChannel = Channel<ImageProxy>(Channel.CONFLATED, onUndeliveredElement = { it.close() })
     val frameFlow = _frameChannel.receiveAsFlow()
     private var imageCapture: ImageCapture? = null
     // ---------------------------------------------------------
@@ -106,10 +115,12 @@ class CameraHelper(
 
     fun startCamera(
         previewView: PreviewView,
-        targetResolution: Size = Size(1280, 720)
+        targetResolution: Size = Size(1280, 720),
+        cameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
     ) {
         logger.i("Starting camera | Target=${targetResolution.width}×${targetResolution.height}")
         this.previewView = previewView
+        this.boundCameraSelector = cameraSelector
 
         cameraProviderFuture.addListener({
             val cameraProvider = try {
@@ -154,7 +165,9 @@ class CameraHelper(
                     .setTargetRotation(initialRotation)
                     .build()
                     .also { analysis ->
-                        analysis.setAnalyzer(Executors.newSingleThreadExecutor()) {
+                        val analyzerExec = analyzerExecutor?.takeUnless { it.isShutdown }
+                            ?: Executors.newSingleThreadExecutor().also { analyzerExecutor = it }
+                        analysis.setAnalyzer(analyzerExec) {
                             processImageProxy(it)
                         }
                     }
@@ -163,12 +176,10 @@ class CameraHelper(
                     .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
                     .build()
 
-                val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
-
                 cameraProvider.unbindAll()
                 boundCamera = cameraProvider.bindToLifecycle(
                     lifecycleOwner,
-                    cameraSelector,
+                    boundCameraSelector,
                     preview,
                     imageAnalysis,
                     imageCapture
@@ -194,6 +205,31 @@ class CameraHelper(
             }
 
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    /**
+     * Switches the active camera lens (e.g. front ↔ back), rebinding the
+     * preview if one is already running. `startCamera()` early-returns while
+     * [isBound] is true (see its "already bound — skipping" guard above), so
+     * calling it a second time to change lenses is a silent no-op — this
+     * unbinds first so the new selector actually takes effect.
+     */
+    fun switchCamera(previewView: PreviewView, cameraSelector: CameraSelector) {
+        if (!isBound.get()) {
+            startCamera(previewView, cameraSelector = cameraSelector)
+            return
+        }
+        try {
+            cameraProviderFuture.get().unbindAll()
+        } catch (e: Exception) {
+            logger.w("Unbind before camera switch failed: ${e.message}")
+        }
+        preview = null
+        imageAnalysis = null
+        boundCamera = null
+        isBound.set(false)
+        isStreaming.set(false)
+        startCamera(previewView, cameraSelector = cameraSelector)
     }
 
     // ---------------------------------------------------------
@@ -317,7 +353,7 @@ class CameraHelper(
         boundCamera = null
         isBound.set(false)
         isStreaming.set(false)
-        startCamera(previewView)
+        startCamera(previewView, cameraSelector = boundCameraSelector)
     }
 
     // ---------------------------------------------------------
@@ -388,6 +424,8 @@ class CameraHelper(
         boundCamera = null
         isBound.set(false)
         isStreaming.set(false)
+        analyzerExecutor?.shutdown()
+        analyzerExecutor = null
     }
 
     fun resumeCamera(

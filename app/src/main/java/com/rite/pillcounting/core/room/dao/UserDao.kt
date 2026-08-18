@@ -115,6 +115,18 @@ interface UserDao {
     fun observeByLocalId(localId: Long): Flow<UserEntity?>
 
     /**
+     * Retrieves a user record using the Room primary key (`localId`), as a one-shot read.
+     *
+     * - Unlike [observeByLocalId], this suspends and returns once rather than streaming.
+     * - Intended for one-time lookups (e.g. reading the current session's email).
+     *
+     * @param localId The Room primary key for the user.
+     * @return The matching [UserEntity], or `null` if not found.
+     */
+    @Query("SELECT * FROM users WHERE localId = :localId LIMIT 1")
+    suspend fun getByLocalId(localId: Long): UserEntity?
+
+    /**
      * Retrieves a user record using the external or business identifier (`userId`).
      *
      * - Typically used during login or sync operations.
@@ -125,15 +137,4 @@ interface UserDao {
      */
     @Query("SELECT * FROM users WHERE userId = :userId LIMIT 1")
     suspend fun getByUserId(userId: String): UserEntity?
-
-    /**
-     * One-shot lookup by the Room primary key.
-     *
-     * Transactions reference their operator with [PillCountTxnEntity.localId], which is a FK to
-     * [UserEntity.localId] — not the business `userId`. Resolving that FK through
-     * [getByUserId] never matches, so the operator came back null and outbound HL7 carried no
-     * dispensing provider at all.
-     */
-    @Query("SELECT * FROM users WHERE localId = :localId LIMIT 1")
-    suspend fun getByLocalId(localId: Long): UserEntity?
 }

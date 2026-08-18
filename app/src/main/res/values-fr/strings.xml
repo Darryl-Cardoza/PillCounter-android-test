@@ -484,4 +484,56 @@
     <string name="pms_cert_mismatch_message">Le certificat du serveur PMS a changé. Cela peut se produire après une mise à jour du PMS. Appuyez sur Réinitialiser pour accepter le nouveau certificat et vous reconnecter.</string>
     <string name="pms_cert_mismatch_confirm">Réinitialiser et reconnecter</string>
 
+    <!-- Face recognition / quick access -->
+    <string name="setting_face_recognition_users">Utilisateurs de la reconnaissance faciale</string>
+    <string name="face_registration_title">Configurer l\'accès rapide</string>
+    <string name="face_intro_body">Connectez-vous au comptoir de la pharmacie d\'un simple regard. Enregistrez votre visage une seule fois : plus de badges ni de mots de passe à saisir au comptoir.</string>
+    <string name="face_intro_skip">Ignorer pour l\'instant</string>
+    <string name="face_intro_get_started">Commencer</string>
+    <string name="face_scan_id_title">Scanner une pièce d\'identité avec photo</string>
+    <string name="face_scan_id_hint">Tenez votre pièce d\'identité avec photo ou votre permis de conduire dans le cadre</string>
+    <string name="face_scan_id_enter_manually">Saisir manuellement</string>
+    <string name="face_scan_id_suggestions_label">Suggestions pour %1$s</string>
+    <string name="face_scan_id_status_scanning">Recherche de la pièce d\'identité…</string>
+    <string name="face_scan_id_status_paused">Numérisation en pause</string>
+    <string name="face_scan_id_status_restarting">Redémarrage de la caméra…</string>
+    <string name="face_registration_first_name">Prénom</string>
+    <string name="face_registration_last_name">Nom</string>
+    <string name="face_registration_continue">Continuer</string>
+    <string name="face_registration_scan_front">Placez votre visage dans le cadre</string>
+    <string name="face_registration_scan_tilt_left">Inclinez le visage vers votre gauche</string>
+    <string name="face_registration_scan_tilt_right">Inclinez le visage vers votre droite</string>
+    <string name="face_guidance_no_face">aucun visage détecté</string>
+    <string name="face_guidance_move_closer">rapprochez-vous</string>
+    <string name="face_guidance_move_back">reculez</string>
+    <string name="face_guidance_crop_failed">échec du cadrage du visage</string>
+    <string name="face_guidance_hold_still">restez immobile / plus de lumière</string>
+    <string name="face_guidance_look_straight">regardez droit devant</string>
+    <string name="face_guidance_tilt_more_left">inclinez le visage un peu plus vers la gauche</string>
+    <string name="face_guidance_tilt_more_right">inclinez le visage un peu plus vers la droite</string>
+    <string name="face_registration_enrolled_title">Visage enregistré</string>
+    <string name="face_registration_enrolled_body">Tout est prêt. Vous pouvez maintenant déverrouiller le comptoir d\'un simple regard.</string>
+    <string name="face_registration_add_user">+ Ajouter un utilisateur</string>
+    <string name="face_registration_done">Terminé</string>
+    <string name="face_users_title">Utilisateurs de l\'accès rapide</string>
+    <string name="face_users_add_user">+ Ajouter un utilisateur</string>
+    <string name="face_users_empty">Aucun visage enregistré pour le moment.</string>
+    <string name="face_users_delete_title">Supprimer des utilisateurs</string>
+    <string name="face_users_last_used">Dernière utilisation : %1$s</string>
+    <string name="face_verify_capture_button">Capturer le visage</string>
+    <string name="face_verify_not_recognized_title">Nous n\'avons pas pu vous reconnaître</string>
+    <string name="face_verify_not_recognized_body">Assurez-vous que votre visage est bien éclairé et\ncentré, puis réessayez.</string>
+    <string name="face_verify_try_again">Réessayer</string>
+    <string name="face_verify_cancel">Annuler</string>
+    <string name="face_flip_camera">Changer de caméra</string>
+    <string name="session_locked_title">Session verrouillée</string>
+    <string name="session_locked_subtitle">Inactif depuis %1$d min.\nVérifiez votre visage pour reprendre\nlà où vous en étiez.</string>
+    <string name="session_locked_verify_button">Vérifier avec le visage</string>
+    <string name="session_locked_resuming_title">Bon retour, %1$s</string>
+    <string name="session_locked_resuming_body">Identité vérifiée.\nReprise de votre session...</string>
+    <string name="setting_face_lock_now">Verrouiller maintenant</string>
+    <string name="setting_face_lock_now_disabled_toast">Enregistrez d\'abord un visage dans Reconnaissance faciale</string>
+    <string name="setting_face_auto_lock_after">Verrouillage automatique après</string>
+    <string name="setting_face_auto_lock_minutes">%1$d min</string>
+
 </resources>

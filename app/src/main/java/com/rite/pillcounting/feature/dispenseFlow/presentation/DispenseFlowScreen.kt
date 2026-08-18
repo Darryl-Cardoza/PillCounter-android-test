@@ -62,6 +62,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.compose.DialogField
+import com.rite.pillcounting.core.utils.compose.StepTitleWithSpeech
 import com.rite.pillcounting.core.utils.compose.VerifyNdcDetailsInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyNdcDetailsSheet
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsInlinePanel
@@ -75,7 +76,6 @@ import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.DispenseQ
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModePortrait
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.InformationPanelSection
-import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.StepTitleWithSpeech
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.TargetPillsCountDialog
 import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.DispenseFlowViewModel
 import com.rite.pillcounting.ui.theme.AppTheme

@@ -484,4 +484,56 @@
     <string name="pms_cert_mismatch_message">El certificado del servidor PMS ha cambiado. Esto puede ocurrir tras una actualización del PMS. Toque Restablecer para aceptar el nuevo certificado y reconectar.</string>
     <string name="pms_cert_mismatch_confirm">Restablecer y reconectar</string>
 
+    <!-- Face recognition / quick access -->
+    <string name="setting_face_recognition_users">Usuarios de reconocimiento facial</string>
+    <string name="face_registration_title">Configurar acceso rápido</string>
+    <string name="face_intro_body">Inicie sesión en el mostrador de la farmacia con solo mirar. Registre su rostro una vez: sin credenciales ni contraseñas que escribir en el mostrador.</string>
+    <string name="face_intro_skip">Omitir por ahora</string>
+    <string name="face_intro_get_started">Comenzar</string>
+    <string name="face_scan_id_title">Escanear identificación con foto</string>
+    <string name="face_scan_id_hint">Sostenga su identificación con foto o licencia de conducir dentro del marco</string>
+    <string name="face_scan_id_enter_manually">Ingresar manualmente</string>
+    <string name="face_scan_id_suggestions_label">Sugerencias de %1$s</string>
+    <string name="face_scan_id_status_scanning">Buscando identificación…</string>
+    <string name="face_scan_id_status_paused">Escaneo en pausa</string>
+    <string name="face_scan_id_status_restarting">Reiniciando la cámara…</string>
+    <string name="face_registration_first_name">Nombre</string>
+    <string name="face_registration_last_name">Apellido</string>
+    <string name="face_registration_continue">Continuar</string>
+    <string name="face_registration_scan_front">Coloque su rostro dentro del recuadro</string>
+    <string name="face_registration_scan_tilt_left">Incline el rostro hacia su izquierda</string>
+    <string name="face_registration_scan_tilt_right">Incline el rostro hacia su derecha</string>
+    <string name="face_guidance_no_face">no se detecta ningún rostro</string>
+    <string name="face_guidance_move_closer">acérquese</string>
+    <string name="face_guidance_move_back">aléjese</string>
+    <string name="face_guidance_crop_failed">no se pudo recortar el rostro</string>
+    <string name="face_guidance_hold_still">quédese quieto / más luz</string>
+    <string name="face_guidance_look_straight">mire al frente</string>
+    <string name="face_guidance_tilt_more_left">incline el rostro un poco más a la izquierda</string>
+    <string name="face_guidance_tilt_more_right">incline el rostro un poco más a la derecha</string>
+    <string name="face_registration_enrolled_title">Rostro registrado</string>
+    <string name="face_registration_enrolled_body">Todo listo. Ahora puede desbloquear el mostrador con solo mirar.</string>
+    <string name="face_registration_add_user">+ Agregar usuario</string>
+    <string name="face_registration_done">Listo</string>
+    <string name="face_users_title">Usuarios de acceso rápido</string>
+    <string name="face_users_add_user">+ Agregar usuario</string>
+    <string name="face_users_empty">Aún no hay rostros registrados.</string>
+    <string name="face_users_delete_title">Eliminar usuarios</string>
+    <string name="face_users_last_used">Último uso: %1$s</string>
+    <string name="face_verify_capture_button">Capturar rostro</string>
+    <string name="face_verify_not_recognized_title">No pudimos reconocerlo</string>
+    <string name="face_verify_not_recognized_body">Asegúrese de que su rostro esté bien iluminado y\ncentrado, luego intente de nuevo.</string>
+    <string name="face_verify_try_again">Intentar de nuevo</string>
+    <string name="face_verify_cancel">Cancelar</string>
+    <string name="face_flip_camera">Cambiar cámara</string>
+    <string name="session_locked_title">Sesión bloqueada</string>
+    <string name="session_locked_subtitle">Inactivo por %1$d min.\nVerifique su rostro para continuar\ndonde lo dejó.</string>
+    <string name="session_locked_verify_button">Verificar con el rostro</string>
+    <string name="session_locked_resuming_title">Bienvenido de nuevo, %1$s</string>
+    <string name="session_locked_resuming_body">Identidad verificada.\nReanudando su sesión...</string>
+    <string name="setting_face_lock_now">Bloquear ahora</string>
+    <string name="setting_face_lock_now_disabled_toast">Primero registre un rostro en Reconocimiento facial</string>
+    <string name="setting_face_auto_lock_after">Bloqueo automático tras</string>
+    <string name="setting_face_auto_lock_minutes">%1$d min</string>
+
 </resources>
