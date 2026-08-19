@@ -211,7 +211,7 @@ fun OTPScreen(
 
                         is VerifyPinUiState.Success -> {
                             LaunchedEffect(Unit) {
-                                rememberMe.takeIf { it }?.let { viewModel.setUserLoggedIn(true) }
+                                viewModel.setUserLoggedIn(true)
                                 otp = ""
                                 secondsRemaining = timerDuration
                                 isTimerRunning = true
