@@ -3,7 +3,6 @@ package com.rite.pillcounting.feature.dashboard.presentation.viewmodel
 import android.util.Log
 import app.cash.turbine.test
 import com.rite.pillcounting.core.models.ApiResponse
-import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
@@ -12,14 +11,13 @@ import com.rite.pillcounting.core.room.models.dtos.BatchSummaryDto
 import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.security.models.SecureString
+import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
-import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
 import com.rite.pillcounting.feature.dashboard.domain.model.UserProfile
@@ -63,6 +61,7 @@ class DashboardViewModelTest {
     private lateinit var pillCountTxnDao: PillCountTxnDao
     private lateinit var hl7EventHandler: Hl7EventHandler
     private lateinit var hl7ServiceManager: Hl7ServiceManager
+    private lateinit var deviceKeyProvider: DeviceKeyProvider
 
     @Before
     fun setup() {
@@ -90,6 +89,7 @@ class DashboardViewModelTest {
         pillCountTxnDao = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
+        deviceKeyProvider = mockk(relaxed = true)
 
         // StateFlows on the event handler.
         every { hl7EventHandler.connectionState } returns MutableStateFlow(false)
@@ -127,6 +127,7 @@ class DashboardViewModelTest {
         pillCountTxnDao,
         hl7EventHandler,
         hl7ServiceManager,
+        deviceKeyProvider,
     )
 
     // ─────────────────────────────── helpers ───────────────────────────────
@@ -192,10 +193,10 @@ class DashboardViewModelTest {
     private fun userEntity(localId: Long = 1L) = UserEntity(
         localId = localId,
         userId = "u-$localId",
-        email = SecureString("a@b.com"),
+        email = "a@b.com",
         fName = "First",
         lName = "Last",
-        phoneNumber = SecureString("123"),
+        phoneNumber = "123",
         avatarUrl = "url",
         role = "admin",
         isVerified = true,
@@ -559,10 +560,11 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun `fetchUserDetail success persists with active terminal and profile complete`() = runTest(testDispatcher) {
+    fun `fetchUserDetail success persists the terminal this device has claimed`() = runTest(testDispatcher) {
         every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
         val terminals = listOf(
-            Terminal(terminalId = "t1", terminalName = "T1", isActive = true),
+            Terminal(terminalId = "t1", terminalName = "T1", isActive = true, deviceKey = "device-A"),
         )
         coEvery { userDetailRepository.getUserDetail("tok") } returns
             Result.success(ApiResponse(200, true, "ok", null, userDetail(terminals = terminals)))
@@ -581,8 +583,9 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun `fetchUserDetail success with no active terminal warns`() = runTest(testDispatcher) {
+    fun `fetchUserDetail success with no terminal claimed by this device warns`() = runTest(testDispatcher) {
         every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-A"
         val terminals = listOf(Terminal(terminalId = "t1", terminalName = "T1", isActive = false))
         coEvery { userDetailRepository.getUserDetail("tok") } returns
             Result.success(ApiResponse(200, true, "ok", null, userDetail(terminals = terminals)))
@@ -592,6 +595,59 @@ class DashboardViewModelTest {
 
         verify { preferenceHelper.saveTerminals(terminals) }
         verify(exactly = 0) { preferenceHelper.saveSelectedTerminalId(any()) }
+        assertTrue(vm.terminalInfoLoaded.value)
+    }
+
+    /**
+     * The field failure: one account signed into three phones. terminals[] is account-wide,
+     * so every device received the same list and selecting on is_active alone gave all of
+     * them "Terminal 1" — they all advertised that name over Bonjour and stamped it into
+     * MSH-4, which left the Companion unable to tell them apart. Only the terminal carrying
+     * this install's device_key may be adopted.
+     */
+    @Test
+    fun `fetchUserDetail ignores a terminal active for another device`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-B"
+        every { preferenceHelper.getSelectedTerminalName() } returns "Terminal 7"
+        val terminals = listOf(
+            // Active, first in the list — and held by a different phone.
+            Terminal(terminalId = "t1", terminalName = "Terminal 1", isActive = true, deviceKey = "device-A"),
+            Terminal(terminalId = "t7", terminalName = "Terminal 7", isActive = true, deviceKey = "device-B"),
+        )
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail(terminals = terminals)))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        verify { preferenceHelper.saveSelectedTerminalId("t7") }
+        verify { preferenceHelper.saveSelectedTerminalName("Terminal 7") }
+        verify(exactly = 0) { preferenceHelper.saveSelectedTerminalName("Terminal 1") }
+        assertTrue(vm.terminalInfoLoaded.value)
+    }
+
+    /**
+     * A refresh must not undo a selection. Previously this ran on every auth/me response and
+     * overwrote the local choice with the first active terminal, so changing terminal in
+     * Profile reverted on the next dashboard refresh.
+     */
+    @Test
+    fun `fetchUserDetail leaves the local selection alone when nothing is claimed`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { deviceKeyProvider.getDeviceKey() } returns "device-C"
+        every { preferenceHelper.getSelectedTerminalName() } returns "Terminal 9"
+        val terminals = listOf(
+            Terminal(terminalId = "t1", terminalName = "Terminal 1", isActive = true, deviceKey = "device-A"),
+        )
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail(terminals = terminals)))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        verify(exactly = 0) { preferenceHelper.saveSelectedTerminalId(any()) }
+        verify(exactly = 0) { preferenceHelper.saveSelectedTerminalName(any()) }
         assertTrue(vm.terminalInfoLoaded.value)
     }
 

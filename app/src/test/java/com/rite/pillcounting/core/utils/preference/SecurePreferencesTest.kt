@@ -87,21 +87,29 @@ class SecurePreferencesTest {
     }
 
     // ─────────────────────────── DECRYPT-FAILURE FALLBACK ───────────────────────────
-    // getString falls back to the raw stored value on decrypt failure; the numeric/boolean
-    // getters fall back to their default. Writing "malformed" data directly to the underlying
+    // All getters — including getString — fall back to the caller-supplied default (null for
+    // getString) on decrypt failure, never the raw ciphertext/malformed value. Returning raw
+    // stored bytes as if they were valid plaintext would let corrupted or tampered data silently
+    // flow through as a "successful" read. Writing "malformed" data directly to the underlying
     // SharedPreferences (bypassing encrypt()) lets us exercise these catch blocks without
     // needing a working AndroidKeyStore.
 
     @Test
-    fun `getString returns raw stored value when it cannot be decrypted`() {
+    fun `getString returns null when stored value cannot be decrypted and no default given`() {
         rawPrefs.edit().putString("key", "not-encrypted-plain-text").commit()
-        assertEquals("not-encrypted-plain-text", prefs.getString("key"))
+        assertNull(prefs.getString("key"))
     }
 
     @Test
-    fun `getString returns raw value even without the iv-ciphertext colon format`() {
+    fun `getString returns supplied default when stored value cannot be decrypted`() {
+        rawPrefs.edit().putString("key", "not-encrypted-plain-text").commit()
+        assertEquals("fallback", prefs.getString("key", "fallback"))
+    }
+
+    @Test
+    fun `getString returns default when stored value lacks the iv-ciphertext colon format`() {
         rawPrefs.edit().putString("key", "nodelimiter").commit()
-        assertEquals("nodelimiter", prefs.getString("key"))
+        assertNull(prefs.getString("key"))
     }
 
     @Test
@@ -177,15 +185,18 @@ class SecurePreferencesTest {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val other = SecurePreferences(context, prefsName)
         rawPrefs.edit().putString("key", "raw-value").commit()
-        assertEquals("raw-value", other.getString("key"))
+        // "raw-value" isn't validly encrypted, so this exercises the same
+        // decrypt-failure-returns-default path as the other instance would —
+        // proving both instances see the same underlying entry, not shared plaintext.
+        assertNull(other.getString("key"))
     }
 
     // ─────────────────────────── ADDITIONAL EDGE CASES ───────────────────────────
 
     @Test
-    fun `getString returns raw value when stored value is an empty string`() {
+    fun `getString returns default when stored value is an empty string`() {
         rawPrefs.edit().putString("key", "").commit()
-        assertEquals("", prefs.getString("key"))
+        assertNull(prefs.getString("key"))
     }
 
     @Test
@@ -213,7 +224,11 @@ class SecurePreferencesTest {
         val rawDefaultPrefs = context.getSharedPreferences("pillcounting_secure_prefs", android.content.Context.MODE_PRIVATE)
         rawDefaultPrefs.edit().clear().commit()
         rawDefaultPrefs.edit().putString("key", "value-in-default-file").commit()
-        assertEquals("value-in-default-file", defaultNamedPrefs.getString("key"))
+        // "value-in-default-file" isn't validly encrypted, so a successful lookup against the
+        // right underlying file still surfaces as the decrypt-failure default (null), not a crash
+        // or a lookup-miss default from the wrong file.
+        assertNull(defaultNamedPrefs.getString("key"))
+        assertTrue(defaultNamedPrefs.contains("key"))
         rawDefaultPrefs.edit().clear().commit()
     }
 }

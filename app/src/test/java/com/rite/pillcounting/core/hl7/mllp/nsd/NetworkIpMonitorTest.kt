@@ -129,6 +129,38 @@ class NetworkIpMonitorTest {
         assertEquals(1, wifiAvailableCount)
     }
 
+    /**
+     * The framework replays the connected network on registration and repeats onAvailable
+     * across capability changes. Each repeat used to restart the broadcast on top of the live
+     * registration, giving one terminal two mDNS records and a " (2)" suffix from the
+     * responder resolving its own collision.
+     */
+    @Test
+    fun `repeated onAvailable for the same network reports availability only once`() {
+        val callbackSlot = slot<ConnectivityManager.NetworkCallback>()
+        justRun { connectivityManager.registerNetworkCallback(any<NetworkRequest>(), capture(callbackSlot)) }
+        monitor.start()
+
+        val network: Network = mockk(relaxed = true)
+        callbackSlot.captured.onAvailable(network)
+        callbackSlot.captured.onAvailable(network)
+        callbackSlot.captured.onAvailable(network)
+
+        assertEquals(1, wifiAvailableCount)
+    }
+
+    @Test
+    fun `onAvailable for a different network reports availability again`() {
+        val callbackSlot = slot<ConnectivityManager.NetworkCallback>()
+        justRun { connectivityManager.registerNetworkCallback(any<NetworkRequest>(), capture(callbackSlot)) }
+        monitor.start()
+
+        callbackSlot.captured.onAvailable(mockk(relaxed = true))
+        callbackSlot.captured.onAvailable(mockk(relaxed = true))
+
+        assertEquals(2, wifiAvailableCount)
+    }
+
     @Test
     fun `onLost callback invokes onWifiLost lambda and resets lastIp`() {
         val callbackSlot = slot<ConnectivityManager.NetworkCallback>()
@@ -139,6 +171,40 @@ class NetworkIpMonitorTest {
         callbackSlot.captured.onLost(network)
 
         assertEquals(1, wifiLostCount)
+    }
+
+    /** Losing some other Wi-Fi network must not tear down a broadcast that is still valid. */
+    @Test
+    fun `onLost for an untracked network while another is connected is ignored`() {
+        val callbackSlot = slot<ConnectivityManager.NetworkCallback>()
+        justRun { connectivityManager.registerNetworkCallback(any<NetworkRequest>(), capture(callbackSlot)) }
+        monitor.start()
+
+        val tracked: Network = mockk(relaxed = true)
+        callbackSlot.captured.onAvailable(tracked)
+        callbackSlot.captured.onLost(mockk(relaxed = true))
+
+        assertEquals(0, wifiLostCount)
+
+        callbackSlot.captured.onLost(tracked)
+        assertEquals(1, wifiLostCount)
+    }
+
+    /** After a stop/start cycle the re-reported network must not look "already tracked". */
+    @Test
+    fun `stop clears the tracked network so availability is reported again`() {
+        val callbackSlot = slot<ConnectivityManager.NetworkCallback>()
+        justRun { connectivityManager.registerNetworkCallback(any<NetworkRequest>(), capture(callbackSlot)) }
+        justRun { connectivityManager.unregisterNetworkCallback(any<ConnectivityManager.NetworkCallback>()) }
+        monitor.start()
+
+        val network: Network = mockk(relaxed = true)
+        callbackSlot.captured.onAvailable(network)
+        monitor.stop()
+        monitor.start()
+        callbackSlot.captured.onAvailable(network)
+
+        assertEquals(2, wifiAvailableCount)
     }
 
     @Test
@@ -176,8 +242,12 @@ class NetworkIpMonitorTest {
         assertEquals(0, ipChangedValues.size)
     }
 
+    /**
+     * With nothing tracked, every onLost is reported — the monitor cannot tell which network
+     * the caller's broadcast belonged to, and a spurious stop is cheaper than a missed one.
+     */
     @Test
-    fun `multiple onLost calls each invoke onWifiLost independently`() {
+    fun `multiple onLost calls with no tracked network each invoke onWifiLost`() {
         val callbackSlot = slot<ConnectivityManager.NetworkCallback>()
         justRun { connectivityManager.registerNetworkCallback(any<NetworkRequest>(), capture(callbackSlot)) }
         monitor.start()

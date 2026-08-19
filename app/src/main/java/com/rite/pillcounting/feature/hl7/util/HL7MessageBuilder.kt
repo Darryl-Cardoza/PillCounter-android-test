@@ -117,8 +117,11 @@ object HL7MessageBuilder {
         drugName: String,
         pharmacistId: String?,
         pharmacistName: String?,
-        pharmacistLastName: String? = null,
-        pharmacistFirstName: String? = null,
+        // RXD-10 carries the operator as ID^Family^Given. The joined [pharmacistName] is kept
+        // for the segments that want one display string (ORC-12, Z-segments); these two feed the
+        // structured components a receiver needs to render an operator name.
+        pharmacistFamilyName: String? = null,
+        pharmacistGivenName: String? = null,
         location: String? = null,
         // Optional fields that may not yet exist on every PillCountTxnEntity build;
         // passed explicitly until Room entities are confirmed to carry them.
@@ -135,8 +138,12 @@ object HL7MessageBuilder {
         val builder = hl7.build()
 
         val now = now()
+        // Falls back to the txnId (not a timestamp) so the outbound MSH-10 is deterministic
+        // per transaction — the ACK handler correlates back to this exact txn via
+        // PillCountTxnDao.getByMessageControlId, which only works if resends of the same
+        // txn always carry the same control id.
         val messageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
-            ?: System.currentTimeMillis().toString()
+            ?: txn.txnId.toString()
 
         val txnDetails = txnDetails.filter { !it.isDeleted }
         // Each bottle's true pill count is live-summed here from its own txnDetailsIds against
@@ -252,8 +259,8 @@ object HL7MessageBuilder {
                 rxd.lotNumber = lotNumber
                 rxd.expirationDate = expirationDate
                 rxd.dispensingProviderId = pharmacistId
-                rxd.dispensingProviderLastName = pharmacistLastName
-                rxd.dispensingProviderFirstName = pharmacistFirstName
+                rxd.dispensingProviderFamilyName = pharmacistFamilyName
+                rxd.dispensingProviderGivenName = pharmacistGivenName
                 rxd.dispenseSubIdCounter = "1"
             }
 

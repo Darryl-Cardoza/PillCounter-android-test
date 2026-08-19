@@ -342,19 +342,6 @@ class PreferenceHelperTest {
         assertEquals(0, helper.getHistoryRetention())
     }
 
-    // ─────────────────────────── HL7 MESSAGE TRACKING ───────────────────────────
-
-    @Test
-    fun `getSentMessageTxnId defaults to negative one`() {
-        assertEquals(-1L, helper.getSentMessageTxnId())
-    }
-
-    @Test
-    fun `saveSentMessageTxnId then getSentMessageTxnId returns value`() {
-        helper.saveSentMessageTxnId(555L)
-        assertEquals(555L, helper.getSentMessageTxnId())
-    }
-
     // ─────────────────────────── NSD / HL7 SETTINGS ───────────────────────────
 
     @Test

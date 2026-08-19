@@ -8,8 +8,14 @@ import com.squareup.moshi.JsonClass
  */
 @JsonClass(generateAdapter = true)
 data class TerminalUpdateResponse(
+    @Json(name = "status") val status: Int? = null,
+    @Json(name = "is_success") val isSuccess: Boolean? = null,
     @Json(name = "message") val message: String? = null,
-    @Json(name = "success") val success: Boolean? = null,
-    @Json(name = "data") val data: Terminal? = null
+    @Json(name = "token") val token: String? = null,
+    @Json(name = "data") val data: TerminalUpdateData? = null
 )
 
+@JsonClass(generateAdapter = true)
+data class TerminalUpdateData(
+    @Json(name = "terminal") val terminal: Terminal? = null
+)

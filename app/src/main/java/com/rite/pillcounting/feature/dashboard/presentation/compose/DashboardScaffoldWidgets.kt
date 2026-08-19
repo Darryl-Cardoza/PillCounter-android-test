@@ -75,10 +75,9 @@ internal fun buildTerminalUserLine(
     includeTerminal: Boolean = true,
 ): String {
     val profile = uiState.userDetail?.profile
-    val activeTerminalName = uiState.userDetail?.settings?.terminals
-        ?.firstOrNull { it.isActive == true }
-        ?.terminalName
-        ?.takeIf { it.isNotBlank() }
+    // Ownership comes from DashboardUiState.selectedTerminalName (resolved via device_key),
+    // not from a scan of the account-wide terminals list — see that field's docs.
+    val activeTerminalName = uiState.selectedTerminalName?.takeIf { it.isNotBlank() }
     // Terminal is HL7/PMS-driven — omit it from the top bar when HL7 is disabled.
     val terminal = if (includeTerminal) activeTerminalName else null
     val user = listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }

@@ -8,13 +8,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.google.gson.Gson
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.UserEntity
-import com.rite.pillcounting.core.utils.common.HelperFunctions.plain
-import com.rite.pillcounting.core.utils.common.HelperFunctions.secure
 import com.rite.pillcounting.core.utils.common.NetworkUtils
+import com.rite.pillcounting.core.utils.constants.AppConstants
+import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.utils.validator.CredentialsValidator
@@ -31,9 +30,11 @@ import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
 import com.rite.pillcounting.feature.profile.domain.model.State
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import retrofit2.HttpException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
@@ -57,6 +58,7 @@ class ProfileViewModel @Inject constructor(
     private val userDao: UserDao,
     private val validator: CredentialsValidator,
     private val hl7ServiceManager: Hl7ServiceManager,
+    private val deviceKeyProvider: DeviceKeyProvider,
     @ApplicationContext private val context: Context
 ) : ViewModel() {
 
@@ -131,19 +133,7 @@ class ProfileViewModel @Inject constructor(
         doNotAskAgain = preferenceHelper.isDoNotAskAgain()
         logger.i("Initialized doNotAskAgain = $doNotAskAgain")
 
-        // Load terminals from SharedPreferences
-        terminals = preferenceHelper.getTerminals()
-        val savedTerminalId = preferenceHelper.getSelectedTerminalId()
-        selectedTerminal = terminals.firstOrNull { it.terminalId == savedTerminalId }
-            ?: terminals.firstOrNull { it.isActive == true }
-        initialTerminal = selectedTerminal // Store initial value to detect changes
-        
-        // Ensure terminal name is saved for the selected terminal
-        selectedTerminal?.terminalName?.let { terminalName ->
-            preferenceHelper.saveSelectedTerminalName(terminalName)
-        }
-        
-        logger.i("Loaded ${terminals.size} terminals, selected: ${selectedTerminal?.terminalName}")
+        loadTerminals()
 
         // Load cached pharmacy type options and restore the previously selected one
         pharmacyTypes = preferenceHelper.getPharmacyTypes()
@@ -226,8 +216,8 @@ class ProfileViewModel @Inject constructor(
                     firstName = it.fName ?: ""
                     lastName = it.lName ?: ""
                     pharmacyName = it.pharmacyName.orEmpty()
-                    phoneNumber = it.phoneNumber.plain().orEmpty()
-                    email = it.email.plain().orEmpty()
+                    phoneNumber = it.phoneNumber.orEmpty()
+                    email = it.email.orEmpty()
                     npi = it.npiId.orEmpty()
                     doNotAskAgain = preferenceHelper.isDoNotAskAgain()
                     userCountryCode = it.country
@@ -243,6 +233,50 @@ class ProfileViewModel @Inject constructor(
     fun onTerminalSelected(terminal: Terminal) {
         selectedTerminal = terminal
         logger.i("Terminal selected: ${terminal.terminalName} (ID: ${terminal.terminalId})")
+    }
+
+    /**
+     * Loads the terminal picker list: free terminals plus the one this device already holds,
+     * via `GET /terminals/list?available_only=true&device_key=<this device>`. Selection is
+     * based on which terminal's `device_key` matches this device — `is_active` is no longer
+     * exclusive to one terminal, so it can't be used to infer "this device's terminal".
+     */
+    private fun loadTerminals() {
+        viewModelScope.launch {
+            val deviceKey = try {
+                deviceKeyProvider.getDeviceKey()
+            } catch (e: Exception) {
+                logger.e("Failed to fetch device key while loading terminals", e)
+                return@launch
+            }
+            terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey)
+                .onSuccess { response ->
+                    terminals = response.data?.terminals.orEmpty()
+                    selectedTerminal = terminals.firstOrNull { it.deviceKey == deviceKey }
+                    initialTerminal = selectedTerminal
+
+                    selectedTerminal?.terminalName?.let { terminalName ->
+                        preferenceHelper.saveSelectedTerminalName(terminalName)
+                    }
+                    selectedTerminal?.terminalId?.let { terminalId ->
+                        preferenceHelper.saveSelectedTerminalId(terminalId)
+                    }
+
+                    logger.i("Loaded ${terminals.size} terminals, selected: ${selectedTerminal?.terminalName}")
+                }
+                .onFailure { e ->
+                    logger.e("Failed to load terminals, falling back to cached list", e)
+
+                    val cachedTerminals = preferenceHelper.getTerminals()
+                    val savedTerminalId = preferenceHelper.getSelectedTerminalId()
+                    terminals = cachedTerminals
+                    selectedTerminal = cachedTerminals.firstOrNull { it.deviceKey == deviceKey }
+                        ?: cachedTerminals.firstOrNull { it.terminalId == savedTerminalId }
+                    initialTerminal = selectedTerminal
+
+                    logger.i("Loaded ${terminals.size} cached terminals, selected: ${selectedTerminal?.terminalName}")
+                }
+        }
     }
 
     fun onPharmacyTypeSelected(pharmacyType: PharmacyTypeOption) {
@@ -384,10 +418,10 @@ class ProfileViewModel @Inject constructor(
                             val entity = UserEntity(
                                 localId = localId,
                                 userId = preferenceHelper.getUserId().orEmpty(),
-                                email = email.secure(),
+                                email = email,
                                 fName = firstName.trim(),
                                 lName = lastName.trim(),
-                                phoneNumber = phoneNumber.secure(),
+                                phoneNumber = phoneNumber,
                                 pharmacyName = pharmacyName,
                                 npiId = npi,
                                 notifications = !doNotAskAgain,
@@ -408,44 +442,106 @@ class ProfileViewModel @Inject constructor(
                             preferenceHelper.savePharmacyType(it.code)
                         }
 
-                        // Update terminal if it has changed
-                        if (selectedTerminal != null && selectedTerminal?.terminalId != initialTerminal?.terminalId) {
-                            val terminalId = selectedTerminal?.terminalId
-                            if (terminalId != null) {
-                                logger.i("Terminal changed from ${initialTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
+                        // Update terminal if the newly selected terminal isn't the one this
+                        // device currently holds. Skips straight past when selectedTerminal
+                        // equals initialTerminal — otherwise every profile save re-fetches the
+                        // terminal list even though nothing changed. Only when they differ does
+                        // it re-fetch the terminal list right here (rather than trusting
+                        // `terminals`/`initialTerminal`, which are populated asynchronously by
+                        // loadTerminals() at init) so a stale or not-yet-loaded local cache can't
+                        // cause the release step below to be wrongly skipped — that would leave
+                        // the device still holding its old terminal server-side and make the
+                        // claim 409.
+                        // The whole claim runs under NonCancellable. Leaving the Profile screen
+                        // cancels viewModelScope, and this block spans several suspension
+                        // points; a cancellation landing in the middle used to abort it after
+                        // the server had already granted the terminal but before the phone
+                        // recorded it, leaving the two permanently disagreeing — the device
+                        // held Terminal 2 server-side while every local reader still saw none.
+                        withContext(NonCancellable) {
+                            if (selectedTerminal?.terminalId != initialTerminal?.terminalId) {
+                                val claimDeviceKeyForCheck = try {
+                                    if (selectedTerminal != null) deviceKeyProvider.getDeviceKey() else null
+                                } catch (e: Exception) {
+                                    logger.e("Failed to fetch device key during terminal claim check", e)
+                                    null
+                                }
+                                val currentTerminals = if (claimDeviceKeyForCheck != null) {
+                                    terminalRepository.getTerminals(availableOnly = true, deviceKey = claimDeviceKeyForCheck)
+                                        .getOrNull()?.data?.terminals ?: terminals
+                                } else {
+                                    terminals
+                                }
+                                val heldTerminal = currentTerminals.firstOrNull { it.deviceKey == claimDeviceKeyForCheck }
+                                    ?: initialTerminal
+                                if (selectedTerminal != null && selectedTerminal?.terminalId != heldTerminal?.terminalId) {
+                                    val terminalId = selectedTerminal?.terminalId
+                                    if (terminalId != null) {
+                                        logger.i("Terminal changed from ${heldTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
 
-                                val terminalRequest = TerminalUpdateRequest(
-                                    terminalName = selectedTerminal?.terminalName ?: "Unknown",
-                                    isActive = true
-                                )
-
-                                terminalRepository.updateTerminal(terminalId, terminalRequest)
-                                    .onSuccess { _ ->
-                                        logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
-
-                                        // Update local terminals list - mark selected as active, others as inactive
-                                        terminals = terminals.map { t ->
-                                            t.copy(isActive = t.terminalId == terminalId)
+                                        val claimDeviceKey = try {
+                                            claimDeviceKeyForCheck ?: deviceKeyProvider.getDeviceKey()
+                                        } catch (e: Exception) {
+                                            logger.e("Failed to fetch device key during terminal claim", e)
+                                            null
                                         }
 
-                                        // Save updated terminal selection to preferences
-                                        preferenceHelper.saveSelectedTerminalId(terminalId)
-                                        preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: "Unknown")
-                                        preferenceHelper.saveTerminals(terminals)
+                                        if (claimDeviceKey == null) {
+                                            logger.w("Skipping terminal claim: device key unavailable")
+                                            return@withContext
+                                        }
 
-                                        // Update initial terminal to current selection
-                                        initialTerminal = selectedTerminal
+                                        // Single update call claims the new terminal directly — no
+                                        // separate release call for the old one. Server assigns
+                                        // deviceKey to the new terminal; old terminal's deviceKey is
+                                        // just cleared locally so the UI reflects the swap immediately.
+                                        logger.i("Terminal claim flow: heldTerminal=${heldTerminal?.terminalId}(${heldTerminal?.terminalName}) newTerminal=$terminalId(${selectedTerminal?.terminalName})")
+                                        val terminalRequest = TerminalUpdateRequest(
+                                            terminalName = selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME,
+                                            isActive = true,
+                                            deviceKey = claimDeviceKey
+                                        )
 
-                                        // Update HL7 service with new terminal name and rebroadcast NSD
-                                        updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: "Unknown")
+                                        terminalRepository.updateTerminal(terminalId, terminalRequest)
+                                            .onSuccess { _ ->
+                                                logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
+
+                                                // Update local terminals list - mark selected as active, others as inactive
+                                                terminals = currentTerminals.map { terminal ->
+                                                    when (terminal.terminalId) {
+                                                        terminalId -> terminal.copy(
+                                                            isActive = true,
+                                                            deviceKey = claimDeviceKey
+                                                        )
+                                                        heldTerminal?.terminalId -> terminal.copy(
+                                                            deviceKey = null
+                                                        )
+                                                        else -> terminal
+                                                    }
+                                                }
+
+                                                // Save updated terminal selection to preferences
+                                                preferenceHelper.saveSelectedTerminalId(terminalId)
+                                                preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
+                                                preferenceHelper.saveTerminals(terminals)
+
+                                                // Update initial terminal to current selection
+                                                initialTerminal = selectedTerminal
+
+                                                // Update HL7 service with new terminal name and rebroadcast NSD
+                                                updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
+                                            }
+                                            .onFailure { e ->
+                                                logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
+                                                // Don't fail the entire profile update if terminal update fails
+                                            }
                                     }
-                                    .onFailure { e ->
-                                        logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
-                                        // Don't fail the entire profile update if terminal update fails
-                                    }
+                                } else {
+                                    logger.i("Terminal unchanged, skipping terminal update API call")
+                                }
+                            } else {
+                                logger.i("Selected terminal matches initial terminal, skipping getTerminals re-fetch")
                             }
-                        } else {
-                            logger.i("Terminal unchanged, skipping terminal update API call")
                         }
 
                         _updateUiState.value = ProfileUpdateUiState.Success
@@ -527,33 +623,23 @@ class ProfileViewModel @Inject constructor(
      * and triggers NSD rebroadcast.
      */
     private fun updateHl7ConfigWithNewTerminal(terminalName: String) {
-        // Check if HL7 is enabled and user is logged in
+        // Every gate below used to return silently. When one of them tripped, the terminal was
+        // renamed in the account and in prefs while the device carried on advertising the old
+        // name and stamping it into MSH-4 — with nothing in the log to say why. Say so instead.
         if (!preferenceHelper.isHl7Enabled() || !preferenceHelper.isUserLoggedIn()) {
+            logger.w(
+                "Not rebroadcasting '$terminalName': hl7Enabled=${preferenceHelper.isHl7Enabled()} " +
+                    "loggedIn=${preferenceHelper.isUserLoggedIn()}"
+            )
             return
         }
 
-        val broadCastServiceName = preferenceHelper.getNsdBroadcastType()
-        val discoverServiceName = preferenceHelper.getNsdDiscoveryType()
+        logger.i("Terminal renamed to '$terminalName' — rebroadcasting NSD")
 
-        if (broadCastServiceName.isEmpty() || discoverServiceName.isEmpty()) {
-            return
-        }
-
-        val config = HL7Config(
-            serverPort = 2575,
-            autoResponseDelayMs = 10_000L,
-            nsdBroadcastServiceName = terminalName,
-            nsdBroadcastType = broadCastServiceName,
-            nsdDiscoveryType = discoverServiceName,
-            imageServicePort = 8080,
-            imageServiceSecurePort = 8443,
-            hl7Version = preferenceHelper.getHl7Version(),
-            bypassTls = preferenceHelper.isBypassTlsEnabled(),
-            useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),
-            pmsIp = preferenceHelper.getPmsIP(),
-            pmsPort = preferenceHelper.getPmsPort(),
-        )
-
-        hl7ServiceManager.updateConfigAndRebroadcast(config)
+        // Only the name changed. Rebuilding the config here meant re-reading the NSD service
+        // types from preferences, where they are not reliably stored — they came back empty and
+        // the rename never reached the network. Hand the name to the manager and let it amend
+        // the config the service is actually running.
+        hl7ServiceManager.updateTerminalName(terminalName)
     }
 }

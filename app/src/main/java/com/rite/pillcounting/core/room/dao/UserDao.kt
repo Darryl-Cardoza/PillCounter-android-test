@@ -117,6 +117,11 @@ interface UserDao {
     /**
      * Retrieves a user record using the Room primary key (`localId`), synchronously.
      *
+     * Transactions reference their operator with [PillCountTxnEntity.localId], which is a FK to
+     * [UserEntity.localId] — not the business `userId`. Resolving that FK through
+     * [getByUserId] never matches, so the operator came back null and outbound HL7 carried no
+     * dispensing provider at all.
+     *
      * @param localId The Room primary key for the user.
      * @return The matching [UserEntity], or `null` if not found.
      */

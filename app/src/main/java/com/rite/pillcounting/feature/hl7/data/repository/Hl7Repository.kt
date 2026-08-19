@@ -186,21 +186,45 @@ class Hl7Repository @Inject constructor(
         txnId: Long
     ) {
         val txn = txnDao.getById(txnId)
-            ?: return
+            ?: run {
+                logger.w("Dispense HL7 skipped — txn $txnId not found")
+                return
+            }
         val txnDetails = txnDetailsDao.getAllForTxn(txnId.toString())
         //Change this condition because we have transaction status that we are handling from pms
 //        val totalCount = txnDetails.sumOf { it.pillCount ?: 0 }
 //        if (totalCount == 0) {
 //            return
 //        }
+        // txn.localId is a FK to UserEntity.localId, not the business userId. Resolving it with
+        // getByUserId compared a Room row id against a JWT-derived string, so it never matched:
+        // the operator was always null, RXD-10 was omitted, and every dispense arrived at the
+        // Companion with a blank Operator column.
         val user = txn.localId?.let { userDao.getByLocalId(it) }
+        if (user == null) {
+            logger.w("Dispense $txnId has no resolvable operator (localId=${txn.localId}) — RXD-10 will be empty")
+        }
         val location = locationProvider.getCurrentLocationAsString()
 
         val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
-            ?: return
+            ?: run {
+                // Without a drug row there is no NDC to put in RXD-2, so the message cannot be
+                // built — but say so: this txn will sit unsynced forever and someone will ask why.
+                logger.w("Dispense HL7 skipped — txn $txnId has no drug (drugId=${txn.drugId})")
+                return
+            }
 
         val substitutedDrug = if (txn.isSubstitute) txn.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } else null
         val scannedNdc = substitutedDrug?.ndc ?: drug.ndc
+
+        // Locally-scanned dispenses (isComingFromHL7 = false) have no inbound MSH-10 to reuse,
+        // so HL7MessageBuilder falls back to txnId as the outbound control id. Persist that
+        // here so ImageNanoServer's getByMessageControlId lookup can find this exact row when
+        // the PMS pulls images by control id — without this write the DB column stays null
+        // forever and that lookup always misses.
+        if (txn.hl7MessageControlId.isNullOrBlank()) {
+            txnDao.updateHl7MessageControlId(txnId, txnId.toString())
+        }
 
         val message = HL7MessageBuilder.buildDispenseMessage(
             txn = txn,
@@ -211,13 +235,14 @@ class Hl7Repository @Inject constructor(
             pharmacistId = user?.userId,
             pharmacistName = listOfNotNull(user?.fName, user?.lName)
                 .joinToString(" "),
-            pharmacistLastName = user?.lName,
-            pharmacistFirstName = user?.fName,
+            pharmacistFamilyName = user?.lName,
+            pharmacistGivenName = user?.fName,
             location = location,
             isControlledSubstance = isControlledDrugType(drug.drugType),
             isHazardousDrug = drug.isHazardous,
             config = currentHl7Config()
         )
+        logger.i("Dispense HL7 message built for txn $txnId: $message")
         val result = hl7MessageSender.send(message)
         val ack = result.getOrNull()
         if (result.isSuccess && ack != null && isSuccessAck(ack)) {
@@ -310,6 +335,28 @@ class Hl7Repository @Inject constructor(
 
         } catch (e: Exception) {
             logger.e("buildAndSendInventoryResponse failed for batchId=$batchId", e)
+        }
+    }
+
+    /**
+     * Sends one dispense the moment it completes.
+     *
+     * Until now the only trigger for outbound dispense HL7 was
+     * [resendPendingHl7Transactions], which runs when the MLLP client (re)connects. That is a
+     * recovery path, not a primary one: a dispense completed while the connection was already
+     * up sat unsynced until the socket happened to bounce, and a locally scanned dispense
+     * (isComingFromHL7 = 0) never qualified for the resend query at all — the pharmacist
+     * finished the count and the PMS never heard about it. This is the primary path; the
+     * resend-on-connect sweep remains as retry for sends that fail here.
+     */
+    fun sendDispenseNow(txnId: Long) {
+        if (preferenceHelper.isHl7Enabled()) {
+            scope.launch {
+                logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
+                buildAndSendSuccessfulDispense(txnId = txnId)
+            }
+        } else {
+            logger.i("HL7 disabled — skipping dispense send, txnId=$txnId")
         }
     }
 

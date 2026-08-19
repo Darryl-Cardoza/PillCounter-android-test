@@ -304,6 +304,25 @@ class HL7ServiceTest {
         assertEquals(newConfig, getField("config"))
     }
 
+    @Test
+    fun `updateConfig returns true when the value actually changed`() {
+        val newConfig = HL7Config(serverPort = 9999)
+
+        val changed = service.updateConfig(newConfig)
+
+        assertTrue(changed)
+    }
+
+    @Test
+    fun `updateConfig returns false when the value is unchanged`() {
+        val sameConfig = HL7Config(serverPort = 9999)
+        service.updateConfig(sameConfig)
+
+        val changed = service.updateConfig(sameConfig.copy())
+
+        assertFalse(changed)
+    }
+
     // ──────────────────────────── setListener / removeListener ────────────────────────────
 
     @Test
