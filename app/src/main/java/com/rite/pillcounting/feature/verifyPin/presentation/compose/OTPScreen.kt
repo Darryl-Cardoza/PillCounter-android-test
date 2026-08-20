@@ -55,7 +55,6 @@ import kotlinx.coroutines.delay
  *
  * @param navController NavController used for screen navigation.
  * @param userEmail The email address to which the OTP was sent.
- * @param rememberMe Flag indicating whether the user opted to be remembered.
  * @param viewModel [VerifyPinViewModel] scoped to this screen for OTP verification logic.
  * @param loginViewModel [LoginViewModel] to trigger resend OTP actions.
  */
@@ -63,7 +62,6 @@ import kotlinx.coroutines.delay
 fun OTPScreen(
     navController: NavController,
     userEmail: String,
-    rememberMe: Boolean,
     viewModel: VerifyPinViewModel = hiltViewModel(),
     loginViewModel: LoginViewModel = hiltViewModel(),
     onLogin: () -> Unit
@@ -221,9 +219,7 @@ fun OTPScreen(
                                 }
                                 viewModel.clearAfterSuccess()
 
-                                if(loginViewModel.preferenceHelper.isUserLoggedIn()){
-                                    onLogin()
-                                }
+                                onLogin()
                             }
                         }
                     }

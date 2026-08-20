@@ -21,6 +21,7 @@ private const val KEY_REFRESH_TOKEN = "refresh_token"
 // Session
 private const val KEY_USER_LOGGED_IN = "user_logged_in"
 private const val KEY_USER_ID = "user_id"
+private const val KEY_LOGGED_IN_EMAIL = "logged_in_email"
 private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 
@@ -138,6 +139,17 @@ class PreferenceHelper @Inject constructor(
         val id = prefs.getString(KEY_USER_ID)
         logger.d("UserId retrieved (exists=${id != null}, length=${id?.length ?: 0})")
         return id
+    }
+
+    fun setLoggedInEmail(email: String) {
+        prefs.putString(KEY_LOGGED_IN_EMAIL, email)
+        logger.i("Saved logged-in email (length=${email.length})")
+    }
+
+    fun getLoggedInEmail(): String? {
+        val email = prefs.getString(KEY_LOGGED_IN_EMAIL)
+        logger.d("Logged-in email retrieved (exists=${email != null})")
+        return email
     }
 
     fun saveLocalId(localId: Long) {

@@ -1775,7 +1775,7 @@ class PillScanningViewModel @Inject constructor(
                     stockTxnDao.refreshBatchTotalNdcs(stockCountBatchId)
                     stockTxnDao.updateBatchUserName(
                         stockCountBatchId,
-                        preferenceHelper.getRecentLogins().firstOrNull() ?: preferenceHelper.getUserId()
+                        preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
                     )
                 }
 

@@ -179,6 +179,19 @@ class VerifyPinViewModelTest {
     }
 
     @Test
+    fun `verifyPin success persists the verified email`() = runTest {
+        val user = VerifiedUser(email = email, isVerified = true)
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
+            Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        verify(exactly = 1) { prefs.setLoggedInEmail(email) }
+    }
+
+    @Test
     fun `verifyPin success with missing token and null user does not save tokens`() = runTest {
         // accessToken null -> warn branch; user null -> warn branch
         val data = VerifyPinData(accessToken = null, refreshToken = null, user = null)

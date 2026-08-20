@@ -106,6 +106,7 @@ class VerifyPinViewModel @Inject constructor(
                         logger.w("Missing access or refresh token in response.")
                     }
 
+                    prefs.setLoggedInEmail(user?.email ?: email)
 
                     // Log user info (safely)
                     user?.let {
