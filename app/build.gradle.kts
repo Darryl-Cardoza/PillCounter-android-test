@@ -212,7 +212,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.retrofit.serialization.converter)
-    implementation(libs.okhttp.profiler)
     implementation(libs.security.crypto)
     implementation(libs.calendar.compose)
     implementation(libs.accompanist.permissions)
