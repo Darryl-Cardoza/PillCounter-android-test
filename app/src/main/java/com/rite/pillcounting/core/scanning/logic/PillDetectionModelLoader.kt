@@ -79,7 +79,7 @@ class PillDetectionModelLoader @Inject constructor(
         // validate_gpu_delegate.py). Inference is decoded in GloveDetector —
         // sigmoid + box decode + per-class NMS on CPU.
         // AES-GCM RITE encryption, same scheme as pill + tray.
-        private const val GLOVE_MODEL_FILENAME = "gloves_fp16.tflite1"
+        private const val GLOVE_MODEL_FILENAME = "gloves_fp16.tflite"
         private const val TAG = "LoadModel"
 
         private const val TRAY_MODEL_ENABLED = true
