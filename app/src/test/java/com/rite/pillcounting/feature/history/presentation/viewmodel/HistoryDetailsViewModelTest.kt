@@ -168,8 +168,8 @@ class HistoryDetailsViewModelTest {
     // ────────────────────────────── getCurrentUser ──────────────────────────────
 
     @Test
-    fun `getCurrentUser returns first recent login when available`() = runTest(testDispatcher) {
-        every { preferenceHelper.getRecentLogins() } returns listOf("alice", "bob")
+    fun `getCurrentUser returns logged-in email when available`() = runTest(testDispatcher) {
+        every { preferenceHelper.getLoggedInEmail() } returns "alice"
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -178,8 +178,8 @@ class HistoryDetailsViewModelTest {
     }
 
     @Test
-    fun `getCurrentUser falls back to userId when no recent logins`() = runTest(testDispatcher) {
-        every { preferenceHelper.getRecentLogins() } returns emptyList()
+    fun `getCurrentUser falls back to userId when no logged-in email`() = runTest(testDispatcher) {
+        every { preferenceHelper.getLoggedInEmail() } returns null
         every { preferenceHelper.getUserId() } returns "charlie"
 
         val vm = createViewModel()
@@ -190,7 +190,7 @@ class HistoryDetailsViewModelTest {
 
     @Test
     fun `getCurrentUser returns dash when nothing available`() = runTest(testDispatcher) {
-        every { preferenceHelper.getRecentLogins() } returns emptyList()
+        every { preferenceHelper.getLoggedInEmail() } returns null
         every { preferenceHelper.getUserId() } returns null
 
         val vm = createViewModel()

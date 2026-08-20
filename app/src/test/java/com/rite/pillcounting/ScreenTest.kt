@@ -90,16 +90,15 @@ class ScreenTest {
     @Test
     fun `OtpVerify route createRoute and args`() {
         Assert.assertEquals(
-            "otp_verify?email={email}&rememberMe={rememberMe}",
+            "otp_verify?email={email}",
             Screen.OtpVerify.route
         )
         Assert.assertEquals("email", Screen.OtpVerify.ARG_EMAIL)
-        Assert.assertEquals("rememberMe", Screen.OtpVerify.ARG_REMEMBER_ME)
         Assert.assertEquals(
-            "otp_verify?email=a@b.com&rememberMe=true",
-            Screen.OtpVerify.createRoute("a@b.com", true)
+            "otp_verify?email=a@b.com",
+            Screen.OtpVerify.createRoute("a@b.com")
         )
-        Assert.assertEquals(2, Screen.OtpVerify.navArguments.size)
+        Assert.assertEquals(1, Screen.OtpVerify.navArguments.size)
     }
 
     // ─────────────────────────── ScanBarcode ───────────────────────────

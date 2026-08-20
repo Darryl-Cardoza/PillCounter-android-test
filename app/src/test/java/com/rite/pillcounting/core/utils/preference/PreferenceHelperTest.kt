@@ -186,6 +186,17 @@ class PreferenceHelperTest {
     }
 
     @Test
+    fun `setLoggedInEmail then getLoggedInEmail returns value`() {
+        helper.setLoggedInEmail("a@x.com")
+        assertEquals("a@x.com", helper.getLoggedInEmail())
+    }
+
+    @Test
+    fun `getLoggedInEmail returns null when unset`() {
+        assertNull(helper.getLoggedInEmail())
+    }
+
+    @Test
     fun `saveLocalId then getLocalId returns value`() {
         helper.saveLocalId(42L)
         assertEquals(42L, helper.getLocalId())

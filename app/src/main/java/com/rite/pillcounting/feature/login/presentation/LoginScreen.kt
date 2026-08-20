@@ -299,11 +299,11 @@ fun LoginScreen(
                         is LoginUiState.Success -> {
                             LaunchedEffect(Unit) {
                                 viewModel.clearAllStates()
+                                if (rememberMe) {
+                                    preferenceHelper.addRecentLogin(email)
+                                }
                                 navController.navigate(
-                                    Screen.OtpVerify.createRoute(
-                                        email = email,
-                                        rememberMe = rememberMe
-                                    )
+                                    Screen.OtpVerify.createRoute(email = email)
                                 )
                                 email = ""
                                 rememberMe = false
@@ -312,14 +312,14 @@ fun LoginScreen(
                     }
 
                     // LOGIN BUTTON
+                    val emptyEmailError = stringResource(R.string.error_empty_email)
                     ActionButtonPrimary(
                         text = stringResource(R.string.login_button_text),
                         onClick = {
                             if (email.isBlank()) {
-                                localError = context.getString(R.string.error_empty_email)
+                                localError = emptyEmailError
                             } else {
                                 localError = null
-                                preferenceHelper.addRecentLogin(email) // Add to recent logins
                                 viewModel.login(email)
                             }
                         },
