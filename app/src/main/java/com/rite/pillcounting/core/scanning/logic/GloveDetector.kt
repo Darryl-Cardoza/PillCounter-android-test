@@ -15,7 +15,7 @@ import kotlin.math.min
 
 /**
  * TFLite wrapper for the YOLOX-Nano gloves / no_gloves detector
- * (`gloves_detector_fp32.tflite`, shipped AES-GCM encrypted).
+ * (`gloves_fp16.tflite`, shipped AES-GCM encrypted).
  *
  * Replaces the previous MobileNetV2 binary classifier. The detector
  * restores the implicit-negatives behavior the classifier lost in the
@@ -28,13 +28,13 @@ import kotlin.math.min
  *   - LeakyReLU(0.1) throughout (instead of SiLU)
  *   - 6×6 stride-2 Conv stem (instead of Focus' strided slice)
  *   - Nearest-mode upsample in PAFPN neck
- *   - 320×320 NHWC float32 input, RAW pixel values in [0, 255]
+ *   - 512×512 NHWC float32 input, RAW pixel values in [0, 255]
  *     (no normalization — YOLOX trains on raw pixels)
  *
  * Output graph contract (3 outputs, NHWC after onnx2tf transpose):
- *     output_stride8  : [1, 40, 40, 7]
- *     output_stride16 : [1, 20, 20, 7]
- *     output_stride32 : [1, 10, 10, 7]
+ *     output_stride8  : [1, 64, 64, 7]
+ *     output_stride16 : [1, 32, 32, 7]
+ *     output_stride32 : [1, 16, 16, 7]
  *   Channel layout (axis=C=3): tx, ty, tw, th, obj_logit, cls0_logit, cls1_logit
  *
  * Decode + NMS run here on the CPU (Kotlin) — the .tflite graph stays
@@ -59,7 +59,7 @@ object GloveDetector {
     private val logger = AppLogger(TAG)
 
     /** Model input spatial resolution. MUST match the exported .tflite. */
-    const val INPUT_SIZE = 320
+    const val INPUT_SIZE = 512
     private const val NUM_CHANNELS = 3
     private const val NUM_CLASSES = 2
     private const val CHANNELS_PER_PRED = 5 + NUM_CLASSES   // tx,ty,tw,th,obj + 2 cls
@@ -85,9 +85,9 @@ object GloveDetector {
 
     private val STRIDES = intArrayOf(8, 16, 32)
     private val GRID_SIZES = intArrayOf(
-        INPUT_SIZE / 8,    // 40
-        INPUT_SIZE / 16,   // 20
-        INPUT_SIZE / 32,   // 10
+        INPUT_SIZE / 8,
+        INPUT_SIZE / 16,
+        INPUT_SIZE / 32,
     )
 
     // ── Cached scratch (allocated once, reused across frames) ────────────
@@ -139,18 +139,18 @@ object GloveDetector {
     ): List<GloveDetection> {
         return try {
             ensureOutputScratch(interpreter)
-            preprocessTo320(letterboxedBitmap)
+            preprocessToModelInput(letterboxedBitmap)
             runInference(interpreter)
 
             val raw = decodeAllStrides(confThreshold)
             val survivors = nmsClassWise(raw, iouThreshold)
 
-            // Boxes are currently in 320-letterbox coords (where 320 is the
-            // model input). The 640 letterbox was downscaled by 2.0× to feed
-            // the model, so multiplying coords by 2 brings them back into
-            // 640-letterbox space. Then the 640 letterbox scaleInfo unwarps
-            // to original camera coords.
-            val to640 = LETTERBOX_SIZE.toFloat() / INPUT_SIZE.toFloat()   // = 2.0
+            // Boxes are currently in INPUT_SIZE-letterbox coords. The 640
+            // letterbox was downscaled to feed the model, so multiplying
+            // coords by (640 / INPUT_SIZE) brings them back into 640-letterbox
+            // space. Then the 640 letterbox scaleInfo unwarps to original
+            // camera coords.
+            val to640 = LETTERBOX_SIZE.toFloat() / INPUT_SIZE.toFloat()
             val invScale = 1f / scaleInfo640.scale
             val padX = scaleInfo640.padX
             val padY = scaleInfo640.padY
@@ -191,10 +191,10 @@ object GloveDetector {
     }
 
     // ──────────────────────────────────────────────────────────────────────
-    // Preprocess: 640 letterbox -> 320 input bitmap -> NHWC float32 buffer.
+    // Preprocess: 640 letterbox -> INPUT_SIZE input bitmap -> NHWC float32 buffer.
     // ──────────────────────────────────────────────────────────────────────
-    private fun preprocessTo320(letterboxedBitmap: Bitmap) {
-        val k = INPUT_SIZE.toFloat() / letterboxedBitmap.width.toFloat()  // 320/640 = 0.5
+    private fun preprocessToModelInput(letterboxedBitmap: Bitmap) {
+        val k = INPUT_SIZE.toFloat() / letterboxedBitmap.width.toFloat()
         resizeMatrix.reset()
         resizeMatrix.postScale(k, k)
         inputCanvas.drawColor(0)
