@@ -30,6 +30,10 @@ import javax.inject.Singleton
  * lock while at least one enrolled face profile is enabled, so a device with
  * no Quick Access set up never locks itself out with nothing to verify against.
  *
+ * The lock also survives process death: a cold start with an active login session
+ * and an enrolled face profile begins locked, so killing the app can't bypass it.
+ * (Enrollment state is mirrored to preferences so this decision is synchronous.)
+ *
  * What it does:
  * - [onUserActivity] resets the idle clock; call on every touch app-wide.
  * - [isLocked] is the single source of truth the UI observes to show/hide the overlay.
@@ -44,19 +48,30 @@ class SessionLockController @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lastActivityAt = AtomicLong(System.currentTimeMillis())
 
-    private val _isLocked = MutableStateFlow(false)
+    // Start locked on a cold start with an active session: process death must not
+    // bypass the face lock (kill-and-relaunch previously reopened the app unlocked).
+    private val _isLocked = MutableStateFlow(
+        preferenceHelper.isUserLoggedIn() && preferenceHelper.hasEnabledFaceProfile()
+    )
     val isLocked: StateFlow<Boolean> = _isLocked.asStateFlow()
 
     /** Whether at least one enrolled face profile currently participates in verify matching. */
     val hasEnabledProfile: StateFlow<Boolean> = faceProfileRepository.observeProfiles()
         .map { profiles -> profiles.any { it.isEnabled } }
-        .stateIn(scope, SharingStarted.Eagerly, false)
+        .stateIn(scope, SharingStarted.Eagerly, preferenceHelper.hasEnabledFaceProfile())
 
     init {
         scope.launch {
             while (isActive) {
                 delay(1_000L)
                 tick()
+            }
+        }
+        scope.launch {
+            hasEnabledProfile.collect { hasEnabled ->
+                preferenceHelper.saveHasEnabledFaceProfile(hasEnabled)
+                // No enabled profile means nothing to verify against — release the lock.
+                if (!hasEnabled && _isLocked.value) _isLocked.value = false
             }
         }
     }

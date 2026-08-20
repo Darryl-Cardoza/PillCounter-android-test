@@ -53,6 +53,7 @@ private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
 private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED = "key_control_drug_types_initialized"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
 private const val KEY_FACE_LOCK_TIMEOUT_MINUTES = "key_face_lock_timeout_minutes"
+private const val KEY_HAS_ENABLED_FACE_PROFILE = "key_has_enabled_face_profile"
 private const val KEY_BARCODE_REGEX="key_barcode_regex"
 private const val KEY_BUCKET_LIST="key_bucket_list"
 private const val KEY_TERMINALS="key_terminals"
@@ -310,6 +311,13 @@ class PreferenceHelper @Inject constructor(
         logger.d("Retrieved face lock timeout: $minutes minutes")
         return minutes
     }
+
+    /** Cached copy of "any enabled face profile exists", so the cold-start lock decision doesn't wait on the DB. */
+    fun saveHasEnabledFaceProfile(hasEnabled: Boolean) {
+        prefs.putBoolean(KEY_HAS_ENABLED_FACE_PROFILE, hasEnabled)
+    }
+
+    fun hasEnabledFaceProfile(): Boolean = prefs.getBoolean(KEY_HAS_ENABLED_FACE_PROFILE, false)
 
     // ─────────────────────────── NSD / HL7 SETTINGS ───────────────────────────
 
