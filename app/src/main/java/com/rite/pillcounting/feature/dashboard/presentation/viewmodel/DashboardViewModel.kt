@@ -15,6 +15,7 @@ import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
+import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.security.DatabaseKeyProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -70,6 +71,7 @@ class DashboardViewModel @Inject constructor(
     private val hl7EventHandler: Hl7EventHandler,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val deviceKeyProvider: DeviceKeyProvider,
+    private val sessionHealthController: SessionHealthController,
 
 ) : ViewModel() {
 
@@ -391,6 +393,21 @@ class DashboardViewModel @Inject constructor(
                     it.copy(
                         isLoadingUserDetail = false,
                         userDetailError = "Access token not found"
+                    )
+                }
+                return@launch
+            }
+
+            // Gate /auth/me on a healthy /health probe. When offline the HealthGateInterceptor
+            // would already short-circuit the request with a 599, but calling checkHealth first
+            // gives us an immediate recovery opportunity + avoids logging a synthetic failure.
+            val healthy = sessionHealthController.checkHealth()
+            if (!healthy) {
+                logger.w("Skipping /auth/me — backend is not healthy")
+                _uiState.update {
+                    it.copy(
+                        isLoadingUserDetail = false,
+                        userDetailError = null
                     )
                 }
                 return@launch

@@ -20,6 +20,13 @@ class RuntimeUnit(private val context: Context) {
     // Defaults to BLOCKED — no key material is accessible until cleared.
     private var securityCleared: Boolean = false
 
+    // Hot-path cache. Keystore/TEE decrypt is 10-50ms per call and material() is
+    // hit by HeaderInterceptor on every HTTP request; caching the plaintext for
+    // the life of the process removes that cost from the OkHttp thread. The
+    // encrypted-at-rest guarantee still holds — cache is cleared on revoke.
+    @Volatile
+    private var cachedMaterial: String? = null
+
     /**
      * Called by MainActivity after getSecurityViolations() returns empty.
      * Never call this if violations exist.
@@ -34,6 +41,7 @@ class RuntimeUnit(private val context: Context) {
      */
     fun revokeClearance() {
         securityCleared = false
+        cachedMaterial = null
     }
 
     // ── Public interface ──────────────────────────────────────────────────────

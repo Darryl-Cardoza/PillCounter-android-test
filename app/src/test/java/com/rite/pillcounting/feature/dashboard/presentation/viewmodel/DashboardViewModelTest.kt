@@ -12,6 +12,7 @@ import com.rite.pillcounting.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
+import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
@@ -61,6 +62,7 @@ class DashboardViewModelTest {
     private lateinit var hl7EventHandler: Hl7EventHandler
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var deviceKeyProvider: DeviceKeyProvider
+    private lateinit var sessionHealthController: SessionHealthController
 
     @Before
     fun setup() {
@@ -89,6 +91,7 @@ class DashboardViewModelTest {
         hl7EventHandler = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
         deviceKeyProvider = mockk(relaxed = true)
+        sessionHealthController = mockk(relaxed = true)
 
         // StateFlows on the event handler.
         every { hl7EventHandler.connectionState } returns MutableStateFlow(false)
@@ -127,6 +130,7 @@ class DashboardViewModelTest {
         hl7EventHandler,
         hl7ServiceManager,
         deviceKeyProvider,
+        sessionHealthController,
     )
 
     // ─────────────────────────────── helpers ───────────────────────────────

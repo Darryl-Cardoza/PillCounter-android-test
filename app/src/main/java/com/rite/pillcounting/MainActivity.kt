@@ -17,31 +17,44 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import com.rite.pillcounting.core.auth.AuthEvent
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
+import com.rite.pillcounting.core.health.domain.model.HealthState
+import com.rite.pillcounting.core.health.logic.ConnectivityCallback
+import com.rite.pillcounting.core.health.logic.ExpiryWatcher
+import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.security.RuntimeUnit
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.rite.pillcounting.feature.faceAuth.presentation.SessionLockOverlayScreen
+import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.rite.pillcounting.core.utils.common.HelperFunctions.getStartDestination
 import com.rite.pillcounting.core.utils.common.HelperFunctions.openPlayStore
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.SecurityErrorDialog
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toColor
 import com.rite.pillcounting.core.utils.compose.MaintenanceScreen
+import com.rite.pillcounting.core.utils.compose.OfflineOverlay
 import com.rite.pillcounting.core.utils.compose.UpdateScreen
 import com.rite.pillcounting.core.utils.notification.FCMService
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -76,6 +89,18 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var sessionLockController: SessionLockController
+
+    @Inject
+    lateinit var sessionHealthController: SessionHealthController
+
+    @Inject
+    lateinit var authEventBus: AuthEventBus
+
+    @Inject
+    lateinit var connectivityCallback: ConnectivityCallback
+
+    @Inject
+    lateinit var hl7Repository: Hl7Repository
 
     private lateinit var navController: NavController
 
@@ -222,6 +247,54 @@ class MainActivity : ComponentActivity() {
                                 )
 
                                 else -> Box {
+                                    // Observe session-health state. On EXPIRED, tear down + nav to Login.
+                                    val healthState by sessionHealthController.state.collectAsStateWithLifecycle()
+                                    LaunchedEffect(healthState) {
+                                        if (healthState == HealthState.EXPIRED) {
+                                            performLogoutTeardown()
+                                            sessionHealthController.resetAfterExpiry()
+                                        }
+                                    }
+                                    // Observe AuthEventBus. Refresh-token-401 anywhere -> same teardown.
+                                    LaunchedEffect(Unit) {
+                                        authEventBus.events.collect { event ->
+                                            if (event is AuthEvent.SessionExpired) {
+                                                performLogoutTeardown()
+                                            }
+                                        }
+                                    }
+                                    // Kick /health on foreground/resume via lifecycle observer. Watch
+                                    // for offline-threshold expiry with a 1s tick.
+                                    LaunchedEffect(Unit) {
+                                        ExpiryWatcher.start(lifecycleScope, sessionHealthController)
+                                    }
+                                    // OFFLINE -> HEALTHY: drain pending HL7 transactions/batches
+                                    // via existing Hl7Repository entry points.
+                                    LaunchedEffect(Unit) {
+                                        sessionHealthController.syncTrigger.collect {
+                                            hl7Repository.resendPendingHl7Transactions()
+                                            hl7Repository.resendPendingHl7BatchTransactions()
+                                        }
+                                    }
+
+                                    // Bump on every HEALTHY -> OFFLINE transition so the
+                                    // OfflineOverlay re-expands its message pill on each
+                                    // fresh disconnect (see OfflineOverlay#resetKey).
+                                    var offlineEnteredAt by remember { mutableStateOf(0L) }
+                                    LaunchedEffect(Unit) {
+                                        var previous: HealthState = sessionHealthController.state.value
+                                        if (previous == HealthState.OFFLINE) {
+                                            offlineEnteredAt = System.currentTimeMillis()
+                                        }
+                                        sessionHealthController.state.collect { current ->
+                                            if (previous != HealthState.OFFLINE &&
+                                                current == HealthState.OFFLINE
+                                            ) {
+                                                offlineEnteredAt = System.currentTimeMillis()
+                                            }
+                                            previous = current
+                                        }
+                                    }
                                     AppNavGraph(
                                         navController    = navController as NavHostController,
                                         startDestination = startDestination,
@@ -234,6 +307,22 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onLogOut         = { settingsViewModel.onUserLoginOrLogOut() }
                                     )
+
+                                    // App-wide offline indicator: thin red border + bottom-left
+                                    // analog clock that visualises time remaining before the
+                                    // offline threshold flips the app to EXPIRED. Sits above
+                                    // AppNavGraph so it covers every screen (Login included);
+                                    // rendered before SessionLockOverlayScreen so face-lock
+                                    // still occludes it when both are active.
+                                    if (healthState == HealthState.OFFLINE) {
+                                        val lastHealthAt by sessionHealthController.lastHealthAt.collectAsStateWithLifecycle()
+                                        val thresholdMs by sessionHealthController.thresholdMs.collectAsStateWithLifecycle()
+                                        OfflineOverlay(
+                                            lastHealthAt = lastHealthAt,
+                                            thresholdMs  = thresholdMs,
+                                            resetKey     = offlineEnteredAt,
+                                        )
+                                    }
 
                                     val isLocked by sessionLockController.isLocked.collectAsStateWithLifecycle()
                                     val timeoutMinutes by settingsViewModel.faceLockTimeoutMinutes.collectAsStateWithLifecycle()
@@ -305,6 +394,46 @@ class MainActivity : ComponentActivity() {
         } else {
             permissionChainStarted = true
         }
+        // Fire /health opportunistically on every foreground/resume so the offline
+        // banner can clear and pending sync can be triggered without waiting for a
+        // user action. Cheap: /health is on an isolated stack with 15s timeouts.
+        if (::sessionHealthController.isInitialized && preferenceHelper.isUserLoggedIn()) {
+            sessionHealthController.onForegroundResume()
+        }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        // Register a ConnectivityManager callback so the moment Android reports
+        // network reachability restored, we fire /health and (on success) drain
+        // pending Room-persisted work.
+        if (::connectivityCallback.isInitialized) {
+            connectivityCallback.register()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (::connectivityCallback.isInitialized) {
+            connectivityCallback.unregister()
+        }
+    }
+
+    /**
+     * Shared teardown used by both the EXPIRED state observer and the AuthEventBus
+     * SessionExpired observer: clear tokens, drop face-lock, nav to auth graph,
+     * surface the standard "Session Expired" toast.
+     */
+    private fun performLogoutTeardown() {
+        preferenceHelper.clearTokens()
+        preferenceHelper.setUserLoggedIn(false)
+        sessionLockController.unlock()
+        if (::navController.isInitialized) {
+            navController.navigate(AUTH_GRAPH_ROUTE) {
+                popUpTo(0) { inclusive = true }
+            }
+        }
+        showToast(this, R.string.session_expired)
     }
 
     override fun onNewIntent(intent: Intent) {

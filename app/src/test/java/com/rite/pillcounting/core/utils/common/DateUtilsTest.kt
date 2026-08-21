@@ -140,4 +140,53 @@ class DateUtilsTest {
     fun `convertUTCTimestampToDate returns empty string for blank whitespace input`() {
         assertEquals("", DateUtils.convertUTCTimestampToDate("   "))
     }
+
+    // -------------------------------------------------------------------------
+    // parseUtcIsoToEpochMs  —  input: "yyyy-MM-dd'T'HH:mm:ss" (± .SSS / Z / +HH:mm)
+    // -------------------------------------------------------------------------
+
+    // DATE_017
+    @Test
+    fun `parseUtcIsoToEpochMs returns null for null input`() {
+        assertNull(DateUtils.parseUtcIsoToEpochMs(null))
+    }
+
+    // DATE_018
+    @Test
+    fun `parseUtcIsoToEpochMs returns null for blank input`() {
+        assertNull(DateUtils.parseUtcIsoToEpochMs("   "))
+    }
+
+    // DATE_019
+    @Test
+    fun `parseUtcIsoToEpochMs returns null for garbage input`() {
+        assertNull(DateUtils.parseUtcIsoToEpochMs("not-a-date"))
+    }
+
+    // DATE_020
+    @Test
+    fun `parseUtcIsoToEpochMs parses plain ISO-8601 without suffix`() {
+        assertEquals(1_736_944_245_000L, DateUtils.parseUtcIsoToEpochMs("2025-01-15T12:30:45"))
+    }
+
+    // DATE_021
+    @Test
+    fun `parseUtcIsoToEpochMs parses ISO-8601 with trailing Z`() {
+        assertEquals(1_736_944_245_000L, DateUtils.parseUtcIsoToEpochMs("2025-01-15T12:30:45Z"))
+    }
+
+    // DATE_022
+    @Test
+    fun `parseUtcIsoToEpochMs parses ISO-8601 with fractional seconds`() {
+        // Sub-second precision is discarded — truncated to the second boundary.
+        assertEquals(1_736_944_245_000L, DateUtils.parseUtcIsoToEpochMs("2025-01-15T12:30:45.123Z"))
+    }
+
+    // DATE_023
+    @Test
+    fun `parseUtcIsoToEpochMs parses ISO-8601 with timezone offset`() {
+        // Offset is stripped and the leading portion is treated as UTC — matches the
+        // controller's prior behavior so the migration is drift-free.
+        assertEquals(1_736_944_245_000L, DateUtils.parseUtcIsoToEpochMs("2025-01-15T12:30:45+05:30"))
+    }
 }

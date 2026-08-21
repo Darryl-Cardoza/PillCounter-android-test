@@ -71,6 +71,13 @@ private const val KEY_HL7_FORMAT = "key_hl7_format"
 // Reference Data
 private const val KEY_COUNTRIES = "key_countries"
 
+// Health / Offline Session
+private const val KEY_LAST_HEALTH_CHECKED_AT = "last_health_checked_at"
+private const val KEY_OFFLINE_SESSION_THRESHOLD_SECONDS = "offline_session_threshold_seconds"
+
+/** Default offline-session threshold (seconds) applied when the server has not yet supplied one. */
+private const val DEFAULT_OFFLINE_SESSION_THRESHOLD_SECONDS = 86_400L
+
 @Singleton
 class PreferenceHelper @Inject constructor(
     @ApplicationContext private val context: Context
@@ -674,6 +681,72 @@ class PreferenceHelper @Inject constructor(
             logger.d("No countries found in preferences")
             emptyList()
         }
+    }
+
+    // ─────────────────────────── HEALTH / OFFLINE SESSION ───────────────────────────
+
+    /**
+     * Persists the timestamp (device wall-clock ms) at which the most recent successful
+     * `/health` response was observed.
+     *
+     * Description:
+     * The offline-session timer is measured against this value; a value of `0L` means
+     * `/health` has never succeeded on this install (fresh install or cleared prefs).
+     *
+     * @param timestampMs Epoch milliseconds captured at the moment the healthy response arrived.
+     *
+     * Example Usage:
+     * preferenceHelper.setLastHealthCheckedAt(System.currentTimeMillis())
+     */
+    fun setLastHealthCheckedAt(timestampMs: Long) {
+        prefs.putLong(KEY_LAST_HEALTH_CHECKED_AT, timestampMs)
+        logger.i("Saved lastHealthCheckedAt=$timestampMs")
+    }
+
+    /**
+     * Returns the stored last-successful-`/health` timestamp.
+     *
+     * @return Epoch milliseconds of the last successful health check, or `0L` if none.
+     *
+     * Example Usage:
+     * val elapsed = System.currentTimeMillis() - preferenceHelper.getLastHealthCheckedAt()
+     */
+    fun getLastHealthCheckedAt(): Long {
+        val ts = prefs.getLong(KEY_LAST_HEALTH_CHECKED_AT, 0L)
+        logger.d("Retrieved lastHealthCheckedAt=$ts")
+        return ts
+    }
+
+    /**
+     * Persists the server-supplied offline-session threshold in seconds.
+     *
+     * Description:
+     * The threshold is the maximum time the user is allowed to keep working offline
+     * before being forced back to the Login screen. Sourced from
+     * `mobile/get/settings.offline_session_threshold_seconds`.
+     *
+     * @param seconds Threshold duration in seconds. Non-positive values are ignored.
+     */
+    fun setOfflineSessionThresholdSeconds(seconds: Long) {
+        if (seconds <= 0L) {
+            logger.w("Ignoring non-positive offline threshold=$seconds")
+            return
+        }
+        prefs.putLong(KEY_OFFLINE_SESSION_THRESHOLD_SECONDS, seconds)
+        logger.i("Saved offlineSessionThresholdSeconds=$seconds")
+    }
+
+    /**
+     * Returns the stored offline-session threshold in seconds, defaulting to
+     * [DEFAULT_OFFLINE_SESSION_THRESHOLD_SECONDS] (24h) when the server value
+     * has not been received yet.
+     *
+     * @return Threshold in seconds.
+     */
+    fun getOfflineSessionThresholdSeconds(): Long {
+        val seconds = prefs.getLong(KEY_OFFLINE_SESSION_THRESHOLD_SECONDS, DEFAULT_OFFLINE_SESSION_THRESHOLD_SECONDS)
+        logger.d("Retrieved offlineSessionThresholdSeconds=$seconds")
+        return seconds
     }
 
     companion object {

@@ -8,6 +8,10 @@
     <string name="pms">PMS</string>
     <string name="loading">Loading...</string>
 
+    <!--    Offline / Session Health   -->
+    <string name="offline_snackbar_blocked">You are offline. This action needs a connection.</string>
+    <string name="offline_disconnect_message">Your internet has been disconnected. App will log out in %1$s.</string>
+
     <!-- ================== AUTH / LOGIN / REGISTER ================== -->
     <string name="email">Email</string>
     <string name="remember_me">Remember me</string>
