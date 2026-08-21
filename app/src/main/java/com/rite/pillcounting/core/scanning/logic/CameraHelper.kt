@@ -4,7 +4,13 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CaptureRequest
+import android.hardware.camera2.CaptureResult
+import android.hardware.camera2.TotalCaptureResult
 import android.util.Size
+import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
@@ -61,6 +67,23 @@ class CameraHelper(
 
     private val isBound = AtomicBoolean(false)
     private val isStreaming = AtomicBoolean(true)
+
+    // Focus gate: while the AF lens is hunting the frames are blurry, so they are
+    // dropped in [processImageProxy] before reaching frameFlow — no consumer
+    // (pill/glove/tray models, barcode, OCR, face) wastes inference on them.
+    // Only the *scanning* AF states block; everything else (FOCUSED_LOCKED,
+    // NOT_FOCUSED_LOCKED, INACTIVE) passes, so fixed-focus lenses — front cameras
+    // report INACTIVE forever — and scenes AF cannot converge on are never starved.
+    private val isFocused = AtomicBoolean(true)
+    private var consecutiveScanFrames = 0
+
+    /**
+     * AF scan frames tolerated before the gate closes. The periodic re-trigger
+     * ([startPeriodicFocus]) briefly forces ACTIVE_SCAN over an already-sharp
+     * scene every cycle; this hysteresis keeps those near-sharp frames flowing
+     * and only drops frames once a real refocus is underway.
+     */
+    private val scanFramesBeforeGate = 3
 
     // Last display rotation pushed via setTargetRotation. Used to detect an
     // actual rotation change so we can rebind the use cases (see setTargetRotation).
@@ -163,6 +186,7 @@ class CameraHelper(
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .setOutputImageRotationEnabled(true)
                     .setTargetRotation(initialRotation)
+                    .apply { attachFocusStateListener(this) }
                     .build()
                     .also { analysis ->
                         val analyzerExec = analyzerExecutor?.takeUnless { it.isShutdown }
@@ -188,6 +212,8 @@ class CameraHelper(
                 observeCameraState()
                 isBound.set(true)
                 isStreaming.set(true)
+                isFocused.set(true)
+                consecutiveScanFrames = 0
 
                 logger.i("Camera successfully bound")
 
@@ -233,6 +259,40 @@ class CameraHelper(
     }
 
     // ---------------------------------------------------------
+    // FOCUS GATE
+    // ---------------------------------------------------------
+
+    /**
+     * Tracks the autofocus state from per-capture metadata (free — the HAL
+     * delivers it with every frame) and feeds the gate in [processImageProxy].
+     */
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun attachFocusStateListener(builder: ImageAnalysis.Builder) {
+        Camera2Interop.Extender(builder).setSessionCaptureCallback(
+            object : CameraCaptureSession.CaptureCallback() {
+                override fun onCaptureCompleted(
+                    session: CameraCaptureSession,
+                    request: CaptureRequest,
+                    result: TotalCaptureResult
+                ) {
+                    val scanning = when (result.get(CaptureResult.CONTROL_AF_STATE)) {
+                        CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN,
+                        CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN -> true
+                        else -> false
+                    }
+                    if (scanning) {
+                        consecutiveScanFrames++
+                        if (consecutiveScanFrames >= scanFramesBeforeGate) isFocused.set(false)
+                    } else {
+                        consecutiveScanFrames = 0
+                        isFocused.set(true)
+                    }
+                }
+            }
+        )
+    }
+
+    // ---------------------------------------------------------
     // FRAME PROCESSING
     // ---------------------------------------------------------
 
@@ -240,6 +300,12 @@ class CameraHelper(
     private fun processImageProxy(image: ImageProxy) {
         try {
             if (!isStreaming.get()) {
+                image.close()
+                return
+            }
+
+            // Lens is mid-refocus — the frame is blurry, skip it (see [isFocused]).
+            if (!isFocused.get()) {
                 image.close()
                 return
             }
