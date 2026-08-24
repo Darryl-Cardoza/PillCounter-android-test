@@ -1,6 +1,6 @@
 package com.rite.pillcounting.core.health.domain.data
 
-import com.rite.pillcounting.core.health.domain.model.HealthCheckData
+import com.rite.pillcounting.core.health.data.remote.dto.HealthCheckData
 
 /**
  * Domain-level contract for the health-check operation.

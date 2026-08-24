@@ -9,8 +9,8 @@
     <string name="loading">Loading...</string>
 
     <!--    Offline / Session Health   -->
-    <string name="offline_snackbar_blocked">You are offline. This action needs a connection.</string>
     <string name="offline_disconnect_message">Your internet has been disconnected. App will log out in %1$s.</string>
+    <string name="session_health_preflight_unavailable">Session details unavailable. Reconnect to continue.</string>
 
     <!-- ================== AUTH / LOGIN / REGISTER ================== -->
     <string name="email">Email</string>
@@ -317,7 +317,7 @@
     <string name="count_pills_from_the_container">Count Pills from the container</string>
     <string name="count_prescribed_pills_quantity">Count prescribed Pills quantity</string>
     <string name="recount_prescribed_quantity">Recount prescribed quantity</string>
-    <!--    <string name="count_remaining_pills_in_the_container">Count Pills in the container</string>-->
+    <string name="count_remaining_pills_in_the_container">Count Pills in the container</string>
     <string name="capture_photo_of_counted_pills_vial">Capture photo of counted pills vial</string>
     <string name="are_you_sure_you_want_to_complete_this_step">Are you sure you want to complete this step?</string>
     <string name="confirm_steps_completion">Confirm Steps Completion</string>

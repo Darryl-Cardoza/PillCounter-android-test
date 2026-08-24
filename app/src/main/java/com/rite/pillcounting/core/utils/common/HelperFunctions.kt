@@ -68,7 +68,7 @@ object HelperFunctions {
     }
 
     /**
-     * Determines the start navigation route based on login state and offline-threshold expiry.
+     * Determines the start navigation route AND clears tokens if the offline threshold has expired.
      *
      * Description:
      * If the user is logged in and the last successful `/health` timestamp is still inside
@@ -82,23 +82,27 @@ object HelperFunctions {
      *   never yet observed a `/health` response — first-launch flow).
      * - Clears tokens and returns `AUTH_GRAPH_ROUTE` when the threshold has been exceeded.
      *
+     * Side effect: on threshold-exceeded, tokens + login flag are cleared before returning.
+     *
      * @param preferenceHelper Persistent preference handler.
      * @return Route string — either `Dashboard.route` or `AUTH_GRAPH_ROUTE`.
      *
      * Example Usage:
-     * val startDestination = getStartDestination(preferenceHelper)
+     * val startDestination = resolveStartDestinationAndClearIfExpired(preferenceHelper)
      */
-    fun getStartDestination(preferenceHelper: PreferenceHelper): String {
+    fun resolveStartDestinationAndClearIfExpired(preferenceHelper: PreferenceHelper): String {
         if (!preferenceHelper.isUserLoggedIn()) return AUTH_GRAPH_ROUTE
         val lastHealthAt = preferenceHelper.getLastHealthCheckedAt()
-        // No successful /health yet → first-launch or freshly-installed session; let the app in
-        // so the settings fetch + first /health call can run under normal (UNKNOWN) state.
-        if (lastHealthAt <= 0L) return Screen.Dashboard.route
+        // Fall back to loggedInAt when no /health has ever succeeded on this install, so the
+        // expiry clock still ticks from the session start instead of remaining unbounded.
+        val anchor = if (lastHealthAt > 0L) lastHealthAt else preferenceHelper.getLoggedInAt()
+        if (anchor <= 0L) return Screen.Dashboard.route
         val thresholdMs = preferenceHelper.getOfflineSessionThresholdSeconds() * 1_000L
-        val elapsed = System.currentTimeMillis() - lastHealthAt
+        val elapsed = System.currentTimeMillis() - anchor
         return if (elapsed > thresholdMs) {
             preferenceHelper.clearTokens()
             preferenceHelper.setUserLoggedIn(false)
+            preferenceHelper.clearLoggedInAt()
             AUTH_GRAPH_ROUTE
         } else {
             Screen.Dashboard.route

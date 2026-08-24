@@ -1,4 +1,4 @@
-package com.rite.pillcounting.core.health.domain.model
+package com.rite.pillcounting.core.health.data.remote.dto
 
 import com.squareup.moshi.Json
 import com.squareup.moshi.JsonClass

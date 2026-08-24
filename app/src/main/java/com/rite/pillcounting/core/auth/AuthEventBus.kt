@@ -21,9 +21,8 @@ import javax.inject.Singleton
  * - Exposes [events] as a hot `SharedFlow` so `MainActivity` can observe it via
  *   `LaunchedEffect` and perform the standard teardown (clear tokens, unlock
  *   face overlay, navigate to Login, toast).
- * - Provides two publish paths: [publish] (suspend) for coroutine callers and
- *   [tryPublish] (non-blocking) for producers that run inside a `runBlocking`
- *   scope such as `TokenAuthenticator.authenticate`.
+ * - Exposes [tryPublish] as a non-blocking publish path for producers that
+ *   run inside a `runBlocking` scope such as `TokenAuthenticator.authenticate`.
  * - Uses a small buffer with `DROP_OLDEST` overflow so duplicate emissions
  *   from concurrent producers do not stack up — the consumer only needs a
  *   single event to nav away.
@@ -41,19 +40,6 @@ class AuthEventBus @Inject constructor() {
 
     /** Public read-only stream of auth events. */
     val events: SharedFlow<AuthEvent> = _events.asSharedFlow()
-
-    /**
-     * Suspending publish. Preferred inside coroutine builders.
-     *
-     * @param event The [AuthEvent] to broadcast to all current observers.
-     *
-     * Example Usage:
-     * viewModelScope.launch { authEventBus.publish(AuthEvent.SessionExpired) }
-     */
-    suspend fun publish(event: AuthEvent) {
-        logger.i("publish($event)")
-        _events.emit(event)
-    }
 
     /**
      * Non-blocking publish for callers that cannot suspend (e.g. OkHttp

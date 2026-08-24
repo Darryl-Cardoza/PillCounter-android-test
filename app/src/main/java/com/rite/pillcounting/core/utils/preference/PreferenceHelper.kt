@@ -74,6 +74,7 @@ private const val KEY_COUNTRIES = "key_countries"
 // Health / Offline Session
 private const val KEY_LAST_HEALTH_CHECKED_AT = "last_health_checked_at"
 private const val KEY_OFFLINE_SESSION_THRESHOLD_SECONDS = "offline_session_threshold_seconds"
+private const val KEY_LOGGED_IN_AT = "logged_in_at_ms"
 
 /** Default offline-session threshold (seconds) applied when the server has not yet supplied one. */
 private const val DEFAULT_OFFLINE_SESSION_THRESHOLD_SECONDS = 86_400L
@@ -747,6 +748,41 @@ class PreferenceHelper @Inject constructor(
         val seconds = prefs.getLong(KEY_OFFLINE_SESSION_THRESHOLD_SECONDS, DEFAULT_OFFLINE_SESSION_THRESHOLD_SECONDS)
         logger.d("Retrieved offlineSessionThresholdSeconds=$seconds")
         return seconds
+    }
+
+    /**
+     * Persists the wall-clock timestamp (ms) at which the user completed a successful login.
+     *
+     * Description:
+     * Used as the fallback anchor for offline-expiry evaluation when `/health` has never
+     * succeeded yet (fresh install + immediate network loss). Cleared on logout / expiry
+     * teardown so the anchor only exists while a session is active.
+     *
+     * @param timestampMs Epoch milliseconds captured at the moment the login succeeded.
+     *
+     * Example Usage:
+     * preferenceHelper.setLoggedInAt(System.currentTimeMillis())
+     */
+    fun setLoggedInAt(timestampMs: Long) {
+        prefs.putLong(KEY_LOGGED_IN_AT, timestampMs)
+        logger.i("Saved loggedInAt=$timestampMs")
+    }
+
+    /**
+     * Returns the stored login-success timestamp, or `0L` when no active session anchor exists.
+     *
+     * @return Epoch milliseconds of the most recent successful login, or `0L`.
+     */
+    fun getLoggedInAt(): Long {
+        val ts = prefs.getLong(KEY_LOGGED_IN_AT, 0L)
+        logger.d("Retrieved loggedInAt=$ts")
+        return ts
+    }
+
+    /** Removes the persisted login-success anchor. Called on logout or expiry teardown. */
+    fun clearLoggedInAt() {
+        prefs.remove(KEY_LOGGED_IN_AT)
+        logger.i("Cleared loggedInAt")
     }
 
     companion object {

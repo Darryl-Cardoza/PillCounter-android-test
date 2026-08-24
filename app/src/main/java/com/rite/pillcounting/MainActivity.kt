@@ -44,10 +44,9 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.rite.pillcounting.feature.faceAuth.presentation.SessionLockOverlayScreen
-import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.core.utils.common.HelperFunctions.enableImmersiveFullscreen
-import com.rite.pillcounting.core.utils.common.HelperFunctions.getStartDestination
+import com.rite.pillcounting.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
 import com.rite.pillcounting.core.utils.common.HelperFunctions.openPlayStore
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.SecurityErrorDialog
@@ -98,9 +97,6 @@ class MainActivity : ComponentActivity() {
 
     @Inject
     lateinit var connectivityCallback: ConnectivityCallback
-
-    @Inject
-    lateinit var hl7Repository: Hl7Repository
 
     private lateinit var navController: NavController
 
@@ -233,7 +229,7 @@ class MainActivity : ComponentActivity() {
                     ) {
                         navController = rememberNavController()
                         val preferenceHelper = remember { PreferenceHelper(this) }
-                        val startDestination = remember { getStartDestination(preferenceHelper) }
+                        val startDestination = remember { resolveStartDestinationAndClearIfExpired(preferenceHelper) }
 
                         // ── Security dialog shown once over all other content ──
                         if (securityViolations.isNotEmpty()) {
@@ -268,14 +264,9 @@ class MainActivity : ComponentActivity() {
                                     LaunchedEffect(Unit) {
                                         ExpiryWatcher.start(lifecycleScope, sessionHealthController)
                                     }
-                                    // OFFLINE -> HEALTHY: drain pending HL7 transactions/batches
-                                    // via existing Hl7Repository entry points.
-                                    LaunchedEffect(Unit) {
-                                        sessionHealthController.syncTrigger.collect {
-                                            hl7Repository.resendPendingHl7Transactions()
-                                            hl7Repository.resendPendingHl7BatchTransactions()
-                                        }
-                                    }
+                                    // OFFLINE -> HEALTHY drain lives inside SessionHealthController
+                                    // itself — see its init block. MainActivity no longer holds an
+                                    // Hl7Repository reference.
 
                                     // Bump on every HEALTHY -> OFFLINE transition so the
                                     // OfflineOverlay re-expands its message pill on each
@@ -420,20 +411,42 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Shared teardown used by both the EXPIRED state observer and the AuthEventBus
-     * SessionExpired observer: clear tokens, drop face-lock, nav to auth graph,
-     * surface the standard "Session Expired" toast.
+     * Shared teardown used by both the EXPIRED-state observer and the AuthEventBus
+     * SessionExpired observer: clear tokens, drop face-lock, nav to auth graph, surface
+     * the standard "Session Expired" toast.
+     *
+     * Guarded against double-fire by both a controller-level [SessionHealthController.beginTeardown]
+     * flag and a current-route check so overlapping fires (e.g. a refresh-401 arriving at
+     * the same moment expiry fires) do not toast/nav twice.
+     *
+     * NOTE: We intentionally do NOT call `settingsViewModel.onUserLoginOrLogOut()` here.
+     * Session-expiry is a subset of full logout — the user (usually the same person) is
+     * expected to re-authenticate immediately, so resetting UI settings (theme, layout)
+     * would be jarring. Full-logout path in AppNavGraph.onLogOut keeps the settings-reset
+     * call. If that assumption ever changes, add the call here too.
      */
     private fun performLogoutTeardown() {
-        preferenceHelper.clearTokens()
-        preferenceHelper.setUserLoggedIn(false)
-        sessionLockController.unlock()
-        if (::navController.isInitialized) {
-            navController.navigate(AUTH_GRAPH_ROUTE) {
-                popUpTo(0) { inclusive = true }
-            }
+        if (!sessionHealthController.beginTeardown()) return
+        if (::navController.isInitialized &&
+            navController.currentDestination?.route == AUTH_GRAPH_ROUTE
+        ) {
+            sessionHealthController.endTeardown()
+            return
         }
-        showToast(this, R.string.session_expired)
+        try {
+            preferenceHelper.clearTokens()
+            preferenceHelper.setUserLoggedIn(false)
+            sessionHealthController.markLoggedOut()
+            sessionLockController.unlock()
+            if (::navController.isInitialized) {
+                navController.navigate(AUTH_GRAPH_ROUTE) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
+            showToast(this, R.string.session_expired)
+        } finally {
+            sessionHealthController.endTeardown()
+        }
     }
 
     override fun onNewIntent(intent: Intent) {

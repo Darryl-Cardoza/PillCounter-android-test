@@ -1,6 +1,6 @@
 package com.rite.pillcounting.core.health.data.remote
 
-import com.rite.pillcounting.core.health.domain.model.HealthCheckData
+import com.rite.pillcounting.core.health.data.remote.dto.HealthCheckData
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.utils.constants.URLConstant
 import retrofit2.Response

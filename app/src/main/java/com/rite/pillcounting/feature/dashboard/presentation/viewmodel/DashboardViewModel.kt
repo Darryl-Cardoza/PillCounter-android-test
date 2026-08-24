@@ -404,14 +404,20 @@ class DashboardViewModel @Inject constructor(
             val healthy = sessionHealthController.checkHealth()
             if (!healthy) {
                 logger.w("Skipping /auth/me — backend is not healthy")
+                // The app-wide OfflineOverlay already covers the UI, but surface an error state
+                // as defence-in-depth so screens that read preflightErrorRes have a signal even
+                // if the overlay ever fails to render.
                 _uiState.update {
                     it.copy(
                         isLoadingUserDetail = false,
-                        userDetailError = null
+                        userDetailError = null,
+                        preflightErrorRes = com.rite.pillcounting.R.string.session_health_preflight_unavailable
                     )
                 }
                 return@launch
             }
+            // Clear any prior preflight error on a healthy recovery.
+            _uiState.update { it.copy(preflightErrorRes = null) }
 
             logger.i("Access token retrieved. Requesting user detail from repository.")
             _uiState.update { it.copy(isLoadingUserDetail = true, userDetailError = null) }

@@ -1,10 +1,13 @@
 package com.rite.pillcounting.core.health.logic
 
+import androidx.annotation.VisibleForTesting
 import com.rite.pillcounting.core.health.domain.data.IHealthRepository
 import com.rite.pillcounting.core.health.domain.model.HealthState
 import com.rite.pillcounting.core.utils.common.DateUtils
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
+import dagger.Lazy
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -23,6 +26,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.IOException
+import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -51,7 +55,12 @@ import javax.inject.Singleton
 @Singleton
 class SessionHealthController @Inject constructor(
     private val healthRepository: IHealthRepository,
-    private val preferenceHelper: PreferenceHelper
+    private val preferenceHelper: PreferenceHelper,
+    // Wrapped in `Lazy` to break the Hilt cycle:
+    // Hl7Repository -> DrugImageDownloader -> OkHttpClient -> HealthGateInterceptor
+    // -> SessionHealthController. The repository is only resolved the first time the
+    // OFFLINE -> HEALTHY sync trigger fires, by which point every graph node exists.
+    private val hl7Repository: Lazy<Hl7Repository>
 ) {
 
     private val logger = AppLogger.create<SessionHealthController>()
@@ -114,13 +123,41 @@ class SessionHealthController @Inject constructor(
     /** Observable offline threshold in milliseconds (mirrors settings-supplied seconds × 1000). */
     val thresholdMs: StateFlow<Long> = _thresholdMs.asStateFlow()
 
+    private val _loggedInAt = MutableStateFlow(preferenceHelper.getLoggedInAt())
+
+    /**
+     * Observable wall-clock ms of the most recent successful login. Serves as the fallback
+     * anchor for [evaluateExpiry] when [lastHealthAt] is still `0L` — a fresh install that
+     * lost network before its first `/health` response would otherwise never expire.
+     */
+    val loggedInAt: StateFlow<Long> = _loggedInAt.asStateFlow()
+
+    private val teardownInProgress = AtomicBoolean(false)
+
     private val _syncTrigger = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
 
     /**
      * Emits `Unit` every time the state transitions from `OFFLINE` to `HEALTHY`.
-     * Observed by `MainActivity` to fire `Hl7Repository.resendPendingHl7Transactions()`.
+     * Observed internally to drain the HL7 backlog; kept public so future observers can
+     * subscribe alongside without threading through `MainActivity`.
      */
     val syncTrigger: SharedFlow<Unit> = _syncTrigger.asSharedFlow()
+
+    init {
+        // Drain HL7 backlog whenever the state transitions OFFLINE -> HEALTHY. Owning this
+        // observer inside the controller keeps `MainActivity` free of the layering jump
+        // (Activity -> Repository) and centralises the recovery-time workflow next to the
+        // state machine that fires it.
+        scope.launch {
+            syncTrigger.collect {
+                runCatching {
+                    val repo = hl7Repository.get()
+                    repo.resendPendingHl7Transactions()
+                    repo.resendPendingHl7BatchTransactions()
+                }.onFailure { logger.w("HL7 drain failed", it) }
+            }
+        }
+    }
 
     /**
      * Fires one `/health` request and updates state accordingly.
@@ -240,14 +277,20 @@ class SessionHealthController @Inject constructor(
     /**
      * Called by `ExpiryWatcher` once per tick while state is `OFFLINE`.
      *
+     * Description:
+     * Anchors the elapsed-time calculation on `lastHealthAt` when a successful `/health`
+     * has ever been observed; otherwise falls back to `loggedInAt` (set at login-success)
+     * so a fresh install that lost network before the first probe still expires cleanly.
+     *
      * @return true if the threshold has been exceeded and state was flipped to `EXPIRED`.
      */
     fun evaluateExpiry(): Boolean {
         if (_state.value != HealthState.OFFLINE) return false
-        val elapsed = System.currentTimeMillis() - _lastHealthAt.value
-        if (_lastHealthAt.value <= 0L) return false
+        val anchor = if (_lastHealthAt.value > 0L) _lastHealthAt.value else _loggedInAt.value
+        if (anchor <= 0L) return false
+        val elapsed = System.currentTimeMillis() - anchor
         if (elapsed <= _thresholdMs.value) return false
-        logger.w("Offline threshold exceeded (elapsed=$elapsed ms, threshold=${_thresholdMs.value} ms) — EXPIRED")
+        logger.w("Offline threshold exceeded (elapsed=$elapsed ms, threshold=${_thresholdMs.value} ms, anchor=$anchor) — EXPIRED")
         _state.value = HealthState.EXPIRED
         return true
     }
@@ -274,9 +317,16 @@ class SessionHealthController @Inject constructor(
     /**
      * Fires a background `/health` when Android reports network connectivity restored.
      *
+     * Description:
+     * Always forces a fresh probe — a network transition is exactly when the 5-second
+     * negative-result cache in [checkHealth] is most likely stale. Without the force, a
+     * failed probe cached seconds ago would swallow the recovery attempt and leave the
+     * app stuck OFFLINE until the next trigger.
+     *
+     * @param force When true (default), bypasses the negative-result cache in [checkHealth].
      * @return the `Job` running the check.
      */
-    fun onConnectivityRestored(): Job = scope.launch { checkHealth() }
+    fun onConnectivityRestored(force: Boolean = true): Job = scope.launch { checkHealth(force = force) }
 
     /**
      * Resets `state` to `UNKNOWN` after an expired-session teardown so the next login
@@ -285,6 +335,51 @@ class SessionHealthController @Inject constructor(
     fun resetAfterExpiry() {
         _state.value = HealthState.UNKNOWN
         logger.i("State reset to UNKNOWN after expiry teardown")
+    }
+
+    /**
+     * Records the wall-clock ms at which the user just completed a successful login. Serves
+     * as the fallback anchor for [evaluateExpiry] when `/health` has not yet succeeded.
+     *
+     * @param nowMs Timestamp captured at the moment login succeeded. Defaults to `System.currentTimeMillis()`.
+     */
+    fun markLoggedIn(nowMs: Long = System.currentTimeMillis()) {
+        _loggedInAt.value = nowMs
+        preferenceHelper.setLoggedInAt(nowMs)
+        logger.i("markLoggedIn($nowMs)")
+    }
+
+    /**
+     * Clears the login-success anchor. Called on logout or expiry teardown so the next
+     * offline period only counts against the fresh anchor of the next session.
+     */
+    fun markLoggedOut() {
+        _loggedInAt.value = 0L
+        preferenceHelper.clearLoggedInAt()
+        logger.i("markLoggedOut()")
+    }
+
+    /**
+     * Attempts to enter the teardown critical section. Only the first caller in a race
+     * receives `true`; concurrent callers (e.g. `EXPIRED` observer racing an
+     * `AuthEventBus.SessionExpired` fire) get `false` and must skip their own work.
+     *
+     * @return true if this caller acquired teardown; false if a teardown is already running.
+     */
+    fun beginTeardown(): Boolean = teardownInProgress.compareAndSet(false, true)
+
+    /** Releases the teardown flag so a future expiry event can trigger teardown again. */
+    fun endTeardown() {
+        teardownInProgress.set(false)
+    }
+
+    /**
+     * Test-only helper to force the internal state to a given value so callers can drive
+     * `evaluateExpiry` without spinning up the full network path.
+     */
+    @VisibleForTesting
+    internal fun forceStateForTest(newState: HealthState) {
+        _state.value = newState
     }
 
 }

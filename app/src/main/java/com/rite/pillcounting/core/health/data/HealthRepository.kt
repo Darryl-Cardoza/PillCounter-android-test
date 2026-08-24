@@ -2,7 +2,7 @@ package com.rite.pillcounting.core.health.data
 
 import com.rite.pillcounting.core.health.data.remote.IHealthApi
 import com.rite.pillcounting.core.health.domain.data.IHealthRepository
-import com.rite.pillcounting.core.health.domain.model.HealthCheckData
+import com.rite.pillcounting.core.health.data.remote.dto.HealthCheckData
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
