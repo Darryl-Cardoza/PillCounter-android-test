@@ -67,6 +67,32 @@ interface BottleInfoDao {
     @Query("UPDATE bottle_info SET looseQty = IFNULL(looseQty, 0) + :qty, updatedAt = :now WHERE bottleId = :bottleId")
     suspend fun incrementLooseQty(bottleId: Long, qty: Int, now: Long = System.currentTimeMillis())
 
+    /**
+     * Overwrites the controlled-image path list on a bottle line and bumps `updatedAt`.
+     *
+     * Description:
+     * Persists the absolute file paths of pill-count images captured during a Scan Pills
+     * session onto an existing `bottle_info` row. Intended for controlled-substance rows
+     * only; callers must gate on `isControlledDrugType(drugType)` before invoking.
+     *
+     * What it does:
+     * - Replaces (not appends) `controlledImagePaths` with [paths].
+     * - Serializes the list via `StringListConverter` (registered on the DB).
+     *
+     * @param bottleId Target bottle_info primary key.
+     * @param paths List of absolute image file paths, or null to clear.
+     * @param now Epoch-millis timestamp for `updatedAt`.
+     *
+     * Example Usage:
+     * bottleInfoDao.updateControlledImagePaths(42L, listOf("/data/.../a.jpg"))
+     */
+    @Query("UPDATE bottle_info SET controlledImagePaths = :paths, updatedAt = :now WHERE bottleId = :bottleId")
+    suspend fun updateControlledImagePaths(
+        bottleId: Long,
+        paths: List<String>?,
+        now: Long = System.currentTimeMillis(),
+    )
+
     @Query("DELETE FROM bottle_info WHERE bottleId = :bottleId")
     suspend fun delete(bottleId: Long)
 

@@ -33,6 +33,7 @@ import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.models.ScheduleCode
+import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.security.ImageCrypto
 import com.rite.pillcounting.core.utils.common.HelperFunctions.saveBitmapToFile
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
@@ -172,6 +173,11 @@ class PillScanningViewModel @Inject constructor(
     // Lot/expiry decoded on the compulsory NDC scan, remembered so Done can stamp the new line.
     private var stockLotNo: String? = null
     private var stockExpNo: String? = null
+    // True when the current stock-count session is for a controlled substance (DEA schedule
+    // CII–CVI). Cached at session entry from DrugMasterEntity.drugType so [flushStagedDetails]
+    // can decide whether to persist the captured pill-image paths onto BottleInfo. Non-controlled
+    // sessions leave BottleInfo.controlledImagePaths null to avoid DB bloat.
+    private var isControlledSession = false
 
     // --- Dispense-flow bottle tracking (rescan-same-NDC during counting) ---
     // No in-memory cache of the bottle list: every scan re-reads
@@ -248,6 +254,7 @@ class PillScanningViewModel @Inject constructor(
         isPaused = false
         viewModelScope.launch {
             val drug = drugMasterDao.getDrugById(drugId) ?: return@launch
+            isControlledSession = isControlledDrugType(drug.drugType)
             startStockCounting(drug, stockTxnId)
         }
     }
@@ -488,13 +495,22 @@ class PillScanningViewModel @Inject constructor(
         val stagedSum = stagedDetails.sumOf { it.pillCount ?: 0 }
         if (isStockCountSession) {
             // Stock loose counting: the per-count detail rows/images are session-only —
-            // only the aggregate loose total is persisted onto a BottleInfo line.
+            // only the aggregate loose total is persisted onto a BottleInfo line. For
+            // controlled substances (DEA CII–CVI) the captured pill-image paths from
+            // this session are also persisted; non-controlled sessions leave them null
+            // so the DB is not bloated with paths we never need.
             if (stagedSum > 0) {
+                val controlledPaths: List<String>? = if (isControlledSession) {
+                    stagedDetails.mapNotNull { it.imagePath }.takeIf { it.isNotEmpty() }
+                } else null
                 if (stockBottleId != 0L) {
                     // DispenseFlow hand-off ([enterStockCountSession]): the line was created by
                     // DispenseFlow, so accumulate this session's loose total onto it.
                     bottleInfoDao.incrementLooseQty(stockBottleId, stagedSum)
-                    logger.i("Flushed stock loose count onto existing line. stagedSum=$stagedSum bottleId=$stockBottleId")
+                    if (controlledPaths != null) {
+                        bottleInfoDao.updateControlledImagePaths(stockBottleId, controlledPaths)
+                    }
+                    logger.i("Flushed stock loose count onto existing line. stagedSum=$stagedSum bottleId=$stockBottleId controlledPaths=${controlledPaths?.size ?: 0}")
                 } else if (stockTxnId != 0L) {
                     // "Scan Pills" loose flow: every counting session is its own line so the same
                     // NDC keeps separate loose entries rather than merging onto one line. This line
@@ -508,9 +524,10 @@ class PillScanningViewModel @Inject constructor(
                             expNo = stockExpNo,
                             bottleQty = 0,
                             looseQty = stagedSum,
+                            controlledImagePaths = controlledPaths,
                         )
                     )
-                    logger.i("Flushed stock loose count as new line. stagedSum=$stagedSum stockTxnId=$stockTxnId bottleId=$newBottleId")
+                    logger.i("Flushed stock loose count as new line. stagedSum=$stagedSum stockTxnId=$stockTxnId bottleId=$newBottleId controlledPaths=${controlledPaths?.size ?: 0}")
                 }
             }
         } else {
@@ -1782,6 +1799,7 @@ class PillScanningViewModel @Inject constructor(
                 stockLotNo = lotNo
                 stockExpNo = expiry
                 stockBottleId = 0L
+                isControlledSession = isControlledDrugType(drug.drugType)
                 val stockTxn = stockTxnDao.findByDrugInBatch(stockCountBatchId, drugId)
                 stockTxnId = stockTxn?.txnId ?: stockTxnDao.upsertPreservingId(
                     StockTxnEntity(

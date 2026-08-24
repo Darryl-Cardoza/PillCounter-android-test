@@ -11,8 +11,3 @@ data class DialogField(
     val value: String,
     val fullWidth: Boolean = false,
 )
-
-enum class ContainerStatus {
-    SEALED,
-    OPENED
-}

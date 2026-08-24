@@ -265,6 +265,38 @@ class InventoryScanViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Adopts a batchId created lazily by the SCAN PILLS → DispenseFlow entry
+     * point. Called by [com.rite.pillcounting.feature.inventoryFlow.presentation.shell.InventoryScanHost]
+     * after DispenseFlow publishes the id via NavController's SavedStateHandle.
+     *
+     * Only takes effect when this VM has no batch bound yet
+     * ([_resolvedBatchId] == 0L). Setting [_resolvedBatchId] re-triggers the
+     * `flatMapLatest` in [recentRows], which subscribes to
+     * [bottleInfoDao.observeByBatchId] + [stockTxnDao.observeRequestedDrugs]
+     * against the real batch so the just-counted bottle appears in the list.
+     * Also hydrates [_bucketId] and (for PMS batches) [expectedNdcs] the same
+     * way the `init` block does.
+     *
+     * @param batchId The batchId minted by
+     *   `DispenseFlowViewModel.advanceToCountingStage`. Ignored when 0.
+     */
+    fun adoptStockCountBatchId(batchId: Long) {
+        if (batchId == 0L) return
+        if (_resolvedBatchId.value != 0L) return
+        viewModelScope.launch {
+            _resolvedBatchId.value = batchId
+            val batch = batchDao.getById(batchId)
+            _bucketId.value = batch?.bucketId
+            if (!batch?.requestIdFromPMS.isNullOrBlank()) {
+                expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }
+            logger.i("INV_SCAN adopted lazily-created batchId=$batchId bucketId=${batch?.bucketId}")
+        }
+    }
+
     /* ─────────────────────────  Scanner  ───────────────────────── */
 
     /**

@@ -161,6 +161,22 @@ fun InventoryScanHost(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    // When the user tapped SCAN PILLS before any drug scan, the batch is created
+    // lazily inside DispenseFlowViewModel. DispenseFlowScreen publishes the new
+    // batchId here via SavedStateHandle so the inventory VM can adopt it and the
+    // Recent Counts list re-binds to the real batch instead of the initial 0L.
+    val currentBackStackEntry = navController.currentBackStackEntry
+    LaunchedEffect(currentBackStackEntry) {
+        val handle = currentBackStackEntry?.savedStateHandle ?: return@LaunchedEffect
+        handle.getStateFlow<Long?>(Screen.DispenseFlow.NAV_KEY_STOCK_COUNT_BATCH_ID, null)
+            .collect { adoptedBatchId ->
+                if (adoptedBatchId != null && adoptedBatchId != 0L) {
+                    inventoryVm.adoptStockCountBatchId(adoptedBatchId)
+                    handle[Screen.DispenseFlow.NAV_KEY_STOCK_COUNT_BATCH_ID] = null
+                }
+            }
+    }
+
     // System back gesture: same safe behavior as the on-screen back arrow.
     BackHandler { inventoryBack(navController) }
 

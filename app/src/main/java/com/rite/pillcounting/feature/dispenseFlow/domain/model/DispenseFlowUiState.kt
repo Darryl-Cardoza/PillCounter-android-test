@@ -2,7 +2,6 @@
 
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
-import com.rite.pillcounting.core.utils.compose.ContainerStatus
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 
@@ -41,8 +40,6 @@ data class DispenseFlowUiState(
     // and dosage_form[0]). Surfaced on the NDC verification sheet.
     val ndcStrength: String? = null,
     val ndcDosageForm: String? = null,
-
-    val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
 
     val showRxDetails: Boolean = false,
     // Set when a scanned RX resolves to an existing PARTIAL transaction and the
