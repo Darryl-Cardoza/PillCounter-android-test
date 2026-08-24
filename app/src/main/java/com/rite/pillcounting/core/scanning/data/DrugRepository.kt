@@ -86,7 +86,7 @@ class DrugRepository @Inject constructor(
                     genericName = result.scanned_ndc?.lookup_name ?: "N/A",
                     ndc = result.scanned_ndc?.drug_code ?: "N/A",
                     is_ndc_equivalent = result.is_ndc_equivalent,
-                    drugType = result.scanned_ndc?.regulatory?.schedule.toString(),
+                    drugType = result.scanned_ndc?.regulatory?.schedule.orEmpty(),
                     qty = result.scanned_ndc?.`package`?.stock_qty
                         ?: result.scanned_ndc?.`package`?.levels?.firstOrNull()?.contains?.quantity,
                     isHazardous = result.scanned_ndc?.is_hazardous,

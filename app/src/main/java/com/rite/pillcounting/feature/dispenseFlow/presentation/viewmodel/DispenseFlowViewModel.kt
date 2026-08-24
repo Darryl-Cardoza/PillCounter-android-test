@@ -150,7 +150,7 @@ class DispenseFlowViewModel @Inject constructor(
             stockTxnDao.refreshBatchTotalNdcs(batch)
             stockTxnDao.updateBatchUserName(
                 batch,
-                preferenceHelper.getRecentLogins().firstOrNull() ?: preferenceHelper.getUserId()
+                preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
             )
         }
         return stockTxnId to bottleId

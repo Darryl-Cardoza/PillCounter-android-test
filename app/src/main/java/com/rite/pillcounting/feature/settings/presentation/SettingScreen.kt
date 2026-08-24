@@ -15,11 +15,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -32,6 +34,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -69,6 +72,10 @@ fun SettingsScreen(
     val isSoundOverrideEnable by viewModel.isSoundOverride.collectAsState()
     val isHazardousDrug by viewModel.isHazardousDrug.collectAsState()
     val isUseStaticPmsConnection = viewModel.isUseStaticPmsConnection()
+    val faceLockTimeoutMinutes by viewModel.faceLockTimeoutMinutes.collectAsState()
+    val hasEnabledFaceProfile by viewModel.hasEnabledFaceProfile.collectAsState()
+    var showAutoLockDialog by remember { mutableStateOf(false) }
+    val autoLockMinuteOptions = listOf(1, 2, 5, 10)
     val dimens = LocalDimens.current
     val context = LocalContext.current
     var showConnectionInfo by remember { mutableStateOf(false) }
@@ -113,6 +120,55 @@ fun SettingsScreen(
                     viewModel.toggleAskToAddNotes(newValue)
                 },
                 checkedTrackColor = MaterialTheme.colorScheme.primary
+            )
+
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+            Text(
+                text = stringResource(R.string.setting_face_recognition_users),
+                fontSize = 16.sp,
+                color = extendedColors.textColor,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { navController.navigate(Screen.FaceRecognitionUsers.route) }
+                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+            )
+
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { showAutoLockDialog = true }
+                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.setting_face_auto_lock_after),
+                    fontSize = 16.sp,
+                    color = extendedColors.textColor
+                )
+                Text(
+                    text = stringResource(R.string.setting_face_auto_lock_minutes, faceLockTimeoutMinutes),
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.secondary,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+
+            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+            Text(
+                text = stringResource(R.string.setting_face_lock_now),
+                fontSize = 16.sp,
+                color = if (hasEnabledFaceProfile) extendedColors.textColor
+                else extendedColors.textColor.copy(alpha = disabledAlpha),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        if (hasEnabledFaceProfile) viewModel.lockSessionNow()
+                        else showToast(context, R.string.setting_face_lock_now_disabled_toast)
+                    }
+                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
             )
 
             HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
@@ -309,6 +365,33 @@ fun SettingsScreen(
 
     if (showConnectionInfo) {
         ConnectionInfoScreen(onBackClick = { showConnectionInfo = false })
+    }
+
+    if (showAutoLockDialog) {
+        AlertDialog(
+            onDismissRequest = { showAutoLockDialog = false },
+            title = { Text(stringResource(R.string.setting_face_auto_lock_after)) },
+            text = {
+                Column {
+                    autoLockMinuteOptions.forEach { minutes ->
+                        Text(
+                            text = stringResource(R.string.setting_face_auto_lock_minutes, minutes),
+                            fontWeight = if (minutes == faceLockTimeoutMinutes) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    viewModel.updateFaceLockTimeoutMinutes(minutes)
+                                    showAutoLockDialog = false
+                                }
+                                .padding(vertical = 12.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showAutoLockDialog = false }) { Text(stringResource(R.string.cancel)) }
+            }
+        )
     }
     }
 }

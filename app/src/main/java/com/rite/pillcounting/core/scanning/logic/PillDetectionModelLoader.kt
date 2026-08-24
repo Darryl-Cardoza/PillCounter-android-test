@@ -79,7 +79,7 @@ class PillDetectionModelLoader @Inject constructor(
         // validate_gpu_delegate.py). Inference is decoded in GloveDetector —
         // sigmoid + box decode + per-class NMS on CPU.
         // AES-GCM RITE encryption, same scheme as pill + tray.
-        private const val GLOVE_MODEL_FILENAME = "gloves_detector_fp16.tflite"
+        private const val GLOVE_MODEL_FILENAME = "gloves_fp16.tflite"
         private const val TAG = "LoadModel"
 
         private const val TRAY_MODEL_ENABLED = true
@@ -129,6 +129,7 @@ class PillDetectionModelLoader @Inject constructor(
 
                     val gloveBytesDeferred = if (includeGlove) {
                         // YOLOX-Nano gloves detector — AES-GCM RITE encrypted, same as pill + tray.
+                        logger.i("GLOVE_MODEL — loading asset '$GLOVE_MODEL_FILENAME.enc'")
                         async { loadModelBytes(GLOVE_MODEL_FILENAME) }
                     } else null
 
@@ -142,6 +143,9 @@ class PillDetectionModelLoader @Inject constructor(
                     val gloveBufferTime = System.currentTimeMillis() - pillLoadStart
 
                     Log.i(TAG, "Model bytes decrypted (tray=${trayBytes != null} glove=${gloveBytes != null})")
+                    if (includeGlove) {
+                        logger.i("GLOVE_MODEL — decrypt ${if (gloveBytes != null) "OK" else "FAILED"} size=${gloveBytes?.size ?: 0} bytes")
+                    }
 
                     val pillBuffer = bytesToDirectBuffer(pillBytes)
                     val trayBuffer = trayBytes?.let { bytesToDirectBuffer(it) }
@@ -210,7 +214,7 @@ class PillDetectionModelLoader @Inject constructor(
                             loadTimeMs = gloveBufferTime + gloveInterpreterTime,
                             gpuDelegateEnabled = holder.usesGpu
                         )
-                        logTensorInfo(holder.interpreter, "Glove model")
+                        logTensorInfo(holder.interpreter, "GLOVE_MODEL")
                         gloveInterpreter = holder.interpreter
                         holder
                     } else null

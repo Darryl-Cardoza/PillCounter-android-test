@@ -131,8 +131,8 @@ class HistoryDetailsViewModelTest {
 
     // HIST_DET_VM_006
     @Test
-    fun `getCurrentUser returns first entry from getRecentLogins`() = runTest {
-        every { preferenceHelper.getRecentLogins() } returns listOf("alice@pharmacy.com", "bob@pharmacy.com")
+    fun `getCurrentUser returns the logged-in email`() = runTest {
+        every { preferenceHelper.getLoggedInEmail() } returns "alice@pharmacy.com"
         coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns null
         val viewModel = createViewModel()
         advanceUntilIdle()
@@ -142,8 +142,8 @@ class HistoryDetailsViewModelTest {
 
     // HIST_DET_VM_007
     @Test
-    fun `getCurrentUser falls back to getUserId when recentLogins is empty`() = runTest {
-        every { preferenceHelper.getRecentLogins() } returns emptyList()
+    fun `getCurrentUser falls back to getUserId when no logged-in email`() = runTest {
+        every { preferenceHelper.getLoggedInEmail() } returns null
         every { preferenceHelper.getUserId() } returns "user-99"
         coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns null
         val viewModel = createViewModel()
@@ -154,8 +154,8 @@ class HistoryDetailsViewModelTest {
 
     // HIST_DET_VM_008
     @Test
-    fun `getCurrentUser returns em-dash when both recentLogins and userId are absent`() = runTest {
-        every { preferenceHelper.getRecentLogins() } returns emptyList()
+    fun `getCurrentUser returns em-dash when both logged-in email and userId are absent`() = runTest {
+        every { preferenceHelper.getLoggedInEmail() } returns null
         every { preferenceHelper.getUserId() } returns null
         coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns null
         val viewModel = createViewModel()

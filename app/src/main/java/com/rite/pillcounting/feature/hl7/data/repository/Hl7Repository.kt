@@ -917,7 +917,7 @@ class Hl7Repository @Inject constructor(
         stockTxnDao.refreshBatchTotalNdcs(batchId)
         stockTxnDao.updateBatchUserName(
             batchId,
-            preferenceHelper.getRecentLogins().firstOrNull() ?: preferenceHelper.getUserId()
+            preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
         )
 
         logger.i("Processed ${resolvedItems.size} inventory items for batchId: $batchId")

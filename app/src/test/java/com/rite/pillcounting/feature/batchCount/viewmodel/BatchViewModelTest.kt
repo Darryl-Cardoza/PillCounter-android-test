@@ -144,8 +144,8 @@ class BatchViewModelTest {
 
     // BATCH_VM_005
     @Test
-    fun `getCurrentUser returns the first entry of recentLogins when it is non-empty`() {
-        every { preferenceHelper.getRecentLogins() } returns listOf("alice@rx.com", "bob@rx.com")
+    fun `getCurrentUser returns the logged-in email when it is set`() {
+        every { preferenceHelper.getLoggedInEmail() } returns "alice@rx.com"
 
         val result = viewModel.getCurrentUser()
 
@@ -154,8 +154,8 @@ class BatchViewModelTest {
 
     // BATCH_VM_006
     @Test
-    fun `getCurrentUser falls back to getUserId when recentLogins is empty`() {
-        every { preferenceHelper.getRecentLogins() } returns emptyList()
+    fun `getCurrentUser falls back to getUserId when no logged-in email`() {
+        every { preferenceHelper.getLoggedInEmail() } returns null
         every { preferenceHelper.getUserId() } returns "fallback_user"
 
         val result = viewModel.getCurrentUser()

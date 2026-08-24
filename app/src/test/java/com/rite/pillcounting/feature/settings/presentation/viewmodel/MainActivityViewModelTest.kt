@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.settings.presentation.viewmodel
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
+import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.room.dao.BatchDao
@@ -59,6 +60,7 @@ class MainActivityViewModelTest {
     private lateinit var bottleInfoDao: BottleInfoDao
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
+    private lateinit var sessionLockController: SessionLockController
 
     private fun themeColors(primary: String = "#000000") = ThemeColors(
         primary = primary,
@@ -129,6 +131,7 @@ class MainActivityViewModelTest {
         bottleInfoDao = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
+        sessionLockController = mockk(relaxed = true)
 
         // Defaults so init doesn't crash.
         every { preferenceHelper.getShowNotesDialogSetting() } returns false
@@ -159,7 +162,7 @@ class MainActivityViewModelTest {
     }
 
     private fun createViewModel() =
-        MainActivityViewModel(repository, preferenceHelper, txnDao, batchDao, stockTxnDao, bottleInfoDao, hl7ServiceManager, hl7EventHandler)
+        MainActivityViewModel(repository, preferenceHelper, txnDao, batchDao, stockTxnDao, bottleInfoDao, hl7ServiceManager, hl7EventHandler, sessionLockController)
 
     // ─────────────────────────── init / theme loading ───────────────────────────
 

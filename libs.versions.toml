@@ -47,6 +47,7 @@ camerax = "1.6.1"
 
 # --- ML Kit ---
 mlkit-barcode = "17.3.0"
+mlkit-text = "16.0.1"
 
 # --- TensorFlow Lite ---
 tensorflow-lite = "2.17.0"
@@ -60,7 +61,6 @@ gson = "2.14.0"
 coil = "2.7.0"
 kotlinx-serialization = "1.11.0"
 retrofit-serialization-converter = "1.0.0"
-okhttp-profiler = "1.1.1"
 security-crypto = "1.1.0"
 calendar = "2.10.1"
 accompanist-permissions = "0.37.3"
@@ -158,6 +158,7 @@ camera-view = { group = "androidx.camera", name = "camera-view", version.ref = "
 
 # --- ML Kit ---
 mlkit-barcode-scanning = { group = "com.google.mlkit", name = "barcode-scanning", version.ref = "mlkit-barcode" }
+mlkit-text-recognition = { group = "com.google.mlkit", name = "text-recognition", version.ref = "mlkit-text" }
 
 # --- TensorFlow Lite ---
 tensorflow-lite = { group = "org.tensorflow", name = "tensorflow-lite", version.ref = "tensorflow-lite" }
@@ -173,7 +174,6 @@ gson = { group = "com.google.code.gson", name = "gson", version.ref = "gson" }
 coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coil" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 retrofit-serialization-converter = { group = "com.jakewharton.retrofit", name = "retrofit2-kotlinx-serialization-converter", version.ref = "retrofit-serialization-converter" }
-okhttp-profiler = { group = "io.nerdythings", name = "okhttp-profiler", version.ref = "okhttp-profiler" }
 security-crypto = { group = "androidx.security", name = "security-crypto", version.ref = "security-crypto" }
 calendar-compose = { group = "com.kizitonwose.calendar", name = "compose", version.ref = "calendar" }
 accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanist-permissions" }

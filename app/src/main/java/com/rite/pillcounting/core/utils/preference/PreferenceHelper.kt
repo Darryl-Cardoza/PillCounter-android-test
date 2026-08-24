@@ -22,6 +22,7 @@ private const val KEY_REFRESH_TOKEN = "refresh_token"
 // Session
 private const val KEY_USER_LOGGED_IN = "user_logged_in"
 private const val KEY_USER_ID = "user_id"
+private const val KEY_LOGGED_IN_EMAIL = "logged_in_email"
 private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 
@@ -52,6 +53,8 @@ private const val KEY_REQUIRE_DOUBLE_COUNT = "key_require_double_count"
 private const val KEY_CONTROL_DRUG_TYPES="key_control_drug_types"
 private const val KEY_CONTROL_DRUG_TYPES_INITIALIZED = "key_control_drug_types_initialized"
 private const val KEY_SOUND_OVERRIDE="key_sound_override"
+private const val KEY_FACE_LOCK_TIMEOUT_MINUTES = "key_face_lock_timeout_minutes"
+private const val KEY_HAS_ENABLED_FACE_PROFILE = "key_has_enabled_face_profile"
 private const val KEY_BARCODE_REGEX="key_barcode_regex"
 private const val KEY_BUCKET_LIST="key_bucket_list"
 private const val KEY_TERMINALS="key_terminals"
@@ -143,6 +146,17 @@ class PreferenceHelper @Inject constructor(
         val id = prefs.getString(KEY_USER_ID)
         logger.d("UserId retrieved (exists=${id != null}, length=${id?.length ?: 0})")
         return id
+    }
+
+    fun setLoggedInEmail(email: String) {
+        prefs.putString(KEY_LOGGED_IN_EMAIL, email)
+        logger.i("Saved logged-in email (length=${email.length})")
+    }
+
+    fun getLoggedInEmail(): String? {
+        val email = prefs.getString(KEY_LOGGED_IN_EMAIL)
+        logger.d("Logged-in email retrieved (exists=${email != null})")
+        return email
     }
 
     fun saveLocalId(localId: Long) {
@@ -290,6 +304,26 @@ class PreferenceHelper @Inject constructor(
         logger.d("Retrieved history retention: $days days")
         return days
     }
+
+    // ─────────────────────────── FACE LOCK TIMEOUT ───────────────────────────
+
+    fun saveFaceLockTimeoutMinutes(minutes: Int) {
+        prefs.putInt(KEY_FACE_LOCK_TIMEOUT_MINUTES, minutes)
+        logger.i("Saved face lock timeout: $minutes minutes")
+    }
+
+    fun getFaceLockTimeoutMinutes(): Int {
+        val minutes = prefs.getInt(KEY_FACE_LOCK_TIMEOUT_MINUTES, 2)
+        logger.d("Retrieved face lock timeout: $minutes minutes")
+        return minutes
+    }
+
+    /** Cached copy of "any enabled face profile exists", so the cold-start lock decision doesn't wait on the DB. */
+    fun saveHasEnabledFaceProfile(hasEnabled: Boolean) {
+        prefs.putBoolean(KEY_HAS_ENABLED_FACE_PROFILE, hasEnabled)
+    }
+
+    fun hasEnabledFaceProfile(): Boolean = prefs.getBoolean(KEY_HAS_ENABLED_FACE_PROFILE, false)
 
     // ─────────────────────────── NSD / HL7 SETTINGS ───────────────────────────
 

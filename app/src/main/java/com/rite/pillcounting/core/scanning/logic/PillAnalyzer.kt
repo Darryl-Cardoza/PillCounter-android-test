@@ -306,10 +306,12 @@ class PillAnalyzer(
                     postprocessTimeMs = 0,
                     detectionCount = gloveDetections.size
                 )
-                if (gloveDetections.isNotEmpty()) {
-                    val summary = gloveDetections.joinToString { "${it.className}(${(it.confidence * 100).toInt()}%)" }
-                    logger.i("FOUND: $summary")
+                val summary = if (gloveDetections.isNotEmpty()) {
+                    gloveDetections.joinToString { "${it.className}(${(it.confidence * 100).toInt()}%)" }
+                } else {
+                    "none"
                 }
+                logger.i("GLOVE_FRAME — $summary")
             }
 
             // ── STEP 4: Callback ──────────────────────────────────────────────

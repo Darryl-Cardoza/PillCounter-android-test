@@ -196,6 +196,7 @@ dependencies {
 
     // --- ML Kit ---
     implementation(libs.mlkit.barcode.scanning)
+    implementation(libs.mlkit.text.recognition)
 
     // --- TensorFlow Lite ---
     // org.tensorflow:tensorflow-lite-* maxes out at 2.17.0 — after that, Google
@@ -211,7 +212,6 @@ dependencies {
     implementation(libs.coil.compose)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.retrofit.serialization.converter)
-    implementation(libs.okhttp.profiler)
     implementation(libs.security.crypto)
     implementation(libs.calendar.compose)
     implementation(libs.accompanist.permissions)

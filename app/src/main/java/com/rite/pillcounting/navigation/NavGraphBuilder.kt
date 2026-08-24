@@ -36,13 +36,10 @@ fun NavGraphBuilder.authGraph(
             arguments = Screen.OtpVerify.navArguments
         ) { backStackEntry ->
             val email = backStackEntry.arguments?.getString(Screen.OtpVerify.ARG_EMAIL) ?: ""
-            val rememberMe =
-                backStackEntry.arguments?.getBoolean(Screen.OtpVerify.ARG_REMEMBER_ME) ?: false
 
             OTPScreen(
                 navController = navController,
                 userEmail = email,
-                rememberMe = rememberMe,
                 onLogin = { onLogin() }
             )
         }

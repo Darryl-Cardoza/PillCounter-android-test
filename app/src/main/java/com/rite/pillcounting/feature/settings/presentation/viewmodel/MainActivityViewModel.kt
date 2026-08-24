@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.room.dao.BatchDao
@@ -62,6 +63,7 @@ class MainActivityViewModel @Inject constructor(
     private val bottleInfoDao: BottleInfoDao,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val hl7EventHandler: Hl7EventHandler,
+    private val sessionLockController: SessionLockController,
 ) : ViewModel(), IApplicationSettingsViewModel {
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
@@ -200,6 +202,12 @@ class MainActivityViewModel @Inject constructor(
 
     private val _isHazardousDrug = MutableStateFlow(preferenceHelper.isHazardousDrugEnabled())
     val isHazardousDrug: StateFlow<Boolean> = _isHazardousDrug
+
+    private val _faceLockTimeoutMinutes = MutableStateFlow(preferenceHelper.getFaceLockTimeoutMinutes())
+    val faceLockTimeoutMinutes: StateFlow<Int> = _faceLockTimeoutMinutes
+
+    /** Whether the Settings "Lock Now" row should be enabled — mirrors [SessionLockController.hasEnabledProfile]. */
+    val hasEnabledFaceProfile: StateFlow<Boolean> = sessionLockController.hasEnabledProfile
 
     init {
         // Load cached/fallback theme instantly
@@ -676,6 +684,19 @@ class MainActivityViewModel @Inject constructor(
         preferenceHelper.clearAllTrayColorLists()
         logger.i("Tray color classification lists cleared from Settings")
     }
+
+    /** Updates the idle-lock timeout shown/used everywhere ([faceLockTimeoutMinutes]). */
+    fun updateFaceLockTimeoutMinutes(minutes: Int) {
+        preferenceHelper.saveFaceLockTimeoutMinutes(minutes)
+        _faceLockTimeoutMinutes.value = minutes
+    }
+
+    /**
+     * Manually triggers the session-lock overlay.
+     *
+     * @return true if the lock engaged, false if there's no enabled face profile to verify against.
+     */
+    fun lockSessionNow(): Boolean = sessionLockController.lockNow()
 
 }
 

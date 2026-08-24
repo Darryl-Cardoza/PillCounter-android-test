@@ -274,6 +274,12 @@ class PillScanningViewModel @Inject constructor(
 
     var shouldRunGloveDetection = true
 
+    // Consecutive-frame counter guarding against single-frame flicker between
+    // "gloves" and "no_gloves" classes — require several consecutive strong
+    // detections before locking the session state, so one flickery frame
+    // doesn't permanently commit "gloves detected".
+    private var consecutiveGloveFrames = 0
+
     // Tray color detection: always enabled during COUNTING stage.
     // @Volatile ensures main-thread write is visible to Dispatchers.Default immediately.
     @Volatile var isTrayColorDetectionEnabled = false
@@ -340,6 +346,14 @@ class PillScanningViewModel @Inject constructor(
          * transaction detail. Kept short so the UI stays responsive.
          */
         private const val ADD_COOLDOWN_MS = 1000L
+
+        /**
+         * Consecutive frames of a strong "gloves" detection required before the
+         * gate locks in. At ~4 fps glove inference, 3 frames is a brief ~750ms
+         * hold — enough to reject a single flickery misclassification without
+         * feeling slow to the user.
+         */
+        private const val GLOVE_CONFIRM_FRAMES = 3
     }
 
     /** Model initialization states */
@@ -800,18 +814,25 @@ class PillScanningViewModel @Inject constructor(
         }
 
         // ── Check if gloves detected - if yes, stop running glove detection ──
-        // Require a strong detection before locking the session state, otherwise a single
-        // weak false positive on the warm-up frame disables glove detection permanently.
-        if (!_glovesDetected.value && gloveDets.any { it.classId == 0 && it.confidence >= 0.40f }) {
-            _glovesDetected.value = true
-            shouldRunGloveDetection = false
-            logger.i("GLOVES DETECTED - Unloading glove model and saving DB flag")
-            viewModelScope.launch {
-                unloadGloveAndRebuildAnalyzer()
-                val txnId = preferenceHelper.getTxnId()
-                if (txnId != 0L) {
-                    pillCountTxnDao.updateGlovesPresent(txnId, true)
-                    logger.i("isGlovesPresent saved for txn=$txnId")
+        // Require several CONSECUTIVE strong detections before locking the session
+        // state — a single flickery frame (e.g. a bare hand momentarily misclassified
+        // as "gloves") must not permanently commit "gloves detected".
+        if (!_glovesDetected.value) {
+            val strongGloveThisFrame = gloveDets.any { it.classId == 0 && it.confidence >= 0.75f }
+            consecutiveGloveFrames = if (strongGloveThisFrame) consecutiveGloveFrames + 1 else 0
+
+            if (consecutiveGloveFrames >= GLOVE_CONFIRM_FRAMES) {
+                _glovesDetected.value = true
+                shouldRunGloveDetection = false
+                val best = gloveDets.filter { it.classId == 0 }.maxByOrNull { it.confidence }
+                logger.i("GLOVE_ICON — turning GREEN (bestConfidence=${best?.confidence}, consecutiveFrames=$consecutiveGloveFrames) - unloading glove model and saving DB flag")
+                viewModelScope.launch {
+                    unloadGloveAndRebuildAnalyzer()
+                    val txnId = preferenceHelper.getTxnId()
+                    if (txnId != 0L) {
+                        pillCountTxnDao.updateGlovesPresent(txnId, true)
+                        logger.i("isGlovesPresent saved for txn=$txnId")
+                    }
                 }
             }
         }
@@ -1028,6 +1049,7 @@ class PillScanningViewModel @Inject constructor(
     fun resetGloveDetection() {
         _glovesDetected.value = false
         shouldRunGloveDetection = true
+        consecutiveGloveFrames = 0
         // Also re-enable the analyzer's fast initial cadence so the first detection
         // after a reset arrives in one frame, not after the rate-limit window.
         (_modelState.value as? ModelState.Ready)?.analyzer?.resetGloveCadence()
@@ -1775,7 +1797,7 @@ class PillScanningViewModel @Inject constructor(
                     stockTxnDao.refreshBatchTotalNdcs(stockCountBatchId)
                     stockTxnDao.updateBatchUserName(
                         stockCountBatchId,
-                        preferenceHelper.getRecentLogins().firstOrNull() ?: preferenceHelper.getUserId()
+                        preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
                     )
                 }
 

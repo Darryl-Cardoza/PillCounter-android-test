@@ -58,7 +58,7 @@ class HistoryDetailsViewModel @Inject constructor(
     }
 
     fun getCurrentUser(): String =
-        preferenceHelper.getRecentLogins().firstOrNull()
+        preferenceHelper.getLoggedInEmail()
             ?: preferenceHelper.getUserId()
             ?: "—"
 }

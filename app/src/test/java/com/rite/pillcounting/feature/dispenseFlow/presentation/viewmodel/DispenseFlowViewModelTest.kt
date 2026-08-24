@@ -1447,7 +1447,7 @@ class DispenseFlowViewModelTest {
                 com.rite.pillcounting.core.room.models.BottleInfoEntity(
                     bottleId = 15L, stockTxnId = 60L, batchId = 9L, bottleQty = 2,
                 )
-            every { preferenceHelper.getRecentLogins() } returns listOf("user@rite.com")
+            every { preferenceHelper.getLoggedInEmail() } returns "user@rite.com"
 
             vm.onNdcConfirmed()
             advanceUntilIdle()
@@ -1460,7 +1460,7 @@ class DispenseFlowViewModelTest {
         }
 
     @Test
-    fun `onNdcConfirmed sealed batch user name falls back to getUserId when no recent logins`() =
+    fun `onNdcConfirmed sealed batch user name falls back to getUserId when no logged-in email`() =
         runTest(testDispatcher) {
             val vm = ndcVm()
             vm.setBatchId(9L)
@@ -1471,7 +1471,7 @@ class DispenseFlowViewModelTest {
             coEvery { stockTxnDao.upsertPreservingId(any()) } returns 61L
             coEvery { bottleInfoDao.findSealedLine(61L, null, null) } returns null
             coEvery { bottleInfoDao.insert(any()) } returns 16L
-            every { preferenceHelper.getRecentLogins() } returns emptyList()
+            every { preferenceHelper.getLoggedInEmail() } returns null
             every { preferenceHelper.getUserId() } returns "fallback@rite.com"
 
             vm.onNdcConfirmed()
