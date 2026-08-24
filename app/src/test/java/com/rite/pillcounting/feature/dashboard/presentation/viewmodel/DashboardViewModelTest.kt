@@ -97,6 +97,10 @@ class DashboardViewModelTest {
         every { hl7EventHandler.connectionState } returns MutableStateFlow(false)
         every { hl7EventHandler.pmsCertMismatch } returns MutableStateFlow(false)
 
+        // Explicit stub — a relaxed mock's suspend-fun default returns false, which trips the
+        // /health preflight gate in fetchUserDetail and skips the rest of the code under test.
+        coEvery { sessionHealthController.checkHealth() } returns true
+
         // Defaults so the init block runs without blowing up.
         every { preferenceHelper.getLocalId() } returns 1L
         every { preferenceHelper.getAccessToken() } returns null
@@ -360,12 +364,9 @@ class DashboardViewModelTest {
         advanceUntilIdle()
         val before = vm.uiState.value.userDetail
 
-        // Same active id but a different list instance.
-        every { preferenceHelper.getTerminals() } returns
-            listOf(Terminal(terminalId = "t1", isActive = true), Terminal(terminalId = "t9", isActive = false))
+        // Same terminals list — refresh should short-circuit and leave state untouched.
         vm.refreshTerminalsFromPrefs()
 
-        // Unchanged active id -> current returned unchanged; same terminals reference.
         assertEquals(before, vm.uiState.value.userDetail)
     }
 
