@@ -30,6 +30,19 @@ object URLConstant {
     /** API endpoint for refreshing access and refresh tokens securely. */
     const val REFRESH_TOKEN = "/auth/refresh"
 
+    /**
+     * API endpoint for the backend health check.
+     *
+     * Called at three specific moments (never polled):
+     *  1. App cold start (before the first `/auth/me` chain).
+     *  2. Every foreground / `onResume` of the main activity.
+     *  3. Immediately before every `/auth/me` invocation.
+     *
+     * A failing response flips the app-wide offline flag; a successful response
+     * updates `lastHealthAt` and restores full API access.
+     */
+    const val HEALTH = "/health"
+
     /** API endpoint for updating terminal settings. The terminal ID is appended to the path. */
     const val UPDATE_TERMINAL = "/terminals/update/"
 

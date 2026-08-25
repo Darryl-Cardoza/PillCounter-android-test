@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.dashboard.di
 
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.data.TerminalRepository
@@ -72,13 +73,15 @@ object UserModule {
         api: IUserDetailAPI,
         applicationSettingApi: IApplicationSettingInterface,
         preferenceHelper: PreferenceHelper,
-        ioDispatcher: CoroutineDispatcher
+        ioDispatcher: CoroutineDispatcher,
+        authEventBus: AuthEventBus
     ): IUserDetailRepository =
         UserDetailRepository(
             api = api,
             applicationSettingApi = applicationSettingApi,
             preferenceHelper = preferenceHelper,
-            ioDispatcher = ioDispatcher
+            ioDispatcher = ioDispatcher,
+            authEventBus = authEventBus
         )
 
     /**
@@ -115,12 +118,14 @@ object UserModule {
         terminalApi: ITerminalApi,
         ioDispatcher: CoroutineDispatcher,
         preferenceHelper: PreferenceHelper,
-        applicationSettingApi: IApplicationSettingInterface
+        applicationSettingApi: IApplicationSettingInterface,
+        authEventBus: AuthEventBus
     ): TerminalRepository =
         TerminalRepository(
             terminalApi = terminalApi,
             ioDispatcher = ioDispatcher,
             preferenceHelper = preferenceHelper,
-            applicationSettingApi = applicationSettingApi
+            applicationSettingApi = applicationSettingApi,
+            authEventBus = authEventBus
         )
 }

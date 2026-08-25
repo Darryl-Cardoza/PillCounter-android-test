@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.refreshToken.data
 
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.refreshToken.data.remote.IRefreshTokenAPI
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenResponse
@@ -29,6 +30,7 @@ class TokenAuthenticatorTest {
 
     private lateinit var prefs: PreferenceHelper
     private lateinit var refreshApi: IRefreshTokenAPI
+    private lateinit var authEventBus: AuthEventBus
     private lateinit var authenticator: TokenAuthenticator
 
     private val url = "https://example.com/api/resource"
@@ -37,7 +39,8 @@ class TokenAuthenticatorTest {
     fun setup() {
         prefs = mockk(relaxed = true)
         refreshApi = mockk()
-        authenticator = TokenAuthenticator(prefs, refreshApi)
+        authEventBus = mockk(relaxed = true)
+        authenticator = TokenAuthenticator(prefs, refreshApi, authEventBus)
     }
 
     @After

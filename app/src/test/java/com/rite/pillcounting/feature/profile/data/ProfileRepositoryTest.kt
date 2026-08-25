@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.profile.data
 
 import android.util.Log
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenResponse
@@ -39,6 +40,7 @@ class ProfileRepositoryTest {
     private lateinit var profileApi: IProfileApi
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var applicationSettingApi: IApplicationSettingInterface
+    private lateinit var authEventBus: AuthEventBus
     private lateinit var repository: ProfileRepository
 
     private val request = ProfileUpdateRequest(
@@ -68,12 +70,14 @@ class ProfileRepositoryTest {
         profileApi = mockk()
         preferenceHelper = mockk(relaxed = true)
         applicationSettingApi = mockk()
+        authEventBus = mockk(relaxed = true)
 
         repository = ProfileRepository(
             profileApi = profileApi,
             ioDispatcher = UnconfinedTestDispatcher(),
             preferenceHelper = preferenceHelper,
-            applicationSettingApi = applicationSettingApi
+            applicationSettingApi = applicationSettingApi,
+            authEventBus = authEventBus
         )
     }
 

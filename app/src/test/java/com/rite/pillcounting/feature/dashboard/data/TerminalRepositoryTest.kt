@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.dashboard.data
 
 import android.util.Log
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenResponse
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -35,6 +36,7 @@ class TerminalRepositoryTest {
     private lateinit var terminalApi: ITerminalApi
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var applicationSettingApi: IApplicationSettingInterface
+    private lateinit var authEventBus: AuthEventBus
     private lateinit var repository: TerminalRepository
 
     private val terminalId = "terminal-123"
@@ -53,12 +55,14 @@ class TerminalRepositoryTest {
         terminalApi = mockk()
         preferenceHelper = mockk(relaxed = true)
         applicationSettingApi = mockk()
+        authEventBus = mockk(relaxed = true)
 
         repository = TerminalRepository(
             terminalApi = terminalApi,
             ioDispatcher = UnconfinedTestDispatcher(),
             preferenceHelper = preferenceHelper,
-            applicationSettingApi = applicationSettingApi
+            applicationSettingApi = applicationSettingApi,
+            authEventBus = authEventBus
         )
     }
 

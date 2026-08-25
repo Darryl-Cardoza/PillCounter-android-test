@@ -30,7 +30,7 @@ class RuntimeUnit(private val context: Context) {
 
     /**
      * Called by MainActivity if violations are detected.
-     * Wipes clearance and destroys any in-memory key state.
+     * Wipes clearance.
      */
     fun revokeClearance() {
         securityCleared = false

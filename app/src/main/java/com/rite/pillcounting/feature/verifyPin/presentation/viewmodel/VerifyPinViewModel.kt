@@ -8,6 +8,7 @@ import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.utils.common.NetworkUtils
+import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -43,7 +44,8 @@ class VerifyPinViewModel @Inject constructor(
     private val repository: VerifyPinRepository,
     @ApplicationContext private val context: Context,
     private val prefs: PreferenceHelper,
-    private val deviceKeyProvider: DeviceKeyProvider
+    private val deviceKeyProvider: DeviceKeyProvider,
+    private val sessionHealthController: SessionHealthController
 ) : ViewModel() {
 
     private val logger = AppLogger.create<VerifyPinViewModel>()
@@ -101,6 +103,10 @@ class VerifyPinViewModel @Inject constructor(
                     if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
                         prefs.saveTokens(accessToken, refreshToken)
 //                        prefs.setHl7Enabled(isHL7Enabled)
+                        // Anchor the offline-expiry clock at login-success so the first-launch
+                        // scenario (fresh install + immediate network loss) still expires cleanly
+                        // even though /health has not yet succeeded.
+                        sessionHealthController.markLoggedIn()
                         logger.i("Access and refresh tokens saved securely.")
                     } else {
                         logger.w("Missing access or refresh token in response.")

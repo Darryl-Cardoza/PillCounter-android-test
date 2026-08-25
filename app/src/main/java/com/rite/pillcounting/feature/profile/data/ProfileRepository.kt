@@ -1,5 +1,7 @@
 package com.rite.pillcounting.feature.profile.data
 
+import com.rite.pillcounting.core.auth.AuthEvent
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenResponse
 import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
@@ -28,7 +30,8 @@ class ProfileRepository @Inject constructor(
     private val profileApi: IProfileApi,
     private val ioDispatcher: CoroutineDispatcher,
     private val preferenceHelper: PreferenceHelper,
-    private val applicationSettingApi: IApplicationSettingInterface
+    private val applicationSettingApi: IApplicationSettingInterface,
+    private val authEventBus: AuthEventBus
 ) : IProfileRepository {
 
     private val logger = AppLogger.create<ProfileRepository>()
@@ -152,6 +155,13 @@ class ProfileRepository @Inject constructor(
                 ?: return Result.failure(Exception("No refresh token available"))
 
             val refreshResponse = applicationSettingApi.refreshToken(RefreshTokenRequest(refreshToken))
+            if (refreshResponse.code() == 401) {
+                // Refresh itself was rejected — session is truly expired. Broadcast so
+                // MainActivity performs the standard logout teardown + Login nav.
+                logger.e("Refresh token rejected (401) — publishing SessionExpired")
+                authEventBus.tryPublish(AuthEvent.SessionExpired)
+                return Result.failure(Exception("Refresh returned 401"))
+            }
             val refreshResponseBody: RefreshTokenResponse? = refreshResponse.body()
             if (!refreshResponseBody?.accessToken.isNullOrBlank()) {
                 logger.i("Token refreshed successfully.")

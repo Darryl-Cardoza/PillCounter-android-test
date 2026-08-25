@@ -12,7 +12,7 @@ import org.junit.Test
 /**
  * Unit tests for the PURE members of [HelperFunctions]:
  *  - maskEmail (all branches: null/blank, no/edge @, normal masking)
- *  - getStartDestination (logged-in vs not)
+ *  - resolveStartDestinationAndClearIfExpired (logged-in vs not, threshold branches)
  *  - mapCounts (all CountType x CountStatus combinations incl. else branch)
  *
  * Android-dependent members (exitApp, enableImmersiveFullscreen, openPlayStore,
@@ -81,20 +81,68 @@ class HelperFunctionsTest {
         assertEquals("a***@b.com", HelperFunctions.maskEmail("a@b.com", showFirst = 5))
     }
 
-    // ───────────────────────────── getStartDestination ─────────────────────────────
+    // ───────────────────────────── resolveStartDestinationAndClearIfExpired ─────────────────────────────
 
     @Test
-    fun getStartDestination_loggedIn_returnsDashboardRoute() {
+    fun resolve_notLoggedIn_returnsAuthGraph() {
         val pref = mockk<PreferenceHelper>()
-        every { pref.isUserLoggedIn() } returns true
-        assertEquals(Screen.Dashboard.route, HelperFunctions.getStartDestination(pref))
+        every { pref.isUserLoggedIn() } returns false
+        assertEquals(AUTH_GRAPH_ROUTE, HelperFunctions.resolveStartDestinationAndClearIfExpired(pref))
     }
 
     @Test
-    fun getStartDestination_notLoggedIn_returnsAuthGraph() {
+    fun resolve_loggedIn_noHealthOrLoginAnchor_returnsDashboard() {
         val pref = mockk<PreferenceHelper>()
-        every { pref.isUserLoggedIn() } returns false
-        assertEquals(AUTH_GRAPH_ROUTE, HelperFunctions.getStartDestination(pref))
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.getLastHealthCheckedAt() } returns 0L
+        every { pref.getLoggedInAt() } returns 0L
+        assertEquals(Screen.Dashboard.route, HelperFunctions.resolveStartDestinationAndClearIfExpired(pref))
+    }
+
+    @Test
+    fun resolve_loggedIn_healthAnchorWithinThreshold_returnsDashboard() {
+        val pref = mockk<PreferenceHelper>()
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 5_000L
+        every { pref.getOfflineSessionThresholdSeconds() } returns 60L
+        assertEquals(Screen.Dashboard.route, HelperFunctions.resolveStartDestinationAndClearIfExpired(pref))
+    }
+
+    @Test
+    fun resolve_loggedIn_healthAnchorBeyondThreshold_clearsTokensAndReturnsAuth() {
+        val pref = mockk<PreferenceHelper>(relaxed = true)
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.getLastHealthCheckedAt() } returns System.currentTimeMillis() - 120_000L
+        every { pref.getOfflineSessionThresholdSeconds() } returns 60L
+        val result = HelperFunctions.resolveStartDestinationAndClearIfExpired(pref)
+        assertEquals(AUTH_GRAPH_ROUTE, result)
+        io.mockk.verify { pref.clearTokens() }
+        io.mockk.verify { pref.setUserLoggedIn(false) }
+        io.mockk.verify { pref.clearLoggedInAt() }
+    }
+
+    @Test
+    fun resolve_loggedIn_noHealthButLoginAnchorWithinThreshold_returnsDashboard() {
+        val pref = mockk<PreferenceHelper>()
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.getLastHealthCheckedAt() } returns 0L
+        every { pref.getLoggedInAt() } returns System.currentTimeMillis() - 10_000L
+        every { pref.getOfflineSessionThresholdSeconds() } returns 60L
+        assertEquals(Screen.Dashboard.route, HelperFunctions.resolveStartDestinationAndClearIfExpired(pref))
+    }
+
+    @Test
+    fun resolve_loggedIn_noHealthAndLoginAnchorBeyondThreshold_clearsTokensAndReturnsAuth() {
+        val pref = mockk<PreferenceHelper>(relaxed = true)
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.getLastHealthCheckedAt() } returns 0L
+        every { pref.getLoggedInAt() } returns System.currentTimeMillis() - 120_000L
+        every { pref.getOfflineSessionThresholdSeconds() } returns 60L
+        val result = HelperFunctions.resolveStartDestinationAndClearIfExpired(pref)
+        assertEquals(AUTH_GRAPH_ROUTE, result)
+        io.mockk.verify { pref.clearTokens() }
+        io.mockk.verify { pref.setUserLoggedIn(false) }
+        io.mockk.verify { pref.clearLoggedInAt() }
     }
 
     // ───────────────────────────── mapCounts ─────────────────────────────

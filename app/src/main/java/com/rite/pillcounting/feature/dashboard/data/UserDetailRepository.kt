@@ -1,6 +1,8 @@
 package com.rite.pillcounting.feature.dashboard.data
 
 import com.rite.pillcounting.BuildConfig
+import com.rite.pillcounting.core.auth.AuthEvent
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.refreshToken.domain.model.UserDetailRequest
@@ -26,7 +28,8 @@ class UserDetailRepository @Inject constructor(
     private val api: IUserDetailAPI,
     private val applicationSettingApi: IApplicationSettingInterface,
     private val preferenceHelper: PreferenceHelper,
-    private val ioDispatcher: CoroutineDispatcher
+    private val ioDispatcher: CoroutineDispatcher,
+    private val authEventBus: AuthEventBus
 ) : IUserDetailRepository {
 
     private val logger = AppLogger.create<UserDetailRepository>()
@@ -83,6 +86,9 @@ class UserDetailRepository @Inject constructor(
                             onLogout = {
                                 preferenceHelper.clearTokens()
                                 preferenceHelper.setUserLoggedIn(false)
+                                // A refresh call that itself returned 401 is the "session
+                                // really expired" signal — broadcast so MainActivity nav to Login.
+                                authEventBus.tryPublish(AuthEvent.SessionExpired)
                             }
                         )
                     }

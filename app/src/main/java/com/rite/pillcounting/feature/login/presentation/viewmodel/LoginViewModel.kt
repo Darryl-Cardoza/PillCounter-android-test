@@ -133,6 +133,7 @@ class LoginViewModel @Inject constructor(
     fun clearSession(){
         preferenceHelper.clearTokens()
         preferenceHelper.setUserLoggedIn(false)
+        preferenceHelper.clearLoggedInAt()
         preferenceHelper.saveLocalId(0)
     }
 
