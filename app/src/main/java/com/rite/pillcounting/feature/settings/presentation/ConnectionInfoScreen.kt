@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.settings.presentation
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -24,7 +25,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -44,6 +44,8 @@ fun ConnectionInfoScreen(
     viewModel: MainActivityViewModel = hiltViewModel(),
     listenerPort: String = HL7Config().serverPort.toString(),
 ) {
+    BackHandler(onBack = onBackClick)
+
     val extendedColors = LocalExtendedColors.current
     val testConnectionState by viewModel.pmsTestConnectionState.collectAsState()
     val pmsConnection by viewModel.pmsConnection.collectAsState()
@@ -200,7 +202,7 @@ fun ConnectionInfoScreen(
                             Text(
                                 text = stringResource(R.string.connection_successful, pmsIpAddress),
                                 style = MaterialTheme.typography.bodyMedium,
-                                color = Color(0xFF2E7D32),
+                                color = MaterialTheme.colorScheme.tertiary,
                                 modifier = Modifier.padding(top = 12.dp)
                             )
                         }

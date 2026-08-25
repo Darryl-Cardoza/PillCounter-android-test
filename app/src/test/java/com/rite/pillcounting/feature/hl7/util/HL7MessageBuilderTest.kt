@@ -1,5 +1,7 @@
 package com.rite.pillcounting.feature.hl7.util
 
+import android.util.Base64
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
@@ -7,9 +9,15 @@ import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
+import io.mockk.every
+import io.mockk.mockkStatic
+import io.mockk.unmockkAll
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Test
+import java.io.File
 
 /**
  * Unit tests for [HL7MessageBuilder].
@@ -24,6 +32,21 @@ import org.junit.Test
  * in the encoded text.
  */
 class HL7MessageBuilderTest {
+
+    @Before
+    fun setup() {
+        // buildZuiImagePayload base64-encodes via android.util.Base64, a stub on the
+        // unit-test JVM — route it to a real encoder so ZUI-8 image tests are hermetic.
+        mockkStatic(Base64::class)
+        every { Base64.encodeToString(any(), any()) } answers {
+            java.util.Base64.getEncoder().encodeToString(firstArg<ByteArray>())
+        }
+    }
+
+    @After
+    fun tearDown() {
+        unmockkAll()
+    }
 
     private fun txn(
         txnId: Long = 100L,
@@ -107,12 +130,13 @@ class HL7MessageBuilderTest {
         // total count = 10 + 0 = 10
         assertTrue(raw.contains("|10|") || raw.contains("|10\r") || raw.contains("|10$"))
 
-        // 2 detail OBX + 1 barcode OBX
-        assertTrue(raw.contains("DISP_IMG"))
-        assertTrue(raw.contains("count=10\\F\\type=fixed\\F\\image=img1.png"))
-        assertTrue(raw.contains("count=0\\F\\type=unknown\\F\\image="))
+        // 2 detail OBX + 1 barcode OBX, each an RP-type OBX pointing at images/<file>
+        assertTrue(raw.contains("|RP|IMG001^"))
+        assertTrue(raw.contains("images/img1.png"))
+        assertTrue(raw.contains("|RP|IMG002^"))
         assertTrue("barcode OBX should be present", raw.contains("Barcode Image"))
-        assertTrue(raw.contains("count=0\\F\\type=dispense_bottle\\F\\image=barcode_555.png"))
+        assertTrue(raw.contains("|RP|IMG003^"))
+        assertTrue(raw.contains("images/barcode_555.png"))
 
         // common note text
         assertTrue(raw.contains("Transaction Id: 555"))
@@ -147,12 +171,154 @@ class HL7MessageBuilderTest {
         assertTrue(raw.contains("RX-9001"))
 
         // barcode null -> no barcode OBX, only the single detail OBX
-        assertTrue(raw.contains("count=5\\F\\type=partial\\F\\image=photo.jpg"))
-        assertEquals(1, Regex("DISP_IMG").findAll(raw).count())
+        assertTrue(raw.contains("images/photo.jpg"))
+        assertEquals(1, Regex("\\|RP\\|IMG").findAll(raw).count())
 
         // note null propagated: label present, no "Note:" suffix appended
         assertTrue(raw.contains("Transaction Id: 777"))
         assertTrue(!raw.contains("Note:"))
+    }
+
+    // ============================ EYECON ZUI ============================
+
+    @Test
+    fun `buildDispenseMessage for EyeCon format emits 25-field ZUI with no ZNI`() {
+        val txn = txn(
+            txnId = 321L,
+            rxNo = "RX-EC1",
+            note = null,
+        )
+        val details = listOf(
+            detail(pillCount = 20, type = "fixed", imagePath = "/a/img.png"),
+        )
+
+        val raw = HL7MessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "Atorvastatin",
+            pharmacistId = "PH1",
+            pharmacistName = "Jane^Doe",
+            isNdcVerified = true,
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = Hl7Format.EYECON,
+                sendingApplicationName = Hl7Format.EYECON.sendingApplication,
+            ),
+        )
+
+        assertTrue("no ZNI segment should be emitted for EyeCon", !raw.contains("ZNI"))
+
+        val zuiLine = raw.lineSequence().first { it.startsWith("ZUI|") }
+        val fields = zuiLine.split("|")
+
+        // ZUI-1 ndc, ZUI-2 drugName, ZUI-3 userName (first name only), ZUI-4 prescriptionNumber,
+        // ZUI-5 fillNumber, ZUI-6 verifiedBy, ZUI-7 stockBottleVerification (A = verified).
+        assertEquals("1234567890", fields[1])
+        assertEquals("Atorvastatin", fields[2])
+        assertEquals("Jane", fields[3])
+        assertEquals("RX-EC1", fields[4])
+        assertEquals("1", fields[5])
+        assertEquals("Jane", fields[6])
+        assertEquals("A", fields[7])
+
+        // ZUI-18 dispensedQuantity, ZUI-19 fillStatus, ZUI-21 stockBottleBarcodeNdc — the
+        // fields PMS's C# parser actually reads.
+        assertEquals("20", fields[18])
+        assertEquals("complete", fields[19])
+        assertEquals("1234567890", fields[21])
+
+        // Fixed 25-field layout regardless of how few trailing fields carry values.
+        assertEquals(25, fields.size - 1)
+    }
+
+    // ============================ VIVID ZUI-8 IMAGES ============================
+
+    @Test
+    fun `buildDispenseMessage for Vivid format inlines base64 tray images in ZUI-8`() {
+        val imgFile = File.createTempFile("zui8_step", ".png").apply {
+            writeBytes(byteArrayOf(1, 2, 3, 4))
+            deleteOnExit()
+        }
+        val barcodeFile = File.createTempFile("zui8_barcode", ".png").apply {
+            writeBytes(byteArrayOf(5, 6, 7, 8))
+            deleteOnExit()
+        }
+
+        val txn = txn(
+            txnId = 654L,
+            rxNo = "RX-V1",
+            barcodeImage = barcodeFile.absolutePath,
+            note = null,
+        )
+        val details = listOf(
+            detail(txnDetailsId = 1L, pillCount = 15, type = StepState.TARGET_VERIFICATION.name, imagePath = imgFile.absolutePath),
+        )
+
+        val raw = HL7MessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "11111-222-33",
+            scannedDrugCode = "11111-222-33",
+            drugName = "Drug",
+            pharmacistId = null,
+            pharmacistName = null,
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = Hl7Format.VIVID,
+                sendingApplicationName = Hl7Format.VIVID.sendingApplication,
+            ),
+        )
+
+        val zuiLine = raw.lineSequence().first { it.startsWith("ZUI|") }
+        val zui8 = zuiLine.split("|")[8]
+
+        // Two image groups (step image + barcode image), '^'-joined; each group is
+        // batch/count/base64Data '&'-joined per buildZuiImagePayload's wire format.
+        val groups = zui8.split("^")
+        assertEquals(2, groups.size)
+
+        val firstGroupParts = groups[0].split("&")
+        assertEquals("1B1", firstGroupParts[0])
+        assertEquals("1C2", firstGroupParts[1])
+        assertEquals(java.util.Base64.getEncoder().encodeToString(byteArrayOf(1, 2, 3, 4)), firstGroupParts[2])
+
+        val secondGroupParts = groups[1].split("&")
+        assertEquals("1B1", secondGroupParts[0])
+        assertEquals("2C2", secondGroupParts[1])
+        assertEquals(java.util.Base64.getEncoder().encodeToString(byteArrayOf(5, 6, 7, 8)), secondGroupParts[2])
+    }
+
+    @Test
+    fun `buildDispenseMessage for Vivid format leaves ZUI-8 empty when there are no images`() {
+        val txn = txn(txnId = 111L, rxNo = "RX-V2", note = null)
+        val details = listOf(
+            detail(pillCount = 3, type = "fixed", imagePath = null),
+        )
+
+        val raw = HL7MessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "NDC",
+            scannedDrugCode = "NDC",
+            drugName = "Drug",
+            pharmacistId = null,
+            pharmacistName = null,
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = Hl7Format.VIVID,
+                sendingApplicationName = Hl7Format.VIVID.sendingApplication,
+            ),
+        )
+
+        val zuiLine = raw.lineSequence().first { it.startsWith("ZUI|") }
+        val fields = zuiLine.split("|")
+        // ZUI-8 has no images -> field emitted empty (drugImages was null).
+        assertEquals("", fields.getOrElse(8) { "" })
     }
 
     // ============================ INVENTORY ============================

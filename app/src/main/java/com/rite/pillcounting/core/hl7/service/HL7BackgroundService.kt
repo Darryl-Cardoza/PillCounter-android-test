@@ -7,10 +7,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import androidx.core.app.NotificationCompat
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.hl7.core.Hl7EventListener
 import com.rite.pillcounting.core.hl7.imageWebService.ImageWebServer
 import com.rite.pillcounting.core.hl7.imageWebService.NetworkUtils
@@ -22,6 +21,7 @@ import com.rite.pillcounting.core.hl7.mllp.server.MllpServer
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsSocketFactory
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.feature.settings.domain.model.Hl7ServiceConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -215,10 +215,6 @@ class HL7Service : Service() {
                 Hl7serviceHandler.EXTRA_IMAGE_SERVICE_PORT,
                 config.imageServicePort
             ),
-            imageServiceSecurePort = intent.getIntExtra(
-                Hl7serviceHandler.EXTRA_IMAGE_SERVICE_SECURE_PORT,
-                config.imageServiceSecurePort
-            ),
             useStaticPmsConnection = intent.getBooleanExtra(
                 Hl7serviceHandler.EXTRA_USE_STATIC_PMS_CONNECTION,
                 config.useStaticPmsConnection
@@ -269,10 +265,11 @@ class HL7Service : Service() {
             serverPort = 2575,
             autoResponseDelayMs = 10_000L,
             nsdBroadcastServiceName = terminalName,
-            nsdBroadcastType = com.rite.pillcounting.feature.settings.domain.model.Hl7ServiceConfig.PILL_COUNTER_HOST_NAME,
-            nsdDiscoveryType = com.rite.pillcounting.feature.settings.domain.model.Hl7ServiceConfig.PMS_HOST_NAME,
+            nsdBroadcastType = preferenceHelper.getNsdBroadcastType().takeIf { it.isNotBlank() }
+                ?: Hl7ServiceConfig.PILL_COUNTER_HOST_NAME,
+            nsdDiscoveryType = preferenceHelper.getNsdDiscoveryType().takeIf { it.isNotBlank() }
+                ?: Hl7ServiceConfig.PMS_HOST_NAME,
             imageServicePort = 8080,
-            imageServiceSecurePort = 8443,
             hl7Version = preferenceHelper.getHl7Version(),
             bypassTls = preferenceHelper.isBypassTlsEnabled(),
             useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),
@@ -319,13 +316,13 @@ class HL7Service : Service() {
             onConnected = {
                 logger.i("${lastDiscoveredServiceName} CONNECTED")
                 listener?.onClientConnected(lastDiscoveredServiceName, 0)
-                updateNotification("Connected to ${lastConnectedHost.orEmpty()}")
+                updateNotification(getString(R.string.hl7_notification_connected_to, lastConnectedHost.orEmpty()))
             },
 
             onDisconnected = {
                 logger.w("${lastDiscoveredServiceName} DISCONNECTED")
                 listener?.onClientDisconnected()
-                updateNotification("Listening & responding to HL7")
+                updateNotification(getString(R.string.hl7_notification_listening))
             },
 
             onCertMismatch = {
@@ -336,7 +333,7 @@ class HL7Service : Service() {
 
         clientManager.startContinuousReconnect()
 
-        logger.d("Core components initialized (HL7 version=$config.hl7Version)")
+        logger.d("Core components initialized (HL7 version=${config.hl7Version})")
     }
 
 
@@ -472,7 +469,7 @@ class HL7Service : Service() {
                 // Prefer IPv4 — IPv6 link-local addresses (fe80::) cause TCP
                 // connection failures on Android when the scope ID is present.
                 val rawHost = info.host.hostAddress ?: return@launch
-                val host = rawHost. substringBefore('%')  // strip scope id from fe80::1%wlan0
+                val host = rawHost.substringBefore('%')  // strip scope id from fe80::1%wlan0
                 val port = info.port
 
                 if (host.isBlank()) return@launch
@@ -654,12 +651,14 @@ class HL7Service : Service() {
     }
 
     /* -------------------- NOTIFICATION -------------------- */
-    private fun buildNotification(contentText: String = "Listening & responding to HL7"): Notification {
+    private fun buildNotification(
+        contentText: String = getString(R.string.hl7_notification_listening)
+    ): Notification {
         createChannel()
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("HL7 Background Service")
+            .setContentTitle(getString(R.string.hl7_notification_title))
             .setContentText(contentText)
-            .setSmallIcon(com.rite.pillcounting.R.drawable.logo)
+            .setSmallIcon(R.drawable.logo)
             .setOngoing(true)
             .build()
     }
@@ -704,6 +703,6 @@ class HL7Service : Service() {
         imageServer.start()
 
         val ip = NetworkUtils.getLocalIpAddress()
-        logger.i("Image server running at https://$ip:8443/images/{fileName}")
+        logger.i("Image server running at http://$ip:${ImageWebServer.PORT}/images/{fileName}")
     }
 }

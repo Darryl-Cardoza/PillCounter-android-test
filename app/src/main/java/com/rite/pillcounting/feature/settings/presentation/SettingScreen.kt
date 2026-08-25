@@ -71,7 +71,7 @@ fun SettingsScreen(
     val selectedSchedules by viewModel.selectedSchedules.collectAsState()
     val isSoundOverrideEnable by viewModel.isSoundOverride.collectAsState()
     val isHazardousDrug by viewModel.isHazardousDrug.collectAsState()
-    val isUseStaticPmsConnection = viewModel.isUseStaticPmsConnection()
+    val isUseStaticPmsConnection by viewModel.isUseStaticPmsConnection.collectAsState()
     val faceLockTimeoutMinutes by viewModel.faceLockTimeoutMinutes.collectAsState()
     val hasEnabledFaceProfile by viewModel.hasEnabledFaceProfile.collectAsState()
     var showAutoLockDialog by remember { mutableStateOf(false) }
@@ -286,8 +286,6 @@ fun SettingsScreen(
                 enabled = hl7Enabled,
                 onDisabledClick = onHl7DisabledTap
             )
-
-
 
             HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 

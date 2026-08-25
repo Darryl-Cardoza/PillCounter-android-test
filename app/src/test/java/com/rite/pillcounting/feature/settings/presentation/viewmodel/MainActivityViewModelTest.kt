@@ -709,4 +709,63 @@ class MainActivityViewModelTest {
 
         coVerify(atLeast = 2) { repository.getApplicationSettings() }
     }
+
+    // ─────────────────────────── testPmsConnection ───────────────────────────
+
+    @Test
+    fun `testPmsConnection fails immediately when pms ip is not configured`() = runTest(testDispatcher) {
+        every { preferenceHelper.getPmsIP() } returns null
+        every { preferenceHelper.getPmsPort() } returns 0
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.testPmsConnection()
+
+        val state = vm.pmsTestConnectionState.value
+        assertTrue(state is PmsTestConnectionState.Failed)
+        assertEquals("PMS IP/port not configured", (state as PmsTestConnectionState.Failed).reason)
+    }
+
+    @Test
+    fun `testPmsConnection fails immediately when pms port is not configured`() = runTest(testDispatcher) {
+        every { preferenceHelper.getPmsIP() } returns "10.0.0.5"
+        every { preferenceHelper.getPmsPort() } returns 0
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.testPmsConnection()
+
+        assertTrue(vm.pmsTestConnectionState.value is PmsTestConnectionState.Failed)
+    }
+
+    @Test
+    fun `testPmsConnection succeeds immediately when mllp client already connected`() = runTest(testDispatcher) {
+        every { preferenceHelper.getPmsIP() } returns "10.0.0.5"
+        every { preferenceHelper.getPmsPort() } returns 2575
+        every { hl7EventHandler.connectionState } returns kotlinx.coroutines.flow.MutableStateFlow(true)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.testPmsConnection()
+
+        assertEquals(PmsTestConnectionState.Success, vm.pmsTestConnectionState.value)
+    }
+
+    @Test
+    fun `resetPmsTestConnectionState resets to Idle`() = runTest(testDispatcher) {
+        every { preferenceHelper.getPmsIP() } returns null
+        every { preferenceHelper.getPmsPort() } returns 0
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.testPmsConnection()
+        assertTrue(vm.pmsTestConnectionState.value is PmsTestConnectionState.Failed)
+
+        vm.resetPmsTestConnectionState()
+        assertEquals(PmsTestConnectionState.Idle, vm.pmsTestConnectionState.value)
+    }
 }

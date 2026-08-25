@@ -187,8 +187,7 @@ object HL7MessageBuilder {
                 // Field mapping verified against Vivid's response-parse spec (ZUI-1 drugId,
                 // ZUI-2 VerifiedBy truncated to 10 chars, ZUI-4 RxNo-RefillNo composite,
                 // ZUI-6 qtyDispensed, ZUI-7 fill status, ZUI-9/10/11 lot/serial/expiry).
-                // ZUI-8 (Base64 tray image log) intentionally not populated yet — see
-                // conversation: needs new batch/count-sequence data model, tracked separately.
+                // ZUI-8 (Base64 tray image log) populated below via drugImages.
                 Hl7Format.VIVID.sendingApplication -> zui { z ->
                     z.ndc = drugCode.replace("-", "")
                     z.vividUserName = pharmacistName?.split("^")?.firstOrNull().orEmpty()
@@ -203,15 +202,6 @@ object HL7MessageBuilder {
                     z.drugExpirationDate = effectiveExpirationDate
                 }
                 Hl7Format.EYECON.sendingApplication -> {
-//                    zni { z ->
-//                        z.ndc = drugCode
-//                        z.drugName = drugName
-//                        z.userName = pharmacistName
-//                        z.fillerOrderNumber = orderId
-//                        z.dispenseAmount = totalCount.toString()
-//                        z.prescriptionNumber = orderId
-//                        z.resultStatus = "F"
-//                    }
                     // EyeCon ZUI — 25-field raw layout; fields 6/18/19/21 are what PMS's
                     // C# parser reads, rest are context fields per EyeCon spec. ZUI-11
                     // (transactionOrderId) is the RxNo-RefillNo composite, same as vividOrderId.
@@ -278,7 +268,7 @@ object HL7MessageBuilder {
                     }
                 }
 
-            val imageObxRows =   buildImageOBX(
+            val imageObxRows = buildImageOBX(
                 bottles = bottles,
                 details = txnDetails
             )

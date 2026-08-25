@@ -138,6 +138,9 @@
     <string name="no_wifi_connection">No Wi-Fi connection</string>
     <string name="pms_not_configured">PMS IP/port not set. Configure it on the portal.</string>
     <string name="check_wifi_before_testing">Connect to Wi-Fi before testing the connection</string>
+    <string name="hl7_notification_title" translatable="false">HL7 Background Service</string>
+    <string name="hl7_notification_connected_to">Connected to %1$s</string>
+    <string name="hl7_notification_listening">Listening &amp; responding to HL7</string>
 
     <string-array name="history_options">
         <item>1 Week (Default)</item>

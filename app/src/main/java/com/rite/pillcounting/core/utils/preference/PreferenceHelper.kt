@@ -718,12 +718,22 @@ class PreferenceHelper @Inject constructor(
         logger.i("Saved PMS IP")
     }
 
+    fun clearPmsIP() {
+        prefs.remove(KEY_PMS_IP)
+        logger.i("Cleared PMS IP")
+    }
+
     fun getPmsIP(): String? =
         prefs.getString(KEY_PMS_IP)
 
     fun savePmsPort(pmsPort: Int) {
         prefs.putInt(KEY_PMS_PORT, pmsPort)
         logger.i("Saved PMS port: $pmsPort")
+    }
+
+    fun clearPmsPort() {
+        prefs.remove(KEY_PMS_PORT)
+        logger.i("Cleared PMS port")
     }
 
     fun getPmsPort(): Int =
@@ -734,6 +744,9 @@ class PreferenceHelper @Inject constructor(
 
     /** Key used for [KEY_PMS_PORT] change notifications via [registerOnChangeListener]. */
     val pmsPortKey: String get() = KEY_PMS_PORT
+
+    /** Key used for [KEY_USE_STATIC_PMS_CONNECTION] change notifications via [registerOnChangeListener]. */
+    val useStaticPmsConnectionKey: String get() = KEY_USE_STATIC_PMS_CONNECTION
 
     fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnChangeListener(listener)

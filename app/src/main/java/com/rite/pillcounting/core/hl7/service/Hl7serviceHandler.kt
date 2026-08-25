@@ -111,7 +111,6 @@ class Hl7serviceHandler @Inject constructor(
                 putExtra(EXTRA_NSD_BROADCAST_TYPE, currentConfig?.nsdBroadcastType)
                 putExtra(EXTRA_NSD_DISCOVERY_TYPE, currentConfig?.nsdDiscoveryType)
                 putExtra(EXTRA_IMAGE_SERVICE_PORT, currentConfig?.imageServicePort)
-                putExtra(EXTRA_IMAGE_SERVICE_SECURE_PORT, currentConfig?.imageServiceSecurePort)
                 putExtra(EXTRA_USE_STATIC_PMS_CONNECTION, currentConfig?.useStaticPmsConnection ?: false)
                 putExtra(EXTRA_PMS_IP, currentConfig?.pmsIp)
                 putExtra(EXTRA_PMS_PORT, currentConfig?.pmsPort ?: 0)
@@ -236,7 +235,6 @@ class Hl7serviceHandler @Inject constructor(
         const val EXTRA_NSD_DISCOVERY_TYPE = "extra_nsd_discovery_type"
         const val EXTRA_KEYSTORE_PASSWORD = "extra_keystore_password"
         const val EXTRA_IMAGE_SERVICE_PORT = "extra_image_service_port"
-        const val EXTRA_IMAGE_SERVICE_SECURE_PORT = "extra_image_service_secure_port"
         const val EXTRA_USE_STATIC_PMS_CONNECTION = "extra_use_static_pms_connection"
         const val EXTRA_PMS_IP = "extra_pms_ip"
         const val EXTRA_PMS_PORT = "extra_pms_port"

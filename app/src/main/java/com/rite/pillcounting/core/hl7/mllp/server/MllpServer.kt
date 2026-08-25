@@ -100,7 +100,7 @@ class MllpServer(
         try {
             if (socket is SSLSocket) socket.startHandshake()
 
-            val input = socket.inputStream
+            val input = BufferedInputStream(socket.inputStream)
             val output = socket.outputStream
 
             while (!socket.isClosed) {

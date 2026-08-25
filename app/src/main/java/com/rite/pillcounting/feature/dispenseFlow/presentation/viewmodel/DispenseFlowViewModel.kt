@@ -312,10 +312,16 @@ class DispenseFlowViewModel @Inject constructor(
 
         _uiState.update { it.copy(isLoading = true) }
 
+        val barcodeRegex = preferenceHelper.getBarcodeRegex().orEmpty()
+        if (barcodeRegex.isBlank()) {
+            _uiState.update { it.copy(isLoading = false, showInvalidScanDialog = true) }
+            return
+        }
+
         viewModelScope.launch {
             try {
                 val parsed = parseScanData(
-                    preferenceHelper.getBarcodeRegex().toString(),
+                    barcodeRegex,
                     gtin14
                 )
                 val parsedNdc = parsed.ndcNo
@@ -1093,7 +1099,9 @@ class DispenseFlowViewModel @Inject constructor(
         // Pipe-delimited payloads are the RX-label template; otherwise the raw
         // value may already be the bare RX number.
         val scannedRx = if (rawValue.contains('|')) {
-            parseScanData(preferenceHelper.getBarcodeRegex().toString(), rawValue).rxNo?.trim().orEmpty()
+            val barcodeRegex = preferenceHelper.getBarcodeRegex().orEmpty()
+            if (barcodeRegex.isBlank()) return false
+            parseScanData(barcodeRegex, rawValue).rxNo?.trim().orEmpty()
         } else {
             rawValue.trim()
         }

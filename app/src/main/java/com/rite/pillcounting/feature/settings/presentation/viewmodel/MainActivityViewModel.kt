@@ -26,7 +26,6 @@ import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -95,7 +94,23 @@ class MainActivityViewModel @Inject constructor(
     /** HL7 toggle from the portal (cached in prefs). */
     fun isHl7Enabled(): Boolean = preferenceHelper.isHl7Enabled()
 
-    fun isUseStaticPmsConnection(): Boolean = preferenceHelper.isUseStaticPmsConnection()
+    /** Live "use static PMS connection" flag, so the Settings screen reacts to changes made elsewhere (e.g. profile sync) without needing to be reopened. */
+    val isUseStaticPmsConnection: StateFlow<Boolean> = callbackFlow {
+        trySend(preferenceHelper.isUseStaticPmsConnection())
+
+        val listener = SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == preferenceHelper.useStaticPmsConnectionKey) {
+                trySend(preferenceHelper.isUseStaticPmsConnection())
+            }
+        }
+
+        preferenceHelper.registerOnChangeListener(listener)
+        awaitClose { preferenceHelper.unregisterOnChangeListener(listener) }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(5_000),
+        preferenceHelper.isUseStaticPmsConnection()
+    )
 
     fun getPmsIP(): String = preferenceHelper.getPmsIP().orEmpty()
 
@@ -536,7 +551,6 @@ class MainActivityViewModel @Inject constructor(
             nsdBroadcastType = broadCastServiceName,
             nsdDiscoveryType = discoverServiceName,
             imageServicePort = 8080,
-            imageServiceSecurePort = 8443,
             hl7Version = preferenceHelper.getHl7Version(),
             bypassTls = preferenceHelper.isBypassTlsEnabled(),
             useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),

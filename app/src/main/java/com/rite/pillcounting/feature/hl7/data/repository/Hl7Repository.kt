@@ -129,6 +129,20 @@ class Hl7Repository @Inject constructor(
                 logger.e("Invalid or missing dispense count: '$dispenseStr' in ${inboundType.name}. Rejecting message.")
                 throw IllegalArgumentException("Invalid or missing dispense count: $dispenseStr")
             }
+
+            // NDC presence must be checked here, synchronously, before the ACK is built.
+            // The per-segment handlers (handleRdeDispenseRequest / handleZuiOrderPacketDispenseRequest
+            // / handleOrderPacketDispenseRequest) run inside scope.launch below, which is async —
+            // by the time they'd notice a missing NDC and bail, handleIncomingMessage has already
+            // called hl7.ack(message) and sent back AA. Checking here is what actually gates the ACK.
+            val ndcStr = rxe?.giveCode?.trim()?.takeIf { it.isNotBlank() }
+                ?: zni?.ndc?.trim()?.takeIf { it.isNotBlank() }
+                ?: zui?.ndc?.trim()
+
+            if (ndcStr.isNullOrBlank()) {
+                logger.e("Missing NDC in ${inboundType.name}. Rejecting message.")
+                throw IllegalArgumentException("Missing NDC")
+            }
         }
 
         scope.launch {
@@ -368,16 +382,16 @@ class Hl7Repository @Inject constructor(
      */
     fun resendPendingHl7Transactions() {
         scope.launch {
-            if (resendMutex.isLocked) {
+            if (!resendMutex.tryLock()) {
                 logger.i("resendPendingHl7Transactions already in progress — skipping duplicate trigger")
                 return@launch
             }
-            resendMutex.withLock {
+            try {
                 val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
                     .filterNot { it.txnId in rejectedTxnIds }
                 if (pendingTxn.isEmpty()) {
                     logger.i("No pending HL7 transactions to sync")
-                    return@withLock
+                    return@launch
                 }
                 logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
                 for (txn in pendingTxn) {
@@ -385,6 +399,8 @@ class Hl7Repository @Inject constructor(
                         buildAndSendSuccessfulDispense(txnId = txn.txnId)
                     }
                 }
+            } finally {
+                resendMutex.unlock()
             }
         }
     }
