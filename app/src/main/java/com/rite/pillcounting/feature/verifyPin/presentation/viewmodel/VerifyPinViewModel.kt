@@ -37,7 +37,7 @@ import javax.inject.Inject
  * @param repository The [VerifyPinRepository] handling OTP verification API.
  * @param context The application context, used for localized messages.
  * @param prefs Secure storage for tokens and login state.
- * @param deviceKeyProvider Supplies the stable per-install device_key.
+ * @param deviceKeyProvider Supplies the stable per-device device_key (SSAID).
  */
 @HiltViewModel
 class VerifyPinViewModel @Inject constructor(
@@ -82,11 +82,12 @@ class VerifyPinViewModel @Inject constructor(
             logger.i("Attempting OTP verification for email: $email")
             _uiState.value = VerifyPinUiState.Loading
 
-            val deviceKey = try {
-                deviceKeyProvider.getDeviceKey()
-            } catch (e: Exception) {
-                logger.e("Failed to fetch device key for OTP verification", e)
-                _uiState.value = VerifyPinUiState.Error(mapExceptionToUserMessage(e))
+            val deviceKey = deviceKeyProvider.getDeviceKey()
+            if (deviceKey == null) {
+                logger.w("OTP verification aborted: device key unavailable")
+                _uiState.value = VerifyPinUiState.Error(
+                    context.getString(R.string.error_server_unavailable)
+                )
                 return@launch
             }
 

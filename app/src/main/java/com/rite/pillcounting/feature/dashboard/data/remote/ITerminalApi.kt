@@ -36,7 +36,7 @@ interface ITerminalApi {
      *
      * @param authorization Bearer token header value.
      * @param availableOnly When true, restricts to free terminals plus the one [deviceKey] already holds.
-     * @param deviceKey Stable per-install device identifier (Firebase Installations ID).
+     * @param deviceKey Stable per-device identifier (SSAID / Settings.Secure.ANDROID_ID). Survives reinstall with the same signing key; reset by factory reset.
      * @return [TerminalListResponse] containing the terminal list.
      */
     @GET(URLConstant.GET_TERMINALS_LIST)

@@ -485,9 +485,7 @@ class DashboardViewModel @Inject constructor(
                                 // auth/me response, so choosing a different terminal in Profile was
                                 // silently reverted on the next dashboard refresh. device_key is the
                                 // only field that distinguishes this install from the others.
-                                val deviceKey = runCatching { deviceKeyProvider.getDeviceKey() }
-                                    .onFailure { logger.e("Could not read device key — keeping local terminal selection", it) }
-                                    .getOrNull()
+                                val deviceKey = deviceKeyProvider.getDeviceKey()
                                 val claimedTerminal = deviceKey?.let { key ->
                                     terminals.firstOrNull { !it.deviceKey.isNullOrBlank() && it.deviceKey == key }
                                 }
