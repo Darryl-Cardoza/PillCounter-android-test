@@ -45,7 +45,7 @@ import org.junit.Test
 /**
  * Unit tests for [PillScanningViewModel] event handling: Rescan, CancelDone, delete
  * transaction details, note save/skip, FinalDone routing, and ancillary public API
- * (resetWorkflowSteps, updateFilteredPills, pausePillDetection, isOnNdcScanStep).
+ * (resetWorkflowSteps, updateFilteredPills, pausePillDetection).
  *
  * handleConfirmDialog is private; it is exercised via onEvent(PillScanningEvent.FinalDone).
  * _txnInfo is private; it is populated via showTxnInfo(), which calls getTxnWithDetails().
@@ -258,18 +258,6 @@ class PillScanningViewModelEventTest {
         viewModel.onEvent(PillScanningEvent.FinalDone(StepState.CONTAINER_INITIATE, totalCount = 5))
 
         assertNotNull(viewModel.uiState.value.showErrorMessage)
-    }
-
-    // ─────────────────────────── isOnNdcScanStep property ───────────────────────────
-
-    // SCAN_VM_037
-    @Test
-    fun `isOnNdcScanStep is true after enterStockCountScanMode and getDrugInfo resolve to SCAN`() = runTest {
-        viewModel.enterStockCountScanMode(batchId = 1L)
-        viewModel.getDrugInfo()
-        advanceUntilIdle()
-
-        assertTrue(viewModel.isOnNdcScanStep)
     }
 
     // ─────────────────────────── pausePillDetection side-effects ───────────────────────────

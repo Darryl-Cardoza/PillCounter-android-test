@@ -5,10 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
@@ -17,7 +17,6 @@ import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.dtos.RequestedDrugDto
-import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
@@ -245,18 +244,7 @@ class InventoryScanViewModel @Inject constructor(
         val existing = _resolvedBatchId.value
         if (existing != 0L) return existing
         return try {
-            val now = System.currentTimeMillis()
-            val newId = batchDao.insert(
-                BatchEntity(
-                    batchId = now,
-                    startDateTime = now,
-                    endDateTime = null,
-                    status = BatchStatus.INPROGRESS,
-                    isDeleted = false,
-                    note = null,
-                    bucketId = _bucketId.value,
-                )
-            )
+            val newId = batchDao.insertNewInProgressBatch(bucketId = _bucketId.value)
             _resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {

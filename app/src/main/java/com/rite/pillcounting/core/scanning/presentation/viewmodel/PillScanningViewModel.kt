@@ -18,20 +18,19 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
-import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
-import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.models.ScheduleCode
@@ -52,7 +51,6 @@ import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
-import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
@@ -154,14 +152,7 @@ class PillScanningViewModel @Inject constructor(
     private val _steps = MutableStateFlow<List<StepState>>(emptyList())
     val steps: StateFlow<List<StepState>> = _steps
 
-    // --- Stock-count (SCAN PILLS hand-off) NDC scan ---
-    // When entered via the Batch Stock Count SCAN PILLS hand-off, the screen must
-    // ALWAYS start on a compulsory NDC-scan step (StepState.SCAN), regardless of
-    // any pre-staged/active NDC. The user scans an NDC there; we stage that NDC's
-    // txn scoped to [stockCountBatchId] and advance to the pill-count step.
-    private var forceStartOnScan = false
     private var stockCountBatchId = 0L
-    @Volatile private var isStagingNdc = false
 
     // --- Stock-count (normalized) session state ---
     // A stock loose-count session writes NOTHING to pill_count_txn / pill_count_txn_details.
@@ -199,56 +190,6 @@ class PillScanningViewModel @Inject constructor(
     private var pendingBottleScan: BottleInfo? = null
 
     /**
-     * Arm the compulsory NDC-scan start for the SCAN PILLS hand-off. Must be
-     * called before [getDrugInfo] so the resolved start step is forced to SCAN.
-     */
-    fun enterStockCountScanMode(batchId: Long) {
-        forceStartOnScan = true
-        isStockCountSession = true
-        stockCountBatchId = batchId
-        // Keep the ML pill detector idle while on the SCAN step.
-        isPaused = true
-    }
-
-    /** True while the screen should route frames to the barcode decoder. */
-    val isOnNdcScanStep: Boolean
-        get() = forceStartOnScan && _currentStep.value == StepState.SCAN
-
-    /**
-     * Inserts a new BatchEntity and stores its id in [stockCountBatchId]. Mirrors
-     * InventoryScanViewModel.ensureBatchCreated: called only once, on the first
-     * successful NDC scan of a SCAN PILLS session started with no batch yet
-     * (stockCountBatchId == 0L), so that backing out before scanning a pill never
-     * leaves an empty batch row. bucketId is left null here — this hand-off has no
-     * bucket context of its own; the parent screen only shows it for display.
-     *
-     * Returns the new batchId on success, or 0 if the insert failed.
-     */
-    private suspend fun ensureStockCountBatchCreated(): Long {
-        val existing = stockCountBatchId
-        if (existing != 0L) return existing
-        return try {
-            val now = System.currentTimeMillis()
-            val newId = batchDao.insert(
-                BatchEntity(
-                    batchId = now,
-                    startDateTime = now,
-                    endDateTime = null,
-                    status = BatchStatus.INPROGRESS,
-                    isDeleted = false,
-                    note = null,
-                    bucketId = null,
-                )
-            )
-            stockCountBatchId = newId
-            newId
-        } catch (e: Exception) {
-            logger.e("ensureStockCountBatchCreated failed", e)
-            0L
-        }
-    }
-
-    /**
      * Enter a stock loose-count session from the merged DispenseFlow. All three
      * of `bottleId` / `stockTxnId` / `batchId` may be `0L`, in which case this is
      * a fully deferred session: no batch, stock_txn or bottle_info row exists
@@ -275,7 +216,6 @@ class PillScanningViewModel @Inject constructor(
         // `(stockTxn, null, null)` keying documented on the stock-line contract).
         stockLotNo = null
         stockExpNo = null
-        forceStartOnScan = false
         isPaused = false
         viewModelScope.launch {
             val drug = drugMasterDao.getDrugById(drugId) ?: return@launch
@@ -584,18 +524,7 @@ class PillScanningViewModel @Inject constructor(
                             val effectiveBatchId = if (stockCountBatchId != 0L) {
                                 stockCountBatchId
                             } else {
-                                val now = System.currentTimeMillis()
-                                batchDao.insert(
-                                    BatchEntity(
-                                        batchId = now,
-                                        startDateTime = now,
-                                        endDateTime = null,
-                                        status = BatchStatus.INPROGRESS,
-                                        isDeleted = false,
-                                        note = null,
-                                        bucketId = stockBucketId,
-                                    )
-                                )
+                                batchDao.insertNewInProgressBatch(bucketId = stockBucketId)
                             }
                             val existingStockTxn = stockTxnDao.findByDrugInBatch(effectiveBatchId, stockDrugId)
                             val effectiveStockTxnId = existingStockTxn?.txnId
@@ -1787,17 +1716,6 @@ class PillScanningViewModel @Inject constructor(
             _isTxnFromHl7.value = isComingFromHL7
 
             _steps.value = when {
-                // SCAN PILLS hand-off: this is always a 2-step flow
-                // [SCAN, TARGET_VERIFICATION]. Force it regardless of the
-                // pre-staged txn's countType/drugType so the stepper doesn't show
-                // the full 5-step dispense workflow on the NDC-scan step.
-                forceStartOnScan -> buildWorkflowSteps(
-                    isFromHl7 = false,
-                    simpleFlow = true,
-                    drugType = drugInfo?.drugType.orEmpty(),
-                    isDispense = false
-                )
-
                 isComingFromHL7 && drugInfo?.drugType?.let {
                     runCatching { ScheduleCode.valueOf(it) }.getOrNull()
                 } in controlledSchedules -> buildWorkflowSteps(
@@ -1829,9 +1747,6 @@ class PillScanningViewModel @Inject constructor(
                 ?.let { runCatching { StepState.valueOf(it) }.getOrNull() }
 
             val resolvedStep = when {
-                // SCAN PILLS hand-off: always begin on the compulsory NDC-scan
-                // step, ignoring any staged/active NDC's saved workflow step.
-                forceStartOnScan -> StepState.SCAN
                 // Caller explicitly overrides the start step (e.g. DispenseFlowScreen
                 // entering COUNTING after NDC was already scanned in PRE_NDC, so we
                 // skip straight to the pill-count step).
@@ -1868,139 +1783,8 @@ class PillScanningViewModel @Inject constructor(
     }
 
     /**
-     * Compulsory NDC scan for the SCAN PILLS hand-off. Decodes [rawValue] →
-     * GTIN-14 → drug (local, then server fallback), stages a REGULAR PARTIAL txn
-     * for that drug scoped to [stockCountBatchId], makes it the active txn
-     * ([PreferenceHelper.saveTxnId]), then advances SCAN → TARGET_VERIFICATION.
-     *
-     * Ported from [InventoryScanViewModel.onBarcodeDetected]/onScanPillsForActive
-     * so the legacy counting screen can scan its own NDC (it has no scanner of its
-     * own). Runs as one sequential coroutine so the txn load and step advance can't
-     * race / clobber each other.
-     */
-    fun onNdcScannedForStockCount(rawValue: String) {
-        if (!forceStartOnScan || _currentStep.value != StepState.SCAN) return
-        if (isStagingNdc) return
-        isStagingNdc = true
-        viewModelScope.launch {
-            try {
-                val isGs1 = barcodeDecoder.isGs1Barcode(rawValue)
-                val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
-                val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
-                val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
-                if (gtin14.isNullOrBlank() || gtin14.length != 14 || !gtin14.all { it.isDigit() }) {
-                    logger.w("STOCK_SCAN invalid label gtin14=$gtin14")
-                    _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_invalid_label)) }
-                    isStagingNdc = false
-                    return@launch
-                }
-
-                val localDrug = drugMasterDao.getDrugByGtin(gtin14) ?: drugMasterDao.getDrugByNdc(gtin14)
-                val drug = localDrug ?: run {
-                    val drugInfo = try {
-                        drugRepository.getDrugInfoByNdc(
-                            GetNdcRequestModel(target_ndc = "", scanned_ndc = gtin14)
-                        )
-                    } catch (e: Exception) {
-                        logger.e("STOCK_SCAN server lookup failed gtin14=$gtin14", e)
-                        null
-                    }
-                    if (drugInfo == null) {
-                        _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_drug_not_found, gtin14)) }
-                        isStagingNdc = false
-                        return@launch
-                    }
-                    val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: "Unknown Drug"
-                    val imagePath = drugImageDownloader.downloadAndSave(
-                        url = drugInfo.imageUrl,
-                        drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
-                    )
-                    drugMasterDao.upsertPreservingId(
-                        DrugMasterEntity(
-                            ndc = drugInfo.ndc,
-                            drugName = displayName,
-                            drugType = drugInfo.drugType,
-                            gtin = gtin14,
-                            packageQty = drugInfo.qty,
-                            isHazardous = drugInfo.isHazardous ?: false,
-                            strength = drugInfo.strength,
-                            dosageForm = drugInfo.dosageForm,
-                            drugImagePath = imagePath,
-                        )
-                    )
-                    drugMasterDao.getDrugByNdc(drugInfo.ndc) ?: drugMasterDao.getDrugByGtin(gtin14)
-                }
-                if (drug == null) {
-                    _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_drug_not_found, gtin14)) }
-                    isStagingNdc = false
-                    return@launch
-                }
-
-                val lotNo = decoded?.lotNumber
-                val expiry = decoded?.expirationDate?.format(
-                    java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
-                )
-
-                // First successful scan of a SCAN PILLS session started with no batch
-                // yet (InventoryScanViewModel.onScanPillsForActive passes batchId=0L
-                // rather than creating one eagerly): create the BatchEntity now so an
-                // abandoned session never leaves an empty batch row.
-                if (stockCountBatchId == 0L) {
-                    val newBatchId = ensureStockCountBatchCreated()
-                    if (newBatchId == 0L) {
-                        _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_no_active_batch)) }
-                        isStagingNdc = false
-                        return@launch
-                    }
-                }
-
-                // Create the StockTxn header (once per drug in the batch) but DON'T create the
-                // BottleInfo row here — this is the "Scan Pills" loose flow, where each counting
-                // session becomes its own line. Done ([flushStagedDetails]) inserts a fresh row
-                // with the session's loose total. Reset stockBottleId so Done takes the insert
-                // path rather than a stale DispenseFlow hand-off id.
-                val drugId = drug.drugId
-                stockLotNo = lotNo
-                stockExpNo = expiry
-                stockBottleId = 0L
-                val stockTxn = stockTxnDao.findByDrugInBatch(stockCountBatchId, drugId)
-                stockTxnId = stockTxn?.txnId ?: stockTxnDao.upsertPreservingId(
-                    StockTxnEntity(
-                        drugId = drugId,
-                        status = CountStatus.PARTIAL,
-                        batchId = stockCountBatchId,
-                    )
-                )
-                logger.d("STOCK_SCAN staged ndc=${drug.ndc} stockTxnId=$stockTxnId batchId=$stockCountBatchId")
-
-                // Stock txn added → keep the batch's live totals in sync.
-                if (stockCountBatchId != 0L) {
-                    stockTxnDao.refreshBatchTotalNdcs(stockCountBatchId)
-                    stockTxnDao.updateBatchUserName(
-                        stockCountBatchId,
-                        preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
-                    )
-                }
-
-                // Scan satisfied — set up the synthetic stock txn info and advance to the
-                // pill-count step. Clear the force flag FIRST so reloadAfterScan()
-                // does not re-resolve back to SCAN.
-                forceStartOnScan = false
-                isPaused = false
-                startStockCounting(drug, stockTxnId)
-            } catch (e: Exception) {
-                logger.e("STOCK_SCAN onNdcScannedForStockCount failed", e)
-                _uiState.update { it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_scan_failed)) }
-            } finally {
-                isStagingNdc = false
-            }
-        }
-    }
-
-    /**
      * Always-on rescan hook for the dispense pill-counting steps (TARGET_VERIFICATION /
-     * TARGET_REVERIFICATION). Unlike [onNdcScannedForStockCount] (a one-shot compulsory scan
-     * gated to [StepState.SCAN]), this fires on every barcode the camera decodes while the
+     * TARGET_REVERIFICATION). Fires on every barcode the camera decodes while the
      * pharmacist is actively counting pills for a dispense txn, so a second bottle of the same
      * drug can be detected mid-count.
      *
