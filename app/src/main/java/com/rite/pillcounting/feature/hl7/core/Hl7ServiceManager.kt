@@ -165,6 +165,9 @@ class Hl7ServiceManager @Inject constructor(
         serviceManager.getService()?.discoverPmsAndConnect()
     }
 
+    /** Raw MLLP connection state — see [com.rite.pillcounting.core.hl7.service.HL7Service.isPmsConnected]. */
+    fun isPmsConnected(): Boolean = serviceManager.getService()?.isPmsConnected() ?: false
+
     /**
      * Clear the stored TOFU certificate pin and resume PMS connection.
      * Call this when the PMS server certificate is legitimately rotated.

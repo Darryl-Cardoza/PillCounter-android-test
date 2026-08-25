@@ -276,9 +276,6 @@ class ImageNanoServer(
         else -> "BWTP"
     }
 
-    private val pmsFileNamingDateFormat: SimpleDateFormat
-        get() = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
-
     private fun zipResponse(
         entries: List<ImageEntry>,
         zipFileName: String = "images.zip",
@@ -313,6 +310,7 @@ class ImageNanoServer(
                 }
 
                 ZipNaming.PMS_FILE_NAMING -> {
+                    val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
                     val codes = entries.map { pmsTypeCode(it.type) }
                     val codeCounters = mutableMapOf<String, Int>()
 
@@ -320,7 +318,7 @@ class ImageNanoServer(
                         val code = codes[index]
                         val number = (codeCounters[code] ?: 0) + 1
                         codeCounters[code] = number
-                        val timestamp = pmsFileNamingDateFormat.format(Date(entry.createdAt))
+                        val timestamp = dateFormat.format(Date(entry.createdAt))
                         // `entry.file` is the on-disk (encrypted) file — the zip entry holds
                         // already-decrypted jpeg bytes, so always name it `.jpg`.
                         zip.putNextEntry(

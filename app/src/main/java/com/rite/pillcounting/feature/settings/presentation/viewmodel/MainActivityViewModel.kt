@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.settings.presentation.viewmodel
 import android.content.SharedPreferences
 import android.os.Build
 import androidx.lifecycle.ViewModel
+import com.rite.pillcounting.R
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.health.logic.SessionHealthController
@@ -69,16 +70,25 @@ class MainActivityViewModel @Inject constructor(
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
 
-    // Guards startHl7Service() against being invoked more than once per process —
-    // both evaluateHl7State() and startHl7AfterTerminalLoaded() can independently
-    // decide HL7 should start; only the first one to actually run may proceed.
-    private var hl7StartRequested = false
+    // The full config identity HL7 last started with, so a later settings/auth-me fetch
+    // that returns different values (e.g. HL7 was preloaded from stale cached prefs on a
+    // cold launch, then the network fetch lands with updated terminal/service name, PMS
+    // IP, or connection flags) can detect the mismatch and restart HL7 with the fresh
+    // config. Null means HL7 has not been started yet in this process — doubles as the
+    // guard against evaluateHl7State() and startHl7AfterTerminalLoaded() both racing to
+    // call through to Hl7ServiceManager.initialize for the same process.
+    private var hl7StartedWithIdentity: Hl7Identity? = null
 
-    // The NSD/terminal identity HL7 last started with, so a later settings fetch that
-    // returns different values (e.g. HL7 was preloaded from stale cached prefs on a cold
-    // launch, then the network fetch lands with an updated terminal/service name) can
-    // detect the mismatch and restart HL7 with the fresh config.
-    private var hl7StartedWithIdentity: Triple<String, String, String>? = null
+    private data class Hl7Identity(
+        val broadCastServiceName: String,
+        val discoverServiceName: String,
+        val terminalName: String,
+        val pmsIp: String?,
+        val pmsPort: Int,
+        val useStaticPmsConnection: Boolean,
+        val bypassTls: Boolean,
+        val hl7Version: String,
+    )
 
     // Holds the current state of "Ask to Add Notes"
     private val _isAskToAddNotes = MutableStateFlow(preferenceHelper.getShowNotesDialogSetting())
@@ -113,10 +123,6 @@ class MainActivityViewModel @Inject constructor(
         SharingStarted.WhileSubscribed(5_000),
         preferenceHelper.isUseStaticPmsConnection()
     )
-
-    fun getPmsIP(): String = preferenceHelper.getPmsIP().orEmpty()
-
-    fun getPmsPort(): String = preferenceHelper.getPmsPort().takeIf { it != 0 }?.toString().orEmpty()
 
     /**
      * Live PMS ip/port, so [ConnectionInfoScreen][com.rite.pillcounting.feature.settings.presentation.ConnectionInfoScreen]
@@ -165,11 +171,12 @@ class MainActivityViewModel @Inject constructor(
         val port = preferenceHelper.getPmsPort()
 
         if (host.isNullOrBlank() || port <= 0) {
-            _pmsTestConnectionState.value = PmsTestConnectionState.Failed("PMS IP/port not configured")
+            _pmsTestConnectionState.value =
+                PmsTestConnectionState.Failed(preferenceHelper.getContext().getString(R.string.pms_not_configured))
             return
         }
 
-        if (hl7EventHandler.connectionState.value) {
+        if (hl7ServiceManager.isPmsConnected()) {
             _pmsTestConnectionState.value = PmsTestConnectionState.Success
             return
         }
@@ -185,7 +192,7 @@ class MainActivityViewModel @Inject constructor(
             } catch (e: Exception) {
                 logger.w("testPmsConnection() — failed to reach $host:$port: ${e.message}")
                 _pmsTestConnectionState.value =
-                    PmsTestConnectionState.Failed("Unable to reach PMS server")
+                    PmsTestConnectionState.Failed(preferenceHelper.getContext().getString(R.string.pms_unable_to_reach))
             }
         }
     }
@@ -533,7 +540,7 @@ class MainActivityViewModel @Inject constructor(
     /**
      * Configures and starts the HL7 service and its event consumer.
      *
-     * Guarded by [hl7StartRequested] so the two independent triggers — [evaluateHl7State]
+     * Guarded by [hl7StartedWithIdentity] so the two independent triggers — [evaluateHl7State]
      * (fires at ViewModel init, covers an app relaunch with terminal info already cached)
      * and [startHl7AfterTerminalLoaded] (fires once auth/me returns, covers a fresh login) —
      * can never both call through to [Hl7ServiceManager.initialize] for the same process.
@@ -543,17 +550,25 @@ class MainActivityViewModel @Inject constructor(
         val discoverServiceName = _uiState.value.nsdDiscoveryType ?: return
         // Use terminal name from preferences, fallback to device model if not available
         val terminalName = preferenceHelper.getSelectedTerminalName() ?: "PillCounter-${Build.MODEL}"
-        val identity = Triple(broadCastServiceName, discoverServiceName, terminalName)
+        val identity = Hl7Identity(
+            broadCastServiceName = broadCastServiceName,
+            discoverServiceName = discoverServiceName,
+            terminalName = terminalName,
+            pmsIp = preferenceHelper.getPmsIP(),
+            pmsPort = preferenceHelper.getPmsPort(),
+            useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),
+            bypassTls = preferenceHelper.isBypassTlsEnabled(),
+            hl7Version = preferenceHelper.getHl7Version(),
+        )
 
-        if (hl7StartRequested) {
+        if (hl7StartedWithIdentity != null) {
             if (identity == hl7StartedWithIdentity) {
                 logger.i("startHl7Service() — already running with this identity, skipping duplicate init")
                 return
             }
-            logger.i("startHl7Service() — identity changed since last start (preloaded cache vs fresh fetch), restarting HL7")
+            logger.i("startHl7Service() — identity changed since last start (preloaded cache vs fresh fetch, or updated PMS/connection settings), restarting HL7")
             hl7ServiceManager.shutdown()
         }
-        hl7StartRequested = true
         hl7StartedWithIdentity = identity
 
         val config = HL7Config(
@@ -563,11 +578,11 @@ class MainActivityViewModel @Inject constructor(
             nsdBroadcastType = broadCastServiceName,
             nsdDiscoveryType = discoverServiceName,
             imageServicePort = 8080,
-            hl7Version = preferenceHelper.getHl7Version(),
-            bypassTls = preferenceHelper.isBypassTlsEnabled(),
-            useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),
-            pmsIp = preferenceHelper.getPmsIP(),
-            pmsPort = preferenceHelper.getPmsPort(),
+            hl7Version = identity.hl7Version,
+            bypassTls = identity.bypassTls,
+            useStaticPmsConnection = identity.useStaticPmsConnection,
+            pmsIp = identity.pmsIp,
+            pmsPort = identity.pmsPort,
         )
         hl7ServiceManager.initialize(config, hl7EventHandler)
     }
@@ -626,7 +641,6 @@ class MainActivityViewModel @Inject constructor(
      */
     private fun stopHl7Service() {
         hl7ServiceManager.shutdown()
-        hl7StartRequested = false
         hl7StartedWithIdentity = null
         logger.i("HL7 STOPPED")
     }

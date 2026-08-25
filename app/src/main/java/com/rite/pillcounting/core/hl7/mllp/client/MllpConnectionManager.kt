@@ -150,7 +150,6 @@ class MllpConnectionManager(
         state = newState
         when (newState) {
             ConnectionState.Connected -> {
-                disconnectedNotified = false
                 // Don't fire onConnected immediately — a flapping server (accept then drop
                 // within seconds) would otherwise re-trigger resend-pending + notification
                 // on every micro-reconnect. Only fire once the connection has held for
@@ -158,6 +157,12 @@ class MllpConnectionManager(
                 settleJob?.cancel()
                 settleJob = scope.launch {
                     delay(CONNECT_SETTLE_MS)
+                    // Only a connection that actually settles counts as "recovered" — reset
+                    // here, not on the raw Connected transition above, so a server that keeps
+                    // flapping (accept → drop within CONNECT_SETTLE_MS, repeat) still gets
+                    // exactly one onDisconnected/notification for the whole flapping stretch
+                    // instead of one per failed micro-reconnect.
+                    disconnectedNotified = false
                     onConnected?.invoke()
                 }
             }

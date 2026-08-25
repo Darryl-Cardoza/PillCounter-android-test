@@ -82,18 +82,20 @@ object NetworkUtils {
 
             val callback = object : ConnectivityManager.NetworkCallback() {
                 override fun onAvailable(network: Network) {
-                    isAvailable = isNetworkAvailable(context)
+                    isAvailable = true
                 }
 
                 override fun onLost(network: Network) {
-                    isAvailable = isNetworkAvailable(context)
+                    isAvailable = false
                 }
 
                 override fun onCapabilitiesChanged(
                     network: Network,
                     networkCapabilities: NetworkCapabilities
                 ) {
-                    isAvailable = isNetworkAvailable(context)
+                    isAvailable = networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                        networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
                 }
             }
 

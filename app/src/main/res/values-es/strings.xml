@@ -553,6 +553,7 @@
     <string name="connection_failed_reason">Error de conexión: %1$s</string>
     <string name="no_wifi_connection">Sin conexión Wi-Fi</string>
     <string name="pms_not_configured">IP/puerto del PMS no configurados. Configúrelos en el portal.</string>
+    <string name="pms_unable_to_reach">No se pudo conectar con el servidor PMS</string>
     <string name="check_wifi_before_testing">Conéctese a Wi-Fi antes de probar la conexión</string>
     <string name="hl7_notification_connected_to">Conectado a %1$s</string>
     <string name="hl7_notification_listening">Escuchando y respondiendo a HL7</string>

@@ -22,6 +22,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +38,8 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.rite.pillcounting.feature.settings.presentation.viewmodel.PmsTestConnectionState
 import com.rite.pillcounting.ui.theme.LocalExtendedColors
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ConnectionInfoScreen(
@@ -58,7 +61,10 @@ fun ConnectionInfoScreen(
     val isNetworkAvailable = rememberIsNetworkAvailable()
 
     // Device IP is tied to the active network, so re-read it whenever connectivity changes.
-    val deviceIpAddress = remember(isNetworkAvailable) { NetworkUtils.getLocalIpAddress().orEmpty() }
+    // NetworkInterface enumeration is blocking I/O — do it off the main thread.
+    val deviceIpAddress by produceState(initialValue = "", isNetworkAvailable) {
+        value = withContext(Dispatchers.IO) { NetworkUtils.getLocalIpAddress().orEmpty() }
+    }
 
     val pmsNotConfigured = pmsIpAddress.isBlank() || pmsPort.isBlank()
 

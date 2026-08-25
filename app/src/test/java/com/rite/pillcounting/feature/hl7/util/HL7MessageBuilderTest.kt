@@ -199,7 +199,9 @@ class HL7MessageBuilderTest {
             scannedDrugCode = "12345-678-90",
             drugName = "Atorvastatin",
             pharmacistId = "PH1",
-            pharmacistName = "Jane^Doe",
+            pharmacistName = "Jane Doe",
+            pharmacistGivenName = "Jane",
+            pharmacistFamilyName = "Doe",
             isNdcVerified = true,
             config = HL7Config.current(
                 selectedTerminalName = "PILLCOUNTER",

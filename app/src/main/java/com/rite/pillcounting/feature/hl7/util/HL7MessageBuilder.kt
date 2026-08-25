@@ -105,6 +105,19 @@ data class HL7Config(
  */
 object HL7MessageBuilder {
 
+    // Resend attempts (PMS reject, ACK timeout, reconnect) call buildDispenseMessage again
+    // for the same txn, which used to re-read, decrypt, and re-base64-encode every ZUI-8
+    // tray image from disk on each call — multi-MB per image, repeated on every retry.
+    // Keyed by (path, lastModified) so an edited/rescanned image at the same path still
+    // misses and re-encodes; capped to bound memory since encoded blobs can be sizable.
+    private const val IMAGE_ENCODE_CACHE_MAX = 32
+    private val imageEncodeCache = object : LinkedHashMap<Pair<String, Long>, String>(
+        IMAGE_ENCODE_CACHE_MAX, 0.75f, true
+    ) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, Long>, String>?): Boolean =
+            size > IMAGE_ENCODE_CACHE_MAX
+    }
+
     // =========================================================
     // DISPENSE (RDS O13)
     // =========================================================
@@ -190,8 +203,7 @@ object HL7MessageBuilder {
                 // ZUI-8 (Base64 tray image log) populated below via drugImages.
                 Hl7Format.VIVID.sendingApplication -> zui { z ->
                     z.ndc = drugCode.replace("-", "")
-                    z.vividUserName = pharmacistName?.split("^")?.firstOrNull().orEmpty()
-                        .let { if (it.length > 10) it.substring(0, 10) else it }
+                    z.vividUserName = pharmacistGivenName.orEmpty().take(10)
                     z.transactionOrderId = orderId
                     z.rxNumber = vividOrderId
                     z.dispensedQuantity = totalCount.toString()
@@ -206,9 +218,8 @@ object HL7MessageBuilder {
                     // C# parser reads, rest are context fields per EyeCon spec. ZUI-11
                     // (transactionOrderId) is the RxNo-RefillNo composite, same as vividOrderId.
                     val eyeConNdc = drugCode.replace("-", "")
-                    val eyeConUserFirstName = pharmacistName?.split("^")?.firstOrNull().orEmpty()
-                    val verifiedBy = eyeConUserFirstName
-                        .let { if (it.length > 10) it.substring(0, 10) else it }
+                    val eyeConUserFirstName = pharmacistGivenName.orEmpty()
+                    val verifiedBy = eyeConUserFirstName.take(10)
                     zuiEyeCon { z ->
                         z.ndc = eyeConNdc
                         z.drugName = drugName
@@ -564,16 +575,30 @@ object HL7MessageBuilder {
 
         val countTotal = imagePaths.size
         return imagePaths.mapIndexedNotNull { index, path ->
-            val base64 = runCatching { File(path).readBytes() }
-                .mapCatching { bytes -> if (ImageCrypto.isEncrypted(bytes)) ImageCrypto.decrypt(bytes) else bytes }
-                .getOrNull()
-                ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
-                ?: return@mapIndexedNotNull null
+            val base64 = encodeImageCached(path) ?: return@mapIndexedNotNull null
             val countIndex = index + 1
             // "1B1" = batch 1 of 1 (no batching feature yet); "${countIndex}C$countTotal" =
             // this image's count-attempt index of the total image count, per Vivid spec format.
             listOf("1B1", "${countIndex}C$countTotal", base64)
         }.takeIf { it.isNotEmpty() }
+    }
+
+    /** Reads, decrypts, and base64-encodes an image file, cached by (path, lastModified) so repeat resends of the same unchanged file skip the disk read and re-encode. */
+    private fun encodeImageCached(path: String): String? {
+        val file = File(path)
+        val lastModified = file.lastModified()
+        if (lastModified == 0L) return null // file doesn't exist / unreadable — don't cache
+        val key = path to lastModified
+        synchronized(imageEncodeCache) { imageEncodeCache[key] }?.let { return it }
+
+        val encoded = runCatching { file.readBytes() }
+            .mapCatching { bytes -> if (ImageCrypto.isEncrypted(bytes)) ImageCrypto.decrypt(bytes) else bytes }
+            .getOrNull()
+            ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
+            ?: return null
+
+        synchronized(imageEncodeCache) { imageEncodeCache[key] = encoded }
+        return encoded
     }
 
     private fun buildImageOBX(

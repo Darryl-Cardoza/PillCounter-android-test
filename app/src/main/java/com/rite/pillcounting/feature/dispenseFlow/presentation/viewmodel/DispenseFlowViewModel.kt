@@ -366,6 +366,7 @@ class DispenseFlowViewModel @Inject constructor(
                         existingTxn = createStandaloneDispenseTxn(
                             parsedNdc = parsedNdc,
                             rxNo = rxNo,
+                            refillNo = refillNo,
                             bucket = bucket,
                             targetCount = qtyInt,
                         )
@@ -449,6 +450,7 @@ class DispenseFlowViewModel @Inject constructor(
     private suspend fun createStandaloneDispenseTxn(
         parsedNdc: String,
         rxNo: String,
+        refillNo: String?,
         bucket: String?,
         targetCount: Int,
     ): PillCountTxnEntity? {
@@ -468,6 +470,13 @@ class DispenseFlowViewModel @Inject constructor(
             isSynced = false,
             isNdcVerified = false,
             rxNo = rxNo,
+            refillNo = refillNo,
+            // Same RxNo-RefillNo composite HL7MessageBuilder sends as the order identifier
+            // (Vivid ZUI-4 rxNumber / EyeCon ZUI-11 transactionOrderId) — PMS pulls dispense
+            // images via getByTransactionOrderId keyed on that value. Without it, a
+            // locally-scanned dispense's images 404 on that pull and, with local storage
+            // off, are deleted after ACK with no way to re-fetch them.
+            transactionOrderId = refillNo?.takeIf { it.isNotBlank() }?.let { "$rxNo-$it" } ?: rxNo,
             bucketId = bucket,
         )
         val txnId = pillCountTxnDao.upsertPreservingId(newTxn)

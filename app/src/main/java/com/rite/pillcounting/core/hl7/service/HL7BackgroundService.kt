@@ -258,24 +258,32 @@ class HL7Service : Service() {
      * for a normal app-driven start.
      */
     private fun loadConfigFromPreferences(): HL7Config {
-        val preferenceHelper = com.rite.pillcounting.core.utils.preference.PreferenceHelper(applicationContext)
-        val terminalName = preferenceHelper.getSelectedTerminalName()
-            ?: "PillCounter-${android.os.Build.MODEL}"
-        return HL7Config(
-            serverPort = 2575,
-            autoResponseDelayMs = 10_000L,
-            nsdBroadcastServiceName = terminalName,
-            nsdBroadcastType = preferenceHelper.getNsdBroadcastType().takeIf { it.isNotBlank() }
-                ?: Hl7ServiceConfig.PILL_COUNTER_HOST_NAME,
-            nsdDiscoveryType = preferenceHelper.getNsdDiscoveryType().takeIf { it.isNotBlank() }
-                ?: Hl7ServiceConfig.PMS_HOST_NAME,
-            imageServicePort = 8080,
-            hl7Version = preferenceHelper.getHl7Version(),
-            bypassTls = preferenceHelper.isBypassTlsEnabled(),
-            useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),
-            pmsIp = preferenceHelper.getPmsIP(),
-            pmsPort = preferenceHelper.getPmsPort(),
-        )
+        return try {
+            val preferenceHelper = com.rite.pillcounting.core.utils.preference.PreferenceHelper(applicationContext)
+            val terminalName = preferenceHelper.getSelectedTerminalName()
+                ?: "PillCounter-${android.os.Build.MODEL}"
+            HL7Config(
+                serverPort = 2575,
+                autoResponseDelayMs = 10_000L,
+                nsdBroadcastServiceName = terminalName,
+                nsdBroadcastType = preferenceHelper.getNsdBroadcastType().takeIf { it.isNotBlank() }
+                    ?: Hl7ServiceConfig.PILL_COUNTER_HOST_NAME,
+                nsdDiscoveryType = preferenceHelper.getNsdDiscoveryType().takeIf { it.isNotBlank() }
+                    ?: Hl7ServiceConfig.PMS_HOST_NAME,
+                imageServicePort = 8080,
+                hl7Version = preferenceHelper.getHl7Version(),
+                bypassTls = preferenceHelper.isBypassTlsEnabled(),
+                useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),
+                pmsIp = preferenceHelper.getPmsIP(),
+                pmsPort = preferenceHelper.getPmsPort(),
+            )
+        } catch (e: Exception) {
+            // A SecurePreferences/keystore failure here must not crash-loop the service on
+            // every START_STICKY restart — fall back to an unconfigured default config
+            // instead; the next normal app-driven start still rebuilds it properly.
+            logger.e("loadConfigFromPreferences() failed — falling back to default config", e)
+            HL7Config()
+        }
     }
 
     /* -------------------- INITIALIZATION -------------------- */
@@ -448,6 +456,9 @@ class HL7Service : Service() {
     }
 
 
+    /** Raw MLLP connection state — flips instantly, unlike [Hl7EventHandler.connectionState] which waits for [MllpConnectionManager]'s settle delay. */
+    fun isPmsConnected(): Boolean = clientManager.isConnected()
+
     fun clearPmsCertPin() {
         logger.i("clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")
         tlsFactory.clearServerPin()
@@ -507,8 +518,14 @@ class HL7Service : Service() {
      * indefinitely rather than failing once and stopping.
      */
     private fun connectToStaticPms() {
-        val host = config.pmsIp
-        val port = config.pmsPort
+        // Re-read straight from preferences, not config.pmsIp/pmsPort — auth/me can save the
+        // real IP to preferences well after this service (and its in-memory config) started,
+        // and nothing else pushes that update into config. Without re-reading here, a retry
+        // loop started before the IP was known would keep retrying the same stale/blank value
+        // forever even after preferences have the real address.
+        val preferenceHelper = PreferenceHelper(applicationContext)
+        val host = preferenceHelper.getPmsIP()
+        val port = preferenceHelper.getPmsPort()
 
         if (host.isNullOrBlank() || port <= 0) {
             logger.e("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry")
@@ -538,12 +555,17 @@ class HL7Service : Service() {
         }
     }
 
+    // Reschedules itself from a NEW coroutine each time, not from inside the currently-running
+    // one — the old code called connectToStaticPms() (which can call scheduleStaticPmsRetry()
+    // again) from within the very job that scheduleStaticPmsRetry() had just launched, so the
+    // isActive guard below saw that same still-running job and blocked the next retry from ever
+    // being scheduled. The loop died after exactly one delayed attempt.
     private fun scheduleStaticPmsRetry() {
         if (staticPmsRetryJob?.isActive == true) return
         staticPmsRetryJob = serviceScope.launch {
             delay(STATIC_PMS_CONFIG_RETRY_MS)
             if (config.useStaticPmsConnection) {
-                connectToStaticPms()
+                serviceScope.launch { connectToStaticPms() }
             }
         }
     }
@@ -594,8 +616,9 @@ class HL7Service : Service() {
     }
 
     /**
-     * Builds a minimal AA ACK from raw MSH fields when the full parse fails,
-     * so the sender doesn't time out waiting for an acknowledgement.
+     * Builds a minimal ACK from raw MSH fields when the full parse fails, so the sender
+     * doesn't time out waiting for an acknowledgement — AA when no error message is given,
+     * AR (with the error text in MSA-3) otherwise.
      */
     private fun buildFallbackAck(raw: String, errorMsg: String? = null): String {
         return try {
@@ -703,6 +726,7 @@ class HL7Service : Service() {
         imageServer.start()
 
         val ip = NetworkUtils.getLocalIpAddress()
-        logger.i("Image server running at http://$ip:${ImageWebServer.PORT}/images/{fileName}")
+        val scheme = if (config.bypassTls) "http" else "https"
+        logger.i("Image server running at $scheme://$ip:${ImageWebServer.PORT}/images/{fileName}")
     }
 }

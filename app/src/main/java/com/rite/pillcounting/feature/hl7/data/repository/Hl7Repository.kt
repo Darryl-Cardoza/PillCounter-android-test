@@ -21,8 +21,8 @@ import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
-import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.scanning.data.DrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
@@ -256,7 +256,8 @@ class Hl7Repository @Inject constructor(
             isHazardousDrug = drug.isHazardous,
             config = currentHl7Config()
         )
-        logger.i("Dispense HL7 message built for txn $txnId: $message")
+        val controlId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() } ?: txnId.toString()
+        logger.i("Dispense HL7 message built for txn $txnId | controlId=$controlId | length=${message.length}")
         val result = hl7MessageSender.send(message)
         val ack = result.getOrNull()
         if (result.isSuccess && ack != null && isSuccessAck(ack)) {
@@ -1267,9 +1268,4 @@ class Hl7Repository @Inject constructor(
                 }
         }
     }
-}
-
-private fun isControlledDrugType(drugType: String?): Boolean {
-    val code = drugType?.trim()?.uppercase() ?: return false
-    return ScheduleCode.entries.any { it.name == code }
 }
