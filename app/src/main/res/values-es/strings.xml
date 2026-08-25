@@ -8,6 +8,9 @@
     <string name="pms">PMS</string>
     <string name="loading">Cargando...</string>
 
+    <!--    Offline / Session Health   -->
+    <string name="offline_disconnect_message">Se ha desconectado tu Internet. La aplicación cerrará la sesión en %1$s.</string>
+
     <!-- ================== AUTH / LOGIN / REGISTER ================== -->
     <string name="email">Correo electrónico</string>
     <string name="remember_me">Recuérdame</string>
@@ -262,6 +265,7 @@
     <string name="count_pills_from_the_container">Cuente las pastillas del contenedor</string>
     <string name="count_prescribed_pills_quantity">Cuente la cantidad de pastillas recetadas</string>
     <string name="recount_prescribed_quantity">Vuelva a contar la cantidad recetada</string>
+    <string name="count_remaining_pills_in_the_container">Cuente las pastillas del contenedor</string>
     <string name="capture_photo_of_counted_pills_vial">Capture una foto del frasco de pastillas contadas</string>
     <string name="are_you_sure_you_want_to_complete_this_step">¿Está seguro de que desea completar este paso?</string>
     <string name="confirm_steps_completion">Confirmar finalización de pasos</string>

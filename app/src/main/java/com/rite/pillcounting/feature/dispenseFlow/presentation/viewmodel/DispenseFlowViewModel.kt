@@ -631,7 +631,7 @@ class DispenseFlowViewModel @Inject constructor(
                         ndc = drugInfo.ndc,
                         drugName = displayName,
                         drugType = drugInfo.drugType,
-                        gtin = gtin14,
+                        gtin = gtin14.trim(),
                         packageQty = drugInfo.qty,
                         isHazardous = drugInfo.isHazardous ?: false,
                         strength = drugInfo.strength,

@@ -5,6 +5,7 @@ import android.util.Log
 import com.chuckerteam.chucker.api.ChuckerInterceptor
 import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.core.api.interfaceDetail.HeaderInterceptor
+import com.rite.pillcounting.core.health.logic.HealthGateInterceptor
 import com.rite.pillcounting.core.refreshToken.data.TokenAuthenticator
 import com.rite.pillcounting.core.security.RuntimeUnit
 import com.rite.pillcounting.feature.dashboard.domain.model.TerminalUpdateRequestAdapter
@@ -86,10 +87,16 @@ object NetworkModule {
         loggingInterceptor: HttpLoggingInterceptor,
         @ApplicationContext context: Context,
         tokenAuthenticator: TokenAuthenticator,
-        runtimeUnit: RuntimeUnit
+        runtimeUnit: RuntimeUnit,
+        healthGateInterceptor: HealthGateInterceptor
     ): OkHttpClient =
         OkHttpClient.Builder()
             .addInterceptor(HeaderInterceptor(runtimeUnit))
+            // Gate every non-allowlisted authed request while the app is offline. Attached
+            // AFTER HeaderInterceptor so X-Server-Key is present on the (rare) allowlisted
+            // requests that still go through, and BEFORE the authenticator so a synthetic
+            // offline 599 never triggers a spurious token refresh.
+            .addInterceptor(healthGateInterceptor)
             .addInterceptor(loggingInterceptor)
             .addInterceptor(ChuckerInterceptor(context))
             .authenticator(tokenAuthenticator)

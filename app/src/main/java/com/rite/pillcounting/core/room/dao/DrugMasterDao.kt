@@ -115,7 +115,7 @@ interface DrugMasterDao {
      * @param gtin Global Trade Item Number.
      * @return The matching [DrugMasterEntity], or `null` if not found.
      */
-    @Query("SELECT * FROM drug_master WHERE gtin = :gtin LIMIT 1")
+    @Query("SELECT * FROM drug_master WHERE TRIM(gtin) = TRIM(:gtin) LIMIT 1")
     suspend fun getDrugByGtin(gtin: String): DrugMasterEntity?
 
     /**

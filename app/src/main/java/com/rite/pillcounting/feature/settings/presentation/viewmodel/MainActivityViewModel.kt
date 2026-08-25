@@ -5,6 +5,7 @@ import android.os.Build
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
+import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.hl7.service.HL7Config
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.room.dao.BatchDao
@@ -63,6 +64,7 @@ class MainActivityViewModel @Inject constructor(
     private val hl7ServiceManager: Hl7ServiceManager,
     private val hl7EventHandler: Hl7EventHandler,
     private val sessionLockController: SessionLockController,
+    private val sessionHealthController: SessionHealthController,
 ) : ViewModel(), IApplicationSettingsViewModel {
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
@@ -283,8 +285,18 @@ class MainActivityViewModel @Inject constructor(
                 val response = repository.getApplicationSettings()
                 updateHl7Config(response)
                 applyAndStoreSettings(response)
+                // Forward the server-supplied offline threshold to the health controller so the
+                // OFFLINE timer reflects the current backend policy. Null means the backend did
+                // not include the field on this response — controller keeps its persisted value.
+                response.data?.offlineSessionThresholdSeconds?.let { seconds ->
+                    sessionHealthController.updateThreshold(seconds)
+                }
 
                 evaluateHl7State()
+                // No explicit /health call here — MainActivity.onResume + DashboardViewModel
+                // preflight both trigger checkHealth() which coalesces via the controller's
+                // in-flight/throttle guard. Firing again here would just get swallowed by the
+                // 5s throttle but still adds noise.
             } catch (e: Exception) {
                 logger.e("Failed to fetch settings. Keeping cached/fallback values.", e)
                 _uiState.update { it.copy(errorMessage = e.message) }
