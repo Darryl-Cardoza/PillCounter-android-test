@@ -12,9 +12,9 @@ import javax.inject.Singleton
  *
  * SSAID is scoped per (device, user, app-signing-key) on Android 8+ and survives
  * uninstall/reinstall when the reinstall uses the same signing key. Factory reset
- * resets it. Emulators and some vendor ROMs may return an empty string.
- *
- * No caching layer: the platform lookup is a single ContentResolver call.
+ * resets it. Emulators and some vendor ROMs may return null or an empty string —
+ * in that case [getDeviceKey] returns null so callers can refuse to send a blank
+ * identifier instead of colliding with every other device in the same state.
  */
 @Singleton
 class DeviceKeyProvider @Inject constructor(
@@ -23,32 +23,13 @@ class DeviceKeyProvider @Inject constructor(
 
     private val logger = AppLogger.create<DeviceKeyProvider>()
 
-    /**
-     * Returns the SSAID for this app on this device/user.
-     *
-     * Description:
-     * Reads Settings.Secure.ANDROID_ID via the app's ContentResolver.
-     *
-     * What it does:
-     * - Performs a single sync platform lookup.
-     * - Falls back to an empty string if the platform returns null.
-     * - Logs the resolved length only (no raw value at info level).
-     *
-     * Note:
-     * The `suspend` modifier is retained so existing call sites and mocks continue
-     * to compile unchanged; the body does not actually suspend.
-     *
-     * @return SSAID string, or "" when unavailable.
-     *
-     * Example Usage:
-     * val deviceKey = deviceKeyProvider.getDeviceKey()
-     */
-    suspend fun getDeviceKey(): String {
+    /** Returns SSAID for this app/device, or null when the platform reports empty/null. */
+    suspend fun getDeviceKey(): String? {
         val id = Settings.Secure.getString(
             context.contentResolver,
             Settings.Secure.ANDROID_ID
-        ) ?: ""
-        logger.i("Resolved device_key (SSAID) length=${id.length}")
-        return id
+        )
+        logger.d("Resolved device_key (SSAID) length=${id?.length ?: 0}")
+        return id?.takeIf { it.isNotBlank() }
     }
 }

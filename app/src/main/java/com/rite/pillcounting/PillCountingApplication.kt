@@ -8,7 +8,6 @@ import coil.ImageLoader
 import com.rite.pillcounting.core.utils.coil.EncryptedImageFetcher
 import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
-import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,20 +22,12 @@ class PillCountingApplication : Application() {
     @Inject
     lateinit var modelLoader: PillDetectionModelLoader
 
-    @Inject
-    lateinit var deviceKeyProvider: DeviceKeyProvider
-
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val logger = AppLogger("PillCountingApplication")
-    private val deviceKeyLogger = AppLogger("DeviceKey")
 
     override fun onCreate() {
         super.onCreate()
 //        FirebaseApp.initializeApp(this)
-
-        applicationScope.launch {
-            deviceKeyLogger.i("device_key=${deviceKeyProvider.getDeviceKey()}")
-        }
 
         if (!OpenCVLoader.initLocal()) {
             logger.e("OpenCV initialization failed")

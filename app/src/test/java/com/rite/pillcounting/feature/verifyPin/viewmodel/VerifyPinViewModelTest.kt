@@ -234,8 +234,8 @@ class VerifyPinViewModelTest {
     // ───────────────────────────── device key fetch failure ─────────────────────────────
 
     @Test
-    fun `verifyPin sets Error instead of crashing when device key fetch fails`() = runTest {
-        coEvery { deviceKeyProvider.getDeviceKey() } throws IOException("firebase down")
+    fun `verifyPin sets Error when device key unavailable`() = runTest {
+        coEvery { deviceKeyProvider.getDeviceKey() } returns null
         every { context.getString(R.string.error_server_unavailable) } returns "server-unavailable"
 
         viewModel.verifyPin(email, otp)

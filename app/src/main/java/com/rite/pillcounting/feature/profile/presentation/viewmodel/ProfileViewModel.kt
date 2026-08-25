@@ -244,16 +244,17 @@ class ProfileViewModel @Inject constructor(
      */
     private fun loadTerminals() {
         viewModelScope.launch {
-            val deviceKey = try {
-                deviceKeyProvider.getDeviceKey()
-            } catch (e: Exception) {
-                logger.e("Failed to fetch device key while loading terminals", e)
+            val deviceKey = deviceKeyProvider.getDeviceKey()
+            if (deviceKey == null) {
+                logger.w("Device key unavailable — skipping terminal fetch")
                 return@launch
             }
             terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey)
                 .onSuccess { response ->
                     terminals = response.data?.terminals.orEmpty()
-                    selectedTerminal = terminals.firstOrNull { it.deviceKey == deviceKey }
+                    selectedTerminal = terminals.firstOrNull {
+                        !it.deviceKey.isNullOrBlank() && it.deviceKey == deviceKey
+                    }
                     initialTerminal = selectedTerminal
 
                     selectedTerminal?.terminalName?.let { terminalName ->
@@ -271,8 +272,9 @@ class ProfileViewModel @Inject constructor(
                     val cachedTerminals = preferenceHelper.getTerminals()
                     val savedTerminalId = preferenceHelper.getSelectedTerminalId()
                     terminals = cachedTerminals
-                    selectedTerminal = cachedTerminals.firstOrNull { it.deviceKey == deviceKey }
-                        ?: cachedTerminals.firstOrNull { it.terminalId == savedTerminalId }
+                    selectedTerminal = cachedTerminals.firstOrNull {
+                        !it.deviceKey.isNullOrBlank() && it.deviceKey == deviceKey
+                    } ?: cachedTerminals.firstOrNull { it.terminalId == savedTerminalId }
                     initialTerminal = selectedTerminal
 
                     logger.i("Loaded ${terminals.size} cached terminals, selected: ${selectedTerminal?.terminalName}")
@@ -461,31 +463,24 @@ class ProfileViewModel @Inject constructor(
                         // held Terminal 2 server-side while every local reader still saw none.
                         withContext(NonCancellable) {
                             if (selectedTerminal?.terminalId != initialTerminal?.terminalId) {
-                                val claimDeviceKeyForCheck = try {
+                                val claimDeviceKeyForCheck =
                                     if (selectedTerminal != null) deviceKeyProvider.getDeviceKey() else null
-                                } catch (e: Exception) {
-                                    logger.e("Failed to fetch device key during terminal claim check", e)
-                                    null
-                                }
                                 val currentTerminals = if (claimDeviceKeyForCheck != null) {
                                     terminalRepository.getTerminals(availableOnly = true, deviceKey = claimDeviceKeyForCheck)
                                         .getOrNull()?.data?.terminals ?: terminals
                                 } else {
                                     terminals
                                 }
-                                val heldTerminal = currentTerminals.firstOrNull { it.deviceKey == claimDeviceKeyForCheck }
-                                    ?: initialTerminal
+                                val heldTerminal = currentTerminals.firstOrNull {
+                                    !it.deviceKey.isNullOrBlank() && it.deviceKey == claimDeviceKeyForCheck
+                                } ?: initialTerminal
                                 if (selectedTerminal != null && selectedTerminal?.terminalId != heldTerminal?.terminalId) {
                                     val terminalId = selectedTerminal?.terminalId
                                     if (terminalId != null) {
                                         logger.i("Terminal changed from ${heldTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
 
-                                        val claimDeviceKey = try {
-                                            claimDeviceKeyForCheck ?: deviceKeyProvider.getDeviceKey()
-                                        } catch (e: Exception) {
-                                            logger.e("Failed to fetch device key during terminal claim", e)
-                                            null
-                                        }
+                                        val claimDeviceKey = claimDeviceKeyForCheck
+                                            ?: deviceKeyProvider.getDeviceKey()
 
                                         if (claimDeviceKey == null) {
                                             logger.w("Skipping terminal claim: device key unavailable")
