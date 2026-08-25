@@ -376,7 +376,6 @@
     <string name="rx_already_completed_message">This Rx has already been dispensed.</string>
     <string name="enable_hl7_from_portal_toast">Enable HL7 from Portal</string>
     <string name="scan_correct_label">Scan Correct Label</string>
-    <string name="retry">Retry</string>
 <!--    StockCount-->
     <string name="scan_stock_bottle">Scan Stock Bottle</string>
     <string name="scan_open_pills">Scan Open Pills</string>
