@@ -5,10 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
@@ -17,7 +17,6 @@ import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.dtos.RequestedDrugDto
-import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
@@ -245,23 +244,47 @@ class InventoryScanViewModel @Inject constructor(
         val existing = _resolvedBatchId.value
         if (existing != 0L) return existing
         return try {
-            val now = System.currentTimeMillis()
-            val newId = batchDao.insert(
-                BatchEntity(
-                    batchId = now,
-                    startDateTime = now,
-                    endDateTime = null,
-                    status = BatchStatus.INPROGRESS,
-                    isDeleted = false,
-                    note = null,
-                    bucketId = _bucketId.value,
-                )
-            )
+            val newId = batchDao.insertNewInProgressBatch(bucketId = _bucketId.value)
             _resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
             logger.e("ensureBatchCreated failed", e)
             0L
+        }
+    }
+
+    /**
+     * Adopts a batchId created lazily by the SCAN PILLS → DispenseFlow entry
+     * point. Called by [com.rite.pillcounting.feature.inventoryFlow.presentation.shell.InventoryScanHost]
+     * after DispenseFlow publishes the id via NavController's SavedStateHandle.
+     *
+     * Only takes effect when this VM has no batch bound yet
+     * ([_resolvedBatchId] == 0L). Setting [_resolvedBatchId] re-triggers the
+     * `flatMapLatest` in [recentRows], which subscribes to
+     * [bottleInfoDao.observeByBatchId] + [stockTxnDao.observeRequestedDrugs]
+     * against the real batch so the just-counted bottle appears in the list.
+     * Also hydrates [_bucketId] and (for PMS batches) [expectedNdcs] the same
+     * way the `init` block does.
+     *
+     * @param batchId The batchId minted by
+     *   `DispenseFlowViewModel.advanceToCountingStage`. Ignored when 0.
+     */
+    fun adoptStockCountBatchId(batchId: Long) {
+        if (batchId == 0L) return
+        if (_resolvedBatchId.value != 0L) return
+        viewModelScope.launch {
+            _resolvedBatchId.value = batchId
+            val batch = batchDao.getById(batchId)
+            // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
+            // is already authoritative (set from argBucketId at init). Reading it back
+            // from a lazily-created batch would clobber the selection with a stale/null
+            // value if the commit hadn't populated bucketId at insert time.
+            if (!batch?.requestIdFromPMS.isNullOrBlank()) {
+                expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }
+            logger.i("INV_SCAN adopted lazily-created batchId=$batchId bucketId=${batch?.bucketId}")
         }
     }
 

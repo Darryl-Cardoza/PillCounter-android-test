@@ -318,11 +318,6 @@
     <string name="stock_count_dialog_option_second">Continuer le dernier lot</string>
     <string name="partial_stock_counts">Comptages de stock partiels</string>
 
-    <!--    label scanned -->
-    <string name="label_scanned_successfully">Étiquette scannée avec succès</string>
-    <string name="select_container_status">Sélectionnez l\'état du contenant</string>
-    <string name="container_status_sealed">Scellé</string>
-    <string name="container_status_opened">Ouvert</string>
     <string name="select_bucket">Sélectionner un bac</string>
     <string name="rx_number">Numéro Rx</string>
     <string name="quantity">Quantité</string>

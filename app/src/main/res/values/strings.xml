@@ -389,11 +389,6 @@
     <string name="stock_count_dialog_option_second">Continue last Batch</string>
     <string name="partial_stock_counts">Partial Stock Counts</string>
 
-    <!--    label scanned -->
-    <string name="label_scanned_successfully">Label Scanned Successfully</string>
-    <string name="select_container_status">Select container status</string>
-    <string name="container_status_sealed">Sealed</string>
-    <string name="container_status_opened">Opened</string>
     <string name="select_bucket">Select Bucket</string>
     <string name="rx_number">Rx Number</string>
     <string name="quantity">Quantity</string>

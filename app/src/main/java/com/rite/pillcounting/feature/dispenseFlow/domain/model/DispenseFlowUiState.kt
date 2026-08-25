@@ -2,7 +2,6 @@
 
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
-import com.rite.pillcounting.core.utils.compose.ContainerStatus
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 
@@ -41,8 +40,6 @@ data class DispenseFlowUiState(
     // and dosage_form[0]). Surfaced on the NDC verification sheet.
     val ndcStrength: String? = null,
     val ndcDosageForm: String? = null,
-
-    val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
 
     val showRxDetails: Boolean = false,
     // Set when a scanned RX resolves to an existing PARTIAL transaction and the
@@ -108,10 +105,6 @@ data class DispenseFlowUiState(
     // onNdcBarcodeRead rejects any scanned NDC that isn't in this set.
     // Empty = no restriction (manually-started batch or plain dispense flow).
     val allowedNdcs: Set<String> = emptySet(),
-
-    // One-shot navigation signal: non-null after a SEALED stock bottle is confirmed.
-    // The screen observes this and navigates back to the batch, then clears it.
-    val navigateToBatchId: Long? = null,
 
     // One-shot signal: set true when a transaction completes and the queue is empty.
     val navigateToDashboard: Boolean = false,

@@ -13,6 +13,7 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.di.BatchConverters
+import com.rite.pillcounting.core.room.di.StringListConverter
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
@@ -57,11 +58,12 @@ import com.rite.pillcounting.core.room.models.UserEntity
         FaceProfileEntity::class,
         FaceEmbeddingEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 @TypeConverters(
-    BatchConverters::class
+    BatchConverters::class,
+    StringListConverter::class
 )
 abstract class AppDatabase : RoomDatabase() {
 

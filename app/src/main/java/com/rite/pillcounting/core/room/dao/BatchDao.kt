@@ -322,3 +322,40 @@ interface BatchDao {
         completedStatus: BatchStatus = BatchStatus.COMPLETED
     ): Flow<Int>
 }
+
+/**
+ * Inserts a fresh in-progress batch with `batchId`/`startDateTime` stamped to now.
+ *
+ * Description:
+ * Single source of truth for the "mint a new batch" write. Used by every path that
+ * lazily creates a batch on the first successful scan (Inventory quick action's
+ * [com.rite.pillcounting.feature.inventoryFlow.presentation.viewmodel.InventoryScanViewModel.ensureBatchCreated]
+ * and the deferred DispenseFlow stock-count commit inside
+ * [com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel.flushStagedDetails]).
+ *
+ * What it does:
+ * - Builds a [BatchEntity] with `batchId = now`, `startDateTime = now`,
+ *   `endDateTime = null`, `status = INPROGRESS`, `isDeleted = false`, `note = null`.
+ * - Delegates to [BatchDao.insert]. Propagates any DAO exception — callers wrap
+ *   in try/catch (ensure-variant) or rely on `withTransaction` to roll back.
+ *
+ * @param bucketId Optional bucket association for the new batch.
+ * @return The new batchId returned by [BatchDao.insert].
+ *
+ * Example Usage:
+ * val batchId = batchDao.insertNewInProgressBatch(bucketId = "B1")
+ */
+suspend fun BatchDao.insertNewInProgressBatch(bucketId: String?): Long {
+    val now = System.currentTimeMillis()
+    return insert(
+        BatchEntity(
+            batchId = now,
+            startDateTime = now,
+            endDateTime = null,
+            status = BatchStatus.INPROGRESS,
+            isDeleted = false,
+            note = null,
+            bucketId = bucketId,
+        )
+    )
+}

@@ -61,14 +61,11 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPr
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
-import com.rite.pillcounting.core.utils.compose.DialogField
 import com.rite.pillcounting.core.utils.compose.StepTitleWithSpeech
 import com.rite.pillcounting.core.utils.compose.VerifyNdcDetailsInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyNdcDetailsSheet
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsInlinePanel
 import com.rite.pillcounting.core.utils.compose.VerifyRxDetailsSheet
-import com.rite.pillcounting.core.utils.compose.VerifyStockBottleInlinePanel
-import com.rite.pillcounting.core.utils.compose.VerifyStockBottleSheet
 import com.rite.pillcounting.core.utils.permission.rememberPermissionStateDetailed
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.BtScannerInputBar
@@ -190,6 +187,33 @@ fun DispenseFlowScreen(
             .filter { it.isNotBlank() }
             .toSet()
         dispenseVm.setAllowedNdcs(ndcSet)
+    }
+
+    // Forward a lazily-created stock-count batchId to the previous screen
+    // (InventoryScanHost) via NavController's SavedStateHandle so its Recent
+    // Counts list adopts the real batchId on resume; otherwise the list stays
+    // bound to the initial 0L nav arg and shows nothing after we pop back.
+    LaunchedEffect(Unit) {
+        dispenseVm.lazilyCreatedStockBatchId.collectLatest { newBatchId ->
+            if (newBatchId != null && newBatchId != 0L) {
+                navController.previousBackStackEntry
+                    ?.savedStateHandle
+                    ?.set(Screen.DispenseFlow.NAV_KEY_STOCK_COUNT_BATCH_ID, newBatchId)
+                dispenseVm.consumeLazilyCreatedStockBatchId()
+            }
+        }
+    }
+
+    // Deferred stock-count commit: PillScanningVM mints the batchId inside its
+    // atomic flush at All Done. Route it through dispenseVm so the existing
+    // lazilyCreatedStockBatchId publish path handles the SavedStateHandle write.
+    LaunchedEffect(Unit) {
+        pillVm.stockCountCommittedBatchId.collectLatest { committedBatchId ->
+            if (committedBatchId != null && committedBatchId != 0L) {
+                dispenseVm.publishStockCountBatchId(committedBatchId)
+                pillVm.consumeStockCountCommittedBatchId()
+            }
+        }
     }
 
     // One-time init for the pill counting workflow side: reset glove state and
@@ -464,6 +488,7 @@ fun DispenseFlowScreen(
                     stockTxnId = dispenseState.stockTxnId,
                     batchId = dispenseState.batchId,
                     drugId = dispenseState.stockDrugId,
+                    bucketId = dispenseState.selectedBucketId.ifBlank { null },
                 )
             } else {
                 pillVm.getDrugInfo(forceStartStep = null)
@@ -616,15 +641,11 @@ fun DispenseFlowScreen(
             dispenseVm.resetToQueue()
         } else {
             pillVm.discardStagedCount()
-            if (batchId > 0L) {
-                val popped = navController.popBackStack()
-                if (!popped) {
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo(0)
-                        launchSingleTop = true
-                    }
-                }
-            } else {
+            // Pop back to whichever screen launched this flow (Dashboard for a
+            // direct-dispense entry, InventoryScan for a stock-count Scan Pills
+            // hand-off). Fall back to Dashboard only if the back-stack is empty.
+            val popped = navController.popBackStack()
+            if (!popped) {
                 navController.navigate(Screen.Dashboard.route) {
                     popUpTo(0)
                     launchSingleTop = true
@@ -637,17 +658,6 @@ fun DispenseFlowScreen(
         dispenseState.error?.let {
             showToast(context, it, Toast.LENGTH_SHORT)
             dispenseVm.clearError()
-        }
-    }
-
-    // Sealed stock bottle confirmed: go back to the batch summary screen.
-    LaunchedEffect(dispenseState.navigateToBatchId) {
-        dispenseState.navigateToBatchId?.let { targetBatchId ->
-            dispenseVm.clearNavigateToBatch()
-            navController.navigate(Screen.Batch.createRoute(targetBatchId)) {
-                popUpTo(Screen.Batch.route) { inclusive = true }
-                launchSingleTop = true
-            }
         }
     }
 
@@ -1343,95 +1353,42 @@ fun DispenseFlowScreen(
         // ── NDC bottomsheet / inline panel ───────────────────────────────────
         // Same surface treatment as the RX sheet: portrait → ModalBottomSheet,
         // landscape → inline right-side drawer. Non-dismissible: user must hit
-        // Cancel or Proceed.
-        //
-        // Stock count uses VerifyStockBottleSheet (shows Sealed/Open selector).
-        // Dispense uses VerifyNdcDetailsSheet (simpler: just NDC + drug name).
+        // Cancel or Proceed. Stock count skips this sheet entirely — the
+        // stock line is created lazily in advanceToCountingStage.
         if (dispenseState.showNdcDetails) {
-            if (countType == CountType.REGULAR.toString()) {
-                val ndcFields = listOf(
-                    DialogField(
-                        label = stringResource(R.string.ndc_number),
-                        value = dispenseState.ndcScannedValue,
-                    ),
-                    DialogField(
-                        label = stringResource(R.string.drugname),
-                        value = dispenseState.ndcDrugName,
-                        fullWidth = true,
-                    ),
-                    DialogField(
-                        label = stringResource(R.string.quantity),
-                        value = dispenseState.ndcPackageQty?.toString().orEmpty(),
-                    ),
-                    DialogField(
-                        label = stringResource(R.string.bucket),
-                        value = dispenseState.selectedBucketId,
-                    ),
+            if (!isLandscape) {
+                VerifyNdcDetailsSheet(
+                    drugName = dispenseState.ndcDrugName,
+                    bucket = dispenseState.selectedBucketId,
+                    ndcNumber = dispenseState.ndcScannedValue,
+                    onCancel = { dispenseVm.onNdcCancelled() },
+                    onProceed = { dispenseVm.onNdcConfirmed() },
+                    dismissible = false,
+                    isHazardous = dispenseState.isHazardous,
+                    strength = dispenseState.ndcStrength.orEmpty(),
+                    dosageForm = dispenseState.ndcDosageForm.orEmpty(),
+                    drugImage = dispenseState.drugImage
                 )
-                if (!isLandscape) {
-                    VerifyStockBottleSheet(
-                        fields = ndcFields,
-                        selectedContainerStatus = dispenseState.selectedContainerStatus,
-                        onContainerStatusChange = { dispenseVm.onContainerStatusChanged(it) },
-                        onCancel = { dispenseVm.onNdcCancelled() },
-                        onProceed = { dispenseVm.onNdcConfirmed() },
-                        showSealedButtons = true,
-                        dismissible = false,
-                    )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .width(inlinePanelWidth)
-                            .background(androidx.compose.ui.graphics.Color.Transparent)
-                    ) {
-                        VerifyStockBottleInlinePanel(
-                            fields = ndcFields,
-                            selectedContainerStatus = dispenseState.selectedContainerStatus,
-                            onContainerStatusChange = { dispenseVm.onContainerStatusChanged(it) },
-                            onCancel = { dispenseVm.onNdcCancelled() },
-                            onProceed = { dispenseVm.onNdcConfirmed() },
-                            showSealedButtons = true,
-                            modifier = Modifier.fillMaxSize(),
-                        )
-                    }
-                }
             } else {
-                if (!isLandscape) {
-                    VerifyNdcDetailsSheet(
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .fillMaxHeight()
+                        .width(inlinePanelWidth)
+                        .background(androidx.compose.ui.graphics.Color.Transparent)
+                ) {
+                    VerifyNdcDetailsInlinePanel(
                         drugName = dispenseState.ndcDrugName,
                         bucket = dispenseState.selectedBucketId,
                         ndcNumber = dispenseState.ndcScannedValue,
                         onCancel = { dispenseVm.onNdcCancelled() },
                         onProceed = { dispenseVm.onNdcConfirmed() },
-                        dismissible = false,
+                        modifier = Modifier.fillMaxSize(),
                         isHazardous = dispenseState.isHazardous,
                         strength = dispenseState.ndcStrength.orEmpty(),
                         dosageForm = dispenseState.ndcDosageForm.orEmpty(),
                         drugImage = dispenseState.drugImage
                     )
-                } else {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .fillMaxHeight()
-                            .width(inlinePanelWidth)
-                            .background(androidx.compose.ui.graphics.Color.Transparent)
-                    ) {
-                        VerifyNdcDetailsInlinePanel(
-                            drugName = dispenseState.ndcDrugName,
-                            bucket = dispenseState.selectedBucketId,
-                            ndcNumber = dispenseState.ndcScannedValue,
-                            onCancel = { dispenseVm.onNdcCancelled() },
-                            onProceed = { dispenseVm.onNdcConfirmed() },
-                            modifier = Modifier.fillMaxSize(),
-                            isHazardous = dispenseState.isHazardous,
-                            strength = dispenseState.ndcStrength.orEmpty(),
-                            dosageForm = dispenseState.ndcDosageForm.orEmpty(),
-                            drugImage = dispenseState.drugImage
-                        )
-                    }
                 }
             }
         }

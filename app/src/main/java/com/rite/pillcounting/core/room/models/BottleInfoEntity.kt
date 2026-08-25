@@ -24,6 +24,11 @@ import androidx.room.PrimaryKey
  * @property looseQty   Count of loose/open pills counted for this line.
  * @property createdAt  Creation timestamp (epoch millis).
  * @property updatedAt  Last update timestamp (epoch millis).
+ * @property controlledImagePaths  Absolute file paths of the encrypted pill-count images captured
+ *                      during the Scan Pills session that produced this row. Populated only when
+ *                      the drug is a controlled substance (DEA schedule CII–CVI); `null` for all
+ *                      other drugs to avoid DB bloat. One row per Scan Pills session, so this list
+ *                      is scoped to a single session.
  */
 @Entity(
     tableName = "bottle_info",
@@ -61,4 +66,6 @@ data class BottleInfoEntity(
 
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
+
+    val controlledImagePaths: List<String>? = null,
 )
