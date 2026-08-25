@@ -8,6 +8,7 @@ import android.hardware.camera2.CameraCaptureSession
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
+import android.os.SystemClock
 import android.util.Size
 import androidx.camera.camera2.interop.Camera2Interop
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
@@ -45,6 +46,7 @@ import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 
 class CameraHelper(
     private val context: Context,
@@ -68,22 +70,19 @@ class CameraHelper(
     private val isBound = AtomicBoolean(false)
     private val isStreaming = AtomicBoolean(true)
 
-    // Focus gate: while the AF lens is hunting the frames are blurry, so they are
-    // dropped in [processImageProxy] before reaching frameFlow — no consumer
-    // (pill/glove/tray models, barcode, OCR, face) wastes inference on them.
-    // Only the *scanning* AF states block; everything else (FOCUSED_LOCKED,
-    // NOT_FOCUSED_LOCKED, INACTIVE) passes, so fixed-focus lenses — front cameras
-    // report INACTIVE forever — and scenes AF cannot converge on are never starved.
-    private val isFocused = AtomicBoolean(true)
-    private var consecutiveScanFrames = 0
+    // Focus gate: frames captured while the AF lens is scanning are blurry, so
+    // [processImageProxy] drops them before they reach frameFlow. Closes after
+    // SCAN_FRAMES_BEFORE_GATE consecutive scanning results; reopens on any
+    // non-scanning AF state, or unconditionally after MAX_GATE_CLOSED_MS so a
+    // lens that never converges (hard scenes, overlapping re-triggers) cannot
+    // starve frameFlow. Reset in [attachFocusStateListener] before each session
+    // starts, then written only by the capture callback of the current bind
+    // generation; gateClosedAtMs == 0 means the gate is open.
+    private val scanStreak = AtomicInteger(0)
+    @Volatile private var gateClosedAtMs = 0L
 
-    /**
-     * AF scan frames tolerated before the gate closes. The periodic re-trigger
-     * ([startPeriodicFocus]) briefly forces ACTIVE_SCAN over an already-sharp
-     * scene every cycle; this hysteresis keeps those near-sharp frames flowing
-     * and only drops frames once a real refocus is underway.
-     */
-    private val scanFramesBeforeGate = 3
+    /** Bumped per bind so capture results from a torn-down session are ignored. */
+    private val bindGeneration = AtomicInteger(0)
 
     // Last display rotation pushed via setTargetRotation. Used to detect an
     // actual rotation change so we can rebind the use cases (see setTargetRotation).
@@ -130,6 +129,12 @@ class CameraHelper(
     companion object {
         // Sentinel: no rotation has been pushed via setTargetRotation yet.
         private const val ROTATION_UNSET = -1
+
+        /** Consecutive AF scan results before the focus gate closes. */
+        private const val SCAN_FRAMES_BEFORE_GATE = 3
+
+        /** Hard cap on how long the focus gate may stay closed. */
+        private const val MAX_GATE_CLOSED_MS = 1_000L
     }
 
     // ---------------------------------------------------------
@@ -212,8 +217,6 @@ class CameraHelper(
                 observeCameraState()
                 isBound.set(true)
                 isStreaming.set(true)
-                isFocused.set(true)
-                consecutiveScanFrames = 0
 
                 logger.i("Camera successfully bound")
 
@@ -265,9 +268,14 @@ class CameraHelper(
     /**
      * Tracks the autofocus state from per-capture metadata (free — the HAL
      * delivers it with every frame) and feeds the gate in [processImageProxy].
+     * Resets the gate for the new bind; results from a previous session (which
+     * can still arrive during a rebind) are ignored via [bindGeneration].
      */
     @OptIn(ExperimentalCamera2Interop::class)
     private fun attachFocusStateListener(builder: ImageAnalysis.Builder) {
+        val generation = bindGeneration.incrementAndGet()
+        scanStreak.set(0)
+        gateClosedAtMs = 0L
         Camera2Interop.Extender(builder).setSessionCaptureCallback(
             object : CameraCaptureSession.CaptureCallback() {
                 override fun onCaptureCompleted(
@@ -275,17 +283,18 @@ class CameraHelper(
                     request: CaptureRequest,
                     result: TotalCaptureResult
                 ) {
-                    val scanning = when (result.get(CaptureResult.CONTROL_AF_STATE)) {
-                        CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN,
-                        CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN -> true
-                        else -> false
-                    }
+                    if (generation != bindGeneration.get()) return
+                    val afState = result.get(CaptureResult.CONTROL_AF_STATE)
+                    val scanning = afState == CaptureResult.CONTROL_AF_STATE_PASSIVE_SCAN ||
+                        afState == CaptureResult.CONTROL_AF_STATE_ACTIVE_SCAN
                     if (scanning) {
-                        consecutiveScanFrames++
-                        if (consecutiveScanFrames >= scanFramesBeforeGate) isFocused.set(false)
+                        // Stamp the closing time exactly once per closure episode.
+                        if (scanStreak.incrementAndGet() == SCAN_FRAMES_BEFORE_GATE) {
+                            gateClosedAtMs = SystemClock.elapsedRealtime()
+                        }
                     } else {
-                        consecutiveScanFrames = 0
-                        isFocused.set(true)
+                        scanStreak.set(0)
+                        gateClosedAtMs = 0L
                     }
                 }
             }
@@ -304,8 +313,10 @@ class CameraHelper(
                 return
             }
 
-            // Lens is mid-refocus — the frame is blurry, skip it (see [isFocused]).
-            if (!isFocused.get()) {
+            // Lens is mid-refocus — the frame is blurry, skip it. MAX_GATE_CLOSED_MS
+            // bounds the drop window so consumers never see a multi-second gap.
+            val closedAt = gateClosedAtMs
+            if (closedAt != 0L && SystemClock.elapsedRealtime() - closedAt < MAX_GATE_CLOSED_MS) {
                 image.close()
                 return
             }
