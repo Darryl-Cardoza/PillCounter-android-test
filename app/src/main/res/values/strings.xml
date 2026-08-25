@@ -10,7 +10,6 @@
 
     <!--    Offline / Session Health   -->
     <string name="offline_disconnect_message">Your internet has been disconnected. App will log out in %1$s.</string>
-    <string name="session_health_preflight_unavailable">Session details unavailable. Reconnect to continue.</string>
 
     <!-- ================== AUTH / LOGIN / REGISTER ================== -->
     <string name="email">Email</string>

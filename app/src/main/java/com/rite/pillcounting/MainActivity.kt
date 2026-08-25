@@ -32,6 +32,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavController
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.NavDestination.Companion.hierarchy
 import com.rite.pillcounting.core.auth.AuthEvent
 import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
@@ -427,8 +428,11 @@ class MainActivity : ComponentActivity() {
      */
     private fun performLogoutTeardown() {
         if (!sessionHealthController.beginTeardown()) return
+        // currentDestination?.route is always a leaf (login, otp, …); the auth graph route
+        // ("auth") only appears in the destination's parent. Walk the hierarchy so a second
+        // fire arriving after we've already navigated back to the auth graph is a no-op.
         if (::navController.isInitialized &&
-            navController.currentDestination?.route == AUTH_GRAPH_ROUTE
+            navController.currentDestination?.hierarchy?.any { it.route == AUTH_GRAPH_ROUTE } == true
         ) {
             sessionHealthController.endTeardown()
             return

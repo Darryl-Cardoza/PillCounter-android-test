@@ -13,13 +13,6 @@ data class DashboardUiState(
     /** Holds the error message if fetching user detail fails. Null if no error. */
     val userDetailError: String? = null,
 
-    /**
-     * String resource id of an error to surface when the preflight `/health` probe reported
-     * unhealthy so the Dashboard skipped its `/auth/me` fetch. Defence-in-depth companion to
-     * the app-wide offline overlay; null in the healthy path.
-     */
-    val preflightErrorRes: Int? = null,
-
     /** Represents the currently authenticated user's details. */
     val userDetail: UserDetail? = null,
 

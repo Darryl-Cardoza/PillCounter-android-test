@@ -7,7 +7,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Once-per-second poll that asks [SessionHealthController.evaluateExpiry] whether the offline
@@ -23,7 +22,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 object ExpiryWatcher {
 
     private val logger = AppLogger.create<ExpiryWatcher>()
-    private val started = AtomicBoolean(false)
 
     @Volatile private var currentJob: Job? = null
 
@@ -50,7 +48,6 @@ object ExpiryWatcher {
             logger.d("start() called while a watcher is already active — reusing existing job")
             return existing
         }
-        started.set(true)
         val job = scope.launch {
             logger.i("ExpiryWatcher started")
             try {
@@ -61,7 +58,6 @@ object ExpiryWatcher {
                     }
                 }
             } finally {
-                started.set(false)
                 currentJob = null
                 logger.i("ExpiryWatcher stopped")
             }
@@ -71,13 +67,11 @@ object ExpiryWatcher {
     }
 
     /**
-     * Test-only reset so each test starts from a clean slate. Cancels any running loop and
-     * clears the idempotency flag.
+     * Test-only reset so each test starts from a clean slate. Cancels any running loop.
      */
     @VisibleForTesting
     fun stopForTest() {
         currentJob?.cancel()
         currentJob = null
-        started.set(false)
     }
 }
