@@ -1,11 +1,12 @@
 package com.rite.pillcounting.core.hl7.mllp.server
 
-import android.util.Log
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsKeystoreUtil
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.rite.hl7.encoding.Mllp
+import java.io.BufferedInputStream
 import java.io.EOFException
 import java.io.InputStream
 import java.net.ServerSocket
@@ -40,6 +41,7 @@ class MllpServer(
     private val onHl7Message: suspend (raw: String) -> String
 ) {
 
+    private val logger = AppLogger("MllpServer")
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
     private val mutex = Mutex()
     private val running = AtomicBoolean(false)
@@ -51,45 +53,44 @@ class MllpServer(
         mutex.withLock {
             if (running.get()) return@withContext
 
-            try {
-                serverSocket = if (bypassTls) {
-                    ServerSocket(port)
-                } else {
-                    TlsKeystoreUtil.ensureKeyExists()
-                    val sslContext = TlsKeystoreUtil.createServerSslContext()
+            // Bind explicitly to the IPv4 wildcard — some Android network stacks hand back
+            // an IPv6-only [::] listener for a bare ServerSocket(port), which silently
+            // refuses connections from IPv4-only clients on the same LAN (e.g. a test
+            // script) even though the app-side code never sees the attempt.
+            val bindAddress = java.net.InetAddress.getByName("0.0.0.0")
 
-                    (sslContext.serverSocketFactory.createServerSocket(port) as SSLServerSocket).apply {
-                        enabledProtocols = arrayOf("TLSv1.2", "TLSv1.3")
-                        enabledCipherSuites = supportedCipherSuites
-                        needClientAuth = false
-                    }
+            serverSocket = if (bypassTls) {
+                ServerSocket(port, 50, bindAddress)
+            } else {
+                TlsKeystoreUtil.ensureKeyExists()
+                val sslContext = TlsKeystoreUtil.createServerSslContext()
+
+                (sslContext.serverSocketFactory.createServerSocket(port, 50, bindAddress) as SSLServerSocket).apply {
+                    enabledProtocols = arrayOf("TLSv1.2", "TLSv1.3")
+                    enabledCipherSuites = supportedCipherSuites
+                    needClientAuth = false
                 }
-            } catch (e: Exception) {
-                Log.e(TAG, "Server failed to start on port $port: ${e.message}", e)
-                throw e
             }
 
             running.set(true)
-            Log.i(TAG, "Server started, listening on port $port (bypassTls=$bypassTls)")
             scope.launch { acceptLoop() }
         }
     }
 
-    private suspend fun acceptLoop() {
+    private fun acceptLoop() {
         while (running.get()) {
             try {
                 val socket = serverSocket!!.accept()
                 val id = UUID.randomUUID().toString()
                 clients[id] = socket
-                Log.i(TAG, "Client connected: ${socket.remoteSocketAddress} (id=$id)")
 
                 scope.launch {
                     handleClient(socket, id)
                     clients.remove(id)
                 }
-            } catch (e: Exception) {
+            }catch (e: Exception) {
                 if (running.get()) {
-                    Log.e(TAG, "Accept failed / connection rejected: ${e.message}", e)
+                    logger.e("acceptLoop() error", e)
                 }
             }
         }
@@ -99,29 +100,39 @@ class MllpServer(
         try {
             if (socket is SSLSocket) socket.startHandshake()
 
-            val input = socket.inputStream
+            val input = BufferedInputStream(socket.inputStream)
             val output = socket.outputStream
 
             while (!socket.isClosed) {
                 val msg = readMllp(input)
-                val ack = onHl7Message(msg)
+                logger.i("Received MLLP message (${msg.length} chars) from ${socket.inetAddress?.hostAddress}")
+                val ack = try {
+                    onHl7Message(msg)
+                } catch (e: Exception) {
+                    // A crash inside message handling must not silently kill this client's
+                    // read loop with no trace — previously this was swallowed by the outer
+                    // catch below, so a message could arrive, fail to parse/process, and
+                    // look exactly like "the server never received anything."
+                    logger.e("onHl7Message() threw while handling received message — no ACK will be sent", e)
+                    throw e
+                }
                 if (ack.isNotEmpty()) {
                     output.write(Mllp.wrap(ack))
                     output.flush()
                 }
             }
+        } catch (e: EOFException) {
+            logger.d("Client closed connection: ${socket.inetAddress?.hostAddress}")
         } catch (e: Exception) {
-            Log.w(TAG, "Client connection closed/errored: ${socket.remoteSocketAddress} (id=$id): ${e.message}")
+            logger.e("handleClient() error for ${socket.inetAddress?.hostAddress}", e)
         } finally {
             socket.close()
-            Log.i(TAG, "Client disconnected: ${socket.remoteSocketAddress} (id=$id)")
         }
     }
 
     suspend fun stop() = withContext(Dispatchers.IO) {
         mutex.withLock {
             running.set(false)
-            Log.i(TAG, "Server stopping, closing ${clients.size} client connection(s)")
             clients.values.forEach { it.close() }
             clients.clear()
             serverSocket?.close()
@@ -143,10 +154,14 @@ class MllpServer(
                     buffer.reset()
                 }
                 EB -> {
-                    input.read() // consume trailing CR
-                    val raw = buffer.toByteArray().decodeToString()
-                    Log.d(TAG, "Raw HL7 received:\n$raw")
-                    return raw
+                    // Trailing CR after FS is optional depending on sender (some PMS clients
+                    // omit it). Only consume it if already buffered — never block waiting for
+                    // a byte that may never arrive, or the read stalls until the peer times out.
+                    if (input.available() > 0) {
+                        input.mark(1)
+                        if (input.read() != CR.toInt()) input.reset()
+                    }
+                    return buffer.toByteArray().decodeToString()
                 }
                 else -> if (started) buffer.write(b)
             }
@@ -154,8 +169,8 @@ class MllpServer(
     }
 
     companion object {
-        private const val TAG = "MllpServer"
         private const val SB: Byte = 0x0B  // Start Block (VT)
         private const val EB: Byte = 0x1C  // End Block (FS)
+        private const val CR: Byte = 0x0D  // Carriage Return
     }
 }

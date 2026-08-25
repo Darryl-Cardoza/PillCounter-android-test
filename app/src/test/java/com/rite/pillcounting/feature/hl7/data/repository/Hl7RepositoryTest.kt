@@ -664,27 +664,44 @@ class Hl7RepositoryTest {
         coVerify(timeout = 3000) { batchDao.markBatchSynced(100L) }
     }
 
-    // ─────────────────────────────── markTransactionSynced ───────────────────────────────
+    // ─────────────────────────────── markTransactionSynced (private, via buildAndSendSuccessfulDispense) ───────────────────────────────
+    //
+    // markTransactionSynced(txnId: Long) is a private implementation detail invoked only from
+    // buildAndSendSuccessfulDispense on a success ACK — there is no longer any messageControlId
+    // lookup (that was the pre-refactor shape). Exercised here through the public entry point.
 
     @Test
-    fun `markTransactionSynced looks up txn by messageControlId and marks it synced`() = runTest(testDispatcher) {
+    fun `buildAndSendSuccessfulDispense marks txn synced on success ACK`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { pillCountTxnDao.getByMessageControlId("7") } returns txnEntity(txnId = 7L)
+        coEvery { txnDao.getById(1L) } returns txnEntity(drugId = 5L)
+        coEvery { txnDetailsDao.getAllForTxn("1") } returns
+            listOf(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5))
+        coEvery { userDao.getByLocalId(any()) } returns null
+        coEvery { locationProvider.getCurrentLocationAsString() } returns "loc"
+        coEvery { drugMasterDao.getDrugById(5L) } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+        coEvery { hl7MessageSender.send(any()) } returns Result.success("MSH|^~\\&|A|B|C|D|20240101||ACK|1|P|2.5\rMSA|AA|1\r")
         every { preferenceHelper.isAllowLocalStorage() } returns true
 
-        repo.markTransactionSynced("7")
+        repo.buildAndSendSuccessfulDispense(1L)
 
-        coVerify(timeout = 3000) { pillCountTxnDao.markTxnSynced(7L, any()) }
+        coVerify(timeout = 3000) { pillCountTxnDao.markTxnSynced(1L, any()) }
     }
 
     @Test
-    fun `markTransactionSynced with unknown messageControlId does not crash`() = runTest(testDispatcher) {
+    fun `buildAndSendSuccessfulDispense does not mark synced on non-success ACK`() = runTest(testDispatcher) {
         val repo = createRepo()
-        coEvery { pillCountTxnDao.getByMessageControlId("unknown") } returns null
+        coEvery { txnDao.getById(1L) } returns txnEntity(drugId = 5L)
+        coEvery { txnDetailsDao.getAllForTxn("1") } returns
+            listOf(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5))
+        coEvery { userDao.getByLocalId(any()) } returns null
+        coEvery { locationProvider.getCurrentLocationAsString() } returns "loc"
+        coEvery { drugMasterDao.getDrugById(5L) } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+        coEvery { hl7MessageSender.send(any()) } returns Result.success("MSH|^~\\&|A|B|C|D|20240101||ACK|1|P|2.5\rMSA|AE|1|rejected\r")
 
-        repo.markTransactionSynced("unknown")
+        repo.buildAndSendSuccessfulDispense(1L)
 
-        coVerify(timeout = 3000) { pillCountTxnDao.getByMessageControlId("unknown") }
         coVerify(exactly = 0) { pillCountTxnDao.markTxnSynced(any(), any()) }
     }
 

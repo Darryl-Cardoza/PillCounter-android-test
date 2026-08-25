@@ -81,21 +81,25 @@ class Hl7EventHandlerTest {
     }
 
     @Test
-    fun `onAckReceived marks transaction synced on success ACK`() {
+    fun `onAckReceived on success ACK is informational only, does not touch the repository`() {
+        // markTransactionSynced is now invoked inline by
+        // Hl7Repository.buildAndSendSuccessfulDispense right after its own send() call,
+        // using the exact txnId sent — not from this generic callback, which has no
+        // reliable txnId correlation. This callback must not call into the repository at all.
         val successAck = "MSH|^~\\&|PMS|PHARMACY|PillCounter|ROBOT|20240101000000||ACK|MSG-3|P|2.5\rMSA|AA|MSG-3\r"
 
         handler.onAckReceived(successAck, "MSG-3")
 
-        verify(exactly = 1) { hl7Repository.markTransactionSynced("MSG-3") }
+        verify(exactly = 0) { hl7Repository.handleReceivedMessage(any()) }
     }
 
     @Test
-    fun `onAckReceived does not mark synced on error ACK`() {
+    fun `onAckReceived on error ACK is informational only, does not touch the repository`() {
         val errorAck = "MSH|^~\\&|PMS|PHARMACY|PillCounter|ROBOT|20240101000000||ACK|MSG-3|P|2.5\rMSA|AE|MSG-3|rejected\r"
 
         handler.onAckReceived(errorAck, "MSG-3")
 
-        verify(exactly = 0) { hl7Repository.markTransactionSynced(any()) }
+        verify(exactly = 0) { hl7Repository.handleReceivedMessage(any()) }
     }
 
     @Test

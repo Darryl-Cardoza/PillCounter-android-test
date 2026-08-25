@@ -52,7 +52,12 @@ class HL7Segment(
     /** The highest 1-based field index present in this segment. */
     val fieldCount: Int get() = if (isMsh) fields.size + 1 else fields.size - 1
 
-    /** Re-serializes this segment to wire text (name + fields joined by the field separator). */
+    /**
+     * Re-serializes this segment to wire text (name + fields joined by the field separator).
+     * Emits exactly [fields.size] fields — no trailing-pipe trimming — so a builder that
+     * explicitly sets a blank placeholder field (e.g. to satisfy a receiver's minimum
+     * field-count check) has that field preserved on the wire.
+     */
     fun encode(d: HL7Delimiters = delimiters): String {
         if (isMsh) {
             // MSH|<enc>|<MSH-3>|...  — name, separator, encoding chars are literal.
@@ -60,14 +65,12 @@ class HL7Segment(
             val sb = StringBuilder()
             sb.append(name).append(d.field).append(d.encodingCharacters)
             for (f in rest) sb.append(d.field).append(f.encode(d))
-            return trimTrailing(sb.toString(), d)
+            return sb.toString()
         }
         val sb = StringBuilder(name)
         for (i in 1 until fields.size) sb.append(d.field).append(fields[i].encode(d))
-        return trimTrailing(sb.toString(), d)
+        return sb.toString()
     }
-
-    private fun trimTrailing(s: String, d: HL7Delimiters): String = s.trimEnd(d.field)
 
     companion object {
         /**

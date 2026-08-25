@@ -539,5 +539,23 @@
     <string name="setting_face_lock_now_disabled_toast">Enregistrez d\'abord un visage dans Reconnaissance faciale</string>
     <string name="setting_face_auto_lock_after">Verrouillage automatique après</string>
     <string name="setting_face_auto_lock_minutes">%1$d min</string>
+    <string name="setting_pms_connection">Connexion PMS</string>
+    <string name="this_device_dispenser_server">CET APPAREIL (DISPENSESURE)</string>
+    <string name="ip_address">Adresse IP</string>
+    <string name="listener_port">Port d\'écoute</string>
+    <string name="image_server_port">Port du serveur d\'images</string>
+    <string name="pms_server">SERVEUR PMS</string>
+    <string name="pms_ip_address">Adresse IP du PMS</string>
+    <string name="pms_port">Port du PMS</string>
+    <string name="test_connection">Tester la connexion</string>
+    <string name="testing_connection">Test en cours</string>
+    <string name="connection_successful">Connecté à %1$s avec succès</string>
+    <string name="connection_failed_reason">Échec de la connexion : %1$s</string>
+    <string name="no_wifi_connection">Aucune connexion Wi-Fi</string>
+    <string name="pms_not_configured">IP/port du PMS non configurés. Configurez-les sur le portail.</string>
+    <string name="pms_unable_to_reach">Impossible de joindre le serveur PMS</string>
+    <string name="check_wifi_before_testing">Connectez-vous au Wi-Fi avant de tester la connexion</string>
+    <string name="hl7_notification_connected_to">Connecté à %1$s</string>
+    <string name="hl7_notification_listening">Écoute et réponse aux messages HL7</string>
 
 </resources>

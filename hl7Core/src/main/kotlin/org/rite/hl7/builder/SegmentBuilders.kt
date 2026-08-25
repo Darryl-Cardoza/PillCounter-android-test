@@ -166,12 +166,21 @@ class OBXBuilder : HL7SegmentBuilder("OBX") {
     var valueType: String? = null
     var observationId: String? = null
     var observationText: String? = null
+    var observationIdCodingSystem: String? = null
     var observationValue: String? = null
+    var observationValueText: String? = null
+    var observationValueCodingSystem: String? = null
     var units: String? = null
     var resultStatus: String? = null
     override fun apply() {
-        set(1, setId); set(2, valueType); set(3, 1, observationId); set(3, 2, observationText)
-        set(5, observationValue); set(6, 1, units); set(11, resultStatus)
+        set(1, setId); set(2, valueType)
+        set(3, 1, observationId); set(3, 2, observationText); set(3, 3, observationIdCodingSystem)
+        if (observationValueText != null || observationValueCodingSystem != null) {
+            set(5, 1, observationValue); set(5, 2, observationValueText); set(5, 3, observationValueCodingSystem)
+        } else {
+            set(5, observationValue)
+        }
+        set(6, 1, units); set(11, resultStatus)
     }
 }
 
@@ -338,15 +347,58 @@ class ZUIDispenseBuilder : HL7SegmentBuilder("ZUI") {
     var fillNumber: String? = null
     var dispensedQuantity: String? = null
     var transactionStatus: String? = null
-    var drugImage: String? = null
+    /** Each entry: [batchInfo, countInfo, base64Data] — one per tray photo. */
+    var drugImages: List<List<String>>? = null
     var drugLotNumber: String? = null
     var drugSerialNumber: String? = null
     var drugExpirationDate: String? = null
     override fun apply() {
         set(1, ndc); set(2, vividUserName); set(3, transactionOrderId)
         set(4, rxNumber); set(5, fillNumber); set(6, dispensedQuantity)
-        set(7, transactionStatus); set(8, drugImage); set(9, drugLotNumber)
+        set(7, transactionStatus); setComponentGroups(8, drugImages); set(9, drugLotNumber)
         set(10, drugSerialNumber); set(11, drugExpirationDate)
+    }
+}
+
+/**
+ * ZUI EyeCon dispense-result builder (EyeCon → PMS RDS response), 25-field
+ * raw layout per EyeCon spec. Fields 6/18/19/21 are the ones EyeCon's PMS-side
+ * parser actually reads (verified against its C# parsing code) — those indices
+ * must not move. All other positions are context fields or blank placeholders
+ * per the EyeCon spec.
+ */
+class ZUIEyeConBuilder : HL7SegmentBuilder("ZUI") {
+    var ndc: String? = null                    // ZUI-1
+    var drugName: String? = null                // ZUI-2
+    var userName: String? = null                // ZUI-3 (patient/user first name)
+    var prescriptionNumber: String? = null       // ZUI-4
+    var fillNumber: String? = null               // ZUI-5
+    var verifiedBy: String? = null               // ZUI-6 (parsed by PMS)
+    var stockBottleVerification: String? = null  // ZUI-7
+    var packetVersion: String? = null            // ZUI-9
+    var techName: String? = null                 // ZUI-10
+    var transactionOrderId: String? = null        // ZUI-11
+    var dispensedQuantity: String? = null        // ZUI-18 (parsed by PMS)
+    var fillStatus: String? = null               // ZUI-19 (parsed by PMS)
+    var stockBottleBarcodeNdc: String? = null     // ZUI-21 (parsed by PMS)
+    override fun apply() {
+        set(1, ndc)
+        set(2, drugName)
+        set(3, userName)
+        set(4, prescriptionNumber)
+        set(5, fillNumber)
+        set(6, verifiedBy)
+        set(7, stockBottleVerification)
+        set(9, packetVersion)
+        set(10, techName)
+        set(11, transactionOrderId)
+        set(18, dispensedQuantity)
+        set(19, fillStatus)
+        set(21, stockBottleBarcodeNdc)
+        // EyeCon spec segment is a fixed 25-field layout; this blank placeholder
+        // pins the trailing field count so the segment always emits all 25 tokens
+        // even though field 25 itself carries no value.
+        set(25, "")
     }
 }
 

@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.utils.preference
 
 import android.content.Context
+import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -69,6 +70,11 @@ private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
 private const val KEY_HL7_VERSION = "key_hl7_version"
 private const val KEY_BYPASS_TLS = "key_bypass_tls"
 private const val KEY_HL7_FORMAT = "key_hl7_format"
+
+// PMS Connection
+private const val KEY_USE_STATIC_PMS_CONNECTION = "key_use_static_pms_connection"
+private const val KEY_PMS_IP = "key_pms_ip"
+private const val KEY_PMS_PORT = "key_pms_port"
 
 // Reference Data
 private const val KEY_COUNTRIES = "key_countries"
@@ -804,6 +810,62 @@ class PreferenceHelper @Inject constructor(
         prefs.remove(KEY_LOGGED_IN_AT)
         logger.i("Cleared loggedInAt")
     }
+
+
+    // ─────────────────────────── PMS CONNECTION ───────────────────────────
+
+    fun setUseStaticPmsConnection(enabled: Boolean) {
+        prefs.putBoolean(KEY_USE_STATIC_PMS_CONNECTION, enabled)
+        logger.i("Set useStaticPmsConnection: $enabled")
+    }
+
+    fun isUseStaticPmsConnection(): Boolean =
+        prefs.getBoolean(KEY_USE_STATIC_PMS_CONNECTION, false)
+
+    fun savePmsIP(pmsIP: String) {
+        prefs.putString(KEY_PMS_IP, pmsIP)
+        logger.i("Saved PMS IP")
+    }
+
+    fun clearPmsIP() {
+        prefs.remove(KEY_PMS_IP)
+        logger.i("Cleared PMS IP")
+    }
+
+    fun getPmsIP(): String? =
+        prefs.getString(KEY_PMS_IP)
+
+    fun savePmsPort(pmsPort: Int) {
+        prefs.putInt(KEY_PMS_PORT, pmsPort)
+        logger.i("Saved PMS port: $pmsPort")
+    }
+
+    fun clearPmsPort() {
+        prefs.remove(KEY_PMS_PORT)
+        logger.i("Cleared PMS port")
+    }
+
+    fun getPmsPort(): Int =
+        prefs.getInt(KEY_PMS_PORT, 0)
+
+    /** Key used for [KEY_PMS_IP] change notifications via [registerOnChangeListener]. */
+    val pmsIpKey: String get() = KEY_PMS_IP
+
+    /** Key used for [KEY_PMS_PORT] change notifications via [registerOnChangeListener]. */
+    val pmsPortKey: String get() = KEY_PMS_PORT
+
+    /** Key used for [KEY_USE_STATIC_PMS_CONNECTION] change notifications via [registerOnChangeListener]. */
+    val useStaticPmsConnectionKey: String get() = KEY_USE_STATIC_PMS_CONNECTION
+
+    fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.registerOnChangeListener(listener)
+    }
+
+    fun unregisterOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
+        prefs.unregisterOnChangeListener(listener)
+    }
+
+
 
     companion object {
         /** Default HL7 spec version used by parser and builder when not explicitly configured. */

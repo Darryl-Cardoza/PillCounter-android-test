@@ -448,6 +448,15 @@ class DashboardViewModel @Inject constructor(
                             detail.settings?.hl7MessageSpec
                                 ?.takeIf { it.isNotBlank() }
                                 ?.let { preferenceHelper.saveHl7Format(Hl7Format.fromSendingApplication(it)) }
+                            // Persist PMS connection info so the dispenser can reach the PMS
+                            // over a static IP/port when the server has configured one.
+                            preferenceHelper.setUseStaticPmsConnection(detail.settings?.useStaticPmsConnection ?: false)
+                            detail.settings?.pmsIP
+                                ?.let { preferenceHelper.savePmsIP(it) }
+                                ?: preferenceHelper.clearPmsIP()
+                            detail.settings?.pmsPort?.toIntOrNull()
+                                ?.let { preferenceHelper.savePmsPort(it) }
+                                ?: preferenceHelper.clearPmsPort()
                             // When the server has now disallowed local storage, clean up dispense
                             // transactions that were already synced (e.g. while the flag was still
                             // true). Runs on each auth/me response, so a true → false change takes

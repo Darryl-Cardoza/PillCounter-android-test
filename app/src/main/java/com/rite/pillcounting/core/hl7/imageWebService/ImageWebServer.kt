@@ -12,8 +12,7 @@ import javax.net.ssl.SSLContext
 class ImageWebServer(private val context: Context) {
 
     companion object {
-        private const val PORT = 8443
-        private const val PLAIN_PORT = 8080
+        const val PORT = 8080
     }
 
     private val logger = AppLogger("ImageWebServer")
@@ -25,9 +24,9 @@ class ImageWebServer(private val context: Context) {
         val bypassTls = PreferenceHelper(context).isBypassTlsEnabled()
 
         if (bypassTls) {
-            server = ImageNanoServer(context, PLAIN_PORT, sslFactory = null)
+            server = ImageNanoServer(context, PORT, sslFactory = null)
             server!!.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-            logger.i("HTTP Image Server started on port $PLAIN_PORT (TLS bypassed)")
+            logger.i("HTTP Image Server started on port $PORT (TLS bypassed)")
             return
         }
 

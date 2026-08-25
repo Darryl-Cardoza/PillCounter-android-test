@@ -312,10 +312,16 @@ class DispenseFlowViewModel @Inject constructor(
 
         _uiState.update { it.copy(isLoading = true) }
 
+        val barcodeRegex = preferenceHelper.getBarcodeRegex().orEmpty()
+        if (barcodeRegex.isBlank()) {
+            _uiState.update { it.copy(isLoading = false, showInvalidScanDialog = true) }
+            return
+        }
+
         viewModelScope.launch {
             try {
                 val parsed = parseScanData(
-                    preferenceHelper.getBarcodeRegex().toString(),
+                    barcodeRegex,
                     gtin14
                 )
                 val parsedNdc = parsed.ndcNo
@@ -360,6 +366,7 @@ class DispenseFlowViewModel @Inject constructor(
                         existingTxn = createStandaloneDispenseTxn(
                             parsedNdc = parsedNdc,
                             rxNo = rxNo,
+                            refillNo = refillNo,
                             bucket = bucket,
                             targetCount = qtyInt,
                         )
@@ -443,6 +450,7 @@ class DispenseFlowViewModel @Inject constructor(
     private suspend fun createStandaloneDispenseTxn(
         parsedNdc: String,
         rxNo: String,
+        refillNo: String?,
         bucket: String?,
         targetCount: Int,
     ): PillCountTxnEntity? {
@@ -462,6 +470,13 @@ class DispenseFlowViewModel @Inject constructor(
             isSynced = false,
             isNdcVerified = false,
             rxNo = rxNo,
+            refillNo = refillNo,
+            // Same RxNo-RefillNo composite HL7MessageBuilder sends as the order identifier
+            // (Vivid ZUI-4 rxNumber / EyeCon ZUI-11 transactionOrderId) — PMS pulls dispense
+            // images via getByTransactionOrderId keyed on that value. Without it, a
+            // locally-scanned dispense's images 404 on that pull and, with local storage
+            // off, are deleted after ACK with no way to re-fetch them.
+            transactionOrderId = refillNo?.takeIf { it.isNotBlank() }?.let { "$rxNo-$it" } ?: rxNo,
             bucketId = bucket,
         )
         val txnId = pillCountTxnDao.upsertPreservingId(newTxn)
@@ -616,7 +631,7 @@ class DispenseFlowViewModel @Inject constructor(
 
                 val displayName = drugInfo.genericName?.takeIf { it.isNotBlank() }
                     ?: "Unknown Drug"
-                val imagePath = drugImageDownloader.downloadAndSave(
+                val drugImagePath = drugImageDownloader.downloadAndSave(
                     url = drugInfo.imageUrl,
                     drugName = drugInfo.genericName?.takeIf { it.isNotBlank() } ?: drugInfo.ndc,
                 )
@@ -630,7 +645,7 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drugInfo.isHazardous ?: false,
                         strength = drugInfo.strength,
                         dosageForm = drugInfo.dosageForm,
-                        drugImagePath = imagePath,
+                        drugImagePath = drugImagePath,
                     )
                 )
 
@@ -1093,7 +1108,9 @@ class DispenseFlowViewModel @Inject constructor(
         // Pipe-delimited payloads are the RX-label template; otherwise the raw
         // value may already be the bare RX number.
         val scannedRx = if (rawValue.contains('|')) {
-            parseScanData(preferenceHelper.getBarcodeRegex().toString(), rawValue).rxNo?.trim().orEmpty()
+            val barcodeRegex = preferenceHelper.getBarcodeRegex().orEmpty()
+            if (barcodeRegex.isBlank()) return false
+            parseScanData(barcodeRegex, rawValue).rxNo?.trim().orEmpty()
         } else {
             rawValue.trim()
         }

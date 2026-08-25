@@ -11,13 +11,16 @@ import parseScanData
  * NOTE: ParsedScanData.kt declares no package, so these symbols live in the default
  * (root) package and this test must also live in the root package.
  *
+ * Templates are regexes with named groups (`(?<name>...)`), matched with [Regex.matchEntire]
+ * against the raw scanned value — not the earlier `{Key}`-placeholder format.
+ *
  * android.util.Log calls inside the logger are silenced by isReturnDefaultValues = true.
  */
 class ParsedScanDataTest {
 
     @Test
     fun parseScanData_mapsAllKnownKeys() {
-        val template = "{RxNo}|{NdcNo}|{Qty}|{Bucket}"
+        val template = "(?<RxNo>[^|]+)\\|(?<NdcNo>[^|]+)\\|(?<Qty>[^|]+)\\|(?<Bucket>[^|]+)"
         val raw = "RX123|00123456789|30|A1"
         val result = parseScanData(template, raw)
 
@@ -31,7 +34,7 @@ class ParsedScanDataTest {
 
     @Test
     fun parseScanData_keysAreUppercasedAndTrimmed() {
-        val template = "{ rxno }|{ qty }"
+        val template = "(?<rxno>[^|]+)\\s*\\|\\s*(?<qty>[^|]+)"
         val raw = " RX9 | 12 "
         val result = parseScanData(template, raw)
 
@@ -40,19 +43,22 @@ class ParsedScanDataTest {
     }
 
     @Test
-    fun parseScanData_missingTrailingValues_areOmitted() {
-        val template = "{RxNo}|{NdcNo}|{Qty}"
-        val raw = "RX123" // only one value, two keys missing
+    fun parseScanData_noMatch_returnsDefault() {
+        // Template requires three pipe-delimited groups; raw has only one value.
+        val template = "(?<RxNo>[^|]+)\\|(?<NdcNo>[^|]+)\\|(?<Qty>[^|]+)"
+        val raw = "RX123" // does not match the full pattern (matchEntire)
+
         val result = parseScanData(template, raw)
 
-        Assert.assertEquals("RX123", result.rxNo)
+        Assert.assertNull(result.rxNo)
         Assert.assertNull(result.ndcNo)
         Assert.assertNull(result.qty)
-        Assert.assertEquals(1, result.rawMap.size)
+        Assert.assertTrue(result.rawMap.isEmpty())
     }
 
     @Test
-    fun parseScanData_emptyTemplate_returnsDefault() {
+    fun parseScanData_emptyTemplate_matchesOnlyEmptyActualValue() {
+        // An empty regex matches only the empty string via matchEntire.
         val result = parseScanData("", "RX|10")
         Assert.assertNull(result.rxNo)
         Assert.assertNull(result.ndcNo)
@@ -60,9 +66,9 @@ class ParsedScanDataTest {
     }
 
     @Test
-    fun parseScanData_emptyActualValue_returnsDefaultBecauseNoKeysWhenTemplateAlsoEmpty() {
-        // values come from split('|'); "" splits to a single empty-string element,
-        // so keys-empty guard triggers the default when template has no placeholders.
+    fun parseScanData_emptyTemplateAndEmptyActualValue_returnsDefaultBecauseNoNamedGroups() {
+        // "" matches "" via matchEntire, but the template has no named groups, so rawMap
+        // stays empty and every known field stays null.
         val result = parseScanData("", "")
         Assert.assertNull(result.rxNo)
         Assert.assertTrue(result.rawMap.isEmpty())
@@ -70,7 +76,7 @@ class ParsedScanDataTest {
 
     @Test
     fun parseScanData_unknownKeysGoOnlyIntoRawMap() {
-        val template = "{Foo}|{Bar}"
+        val template = "(?<Foo>[^|]+)\\|(?<Bar>[^|]+)"
         val raw = "abc|def"
         val result = parseScanData(template, raw)
 
@@ -78,6 +84,27 @@ class ParsedScanDataTest {
         Assert.assertNull(result.ndcNo)
         Assert.assertEquals("abc", result.rawMap["FOO"])
         Assert.assertEquals("def", result.rawMap["BAR"])
+    }
+
+    @Test
+    fun parseScanData_invalidRegexTemplate_returnsDefault() {
+        // Malformed regex (unbalanced group) throws inside Regex(template) — caught,
+        // falls back to the default ParsedScanData rather than propagating.
+        val template = "(?<RxNo>[^|]+"
+        val result = parseScanData(template, "RX123")
+
+        Assert.assertNull(result.rxNo)
+        Assert.assertTrue(result.rawMap.isEmpty())
+    }
+
+    @Test
+    fun parseScanData_refillNoGroup_isMapped() {
+        val template = "(?<RxNo>[^|]+)-(?<RefillNo>[^|]+)"
+        val raw = "RX500-2"
+        val result = parseScanData(template, raw)
+
+        Assert.assertEquals("RX500", result.rxNo)
+        Assert.assertEquals("2", result.refillNo)
     }
 
     // ───────────────────────────── data class ─────────────────────────────
