@@ -571,18 +571,10 @@ class MainActivityViewModel @Inject constructor(
         }
         hl7StartedWithIdentity = identity
 
-        val config = HL7Config(
-            serverPort = 2575,
-            autoResponseDelayMs = 10_000L,
-            nsdBroadcastServiceName = terminalName,
+        val config = HL7Config.fromPreferences(
+            preferenceHelper = preferenceHelper,
             nsdBroadcastType = broadCastServiceName,
             nsdDiscoveryType = discoverServiceName,
-            imageServicePort = 8080,
-            hl7Version = identity.hl7Version,
-            bypassTls = identity.bypassTls,
-            useStaticPmsConnection = identity.useStaticPmsConnection,
-            pmsIp = identity.pmsIp,
-            pmsPort = identity.pmsPort,
         )
         hl7ServiceManager.initialize(config, hl7EventHandler)
     }

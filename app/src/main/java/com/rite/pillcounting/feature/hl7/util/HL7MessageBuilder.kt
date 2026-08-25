@@ -108,14 +108,15 @@ object HL7MessageBuilder {
     // Resend attempts (PMS reject, ACK timeout, reconnect) call buildDispenseMessage again
     // for the same txn, which used to re-read, decrypt, and re-base64-encode every ZUI-8
     // tray image from disk on each call — multi-MB per image, repeated on every retry.
-    // Keyed by (path, lastModified) so an edited/rescanned image at the same path still
-    // misses and re-encodes; capped to bound memory since encoded blobs can be sizable.
-    private const val IMAGE_ENCODE_CACHE_MAX = 32
-    private val imageEncodeCache = object : LinkedHashMap<Pair<String, Long>, String>(
-        IMAGE_ENCODE_CACHE_MAX, 0.75f, true
-    ) {
-        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Pair<String, Long>, String>?): Boolean =
-            size > IMAGE_ENCODE_CACHE_MAX
+    // Keyed by txnId (then by path+lastModified, so an edited/rescanned image still misses
+    // and re-encodes) instead of a fixed-size LRU: a synced txn is never resent again, so
+    // Hl7Repository calls evictImageCache(txnId) once it's synced — memory only ever holds
+    // images for txns that are still actually pending, not a rolling cap.
+    private val imageEncodeCache = mutableMapOf<Long, MutableMap<Pair<String, Long>, String>>()
+
+    /** Drops cached ZUI-8 image encodings for [txnId] — call once the txn is confirmed synced. */
+    fun evictImageCache(txnId: Long) {
+        synchronized(imageEncodeCache) { imageEncodeCache.remove(txnId) }
     }
 
     // =========================================================
@@ -208,7 +209,7 @@ object HL7MessageBuilder {
                     z.rxNumber = vividOrderId
                     z.dispensedQuantity = totalCount.toString()
                     z.transactionStatus = ZuiTransactionStatus.DONE
-                    z.drugImages = buildZuiImagePayload(bottles = bottles, details = txnDetails)
+                    z.drugImages = buildZuiImagePayload(txnId = txn.txnId, bottles = bottles, details = txnDetails)
                     z.drugLotNumber = effectiveLotNumber
                     z.drugSerialNumber = effectiveSerialNumber
                     z.drugExpirationDate = effectiveExpirationDate
@@ -563,6 +564,7 @@ object HL7MessageBuilder {
      * "batch 1 of 1", count 1 of 1. Revisit once those features add real fields.
      */
     private fun buildZuiImagePayload(
+        txnId: Long,
         bottles: List<BottleInfo>,
         details: List<PillCountTxnDetailsEntity>
     ): List<List<String>>? {
@@ -575,7 +577,7 @@ object HL7MessageBuilder {
 
         val countTotal = imagePaths.size
         return imagePaths.mapIndexedNotNull { index, path ->
-            val base64 = encodeImageCached(path) ?: return@mapIndexedNotNull null
+            val base64 = encodeImageCached(txnId, path) ?: return@mapIndexedNotNull null
             val countIndex = index + 1
             // "1B1" = batch 1 of 1 (no batching feature yet); "${countIndex}C$countTotal" =
             // this image's count-attempt index of the total image count, per Vivid spec format.
@@ -583,13 +585,13 @@ object HL7MessageBuilder {
         }.takeIf { it.isNotEmpty() }
     }
 
-    /** Reads, decrypts, and base64-encodes an image file, cached by (path, lastModified) so repeat resends of the same unchanged file skip the disk read and re-encode. */
-    private fun encodeImageCached(path: String): String? {
+    /** Reads, decrypts, and base64-encodes an image file, cached per-txn by (path, lastModified) so repeat resends of the same unchanged file skip the disk read and re-encode. */
+    private fun encodeImageCached(txnId: Long, path: String): String? {
         val file = File(path)
         val lastModified = file.lastModified()
         if (lastModified == 0L) return null // file doesn't exist / unreadable — don't cache
         val key = path to lastModified
-        synchronized(imageEncodeCache) { imageEncodeCache[key] }?.let { return it }
+        synchronized(imageEncodeCache) { imageEncodeCache[txnId]?.get(key) }?.let { return it }
 
         val encoded = runCatching { file.readBytes() }
             .mapCatching { bytes -> if (ImageCrypto.isEncrypted(bytes)) ImageCrypto.decrypt(bytes) else bytes }
@@ -597,7 +599,9 @@ object HL7MessageBuilder {
             ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
             ?: return null
 
-        synchronized(imageEncodeCache) { imageEncodeCache[key] = encoded }
+        synchronized(imageEncodeCache) {
+            imageEncodeCache.getOrPut(txnId) { mutableMapOf() }[key] = encoded
+        }
         return encoded
     }
 

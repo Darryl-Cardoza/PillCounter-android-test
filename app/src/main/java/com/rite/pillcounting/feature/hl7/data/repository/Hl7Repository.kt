@@ -426,6 +426,8 @@ class Hl7Repository @Inject constructor(
      * in-flight sends can't mark the wrong transaction synced.
      */
     private fun markTransactionSynced(txnId: Long) {
+        // A synced txn is never resent, so its cached ZUI-8 image encodings can be dropped now.
+        HL7MessageBuilder.evictImageCache(txnId)
         scope.launch {
             // Flag the txn synced first, then — when the server disallows local storage —
             // delete it. The PMS pulls images from the device image server before sending

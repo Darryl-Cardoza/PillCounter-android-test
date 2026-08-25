@@ -254,28 +254,18 @@ class HL7Service : Service() {
     /**
      * Rebuilds [HL7Config] straight from persisted preferences — used when this service
      * is restarted by the system (START_STICKY, null Intent) and there is no Intent to
-     * read extras from. Mirrors the config MainActivityViewModel.startHl7Service() builds
-     * for a normal app-driven start.
+     * read extras from. Shares [HL7Config.fromPreferences] with the normal app-driven
+     * start (MainActivityViewModel.startHl7Service()) so the two can't drift apart.
      */
     private fun loadConfigFromPreferences(): HL7Config {
         return try {
             val preferenceHelper = com.rite.pillcounting.core.utils.preference.PreferenceHelper(applicationContext)
-            val terminalName = preferenceHelper.getSelectedTerminalName()
-                ?: "PillCounter-${android.os.Build.MODEL}"
-            HL7Config(
-                serverPort = 2575,
-                autoResponseDelayMs = 10_000L,
-                nsdBroadcastServiceName = terminalName,
+            HL7Config.fromPreferences(
+                preferenceHelper = preferenceHelper,
                 nsdBroadcastType = preferenceHelper.getNsdBroadcastType().takeIf { it.isNotBlank() }
                     ?: Hl7ServiceConfig.PILL_COUNTER_HOST_NAME,
                 nsdDiscoveryType = preferenceHelper.getNsdDiscoveryType().takeIf { it.isNotBlank() }
                     ?: Hl7ServiceConfig.PMS_HOST_NAME,
-                imageServicePort = 8080,
-                hl7Version = preferenceHelper.getHl7Version(),
-                bypassTls = preferenceHelper.isBypassTlsEnabled(),
-                useStaticPmsConnection = preferenceHelper.isUseStaticPmsConnection(),
-                pmsIp = preferenceHelper.getPmsIP(),
-                pmsPort = preferenceHelper.getPmsPort(),
             )
         } catch (e: Exception) {
             // A SecurePreferences/keystore failure here must not crash-loop the service on
@@ -560,11 +550,16 @@ class HL7Service : Service() {
     // again) from within the very job that scheduleStaticPmsRetry() had just launched, so the
     // isActive guard below saw that same still-running job and blocked the next retry from ever
     // being scheduled. The loop died after exactly one delayed attempt.
+    //
+    // Nulling staticPmsRetryJob before firing the inner call closes a narrower version of the
+    // same race: the inner call can re-enter this method before this job is marked complete,
+    // so the isActive check must not see this (finishing) job as still active.
     private fun scheduleStaticPmsRetry() {
         if (staticPmsRetryJob?.isActive == true) return
         staticPmsRetryJob = serviceScope.launch {
             delay(STATIC_PMS_CONFIG_RETRY_MS)
             if (config.useStaticPmsConnection) {
+                staticPmsRetryJob = null
                 serviceScope.launch { connectToStaticPms() }
             }
         }
