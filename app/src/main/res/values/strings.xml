@@ -376,8 +376,6 @@
     <string name="rx_already_completed_message">This Rx has already been dispensed.</string>
     <string name="enable_hl7_from_portal_toast">Enable HL7 from Portal</string>
     <string name="scan_correct_label">Scan Correct Label</string>
-    <string name="batch_create_failed_title">Couldn\'t start batch</string>
-    <string name="batch_create_failed_message">Something went wrong while starting the stock-count batch. Try again?</string>
     <string name="retry">Retry</string>
 <!--    StockCount-->
     <string name="scan_stock_bottle">Scan Stock Bottle</string>

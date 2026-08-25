@@ -68,10 +68,6 @@ data class DispenseFlowUiState(
 
     val isLoading: Boolean = false,
     val error: String? = null,
-    // Set true when the lazily-created stock batch insert fails in advanceToCountingStage.
-    // Surfaces a blocking AlertDialog with Retry/Cancel so the user doesn't count pills
-    // into a nonexistent row.
-    val showBatchCreateError: Boolean = false,
 
     // HL7/PMS-driven entry: when true the user landed here from a PMS
     // notification, the txn already exists, and the RX scan stage is skipped.

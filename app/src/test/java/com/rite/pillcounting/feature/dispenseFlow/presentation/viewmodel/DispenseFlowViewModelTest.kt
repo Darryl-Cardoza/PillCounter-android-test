@@ -104,7 +104,7 @@ class DispenseFlowViewModelTest {
 
     private fun createViewModel() = DispenseFlowViewModel(
         appContext, drugRepository, drugMasterDao, preferenceHelper, pillCountTxnDao,
-        stockTxnDao, bottleInfoDao, batchDao, drugImageDownloader
+        drugImageDownloader
     )
 
     private fun validParsed(
@@ -711,24 +711,27 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
-    fun `onNdcBarcodeRead stock count with batchId 0 lazily creates batch and stock header without sheet`() = runTest(testDispatcher) {
+    fun `onNdcBarcodeRead stock count with batchId 0 defers batch and stock header creation`() = runTest(testDispatcher) {
+        // Fully deferred stock session: no txn, no batch context (Scan Pills tapped
+        // without a prior batch). advanceToCountingStage must NOT write batch or
+        // stock_txn — PillScanningViewModel.flushStagedDetails inserts everything
+        // atomically on Done. Screen carries only stockDrugId + bucket forward.
         val vm = ndcVm() // REGULAR, txnId 0, batchId 0 — Scan Pills tapped first
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
         coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
-        coEvery { batchDao.insert(any()) } returns 555L
-        coEvery { stockTxnDao.findByDrugInBatch(555L, 10L) } returns null
-        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 33L
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertFalse(vm.uiState.value.showNdcDetails)
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        assertEquals(555L, vm.uiState.value.batchId)
-        assertEquals(33L, vm.uiState.value.stockTxnId)
-        // BottleInfo is no longer created eagerly — flushStagedDetails inserts a fresh
-        // line on Done with the session's loose total, so stockBottleId stays 0L here.
+        // No eager batch/stockTxn/bottleInfo inserts — all deferred to Done.
+        assertEquals(0L, vm.uiState.value.batchId)
+        assertEquals(0L, vm.uiState.value.stockTxnId)
         assertEquals(0L, vm.uiState.value.stockBottleId)
-        coVerify { batchDao.insert(any()) }
+        // Drug id resolved and stashed so PillScanningVM can mint the rows on flush.
+        assertEquals(10L, vm.uiState.value.stockDrugId)
+        coVerify(exactly = 0) { batchDao.insert(any()) }
+        coVerify(exactly = 0) { stockTxnDao.upsertPreservingId(any()) }
         coVerify(exactly = 0) { bottleInfoDao.insert(any()) }
     }
 
@@ -782,6 +785,9 @@ class DispenseFlowViewModelTest {
 
     @Test
     fun `onNdcBarcodeRead server match stock count no sheet advances`() = runTest(testDispatcher) {
+        // Server-resolved NDC for a fresh stock session (no batch, no txn). Deferred
+        // design: advanceToCountingStage stashes the resolved drugId and jumps to
+        // COUNTING without any batch / stockTxn / bottleInfo writes.
         val vm = ndcVm() // REGULAR, no txn, no batch — Scan Pills tapped first
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
@@ -791,16 +797,16 @@ class DispenseFlowViewModelTest {
             is_ndc_equivalent = false, drugType = "X", qty = 2, isHazardous = true
         )
         coEvery { drugMasterDao.getDrugIdByNdc("SRV") } returns 12L
-        coEvery { batchDao.insert(any()) } returns 777L
-        coEvery { stockTxnDao.findByDrugInBatch(777L, 12L) } returns null
-        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 34L
-        coEvery { bottleInfoDao.insert(any()) } returns 45L
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertFalse(vm.uiState.value.showNdcDetails)
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
         assertEquals("Unknown Drug", vm.uiState.value.ndcDrugName)
-        assertEquals(777L, vm.uiState.value.batchId)
+        assertEquals(0L, vm.uiState.value.batchId) // no batch context, deferred
+        assertEquals(12L, vm.uiState.value.stockDrugId)
+        coVerify(exactly = 0) { batchDao.insert(any()) }
+        coVerify(exactly = 0) { stockTxnDao.upsertPreservingId(any()) }
+        coVerify(exactly = 0) { bottleInfoDao.insert(any()) }
     }
 
     @Test
@@ -1077,23 +1083,26 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
-    fun `onNdcBarcodeRead REGULAR batch writes StockTxn but defers BottleInfo`() = runTest(testDispatcher) {
-        // Stock counting no longer uses pill_count_txn: a REGULAR batch NDC scan creates a
-        // StockTxn header and advances straight to COUNTING. The BottleInfo row is no longer
-        // created eagerly — flushStagedDetails inserts one on Done, so back-out without a
-        // pill count leaves no phantom 0-qty row.
+    fun `onNdcBarcodeRead REGULAR with existing batch preserves batchId and defers writes`() = runTest(testDispatcher) {
+        // Continuing an existing batch from the "Scan Pills" hand-off: batchId is seeded
+        // via setBatchId. advanceToCountingStage must PRESERVE it (regression guard for
+        // the zero-batchId bug that duplicated the batch on every count session) and
+        // must NOT eagerly write stock_txn / bottle_info — flushStagedDetails handles
+        // both atomically on Done, reusing the seeded batchId.
         val vm = ndcVm() // REGULAR
-        vm.setBatchId(9L) // batch set so needsSheet false; advanceToCountingStage creates the stock header
+        vm.setBatchId(9L)
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
         coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
-        coEvery { stockTxnDao.findByDrugInBatch(9L, 10L) } returns null
-        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 33L
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
         assertEquals(0L, vm.uiState.value.txnId)
-        coVerify { stockTxnDao.upsertPreservingId(any()) }
+        assertEquals(9L, vm.uiState.value.batchId) // preserved, NOT wiped to 0
+        assertEquals(0L, vm.uiState.value.stockTxnId)
+        assertEquals(0L, vm.uiState.value.stockBottleId)
+        assertEquals(10L, vm.uiState.value.stockDrugId)
+        coVerify(exactly = 0) { stockTxnDao.upsertPreservingId(any()) }
         coVerify(exactly = 0) { bottleInfoDao.insert(any()) }
     }
 
@@ -1470,22 +1479,26 @@ class DispenseFlowViewModelTest {
     // ───────────── advanceToCountingStage batch path (txn0) ─────────────
 
     @Test
-    fun `advanceToCountingStage batch creates stock header and COUNTING with deferred bottle`() = runTest(testDispatcher) {
+    fun `advanceToCountingStage batch preserves batchId and defers all stock writes`() = runTest(testDispatcher) {
+        // Continuing an existing batch: setBatchId(9L) seeds the batchId. After
+        // advanceToCountingStage the batchId must survive unchanged (bug regression
+        // guard: previously wiped to 0L, which caused flushStagedDetails to mint a
+        // duplicate batch per count session). All row writes stay deferred to Done.
         val vm = ndcVm() // REGULAR
         vm.setBatchId(9L)
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
         coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
-        coEvery { stockTxnDao.findByDrugInBatch(9L, 10L) } returns null
-        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 7L
         vm.onNdcBarcodeRead("gtin", null) // trustLocal, needsSheet false (batch set) -> advance
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        // Stock counts no longer create a pill_count_txn; they create StockTxn eagerly.
-        // BottleInfo is deferred to flushStagedDetails on Done, so stockBottleId stays 0L.
         assertEquals(0L, vm.uiState.value.txnId)
-        assertEquals(7L, vm.uiState.value.stockTxnId)
-        assertEquals(0L, vm.uiState.value.stockBottleId)
+        assertEquals(9L, vm.uiState.value.batchId) // preserved (regression guard)
+        assertEquals(0L, vm.uiState.value.stockTxnId) // deferred to Done
+        assertEquals(0L, vm.uiState.value.stockBottleId) // deferred to Done
+        assertEquals(10L, vm.uiState.value.stockDrugId)
+        coVerify(exactly = 0) { batchDao.insert(any()) }
+        coVerify(exactly = 0) { stockTxnDao.upsertPreservingId(any()) }
         coVerify(exactly = 0) { bottleInfoDao.insert(any()) }
     }
 

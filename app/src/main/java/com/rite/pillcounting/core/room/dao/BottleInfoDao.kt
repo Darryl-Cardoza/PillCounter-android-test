@@ -47,23 +47,6 @@ interface BottleInfoDao {
     )
     suspend fun findLine(stockTxnId: Long, lotNo: String?, expNo: String?): BottleInfoEntity?
 
-    /**
-     * Existing SEALED bottle line for a `(stockTxn, lot, expiry)` tuple — a sealed line is one with
-     * no loose pills (`looseQty` 0 or NULL). Used to collapse repeat sealed scans of the same NDC
-     * onto a single running-count line, while loose sessions each get their own row.
-     */
-    @Query(
-        """
-        SELECT * FROM bottle_info
-        WHERE stockTxnId = :stockTxnId
-          AND (lotNo = :lotNo OR (lotNo IS NULL AND :lotNo IS NULL))
-          AND (expNo = :expNo OR (expNo IS NULL AND :expNo IS NULL))
-          AND IFNULL(looseQty, 0) = 0
-        LIMIT 1
-        """
-    )
-    suspend fun findSealedLine(stockTxnId: Long, lotNo: String?, expNo: String?): BottleInfoEntity?
-
     /** Internal — increments looseQty AND overwrites controlledImagePaths in one SQL statement. */
     @Query(
         """
@@ -115,11 +98,6 @@ interface BottleInfoDao {
 
     @Query("DELETE FROM bottle_info WHERE bottleId = :bottleId")
     suspend fun delete(bottleId: Long)
-
-    /** Hard-delete every bottle_info row belonging to a batch. Used when cleaning up a
-     *  lazily-created stock batch on back-out with no counts. */
-    @Query("DELETE FROM bottle_info WHERE batchId = :batchId")
-    suspend fun deleteByBatchId(batchId: Long)
 
     @Query("DELETE FROM bottle_info")
     suspend fun deleteAll()

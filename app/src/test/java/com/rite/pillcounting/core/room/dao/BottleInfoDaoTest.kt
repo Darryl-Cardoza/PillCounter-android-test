@@ -141,42 +141,6 @@ class BottleInfoDaoTest {
         assertNull(found)
     }
 
-    // ───────────────────────── findSealedLine ─────────────────────────
-
-    @Test
-    fun `findSealedLine matches line with null looseQty`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", looseQty = null))
-        val found = dao.findSealedLine(1L, "L1", null)
-        assertEquals(1L, found?.bottleId)
-    }
-
-    @Test
-    fun `findSealedLine matches line with zero looseQty`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", looseQty = 0))
-        val found = dao.findSealedLine(1L, "L1", null)
-        assertEquals(1L, found?.bottleId)
-    }
-
-    @Test
-    fun `findSealedLine returns null when looseQty is greater than zero`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", looseQty = 5))
-        val found = dao.findSealedLine(1L, "L1", null)
-        assertNull(found)
-    }
-
-    @Test
-    fun `findSealedLine keeps loose and sealed lines separate for same lot and expiry`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "E1", looseQty = 0))
-        dao.insert(BottleInfoEntity(bottleId = 2L, stockTxnId = 1L, lotNo = "L1", expNo = "E1", looseQty = 10))
-
-        val sealed = dao.findSealedLine(1L, "L1", "E1")
-        assertEquals(1L, sealed?.bottleId)
-
-        val anyLine = dao.findLine(1L, "L1", "E1")
-        // findLine has no ORDER BY / uniqueness guarantee beyond LIMIT 1; assert a row from the pair is returned.
-        assertTrue(anyLine?.bottleId == 1L || anyLine?.bottleId == 2L)
-    }
-
     // ───────────────────────── incrementLooseQtyAndImages ─────────────────────────
 
     @Test

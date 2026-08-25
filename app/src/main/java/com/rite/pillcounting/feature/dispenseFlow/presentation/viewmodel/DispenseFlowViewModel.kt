@@ -6,17 +6,10 @@ import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.models.StepState
-import com.rite.pillcounting.core.room.dao.BatchDao
-import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
-import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.room.models.BatchEntity
-import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
-import com.rite.pillcounting.core.room.models.StockTxnEntity
-import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
@@ -72,9 +65,6 @@ class DispenseFlowViewModel @Inject constructor(
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
     private val pillCountTxnDao: PillCountTxnDao,
-    private val stockTxnDao: StockTxnDao,
-    private val bottleInfoDao: BottleInfoDao,
-    private val batchDao: BatchDao,
     private val drugImageDownloader: DrugImageDownloader,
 ) : ViewModel() {
 
@@ -745,18 +735,21 @@ class DispenseFlowViewModel @Inject constructor(
                     )
                 )
             preferenceHelper.saveTxnId(0)
+            // Preserve state.batchId / stockTxnId / stockBottleId. When the flow was
+            // opened from the Batch Stock Count "Scan Pills" hand-off, batchId (and
+            // possibly a pre-existing stockTxnId/stockBottleId) were seeded via
+            // setBatchId — zeroing them here would make flushStagedDetails treat this
+            // as a fresh deferred session and mint a duplicate batch on every commit
+            // instead of appending onto the batch the user is continuing.
             _uiState.update {
                 it.copy(
                     stage = DispenseStage.COUNTING,
                     showNdcDetails = false,
                     txnId = 0L,
-                    batchId = 0L,
-                    stockTxnId = 0L,
-                    stockBottleId = 0L,
                     stockDrugId = drugId,
                 )
             }
-            logger.i("[HAZARDOUS] NDC auto-confirmed (deferred stock): isHazardous=${state.isHazardous} drugId=$drugId → COUNTING (no rows yet)")
+            logger.i("[HAZARDOUS] NDC auto-confirmed (deferred stock): isHazardous=${state.isHazardous} drugId=$drugId batchId=${state.batchId} stockTxnId=${state.stockTxnId} stockBottleId=${state.stockBottleId} → COUNTING")
             return
         }
 
@@ -1008,17 +1001,6 @@ class DispenseFlowViewModel @Inject constructor(
      */
     fun setAllowedNdcs(ndcs: Set<String>) {
         _uiState.update { it.copy(allowedNdcs = ndcs) }
-    }
-
-    /** User tapped Retry on the batch-create failure dialog — re-run advanceToCountingStage. */
-    fun retryBatchCreate() {
-        _uiState.update { it.copy(showBatchCreateError = false) }
-        viewModelScope.launch { advanceToCountingStage() }
-    }
-
-    /** User tapped Cancel on the batch-create failure dialog — dismiss it and stay on NDC stage. */
-    fun dismissBatchCreateError() {
-        _uiState.update { it.copy(showBatchCreateError = false) }
     }
 
     fun clearError() {

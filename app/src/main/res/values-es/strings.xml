@@ -315,8 +315,6 @@
     <string name="partial_stock_counts">Conteos de stock parciales</string>
 
     <string name="select_bucket">Seleccionar cubeta</string>
-    <string name="batch_create_failed_title">No se pudo iniciar el lote</string>
-    <string name="batch_create_failed_message">Algo salió mal al iniciar el lote de conteo. ¿Reintentar?</string>
     <string name="retry">Reintentar</string>
     <string name="rx_number">Número Rx</string>
     <string name="quantity">Cantidad</string>

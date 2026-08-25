@@ -19,6 +19,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
+import androidx.navigation.compose.currentBackStackEntryAsState
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
@@ -162,10 +163,15 @@ fun InventoryScanHost(
     }
 
     // When the user tapped SCAN PILLS before any drug scan, the batch is created
-    // lazily inside DispenseFlowViewModel. DispenseFlowScreen publishes the new
-    // batchId here via SavedStateHandle so the inventory VM can adopt it and the
+    // lazily inside PillScanningViewModel.flushStagedDetails on Done and published
+    // back here via SavedStateHandle so the inventory VM can adopt it and the
     // Recent Counts list re-binds to the real batch instead of the initial 0L.
-    val currentBackStackEntry = navController.currentBackStackEntry
+    //
+    // Uses currentBackStackEntryAsState() (reactive) instead of currentBackStackEntry
+    // (snapshot). The snapshot value is captured once at composition and doesn't
+    // recompose on back-stack changes, so a race between DispenseFlow's pop-back
+    // and this collect starting could drop the adoption entirely.
+    val currentBackStackEntry by navController.currentBackStackEntryAsState()
     LaunchedEffect(currentBackStackEntry) {
         val handle = currentBackStackEntry?.savedStateHandle ?: return@LaunchedEffect
         handle.getStateFlow<Long?>(Screen.DispenseFlow.NAV_KEY_STOCK_COUNT_BATCH_ID, null)

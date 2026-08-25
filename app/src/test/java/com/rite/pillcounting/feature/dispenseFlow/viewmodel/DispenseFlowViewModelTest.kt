@@ -61,9 +61,6 @@ class DispenseFlowViewModelTest {
             drugMasterDao = drugMasterDao,
             preferenceHelper = preferenceHelper,
             pillCountTxnDao = pillCountTxnDao,
-            stockTxnDao = stockTxnDao,
-            bottleInfoDao = bottleInfoDao,
-            batchDao = batchDao,
             drugImageDownloader = drugImageDownloader,
         )
     }

@@ -687,20 +687,6 @@ fun DispenseFlowScreen(
         }
     }
 
-    // Batch insert failed while advancing to COUNTING — block the advance so the user
-    // doesn't count pills into a nonexistent row. Offer Retry, or Cancel to stay on the
-    // NDC scan and try scanning again.
-    if (dispenseState.showBatchCreateError) {
-        CommonDialog(
-            title = stringResource(R.string.batch_create_failed_title),
-            message = stringResource(R.string.batch_create_failed_message),
-            confirmText = stringResource(R.string.retry),
-            cancelText = stringResource(R.string.cancel),
-            onConfirm = { dispenseVm.retryBatchCreate() },
-            onCancel = { dispenseVm.dismissBatchCreateError() },
-        )
-    }
-
     // RX already has a PARTIAL transaction: ask the user whether to continue it.
     // "Yes" advances to PRE_NDC to scan the container; "No" goes to Dashboard.
     if (dispenseState.showContinueRxDialog) {

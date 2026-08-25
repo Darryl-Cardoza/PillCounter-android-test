@@ -315,8 +315,6 @@
     <string name="partial_stock_counts">Comptages de stock partiels</string>
 
     <string name="select_bucket">Sélectionner un bac</string>
-    <string name="batch_create_failed_title">Impossible de démarrer le lot</string>
-    <string name="batch_create_failed_message">Une erreur est survenue au démarrage du lot de comptage. Réessayer?</string>
     <string name="retry">Réessayer</string>
     <string name="rx_number">Numéro Rx</string>
     <string name="quantity">Quantité</string>

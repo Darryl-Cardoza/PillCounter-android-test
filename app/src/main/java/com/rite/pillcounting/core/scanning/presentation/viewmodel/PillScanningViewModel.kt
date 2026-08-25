@@ -187,11 +187,6 @@ class PillScanningViewModel @Inject constructor(
     private val _stockCountCommittedBatchId = MutableStateFlow<Long?>(null)
     val stockCountCommittedBatchId: StateFlow<Long?> = _stockCountCommittedBatchId.asStateFlow()
     fun consumeStockCountCommittedBatchId() { _stockCountCommittedBatchId.value = null }
-    // True when the current stock-count session is for a controlled substance (DEA schedule
-    // CII–CVI). Cached at session entry from DrugMasterEntity.drugType so [flushStagedDetails]
-    // can decide whether to persist the captured pill-image paths onto BottleInfo. Non-controlled
-    // sessions leave BottleInfo.controlledImagePaths null to avoid DB bloat.
-    private var isControlledSession = false
 
     // --- Dispense-flow bottle tracking (rescan-same-NDC during counting) ---
     // No in-memory cache of the bottle list: every scan re-reads
@@ -284,7 +279,6 @@ class PillScanningViewModel @Inject constructor(
         isPaused = false
         viewModelScope.launch {
             val drug = drugMasterDao.getDrugById(drugId) ?: return@launch
-            isControlledSession = isControlledDrugType(drug.drugType)
             startStockCounting(drug, stockTxnId)
         }
     }
@@ -516,11 +510,16 @@ class PillScanningViewModel @Inject constructor(
      * REGULAR transactions, increments looseQty ONCE by the total staged sum.
      * Clears the buffer and ends the staging session. Must be called on a
      * coroutine. Earlier committed rows are untouched.
+     *
+     * Returns true on success, false when the deferred-session atomic insert
+     * throws (rolled back by withTransaction). On false the staging buffer is
+     * left intact so the user can retap Done without losing their count, and
+     * [showErrorMessage] is surfaced for the toast handler.
      */
-    private suspend fun flushStagedDetails(txnId: Long) {
+    private suspend fun flushStagedDetails(txnId: Long): Boolean {
         if (stagedDetails.isEmpty()) {
             stagingActive = false
-            return
+            return true
         }
         val stagedSum = stagedDetails.sumOf { it.pillCount ?: 0 }
         if (isStockCountSession) {
@@ -530,7 +529,11 @@ class PillScanningViewModel @Inject constructor(
             // this session are also persisted; non-controlled sessions leave them null
             // so the DB is not bloated with paths we never need.
             if (stagedSum > 0) {
-                val controlledPaths: List<String>? = if (isControlledSession) {
+                // Derive from _txnInfo (populated by startStockCounting) rather than a
+                // cached flag — one source of truth, no drift risk if a future entry path
+                // forgets to set the flag.
+                val isControlled = isControlledDrugType(_txnInfo.value?.drugType)
+                val controlledPaths: List<String>? = if (isControlled) {
                     stagedDetails.mapNotNull { it.imagePath }.takeIf { it.isNotEmpty() }
                 } else null
                 if (stockBottleId != 0L) {
@@ -557,54 +560,94 @@ class PillScanningViewModel @Inject constructor(
                     )
                     logger.i("Flushed stock loose count as new line. stagedSum=$stagedSum stockTxnId=$stockTxnId bottleId=$newBottleId controlledPaths=${controlledPaths?.size ?: 0}")
                 } else if (stockDrugId != 0L) {
-                    // Fully deferred DispenseFlow stock session: no batch, stock_txn or
-                    // bottle_info exists yet. Create all three atomically now so back-out
-                    // before Done left zero rows behind. batchId is minted here and
-                    // published to InventoryScan via [_stockCountCommittedBatchId].
-                    appDatabase.withTransaction {
-                        val now = System.currentTimeMillis()
-                        val newBatchId = batchDao.insert(
-                            BatchEntity(
-                                batchId = now,
-                                startDateTime = now,
-                                endDateTime = null,
-                                status = BatchStatus.INPROGRESS,
-                                isDeleted = false,
-                                note = null,
-                                bucketId = stockBucketId,
+                    // Deferred DispenseFlow stock session. Two entry paths land here:
+                    //  1. Fresh stock count (no batch context) — [stockCountBatchId] == 0L.
+                    //     Mint batch + stock_txn + bottle_info atomically.
+                    //  2. Continuing an existing batch from the "Scan Pills" hand-off —
+                    //     [stockCountBatchId] != 0L (seeded via [enterStockCountSession]).
+                    //     Reuse the existing batchId; if the drug already has a stock_txn
+                    //     header under that batch, append a new bottle line onto it —
+                    //     otherwise insert a fresh stock_txn under the same batch. This
+                    //     prevents every counting session from spawning a duplicate batch.
+                    //
+                    // Wrapped in try/catch because a DB failure here (unique constraint,
+                    // disk full, foreign-key violation) would otherwise crash the app on
+                    // All Done. On failure the transaction rolls back (withTransaction is
+                    // atomic), the staging buffer is kept intact so the user can retap
+                    // Done without losing the count, and a toast surfaces the failure.
+                    try {
+                        // withTransaction returns the freshly-committed ids so the field
+                        // mirrors + published event only run on success. Publishing inside
+                        // the block would leak a batchId to InventoryScan that the rollback
+                        // then wiped from the DB, leaving Recent Counts bound to a phantom.
+                        val committed = appDatabase.withTransaction {
+                            val effectiveBatchId = if (stockCountBatchId != 0L) {
+                                stockCountBatchId
+                            } else {
+                                val now = System.currentTimeMillis()
+                                batchDao.insert(
+                                    BatchEntity(
+                                        batchId = now,
+                                        startDateTime = now,
+                                        endDateTime = null,
+                                        status = BatchStatus.INPROGRESS,
+                                        isDeleted = false,
+                                        note = null,
+                                        bucketId = stockBucketId,
+                                    )
+                                )
+                            }
+                            val existingStockTxn = stockTxnDao.findByDrugInBatch(effectiveBatchId, stockDrugId)
+                            val effectiveStockTxnId = existingStockTxn?.txnId
+                                ?: stockTxnDao.upsertPreservingId(
+                                    StockTxnEntity(
+                                        drugId = stockDrugId,
+                                        status = CountStatus.PARTIAL,
+                                        batchId = effectiveBatchId,
+                                        bucketId = stockBucketId,
+                                    )
+                                )
+                            bottleInfoDao.insert(
+                                BottleInfoEntity(
+                                    stockTxnId = effectiveStockTxnId,
+                                    batchId = effectiveBatchId,
+                                    lotNo = stockLotNo,
+                                    expNo = stockExpNo,
+                                    bottleQty = 0,
+                                    looseQty = stagedSum,
+                                    controlledImagePaths = controlledPaths,
+                                )
                             )
-                        )
-                        val newStockTxnId = stockTxnDao.upsertPreservingId(
-                            StockTxnEntity(
-                                drugId = stockDrugId,
-                                status = CountStatus.PARTIAL,
-                                batchId = newBatchId,
-                                bucketId = stockBucketId,
+                            stockTxnDao.refreshBatchTotalNdcs(effectiveBatchId)
+                            stockTxnDao.updateBatchUserName(
+                                effectiveBatchId,
+                                preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
                             )
-                        )
-                        bottleInfoDao.insert(
-                            BottleInfoEntity(
-                                stockTxnId = newStockTxnId,
-                                batchId = newBatchId,
-                                lotNo = stockLotNo,
-                                expNo = stockExpNo,
-                                bottleQty = 0,
-                                looseQty = stagedSum,
-                                controlledImagePaths = controlledPaths,
-                            )
-                        )
-                        stockTxnDao.refreshBatchTotalNdcs(newBatchId)
-                        stockTxnDao.updateBatchUserName(
-                            newBatchId,
-                            preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
-                        )
-                        // Mirror the new ids into private fields so subsequent flushes within
-                        // this same session (if any) accumulate onto the same line/header.
-                        stockCountBatchId = newBatchId
-                        stockTxnId = newStockTxnId
-                        _stockCountCommittedBatchId.value = newBatchId
+                            effectiveBatchId to effectiveStockTxnId
+                        }
+                        // Transaction committed — mirror ids into VM fields so subsequent
+                        // flushes in this same session accumulate onto the same line/header,
+                        // and publish the batchId so the screen can adopt it into
+                        // InventoryScan's Recent Counts.
+                        stockCountBatchId = committed.first
+                        stockTxnId = committed.second
+                        _stockCountCommittedBatchId.value = committed.first
+                        logger.i("Committed deferred stock session. stagedSum=$stagedSum drugId=$stockDrugId batchId=$stockCountBatchId stockTxnId=$stockTxnId controlledPaths=${controlledPaths?.size ?: 0}")
+                    } catch (e: Exception) {
+                        logger.e("Deferred stock session commit failed — staging preserved for retry", e)
+                        _uiState.update {
+                            it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_save_failed))
+                        }
+                        return false
                     }
-                    logger.i("Committed deferred stock session. stagedSum=$stagedSum drugId=$stockDrugId newBatchId=$stockCountBatchId newStockTxnId=$stockTxnId controlledPaths=${controlledPaths?.size ?: 0}")
+                }
+                // Non-controlled stock sessions never persist image paths onto
+                // BottleInfo, so the on-disk JPEGs written during Add taps have no
+                // DB row referencing them post-commit. Delete them here so they
+                // don't accumulate as orphans. Controlled sessions keep the files —
+                // BottleInfo.controlledImagePaths still points at them.
+                if (!isControlled) {
+                    deleteStagedImageFiles()
                 }
             }
         } else {
@@ -626,6 +669,7 @@ class PillScanningViewModel @Inject constructor(
         }
         stagedDetails.clear()
         stagingActive = false
+        return true
     }
 
     /**
@@ -651,8 +695,10 @@ class PillScanningViewModel @Inject constructor(
     /**
      * Discard the in-memory staged count on back-out (no Done). Earlier
      * committed rows and looseQty are preserved — only this session's staged
-     * (un-inserted) data is dropped. Image files already written to disk are
-     * left as orphans; they are harmless and not referenced by any DB row.
+     * (un-inserted) data is dropped. On a stock-count session the JPEGs written
+     * during Add taps are ALSO deleted here so an abandoned session leaves no
+     * orphan files on disk (previously these piled up indefinitely under
+     * `transaction_details/` since no DB row ever referenced them).
      */
     fun discardStagedCount() {
         // Only the SCAN PILLS hand-off stages and discards on back-out. In the
@@ -665,11 +711,34 @@ class PillScanningViewModel @Inject constructor(
         }
         if (stagedDetails.isNotEmpty()) {
             logger.i("Discarding ${stagedDetails.size} staged details (back-out, no Done).")
+            deleteStagedImageFiles()
         }
         stagedDetails.clear()
         stagingActive = false
         stockCountBaseTotal = -1
         _uiState.update { it.copy(txnDetailHistory = emptyList(), stockCountSessionTotal = 0) }
+    }
+
+    /**
+     * Delete on-disk JPEG files whose paths are in [stagedDetails]. Called from
+     * [discardStagedCount] (back-out) and from the non-controlled branch of
+     * [flushStagedDetails] on commit success — non-controlled stock sessions do
+     * not persist image paths onto BottleInfo, so nothing else references these
+     * files after commit. Controlled sessions keep the files because
+     * BottleInfo.controlledImagePaths still points at them.
+     */
+    private fun deleteStagedImageFiles() {
+        stagedDetails.forEach { detail ->
+            val path = detail.imagePath ?: return@forEach
+            try {
+                val file = java.io.File(path)
+                if (file.exists() && !file.delete()) {
+                    logger.w("Failed to delete staged image file: $path")
+                }
+            } catch (e: Exception) {
+                logger.e("Error deleting staged image file: $path", e)
+            }
+        }
     }
 
     /**
@@ -1515,8 +1584,18 @@ class PillScanningViewModel @Inject constructor(
             if (txnInfo.value?.isDispense == false) {
                 // Stock: flush the loose count onto the BottleInfo line, complete the stock
                 // header, and return to the batch screen. Nothing is written to pill_count_txn.
-                flushStagedDetails(txnId)
-                _txnInfo.value?.txnId?.let { stockTxnId ->
+                // Use the VM's [stockTxnId] field (not _txnInfo.value.txnId): a deferred
+                // DispenseFlow session enters with stockTxnId = 0L, so _txnInfo holds 0L
+                // even after flushStagedDetails mints the real stock_txn row — reading
+                // from _txnInfo here would updateStatus(0L, COMPLETED) which matches no
+                // row and leaves the freshly-inserted header stuck on PARTIAL.
+                //
+                // Bail early if the deferred-session insert failed: the staging buffer is
+                // preserved by flushStagedDetails so the user can retap Done, and the
+                // failure toast has already been surfaced. Do NOT mark COMPLETED or
+                // navigate — there is nothing committed to complete.
+                if (!flushStagedDetails(txnId)) return@launch
+                if (stockTxnId != 0L) {
                     stockTxnDao.updateStatus(stockTxnId, CountStatus.COMPLETED)
                 }
                 val batchId = stockCountBatchId
@@ -1884,7 +1963,6 @@ class PillScanningViewModel @Inject constructor(
                 stockLotNo = lotNo
                 stockExpNo = expiry
                 stockBottleId = 0L
-                isControlledSession = isControlledDrugType(drug.drugType)
                 val stockTxn = stockTxnDao.findByDrugInBatch(stockCountBatchId, drugId)
                 stockTxnId = stockTxn?.txnId ?: stockTxnDao.upsertPreservingId(
                     StockTxnEntity(
