@@ -177,12 +177,12 @@ class BottleInfoDaoTest {
         assertTrue(anyLine?.bottleId == 1L || anyLine?.bottleId == 2L)
     }
 
-    // ───────────────────────── incrementLooseQty ─────────────────────────
+    // ───────────────────────── incrementLooseQtyAndImages ─────────────────────────
 
     @Test
-    fun `incrementLooseQty adds to existing looseQty and updates timestamp`() = runTest {
+    fun `incrementLooseQtyAndImages adds to existing looseQty and updates timestamp`() = runTest {
         dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = 10, updatedAt = 0L))
-        dao.incrementLooseQty(1L, 5, now = 12345L)
+        dao.incrementLooseQtyAndImages(1L, 5, paths = null, now = 12345L)
 
         val updated = dao.getById(1L)!!
         assertEquals(15, updated.looseQty)
@@ -190,17 +190,37 @@ class BottleInfoDaoTest {
     }
 
     @Test
-    fun `incrementLooseQty treats null looseQty as zero`() = runTest {
+    fun `incrementLooseQtyAndImages treats null looseQty as zero`() = runTest {
         dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = null))
-        dao.incrementLooseQty(1L, 7, now = 999L)
+        dao.incrementLooseQtyAndImages(1L, 7, paths = null, now = 999L)
 
         assertEquals(7, dao.getById(1L)?.looseQty)
     }
 
     @Test
-    fun `incrementLooseQty on nonexistent bottle affects no rows`() = runTest {
-        dao.incrementLooseQty(999L, 5, now = 1L)
+    fun `incrementLooseQtyAndImages on nonexistent bottle affects no rows`() = runTest {
+        dao.incrementLooseQtyAndImages(999L, 5, paths = null, now = 1L)
         assertNull(dao.getById(999L))
+    }
+
+    @Test
+    fun `incrementLooseQtyAndImages with paths overwrites controlledImagePaths`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = 0, controlledImagePaths = null))
+        dao.incrementLooseQtyAndImages(1L, 3, paths = listOf("/a", "/b"), now = 100L)
+
+        val updated = dao.getById(1L)!!
+        assertEquals(3, updated.looseQty)
+        assertEquals(listOf("/a", "/b"), updated.controlledImagePaths)
+    }
+
+    @Test
+    fun `incrementLooseQtyAndImages with null paths preserves existing controlledImagePaths`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = 0, controlledImagePaths = listOf("/existing")))
+        dao.incrementLooseQtyAndImages(1L, 2, paths = null, now = 200L)
+
+        val updated = dao.getById(1L)!!
+        assertEquals(2, updated.looseQty)
+        assertEquals(listOf("/existing"), updated.controlledImagePaths)
     }
 
     // ───────────────────────── Delete ─────────────────────────

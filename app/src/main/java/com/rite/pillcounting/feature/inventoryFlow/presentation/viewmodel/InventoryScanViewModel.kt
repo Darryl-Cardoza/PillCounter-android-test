@@ -287,7 +287,10 @@ class InventoryScanViewModel @Inject constructor(
         viewModelScope.launch {
             _resolvedBatchId.value = batchId
             val batch = batchDao.getById(batchId)
-            _bucketId.value = batch?.bucketId
+            // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
+            // is already authoritative (set from argBucketId at init). Reading it back
+            // from a lazily-created batch would clobber the selection with a stale/null
+            // value if the commit hadn't populated bucketId at insert time.
             if (!batch?.requestIdFromPMS.isNullOrBlank()) {
                 expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
                     .filter { it.isNotBlank() }

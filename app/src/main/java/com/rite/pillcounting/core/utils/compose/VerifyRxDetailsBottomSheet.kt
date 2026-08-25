@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.core.utils.compose
+package com.rite.pillcounting.core.utils.compose
 
 import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility

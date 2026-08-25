@@ -78,130 +78,26 @@ class DispenseFlowViewModel @Inject constructor(
     private val drugImageDownloader: DrugImageDownloader,
 ) : ViewModel() {
 
-    /**
-     * Find-or-create the [StockTxnEntity] header for a drug in a batch and a [BottleInfoEntity]
-     * line for the scanned unit, then return (stockTxnId, bottleId).
-     *
-     * The header is unique per `(drug)` within a batch. The bottle line, however, is per-entry:
-     *  - **Sealed** ([isSealed] = true): all sealed units of the same `(drug, lot, expiry)` collapse
-     *    onto ONE line whose [BottleInfoEntity.bottleQty] is the running count — a repeat sealed scan
-     *    increments it by [bottleQty] (1). A sealed line is one with no loose pills.
-     *  - **Loose/opened**: every counting session is its own bottle, so a FRESH line is always
-     *    inserted with `bottleQty = 1`; loose pills accumulate onto it via
-     *    [BottleInfoDao.incrementLooseQty] on Done. The same NDC therefore keeps separate loose rows.
-     *
-     * DispenseFlow does not decode lot/expiry, so its lines are keyed by `(stockTxn, null, null)`.
-     * Stock counts never touch `pill_count_txn`.
-     */
-    private suspend fun createStockLine(
-        drugId: Long,
-        batchId: Long,
-        bottleQty: Int?,
-        status: CountStatus,
-        isSealed: Boolean = false,
-        lotNo: String? = null,
-        expNo: String? = null,
-    ): Pair<Long, Long> {
-        val batch = batchId.takeIf { it != 0L }
-        val existingHeader = batch?.let { stockTxnDao.findByDrugInBatch(it, drugId) }
-        val stockTxnId = existingHeader?.txnId ?: stockTxnDao.upsertPreservingId(
-            StockTxnEntity(
-                drugId = drugId,
-                status = status,
-                batchId = batch,
-                bucketId = _uiState.value.selectedBucketId.ifBlank { null },
-            )
-        )
-        val bottleId = if (isSealed) {
-            // Sealed re-scan bumps the existing sealed line's running bottle count; first sealed
-            // scan of this (drug, lot, expiry) creates it.
-            val sealedLine = bottleInfoDao.findSealedLine(stockTxnId, lotNo, expNo)
-            if (sealedLine != null) {
-                bottleInfoDao.update(
-                    sealedLine.copy(
-                        bottleQty = (sealedLine.bottleQty ?: 0) + (bottleQty ?: 1),
-                        updatedAt = System.currentTimeMillis(),
-                    )
-                )
-                sealedLine.bottleId
-            } else {
-                bottleInfoDao.insert(
-                    BottleInfoEntity(
-                        stockTxnId = stockTxnId,
-                        batchId = batch,
-                        lotNo = lotNo,
-                        expNo = expNo,
-                        bottleQty = bottleQty ?: 1,
-                    )
-                )
-            }
-        } else {
-            // Loose/opened bottle: one fresh line per counting session. This line only carries
-            // loose/open pills, so bottleQty stays 0 — it must NOT count as a sealed bottle.
-            bottleInfoDao.insert(
-                BottleInfoEntity(
-                    stockTxnId = stockTxnId,
-                    batchId = batch,
-                    lotNo = lotNo,
-                    expNo = expNo,
-                    bottleQty = 0,
-                )
-            )
-        }
-        // Stock txn added → keep the batch's live totals in sync.
-        if (batch != null) {
-            stockTxnDao.refreshBatchTotalNdcs(batch)
-            stockTxnDao.updateBatchUserName(
-                batch,
-                preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
-            )
-        }
-        return stockTxnId to bottleId
-    }
-
     private val logger = AppLogger("DispenseFlowVM")
-
-    /**
-     * Returns [currentBatchId] when non-zero; otherwise inserts a fresh
-     * INPROGRESS [BatchEntity] and returns its id. Mirrors the lazy-create
-     * pattern in `InventoryScanViewModel.ensureBatchCreated` and
-     * `PillScanningViewModel.ensureStockCountBatchCreated` so the stock-count
-     * "Scan Pills tapped first" flow still ends up in a real batch.
-     */
-    private suspend fun ensureBatchExists(currentBatchId: Long): Long {
-        if (currentBatchId != 0L) return currentBatchId
-        return try {
-            val now = System.currentTimeMillis()
-            batchDao.insert(
-                BatchEntity(
-                    batchId = now,
-                    startDateTime = now,
-                    endDateTime = null,
-                    status = BatchStatus.INPROGRESS,
-                    isDeleted = false,
-                    note = null,
-                    bucketId = null,
-                )
-            )
-        } catch (e: Exception) {
-            logger.e("ensureBatchExists failed", e)
-            0L
-        }
-    }
 
     private val _uiState = MutableStateFlow(DispenseFlowUiState())
     val uiState: StateFlow<DispenseFlowUiState> = _uiState.asStateFlow()
 
     /**
-     * One-shot event emitted when [advanceToCountingStage] lazily creates a new
-     * stock-count batch (i.e. the caller entered with `batchId == 0L`). The
-     * screen forwards this id to the previous back-stack entry's SavedStateHandle
-     * so `InventoryScanViewModel` can adopt it on resume and its Recent Counts
-     * list observes the just-created batch instead of the stale 0L. Cleared via
-     * [consumeLazilyCreatedStockBatchId] after the screen hands it off.
+     * One-shot event carrying the batchId committed by
+     * `PillScanningViewModel.flushStagedDetails` at All Done for a deferred
+     * stock-count session. The screen forwards it to the previous back-stack
+     * entry's SavedStateHandle so `InventoryScanViewModel` can adopt it and
+     * re-subscribe its Recent Counts list to the just-created batch. Cleared
+     * via [consumeLazilyCreatedStockBatchId] after the screen hands it off.
      */
     private val _lazilyCreatedStockBatchId = MutableStateFlow<Long?>(null)
     val lazilyCreatedStockBatchId: StateFlow<Long?> = _lazilyCreatedStockBatchId.asStateFlow()
+
+    /** Called from the screen after PillScanningVM commits a deferred stock session. */
+    fun publishStockCountBatchId(batchId: Long) {
+        if (batchId != 0L) _lazilyCreatedStockBatchId.value = batchId
+    }
 
     /**
      * Clears the [lazilyCreatedStockBatchId] event after the screen has published
@@ -829,10 +725,11 @@ class DispenseFlowViewModel @Inject constructor(
         val txnId = state.txnId
 
         if (txnId == 0L) {
-            // No pre-existing txn: stock-count Scan-Pills flow. Lazily create a
-            // batch if one was not already provided (Scan-Pills tapped before any
-            // drug scan), then create the StockTxn/BottleInfo line as an opened
-            // (loose) bottle so counting can accumulate onto BottleInfo.looseQty.
+            // No pre-existing txn: stock-count Scan-Pills flow. Fully deferred —
+            // NO writes to batch / stock_txn / bottle_info until the user hits
+            // All Done and confirms the popup. Back-out before commit leaves zero
+            // rows behind. PillScanningViewModel.flushStagedDetails owns the
+            // atomic commit at Done time using [stockDrugId] + [selectedBucketId].
             if (isDispense) return
             val ndc = state.ndcScannedValue.ifBlank { state.ndc }
             val drugId = drugMasterDao.getDrugIdByNdc(ndc)
@@ -847,32 +744,19 @@ class DispenseFlowViewModel @Inject constructor(
                         dosageForm = state.ndcDosageForm,
                     )
                 )
-            val resolvedBatchId = ensureBatchExists(state.batchId)
-            // Publish the newly-minted batchId so the previous screen
-            // (InventoryScanHost) can adopt it and its Recent Counts list
-            // re-subscribes to the DB against the real batch instead of 0L.
-            if (state.batchId == 0L && resolvedBatchId != 0L) {
-                _lazilyCreatedStockBatchId.value = resolvedBatchId
-            }
-            val (stockTxnId, bottleId) = createStockLine(
-                drugId = drugId,
-                batchId = resolvedBatchId,
-                bottleQty = null,
-                status = CountStatus.PARTIAL,
-            )
             preferenceHelper.saveTxnId(0)
             _uiState.update {
                 it.copy(
                     stage = DispenseStage.COUNTING,
                     showNdcDetails = false,
                     txnId = 0L,
-                    batchId = resolvedBatchId,
-                    stockTxnId = stockTxnId,
-                    stockBottleId = bottleId,
+                    batchId = 0L,
+                    stockTxnId = 0L,
+                    stockBottleId = 0L,
                     stockDrugId = drugId,
                 )
             }
-            logger.i("[HAZARDOUS] NDC auto-confirmed (batch): isHazardous=${state.isHazardous} stockTxn=$stockTxnId bottle=$bottleId batchId=$resolvedBatchId → COUNTING")
+            logger.i("[HAZARDOUS] NDC auto-confirmed (deferred stock): isHazardous=${state.isHazardous} drugId=$drugId → COUNTING (no rows yet)")
             return
         }
 
@@ -1126,8 +1010,15 @@ class DispenseFlowViewModel @Inject constructor(
         _uiState.update { it.copy(allowedNdcs = ndcs) }
     }
 
-    fun clearNavigateToBatch() {
-        _uiState.update { it.copy(navigateToBatchId = null) }
+    /** User tapped Retry on the batch-create failure dialog — re-run advanceToCountingStage. */
+    fun retryBatchCreate() {
+        _uiState.update { it.copy(showBatchCreateError = false) }
+        viewModelScope.launch { advanceToCountingStage() }
+    }
+
+    /** User tapped Cancel on the batch-create failure dialog — dismiss it and stay on NDC stage. */
+    fun dismissBatchCreateError() {
+        _uiState.update { it.copy(showBatchCreateError = false) }
     }
 
     fun clearError() {

@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
@@ -63,38 +64,62 @@ interface BottleInfoDao {
     )
     suspend fun findSealedLine(stockTxnId: Long, lotNo: String?, expNo: String?): BottleInfoEntity?
 
-    /** Adds [qty] to the loose-pill total of a bottle line (treating NULL as 0). */
-    @Query("UPDATE bottle_info SET looseQty = IFNULL(looseQty, 0) + :qty, updatedAt = :now WHERE bottleId = :bottleId")
-    suspend fun incrementLooseQty(bottleId: Long, qty: Int, now: Long = System.currentTimeMillis())
+    /** Internal — increments looseQty AND overwrites controlledImagePaths in one SQL statement. */
+    @Query(
+        """
+        UPDATE bottle_info
+        SET looseQty = IFNULL(looseQty, 0) + :qty,
+            controlledImagePaths = :paths,
+            updatedAt = :now
+        WHERE bottleId = :bottleId
+        """
+    )
+    suspend fun _incrementLooseAndSetImages(bottleId: Long, qty: Int, paths: List<String>, now: Long)
+
+    /** Internal — increments only looseQty, leaves controlledImagePaths untouched. */
+    @Query(
+        """
+        UPDATE bottle_info
+        SET looseQty = IFNULL(looseQty, 0) + :qty,
+            updatedAt = :now
+        WHERE bottleId = :bottleId
+        """
+    )
+    suspend fun _incrementLooseQtyOnly(bottleId: Long, qty: Int, now: Long)
 
     /**
-     * Overwrites the controlled-image path list on a bottle line and bumps `updatedAt`.
+     * Adds [qty] to the loose-pill total of a bottle line (treating NULL as 0) and, when
+     * [paths] is non-null, also overwrites `controlledImagePaths`. Room `@Transaction` wraps
+     * the whole thing so a process death mid-flush can't save the count while dropping the
+     * image paths — either both writes commit or neither does.
      *
-     * Description:
-     * Persists the absolute file paths of pill-count images captured during a Scan Pills
-     * session onto an existing `bottle_info` row. Intended for controlled-substance rows
-     * only; callers must gate on `isControlledDrugType(drugType)` before invoking.
+     * Passing `paths = null` leaves the image-paths column untouched, so callers on the
+     * non-controlled path can't accidentally clobber previously-persisted paths.
      *
-     * What it does:
-     * - Replaces (not appends) `controlledImagePaths` with [paths].
-     * - Serializes the list via `StringListConverter` (registered on the DB).
-     *
-     * @param bottleId Target bottle_info primary key.
-     * @param paths List of absolute image file paths, or null to clear.
-     * @param now Epoch-millis timestamp for `updatedAt`.
-     *
-     * Example Usage:
-     * bottleInfoDao.updateControlledImagePaths(42L, listOf("/data/.../a.jpg"))
+     * Merges what used to be two separate DAO calls (incrementLooseQty +
+     * updateControlledImagePaths) into one atomic operation.
      */
-    @Query("UPDATE bottle_info SET controlledImagePaths = :paths, updatedAt = :now WHERE bottleId = :bottleId")
-    suspend fun updateControlledImagePaths(
+    @Transaction
+    suspend fun incrementLooseQtyAndImages(
         bottleId: Long,
+        qty: Int,
         paths: List<String>?,
         now: Long = System.currentTimeMillis(),
-    )
+    ) {
+        if (paths != null) {
+            _incrementLooseAndSetImages(bottleId, qty, paths, now)
+        } else {
+            _incrementLooseQtyOnly(bottleId, qty, now)
+        }
+    }
 
     @Query("DELETE FROM bottle_info WHERE bottleId = :bottleId")
     suspend fun delete(bottleId: Long)
+
+    /** Hard-delete every bottle_info row belonging to a batch. Used when cleaning up a
+     *  lazily-created stock batch on back-out with no counts. */
+    @Query("DELETE FROM bottle_info WHERE batchId = :batchId")
+    suspend fun deleteByBatchId(batchId: Long)
 
     @Query("DELETE FROM bottle_info")
     suspend fun deleteAll()

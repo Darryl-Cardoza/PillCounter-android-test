@@ -154,6 +154,11 @@ interface BatchDao {
     @Query("DELETE FROM batch")
     suspend fun deleteAll()
 
+    /** Hard-delete a single batch by id. Used to clean up lazily-created stock batches that
+     *  were abandoned before any pill was counted. */
+    @Query("DELETE FROM batch WHERE batchId = :batchId")
+    suspend fun deleteById(batchId: Long)
+
     @Query("""
         SELECT batchId FROM batch
         WHERE isDeleted = 0

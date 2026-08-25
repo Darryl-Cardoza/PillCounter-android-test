@@ -204,6 +204,18 @@ fun DispenseFlowScreen(
         }
     }
 
+    // Deferred stock-count commit: PillScanningVM mints the batchId inside its
+    // atomic flush at All Done. Route it through dispenseVm so the existing
+    // lazilyCreatedStockBatchId publish path handles the SavedStateHandle write.
+    LaunchedEffect(Unit) {
+        pillVm.stockCountCommittedBatchId.collectLatest { committedBatchId ->
+            if (committedBatchId != null && committedBatchId != 0L) {
+                dispenseVm.publishStockCountBatchId(committedBatchId)
+                pillVm.consumeStockCountCommittedBatchId()
+            }
+        }
+    }
+
     // One-time init for the pill counting workflow side: reset glove state and
     // start listening for the pillVm's own navigation events (Done → Dashboard /
     // Batch). Without this collect, hitting "All Done" in the pill panel would
@@ -476,6 +488,7 @@ fun DispenseFlowScreen(
                     stockTxnId = dispenseState.stockTxnId,
                     batchId = dispenseState.batchId,
                     drugId = dispenseState.stockDrugId,
+                    bucketId = dispenseState.selectedBucketId.ifBlank { null },
                 )
             } else {
                 pillVm.getDrugInfo(forceStartStep = null)
@@ -628,15 +641,11 @@ fun DispenseFlowScreen(
             dispenseVm.resetToQueue()
         } else {
             pillVm.discardStagedCount()
-            if (batchId > 0L) {
-                val popped = navController.popBackStack()
-                if (!popped) {
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo(0)
-                        launchSingleTop = true
-                    }
-                }
-            } else {
+            // Pop back to whichever screen launched this flow (Dashboard for a
+            // direct-dispense entry, InventoryScan for a stock-count Scan Pills
+            // hand-off). Fall back to Dashboard only if the back-stack is empty.
+            val popped = navController.popBackStack()
+            if (!popped) {
                 navController.navigate(Screen.Dashboard.route) {
                     popUpTo(0)
                     launchSingleTop = true
@@ -649,17 +658,6 @@ fun DispenseFlowScreen(
         dispenseState.error?.let {
             showToast(context, it, Toast.LENGTH_SHORT)
             dispenseVm.clearError()
-        }
-    }
-
-    // Sealed stock bottle confirmed: go back to the batch summary screen.
-    LaunchedEffect(dispenseState.navigateToBatchId) {
-        dispenseState.navigateToBatchId?.let { targetBatchId ->
-            dispenseVm.clearNavigateToBatch()
-            navController.navigate(Screen.Batch.createRoute(targetBatchId)) {
-                popUpTo(Screen.Batch.route) { inclusive = true }
-                launchSingleTop = true
-            }
         }
     }
 
@@ -687,6 +685,20 @@ fun DispenseFlowScreen(
             showToast(context, ndcNotFoundToastText, Toast.LENGTH_SHORT)
             dispenseVm.dismissNdcNotFoundDialog()
         }
+    }
+
+    // Batch insert failed while advancing to COUNTING — block the advance so the user
+    // doesn't count pills into a nonexistent row. Offer Retry, or Cancel to stay on the
+    // NDC scan and try scanning again.
+    if (dispenseState.showBatchCreateError) {
+        CommonDialog(
+            title = stringResource(R.string.batch_create_failed_title),
+            message = stringResource(R.string.batch_create_failed_message),
+            confirmText = stringResource(R.string.retry),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = { dispenseVm.retryBatchCreate() },
+            onCancel = { dispenseVm.dismissBatchCreateError() },
+        )
     }
 
     // RX already has a PARTIAL transaction: ask the user whether to continue it.

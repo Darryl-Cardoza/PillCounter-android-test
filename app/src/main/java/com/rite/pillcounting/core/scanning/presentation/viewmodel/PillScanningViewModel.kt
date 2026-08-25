@@ -13,7 +13,9 @@ import android.os.VibratorManager
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.room.withTransaction
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
@@ -105,6 +107,7 @@ class PillScanningViewModel @Inject constructor(
     private val drugRepository: IDrugRepository,
     private val drugImageDownloader: DrugImageDownloader,
     private val hl7Repository: Hl7Repository,
+    private val appDatabase: AppDatabase,
 ) : AndroidViewModel(app) {
 
     private val logger = AppLogger("PillScanningVM")
@@ -173,6 +176,17 @@ class PillScanningViewModel @Inject constructor(
     // Lot/expiry decoded on the compulsory NDC scan, remembered so Done can stamp the new line.
     private var stockLotNo: String? = null
     private var stockExpNo: String? = null
+    // Deferred DispenseFlow stock session: remembered so [flushStagedDetails] can create
+    // the batch + stock_txn + bottle_info atomically at Done. Zero/null in the pre-existing
+    // hand-off paths (stockTxnId != 0L), where the rows already exist.
+    private var stockDrugId: Long = 0L
+    private var stockBucketId: String? = null
+    // One-shot: batchId minted at Done for a deferred DispenseFlow stock session, so the
+    // screen can publish it to InventoryScan for Recent Counts adoption. Cleared via
+    // [consumeStockCountCommittedBatchId] after the screen forwards it.
+    private val _stockCountCommittedBatchId = MutableStateFlow<Long?>(null)
+    val stockCountCommittedBatchId: StateFlow<Long?> = _stockCountCommittedBatchId.asStateFlow()
+    fun consumeStockCountCommittedBatchId() { _stockCountCommittedBatchId.value = null }
     // True when the current stock-count session is for a controlled substance (DEA schedule
     // CII–CVI). Cached at session entry from DrugMasterEntity.drugType so [flushStagedDetails]
     // can decide whether to persist the captured pill-image paths onto BottleInfo. Non-controlled
@@ -240,16 +254,32 @@ class PillScanningViewModel @Inject constructor(
     }
 
     /**
-     * Enter a stock loose-count session for an already-created [BottleInfoEntity] line
-     * (the merged DispenseFlow scans + creates the StockTxn/BottleInfo itself, then hands
-     * counting here). No `pill_count_txn` row is involved: ADDs stage in memory and the
-     * aggregate is written to [BottleInfoEntity.looseQty] on Done. Loads the drug, then sets
-     * up the synthetic txn info and lands on the pill-count step.
+     * Enter a stock loose-count session from the merged DispenseFlow. All three
+     * of `bottleId` / `stockTxnId` / `batchId` may be `0L`, in which case this is
+     * a fully deferred session: no batch, stock_txn or bottle_info row exists
+     * yet, and [flushStagedDetails] will create them atomically at All Done
+     * using [stockDrugId] + [stockBucketId]. Back-out before Done leaves zero
+     * DB rows. Loads the drug, then sets up the synthetic txn info and lands on
+     * the pill-count step.
      */
-    fun enterStockCountSession(bottleId: Long, stockTxnId: Long, batchId: Long, drugId: Long) {
+    fun enterStockCountSession(
+        bottleId: Long,
+        stockTxnId: Long,
+        batchId: Long,
+        drugId: Long,
+        bucketId: String? = null,
+    ) {
         isStockCountSession = true
         stockBottleId = bottleId
         stockCountBatchId = batchId
+        this.stockTxnId = stockTxnId
+        stockDrugId = drugId
+        stockBucketId = bucketId
+        // DispenseFlow doesn't decode lot/exp — keep the private fields null so
+        // flushStagedDetails' fresh insert leaves those columns null (matches the
+        // `(stockTxn, null, null)` keying documented on the stock-line contract).
+        stockLotNo = null
+        stockExpNo = null
         forceStartOnScan = false
         isPaused = false
         viewModelScope.launch {
@@ -504,12 +534,10 @@ class PillScanningViewModel @Inject constructor(
                     stagedDetails.mapNotNull { it.imagePath }.takeIf { it.isNotEmpty() }
                 } else null
                 if (stockBottleId != 0L) {
-                    // DispenseFlow hand-off ([enterStockCountSession]): the line was created by
-                    // DispenseFlow, so accumulate this session's loose total onto it.
-                    bottleInfoDao.incrementLooseQty(stockBottleId, stagedSum)
-                    if (controlledPaths != null) {
-                        bottleInfoDao.updateControlledImagePaths(stockBottleId, controlledPaths)
-                    }
+                    // DispenseFlow hand-off ([enterStockCountSession]) with a pre-existing bottle:
+                    // accumulate this session's loose total onto it. Single atomic UPDATE so a
+                    // process death mid-flush can't save the count while dropping the image paths.
+                    bottleInfoDao.incrementLooseQtyAndImages(stockBottleId, stagedSum, controlledPaths)
                     logger.i("Flushed stock loose count onto existing line. stagedSum=$stagedSum bottleId=$stockBottleId controlledPaths=${controlledPaths?.size ?: 0}")
                 } else if (stockTxnId != 0L) {
                     // "Scan Pills" loose flow: every counting session is its own line so the same
@@ -528,14 +556,71 @@ class PillScanningViewModel @Inject constructor(
                         )
                     )
                     logger.i("Flushed stock loose count as new line. stagedSum=$stagedSum stockTxnId=$stockTxnId bottleId=$newBottleId controlledPaths=${controlledPaths?.size ?: 0}")
+                } else if (stockDrugId != 0L) {
+                    // Fully deferred DispenseFlow stock session: no batch, stock_txn or
+                    // bottle_info exists yet. Create all three atomically now so back-out
+                    // before Done left zero rows behind. batchId is minted here and
+                    // published to InventoryScan via [_stockCountCommittedBatchId].
+                    appDatabase.withTransaction {
+                        val now = System.currentTimeMillis()
+                        val newBatchId = batchDao.insert(
+                            BatchEntity(
+                                batchId = now,
+                                startDateTime = now,
+                                endDateTime = null,
+                                status = BatchStatus.INPROGRESS,
+                                isDeleted = false,
+                                note = null,
+                                bucketId = stockBucketId,
+                            )
+                        )
+                        val newStockTxnId = stockTxnDao.upsertPreservingId(
+                            StockTxnEntity(
+                                drugId = stockDrugId,
+                                status = CountStatus.PARTIAL,
+                                batchId = newBatchId,
+                                bucketId = stockBucketId,
+                            )
+                        )
+                        bottleInfoDao.insert(
+                            BottleInfoEntity(
+                                stockTxnId = newStockTxnId,
+                                batchId = newBatchId,
+                                lotNo = stockLotNo,
+                                expNo = stockExpNo,
+                                bottleQty = 0,
+                                looseQty = stagedSum,
+                                controlledImagePaths = controlledPaths,
+                            )
+                        )
+                        stockTxnDao.refreshBatchTotalNdcs(newBatchId)
+                        stockTxnDao.updateBatchUserName(
+                            newBatchId,
+                            preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
+                        )
+                        // Mirror the new ids into private fields so subsequent flushes within
+                        // this same session (if any) accumulate onto the same line/header.
+                        stockCountBatchId = newBatchId
+                        stockTxnId = newStockTxnId
+                        _stockCountCommittedBatchId.value = newBatchId
+                    }
+                    logger.i("Committed deferred stock session. stagedSum=$stagedSum drugId=$stockDrugId newBatchId=$stockCountBatchId newStockTxnId=$stockTxnId controlledPaths=${controlledPaths?.size ?: 0}")
                 }
             }
         } else {
-            val txn = pillCountTxnDao.getById(txnId)
-            val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
-            stagedDetails.forEach { entity ->
-                val newDetailsId = pillCountTxnDetailsDao.insert(entity.copy(txnId = txnId))
-                linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+            // Regular dispense flow: each staged detail hits pill_count_txn_details, plus a
+            // second write to bump the parent txn's bottle-info list (linkDetailToActiveBottle
+            // decodes, appends the new detail id to the active bottle, then re-encodes and
+            // persists). A process death between those two writes previously left a detail
+            // row unreferenced by any bottle. withTransaction wraps the whole flush so either
+            // all details + their linkages commit or nothing does.
+            appDatabase.withTransaction {
+                val txn = pillCountTxnDao.getById(txnId)
+                val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
+                stagedDetails.forEach { entity ->
+                    val newDetailsId = pillCountTxnDetailsDao.insert(entity.copy(txnId = txnId))
+                    linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+                }
             }
             logger.i("Flushed ${stagedDetails.size} staged details to DB. stagedSum=$stagedSum txnId=$txnId")
         }

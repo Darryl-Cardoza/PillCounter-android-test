@@ -68,6 +68,10 @@ data class DispenseFlowUiState(
 
     val isLoading: Boolean = false,
     val error: String? = null,
+    // Set true when the lazily-created stock batch insert fails in advanceToCountingStage.
+    // Surfaces a blocking AlertDialog with Retry/Cancel so the user doesn't count pills
+    // into a nonexistent row.
+    val showBatchCreateError: Boolean = false,
 
     // HL7/PMS-driven entry: when true the user landed here from a PMS
     // notification, the txn already exists, and the RX scan stage is skipped.
@@ -105,10 +109,6 @@ data class DispenseFlowUiState(
     // onNdcBarcodeRead rejects any scanned NDC that isn't in this set.
     // Empty = no restriction (manually-started batch or plain dispense flow).
     val allowedNdcs: Set<String> = emptySet(),
-
-    // One-shot navigation signal: non-null after a SEALED stock bottle is confirmed.
-    // The screen observes this and navigates back to the batch, then clears it.
-    val navigateToBatchId: Long? = null,
 
     // One-shot signal: set true when a transaction completes and the queue is empty.
     val navigateToDashboard: Boolean = false,

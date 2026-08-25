@@ -314,12 +314,10 @@
     <string name="stock_count_dialog_option_second">Continuar el último lote</string>
     <string name="partial_stock_counts">Conteos de stock parciales</string>
 
-    <!--    label scanned -->
-    <string name="label_scanned_successfully">Etiqueta escaneada correctamente</string>
-    <string name="select_container_status">Seleccione el estado del contenedor</string>
-    <string name="container_status_sealed">Sellado</string>
-    <string name="container_status_opened">Abierto</string>
     <string name="select_bucket">Seleccionar cubeta</string>
+    <string name="batch_create_failed_title">No se pudo iniciar el lote</string>
+    <string name="batch_create_failed_message">Algo salió mal al iniciar el lote de conteo. ¿Reintentar?</string>
+    <string name="retry">Reintentar</string>
     <string name="rx_number">Número Rx</string>
     <string name="quantity">Cantidad</string>
     <string name="proceed">CONTINUAR</string>

@@ -366,11 +366,6 @@
     <string name="stock_count_dialog_option_second">Continue last Batch</string>
     <string name="partial_stock_counts">Partial Stock Counts</string>
 
-    <!--    label scanned -->
-    <string name="label_scanned_successfully">Label Scanned Successfully</string>
-    <string name="select_container_status">Select container status</string>
-    <string name="container_status_sealed">Sealed</string>
-    <string name="container_status_opened">Opened</string>
     <string name="select_bucket">Select Bucket</string>
     <string name="rx_number">Rx Number</string>
     <string name="quantity">Quantity</string>
@@ -381,6 +376,9 @@
     <string name="rx_already_completed_message">This Rx has already been dispensed.</string>
     <string name="enable_hl7_from_portal_toast">Enable HL7 from Portal</string>
     <string name="scan_correct_label">Scan Correct Label</string>
+    <string name="batch_create_failed_title">Couldn\'t start batch</string>
+    <string name="batch_create_failed_message">Something went wrong while starting the stock-count batch. Try again?</string>
+    <string name="retry">Retry</string>
 <!--    StockCount-->
     <string name="scan_stock_bottle">Scan Stock Bottle</string>
     <string name="scan_open_pills">Scan Open Pills</string>

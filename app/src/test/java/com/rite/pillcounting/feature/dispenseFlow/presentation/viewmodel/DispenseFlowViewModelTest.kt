@@ -711,7 +711,7 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
-    fun `onNdcBarcodeRead stock count with batchId 0 lazily creates batch and stock line without sheet`() = runTest(testDispatcher) {
+    fun `onNdcBarcodeRead stock count with batchId 0 lazily creates batch and stock header without sheet`() = runTest(testDispatcher) {
         val vm = ndcVm() // REGULAR, txnId 0, batchId 0 — Scan Pills tapped first
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
@@ -719,15 +719,17 @@ class DispenseFlowViewModelTest {
         coEvery { batchDao.insert(any()) } returns 555L
         coEvery { stockTxnDao.findByDrugInBatch(555L, 10L) } returns null
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 33L
-        coEvery { bottleInfoDao.insert(any()) } returns 44L
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertFalse(vm.uiState.value.showNdcDetails)
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
         assertEquals(555L, vm.uiState.value.batchId)
         assertEquals(33L, vm.uiState.value.stockTxnId)
-        assertEquals(44L, vm.uiState.value.stockBottleId)
+        // BottleInfo is no longer created eagerly — flushStagedDetails inserts a fresh
+        // line on Done with the session's loose total, so stockBottleId stays 0L here.
+        assertEquals(0L, vm.uiState.value.stockBottleId)
         coVerify { batchDao.insert(any()) }
+        coVerify(exactly = 0) { bottleInfoDao.insert(any()) }
     }
 
     @Test
@@ -1075,24 +1077,24 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
-    fun `onNdcBarcodeRead REGULAR batch writes StockTxn and BottleInfo`() = runTest(testDispatcher) {
+    fun `onNdcBarcodeRead REGULAR batch writes StockTxn but defers BottleInfo`() = runTest(testDispatcher) {
         // Stock counting no longer uses pill_count_txn: a REGULAR batch NDC scan creates a
-        // StockTxn header + a BottleInfo line and advances straight to COUNTING.
+        // StockTxn header and advances straight to COUNTING. The BottleInfo row is no longer
+        // created eagerly — flushStagedDetails inserts one on Done, so back-out without a
+        // pill count leaves no phantom 0-qty row.
         val vm = ndcVm() // REGULAR
-        vm.setBatchId(9L) // batch set so needsSheet false; advanceToCountingStage creates the stock line
+        vm.setBatchId(9L) // batch set so needsSheet false; advanceToCountingStage creates the stock header
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
         coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(9L, 10L) } returns null
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 33L
-        coEvery { bottleInfoDao.findLine(any(), any(), any()) } returns null
-        coEvery { bottleInfoDao.insert(any()) } returns 44L
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
         assertEquals(0L, vm.uiState.value.txnId)
         coVerify { stockTxnDao.upsertPreservingId(any()) }
-        coVerify { bottleInfoDao.insert(any()) }
+        coVerify(exactly = 0) { bottleInfoDao.insert(any()) }
     }
 
     @Test
@@ -1164,14 +1166,6 @@ class DispenseFlowViewModelTest {
         vm.setAllowedNdcs(setOf("A", "B"))
         advanceUntilIdle()
         assertEquals(setOf("A", "B"), vm.uiState.value.allowedNdcs)
-    }
-
-    @Test
-    fun `clearNavigateToBatch`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        vm.clearNavigateToBatch()
-        advanceUntilIdle()
-        assertNull(vm.uiState.value.navigateToBatchId)
     }
 
     @Test
@@ -1476,7 +1470,7 @@ class DispenseFlowViewModelTest {
     // ───────────── advanceToCountingStage batch path (txn0) ─────────────
 
     @Test
-    fun `advanceToCountingStage batch creates stock line and COUNTING`() = runTest(testDispatcher) {
+    fun `advanceToCountingStage batch creates stock header and COUNTING with deferred bottle`() = runTest(testDispatcher) {
         val vm = ndcVm() // REGULAR
         vm.setBatchId(9L)
         advanceUntilIdle()
@@ -1484,15 +1478,15 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(9L, 10L) } returns null
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 7L
-        coEvery { bottleInfoDao.findLine(any(), any(), any()) } returns null
-        coEvery { bottleInfoDao.insert(any()) } returns 44L
         vm.onNdcBarcodeRead("gtin", null) // trustLocal, needsSheet false (batch set) -> advance
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
-        // Stock counts no longer create a pill_count_txn; they create StockTxn + BottleInfo.
+        // Stock counts no longer create a pill_count_txn; they create StockTxn eagerly.
+        // BottleInfo is deferred to flushStagedDetails on Done, so stockBottleId stays 0L.
         assertEquals(0L, vm.uiState.value.txnId)
         assertEquals(7L, vm.uiState.value.stockTxnId)
-        assertEquals(44L, vm.uiState.value.stockBottleId)
+        assertEquals(0L, vm.uiState.value.stockBottleId)
+        coVerify(exactly = 0) { bottleInfoDao.insert(any()) }
     }
 
     @Test

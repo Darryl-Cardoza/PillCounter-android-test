@@ -174,14 +174,6 @@ class DispenseFlowViewModelTest {
         assertEquals(setOf("00000000000001", "00000000000002"), viewModel.uiState.value.allowedNdcs)
     }
 
-    // DISP_VM_012
-    @Test
-    fun `clearNavigateToBatch sets navigateToBatchId to null`() {
-        viewModel.clearNavigateToBatch()
-
-        assertNull(viewModel.uiState.value.navigateToBatchId)
-    }
-
     // DISP_VM_013
     @Test
     fun `clearError sets error to null`() {
