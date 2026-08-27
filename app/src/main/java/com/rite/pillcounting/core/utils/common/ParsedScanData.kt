@@ -32,9 +32,9 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
         }.toMap()
 
         ParsedScanData(
-            rxNo = rawMap["RXNO"],
+            rxNo = rawMap["RXNO"] ?: rawMap["RXNUMBER"],
             refillNo = rawMap["REFILLNO"],
-            ndcNo = rawMap["NDCNO"],
+            ndcNo = rawMap["NDCNO"] ?: rawMap["NDC"],
             qty = rawMap["QTY"],
             bucket = rawMap["BUCKET"],
             rawMap = rawMap
