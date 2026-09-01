@@ -158,7 +158,7 @@ fun FaceRegistrationScreen(
                 navController = navController,
                 isSessionLocked = isSessionLocked,
                 onCaptureRequested = { angle ->
-                    cameraHelper.captureImage { bitmap -> viewModel.captureFrame(bitmap, angle) }
+                    cameraHelper.captureImage(onCaptured = { bitmap -> viewModel.captureFrame(bitmap, angle) })
                 },
                 onCameraReady = { isFrontCamera ->
                     viewModel.startAutoCapture(

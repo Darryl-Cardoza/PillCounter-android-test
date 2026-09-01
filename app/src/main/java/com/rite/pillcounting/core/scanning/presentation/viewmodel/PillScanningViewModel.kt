@@ -233,6 +233,17 @@ class PillScanningViewModel @Inject constructor(
     private val _showFlash = MutableStateFlow(false)
     val showFlash: StateFlow<Boolean> = _showFlash
 
+    // True from an accepted capture request until its bitmap or error lands.
+    // capturedBitmap is too late to gate the shutter — it only appears when the
+    // capture is already done, which is the window rapid taps slipped through.
+    private val _isCapturing = MutableStateFlow(false)
+    val isCapturing: StateFlow<Boolean> = _isCapturing
+
+    // Done stays enabled after a commit when VIAL is the last step (the still is
+    // kept under the confirm dialog), so this is what stops a second tap from
+    // writing the vial photo twice. Cleared whenever the still is discarded.
+    private var captureCommitted = false
+
     private val _isTxnFromHl7 = MutableStateFlow(false)
     val isTxnFromHl7: StateFlow<Boolean> = _isTxnFromHl7
 
@@ -1602,6 +1613,7 @@ class PillScanningViewModel @Inject constructor(
         // Clear the captured still so the VIAL step returns to the live camera view,
         // allowing the user to capture a new photo or click Done again.
         _capturedBitmap.value = null
+        captureCommitted = false
         _uiState.update { it.copy(showConfirmDialog = false) }
         logger.i("Confirm dialog cancelled.")
     }
@@ -1976,6 +1988,8 @@ class PillScanningViewModel @Inject constructor(
                 }
                 val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size) ?: return@launch
                 _capturedBitmap.value = bitmap
+                // Re-entering VIAL with an existing photo must leave Done usable.
+                captureCommitted = false
                 logger.i("Loaded existing vial photo from $imagePath")
             } catch (e: Exception) {
                 logger.e("Failed to load existing vial photo", e)
@@ -2120,26 +2134,51 @@ class PillScanningViewModel @Inject constructor(
      *   "Done" once the bitmap lands — this advances the workflow and surfaces the
      *   "Confirm Done" dialog. When false (manual capture), the still is shown and
      *   the user confirms via the Done button.
+     *
+     * A second call while a capture is still in flight is a no-op: no sound, no
+     * flash, no capture request. See [isCapturing].
      */
     fun captureImage(autoConfirm: Boolean = false) {
+        val helper = cameraHelper ?: return
+        if (_isCapturing.value) return
+        _isCapturing.value = true
+
+        val requested = helper.captureImage(
+            onCaptured = { bitmap ->
+                _isCapturing.value = false
+                // A capture that lands after the user already left VIAL would
+                // re-show the still overlay on top of the next step.
+                if (_currentStep.value == StepState.VIAL) {
+                    _capturedBitmap.value = bitmap
+                    if (autoConfirm) saveCaptureImage()
+                }
+            },
+            onCaptureError = { _isCapturing.value = false }
+        )
+        if (!requested) {
+            _isCapturing.value = false
+            return
+        }
+
         SoundUtils.playCaptureSound(context)
         viewModelScope.launch {
             _showFlash.value = true
             delay(350)
             _showFlash.value = false
         }
-        cameraHelper?.captureImage { bitmap ->
-            _capturedBitmap.value = bitmap
-            if (autoConfirm) saveCaptureImage()
-        }
     }
 
     fun redoCaptureImage() {
         _capturedBitmap.value = null
+        captureCommitted = false
     }
 
     fun saveCaptureImage() {
-        _capturedBitmap.value?.let { processCapturedImage(it) }
+        if (captureCommitted) return
+        _capturedBitmap.value?.let {
+            captureCommitted = true
+            processCapturedImage(it)
+        }
     }
 
     private fun processCapturedImage(bitmap: Bitmap) {
