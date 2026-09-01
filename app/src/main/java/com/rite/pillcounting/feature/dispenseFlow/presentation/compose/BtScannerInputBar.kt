@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
  * - Auto-focuses on composition.
  * - Submits on Enter / NumPad Enter.
  * - Handles Backspace for partial corrections.
+ * - Passes the volume keys through to the platform rather than consuming them.
  * - Syncs the local buffer when the parent resets [input] externally
  *   (e.g. on overlay dismiss or stage change).
  */
@@ -60,6 +61,17 @@ fun BtScannerInputBar(
         modifier = modifier
             .size(1.dp)
             .onPreviewKeyEvent { event ->
+                // Let the volume keys through to the platform. This element is a
+                // HID text sink, not a general key grabber: consuming them stops
+                // them ever reaching PhoneWindow.onKeyDown, so the hardware keys
+                // do nothing AND the OS volume panel never appears for as long as
+                // a scanner bar is mounted — which is every dispense stage except
+                // COUNTING (see DispenseFlowScreen's gating). A barcode scanner
+                // never emits these, so nothing is lost by ignoring them here.
+                if (event.key == Key.VolumeUp || event.key == Key.VolumeDown) {
+                    return@onPreviewKeyEvent false
+                }
+
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
 
                 when {
