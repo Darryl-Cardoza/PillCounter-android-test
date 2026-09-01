@@ -883,7 +883,7 @@ class InventoryScanViewModelTest {
     // ─────────────────────────  onScanPillsForActive  ─────────────────────────
 
     @Test
-    fun `onScanPillsForActive with active uses single-ndc allowlist`() = runTest(testDispatcher) {
+    fun `onScanPillsForActive with active manual batch uses empty allowlist`() = runTest(testDispatcher) {
         stubGs1Decode()
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
         coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
@@ -894,15 +894,46 @@ class InventoryScanViewModelTest {
 
         vm.onBarcodeDetected("raw")
         advanceUntilIdle()
+        assertEquals("00093-0058", vm.uiState.value.activeNdc?.ndc)
 
         var readyBatch = -1L
         var readyNdcs: Set<String> = setOf("sentinel")
         vm.onScanPillsForActive { b, n -> readyBatch = b; readyNdcs = n }
         advanceUntilIdle()
 
+        // A manual batch has no PMS restriction, so the pill-count flow must accept
+        // any valid NDC — not just the one on the active card.
         assertEquals(7L, readyBatch)
-        assertEquals(setOf("00093-0058"), readyNdcs)
+        assertTrue(readyNdcs.isEmpty())
         coVerify { preferenceHelper.saveTxnId(0) }
+        job.cancel()
+    }
+
+    @Test
+    fun `onScanPillsForActive with active PMS batch uses full expectedNdcs`() = runTest(testDispatcher) {
+        coEvery { batchDao.getById(5L) } returns BatchEntity(
+            batchId = 5L, bucketId = "B", requestIdFromPMS = "REQ"
+        )
+        coEvery { stockTxnDao.getNdcsForBatch(5L) } returns listOf("00093-0058", "PMS-2")
+        stubGs1Decode()
+        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+
+        val vm = createViewModel(batchId = 5L)
+        val job = launch { vm.uiState.collect {} }
+        advanceUntilIdle()
+
+        vm.onBarcodeDetected("raw")
+        advanceUntilIdle()
+        assertEquals("00093-0058", vm.uiState.value.activeNdc?.ndc)
+
+        var readyNdcs: Set<String> = emptySet()
+        vm.onScanPillsForActive { _, n -> readyNdcs = n }
+        advanceUntilIdle()
+
+        // An active NDC must not narrow a PMS batch down to itself — the flow still
+        // accepts every NDC the request asked for.
+        assertEquals(setOf("00093-0058", "PMS-2"), readyNdcs)
         job.cancel()
     }
 

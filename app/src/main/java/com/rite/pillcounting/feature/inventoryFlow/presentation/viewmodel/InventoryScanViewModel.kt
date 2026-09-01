@@ -900,9 +900,10 @@ class InventoryScanViewModel @Inject constructor(
     /**
      * @param onReady Called with (batchId, allowedNdcs) when ready to navigate.
      *   allowedNdcs is the set of NDCs the dispense flow is permitted to accept:
-     *   - Active NDC on card → restrict to just that one NDC.
-     *   - No active NDC, PMS batch → restrict to the full PMS-requested NDC set.
-     *   - No active NDC, manual batch → empty set (no restriction).
+     *   - PMS batch → restrict to the full PMS-requested NDC set.
+     *   - Manual batch → empty set (no restriction).
+     *   An active NDC does NOT narrow this: its count is already persisted, so the
+     *   user may scan a different container to count its loose pills.
      */
     fun onScanPillsForActive(onReady: (batchId: Long, allowedNdcs: Set<String>) -> Unit) {
         val active = _activeNdc.value
@@ -924,14 +925,9 @@ class InventoryScanViewModel @Inject constructor(
                 preferenceHelper.saveTxnId(0)
 
                 // Build the NDC allowlist for the dispense flow.
-                // Active card NDC takes priority (user was working on that drug).
-                // For PMS batches with no active NDC, pass the full expected set.
-                // Manual batches have no restriction.
-                val allowedNdcs: Set<String> = when {
-                    active != null -> setOf(active.ndc)
-                    expectedNdcs != null -> expectedNdcs!!
-                    else -> emptySet()
-                }
+                // Only PMS batches restrict which NDCs may be counted. An active card
+                // does not narrow it — its count is already persisted above.
+                val allowedNdcs: Set<String> = expectedNdcs ?: emptySet()
 
                 logger.d("INV_SCAN onScanPillsForActive active=${active?.ndc} batchId=$batchId allowedNdcs=$allowedNdcs")
                 onReady(batchId, allowedNdcs)
