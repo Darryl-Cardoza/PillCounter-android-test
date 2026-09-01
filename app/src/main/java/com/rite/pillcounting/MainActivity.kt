@@ -8,9 +8,11 @@ import android.os.Build
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.WindowManager
+import com.rite.pillcounting.core.utils.permission.isLocationServicesEnabled
 import com.rite.pillcounting.core.utils.permission.isPermanentlyDenied
 import com.rite.pillcounting.core.utils.permission.markPermissionRequested
 import com.rite.pillcounting.core.utils.permission.openAppSettings
+import com.rite.pillcounting.core.utils.permission.openLocationSettings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
@@ -119,6 +121,13 @@ class MainActivity : ComponentActivity() {
     // re-enter the chain from the top and run a second one concurrently, causing
     // its dialogs to stack on top of the original chain's.
     private var permissionChainInProgress = false
+
+    // True once the "location services are off" dialog has been shown in this
+    // process. onResume re-runs the whole chain, so without this the dialog would
+    // re-fire the instant the user returns from the Location settings screen
+    // without flipping the toggle — a loop only escapable by enabling location.
+    // Not persisted: a cold start deliberately asks again.
+    private var locationServicesPromptShown = false
 
     private val notificationPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
@@ -471,15 +480,16 @@ class MainActivity : ComponentActivity() {
             if (locationDenied && isPermanentlyDenied(this, Manifest.permission.ACCESS_COARSE_LOCATION)) {
                 permanentlyDeniedPermissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
             }
-            showCombinedSettingsDialogIfNeeded()
+            finishPermissionChain()
         }
     }
 
     // Chain: notification → camera → location. Each step only launches the system
     // dialog if the permission isn't already granted or permanently denied; either
-    // way it always calls into the next step so the chain can't stall. Permanently
-    // denied permissions accumulate in [permanentlyDeniedPermissions] and are
-    // surfaced once, together, after location (the last step) resolves.
+    // way it always calls into the next step so the chain can't stall. The chain ends
+    // in [finishPermissionChain], which surfaces the permanently denied permissions
+    // accumulated in [permanentlyDeniedPermissions] once, together, and then offers
+    // to switch on device location services if they're off.
 
     private fun requestNotificationPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
@@ -523,7 +533,7 @@ class MainActivity : ComponentActivity() {
         ) {
             if (isPermanentlyDenied(this, Manifest.permission.ACCESS_COARSE_LOCATION)) {
                 permanentlyDeniedPermissions.add(Manifest.permission.ACCESS_COARSE_LOCATION)
-                showCombinedSettingsDialogIfNeeded()
+                finishPermissionChain()
                 return
             }
             // Show rationale if the user has previously denied
@@ -539,7 +549,7 @@ class MainActivity : ComponentActivity() {
                             this, arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), 1001
                         )
                     }
-                    .setNegativeButton("Not now") { _, _ -> showCombinedSettingsDialogIfNeeded() }
+                    .setNegativeButton("Not now") { _, _ -> finishPermissionChain() }
                     .show()
                 return
             }
@@ -548,7 +558,7 @@ class MainActivity : ComponentActivity() {
                 this, arrayOf(Manifest.permission.ACCESS_COARSE_LOCATION), 1001
             )
         } else {
-            showCombinedSettingsDialogIfNeeded()
+            finishPermissionChain()
         }
     }
 
@@ -559,15 +569,44 @@ class MainActivity : ComponentActivity() {
         else -> permission
     }
 
-    private fun showCombinedSettingsDialogIfNeeded() {
+    private fun finishPermissionChain() {
         // Chain always ends here (see chain comment above) — safe place to mark it done.
         permissionChainInProgress = false
-        if (permanentlyDeniedPermissions.isEmpty()) return
+        if (permanentlyDeniedPermissions.isEmpty()) {
+            promptEnableLocationServicesIfNeeded()
+            return
+        }
         val names = permanentlyDeniedPermissions.distinct().joinToString(", ") { permissionLabel(it) }
         android.app.AlertDialog.Builder(this)
             .setTitle(getString(R.string.permission_required_title))
             .setMessage(getString(R.string.permission_required_combined_message, names))
             .setPositiveButton("Open Settings") { _, _ -> openAppSettings(this) }
+            .setNegativeButton("Not now", null)
+            // Fires on back-press and outside-tap too, so the location prompt can't be
+            // skipped by dismissing without a button — and can't stack on this dialog.
+            .setOnDismissListener { promptEnableLocationServicesIfNeeded() }
+            .show()
+    }
+
+    // Granting the location permission doesn't mean the device-wide location toggle
+    // is on; with it off every fix resolves to null and scan images / HL7 messages
+    // carry "Location unavailable". Point the user at the toggle once per process.
+    // Non-blocking: declining leaves the app working exactly as before.
+    private fun promptEnableLocationServicesIfNeeded() {
+        if (locationServicesPromptShown) return
+        // Permission not granted: the combined dialog above already covers that case,
+        // and we have no use for location until it's granted anyway.
+        if (ContextCompat.checkSelfPermission(
+                this, Manifest.permission.ACCESS_COARSE_LOCATION
+            ) != PackageManager.PERMISSION_GRANTED
+        ) return
+        if (isLocationServicesEnabled(this)) return
+
+        locationServicesPromptShown = true
+        android.app.AlertDialog.Builder(this)
+            .setTitle(getString(R.string.location_services_off_title))
+            .setMessage(getString(R.string.location_services_off_message))
+            .setPositiveButton("Open Settings") { _, _ -> openLocationSettings(this) }
             .setNegativeButton("Not now", null)
             .show()
     }

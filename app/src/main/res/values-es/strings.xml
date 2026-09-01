@@ -480,6 +480,8 @@
     <string name="permission_notifications_rationale">Las notificaciones le mantienen informado sobre actualizaciones importantes. Actívelas en Configuración para continuar.</string>
     <string name="permission_required_title">Permisos requeridos</string>
     <string name="permission_required_combined_message">Se requieren %1$s permiso(s) para que esta aplicación funcione correctamente. Actívelos en Configuración para continuar.</string>
+    <string name="location_services_off_title">Activar la ubicación</string>
+    <string name="location_services_off_message">La ubicación está desactivada en este dispositivo, por lo que los registros de escaneo se guardarán sin ubicación. Active la ubicación en Configuración para incluirla.</string>
     <string name="pms_cert_mismatch_message">El certificado del servidor PMS ha cambiado. Esto puede ocurrir tras una actualización del PMS. Toque Restablecer para aceptar el nuevo certificado y reconectar.</string>
     <string name="pms_cert_mismatch_confirm">Restablecer y reconectar</string>
 

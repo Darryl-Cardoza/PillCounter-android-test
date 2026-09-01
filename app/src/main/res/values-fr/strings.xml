@@ -480,6 +480,8 @@
     <string name="permission_notifications_rationale">Les notifications vous tiennent informé des mises à jour importantes. Veuillez les activer dans les Paramètres pour continuer.</string>
     <string name="permission_required_title">Autorisations requises</string>
     <string name="permission_required_combined_message">%1$s autorisation(s) sont requises pour que cette application fonctionne correctement. Veuillez les activer dans les Paramètres pour continuer.</string>
+    <string name="location_services_off_title">Activer la localisation</string>
+    <string name="location_services_off_message">La localisation est désactivée sur cet appareil ; les enregistrements de scan seront donc enregistrés sans localisation. Activez la localisation dans les Paramètres pour l\'inclure.</string>
     <string name="pms_cert_mismatch_message">Le certificat du serveur PMS a changé. Cela peut se produire après une mise à jour du PMS. Appuyez sur Réinitialiser pour accepter le nouveau certificat et vous reconnecter.</string>
     <string name="pms_cert_mismatch_confirm">Réinitialiser et reconnecter</string>
 

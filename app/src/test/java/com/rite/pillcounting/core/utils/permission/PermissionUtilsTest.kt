@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.SharedPreferences
 import android.content.pm.PackageManager
+import android.location.LocationManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.core.app.ActivityCompat
@@ -123,6 +124,33 @@ class PermissionUtilsTest {
         assertTrue(isPermanentlyDenied(activity, permission))
     }
 
+    // -------------------- isLocationServicesEnabled --------------------
+
+    @Test
+    fun `isLocationServicesEnabled returns true when the device location toggle is on`() {
+        val locationManager: LocationManager = mockk(relaxed = true)
+        every { context.getSystemService(Context.LOCATION_SERVICE) } returns locationManager
+        every { locationManager.isLocationEnabled } returns true
+
+        assertTrue(isLocationServicesEnabled(context))
+    }
+
+    @Test
+    fun `isLocationServicesEnabled returns false when the device location toggle is off`() {
+        val locationManager: LocationManager = mockk(relaxed = true)
+        every { context.getSystemService(Context.LOCATION_SERVICE) } returns locationManager
+        every { locationManager.isLocationEnabled } returns false
+
+        assertFalse(isLocationServicesEnabled(context))
+    }
+
+    @Test
+    fun `isLocationServicesEnabled returns false when no LocationManager is available`() {
+        every { context.getSystemService(Context.LOCATION_SERVICE) } returns null
+
+        assertFalse(isLocationServicesEnabled(context))
+    }
+
     // -------------------- openAppSettings --------------------
 
     @Test
@@ -137,5 +165,18 @@ class PermissionUtilsTest {
         val intent = intentSlot.captured
         assertTrue(intent.action == Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
         assertTrue(intent.data == Uri.fromParts("package", "com.rite.pillcounting", null))
+    }
+
+    // -------------------- openLocationSettings --------------------
+
+    @Test
+    fun `openLocationSettings starts an intent pointed at the device location screen`() {
+        val intentSlot = slot<android.content.Intent>()
+        every { context.startActivity(capture(intentSlot)) } returns Unit
+
+        openLocationSettings(context)
+
+        verify { context.startActivity(any()) }
+        assertTrue(intentSlot.captured.action == Settings.ACTION_LOCATION_SOURCE_SETTINGS)
     }
 }
