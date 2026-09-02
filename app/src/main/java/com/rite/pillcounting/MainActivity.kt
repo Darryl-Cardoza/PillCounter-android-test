@@ -558,10 +558,10 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    private fun permissionLabel(permission: String) = when (permission) {
-        Manifest.permission.CAMERA -> "Camera"
-        Manifest.permission.POST_NOTIFICATIONS -> "Notification"
-        Manifest.permission.ACCESS_COARSE_LOCATION -> "Location"
+    private fun permissionLabel(permission: String): String = when (permission) {
+        Manifest.permission.CAMERA -> getString(R.string.camera)
+        Manifest.permission.POST_NOTIFICATIONS -> getString(R.string.notification)
+        Manifest.permission.ACCESS_COARSE_LOCATION -> getString(R.string.location)
         else -> permission
     }
 

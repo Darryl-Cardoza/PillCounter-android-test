@@ -23,6 +23,9 @@
     <string name="verify">Verificar</string>
     <string name="login_button_text">INICIAR SESIÓN</string>
     <string name="update_button_text">ACTUALIZAR</string>
+    <string name="camera">Cámara</string>
+    <string name="notification">Notificación</string>
+    <string name="location">Ubicación</string>
 
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->

@@ -10,6 +10,9 @@
     <string name="open_settings">Ouvrir les paramètres</string>
     <string name="not_now">Pas maintenant</string>
     <string name="location_access">Accès à la localisation</string>
+    <string name="camera">Caméra</string>
+    <string name="notification">Notification</string>
+    <string name="location">Localisation</string>
 
     <!--    Offline / Session Health   -->
     <string name="offline_disconnect_message">Votre connexion Internet a été coupée. L\'application se déconnectera dans %1$s.</string>
