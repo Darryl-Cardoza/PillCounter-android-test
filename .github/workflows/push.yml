@@ -1,0 +1,86 @@
+name: "Android CI + CD (Calling Repo)"
+
+on:
+  push:
+    tags:
+      - '*build*'
+
+permissions:
+  contents: write
+
+jobs:
+
+  extract-version:
+    name: Extract App Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      java_version: ${{ steps.java-version.outputs.java_version }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Extract versionName from build.gradle
+        id: version
+        run: |
+          # Assumes versionName "1.0.0"
+          version_string=$(grep versionName app/build.gradle.kts | sed -E 's/.*"(.*)".*/\1/')
+          echo "version=${version_string}" >> $GITHUB_OUTPUT
+          echo "Extracted version: ${version_string}"
+
+      - name: Extract Java version from build.gradle.kts
+        id: java-version
+        run: |
+          # Assumes sourceCompatibility = JavaVersion.VERSION_17
+          java_version=$(grep sourceCompatibility app/build.gradle.kts | sed -E 's/.*VERSION_([0-9]+).*/\1/')
+          echo "java_version=${java_version}" >> $GITHUB_OUTPUT
+          echo "Extracted Java version: ${java_version}"
+
+  #(Use this if Kotlin DSL is used in build.gradle.kts)
+  #version_string=$(grep versionName app/build.gradle.kts | sed -E 's/.*"(.*)".*/\1/')
+
+  #Else for Groovy DSL in build.gradle:
+  #version_string=$(grep versionName app/build.gradle | head -1 | sed -E 's/.*"(.*)".*/\1/')
+
+  # CI for PRs and branch pushes
+  ci:
+    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/push.yml@main
+    needs: extract-version
+    with:
+      java_version: ${{ needs.extract-version.outputs.java_version }}
+      build_variant: "Debug"
+      coverage_threshold: "80.00"
+
+      runner: ubuntu-latest  #options are ubuntu-latest and macos-latest
+
+      run_tests: true
+      run_coverage: true
+      run_static_analysis: false
+
+  # CD for version tags
+  cd:
+    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/release.yml@main
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, 'release')
+    needs: [ extract-version, ci ]
+    with:
+      version: ${{ needs.extract-version.outputs.version }}
+      java_version: ${{ needs.extract-version.outputs.java_version }}
+      build_variant: "Release"
+      coverage_threshold: "40.00"
+
+      runner: ubuntu-latest  #options are ubuntu-latest and macos-latest
+
+      deploy_to_playstore: false
+      package_name: "com.rite.pillcounting"
+      playstore_track: internal
+      playstore_status: draft
+
+      deploy_to_esper: false
+
+    secrets:
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
