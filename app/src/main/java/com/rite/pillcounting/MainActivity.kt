@@ -160,12 +160,8 @@ class MainActivity : ComponentActivity() {
         // normal locks behavior.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
-        // Point the hardware volume keys at the media stream for as long as this
-        // Activity is foregrounded. With nothing set, Android routes the keys to
-        // whatever is currently playing — and to the RING stream when nothing is.
-        // Every app sound is under a second long, so a user reaching for the keys
-        // a moment after a beep would otherwise be adjusting their ringtone while
-        // the app stayed exactly as loud.
+        // Volume keys adjust media while we're foregrounded. Unset, Android
+        // sends them to the ring stream whenever nothing is playing.
         volumeControlStream = AudioManager.STREAM_MUSIC
 
         // ── Security check — runs once, not on every recomposition ────────────

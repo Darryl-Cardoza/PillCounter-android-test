@@ -15,29 +15,18 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import java.util.Locale
 
 /**
- * The single owner of every sound this app produces. Four of them:
+ * The single owner of every sound this app produces: [speak] voiceover,
+ * [playCaptureSound] vial-capture click, [playBarcodeSound] decode beep,
+ * [playCountSound] count cue.
  *
- * 1. [speak] — TextToSpeech voiceover of step titles.
- * 2. [playCaptureSound] — the vial-capture shutter click.
- * 3. [playBarcodeSound] — barcode / ID decode confirmation.
- * 4. [playCountSound] — the count-confirmed cue.
+ * Everything but the capture click rides STREAM_MUSIC, so the audio system
+ * applies the media slider — nothing here scales volume itself, and a
+ * [ToneGenerator]'s own level stays at [MAX_TONE_VOLUME] so the slider is not
+ * applied twice. The capture click plays through [MediaActionSound] on the
+ * system stream, so it is deliberately not tied to the media slider — it still
+ * clicks with media at zero.
  *
- * Sounds 1, 3 and 4 track the device's media-volume slider and fall silent at
- * zero. Speech gets that for free by being routed to the media stream
- * ([routeToMediaStream]); the two tones cannot, because [ToneGenerator] fixes
- * its level at construction as a percentage of the device MAXIMUM rather than
- * of the slider — so [mediaVolumePercent] computes that percentage for them.
- *
- * Sound 2 is the deliberate exception: a capture must always be audible, so it
- * plays through [MediaActionSound] at the fixed system level and is NOT silenced
- * when the slider is at zero.
- *
- * Nothing here re-implements volume as an on/off decision. An earlier version
- * gated each sound on `getStreamVolume(...) == 0`, which is why the app used to
- * be either silent or at full loudness with nothing in between.
- *
- * Speech also takes transient ducking audio focus so it is intelligible over
- * other apps, and stops when something else (an incoming call) takes focus.
+ * Speech takes transient ducking focus and stops when it loses focus.
  */
 object SoundUtils {
 
@@ -50,34 +39,21 @@ object SoundUtils {
     /** Beep duration in ms. Short, like a handheld scanner's confirmation chirp. */
     private const val BEEP_DURATION_MS = 150
 
-    /**
-     * The current media-volume level as a 0–100 percentage of the device maximum.
-     *
-     * [ToneGenerator] takes its level as a percentage of the device maximum,
-     * fixed at construction — it is not scaled by the volume slider the way a
-     * normal media stream is. So the scaling the audio system would otherwise do
-     * for us has to be computed here. This is the single source of volume truth
-     * for the cues that scale.
-     *
-     * Returns 0 when the AudioManager is unavailable or reports a non-positive
-     * maximum; callers treat 0 as "don't play".
-     */
-    internal fun mediaVolumePercent(context: Context): Int {
+    /** [ToneGenerator] requires a level, so pass its maximum: the media stream is
+     *  the only thing that should attenuate a tone. */
+    private const val MAX_TONE_VOLUME = 100
+
+    /** An early-out only — the stream is already silent at zero. An unavailable
+     *  AudioManager counts as not muted, so the tone still plays. */
+    private fun isMediaMuted(context: Context): Boolean {
         val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
-            ?: return 0
-        val max = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-        if (max <= 0) return 0
-        return (audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) * 100) / max
+            ?: return false
+        return audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) == 0
     }
 
-    /**
-     * Play the camera shutter click for a photo capture.
-     *
-     * Deliberately NOT volume-scaled and deliberately not silenced when the
-     * media slider is at zero: a capture must always be audible. [MediaActionSound]
-     * has no volume parameter at all, so this plays at the fixed system level
-     * whatever the slider says — that is the accepted trade for always being heard.
-     */
+    /** Plays on [MediaActionSound]'s system stream, so it is not tied to the
+     *  media slider — a capture still clicks with media at zero. It does follow
+     *  the ring/system volume. */
     fun playCaptureSound() {
         try {
             mediaActionSound.play(MediaActionSound.SHUTTER_CLICK)
@@ -86,19 +62,12 @@ object SoundUtils {
         }
     }
 
-    /**
-     * Play [toneType] at the current media-volume level and release the native
-     * generator once it has finished.
-     *
-     * A fresh [ToneGenerator] is built per call because its level is fixed at
-     * construction: reusing one would pin every later cue to the slider position
-     * that happened to be in effect when it was first built.
-     */
+    /** Play [toneType] on the media stream. A fresh [ToneGenerator] per call,
+     *  released after the tone, so no native resource is held between scans. */
     private fun playTone(context: Context, toneType: Int) {
-        val volumePercent = mediaVolumePercent(context)
-        if (volumePercent == 0) return
+        if (isMediaMuted(context)) return
         try {
-            val toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, volumePercent)
+            val toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, MAX_TONE_VOLUME)
             toneGenerator.startTone(toneType, BEEP_DURATION_MS)
             // Release after the tone finishes; releasing immediately can cut it off.
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed(

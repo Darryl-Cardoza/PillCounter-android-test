@@ -26,14 +26,14 @@ import org.robolectric.annotation.Config
 /**
  * Unit tests for [SoundUtils].
  *
- * Covers the media-volume scaling shared by the two tone cues, the capture
- * click's deliberate exemption from it, the [SoundUtils.speak] /
+ * Covers the two tone cues and their muted early-out, the capture click's
+ * deliberate exemption from it, the [SoundUtils.speak] /
  * [SoundUtils.stopSpeaking] state machine around the lazily-initialised shared
  * TTS engine, and the audio-focus lifecycle.
  *
- * These prove the WIRING only — that each sound asks for the level it should.
- * They cannot prove audibility; that is the manual checklist in
- * plans/audio-volume-bug/plan/audio-volume-bug.md section 7.
+ * These prove the WIRING only — that each sound is dispatched to the stream it
+ * should be. They cannot prove audibility; that is checked by hand on a device
+ * at each slider position.
  *
  * Runs under Robolectric because `routeToMediaStream()` and the focus request
  * build real `AudioAttributes` — framework classes the plain-JVM Android stub
@@ -111,40 +111,6 @@ class SoundUtilsTest {
         state.value = true
     }
 
-    // -------------------- mediaVolumePercent --------------------
-
-    @Test
-    fun `mediaVolumePercent scales current volume against the device maximum`() {
-        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 15
-
-        every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 15
-        assertEquals(100, SoundUtils.mediaVolumePercent(context))
-
-        every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 7
-        assertEquals(46, SoundUtils.mediaVolumePercent(context))
-
-        every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 3
-        assertEquals(20, SoundUtils.mediaVolumePercent(context))
-
-        every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 0
-        assertEquals(0, SoundUtils.mediaVolumePercent(context))
-    }
-
-    @Test
-    fun `mediaVolumePercent returns zero when AudioManager is unavailable`() {
-        every { context.getSystemService(Context.AUDIO_SERVICE) } returns null
-
-        assertEquals(0, SoundUtils.mediaVolumePercent(context))
-    }
-
-    @Test
-    fun `mediaVolumePercent returns zero when the device reports no maximum`() {
-        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 0
-        every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 5
-
-        assertEquals(0, SoundUtils.mediaVolumePercent(context))
-    }
-
     // -------------------- playCaptureSound --------------------
     //
     // mediaActionSound is a private `by lazy` singleton scoped to this class's
@@ -168,7 +134,7 @@ class SoundUtilsTest {
             anyConstructed<MediaActionSound>().play(MediaActionSound.SHUTTER_CLICK)
         }
 
-        // Unmuted — fires at the same fixed level; MediaActionSound has no knob.
+        // Unmuted — fires the same way; the media slider is not its knob.
         every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 15
         SoundUtils.playCaptureSound()
         verify(exactly = 2) {
@@ -182,17 +148,13 @@ class SoundUtilsTest {
 
     // -------------------- playBarcodeSound --------------------
 
-    // NOTE ON COVERAGE: the volume actually handed to ToneGenerator is a
-    // CONSTRUCTOR argument, and MockK's constructedWith() arg-matching does not
-    // bind against the Robolectric-instrumented ToneGenerator. So these tests
-    // assert the tone, the duration, and the silent-at-zero boundary; the
-    // arithmetic itself is covered directly by the mediaVolumePercent tests
-    // above, and that percentage reaching the constructor is a single line in
-    // playTone(). Audible proof is the manual checklist (plan section 7 step 3).
+    // NOTE ON COVERAGE: the tone level is a fixed constant and the media slider
+    // is applied to it by the audio system, so there is no volume arithmetic
+    // here to assert. These tests cover the tone, the duration and the muted
+    // early-out. Audibility is checked by hand on a device, not here.
 
     @Test
     fun `playBarcodeSound plays its tone when the media slider is above zero`() {
-        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 15
         every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 7
         mockkConstructor(ToneGenerator::class)
         every { anyConstructed<ToneGenerator>().startTone(any(), any()) } returns true
@@ -206,7 +168,6 @@ class SoundUtilsTest {
 
     @Test
     fun `playBarcodeSound is silent when the media slider is at zero`() {
-        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 15
         every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 0
         mockkConstructor(ToneGenerator::class)
 
@@ -217,7 +178,6 @@ class SoundUtilsTest {
 
     @Test
     fun `playBarcodeSound swallows exceptions from the tone generator`() {
-        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 15
         every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 5
         mockkConstructor(ToneGenerator::class)
         every { anyConstructed<ToneGenerator>().startTone(any(), any()) } throws
@@ -231,7 +191,6 @@ class SoundUtilsTest {
 
     @Test
     fun `playCountSound uses a tone distinct from the barcode beep`() {
-        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 10
         every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 5
         mockkConstructor(ToneGenerator::class)
         every { anyConstructed<ToneGenerator>().startTone(any(), any()) } returns true
@@ -249,7 +208,6 @@ class SoundUtilsTest {
 
     @Test
     fun `playCountSound is silent when the media slider is at zero`() {
-        every { audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC) } returns 10
         every { audioManager.getStreamVolume(AudioManager.STREAM_MUSIC) } returns 0
         mockkConstructor(ToneGenerator::class)
 

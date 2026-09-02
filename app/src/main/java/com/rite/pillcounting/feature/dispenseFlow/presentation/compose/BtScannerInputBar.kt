@@ -61,14 +61,9 @@ fun BtScannerInputBar(
         modifier = modifier
             .size(1.dp)
             .onPreviewKeyEvent { event ->
-                // Let the volume keys through to the platform. This element is a
-                // HID text sink, not a general key grabber: consuming them stops
-                // them ever reaching PhoneWindow.onKeyDown, so the hardware keys
-                // do nothing AND the OS volume panel never appears for as long as
-                // a scanner bar is mounted — which is every dispense stage except
-                // COUNTING (see DispenseFlowScreen's gating). A barcode scanner
-                // never emits these, so nothing is lost by ignoring them here.
-                if (event.key == Key.VolumeUp || event.key == Key.VolumeDown) {
+                // Volume keys must reach the platform: consuming them kills both
+                // the hardware keys and the OS volume panel while this bar is mounted.
+                if (event.key == Key.VolumeUp || event.key == Key.VolumeDown || event.key == Key.VolumeMute) {
                     return@onPreviewKeyEvent false
                 }
 
