@@ -7,6 +7,9 @@
     <!--    Common   -->
     <string name="pms">PMS</string>
     <string name="loading">Chargement...</string>
+    <string name="open_settings">Ouvrir les paramètres</string>
+    <string name="not_now">Pas maintenant</string>
+    <string name="location_access">Accès à la localisation</string>
 
     <!--    Offline / Session Health   -->
     <string name="offline_disconnect_message">Votre connexion Internet a été coupée. L\'application se déconnectera dans %1$s.</string>
@@ -554,5 +557,8 @@
     <string name="check_wifi_before_testing">Connectez-vous au Wi-Fi avant de tester la connexion</string>
     <string name="hl7_notification_connected_to">Connecté à %1$s</string>
     <string name="hl7_notification_listening">Écoute et réponse aux messages HL7</string>
+    <string name="connection_info_title">INFORMATIONS DE CONNEXION</string>
+    <string name="hl7_notification_title">Service d\'arrière-plan HL7</string>
+    <string name="rx_already_completed_message">Cette ordonnance a déjà été délivrée.</string>
 
 </resources>

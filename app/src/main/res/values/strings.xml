@@ -7,6 +7,9 @@
     <!--    Common   -->
     <string name="pms">PMS</string>
     <string name="loading">Loading...</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="not_now">Not now</string>
+    <string name="location_access">Location Access</string>
 
     <!--    Offline / Session Health   -->
     <string name="offline_disconnect_message">Your internet has been disconnected. App will log out in %1$s.</string>

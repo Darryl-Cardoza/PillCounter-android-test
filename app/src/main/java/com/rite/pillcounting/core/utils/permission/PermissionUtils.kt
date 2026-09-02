@@ -56,16 +56,8 @@ fun openAppSettings(context: Context) {
     context.startActivity(intent)
 }
 
-/**
- * True when the device-wide location toggle (Settings > Location) is on.
- *
- * Distinct from holding ACCESS_COARSE/FINE_LOCATION: with the permission granted
- * but this switch off, FusedLocationProviderClient resolves every request to
- * null, so [com.rite.pillcounting.core.utils.common.LocationProvider] silently
- * yields "Location unavailable".
- */
+/** True when the device-wide location toggle (Settings > Location) is on. */
 fun isLocationServicesEnabled(context: Context): Boolean {
-    // isLocationEnabled is API 28; minSdk is 29, so no per-provider fallback.
     val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
         ?: return false
     return manager.isLocationEnabled

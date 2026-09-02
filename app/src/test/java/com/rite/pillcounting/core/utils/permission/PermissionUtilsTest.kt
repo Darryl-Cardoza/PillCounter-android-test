@@ -27,7 +27,8 @@ import org.robolectric.annotation.Config
 
 /**
  * Unit tests for the non-Composable helpers in [PermissionUtils]:
- * [markPermissionRequested], [isPermanentlyDenied], and [openAppSettings].
+ * [markPermissionRequested], [isPermanentlyDenied], [openAppSettings],
+ * [isLocationServicesEnabled], and [openLocationSettings].
  *
  * Runs under Robolectric because these functions rely on
  * `Context.getSharedPreferences` and `Context.startActivity`, which the plain-JVM
