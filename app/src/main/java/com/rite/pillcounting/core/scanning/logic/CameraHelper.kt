@@ -88,9 +88,7 @@ class CameraHelper(
     val frameFlow = _frameChannel.receiveAsFlow()
     private var imageCapture: ImageCapture? = null
 
-    // A capture's callback lands hundreds of ms after the request, so callers
-    // cannot tell a capture is still running. Refuse a second takePicture()
-    // until the in-flight one reports success or failure.
+    // Refuses a second takePicture() until the in-flight one succeeds or fails.
     private val isCapturing = AtomicBoolean(false)
     // ---------------------------------------------------------
     // CAMERA STATE + ZOOM FLOW
@@ -508,8 +506,7 @@ class CameraHelper(
                     image.close()
                 }
 
-                // Without clearing the flag here a single failed capture would
-                // leave the shutter refusing every later tap.
+                // Clear the flag here too, else one failed capture kills the shutter for good.
                 override fun onError(exception: ImageCaptureException) {
                     isCapturing.set(false)
                     logger.e("Capture failed", exception)

@@ -144,8 +144,7 @@ private fun ActionButtonItems(
         modifier = Modifier
             .size(responsiveDp(72.dp))
             .background(
-                // Also greyed while a capture is in flight — the tap is already
-                // inert, this is what tells the user to stop tapping.
+                // Greyed while a capture is in flight, so the user can see the tap is inert.
                 color = if (hasCapture || isCapturing) AppTheme.extendedColors.primaryBackground else MaterialTheme.colorScheme.primary,
                 shape = CircleShape
             )

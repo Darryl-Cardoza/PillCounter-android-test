@@ -125,7 +125,7 @@ class PillScanningViewModelCaptureTest {
     @After
     fun tearDown() { unmockkAll() }
 
-    /** `_currentStep` has no setter; the sibling VM tests reach it the same way. */
+    // `_currentStep` has no setter; the sibling VM tests reach it the same way.
     private fun setCurrentStep(step: StepState) {
         val field = PillScanningViewModel::class.java.getDeclaredField("_currentStep")
         field.isAccessible = true
@@ -194,6 +194,21 @@ class PillScanningViewModelCaptureTest {
     }
 
     @Test
+    fun `re-attaching the camera helper clears a stuck isCapturing flag`() = runTest {
+        every { cameraHelper.captureImage(any(), any()) } returns true
+
+        // Camera unbound mid-capture: neither callback ever arrives.
+        viewModel.captureImage()
+        assertTrue(viewModel.isCapturing.value)
+
+        viewModel.attachCameraHelper(cameraHelper)
+
+        assertFalse(viewModel.isCapturing.value)
+        viewModel.captureImage()
+        verify(exactly = 2) { cameraHelper.captureImage(any(), any()) }
+    }
+
+    @Test
     fun `a bitmap arriving after the VIAL step ended is dropped`() = runTest {
         val onCaptured = slot<(Bitmap) -> Unit>()
         every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
@@ -249,6 +264,55 @@ class PillScanningViewModelCaptureTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) { pillCountTxnDetailsDao.insert(any<PillCountTxnDetailsEntity>()) }
+    }
+
+    @Test
+    fun `Done keeps working after the notes dialog is dismissed`() = runTest {
+        val onCaptured = slot<(Bitmap) -> Unit>()
+        every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
+        every { preferenceHelper.getTxnId() } returns 42L
+        every { preferenceHelper.getShowNotesDialogSetting() } returns true
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+        val bitmap: Bitmap = mockk(relaxed = true)
+        every { bitmap.isRecycled } returns true
+
+        viewModel.captureImage()
+        onCaptured.captured.invoke(bitmap)
+        viewModel.saveCaptureImage()
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.showNotesDialog)
+
+        // Back button / outside tap closes the notes dialog and leaves the user on
+        // VIAL with the still — Done must re-arm the flow instead of going dead.
+        viewModel.setNoteDialogShown(false)
+        viewModel.saveCaptureImage()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.showNotesDialog)
+        coVerify(exactly = 1) { pillCountTxnDetailsDao.insert(any<PillCountTxnDetailsEntity>()) }
+    }
+
+    @Test
+    fun `a fresh still re-arms Done without a redo`() = runTest {
+        val onCaptured = slot<(Bitmap) -> Unit>()
+        every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
+        every { preferenceHelper.getTxnId() } returns 42L
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 0
+        val bitmap: Bitmap = mockk(relaxed = true)
+        every { bitmap.isRecycled } returns true
+
+        viewModel.captureImage()
+        onCaptured.captured.invoke(bitmap)
+        viewModel.saveCaptureImage()
+        advanceUntilIdle()
+
+        // No redo in between: the new still is unsaved, so Done must commit it.
+        viewModel.captureImage()
+        onCaptured.captured.invoke(bitmap)
+        viewModel.saveCaptureImage()
+        advanceUntilIdle()
+
+        coVerify(exactly = 2) { pillCountTxnDetailsDao.insert(any<PillCountTxnDetailsEntity>()) }
     }
 
     @Test
