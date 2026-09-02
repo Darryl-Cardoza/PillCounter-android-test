@@ -53,6 +53,8 @@ fun CountModePhonePortrait(
     strength: String,
     bucket: String,
     showHistory: () -> Unit,
+    autoRevealCurrentStep: Boolean,
+    onAutoRevealed: () -> Unit,
     drugImage: String? = "",
     showGloveIcon: Boolean = false,
     glovesDetected: Boolean = false,
@@ -108,7 +110,8 @@ fun CountModePhonePortrait(
                 // Announce every counting step on entry (and on step change) via the
                 // stepper bubble + voiceover — the header stays silent for these
                 // steps. REGULAR also labels the counting step "Scan Open Pills".
-                autoRevealCurrentStep = true,
+                autoRevealCurrentStep = autoRevealCurrentStep,
+                onAutoRevealed = onAutoRevealed,
                 titleOverrides = if (isRegular) {
                     mapOf(StepState.TARGET_VERIFICATION to R.string.scan_open_pills)
                 } else {
