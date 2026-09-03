@@ -61,7 +61,7 @@
     <string name="kpi_pending_batch">Pending Batch</string>
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
-    <string name="settings_title" translatable="false">SETTINGS</string>
+    <string name="settings_title">SETTINGS</string>
     <string name="setting_ask_to_add_notes">Always ask to add Notes</string>
     <string name="setting_face_recognition_users">Face Recognition Users</string>
     <string name="setting_save_history_for">Save history for</string>
@@ -129,10 +129,10 @@
     <string name="non_hazardous_tray_warning">This is not the hazardous tray. Please use the hazardous tray.</string>
     <string name="clear_tray_color_lists">Clear Tray Color Lists</string>
     <string name="clear_tray_color_lists_confirm">Are you sure you want to clear the hazardous tray color classification?</string>
-    <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
-    <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
+    <string name="save_history_for_title">SAVE HISTORY FOR</string>
+    <string name="require_double_count_title">REQUIRE DOUBLE COUNTS</string>
     <string name="setting_pms_connection">PMS Connection</string>
-    <string name="connection_info_title" translatable="false">CONNECTION INFO</string>
+    <string name="connection_info_title">CONNECTION INFO</string>
     <string name="this_device_dispenser_server">THIS DEVICE (DISPENSESURE)</string>
     <string name="ip_address">IP Address</string>
     <string name="listener_port">Listener Port</string>
@@ -148,7 +148,7 @@
     <string name="pms_not_configured">PMS IP/port not set. Configure it on the portal.</string>
     <string name="pms_unable_to_reach">Unable to reach PMS server</string>
     <string name="check_wifi_before_testing">Connect to Wi-Fi before testing the connection</string>
-    <string name="hl7_notification_title" translatable="false">HL7 Background Service</string>
+    <string name="hl7_notification_title">HL7 Background Service</string>
     <string name="hl7_notification_connected_to">Connected to %1$s</string>
     <string name="hl7_notification_listening">Listening &amp; responding to HL7</string>
 

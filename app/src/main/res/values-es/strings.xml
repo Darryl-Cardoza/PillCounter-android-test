@@ -62,7 +62,7 @@
     <string name="standalone_kpi_disabled_message">Función no aplicable</string>
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
-    <string name="settings_title" translatable="false">SETTINGS</string>
+    <string name="settings_title">AJUSTES</string>
     <string name="setting_ask_to_add_notes">Siempre preguntar para añadir notas</string>
     <string name="setting_save_history_for">Guardar historial por</string>
     <string name="pill_counting_sound">Sonido de conteo de pastillas</string>
@@ -79,8 +79,8 @@
     <string name="non_hazardous_tray_warning">Esta no es la bandeja peligrosa. Utilice la bandeja peligrosa.</string>
     <string name="clear_tray_color_lists">Borrar listas de colores de bandejas</string>
     <string name="clear_tray_color_lists_confirm">¿Está seguro de que desea borrar la clasificación de color de bandeja peligrosa?</string>
-    <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
-    <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
+    <string name="save_history_for_title" >GUARDA LA HISTORIA PARA</string>
+    <string name="require_double_count_title">Requerir doble recuento</string>
 
     <string-array name="history_options">
         <item>1 semana (predeterminado)</item>
