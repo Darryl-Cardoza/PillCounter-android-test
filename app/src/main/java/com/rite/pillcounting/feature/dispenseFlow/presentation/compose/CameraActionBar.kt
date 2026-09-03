@@ -86,6 +86,7 @@ private fun ActionButtons(
 ) {
     val capturedBitmap by viewModel.capturedBitmap.collectAsState()
     val hasCapture = capturedBitmap != null
+    val isCapturing by viewModel.isCapturing.collectAsState()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val dimens = AppTheme.dimens
@@ -97,7 +98,7 @@ private fun ActionButtons(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.SpaceEvenly
         ) {
-            ActionButtonItems(hasCapture, onRedo, onCapture, onDone, dimens)
+            ActionButtonItems(hasCapture, isCapturing, onRedo, onCapture, onDone, dimens)
         }
     } else {
         Row(
@@ -105,7 +106,7 @@ private fun ActionButtons(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
-            ActionButtonItems(hasCapture, onRedo, onCapture, onDone, dimens)
+            ActionButtonItems(hasCapture, isCapturing, onRedo, onCapture, onDone, dimens)
         }
     }
 }
@@ -113,6 +114,7 @@ private fun ActionButtons(
 @Composable
 private fun ActionButtonItems(
     hasCapture: Boolean,
+    isCapturing: Boolean,
     onRedo: () -> Unit,
     onCapture: () -> Unit,
     onDone: () -> Unit,
@@ -142,10 +144,11 @@ private fun ActionButtonItems(
         modifier = Modifier
             .size(responsiveDp(72.dp))
             .background(
-                color = if (hasCapture) AppTheme.extendedColors.primaryBackground else MaterialTheme.colorScheme.primary,
+                // Greyed while a capture is in flight, so the user can see the tap is inert.
+                color = if (hasCapture || isCapturing) AppTheme.extendedColors.primaryBackground else MaterialTheme.colorScheme.primary,
                 shape = CircleShape
             )
-            .clickable(enabled = !hasCapture) { onCapture() },
+            .clickable(enabled = !hasCapture && !isCapturing) { onCapture() },
         contentAlignment = Alignment.Center
     ) {
         Icon(

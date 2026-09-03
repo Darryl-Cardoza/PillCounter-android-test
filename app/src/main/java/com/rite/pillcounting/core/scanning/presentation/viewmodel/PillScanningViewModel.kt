@@ -228,6 +228,13 @@ class PillScanningViewModel @Inject constructor(
     private val _showFlash = MutableStateFlow(false)
     val showFlash: StateFlow<Boolean> = _showFlash
 
+    // True from an accepted capture request until its bitmap or error lands.
+    private val _isCapturing = MutableStateFlow(false)
+    val isCapturing: StateFlow<Boolean> = _isCapturing
+
+    // True once the still on screen has been written, so a Done re-tap cannot write it twice.
+    private var captureCommitted = false
+
     private val _isTxnFromHl7 = MutableStateFlow(false)
     val isTxnFromHl7: StateFlow<Boolean> = _isTxnFromHl7
 
@@ -359,6 +366,8 @@ class PillScanningViewModel @Inject constructor(
     /** Attach a CameraHelper instance for lifecycle control. */
     fun attachCameraHelper(helper: CameraHelper) {
         cameraHelper = helper
+        // A capture lost to an unbound camera never calls back, so clear the stuck flag here.
+        _isCapturing.value = false
     }
 
     /** Observe all transaction details for the current transaction. */
@@ -1597,6 +1606,7 @@ class PillScanningViewModel @Inject constructor(
         // Clear the captured still so the VIAL step returns to the live camera view,
         // allowing the user to capture a new photo or click Done again.
         _capturedBitmap.value = null
+        captureCommitted = false
         _uiState.update { it.copy(showConfirmDialog = false) }
         logger.i("Confirm dialog cancelled.")
     }
@@ -1971,6 +1981,8 @@ class PillScanningViewModel @Inject constructor(
                 }
                 val bitmap = BitmapFactory.decodeByteArray(jpegBytes, 0, jpegBytes.size) ?: return@launch
                 _capturedBitmap.value = bitmap
+                // Re-entering VIAL with an existing photo must leave Done usable.
+                captureCommitted = false
                 logger.i("Loaded existing vial photo from $imagePath")
             } catch (e: Exception) {
                 logger.e("Failed to load existing vial photo", e)
@@ -2115,22 +2127,45 @@ class PillScanningViewModel @Inject constructor(
      *   "Done" once the bitmap lands — this advances the workflow and surfaces the
      *   "Confirm Done" dialog. When false (manual capture), the still is shown and
      *   the user confirms via the Done button.
+     *
+     * A second call while a capture is still in flight is a no-op: no sound, no
+     * flash, no capture request. See [isCapturing].
      */
     fun captureImage(autoConfirm: Boolean = false) {
+        val helper = cameraHelper ?: return
+        if (_isCapturing.value) return
+        _isCapturing.value = true
+
+        val requested = helper.captureImage(
+            onCaptured = { bitmap ->
+                _isCapturing.value = false
+                // A capture that lands after the user already left VIAL would
+                // re-show the still overlay on top of the next step.
+                if (_currentStep.value == StepState.VIAL) {
+                    _capturedBitmap.value = bitmap
+                    // A fresh still is unsaved, so the flag can never outlive the still it guards.
+                    captureCommitted = false
+                    if (autoConfirm) saveCaptureImage()
+                }
+            },
+            onCaptureError = { _isCapturing.value = false }
+        )
+        if (!requested) {
+            _isCapturing.value = false
+            return
+        }
+
         SoundUtils.playCaptureSound()
         viewModelScope.launch {
             _showFlash.value = true
             delay(350)
             _showFlash.value = false
         }
-        cameraHelper?.captureImage { bitmap ->
-            _capturedBitmap.value = bitmap
-            if (autoConfirm) saveCaptureImage()
-        }
     }
 
     fun redoCaptureImage() {
         _capturedBitmap.value = null
+        captureCommitted = false
     }
 
     fun saveCaptureImage() {
@@ -2138,7 +2173,12 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun processCapturedImage(bitmap: Bitmap) {
-        onEvent(PillScanningEvent.AddVialPhotoInTxn(0, bitmap))
+        // Guard only the photo write. handleDone has exits that leave the user on VIAL
+        // (notes dialog dismissed, total 0), so a Done re-tap must still advance the flow.
+        if (!captureCommitted) {
+            captureCommitted = true
+            onEvent(PillScanningEvent.AddVialPhotoInTxn(0, bitmap))
+        }
         moveNextStep()
         isPaused = false
         _cameraPaused.value = false

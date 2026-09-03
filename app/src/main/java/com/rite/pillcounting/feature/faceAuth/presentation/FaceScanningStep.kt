@@ -95,7 +95,7 @@ internal fun ScanningStep(
         }
         if (showFallbackButton) {
             Box(modifier = Modifier.fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
-                Button(onClick = { cameraHelper.captureImage { bitmap -> onCaptureRequested(bitmap) } }) {
+                Button(onClick = { cameraHelper.captureImage(onCaptured = { bitmap -> onCaptureRequested(bitmap) }) }) {
                     Text(stringResource(R.string.face_verify_capture_button))
                 }
             }

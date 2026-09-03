@@ -13,6 +13,7 @@ import io.mockk.unmockkObject
 import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -147,10 +148,11 @@ class CameraHelperTest {
     }
 
     @Test
-    fun `captureImage callback is never invoked before camera is bound`() {
+    fun `captureImage returns false and never invokes the callback before camera is bound`() {
         val helper = newHelper()
         var invocationCount = 0
-        helper.captureImage { invocationCount++ }
+        val requested = helper.captureImage(onCaptured = { invocationCount++ })
+        assertFalse(requested)
         assertEquals(0, invocationCount)
     }
 
