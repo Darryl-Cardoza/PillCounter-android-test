@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
@@ -41,6 +44,10 @@ fun InformationPanelSection(
     val onAdd = { onEvent(PillScanningEvent.AddTransactionDetailClicked(filteredPillCount, stepType)) }
     val onDone = { onEvent(PillScanningEvent.FinalDone(stepType = stepType, totalCount)) }
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
+
+    // Rotation swaps the CountMode variant below and recreates its
+    // WorkflowStepper, so the announced step is remembered here instead.
+    var announcedStep by remember { mutableStateOf<StepState?>(null) }
 
     // VIAL capture keeps the original bottom strip (CameraActionBar) in both
     // orientations. All other counting steps use the shared full-bleed overlay
@@ -76,6 +83,8 @@ fun InformationPanelSection(
     // CountMode{Phone,Tablet}{Portrait,Landscape}). Mirrors the DashboardScreen
     // form-factor dispatch.
     val isTablet = UserInterfaceUtils.isTablet()
+    val autoRevealCurrentStep = stepType != announcedStep
+    val onAutoRevealed: () -> Unit = { announcedStep = stepType }
     when {
         isTablet && !isLandscape -> CountModeTabletPortrait(
             totalCount = totalCount,
@@ -90,6 +99,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
             drugImage = uiState.drugImage,
             showGloveIcon = showGloveIcon,
             glovesDetected = glovesDetected,
@@ -108,6 +119,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
             drugImage = uiState.drugImage,
             showGloveIcon = showGloveIcon,
             glovesDetected = glovesDetected,
@@ -126,6 +139,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
             drugImage = uiState.drugImage,
             showGloveIcon = showGloveIcon,
             glovesDetected = glovesDetected,
@@ -144,6 +159,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
             drugImage = uiState.drugImage,
             showGloveIcon = showGloveIcon,
             glovesDetected = glovesDetected,
