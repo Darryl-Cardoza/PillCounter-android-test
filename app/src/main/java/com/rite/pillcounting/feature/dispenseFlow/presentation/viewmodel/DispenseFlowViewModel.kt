@@ -24,6 +24,7 @@ import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseFlowUiState
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
+import com.rite.pillcounting.feature.dispenseFlow.domain.model.StandaloneRxDraft
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -293,25 +294,26 @@ class DispenseFlowViewModel @Inject constructor(
                 }
 
                 // Check if this RX has an active local transaction (PARTIAL or ON_HOLD).
-                var existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
+                val existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
                 if (existingTxn == null) {
                     // No PMS-created transaction found. In standalone mode, no PMS will
                     // ever send this txn, so the app is expected to originate the
                     // dispense itself off the scanned Rx label, rather than wait on an
                     // HL7 order that will never arrive.
-                    if (preferenceHelper.isStandaloneMode()) {
-                        existingTxn = createStandaloneDispenseTxn(
-                            parsedNdc = parsedNdc,
-                            rxNo = rxNo,
-                            refillNo = refillNo,
-                            bucket = bucket,
-                            targetCount = qtyInt,
-                        )
-                    }
-                    if (existingTxn == null) {
+                    if (!preferenceHelper.isStandaloneMode()) {
                         _uiState.update { it.copy(isLoading = false, txnNotFoundToastTick = it.txnNotFoundToastTick + 1) }
                         return@launch
                     }
+                    // Only stage the label here. The txn is created on Proceed, so
+                    // cancelling or backing out leaves nothing in the DB.
+                    showStandaloneRxSheet(
+                        parsedNdc = parsedNdc,
+                        rxNo = rxNo,
+                        refillNo = refillNo,
+                        bucket = bucket,
+                        targetCount = qtyInt,
+                    )
+                    return@launch
                 }
                 when (existingTxn.status) {
                     CountStatus.ON_HOLD -> {
@@ -342,8 +344,8 @@ class DispenseFlowViewModel @Inject constructor(
                                 showRxDetails = !ndcAlreadyVerified,
                                 pendingRxResumeStage = if (ndcAlreadyVerified) null else targetStage,
                                 txnId = txnId,
-                                drugName = drug?.drugName ?: it.drugName,
-                                ndc = drug?.ndc ?: it.ndc,
+                                drugName = drug?.drugName.orEmpty(),
+                                ndc = drug?.ndc.orEmpty(),
                                 hl7ExpectedNdc = drug?.ndc,
                                 rxNo = existingTxn.rxNo ?: rxNo,
                                 refillNo = existingTxn.refillNo ?: refillNo,
@@ -353,8 +355,8 @@ class DispenseFlowViewModel @Inject constructor(
                                 // sheet. Overwritten with the API value once the NDC
                                 // is scanned in PRE_NDC.
                                 ndcStrength = drug?.strength,
-                                drugImage = drug?.drugImagePath ?: it.drugImage,
-                                selectedBucketId = existingTxn.bucketId ?: it.selectedBucketId,
+                                drugImage = drug?.drugImagePath.orEmpty(),
+                                selectedBucketId = existingTxn.bucketId.orEmpty(),
                             )
                         }
                         return@launch
@@ -372,52 +374,78 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
-     * Creates a PARTIAL dispense txn directly from a scanned Rx label when standalone mode
-     * (with PMS integration still configured) means no PMS/HL7 order will ever arrive for it.
-     *
-     * Resolves the drug for [parsedNdc] — local DB first, then GTIN, then the server (reusing
-     * the same resolve-and-cache helper the allowlist check uses) — so the txn carries a
-     * drugId and the RX verification sheet can show a drug name / NDC / strength just like the
-     * PMS/HL7 path does with its expected drug. If the drug can't be resolved anywhere,
-     * [resolvedDrug] is null and the txn is still created without drug details — the user can
-     * still proceed and the container scan will resolve the drug.
-     *
-     * @return the newly created and re-fetched txn, or null if the insert didn't persist.
+     * Resolves the drug for a standalone Rx label and shows the verify-Rx sheet.
+     * Writes nothing to pill_count_txn — [onRxConfirmed] creates the txn on Proceed.
      */
-    private suspend fun createStandaloneDispenseTxn(
+    private suspend fun showStandaloneRxSheet(
         parsedNdc: String,
         rxNo: String,
         refillNo: String?,
         bucket: String?,
         targetCount: Int,
-    ): PillCountTxnEntity? {
-        val resolvedDrug = drugMasterDao.getDrugByNdc(parsedNdc)
+    ) {
+        val drug = drugMasterDao.getDrugByNdc(parsedNdc)
             ?: drugMasterDao.getDrugByGtin(parsedNdc)
             ?: resolveNdcFromServer(parsedNdc)?.let { drugMasterDao.getDrugByNdc(it) }
-        if (resolvedDrug == null) {
-            logger.w("Standalone dispense: drug could not be resolved for ndc=$parsedNdc rxNo=$rxNo — creating txn without drug details")
+        if (drug == null) {
+            logger.w("Standalone dispense: drug could not be resolved for ndc=$parsedNdc rxNo=$rxNo — staging Rx without drug details")
         }
+        // Every field is assigned outright, never falling back to the last scan's value.
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                showRxDetails = true,
+                pendingStandaloneRx = StandaloneRxDraft(
+                    drugId = drug?.drugId,
+                    rxNo = rxNo,
+                    refillNo = refillNo,
+                    bucket = bucket,
+                    targetCount = targetCount,
+                ),
+                pendingRxResumeStage = null,
+                txnId = 0L,
+                drugName = drug?.drugName.orEmpty(),
+                ndc = drug?.ndc.orEmpty(),
+                hl7ExpectedNdc = drug?.ndc,
+                rxNo = rxNo,
+                refillNo = refillNo,
+                qty = targetCount.toString(),
+                isHazardous = drug?.isHazardous ?: false,
+                ndcStrength = drug?.strength,
+                drugImage = drug?.drugImagePath.orEmpty(),
+                selectedBucketId = bucket.orEmpty(),
+            )
+        }
+        logger.i("[HAZARDOUS] Standalone RX staged: ndc=$parsedNdc rx=$rxNo drug=${drug?.drugName} isHazardous=${drug?.isHazardous ?: false} — awaiting Proceed")
+    }
+
+    /**
+     * Inserts the PARTIAL dispense txn for a staged standalone Rx label.
+     * Called from [onRxConfirmed] only, never from the scan itself.
+     *
+     * @return the new txn's id.
+     */
+    private suspend fun createStandaloneDispenseTxn(draft: StandaloneRxDraft): Long {
         val newTxn = PillCountTxnEntity(
             localId = preferenceHelper.getLocalId(),
-            drugId = resolvedDrug?.drugId,
+            drugId = draft.drugId,
             isDispense = true,
-            targetCount = targetCount,
+            targetCount = draft.targetCount,
             status = CountStatus.PARTIAL,
             isComingFromHL7 = false,
             isSynced = false,
             isNdcVerified = false,
-            rxNo = rxNo,
-            refillNo = refillNo,
+            rxNo = draft.rxNo,
+            refillNo = draft.refillNo,
             // Same RxNo-RefillNo composite HL7MessageBuilder sends as the order identifier
             // (Vivid ZUI-4 rxNumber / EyeCon ZUI-11 transactionOrderId) — PMS pulls dispense
             // images via getByTransactionOrderId keyed on that value. Without it, a
             // locally-scanned dispense's images 404 on that pull and, with local storage
             // off, are deleted after ACK with no way to re-fetch them.
-            transactionOrderId = refillNo?.takeIf { it.isNotBlank() }?.let { "$rxNo-$it" } ?: rxNo,
-            bucketId = bucket,
+            transactionOrderId = draft.refillNo?.takeIf { it.isNotBlank() }?.let { "${draft.rxNo}-$it" } ?: draft.rxNo,
+            bucketId = draft.bucket,
         )
-        val txnId = pillCountTxnDao.upsertPreservingId(newTxn)
-        return pillCountTxnDao.getById(txnId)
+        return pillCountTxnDao.upsertPreservingId(newTxn)
     }
 
     /**
@@ -638,7 +666,7 @@ class DispenseFlowViewModel @Inject constructor(
 
     /**
      * Called when the user confirms the RX bottomsheet (manual flow only).
-     * Creates a PARTIAL transaction for the scanned drug and advances to PRE_NDC.
+     * Resumes the existing txn, or creates the standalone one, then advances to PRE_NDC.
      */
     fun onRxConfirmed() {
         val state = _uiState.value
@@ -657,53 +685,46 @@ class DispenseFlowViewModel @Inject constructor(
             return
         }
 
-        if (state.ndc.isBlank()) return
-
-        viewModelScope.launch {
-            // onRxBarcodeRead already resolved and cached the full drug detail for
-            // this NDC (local DB or server). Preserve it here instead of upserting
-            // a bare ndc+name entity, which would wipe isHazardous/strength/
-            // dosageForm/drugImagePath back to defaults.
-            val existingDrug = drugMasterDao.getDrugByNdc(state.ndc)
-            val drugId = existingDrug?.drugId ?: drugMasterDao.upsertPreservingId(
-                DrugMasterEntity(ndc = state.ndc, drugName = state.drugName)
-            )
-            val qtyInt = state.qty?.toIntOrNull() ?: 0
-            val txn = PillCountTxnEntity(
-                localId = preferenceHelper.getLocalId(),
-                drugId = drugId,
-                isDispense = isDispense,
-                status = CountStatus.PARTIAL,
-                isNdcVerified = false,
-                targetCount = qtyInt,
-                bucketId = state.selectedBucketId.ifBlank { null },
-                rxNo = state.rxNo?.ifBlank { null },
-                refillNo = state.refillNo?.ifBlank { null },
-            )
-            val newTxnId = pillCountTxnDao.upsertPreservingId(txn)
-            preferenceHelper.saveTxnId(newTxnId)
-            _uiState.update {
-                it.copy(
-                    stage = DispenseStage.PRE_NDC,
-                    showRxDetails = false,
-                    txnId = newTxnId,
-                )
+        // Standalone Rx: the txn is created here, on Proceed. The draft is cleared first
+        // so a second tap can't insert a second row.
+        state.pendingStandaloneRx?.let { draft ->
+            _uiState.update { it.copy(showRxDetails = false, pendingStandaloneRx = null) }
+            viewModelScope.launch {
+                try {
+                    val txnId = createStandaloneDispenseTxn(draft)
+                    preferenceHelper.saveTxnId(txnId)
+                    _uiState.update { it.copy(stage = DispenseStage.PRE_NDC, txnId = txnId) }
+                    logger.i("[HAZARDOUS] Standalone RX confirmed: rx=${draft.rxNo} drugId=${draft.drugId} isHazardous=${state.isHazardous} txn=$txnId → PRE_NDC")
+                } catch (e: Exception) {
+                    // Surface the failure the way the scan-time path used to.
+                    logger.e("Standalone dispense txn creation failed", e)
+                    _uiState.update { it.copy(error = e.message) }
+                }
             }
-            logger.i("[HAZARDOUS] RX confirmed: ndc=${state.ndc} drug=${state.drugName} isHazardous=${state.isHazardous} txn=$newTxnId → PRE_NDC")
+            return
         }
     }
 
     /** Dismiss the RX bottomsheet without creating a transaction. */
     fun onRxCancelled() {
+        // Clear every field the sheet renders — leftovers showed the previous Rx's
+        // details on the next scan.
         _uiState.update {
             it.copy(
                 showRxDetails = false,
                 pendingRxResumeStage = null,
+                pendingStandaloneRx = null,
+                txnId = 0L,
                 drugName = "",
                 ndc = "",
+                hl7ExpectedNdc = null,
                 rxNo = null,
                 refillNo = null,
                 qty = null,
+                ndcStrength = null,
+                drugImage = "",
+                selectedBucketId = "",
+                isHazardous = false,
             )
         }
     }
