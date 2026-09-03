@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.Intent
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
+import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
 import android.view.MotionEvent
@@ -163,6 +164,10 @@ class MainActivity : ComponentActivity() {
         // longer visible (home button, app switcher), so it doesn't affect
         // normal locks behavior.
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+
+        // Volume keys adjust media while we're foregrounded. Unset, Android
+        // sends them to the ring stream whenever nothing is playing.
+        volumeControlStream = AudioManager.STREAM_MUSIC
 
         // ── Security check — runs once, not on every recomposition ────────────
 //        securityViolations = SecurityUtils.getSecurityViolations(this)

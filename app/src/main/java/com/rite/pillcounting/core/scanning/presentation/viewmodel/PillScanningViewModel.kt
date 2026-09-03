@@ -5,7 +5,6 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
-import android.media.MediaActionSound
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
@@ -221,10 +220,6 @@ class PillScanningViewModel @Inject constructor(
             val drug = drugMasterDao.getDrugById(drugId) ?: return@launch
             startStockCounting(drug, stockTxnId)
         }
-    }
-
-    private val shutterSound = MediaActionSound().apply {
-        load(MediaActionSound.SHUTTER_CLICK)
     }
 
     private val _capturedBitmap = MutableStateFlow<Bitmap?>(null)
@@ -1997,7 +1992,7 @@ class PillScanningViewModel @Inject constructor(
 
     fun playCountSoundIfEnabled() {
         if (preferenceHelper.isSoundEnabled()) {
-            shutterSound.play(MediaActionSound.START_VIDEO_RECORDING)
+            SoundUtils.playCountSound(context)
         }
         if (preferenceHelper.isHapticEnabled()) {
             triggerHaptic(context)
@@ -2122,7 +2117,7 @@ class PillScanningViewModel @Inject constructor(
      *   the user confirms via the Done button.
      */
     fun captureImage(autoConfirm: Boolean = false) {
-        SoundUtils.playCaptureSound(context)
+        SoundUtils.playCaptureSound()
         viewModelScope.launch {
             _showFlash.value = true
             delay(350)
