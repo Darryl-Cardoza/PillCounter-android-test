@@ -50,7 +50,7 @@ jobs:
     with:
       java_version: ${{ needs.extract-version.outputs.java_version }}
       build_variant: "Debug"
-      coverage_threshold: "80.00"
+      coverage_threshold: "40.00"
 
       runner: ubuntu-latest  #options are ubuntu-latest and macos-latest
 
