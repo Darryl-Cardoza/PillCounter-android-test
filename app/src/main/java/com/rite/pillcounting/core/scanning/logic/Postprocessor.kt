@@ -24,6 +24,9 @@ import kotlin.math.exp
 object Postprocessor {
 
     private const val DFL_BINS = 17
+    // Class channels on the cls head. New detector outputs 3; the previous
+    // single-class model output 1.
+    private const val NUM_CLASSES = 3
     private const val SIDES = 4
     private const val REG_CHANNELS = SIDES * DFL_BINS   // 68
     private val FPN_STRIDES = intArrayOf(8, 16, 32)
@@ -70,9 +73,9 @@ object Postprocessor {
             if (levelIdx < 0) continue
 
             when (shape[3]) {
-                1 -> {
+                NUM_CLASSES -> {
                     clsIdx[levelIdx] = i
-                    val n = grid * grid * 1
+                    val n = grid * grid * NUM_CLASSES
                     cls[levelIdx] = ByteBuffer.allocateDirect(n * 4).order(ByteOrder.nativeOrder())
                     clsFlat[levelIdx] = FloatArray(n)
                 }
@@ -140,7 +143,14 @@ object Postprocessor {
                 val rowBase = row * grid
                 for (col in 0 until grid) {
                     val cellIdx = rowBase + col
-                    val score = clsFlat[cellIdx]   // NHWC, 1 channel → flat index = row*grid+col
+                    // NHWC, NUM_CLASSES channels → cell starts at cellIdx*NUM_CLASSES.
+                    // Take the best class score; class identity is not used yet.
+                    val clsBase = cellIdx * NUM_CLASSES
+                    var score = clsFlat[clsBase]
+                    for (c in 1 until NUM_CLASSES) {
+                        val s = clsFlat[clsBase + c]
+                        if (s > score) score = s
+                    }
                     if (score < confThreshold) continue
 
                     // NHWC: reg cell (row,col) starts at (row*grid+col)*68; each
