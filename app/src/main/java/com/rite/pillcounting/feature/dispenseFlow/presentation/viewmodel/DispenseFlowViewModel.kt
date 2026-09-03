@@ -331,6 +331,18 @@ class DispenseFlowViewModel @Inject constructor(
                         // advance to PRE_NDC until the user taps Proceed.
                         val txnId = existingTxn.txnId
                         val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
+                        // The label's NDC has to match the drug PMS ordered. No drug on
+                        // the txn means nothing to compare, so the check is skipped.
+                        if (drug != null && !ndcDigitsMatch(parsedNdc, drug.ndc)) {
+                            logger.w("Rx label NDC does not match the txn drug: label=$parsedNdc txnNdc=${drug.ndc} rxNo=$rxNo txn=$txnId")
+                            _uiState.update {
+                                it.copy(
+                                    isLoading = false,
+                                    ndcMismatchToastTick = it.ndcMismatchToastTick + 1,
+                                )
+                            }
+                            return@launch
+                        }
                         pillCountTxnDao.updateGlovesPresent(txnId, false)
                         preferenceHelper.saveTxnId(txnId)
                         val ndcAlreadyVerified = existingTxn.isNdcVerified == true
@@ -387,8 +399,17 @@ class DispenseFlowViewModel @Inject constructor(
         val drug = drugMasterDao.getDrugByNdc(parsedNdc)
             ?: drugMasterDao.getDrugByGtin(parsedNdc)
             ?: resolveNdcFromServer(parsedNdc)?.let { drugMasterDao.getDrugByNdc(it) }
+        // No drug to verify the label against, so reject the scan instead of
+        // staging a blank Rx.
         if (drug == null) {
-            logger.w("Standalone dispense: drug could not be resolved for ndc=$parsedNdc rxNo=$rxNo — staging Rx without drug details")
+            logger.w("Standalone dispense: drug could not be resolved for ndc=$parsedNdc rxNo=$rxNo — rejecting the scan")
+            _uiState.update {
+                it.copy(
+                    isLoading = false,
+                    rxDrugNotFoundToastTick = it.rxDrugNotFoundToastTick + 1,
+                )
+            }
+            return
         }
         // Every field is assigned outright, never falling back to the last scan's value.
         _uiState.update {
@@ -446,6 +467,16 @@ class DispenseFlowViewModel @Inject constructor(
             bucketId = draft.bucket,
         )
         return pillCountTxnDao.upsertPreservingId(newTxn)
+    }
+
+    /**
+     * Compares two NDCs on digits only, because labels print them dashed and the
+     * server does not. Null or digit-free input never matches.
+     */
+    private fun ndcDigitsMatch(labelNdc: String, txnNdc: String?): Boolean {
+        val label = labelNdc.filter { it.isDigit() }
+        val txn = txnNdc?.filter { it.isDigit() }
+        return label.isNotEmpty() && label == txn
     }
 
     /**

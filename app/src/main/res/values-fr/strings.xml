@@ -291,6 +291,7 @@
     <string name="vial_rx_mismatch_toast">Le flacon scanné ne correspond pas à cette ordonnance</string>
     <string name="rescan_ndc_does_not_match_toast">Re-scanner — le NDC ne correspond pas</string>
     <string name="transaction_not_found_toast">Transaction introuvable</string>
+    <string name="rx_label_drug_not_found_toast">Médicament introuvable</string>
 
     <!-- Unsynced Transaction-->
     <string name="unsynced_transaction">TRANSACTIONS NON SYNCHRONISÉES</string>

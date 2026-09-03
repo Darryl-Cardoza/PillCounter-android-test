@@ -379,6 +379,76 @@ class DispenseFlowViewModelTest {
     }
 
     @Test
+    fun `onRxBarcodeRead PARTIAL label ndc mismatch shows a toast and no sheet`() =
+        runTest(testDispatcher) {
+            // The Rx matched but the label is for a different drug than PMS ordered.
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
+                txn(status = CountStatus.PARTIAL, isNdcVerified = false)
+            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "99999-111-22")
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
+            assertFalse(vm.uiState.value.showRxDetails)
+            assertNull(vm.uiState.value.pendingRxResumeStage)
+            assertFalse(vm.uiState.value.isLoading)
+            assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
+            // A rejected label must not prep the txn.
+            coVerify(exactly = 0) { preferenceHelper.saveTxnId(any()) }
+        }
+
+    @Test
+    fun `onRxBarcodeRead PARTIAL ndc verified label mismatch also blocks`() =
+        runTest(testDispatcher) {
+            // The container is already verified, but the label still has to match.
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
+                txn(status = CountStatus.PARTIAL, isNdcVerified = true)
+            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "99999-111-22")
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
+            assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
+        }
+
+    @Test
+    fun `onRxBarcodeRead PARTIAL dashed label ndc matches an undashed txn ndc`() =
+        runTest(testDispatcher) {
+            // Labels print dashed NDCs, so formatting alone must not reject a match.
+            every { parseScanData(any(), any()) } returns validParsed(ndcNo = "12345-678-90")
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
+                txn(status = CountStatus.PARTIAL, isNdcVerified = false)
+            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "1234567890")
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.showRxDetails)
+            assertEquals(0, vm.uiState.value.ndcMismatchToastTick)
+            assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.pendingRxResumeStage)
+        }
+
+    @Test
+    fun `onRxBarcodeRead PARTIAL with no drug on the txn skips the ndc check`() =
+        runTest(testDispatcher) {
+            // PMS can create an order with no drug. Nothing to compare, so no block.
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
+                txn(drugId = null, status = CountStatus.PARTIAL, isNdcVerified = false)
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.showRxDetails)
+            assertEquals(0, vm.uiState.value.ndcMismatchToastTick)
+        }
+
+    @Test
     fun `onRxBarcodeRead does not carry the previous scan's drug details into the sheet`() =
         runTest(testDispatcher) {
             // First Rx resolves a drug with an image and a strength.
@@ -553,28 +623,57 @@ class DispenseFlowViewModelTest {
         }
 
     @Test
-    fun `onRxBarcodeRead standalone shows the sheet even when the drug cannot be resolved`() =
+    fun `onRxBarcodeRead standalone drug not found shows a toast and no sheet`() =
         runTest(testDispatcher) {
             every { preferenceHelper.isStandaloneMode() } returns true
             coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
             coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns null
             coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
             coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
-            coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 202L
 
             val vm = createViewModel()
             vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
-            // Sheet still shows without drug details; the container scan resolves the drug.
-            assertTrue(vm.uiState.value.showRxDetails)
-            assertFalse(vm.uiState.value.txnNotFoundToastTick > 0)
+            // Local, then GTIN, then the API — all three are tried first.
+            coVerify { drugMasterDao.getDrugByNdc("NDC123") }
+            coVerify { drugMasterDao.getDrugByGtin("NDC123") }
+            coVerify { drugRepository.getDrugInfoByNdc(any()) }
 
+            assertTrue(vm.uiState.value.rxDrugNotFoundToastTick > 0)
+            assertFalse(vm.uiState.value.showRxDetails)
+            assertNull(vm.uiState.value.pendingStandaloneRx)
+            assertFalse(vm.uiState.value.isLoading)
+            assertEquals(0L, vm.uiState.value.txnId)
+
+            // Nothing staged means Proceed has nothing to insert.
             vm.onRxConfirmed()
             advanceUntilIdle()
-            coVerify {
-                pillCountTxnDao.upsertPreservingId(match<PillCountTxnEntity> { it.drugId == null })
-            }
+            coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
+        }
+
+    @Test
+    fun `onRxBarcodeRead standalone drug found via server still opens the sheet`() =
+        runTest(testDispatcher) {
+            every { preferenceHelper.isStandaloneMode() } returns true
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
+            coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
+            coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
+                brandName = null, genericName = "ServerDrug", ndc = "NDC123",
+                is_ndc_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
+            )
+            coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
+            coEvery { drugMasterDao.getDrugByNdc("NDC123") } returnsMany listOf(
+                null,
+                drug(drugId = 77L, ndc = "NDC123", drugName = "ServerDrug"),
+            )
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.showRxDetails)
+            assertEquals(0, vm.uiState.value.rxDrugNotFoundToastTick)
         }
 
     // ───────────────────────────── onRxBarcodeRead: already-completed Rx guard ─────────────────────────────
@@ -900,7 +999,7 @@ class DispenseFlowViewModelTest {
         // stage — it must not insert anything.
         coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "NDCX")
+        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
         vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
@@ -1028,7 +1127,7 @@ class DispenseFlowViewModelTest {
         // falling through into a create path.
         coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
-        coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "NDCX")
+        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
 
         val vm = createViewModel()
         vm.onRxBarcodeRead("gtin", null)

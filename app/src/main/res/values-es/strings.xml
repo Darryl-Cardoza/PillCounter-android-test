@@ -291,6 +291,7 @@
     <string name="vial_rx_mismatch_toast">El vial escaneado no coincide con esta receta</string>
     <string name="rescan_ndc_does_not_match_toast">Reescanear — el NDC no coincide</string>
     <string name="transaction_not_found_toast">Transacción no encontrada</string>
+    <string name="rx_label_drug_not_found_toast">Medicamento no encontrado</string>
 
     <!-- Unsynced Transaction-->
     <string name="unsynced_transaction">TRANSACCIONES NO SINCRONIZADAS</string>

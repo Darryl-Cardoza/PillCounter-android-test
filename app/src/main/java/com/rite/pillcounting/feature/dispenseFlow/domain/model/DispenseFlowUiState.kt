@@ -68,6 +68,8 @@ data class DispenseFlowUiState(
     val scanNdcToastTick: Int = 0,
     val ndcMismatchToastTick: Int = 0,
     val txnNotFoundToastTick: Int = 0,
+    // Fired when a standalone Rx label's NDC matches no drug. No sheet is shown.
+    val rxDrugNotFoundToastTick: Int = 0,
     // Fired when a scanned NDC is rejected by the batch PMS allowlist.
     val ndcNotAllowedToastTick: Int = 0,
     val ndcNotAllowedValue: String = "",
