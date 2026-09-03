@@ -190,7 +190,7 @@ fun InventoryScanHost(
         state = panelState,
         canEndCount = panelState.totalNdcs > 0 || panelState.activeNdc != null,
         onScanPills = {
-            // Stage the active bottle's txn (or clear staged txn if none), then hand
+            // Persist the active count, clear the staged txn, then hand
             // off to the merged dispense flow in stock-count mode. fromResume=true so
             // DispenseFlowScreen skips RX and loads the drug/txn from preferences,
             // landing at PRE_NDC ready for the container barcode scan.

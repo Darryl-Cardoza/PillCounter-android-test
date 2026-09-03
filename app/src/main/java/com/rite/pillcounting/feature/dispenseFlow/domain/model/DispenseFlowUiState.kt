@@ -101,7 +101,7 @@ data class DispenseFlowUiState(
     val batchId: Long = 0L,
 
     // NDC allowlist for batch Scan-Pills from a PMS batch. Non-empty only when the
-    // batch was PMS-sourced (or the user had a specific active NDC on the card).
+    // batch was PMS-sourced.
     // onNdcBarcodeRead rejects any scanned NDC that isn't in this set.
     // Empty = no restriction (manually-started batch or plain dispense flow).
     val allowedNdcs: Set<String> = emptySet(),
