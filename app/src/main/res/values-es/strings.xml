@@ -7,6 +7,9 @@
     <!--    Common   -->
     <string name="pms">PMS</string>
     <string name="loading">Cargando...</string>
+    <string name="open_settings">Abrir la configuración</string>
+    <string name="not_now">Ahora no</string>
+    <string name="location_access">Acceso a la ubicación</string>
 
     <!--    Offline / Session Health   -->
     <string name="offline_disconnect_message">Se ha desconectado tu Internet. La aplicación cerrará la sesión en %1$s.</string>
@@ -20,6 +23,9 @@
     <string name="verify">Verificar</string>
     <string name="login_button_text">INICIAR SESIÓN</string>
     <string name="update_button_text">ACTUALIZAR</string>
+    <string name="camera">Cámara</string>
+    <string name="notification">Notificación</string>
+    <string name="location">Ubicación</string>
 
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->
@@ -56,7 +62,7 @@
     <string name="standalone_kpi_disabled_message">Función no aplicable</string>
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
-    <string name="settings_title" translatable="false">SETTINGS</string>
+    <string name="settings_title">AJUSTES</string>
     <string name="setting_ask_to_add_notes">Siempre preguntar para añadir notas</string>
     <string name="setting_save_history_for">Guardar historial por</string>
     <string name="pill_counting_sound">Sonido de conteo de pastillas</string>
@@ -73,8 +79,8 @@
     <string name="non_hazardous_tray_warning">Esta no es la bandeja peligrosa. Utilice la bandeja peligrosa.</string>
     <string name="clear_tray_color_lists">Borrar listas de colores de bandejas</string>
     <string name="clear_tray_color_lists_confirm">¿Está seguro de que desea borrar la clasificación de color de bandeja peligrosa?</string>
-    <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
-    <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
+    <string name="save_history_for_title">GUARDAR HISTORIAL DURANTE</string>
+    <string name="require_double_count_title">Requerir doble recuento</string>
 
     <string-array name="history_options">
         <item>1 semana (predeterminado)</item>
@@ -480,6 +486,8 @@
     <string name="permission_notifications_rationale">Las notificaciones le mantienen informado sobre actualizaciones importantes. Actívelas en Configuración para continuar.</string>
     <string name="permission_required_title">Permisos requeridos</string>
     <string name="permission_required_combined_message">Se requieren %1$s permiso(s) para que esta aplicación funcione correctamente. Actívelos en Configuración para continuar.</string>
+    <string name="location_services_off_title">Activar la ubicación</string>
+    <string name="location_services_off_message">La ubicación está desactivada en este dispositivo, por lo que los registros de escaneo se guardarán sin ubicación. Active la ubicación en Configuración para incluirla.</string>
     <string name="pms_cert_mismatch_message">El certificado del servidor PMS ha cambiado. Esto puede ocurrir tras una actualización del PMS. Toque Restablecer para aceptar el nuevo certificado y reconectar.</string>
     <string name="pms_cert_mismatch_confirm">Restablecer y reconectar</string>
 
@@ -552,5 +560,8 @@
     <string name="check_wifi_before_testing">Conéctese a Wi-Fi antes de probar la conexión</string>
     <string name="hl7_notification_connected_to">Conectado a %1$s</string>
     <string name="hl7_notification_listening">Escuchando y respondiendo a HL7</string>
+    <string name="connection_info_title">Información de conexión</string>
+    <string name="hl7_notification_title">Servicio en segundo plano HL7</string>
+    <string name="rx_already_completed_message">Esta Rx ya ha sido dispensada</string>
 
 </resources>

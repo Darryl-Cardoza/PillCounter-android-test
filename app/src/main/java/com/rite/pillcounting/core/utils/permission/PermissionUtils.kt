@@ -3,6 +3,7 @@ package com.rite.pillcounting.core.utils.permission
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
+import android.location.LocationManager
 import android.net.Uri
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -53,6 +54,18 @@ fun openAppSettings(context: Context) {
         data = Uri.fromParts("package", context.packageName, null)
     }
     context.startActivity(intent)
+}
+
+/** True when the device-wide location toggle (Settings > Location) is on. */
+fun isLocationServicesEnabled(context: Context): Boolean {
+    val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
+        ?: return false
+    return manager.isLocationEnabled
+}
+
+/** Opens the device Location settings page, where the toggle above lives. */
+fun openLocationSettings(context: Context) {
+    context.startActivity(Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS))
 }
 
 /**
