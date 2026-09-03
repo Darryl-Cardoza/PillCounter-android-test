@@ -872,23 +872,13 @@ class InventoryScanViewModel @Inject constructor(
     /* ─────────────────────────  Scan pills hand-off  ───────────────────────── */
 
     /**
-     * SCAN PILLS hand-off (Path 1): the user has an active scanned NDC and wants
-     * to count loose/open pills for it. We find-or-create a REGULAR transaction
-     * for that drug in the current batch, mark it PARTIAL (loose-counting in
-     * progress), persist its id via [PreferenceHelper.saveTxnId] so the legacy
-     * pill-count screen picks it up, and invoke [onReady] with (batchId) on the
+     * SCAN PILLS hand-off (Path 1): the user wants to count loose/open pills.
+     * We flush the active card's bottle count so it isn't lost, clear the staged
+     * txnId so the dispense flow starts at PRE_NDC, and invoke [onReady] on the
      * caller so it can navigate.
      *
-     * The legacy flow then counts loose pills into this same txn (it calls
-     * `incrementLooseQty` on every ADD) and marks it COMPLETED on DONE — the
-     * counted pills surface on this NDC's Recent Counts row as loose pills on
-     * top of any sealed bottles (toRecentRows sums bottleQty*packageQty + looseQty).
-     *
      * Works with or without an active NDC. The legacy pill-count flow scans its
-     * own NDC, so SCAN PILLS is always available: with no active NDC we simply
-     * navigate into the batch and let that flow establish its own txn. With an
-     * active NDC we additionally stage that NDC's txn so the counted loose pills
-     * accumulate onto its Recent Counts row.
+     * own NDC and establishes its own txn, so SCAN PILLS is always available.
      *
      * batchId is passed through as-is — including 0L when no batch has been
      * created yet — rather than creating it here. Tapping SCAN PILLS is not
@@ -896,13 +886,13 @@ class InventoryScanViewModel @Inject constructor(
      * PillScanningViewModel on the first successful NDC scan in the dispense
      * flow, same as [onBarcodeDetected] does for the NDC-scan path, so an
      * abandoned session never leaves an empty batch row.
-     */
-    /**
+     *
      * @param onReady Called with (batchId, allowedNdcs) when ready to navigate.
      *   allowedNdcs is the set of NDCs the dispense flow is permitted to accept:
-     *   - Active NDC on card → restrict to just that one NDC.
-     *   - No active NDC, PMS batch → restrict to the full PMS-requested NDC set.
-     *   - No active NDC, manual batch → empty set (no restriction).
+     *   - PMS batch → restrict to the full PMS-requested NDC set.
+     *   - Manual batch → empty set (no restriction).
+     *   An active NDC does NOT narrow this: its count is already persisted, so the
+     *   user may scan a different container to count its loose pills.
      */
     fun onScanPillsForActive(onReady: (batchId: Long, allowedNdcs: Set<String>) -> Unit) {
         val active = _activeNdc.value
@@ -924,14 +914,9 @@ class InventoryScanViewModel @Inject constructor(
                 preferenceHelper.saveTxnId(0)
 
                 // Build the NDC allowlist for the dispense flow.
-                // Active card NDC takes priority (user was working on that drug).
-                // For PMS batches with no active NDC, pass the full expected set.
-                // Manual batches have no restriction.
-                val allowedNdcs: Set<String> = when {
-                    active != null -> setOf(active.ndc)
-                    expectedNdcs != null -> expectedNdcs!!
-                    else -> emptySet()
-                }
+                // Only PMS batches restrict which NDCs may be counted. An active card
+                // does not narrow it — its count is already persisted above.
+                val allowedNdcs: Set<String> = expectedNdcs ?: emptySet()
 
                 logger.d("INV_SCAN onScanPillsForActive active=${active?.ndc} batchId=$batchId allowedNdcs=$allowedNdcs")
                 onReady(batchId, allowedNdcs)

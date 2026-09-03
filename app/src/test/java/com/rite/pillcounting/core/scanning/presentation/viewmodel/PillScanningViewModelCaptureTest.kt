@@ -94,10 +94,10 @@ class PillScanningViewModelCaptureTest {
         every { preferenceHelper.isRequireDoubleCountEnabled() } returns false
         every { preferenceHelper.isRequireBackCountEnabled() } returns false
 
-        // playCaptureSound reads the AudioManager off the Context; a relaxed
-        // Application mock cannot serve that, so stub the object out.
+        // playCaptureSound drives MediaActionSound, a native API that unit tests
+        // cannot load, so stub the object out.
         mockkObject(SoundUtils)
-        every { SoundUtils.playCaptureSound(any()) } returns Unit
+        every { SoundUtils.playCaptureSound() } returns Unit
 
         viewModel = PillScanningViewModel(
             app = application,
@@ -146,7 +146,7 @@ class PillScanningViewModelCaptureTest {
 
         // Only the first tap reaches the camera; the rest are inert.
         verify(exactly = 1) { cameraHelper.captureImage(any(), any()) }
-        verify(exactly = 1) { SoundUtils.playCaptureSound(any()) }
+        verify(exactly = 1) { SoundUtils.playCaptureSound() }
         assertTrue(viewModel.isCapturing.value)
     }
 

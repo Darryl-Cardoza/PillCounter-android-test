@@ -25,6 +25,7 @@ import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.LocationProvider
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.util.MainDispatcherRule
@@ -34,7 +35,9 @@ import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
 import io.mockk.mockkStatic
+import io.mockk.verify
 import io.mockk.slot
 import io.mockk.unmockkAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -118,6 +121,32 @@ class PillScanningViewModelTest {
 
     @After
     fun tearDown() { unmockkAll() }
+
+    // ─────────────────────────── playCountSoundIfEnabled ───────────────────────────
+
+    @Test
+    fun `playCountSoundIfEnabled routes the count cue through SoundUtils`() {
+        mockkObject(SoundUtils)
+        every { SoundUtils.playCountSound(any()) } returns Unit
+        every { preferenceHelper.isSoundEnabled() } returns true
+        every { preferenceHelper.isHapticEnabled() } returns false
+
+        viewModel.playCountSoundIfEnabled()
+
+        verify(exactly = 1) { SoundUtils.playCountSound(any()) }
+    }
+
+    @Test
+    fun `playCountSoundIfEnabled stays silent when the sound preference is off`() {
+        mockkObject(SoundUtils)
+        every { SoundUtils.playCountSound(any()) } returns Unit
+        every { preferenceHelper.isSoundEnabled() } returns false
+        every { preferenceHelper.isHapticEnabled() } returns false
+
+        viewModel.playCountSoundIfEnabled()
+
+        verify(exactly = 0) { SoundUtils.playCountSound(any()) }
+    }
 
     // ─────────────────────────── buildWorkflowSteps ───────────────────────────
 

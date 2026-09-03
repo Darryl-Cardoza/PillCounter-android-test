@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
  * - Auto-focuses on composition.
  * - Submits on Enter / NumPad Enter.
  * - Handles Backspace for partial corrections.
+ * - Passes the volume keys through to the platform rather than consuming them.
  * - Syncs the local buffer when the parent resets [input] externally
  *   (e.g. on overlay dismiss or stage change).
  */
@@ -60,6 +61,12 @@ fun BtScannerInputBar(
         modifier = modifier
             .size(1.dp)
             .onPreviewKeyEvent { event ->
+                // Volume keys must reach the platform: consuming them kills both
+                // the hardware keys and the OS volume panel while this bar is mounted.
+                if (event.key == Key.VolumeUp || event.key == Key.VolumeDown || event.key == Key.VolumeMute) {
+                    return@onPreviewKeyEvent false
+                }
+
                 if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent true
 
                 when {
