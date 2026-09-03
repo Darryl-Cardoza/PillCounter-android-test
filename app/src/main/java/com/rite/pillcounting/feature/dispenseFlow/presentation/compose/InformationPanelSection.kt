@@ -83,6 +83,8 @@ fun InformationPanelSection(
     // CountMode{Phone,Tablet}{Portrait,Landscape}). Mirrors the DashboardScreen
     // form-factor dispatch.
     val isTablet = UserInterfaceUtils.isTablet()
+    val autoRevealCurrentStep = stepType != announcedStep
+    val onAutoRevealed: () -> Unit = { announcedStep = stepType }
     when {
         isTablet && !isLandscape -> CountModeTabletPortrait(
             totalCount = totalCount,
@@ -97,8 +99,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
-            autoRevealCurrentStep = stepType != announcedStep,
-            onAutoRevealed = { announcedStep = stepType },
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
             drugImage = uiState.drugImage,
             showGloveIcon = showGloveIcon,
             glovesDetected = glovesDetected,
@@ -117,8 +119,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
-            autoRevealCurrentStep = stepType != announcedStep,
-            onAutoRevealed = { announcedStep = stepType },
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
             drugImage = uiState.drugImage,
             showGloveIcon = showGloveIcon,
             glovesDetected = glovesDetected,
@@ -137,8 +139,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
-            autoRevealCurrentStep = stepType != announcedStep,
-            onAutoRevealed = { announcedStep = stepType },
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
             drugImage = uiState.drugImage,
             showGloveIcon = showGloveIcon,
             glovesDetected = glovesDetected,
@@ -157,8 +159,8 @@ fun InformationPanelSection(
             strength = uiState.strength,
             bucket = uiState.bucket,
             showHistory = onShowHistory,
-            autoRevealCurrentStep = stepType != announcedStep,
-            onAutoRevealed = { announcedStep = stepType },
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
             drugImage = uiState.drugImage,
             showGloveIcon = showGloveIcon,
             glovesDetected = glovesDetected,
