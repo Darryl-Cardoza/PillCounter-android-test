@@ -138,6 +138,7 @@ class DispenseFlowViewModelTest {
         isNdcVerified: Boolean? = false,
         rxNo: String? = "RX999",
         targetCount: Int? = 10,
+        bucketId: String? = null,
     ) = PillCountTxnEntity(
         txnId = txnId,
         drugId = drugId,
@@ -146,6 +147,7 @@ class DispenseFlowViewModelTest {
         isNdcVerified = isNdcVerified,
         rxNo = rxNo,
         targetCount = targetCount,
+        bucketId = bucketId,
     )
 
     // ───────────────────────────── setCountType ─────────────────────────────
@@ -347,11 +349,29 @@ class DispenseFlowViewModelTest {
     @Test
     fun `onRxBarcodeRead ON_HOLD shows dialog`() = runTest(testDispatcher) {
         coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns txn(status = CountStatus.ON_HOLD)
+        coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
         vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.showOnHoldDialog)
     }
+
+    @Test
+    fun `onRxBarcodeRead ON_HOLD label ndc mismatch blocks the dialog`() =
+        runTest(testDispatcher) {
+            // A wrong-drug label must not resume someone else's held txn.
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
+                txn(status = CountStatus.ON_HOLD)
+            coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "99999-111-22")
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
+            assertFalse(vm.uiState.value.showOnHoldDialog)
+            assertFalse(vm.uiState.value.isLoading)
+        }
 
     @Test
     fun `onRxBarcodeRead PARTIAL auto-resumes to PRE_NDC`() = runTest(testDispatcher) {
@@ -446,6 +466,34 @@ class DispenseFlowViewModelTest {
 
             assertTrue(vm.uiState.value.showRxDetails)
             assertEquals(0, vm.uiState.value.ndcMismatchToastTick)
+        }
+
+    @Test
+    fun `onRxBarcodeRead PARTIAL with no bucket on the txn falls back to the label's`() =
+        runTest(testDispatcher) {
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
+                txn(status = CountStatus.PARTIAL, isNdcVerified = false, bucketId = null)
+            coEvery { drugMasterDao.getDrugById(10L) } returns drug()
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertEquals("B1", vm.uiState.value.selectedBucketId)
+        }
+
+    @Test
+    fun `onRxBarcodeRead PARTIAL prefers the txn's bucket over the label's`() =
+        runTest(testDispatcher) {
+            coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns
+                txn(status = CountStatus.PARTIAL, isNdcVerified = false, bucketId = "B9")
+            coEvery { drugMasterDao.getDrugById(10L) } returns drug()
+
+            val vm = createViewModel()
+            vm.onRxBarcodeRead("gtin", null)
+            advanceUntilIdle()
+
+            assertEquals("B9", vm.uiState.value.selectedBucketId)
         }
 
     @Test

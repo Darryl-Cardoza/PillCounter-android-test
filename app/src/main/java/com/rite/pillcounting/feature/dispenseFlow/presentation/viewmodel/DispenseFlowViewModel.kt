@@ -157,8 +157,8 @@ class DispenseFlowViewModel @Inject constructor(
                     initResolved = true,
                     isFromHl7 = true,
                     txnId = txnId,
-                    drugName = drug?.drugName ?: it.drugName,
-                    ndc = drug?.ndc ?: it.ndc,
+                    drugName = drug?.drugName.orEmpty(),
+                    ndc = drug?.ndc.orEmpty(),
                     hl7ExpectedNdc = drug?.ndc,
                     rxNo = txn.rxNo,
                     refillNo = txn.refillNo,
@@ -200,8 +200,8 @@ class DispenseFlowViewModel @Inject constructor(
                         stage = DispenseStage.COUNTING,
                         initResolved = true,
                         txnId = txnId,
-                        drugName = drug?.drugName ?: it.drugName,
-                        ndc = drug?.ndc ?: it.ndc,
+                        drugName = drug?.drugName.orEmpty(),
+                        ndc = drug?.ndc.orEmpty(),
                         rxNo = txn.rxNo,
                         refillNo = txn.refillNo,
                         qty = txn.targetCount?.toString(),
@@ -216,8 +216,8 @@ class DispenseFlowViewModel @Inject constructor(
                         stage = DispenseStage.PRE_NDC,
                         initResolved = true,
                         txnId = txnId,
-                        drugName = drug?.drugName ?: it.drugName,
-                        ndc = drug?.ndc ?: it.ndc,
+                        drugName = drug?.drugName.orEmpty(),
+                        ndc = drug?.ndc.orEmpty(),
                         hl7ExpectedNdc = drug?.ndc,
                         rxNo = txn.rxNo,
                         refillNo = txn.refillNo,
@@ -315,6 +315,21 @@ class DispenseFlowViewModel @Inject constructor(
                     )
                     return@launch
                 }
+                val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
+                val gatedStatus = existingTxn.status == CountStatus.PARTIAL ||
+                        existingTxn.status == CountStatus.ON_HOLD
+                // The label's NDC has to match the drug PMS ordered. No drug on
+                // the txn means nothing to compare, so the check is skipped.
+                if (gatedStatus && drug != null && !ndcDigitsMatch(parsedNdc, drug.ndc)) {
+                    logger.w("Rx label NDC does not match the txn drug: label=$parsedNdc txnNdc=${drug.ndc} rxNo=$rxNo txn=${existingTxn.txnId}")
+                    _uiState.update {
+                        it.copy(
+                            isLoading = false,
+                            ndcMismatchToastTick = it.ndcMismatchToastTick + 1,
+                        )
+                    }
+                    return@launch
+                }
                 when (existingTxn.status) {
                     CountStatus.ON_HOLD -> {
                         _uiState.update { it.copy(isLoading = false, showOnHoldDialog = true) }
@@ -330,19 +345,6 @@ class DispenseFlowViewModel @Inject constructor(
                         // (COUNTING). Otherwise show the sheet and defer the
                         // advance to PRE_NDC until the user taps Proceed.
                         val txnId = existingTxn.txnId
-                        val drug = existingTxn.drugId?.let { drugMasterDao.getDrugById(it) }
-                        // The label's NDC has to match the drug PMS ordered. No drug on
-                        // the txn means nothing to compare, so the check is skipped.
-                        if (drug != null && !ndcDigitsMatch(parsedNdc, drug.ndc)) {
-                            logger.w("Rx label NDC does not match the txn drug: label=$parsedNdc txnNdc=${drug.ndc} rxNo=$rxNo txn=$txnId")
-                            _uiState.update {
-                                it.copy(
-                                    isLoading = false,
-                                    ndcMismatchToastTick = it.ndcMismatchToastTick + 1,
-                                )
-                            }
-                            return@launch
-                        }
                         pillCountTxnDao.updateGlovesPresent(txnId, false)
                         preferenceHelper.saveTxnId(txnId)
                         val ndcAlreadyVerified = existingTxn.isNdcVerified == true
@@ -368,7 +370,8 @@ class DispenseFlowViewModel @Inject constructor(
                                 // is scanned in PRE_NDC.
                                 ndcStrength = drug?.strength,
                                 drugImage = drug?.drugImagePath.orEmpty(),
-                                selectedBucketId = existingTxn.bucketId.orEmpty(),
+                                // PMS may send no bucket — fall back to the label's.
+                                selectedBucketId = existingTxn.bucketId ?: bucket.orEmpty(),
                             )
                         }
                         return@launch
@@ -417,7 +420,7 @@ class DispenseFlowViewModel @Inject constructor(
                 isLoading = false,
                 showRxDetails = true,
                 pendingStandaloneRx = StandaloneRxDraft(
-                    drugId = drug?.drugId,
+                    drugId = drug.drugId,
                     rxNo = rxNo,
                     refillNo = refillNo,
                     bucket = bucket,
@@ -425,19 +428,19 @@ class DispenseFlowViewModel @Inject constructor(
                 ),
                 pendingRxResumeStage = null,
                 txnId = 0L,
-                drugName = drug?.drugName.orEmpty(),
-                ndc = drug?.ndc.orEmpty(),
-                hl7ExpectedNdc = drug?.ndc,
+                drugName = drug.drugName.orEmpty(),
+                ndc = drug.ndc,
+                hl7ExpectedNdc = drug.ndc,
                 rxNo = rxNo,
                 refillNo = refillNo,
                 qty = targetCount.toString(),
-                isHazardous = drug?.isHazardous ?: false,
-                ndcStrength = drug?.strength,
-                drugImage = drug?.drugImagePath.orEmpty(),
+                isHazardous = drug.isHazardous,
+                ndcStrength = drug.strength,
+                drugImage = drug.drugImagePath.orEmpty(),
                 selectedBucketId = bucket.orEmpty(),
             )
         }
-        logger.i("[HAZARDOUS] Standalone RX staged: ndc=$parsedNdc rx=$rxNo drug=${drug?.drugName} isHazardous=${drug?.isHazardous ?: false} — awaiting Proceed")
+        logger.i("[HAZARDOUS] Standalone RX staged: ndc=$parsedNdc rx=$rxNo drug=${drug.drugName} isHazardous=${drug.isHazardous} — awaiting Proceed")
     }
 
     /**
@@ -696,7 +699,7 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
-     * Called when the user confirms the RX bottomsheet (manual flow only).
+     * Called when the user confirms the RX bottomsheet.
      * Resumes the existing txn, or creates the standalone one, then advances to PRE_NDC.
      */
     fun onRxConfirmed() {
