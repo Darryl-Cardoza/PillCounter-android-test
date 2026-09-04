@@ -51,6 +51,8 @@ fun CountModeTabletLandscape(
     strength: String,
     bucket: String,
     showHistory: () -> Unit,
+    autoRevealCurrentStep: Boolean,
+    onAutoRevealed: () -> Unit,
     drugImage: String? = "",
     showGloveIcon: Boolean = false,
     glovesDetected: Boolean = false,
@@ -117,7 +119,8 @@ fun CountModeTabletLandscape(
                         // Announce every counting step on entry (and on step change)
                         // via the stepper bubble + voiceover. REGULAR also labels the
                         // counting step "Scan Open Pills".
-                        autoRevealCurrentStep = true,
+                        autoRevealCurrentStep = autoRevealCurrentStep,
+                        onAutoRevealed = onAutoRevealed,
                         titleOverrides = if (isRegular) {
                             mapOf(StepState.TARGET_VERIFICATION to R.string.scan_open_pills)
                         } else {
