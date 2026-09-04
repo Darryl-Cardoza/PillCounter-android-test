@@ -6,8 +6,10 @@ import com.rite.pillcounting.core.hl7.core.Hl7EventListener
 import com.rite.pillcounting.core.hl7.mllp.client.MllpConnectionManager
 import com.rite.pillcounting.core.hl7.mllp.nsd.NsdHelper
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsSocketFactory
+import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkConstructor
 import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkAll
@@ -466,6 +468,7 @@ class HL7ServiceTest {
         coEveryReturns(clientManager, "ACK")
         every { clientManager.isConnected() } returns false
         setField("clientManager", clientManager)
+        stubStaticPmsPreferences("10.0.0.5", 2575)
         setField("config", HL7Config(useStaticPmsConnection = true, pmsIp = "10.0.0.5", pmsPort = 2575))
         val listener = mockk<Hl7EventListener>(relaxed = true)
         setField("listener", listener)
@@ -482,6 +485,7 @@ class HL7ServiceTest {
         val clientManager = mockk<MllpConnectionManager>(relaxed = true)
         every { clientManager.isConnected() } returns true
         setField("clientManager", clientManager)
+        stubStaticPmsPreferences("10.0.0.5", 2575)
         setField("config", HL7Config(useStaticPmsConnection = true, pmsIp = "10.0.0.5", pmsPort = 2575))
         val listener = mockk<Hl7EventListener>(relaxed = true)
         setField("listener", listener)
@@ -497,6 +501,7 @@ class HL7ServiceTest {
     fun `discoverPmsAndConnect schedules a retry when static PMS ip-port is not configured yet`() {
         val clientManager = mockk<MllpConnectionManager>(relaxed = true)
         setField("clientManager", clientManager)
+        stubStaticPmsPreferences(null, 0)
         setField("config", HL7Config(useStaticPmsConnection = true, pmsIp = null, pmsPort = 0))
         val listener = mockk<Hl7EventListener>(relaxed = true)
         setField("listener", listener)
@@ -509,6 +514,14 @@ class HL7ServiceTest {
     }
 
     // ──────────────────────────── test helpers for coroutine mocks ────────────────────────────
+
+    // connectToStaticPms() re-reads the PMS host/port from a freshly constructed PreferenceHelper
+    // rather than from config, so the static-connection tests must stub that read.
+    private fun stubStaticPmsPreferences(host: String?, port: Int) {
+        mockkConstructor(PreferenceHelper::class)
+        every { anyConstructed<PreferenceHelper>().getPmsIP() } returns host
+        every { anyConstructed<PreferenceHelper>().getPmsPort() } returns port
+    }
 
     private fun coEveryReturns(clientManager: MllpConnectionManager, value: String) {
         io.mockk.coEvery { clientManager.send(any()) } returns value
