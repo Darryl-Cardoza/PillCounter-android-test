@@ -510,6 +510,7 @@
     <string name="face_registration_scan_front">Coloque su rostro dentro del recuadro</string>
     <string name="face_registration_scan_tilt_left">Incline el rostro hacia su izquierda</string>
     <string name="face_registration_scan_tilt_right">Incline el rostro hacia su derecha</string>
+    <string name="face_registration_scan_complete">Detección de rostro completada</string>
     <string name="face_guidance_no_face">no se detecta ningún rostro</string>
     <string name="face_guidance_move_closer">acérquese</string>
     <string name="face_guidance_move_back">aléjese</string>
@@ -527,6 +528,7 @@
     <string name="face_users_empty">Aún no hay rostros registrados.</string>
     <string name="face_users_delete_title">Eliminar usuarios</string>
     <string name="face_users_last_used">Último uso: %1$s</string>
+    <string name="face_verify_title">Verifique su rostro</string>
     <string name="face_verify_capture_button">Capturar rostro</string>
     <string name="face_verify_not_recognized_title">No pudimos reconocerlo</string>
     <string name="face_verify_not_recognized_body">Asegúrese de que su rostro esté bien iluminado y\ncentrado, luego intente de nuevo.</string>
@@ -534,7 +536,7 @@
     <string name="face_verify_cancel">Cancelar</string>
     <string name="face_flip_camera">Cambiar cámara</string>
     <string name="session_locked_title">Sesión bloqueada</string>
-    <string name="session_locked_subtitle">Inactivo por %1$d min.\nVerifique su rostro para continuar\ndonde lo dejó.</string>
+    <string name="session_locked_subtitle">Verifique su rostro para continuar\ndonde lo dejó.</string>
     <string name="session_locked_verify_button">Verificar con el rostro</string>
     <string name="session_locked_resuming_title">Bienvenido de nuevo, %1$s</string>
     <string name="session_locked_resuming_body">Identidad verificada.\nReanudando su sesión...</string>

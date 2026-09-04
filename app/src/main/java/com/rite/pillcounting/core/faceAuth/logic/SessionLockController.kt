@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.faceAuth.logic
 
 import com.rite.pillcounting.core.faceAuth.data.FaceProfileRepository
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -31,13 +32,18 @@ import javax.inject.Singleton
  * no Quick Access set up never locks itself out with nothing to verify against.
  *
  * The lock also survives process death: a cold start with an active login session
- * and an enrolled face profile begins locked, so killing the app can't bypass it.
- * (Enrollment state is mirrored to preferences so this decision is synchronous.)
+ * and an enrolled face profile begins locked. (Enrollment state is mirrored to
+ * preferences so this decision is synchronous.) That initializer is not enough on
+ * its own to stop a kill-and-relaunch bypass — see [onAppLaunch].
  *
  * What it does:
  * - [onUserActivity] resets the idle clock; call on every touch app-wide.
+ * - [onAppLaunch] re-arms the lock on every fresh Activity launch, which is what
+ *   actually covers "killed from recents" — the initializer below cannot, because
+ *   a foreground service keeps the process (and this singleton) alive.
  * - [isLocked] is the single source of truth the UI observes to show/hide the overlay.
- * - [lockNow] lets Settings trigger the same overlay on demand.
+ * - [lockNow] lets Settings (and a fresh login) trigger the same overlay on demand.
+ * - [startOnScan] tells the overlay to open on the verify camera instead of the lock screen.
  * - [unlock] is called after a successful face verify.
  */
 @Singleton
@@ -48,12 +54,23 @@ class SessionLockController @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lastActivityAt = AtomicLong(System.currentTimeMillis())
 
+    // TEMPORARY diagnostic for the "kill the app but the HL7 service keeps it
+    // alive" lock bypass. w() so it prints on release builds too. Remove once
+    // the failing layer is identified.
+    private val diag = AppLogger("FaceLockDiag")
+
     // Start locked on a cold start with an active session: process death must not
-    // bypass the face lock (kill-and-relaunch previously reopened the app unlocked).
+    // bypass the face lock. Only covers a genuinely new process — a fresh launch
+    // into a surviving process is [onAppLaunch]'s job.
     private val _isLocked = MutableStateFlow(
         preferenceHelper.isUserLoggedIn() && preferenceHelper.hasEnabledFaceProfile()
     )
     val isLocked: StateFlow<Boolean> = _isLocked.asStateFlow()
+
+    // Whether the current lock should open straight on the verify camera. Only a
+    // fresh login does; idle timeout and cold start keep the idle lock screen.
+    private val _startOnScan = MutableStateFlow(false)
+    val startOnScan: StateFlow<Boolean> = _startOnScan.asStateFlow()
 
     /** Whether at least one enrolled face profile currently participates in verify matching. */
     val hasEnabledProfile: StateFlow<Boolean> = faceProfileRepository.observeProfiles()
@@ -61,6 +78,13 @@ class SessionLockController @Inject constructor(
         .stateIn(scope, SharingStarted.Eagerly, preferenceHelper.hasEnabledFaceProfile())
 
     init {
+        // If this line appears on a relaunch, the process really died and the
+        // initializer covered it. If it does NOT, the singleton survived the kill.
+        diag.w(
+            "CONSTRUCTED instance=${Integer.toHexString(System.identityHashCode(this))} " +
+                "initialLocked=${_isLocked.value} loggedIn=${preferenceHelper.isUserLoggedIn()} " +
+                "hasEnabledPref=${preferenceHelper.hasEnabledFaceProfile()}"
+        )
         scope.launch {
             while (isActive) {
                 delay(1_000L)
@@ -70,8 +94,13 @@ class SessionLockController @Inject constructor(
         scope.launch {
             hasEnabledProfile.collect { hasEnabled ->
                 preferenceHelper.saveHasEnabledFaceProfile(hasEnabled)
+                diag.w("hasEnabledProfile emitted $hasEnabled (isLocked=${_isLocked.value})")
                 // No enabled profile means nothing to verify against — release the lock.
-                if (!hasEnabled && _isLocked.value) _isLocked.value = false
+                if (!hasEnabled && _isLocked.value) {
+                    diag.w("RELEASING lock — no enabled profile")
+                    _isLocked.value = false
+                    _startOnScan.value = false
+                }
             }
         }
     }
@@ -101,19 +130,55 @@ class SessionLockController @Inject constructor(
     }
 
     /**
-     * Manually triggers the lock overlay, e.g. from a Settings "Lock Now" row.
+     * Manually triggers the lock overlay, e.g. from a Settings "Lock Now" row or
+     * right after a successful login.
      *
+     * @param startOnScan Open the overlay on the verify camera instead of the idle lock screen.
      * @return true if the lock engaged, false if there's no enabled face profile to verify against.
      */
-    fun lockNow(): Boolean {
-        if (!hasEnabledProfile.value) return false
+    fun lockNow(startOnScan: Boolean = false): Boolean {
+        if (!hasEnabledProfile.value) {
+            diag.w("lockNow REFUSED startOnScan=$startOnScan — no enabled profile")
+            return false
+        }
+        _startOnScan.value = startOnScan
         _isLocked.value = true
+        diag.w("lockNow LOCKED startOnScan=$startOnScan")
         return true
+    }
+
+    /**
+     * Re-arms the lock for a fresh app launch.
+     *
+     * Description:
+     * The cold-start decision in this class's initializer only runs when the
+     * process is new. A foreground service (HL7) keeps the process alive when the
+     * app is swiped out of recents, so this singleton — and its stale unlocked
+     * state — survives the "kill". The Activity therefore has to ask again on
+     * every fresh launch, or killing the app bypasses the lock.
+     *
+     * @return true if the lock engaged, false if nobody is logged in or there's
+     *   no enabled face profile to verify against.
+     *
+     * Example Usage:
+     * override fun onCreate(savedInstanceState: Bundle?) {
+     *     super.onCreate(savedInstanceState)
+     *     if (savedInstanceState == null) sessionLockController.onAppLaunch()
+     * }
+     */
+    fun onAppLaunch(): Boolean {
+        diag.w("onAppLaunch loggedIn=${preferenceHelper.isUserLoggedIn()} hasEnabledProfile=${hasEnabledProfile.value}")
+        if (!preferenceHelper.isUserLoggedIn()) return false
+        return lockNow()
     }
 
     /** Clears the lock after a successful verify and resets the idle clock. */
     fun unlock() {
+        // Stack trace: if something clears the lock right after a launch re-arm,
+        // this names the caller. TEMPORARY, remove with the rest of the diag.
+        diag.w("unlock() wasLocked=${_isLocked.value}", Throwable("unlock caller"))
         _isLocked.value = false
+        _startOnScan.value = false
         lastActivityAt.set(System.currentTimeMillis())
     }
 }

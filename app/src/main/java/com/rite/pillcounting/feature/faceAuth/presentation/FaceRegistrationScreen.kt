@@ -40,6 +40,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -61,6 +62,7 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
 import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.TABLET_BREAKPOINT_DP
@@ -68,6 +70,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.feature.faceAuth.domain.model.RegistrationState
 import com.rite.pillcounting.feature.faceAuth.presentation.viewmodel.FaceAuthViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -157,6 +160,7 @@ fun FaceRegistrationScreen(
                 cameraHelper = cameraHelper,
                 navController = navController,
                 isSessionLocked = isSessionLocked,
+                isVoiceoverEnabled = viewModel.isVoiceoverEnabled,
                 onCaptureRequested = { angle ->
                     cameraHelper.captureImage(onCaptured = { bitmap -> viewModel.captureFrame(bitmap, angle) })
                 },
@@ -183,19 +187,64 @@ private fun ScanFaceStep(
     cameraHelper: CameraHelper,
     navController: NavController,
     isSessionLocked: Boolean,
+    isVoiceoverEnabled: Boolean,
     onCaptureRequested: (FaceCaptureAngle) -> Unit,
     onCameraReady: (isFrontCamera: Boolean) -> Unit,
     onFinish: () -> Unit
 ) {
     val capturing = state as? RegistrationState.Capturing
-    val angle = capturing?.angle ?: FaceCaptureAngle.FRONT
+    val angle = capturing?.angle
+        ?: (state as? RegistrationState.Rejected)?.angle
+        ?: FaceCaptureAngle.FRONT
     val capturedCount = capturing?.capturedCount ?: 0
-    val staticPrompt = when (angle) {
+    // After the last angle the state still names it, so say done instead of asking for a tilt again.
+    val staticPrompt = if (capturedCount == FaceCaptureAngle.entries.size) {
+        stringResource(R.string.face_registration_scan_complete)
+    } else when (angle) {
         FaceCaptureAngle.FRONT -> stringResource(R.string.face_registration_scan_front)
         FaceCaptureAngle.TILT_LEFT -> stringResource(R.string.face_registration_scan_tilt_left)
         FaceCaptureAngle.TILT_RIGHT -> stringResource(R.string.face_registration_scan_tilt_right)
     }
-    val prompt = capturing?.guidance?.let { guidanceText(it) } ?: staticPrompt
+    val guidanceSpeech = capturing?.guidance?.let { guidanceText(it) }
+    val rejectionSpeech = (state as? RegistrationState.Rejected)?.let { guidanceText(it.reason) }
+    val prompt = guidanceSpeech ?: staticPrompt
+
+    // Speak each angle's prompt once, as the scanning screens' title chip does.
+    val context = LocalContext.current
+    DisposableEffect(context) {
+        SoundUtils.prewarmTts(context)
+        onDispose { SoundUtils.stopSpeaking() }
+    }
+
+    // New speech cuts off old speech, so hints wait their turn.
+    var lastSpeechAt by remember { mutableLongStateOf(0L) }
+    val speakNow: (String, String) -> Unit = { text, utteranceId ->
+        lastSpeechAt = System.currentTimeMillis()
+        SoundUtils.speak(context = context, text = text, utteranceId = utteranceId)
+    }
+
+    LaunchedEffect(staticPrompt, SoundUtils.isTtsReady, isVoiceoverEnabled) {
+        if (SoundUtils.isTtsReady && isVoiceoverEnabled) {
+            speakNow(staticPrompt, "face_scan_prompt_$staticPrompt")
+        }
+    }
+
+    // Keyed on the text, so the same hint is never spoken twice. If the
+    // hint keeps changing, the delay restarts and nothing is spoken.
+    LaunchedEffect(guidanceSpeech, SoundUtils.isTtsReady, isVoiceoverEnabled) {
+        if (guidanceSpeech == null || !SoundUtils.isTtsReady || !isVoiceoverEnabled) return@LaunchedEffect
+        delay(GUIDANCE_DEBOUNCE_MS)
+        val quietLeft = SPEECH_QUIET_PERIOD_MS - (System.currentTimeMillis() - lastSpeechAt)
+        if (quietLeft > 0) delay(quietLeft)
+        speakNow(guidanceSpeech, "face_guidance_$guidanceSpeech")
+    }
+
+    // A rejection answers the user's tap, so it speaks right away.
+    LaunchedEffect(rejectionSpeech, SoundUtils.isTtsReady, isVoiceoverEnabled) {
+        if (rejectionSpeech != null && SoundUtils.isTtsReady && isVoiceoverEnabled) {
+            speakNow(rejectionSpeech, "face_reject_$rejectionSpeech")
+        }
+    }
 
     var isFrontCamera by remember { mutableStateOf(true) }
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
@@ -238,8 +287,8 @@ private fun ScanFaceStep(
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(width = 240.dp, height = 300.dp)
-                .border(width = 3.dp, color = MaterialTheme.colorScheme.secondary, shape = RoundedCornerShape(160.dp))
+                .size(width = 450.dp, height = 550.dp)
+                .border(width = 3.dp, color = MaterialTheme.colorScheme.secondary, shape = RoundedCornerShape(200.dp))
         )
         BackButton(navController = navController, modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
         IconButton(
@@ -328,6 +377,12 @@ private fun ScanFaceStep(
         }
     }
 }
+
+// A hint waits this long before it is spoken.
+private const val GUIDANCE_DEBOUNCE_MS = 700L
+
+// A hint stays quiet this long after any other speech.
+private const val SPEECH_QUIET_PERIOD_MS = 2_500L
 
 /** Localized text for a [FaceGuidance] emitted by the capture logic. */
 @Composable
