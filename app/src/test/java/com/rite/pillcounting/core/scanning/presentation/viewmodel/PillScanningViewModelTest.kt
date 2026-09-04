@@ -332,6 +332,45 @@ class PillScanningViewModelTest {
         assertTrue(viewModel.uiState.value.showNoTransaction)
     }
 
+    // ─────────────────────────── handleDone → notes dialog ───────────────────────────
+
+    @Suppress("UNCHECKED_CAST")
+    private fun setTxnFromHl7(fromHl7: Boolean) {
+        val flow = getPrivateField("_isTxnFromHl7") as MutableStateFlow<Boolean>
+        flow.value = fromHl7
+    }
+
+    @Test
+    fun `DoneClicked shows the notes dialog for an HL7 txn when the notes setting is on`() = runTest {
+        // HL7 txns used to skip the notes prompt; the setting is now the only gate.
+        seedTxnInfoIsDispense(isDispense = true)
+        setTxnFromHl7(true)
+        setCurrentStep(StepState.VIAL)
+        every { preferenceHelper.getShowNotesDialogSetting() } returns true
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+
+        viewModel.onEvent(PillScanningEvent.DoneClicked)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.showNotesDialog)
+        assertFalse(viewModel.uiState.value.showConfirmDialog)
+    }
+
+    @Test
+    fun `DoneClicked skips the notes dialog for an HL7 txn when the notes setting is off`() = runTest {
+        seedTxnInfoIsDispense(isDispense = true)
+        setTxnFromHl7(true)
+        setCurrentStep(StepState.VIAL)
+        every { preferenceHelper.getShowNotesDialogSetting() } returns false
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+
+        viewModel.onEvent(PillScanningEvent.DoneClicked)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.showNotesDialog)
+        assertTrue(viewModel.uiState.value.showConfirmDialog)
+    }
+
     // ─────────────────────────── onNdcRescannedDuringCount ───────────────────────────
 
     @Test

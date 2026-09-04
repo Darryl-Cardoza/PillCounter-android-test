@@ -368,7 +368,7 @@ fun DispenseFlowScreen(
             onDismiss = { pillVm.setNoteDialogShown(false) },
             onSkip = { pillVm.onEvent(PillScanningEvent.NoteSkip) },
             onSave = { note -> pillVm.onEvent(PillScanningEvent.NoteSaved(note)) },
-            showSkip = !isTxnFromHl7,
+            showSkip = true,
         )
     }
 

@@ -1541,7 +1541,7 @@ class PillScanningViewModel @Inject constructor(
             }
             val remainingCount =
                 _uiState.value.targetCount - _uiState.value.txnDetailHistory.sumOf { it.count }
-            if (!_isTxnFromHl7.value && preferenceHelper.getShowNotesDialogSetting()) {
+            if (preferenceHelper.getShowNotesDialogSetting()) {
                 _uiState.update { it.copy(showNotesDialog = true) }
             } else if (remainingCount > 0 && _currentStep.value == StepState.CONTAINER_PENDING) {
                 _uiState.update { it.copy(showNotesDialog = true) }
