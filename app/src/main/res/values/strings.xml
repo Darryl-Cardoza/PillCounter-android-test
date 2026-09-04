@@ -370,6 +370,7 @@
     <string name="rescan_ndc_does_not_match_toast">Rescan — NDC does not match</string>
     <string name="transaction_not_found_toast">Transaction not found</string>
     <string name="vial_rx_mismatch_toast">Scanned vial does not match this prescription</string>
+    <string name="rx_label_drug_not_found_toast">Drug not found</string>
 
     <!-- Unsynced Transaction-->
     <string name="unsynced_transaction">UNSYNCED TRANSACTIONS</string>

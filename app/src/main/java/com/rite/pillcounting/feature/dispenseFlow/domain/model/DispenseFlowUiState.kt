@@ -7,6 +7,15 @@ import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 
 enum class DispenseStage { QUEUE, PRE_RX, PRE_NDC, COUNTING }
 
+/** Rx label values needed to create a standalone dispense txn once the user taps Proceed. */
+data class StandaloneRxDraft(
+    val drugId: Long?,
+    val rxNo: String,
+    val refillNo: String?,
+    val bucket: String?,
+    val targetCount: Int,
+)
+
 data class DispenseFlowUiState(
     val stage: DispenseStage = DispenseStage.PRE_RX,
     // True once a resume/HL7 entry has finished resolving its real start stage
@@ -47,6 +56,9 @@ data class DispenseFlowUiState(
     // taps Proceed (PRE_NDC if the NDC isn't verified yet, else COUNTING). The txn
     // already exists, so Proceed resumes it rather than creating a new one.
     val pendingRxResumeStage: DispenseStage? = null,
+    // Rx label staged while the verification sheet is up. Nothing is written to
+    // pill_count_txn until the user taps Proceed, so Cancel / back leaves no row.
+    val pendingStandaloneRx: StandaloneRxDraft? = null,
     val showNdcDetails: Boolean = false,
     val showInvalidScanDialog: Boolean = false,
     val showNdcNotFoundDialog: Boolean = false,
@@ -56,6 +68,8 @@ data class DispenseFlowUiState(
     val scanNdcToastTick: Int = 0,
     val ndcMismatchToastTick: Int = 0,
     val txnNotFoundToastTick: Int = 0,
+    // Fired when a standalone Rx label's NDC matches no drug. No sheet is shown.
+    val rxDrugNotFoundToastTick: Int = 0,
     // Fired when a scanned NDC is rejected by the batch PMS allowlist.
     val ndcNotAllowedToastTick: Int = 0,
     val ndcNotAllowedValue: String = "",
