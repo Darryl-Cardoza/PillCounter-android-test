@@ -46,6 +46,17 @@ abstract class HL7SegmentBuilder(val name: String) {
         rawFields[n] = HL7Field(listOf(groups.map { HL7Component(it) }))
     }
 
+    /**
+     * Sets field [n] as multiple repetitions (one component each), using the
+     * repetition delimiter structurally rather than escaping it as data — for
+     * wire formats that pack a list of plain values into one field's
+     * repetitions (e.g. OBX-5 IMG_REF: several image paths, `~`-separated).
+     */
+    protected fun setRepeatingValues(n: Int, values: List<String>?) {
+        if (values.isNullOrEmpty()) return
+        rawFields[n] = HL7Field(values.map { listOf(HL7Component(listOf(it))) })
+    }
+
     /** Reads back the plain value of field [n] (component 1), or "". */
     protected fun get(n: Int): String = cells[n]?.get(1) ?: ""
 

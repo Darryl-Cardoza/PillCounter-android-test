@@ -88,12 +88,15 @@ class PV1Builder : HL7SegmentBuilder("PV1") {
 class ORCBuilder : HL7SegmentBuilder("ORC") {
     var orderControl: String? = null
     var placerOrderNumber: String? = null
+    var placerOrderCorrelationId: String? = null // ORC-2.2 — PMS request id this response correlates with
     var fillerOrderNumber: String? = null
     var orderStatus: String? = null
     var dateTimeOfTransaction: String? = null
     var orderingProviderId: String? = null
     override fun apply() {
-        set(1, orderControl); set(2, 1, placerOrderNumber); set(3, 1, fillerOrderNumber)
+        set(1, orderControl)
+        set(2, 1, placerOrderNumber); set(2, 2, placerOrderCorrelationId)
+        set(3, 1, fillerOrderNumber)
         set(5, orderStatus); set(9, dateTimeOfTransaction); set(12, 1, orderingProviderId)
     }
 }
@@ -167,15 +170,23 @@ class OBXBuilder : HL7SegmentBuilder("OBX") {
     var observationId: String? = null
     var observationText: String? = null
     var observationIdCodingSystem: String? = null
+    var subId: String? = null
     var observationValue: String? = null
     var observationValueText: String? = null
     var observationValueCodingSystem: String? = null
+    // Alternative to observationValue: several plain values as real field
+    // repetitions (`~`-separated on the wire, not escaped as data) — e.g.
+    // IMG_REF's list of image paths.
+    var observationValueRepetitions: List<String>? = null
     var units: String? = null
     var resultStatus: String? = null
     override fun apply() {
         set(1, setId); set(2, valueType)
         set(3, 1, observationId); set(3, 2, observationText); set(3, 3, observationIdCodingSystem)
-        if (observationValueText != null || observationValueCodingSystem != null) {
+        set(4, subId)
+        if (observationValueRepetitions != null) {
+            setRepeatingValues(5, observationValueRepetitions)
+        } else if (observationValueText != null || observationValueCodingSystem != null) {
             set(5, 1, observationValue); set(5, 2, observationValueText); set(5, 3, observationValueCodingSystem)
         } else {
             set(5, observationValue)
@@ -195,18 +206,33 @@ class EQUBuilder : HL7SegmentBuilder("EQU") {
 
 /** Field positions per HL7 v2.5.1 standard INV layout (see [org.rite.hl7.model.segment.INVSegment]). */
 class INVBuilder : HL7SegmentBuilder("INV") {
-    var substanceCode: String? = null                 // NDC (INV-1.1)
-    var substanceName: String? = null                 // INV-1.2
-    var substanceCodeSystem: String? = null           // INV-1.3
-    var lotNumber: String? = null                      // INV-16
+    var setId: String? = null                          // INV-1
+    var substanceCode: String? = null                  // NDC (INV-2.1)
+    var substanceName: String? = null                  // INV-2.2
+    var substanceCodeSystem: String? = null            // INV-2.3
+    var statusCode: String? = null                      // INV-3.1
+    var statusText: String? = null                      // INV-3.2
+    var statusCodeSystem: String? = null                // INV-3.3
+    var itemTypeCode: String? = null                    // INV-4.1
+    var itemTypeText: String? = null                    // INV-4.2
+    var itemTypeCodeSystem: String? = null              // INV-4.3
+    var quantityOnHand: String? = null                  // INV-7
+    var inventoryOnHandQuantity: String? = null        // INV-8 (Current/Available Quantity)
+    var quantityExpected: String? = null                // INV-9
+    var unitsCode: String? = null                       // INV-11.1
+    var unitsText: String? = null                        // INV-11.2
+    var unitsCodeSystem: String? = null                  // INV-11.3
     var expirationDate: String? = null                // INV-12
-    var inventoryOnHandQuantity: String? = null        // INV-8 (Current Quantity)
-    var units: String? = null                          // INV-11 (Quantity Units)
+    var lotNumber: String? = null                      // INV-15
     override fun apply() {
-        set(1, 1, substanceCode); set(1, 2, substanceName); set(1, 3, substanceCodeSystem)
-        set(8, inventoryOnHandQuantity); set(11, units)
+        set(1, setId)
+        set(2, 1, substanceCode); set(2, 2, substanceName); set(2, 3, substanceCodeSystem)
+        set(3, 1, statusCode); set(3, 2, statusText); set(3, 3, statusCodeSystem)
+        set(4, 1, itemTypeCode); set(4, 2, itemTypeText); set(4, 3, itemTypeCodeSystem)
+        set(7, quantityOnHand); set(8, inventoryOnHandQuantity); set(9, quantityExpected)
+        set(11, 1, unitsCode); set(11, 2, unitsText); set(11, 3, unitsCodeSystem)
         set(12, expirationDate)
-        set(16, lotNumber)
+        set(15, lotNumber)
     }
 }
 

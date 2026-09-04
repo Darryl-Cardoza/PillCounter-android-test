@@ -1082,8 +1082,7 @@ class Hl7Repository @Inject constructor(
                 else -> null
             }
 
-            HL7MessageKind.INVENTORY_REQUEST,
-            HL7MessageKind.INVENTORY_RESPONSE ->
+            HL7MessageKind.INVENTORY_REQUEST ->
                 MessageType.INVENTORY_REQUEST
 
             else -> null

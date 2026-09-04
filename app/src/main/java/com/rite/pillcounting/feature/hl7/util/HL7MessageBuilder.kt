@@ -14,7 +14,6 @@ import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import org.rite.hl7.HL7
 import org.rite.hl7.builder.ScanSource
-import org.rite.hl7.builder.ZadReasonCode
 import org.rite.hl7.builder.ZsnTransactionType
 import org.rite.hl7.builder.ZsvMatchStrength
 import org.rite.hl7.builder.ZsvValidationResult
@@ -358,10 +357,9 @@ object HL7MessageBuilder {
     fun buildInventoryMessage(
         batch: BatchEntity,
         txns: List<BatchTxnDto>,
-        approvedBy: String? = null,
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
     ): String {
-        return buildInventoryMessageChunks(batch, txns, approvedBy, config).single().message
+        return buildInventoryMessageChunks(batch, txns, config).single().message
     }
 
     /** One chunk of a (possibly split) inventory sync — see [buildInventoryMessageChunks]. */
@@ -374,40 +372,44 @@ object HL7MessageBuilder {
 
     /**
      * Splits a batch's grouped inventory rows into multiple complete, independently
-     * sendable INR^U06 messages so no single message exceeds [maxRowsPerChunk] INV
-     * segments — keeping each message safely under PMS's message-size ceiling
-     * regardless of how large the overall batch grows.
+     * sendable INU^U05 messages so no single message exceeds [maxRowsPerChunk] INV
+     * groups — keeping each message safely under PMS's message-size ceiling
+     * regardless of how large the overall batch grows. Chunk position is not encoded
+     * on the wire (matches the iOS-produced format exactly); [chunkIndex]/[totalChunks]
+     * only drive local resume bookkeeping — see [Hl7Repository].
      *
-     * Every chunk carries this batch's id in ORC-2, a stable inventoryGroupId (derived
-     * from [BatchEntity.bucketId]) in ORC-3 so PMS updates the same inventory record
-     * across repeated syncs instead of creating a new one each time, and the batch's
-     * grand total in ZAD-3. A BTS trailer right after MSH marks this message's position
-     * (BTS-1 = this chunk's 1-based index, BTS-2 = total chunk count, BTS-3 = this
-     * chunk's own item total — all numeric) so PMS can detect a missing/out-of-order
-     * chunk. Chunks must be sent in order, each one only after the previous chunk's
-     * ACK — see Hl7Repository.
+     * Wire shape per chunk (matches iOS's current INU^U05 output):
+     * ```
+     * MSH
+     * EQU
+     * ORC
+     * OBX (OPERATOR_NAME, blank sub-id)
+     * [ INV (one per ndc/lot/expiry group, Set-ID keyed)
+     *   OBX (SEALED_QTY)
+     *   OBX (OPEN_QTY)
+     *   OBX (IMG_REF, only if the group has photos) ]  repeats per group
+     * ```
+     * No NTE, no BTS, no ZAD, no ZIN.
+     *
+     * ORC-2 carries this batch's bucketId, and — when this batch answers a
+     * PMS-originated INR^U06 request (`batch.requestIdFromPMS` non-blank) — that
+     * request id appended as `<bucketId>^<requestIdFromPMS>` so PMS can correlate
+     * this response with its original request. Chunks must be sent in order, each
+     * one only after the previous chunk's ACK — see Hl7Repository.
      */
     fun buildInventoryMessageChunks(
         batch: BatchEntity,
         txns: List<BatchTxnDto>,
-        approvedBy: String? = null,
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
         maxRowsPerChunk: Int = 200
     ): List<InventoryChunk> {
 
         val now = now()
         val orderId = batch.bucketId.orEmpty()
-
-        // Stable across every inventory sync for this bucket/location — independent of
-        // batch.batchId, which changes every time a new local BatchEntity is created (e.g. a
-        // retry after app restart, or a fresh count of the same bucket). PMS keys its inventory
-        // record off this value (ORC-3) so repeated syncs of the same bucket UPDATE the existing
-        // record instead of inserting a duplicate; ORC-2 still carries this specific batch's id
-        // for traceability/debugging.
-        val inventoryGroupId = "INV-${batch.bucketId.orEmpty().ifEmpty { "DEFAULT" }}"
+        val requestId = batch.requestIdFromPMS?.trim()?.ifEmpty { null }
 
         data class Key(val ndc: String, val name: String, val lot: String, val expiry: String)
-        data class Qty(var opened: Int = 0, var sealed: Int = 0)
+        data class Qty(var opened: Int = 0, var sealed: Int = 0, val imagePaths: MutableList<String> = mutableListOf())
 
         val grouped = linkedMapOf<Key, Qty>()
         txns.forEach { txn ->
@@ -421,10 +423,10 @@ object HL7MessageBuilder {
             val e = grouped.getOrPut(key) { Qty() }
             e.opened += txn.looseQty ?: 0
             e.sealed += (txn.bottleQty ?: 0) * packageQty
+            txn.imagePaths?.let { e.imagePaths.addAll(it) }
         }
 
         val rows = grouped.entries.toList()
-        val grandTotal = rows.sumOf { it.value.opened + it.value.sealed }
         val chunkedRows = if (rows.isEmpty()) listOf(rows) else rows.chunked(maxRowsPerChunk)
         val totalChunks = chunkedRows.size
 
@@ -435,6 +437,9 @@ object HL7MessageBuilder {
 
             val hl7 = HL7(version = config.versionId)
             val builder = hl7.build()
+
+            var obxSetId = 0
+            fun nextObxSetId() = (++obxSetId).toString()
 
             val message = builder.inuU05 {
                 msh { msh ->
@@ -448,17 +453,6 @@ object HL7MessageBuilder {
                     msh.versionId = config.versionId
                 }
 
-                // BTS is placed right after MSH (chunk-position trailer, describing the
-                // whole message that follows) — BTS-1/BTS-2 are numeric per spec:
-                // BTS-1 = this chunk's 1-based index, BTS-2 = total chunk count.
-                // batchComment carries the shared inventoryGroupId (not free text) so PMS can
-                // correlate all chunks/sessions of the same inventory sync.
-                bts { bts ->
-                    bts.batchMessageCount = chunkIndex.toString()
-                    bts.batchComment = totalChunks.toString()
-                    bts.batchTotals = chunkTotal.toString()
-                }
-
                 equ { equ ->
                     equ.equipmentId = config.sendingApplication
                     equ.eventDateTime = now
@@ -467,63 +461,68 @@ object HL7MessageBuilder {
                 orc { orc ->
                     orc.orderControl = "RE"
                     orc.placerOrderNumber = orderId
-                    orc.fillerOrderNumber = inventoryGroupId
+                    orc.placerOrderCorrelationId = requestId
                 }
 
-                buildCommonNotes(
-                    txnId = batch.batchId.toString(),
-                    note = batch.note,
-                    totalCount = grandTotal,
-                    isBatch = true
-                ).forEach { note ->
-                    nte { nte ->
-                        nte.setId = note.setId
-                        nte.sourceOfComment = note.sourceOfComment
-                        nte.comment = note.comment
-                        nte.commentType = note.commentType
-                    }
+                obx { obx ->
+                    obx.setId = nextObxSetId()
+                    obx.valueType = "ST"
+                    obx.observationId = "OPERATOR_NAME"
+                    obx.observationValue = batch.userName.orEmpty()
+                    obx.resultStatus = "F"
                 }
 
                 chunkRows.forEachIndexed { idx, (key, value) ->
-                    val setId = (idx + 1).toString()
+                    val invSetId = (idx + 1).toString()
                     val total = value.opened + value.sealed
 
                     inv { inv ->
+                        inv.setId = invSetId
                         inv.substanceCode = key.ndc
-                        inv.substanceCodeSystem = "NDC"
                         inv.substanceName = key.name.ifEmpty { null }
+                        inv.substanceCodeSystem = "L"
+                        inv.statusCode = "A"
+                        inv.statusText = "Active"
+                        inv.statusCodeSystem = "HL70383"
+                        inv.itemTypeCode = "DRUG"
+                        inv.itemTypeText = "Drug"
+                        inv.itemTypeCodeSystem = "HL70384"
+                        inv.quantityOnHand = total.toString()
                         inv.inventoryOnHandQuantity = total.toString()
-                        inv.lotNumber = key.lot.ifEmpty { null }
+                        inv.quantityExpected = total.toString()
+                        inv.unitsCode = "TAB"
+                        inv.unitsText = "Tablets"
+                        inv.unitsCodeSystem = "UCUM"
                         inv.expirationDate = key.expiry.ifEmpty { null }
+                        inv.lotNumber = key.lot.ifEmpty { null }
                     }
 
-                    // ZIN breaks the INV total down by open/sealed so PMS keeps that
-                    // distinction instead of only seeing the combined on-hand count.
-                    zin { zin ->
-                        zin.setId = "$setId.1"
-                        zin.dispenseType = "OPENED"
-                        zin.quantity = value.opened.toString()
-                        zin.lotNumber = key.lot.ifEmpty { null }
-                        zin.expiry = key.expiry.ifEmpty { null }
+                    obx { obx ->
+                        obx.setId = nextObxSetId()
+                        obx.valueType = "NM"
+                        obx.observationId = "SEALED_QTY"
+                        obx.subId = invSetId
+                        obx.observationValue = value.sealed.toString()
+                        obx.resultStatus = "F"
                     }
-                    zin { zin ->
-                        zin.setId = "$setId.2"
-                        zin.dispenseType = "SEALED"
-                        zin.quantity = value.sealed.toString()
-                        zin.lotNumber = key.lot.ifEmpty { null }
-                        zin.expiry = key.expiry.ifEmpty { null }
+                    obx { obx ->
+                        obx.setId = nextObxSetId()
+                        obx.valueType = "NM"
+                        obx.observationId = "OPEN_QTY"
+                        obx.subId = invSetId
+                        obx.observationValue = value.opened.toString()
+                        obx.resultStatus = "F"
                     }
-                }
-
-                // ZAD-3 carries the whole batch's grand total on every chunk so PMS
-                // can cross-check completeness once all chunks are in.
-                zad { zad ->
-                    zad.setId = "1"
-                    zad.adjustmentType = "CYCLE_COUNT"
-                    zad.adjustmentQuantity = grandTotal.toString()
-                    zad.adjustmentReason = ZadReasonCode.CYCLE_COUNT
-                    zad.adjustmentDateTime = now
-                    zad.approvedBy = approvedBy ?: "Unknown"
+                    if (value.imagePaths.isNotEmpty()) {
+                        obx { obx ->
+                            obx.setId = nextObxSetId()
+                            obx.valueType = "RP"
+                            obx.observationId = "IMG_REF"
+                            obx.subId = invSetId
+                            obx.observationValueRepetitions = value.imagePaths
+                            obx.resultStatus = "F"
+                        }
+                    }
                 }
             }
 
