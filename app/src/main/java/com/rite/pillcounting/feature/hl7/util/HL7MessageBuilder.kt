@@ -351,7 +351,7 @@ object HL7MessageBuilder {
     }
 
     // =========================================================
-    // INVENTORY RESPONSE (INR U06, INV + ZAD)
+    // INVENTORY RESPONSE (INU^U05, INV + ZAD)
     // =========================================================
 
     fun buildInventoryMessage(
@@ -387,9 +387,10 @@ object HL7MessageBuilder {
      * [ INV (one per ndc/lot/expiry group, Set-ID keyed)
      *   OBX (SEALED_QTY)
      *   OBX (OPEN_QTY)
-     *   OBX (IMG_REF, only if the group has photos) ]  repeats per group
+     *   OBX (IMG001..IMGnnn, one per photo, only if the group has photos) ]  repeats per group
+     * ZAD (batch note, only if the batch has one — always last segment)
      * ```
-     * No NTE, no BTS, no ZAD, no ZIN.
+     * No NTE, no BTS, no ZIN.
      *
      * ORC-2 carries this batch's bucketId, and — when this batch answers a
      * PMS-originated INR^U06 request (`batch.requestIdFromPMS` non-blank) — that
@@ -426,9 +427,9 @@ object HL7MessageBuilder {
             txn.imagePaths?.let { e.imagePaths.addAll(it) }
         }
 
-        // Skip rows with nothing on hand (sealed + opened == 0) — PMS doesn't need
-        // an INV row for a drug that's fully depleted in this batch.
-        val rows = grouped.entries.filter { it.value.opened + it.value.sealed > 0 }
+        // Zero-qty rows are still sent: omitting a counted-zero row would make it
+        // indistinguishable from a drug PMS never asked about.
+        val rows = grouped.entries.toList()
         val chunkedRows = if (rows.isEmpty()) listOf(rows) else rows.chunked(maxRowsPerChunk)
         val totalChunks = chunkedRows.size
 
@@ -494,7 +495,8 @@ object HL7MessageBuilder {
                         inv.itemTypeCodeSystem = "HL70384"
                         inv.quantityOnHand = total.toString()
                         inv.inventoryOnHandQuantity = total.toString()
-                        inv.quantityExpected = total.toString()
+                        // INV-9 left unset: no PMS-expected-qty data flows into BatchTxnDto yet,
+                        // so setting it to the counted total would fake discrepancy as always 0.
                         inv.unitsCode = "TAB"
                         inv.unitsText = "Tablets"
                         inv.unitsCodeSystem = "UCUM"
@@ -524,7 +526,7 @@ object HL7MessageBuilder {
                             obx.valueType = "RP"
                             obx.observationId = nextImgObservationId()
                             obx.subId = invSetId
-                            obx.observationValue = "/images/${File(path).name}"
+                            obx.observationValue = "images/${File(path).name}"
                             obx.resultStatus = "F"
                         }
                     }

@@ -440,15 +440,23 @@ class HL7MessageBuilderTest {
 
         val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
 
-        assertTrue("IMG_REF present with tilde-joined paths", raw.contains("IMG_REF"))
-        assertTrue(raw.contains("images/a1.jpg~images/a2.jpg"))
+        assertTrue("IMG001 present for first image", raw.contains("IMG001"))
+        assertTrue("IMG002 present for second image", raw.contains("IMG002"))
+        assertTrue(raw.contains("images/a1.jpg"))
+        assertTrue(raw.contains("images/a2.jpg"))
 
         val lines = raw.split("\r")
+        val invLineA = lines.first { it.startsWith("INV|") && it.contains("NDC-A") }
+        val invSetIdA = invLineA.split("|")[1]
+        val obxForA = lines.filter { it.startsWith("OBX|") && it.split("|").getOrNull(4) == invSetIdA }
+        // Group A has two images: two OBX rows, one per image.
+        assertEquals(2, obxForA.count { it.contains("IMG00") })
+
         val invLineB = lines.first { it.startsWith("INV|") && it.contains("NDC-B") }
         val invSetIdB = invLineB.split("|")[1]
-        // Group B has no images: no IMG_REF row linked to its INV Set-ID.
+        // Group B has no images: no IMG OBX row linked to its INV Set-ID.
         val obxForB = lines.filter { it.startsWith("OBX|") && it.split("|").getOrNull(4) == invSetIdB }
-        assertTrue(obxForB.none { it.contains("IMG_REF") })
+        assertTrue(obxForB.none { it.contains("IMG00") })
     }
 
     @Test

@@ -174,19 +174,13 @@ class OBXBuilder : HL7SegmentBuilder("OBX") {
     var observationValue: String? = null
     var observationValueText: String? = null
     var observationValueCodingSystem: String? = null
-    // Alternative to observationValue: several plain values as real field
-    // repetitions (`~`-separated on the wire, not escaped as data) — e.g.
-    // IMG_REF's list of image paths.
-    var observationValueRepetitions: List<String>? = null
     var units: String? = null
     var resultStatus: String? = null
     override fun apply() {
         set(1, setId); set(2, valueType)
         set(3, 1, observationId); set(3, 2, observationText); set(3, 3, observationIdCodingSystem)
         set(4, subId)
-        if (observationValueRepetitions != null) {
-            setRepeatingValues(5, observationValueRepetitions)
-        } else if (observationValueText != null || observationValueCodingSystem != null) {
+        if (observationValueText != null || observationValueCodingSystem != null) {
             set(5, 1, observationValue); set(5, 2, observationValueText); set(5, 3, observationValueCodingSystem)
         } else {
             set(5, observationValue)
