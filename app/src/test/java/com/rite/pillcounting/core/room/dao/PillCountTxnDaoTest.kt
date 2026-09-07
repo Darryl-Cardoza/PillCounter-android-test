@@ -795,6 +795,42 @@ class PillCountTxnDaoTest {
         }
     }
 
+    @Test
+    fun `getTransactionsForDateRange returns drug image path strength and dosage form`() = runTest {
+        val drugId = drugDao.insertIgnore(
+            DrugMasterEntity(
+                ndc = "N-IMG",
+                drugName = "Imaged",
+                strength = "35 mg/1",
+                dosageForm = "CAPSULE, EXTENDED RELEASE",
+                drugImagePath = "/data/drug/n-img.webp",
+            )
+        )
+        dao.insertIgnore(
+            baseTxn(
+                localId = 1L,
+                drugId = drugId,
+                isDispense = true,
+                status = CountStatus.COMPLETED,
+                createdAt = 150L,
+            )
+        )
+
+        dao.getTransactionsForDateRange(
+            startDate = 100L,
+            endDate = 200L,
+            stepType = null,
+            isDispense = null,
+            status = null,
+            userLocalId = 1L
+        ).test {
+            val row = awaitItem().first()
+            assertEquals("/data/drug/n-img.webp", row.drugImagePath)
+            assertEquals("35 mg/1", row.strength)
+            assertEquals("CAPSULE, EXTENDED RELEASE", row.dosageForm)
+        }
+    }
+
     // ───────────────────────── observePartialByIsDispense ─────────────────────────
 
     @Test
