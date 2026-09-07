@@ -426,7 +426,9 @@ object HL7MessageBuilder {
             txn.imagePaths?.let { e.imagePaths.addAll(it) }
         }
 
-        val rows = grouped.entries.toList()
+        // Skip rows with nothing on hand (sealed + opened == 0) — PMS doesn't need
+        // an INV row for a drug that's fully depleted in this batch.
+        val rows = grouped.entries.filter { it.value.opened + it.value.sealed > 0 }
         val chunkedRows = if (rows.isEmpty()) listOf(rows) else rows.chunked(maxRowsPerChunk)
         val totalChunks = chunkedRows.size
 
@@ -440,6 +442,9 @@ object HL7MessageBuilder {
 
             var obxSetId = 0
             fun nextObxSetId() = (++obxSetId).toString()
+
+            var imgSeq = 0
+            fun nextImgObservationId() = "IMG${(++imgSeq).toString().padStart(3, '0')}"
 
             val message = builder.inuU05 {
                 msh { msh ->
@@ -513,15 +518,25 @@ object HL7MessageBuilder {
                         obx.observationValue = value.opened.toString()
                         obx.resultStatus = "F"
                     }
-                    if (value.imagePaths.isNotEmpty()) {
+                    value.imagePaths.forEach { path ->
                         obx { obx ->
                             obx.setId = nextObxSetId()
                             obx.valueType = "RP"
-                            obx.observationId = "IMG_REF"
+                            obx.observationId = nextImgObservationId()
                             obx.subId = invSetId
-                            obx.observationValueRepetitions = value.imagePaths
+                            obx.observationValue = "/images/${File(path).name}"
                             obx.resultStatus = "F"
                         }
+                    }
+                }
+
+                // ZAD carries the batch note (if any) and is always the last segment
+                // in the message — no separate NTE for the note (matches iOS's INU^U05 shape).
+                batch.note?.trim()?.takeIf { it.isNotEmpty() }?.let { note ->
+                    zad { z ->
+                        z.setId = "1"
+                        z.approvedBy = batch.userName.orEmpty()
+                        z.comment = note
                     }
                 }
             }
