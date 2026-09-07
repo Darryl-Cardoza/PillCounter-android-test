@@ -45,7 +45,7 @@ jobs:
 
   # CI for PRs and branch pushes
   ci:
-    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/push.yml@main
+    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/push.yml@ci/complete-quality-pipeline
     needs: extract-version
     with:
       java_version: ${{ needs.extract-version.outputs.java_version }}
@@ -60,7 +60,7 @@ jobs:
 
   # CD for version tags
   cd:
-    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/release.yml@main
+    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/release.yml@ci/complete-quality-pipeline
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, 'release')
     needs: [ extract-version, ci ]
     with:
