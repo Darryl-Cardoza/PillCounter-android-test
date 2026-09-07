@@ -80,9 +80,7 @@ class PillAnalyzer(
         // Decode floor: below the tracker's keep score nothing can hold a track,
         // so anchors under this never need decoding.
         private const val PRE_NMS_SCORE_FLOOR = 0.35f
-        private const val PILL_NMS_IOU = 0.55f
-        private const val PILL_NMS_TOP_K = 1500
-        private const val PILL_KEEP_TOP_K = 500
+        private const val PILL_NMS_IOU = 0.60f
 
         // ── Anti-flicker smoothing ──────────────────────────────────────────
         // Bridge a single dropped tray detection so the overlay doesn't blink on
@@ -244,12 +242,7 @@ class PillAnalyzer(
                     padX = scaleInfo.padX,
                     padY = scaleInfo.padY
                 )
-                val pillsAfterNms = NMS.run(
-                    allPills,
-                    iouThreshold = PILL_NMS_IOU,
-                    nmsTopK = PILL_NMS_TOP_K,
-                    keepTopK = PILL_KEEP_TOP_K
-                )
+                val pillsAfterNms = NMS.run(allPills, iouThreshold = PILL_NMS_IOU)
                 val confirmedPills = pillTracker.update(pillsAfterNms)
                 logger.i("PillFilter — decoded=${allPills.size} afterNMS=${pillsAfterNms.size} confirmed=${confirmedPills.size} trayDets=$trayCount chuteDets=$chuteCount")
 

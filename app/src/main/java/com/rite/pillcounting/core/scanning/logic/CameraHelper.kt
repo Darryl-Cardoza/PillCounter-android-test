@@ -5,8 +5,11 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CaptureRequest
 import android.util.Size
+import androidx.camera.camera2.interop.Camera2CameraControl
 import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -65,6 +68,10 @@ class CameraHelper(
 
     private val isBound = AtomicBoolean(false)
     private val isStreaming = AtomicBoolean(true)
+
+    // Current AE/AWB lock state. Reset on bind and pause — unbinding drops the
+    // capture request options, so the lock does not survive either.
+    private var aeAwbLocked = false
 
     // Last display rotation pushed via setTargetRotation. Used to detect an
     // actual rotation change so we can rebind the use cases (see setTargetRotation).
@@ -195,6 +202,8 @@ class CameraHelper(
                 observeCameraState()
                 isBound.set(true)
                 isStreaming.set(true)
+                // Fresh bind starts unlocked — the previous options did not survive.
+                aeAwbLocked = false
 
                 logger.i("Camera successfully bound")
                 logExposureLockCapability()
@@ -232,6 +241,31 @@ class CameraHelper(
             logger.i("CameraCaps — aeLockAvailable=$aeLock awbLockAvailable=$awbLock")
         } catch (t: Throwable) {
             logger.w("CameraCaps — capability probe failed: ${t.message}")
+        }
+    }
+
+    /**
+     * Locks or unlocks auto-exposure and auto-white-balance on the bound camera.
+     *
+     * Held while a complete tray is in view so the detector sees a consistent
+     * image instead of one the camera keeps re-metering. Idempotent, so callers
+     * can drive it from the per-frame path. A device that does not support the
+     * keys simply ignores them — no crash and no behaviour change.
+     */
+    @OptIn(ExperimentalCamera2Interop::class)
+    fun setAeAwbLock(locked: Boolean) {
+        val cam = boundCamera ?: return
+        if (aeAwbLocked == locked) return
+        try {
+            val options = CaptureRequestOptions.Builder()
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, locked)
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AWB_LOCK, locked)
+                .build()
+            Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(options)
+            aeAwbLocked = locked
+            logger.i("CameraCaps — AE/AWB lock=$locked")
+        } catch (t: Throwable) {
+            logger.w("CameraCaps — AE/AWB lock failed: ${t.message}")
         }
     }
 
@@ -440,6 +474,7 @@ class CameraHelper(
         logger.i("Pausing camera")
         focusJob?.cancel()
         focusJob = null
+        aeAwbLocked = false
         try {
             val provider = cameraProviderFuture.get()
             provider.unbindAll()

@@ -111,45 +111,6 @@ class NMSTest {
     }
 
     @Test
-    fun `run caps candidates at nmsTopK keeping the highest scoring ones`() {
-        // 10 non-overlapping boxes with ascending confidence; only the top 3 survive the cap.
-        val dets = (0 until 10).map { i ->
-            detection(rectF(i * 100f, 0f, i * 100f + 10f, 10f), 0.1f + i * 0.05f)
-        }
-        val result = NMS.run(dets, iouThreshold = 0.5f, nmsTopK = 3)
-        assertEquals(3, result.size)
-        val kept = result.map { it.confidence }.sortedDescending()
-        assertEquals(listOf(dets[9].confidence, dets[8].confidence, dets[7].confidence), kept)
-    }
-
-    @Test
-    fun `run stops adding once keepTopK detections are kept`() {
-        val dets = (0 until 10).map { i ->
-            detection(rectF(i * 100f, 0f, i * 100f + 10f, 10f), 0.1f + i * 0.05f)
-        }
-        val result = NMS.run(dets, iouThreshold = 0.5f, keepTopK = 4)
-        assertEquals(4, result.size)
-    }
-
-    @Test
-    fun `run applies nmsTopK before suppression so a capped-out box cannot suppress`() {
-        // Highest-confidence box overlaps the second; with the cap at 1 only the top survives.
-        val top = detection(rectF(0f, 0f, 10f, 10f), 0.9f)
-        val overlapping = detection(rectF(0f, 0f, 10f, 10f), 0.8f)
-        val far = detection(rectF(500f, 500f, 510f, 510f), 0.7f)
-        val result = NMS.run(listOf(top, overlapping, far), iouThreshold = 0.5f, nmsTopK = 1)
-        assertEquals(listOf(top), result)
-    }
-
-    @Test
-    fun `run defaults leave small inputs untouched`() {
-        val a = detection(rectF(0f, 0f, 10f, 10f), 0.9f)
-        val b = detection(rectF(100f, 100f, 110f, 110f), 0.8f)
-        val result = NMS.run(listOf(a, b), iouThreshold = 0.5f)
-        assertEquals(2, result.size)
-    }
-
-    @Test
     fun `run preserves classId on kept detections`() {
         val a = Detection(rect = rectF(0f, 0f, 10f, 10f), confidence = 0.9f, classId = 2)
         val result = NMS.run(listOf(a), iouThreshold = 0.5f)

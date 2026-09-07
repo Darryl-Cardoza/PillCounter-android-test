@@ -65,30 +65,51 @@ class PillTracker {
             if (bestIdx >= 0) {
                 matched[bestIdx] = true
                 val track = tracks[bestIdx]
-                track.rect = det.rect
-                track.confidence = det.confidence
-                track.classId = det.classId
-                track.missedFrames = 0
-                if (det.confidence >= ENTER_SCORE) {
-                    track.hitStreak++
-                    if (track.hitStreak >= ENTER_FRAMES) track.confirmed = true
-                } else if (!track.confirmed) {
-                    track.hitStreak = 0
+                when {
+                    // Confirmed: any match at or above keep score refreshes it.
+                    track.confirmed -> {
+                        track.rect = det.rect
+                        track.confidence = det.confidence
+                        track.classId = det.classId
+                        track.missedFrames = 0
+                    }
+                    // Candidate: only a match at or above enter score extends the streak.
+                    det.confidence >= ENTER_SCORE -> {
+                        track.hitStreak++
+                        track.rect = det.rect
+                        track.confidence = det.confidence
+                        track.classId = det.classId
+                        track.missedFrames = 0
+                        if (track.hitStreak >= ENTER_FRAMES) track.confirmed = true
+                    }
+                    // Candidate matched below enter score: the streak breaks and the
+                    // track ages toward exit rather than living on indefinitely.
+                    else -> {
+                        track.hitStreak = 0
+                        track.missedFrames++
+                    }
                 }
-            } else {
+            } else if (det.confidence >= ENTER_SCORE) {
+                // A track only ever starts at enter score — a borderline detection
+                // that matches nothing is not evidence of a new pill.
                 spawned.add(
                     Track(
                         rect = det.rect,
                         confidence = det.confidence,
                         classId = det.classId,
-                        hitStreak = if (det.confidence >= ENTER_SCORE) 1 else 0
+                        hitStreak = 1,
+                        confirmed = ENTER_FRAMES <= 1
                     )
                 )
             }
         }
 
         for (i in 0 until existingCount) {
-            if (!matched[i]) tracks[i].missedFrames++
+            if (!matched[i]) {
+                tracks[i].missedFrames++
+                // "2 consecutive frames" means consecutive — a miss breaks the streak.
+                if (!tracks[i].confirmed) tracks[i].hitStreak = 0
+            }
         }
         tracks.removeAll { it.missedFrames >= EXIT_UNMATCHED_FRAMES }
         tracks.addAll(spawned)

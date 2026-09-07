@@ -111,6 +111,40 @@ class PillTrackerTest {
     }
 
     @Test
+    fun `update requires the two enter frames to be consecutive`() {
+        val tracker = PillTracker()
+        tracker.update(listOf(pill(0.90f)))
+        // A missed frame breaks the streak, so the next hit is streak 1 again.
+        assertTrue(tracker.update(emptyList()).isEmpty())
+        assertTrue(tracker.update(listOf(pill(0.90f))).isEmpty())
+        assertEquals(1, tracker.update(listOf(pill(0.90f))).size)
+    }
+
+    @Test
+    fun `update does not start a track for a detection below enter score`() {
+        val tracker = PillTracker()
+        // Two borderline frames must leave no track behind at all.
+        tracker.update(listOf(pill(0.40f)))
+        tracker.update(listOf(pill(0.40f)))
+        // So the first solid frame is streak 1, not streak 2.
+        assertTrue(tracker.update(listOf(pill(0.90f))).isEmpty())
+        assertEquals(1, tracker.update(listOf(pill(0.90f))).size)
+    }
+
+    @Test
+    fun `update ages out a candidate that keeps matching below enter score`() {
+        val tracker = PillTracker()
+        tracker.update(listOf(pill(0.90f)))
+        // Three borderline matches take the candidate to the exit threshold.
+        tracker.update(listOf(pill(0.40f)))
+        tracker.update(listOf(pill(0.40f)))
+        tracker.update(listOf(pill(0.40f)))
+        // The candidate is gone, so a single solid frame starts over at streak 1.
+        assertTrue(tracker.update(listOf(pill(0.90f))).isEmpty())
+        assertEquals(1, tracker.update(listOf(pill(0.90f))).size)
+    }
+
+    @Test
     fun `reset drops every track so confirmation starts over`() {
         val tracker = PillTracker()
         tracker.update(listOf(pill(0.90f)))
