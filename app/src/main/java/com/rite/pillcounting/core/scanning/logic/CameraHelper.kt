@@ -4,7 +4,10 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
+import android.hardware.camera2.CameraCharacteristics
 import android.util.Size
+import androidx.camera.camera2.interop.Camera2CameraInfo
+import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
@@ -194,6 +197,7 @@ class CameraHelper(
                 isStreaming.set(true)
 
                 logger.i("Camera successfully bound")
+                logExposureLockCapability()
 
                 // initial zoom
                 val zoomInit =
@@ -209,6 +213,26 @@ class CameraHelper(
             }
 
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    /**
+     * Logs whether this camera reports AE/AWB lock support. Read-only probe —
+     * the desktop reference locks exposure and white balance during a count, and
+     * this is the device data needed to decide whether Android can do the same.
+     */
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun logExposureLockCapability() {
+        val info = boundCamera?.cameraInfo ?: return
+        try {
+            val characteristics = Camera2CameraInfo.from(info)
+            val aeLock = characteristics
+                .getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE)
+            val awbLock = characteristics
+                .getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_LOCK_AVAILABLE)
+            logger.i("CameraCaps — aeLockAvailable=$aeLock awbLockAvailable=$awbLock")
+        } catch (t: Throwable) {
+            logger.w("CameraCaps — capability probe failed: ${t.message}")
+        }
     }
 
     /**

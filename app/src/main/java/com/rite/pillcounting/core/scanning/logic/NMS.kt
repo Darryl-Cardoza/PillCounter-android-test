@@ -8,14 +8,19 @@ object NMS {
 
     fun run(
         detections: List<Detection>,
-        iouThreshold: Float
+        iouThreshold: Float,
+        nmsTopK: Int = 1500,
+        keepTopK: Int = 500
     ): List<Detection> {
 
-        // Sort by confidence DESC (same as iOS)
-        val sorted = detections.sortedByDescending { it.confidence }
+        // Sort by confidence DESC (same as iOS), then cap candidates. The greedy
+        // loop below is O(n^2) and a noisy frame can push thousands of anchors in.
+        val sorted = detections.sortedByDescending { it.confidence }.take(nmsTopK)
         val keep = mutableListOf<Detection>()
 
         for (det in sorted) {
+            if (keep.size >= keepTopK) break
+
             var shouldKeep = true
 
             for (kept in keep) {

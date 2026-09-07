@@ -38,6 +38,7 @@ class PostprocessorTest {
     private val fpnStrides = intArrayOf(8, 16, 32)
     private val dflBins = 17
     private val regChannels = 4 * dflBins // 68
+    private val numClasses = 3
 
     // ---------------------------------------------------------------------
     // allocateOutputs
@@ -54,10 +55,10 @@ class PostprocessorTest {
         val interpreter = mockk<Interpreter>()
         // Order shuffled to mimic TFLite's auto-generated PartitionedCall:N reordering.
         val tensors = listOf(
-            mockTensor(intArrayOf(1, 40, 40, 1)),           // cls stride16
+            mockTensor(intArrayOf(1, 40, 40, numClasses)),  // cls stride16
             mockTensor(intArrayOf(1, 80, 80, regChannels)), // reg stride8
-            mockTensor(intArrayOf(1, 20, 20, 1)),           // cls stride32
-            mockTensor(intArrayOf(1, 80, 80, 1)),           // cls stride8
+            mockTensor(intArrayOf(1, 20, 20, numClasses)),  // cls stride32
+            mockTensor(intArrayOf(1, 80, 80, numClasses)),  // cls stride8
             mockTensor(intArrayOf(1, 40, 40, regChannels)), // reg stride16
             mockTensor(intArrayOf(1, 20, 20, regChannels))  // reg stride32
         )
@@ -78,9 +79,9 @@ class PostprocessorTest {
 
         for (level in fpnGrids.indices) {
             val grid = fpnGrids[level]
-            assertEquals(grid * grid, outputs.clsFlat[level].size)
+            assertEquals(grid * grid * numClasses, outputs.clsFlat[level].size)
             assertEquals(grid * grid * regChannels, outputs.regFlat[level].size)
-            assertEquals(grid * grid * 4, outputs.clsBuffers[level].capacity())
+            assertEquals(grid * grid * numClasses * 4, outputs.clsBuffers[level].capacity())
             assertEquals(grid * grid * regChannels * 4, outputs.regBuffers[level].capacity())
         }
     }
@@ -90,11 +91,11 @@ class PostprocessorTest {
         val interpreter = mockk<Interpreter>()
         // Only 5 of the 6 expected tensors present -> stride32 reg tensor missing.
         val tensors = listOf(
-            mockTensor(intArrayOf(1, 80, 80, 1)),
+            mockTensor(intArrayOf(1, 80, 80, numClasses)),
             mockTensor(intArrayOf(1, 80, 80, regChannels)),
-            mockTensor(intArrayOf(1, 40, 40, 1)),
+            mockTensor(intArrayOf(1, 40, 40, numClasses)),
             mockTensor(intArrayOf(1, 40, 40, regChannels)),
-            mockTensor(intArrayOf(1, 20, 20, 1))
+            mockTensor(intArrayOf(1, 20, 20, numClasses))
             // stride32 reg tensor deliberately omitted
         )
         every { interpreter.outputTensorCount } returns tensors.size
@@ -107,17 +108,17 @@ class PostprocessorTest {
     fun `allocateOutputs ignores tensors with unexpected shape or channel count`() {
         val interpreter = mockk<Interpreter>()
         val tensors = listOf(
-            mockTensor(intArrayOf(1, 80, 80, 1)),
+            mockTensor(intArrayOf(1, 80, 80, numClasses)),
             mockTensor(intArrayOf(1, 80, 80, regChannels)),
-            mockTensor(intArrayOf(1, 40, 40, 1)),
+            mockTensor(intArrayOf(1, 40, 40, numClasses)),
             mockTensor(intArrayOf(1, 40, 40, regChannels)),
-            mockTensor(intArrayOf(1, 20, 20, 1)),
+            mockTensor(intArrayOf(1, 20, 20, numClasses)),
             mockTensor(intArrayOf(1, 20, 20, regChannels)),
             // Junk tensors that must be skipped, not crash allocation:
-            mockTensor(intArrayOf(1, 80, 40, 1)),      // non-square -> shape[1] != shape[2]
-            mockTensor(intArrayOf(80, 80, 1)),         // wrong rank
-            mockTensor(intArrayOf(1, 99, 99, 1)),      // grid not in FPN_GRIDS
-            mockTensor(intArrayOf(1, 80, 80, 5))       // channel count not 1 or 68
+            mockTensor(intArrayOf(1, 80, 40, numClasses)), // non-square -> shape[1] != shape[2]
+            mockTensor(intArrayOf(80, 80, numClasses)),    // wrong rank
+            mockTensor(intArrayOf(1, 99, 99, numClasses)), // grid not in FPN_GRIDS
+            mockTensor(intArrayOf(1, 80, 80, 5))           // channel count not 3 or 68
         )
         every { interpreter.outputTensorCount } returns tensors.size
         every { interpreter.getOutputTensor(any()) } answers { tensors[firstArg<Int>()] }
@@ -136,13 +137,13 @@ class PostprocessorTest {
     private fun emptyOutputs(): Postprocessor.PillOutputs {
         val clsBuffers = Array(3) { level ->
             val grid = fpnGrids[level]
-            ByteBuffer.allocateDirect(grid * grid * 4).order(ByteOrder.nativeOrder())
+            ByteBuffer.allocateDirect(grid * grid * numClasses * 4).order(ByteOrder.nativeOrder())
         }
         val regBuffers = Array(3) { level ->
             val grid = fpnGrids[level]
             ByteBuffer.allocateDirect(grid * grid * regChannels * 4).order(ByteOrder.nativeOrder())
         }
-        val clsFlat = Array(3) { level -> FloatArray(fpnGrids[level] * fpnGrids[level]) }
+        val clsFlat = Array(3) { level -> FloatArray(fpnGrids[level] * fpnGrids[level] * numClasses) }
         val regFlat = Array(3) { level -> FloatArray(fpnGrids[level] * fpnGrids[level] * regChannels) }
         return Postprocessor.PillOutputs(
             clsBuffers = clsBuffers,
@@ -154,11 +155,18 @@ class PostprocessorTest {
         )
     }
 
-    /** Sets the score at (row, col) in the given level's cls buffer. */
-    private fun setScore(outputs: Postprocessor.PillOutputs, level: Int, row: Int, col: Int, score: Float) {
+    /** Sets the score for one class channel at (row, col) in the given level's cls buffer. */
+    private fun setScore(
+        outputs: Postprocessor.PillOutputs,
+        level: Int,
+        row: Int,
+        col: Int,
+        score: Float,
+        classId: Int = 0
+    ) {
         val grid = fpnGrids[level]
         val fb = outputs.clsBuffers[level].asFloatBuffer()
-        fb.put(row * grid + col, score)
+        fb.put((row * grid + col) * numClasses + classId, score)
     }
 
     /**
@@ -330,6 +338,48 @@ class PostprocessorTest {
         assertEquals(cy - expectedDist, result[0].rect.top, 0.05f)
         assertEquals(cx + expectedDist, result[0].rect.right, 0.05f)
         assertEquals(cy + expectedDist, result[0].rect.bottom, 0.05f)
+    }
+
+    @Test
+    fun `decode reports classId of the highest scoring class channel`() {
+        val outputs = emptyOutputs()
+        setScore(outputs, 0, 4, 4, 0.30f, classId = 0)
+        setScore(outputs, 0, 4, 4, 0.80f, classId = 1)
+        setScore(outputs, 0, 4, 4, 0.55f, classId = 2)
+        setDistBins(outputs, 0, 4, 4, 1, 1, 1, 1)
+
+        val result = Postprocessor.decode(outputs, confThreshold = 0.25f, scale = 1f, padX = 0f, padY = 0f)
+
+        assertEquals(1, result.size)
+        assertEquals(1, result[0].classId)
+        assertEquals(0.80f, result[0].confidence, 1e-6f)
+    }
+
+    @Test
+    fun `decode defaults to classId 0 when the first channel wins`() {
+        val outputs = emptyOutputs()
+        setScore(outputs, 0, 7, 7, 0.90f, classId = 0)
+        setScore(outputs, 0, 7, 7, 0.10f, classId = 2)
+        setDistBins(outputs, 0, 7, 7, 1, 1, 1, 1)
+
+        val result = Postprocessor.decode(outputs, confThreshold = 0.25f, scale = 1f, padX = 0f, padY = 0f)
+
+        assertEquals(1, result.size)
+        assertEquals(0, result[0].classId)
+    }
+
+    @Test
+    fun `decode thresholds on the winning class score not the first channel`() {
+        val outputs = emptyOutputs()
+        // Channel 0 is below threshold; channel 2 is above and must carry the anchor.
+        setScore(outputs, 0, 9, 9, 0.10f, classId = 0)
+        setScore(outputs, 0, 9, 9, 0.60f, classId = 2)
+        setDistBins(outputs, 0, 9, 9, 1, 1, 1, 1)
+
+        val result = Postprocessor.decode(outputs, confThreshold = 0.25f, scale = 1f, padX = 0f, padY = 0f)
+
+        assertEquals(1, result.size)
+        assertEquals(2, result[0].classId)
     }
 
     @Test

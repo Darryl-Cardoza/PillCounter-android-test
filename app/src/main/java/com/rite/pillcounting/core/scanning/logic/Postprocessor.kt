@@ -27,6 +27,8 @@ object Postprocessor {
     // Class channels on the cls head. New detector outputs 3; the previous
     // single-class model output 1.
     private const val NUM_CLASSES = 3
+    // Head order from the reference config: 0 pill, 1 broken_pill, 2 half_pill.
+    val PILL_CLASS_NAMES = arrayOf("pill", "broken_pill", "half_pill")
     private const val SIDES = 4
     private const val REG_CHANNELS = SIDES * DFL_BINS   // 68
     private val FPN_STRIDES = intArrayOf(8, 16, 32)
@@ -144,12 +146,16 @@ object Postprocessor {
                 for (col in 0 until grid) {
                     val cellIdx = rowBase + col
                     // NHWC, NUM_CLASSES channels → cell starts at cellIdx*NUM_CLASSES.
-                    // Take the best class score; class identity is not used yet.
+                    // Take the best class score and keep which class won.
                     val clsBase = cellIdx * NUM_CLASSES
                     var score = clsFlat[clsBase]
+                    var classId = 0
                     for (c in 1 until NUM_CLASSES) {
                         val s = clsFlat[clsBase + c]
-                        if (s > score) score = s
+                        if (s > score) {
+                            score = s
+                            classId = c
+                        }
                     }
                     if (score < confThreshold) continue
 
@@ -172,7 +178,7 @@ object Postprocessor {
                     val x2 = ((cx + dRight) - padX) / scale
                     val y2 = ((cy + dBottom) - padY) / scale
 
-                    results.add(Detection(rect = RectF(x1, y1, x2, y2), confidence = score))
+                    results.add(Detection(rect = RectF(x1, y1, x2, y2), confidence = score, classId = classId))
                 }
             }
         }

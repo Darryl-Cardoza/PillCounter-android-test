@@ -53,18 +53,17 @@ class PillAnalyzer(
     private var hasDetectedAnyGlove = false
     private var cachedGloveDetections: List<GloveDetection> = emptyList()
 
-    // Last frame's accepted pill rects. Hysteresis: a borderline-confidence
-    // pill that overlaps one of these is allowed to stay; new (non-overlapping)
-    // pills must clear PILL_CONF_ENTER. Kills the 19↔20 count flicker.
-    private var previousFramePillRects: List<android.graphics.RectF> = emptyList()
+    // Cross-frame pill state. The tracker decides which detections are real
+    // (enter/keep/exit); the stabilizer decides what number is displayed.
+    private val pillTracker = PillTracker()
+    private val countStabilizer = CountStabilizer()
 
     // ── Anti-flicker temporal smoothing state ──────────────────────────────
     // Tray seg occasionally misses a frame even when the tray is steady; holding
     // the last good detections for a few frames stops the overlay + pill gate
-    // from blinking. recentCounts feeds a median filter that steadies the count.
+    // from blinking.
     private var heldTrayDetections: List<TrayDetection> = emptyList()
     private var trayMissFrames = 0
-    private val recentCounts = ArrayDeque<Int>()
 
     // Reusable inference output buffers. Allocated once via interpreter shape
     // introspection so allocations don't show up as GC pressure on weak devices.
@@ -78,29 +77,21 @@ class PillAnalyzer(
         // GLOVE_STEADY_INTERVAL_MS so we keep the GPU free for pill + tray.
         private const val GLOVE_STEADY_INTERVAL_MS = 400L
 
-        // Pill confidence hysteresis to kill 19↔20 frame-to-frame flicker.
-        //   ENTER: a newly visible pill must clear this in one frame.
-        //   STAY : a pill from the previous frame persists at lower confidence
-        //          if it spatially overlaps a prior pill (IoU ≥ HYSTERESIS_IOU).
-        // The decoder runs at STAY so borderline pills remain candidates; ENTER
-        // decides which actually count.
-        private const val PILL_CONF_ENTER = 0.50f
-        private const val PILL_CONF_STAY = 0.35f
-        private const val HYSTERESIS_IOU = 0.40f
-        private const val PILL_NMS_IOU = 0.45f
+        // Decode floor: below the tracker's keep score nothing can hold a track,
+        // so anchors under this never need decoding.
+        private const val PRE_NMS_SCORE_FLOOR = 0.35f
+        private const val PILL_NMS_IOU = 0.55f
+        private const val PILL_NMS_TOP_K = 1500
+        private const val PILL_KEEP_TOP_K = 500
 
         // ── Anti-flicker smoothing ──────────────────────────────────────────
         // Bridge a single dropped tray detection so the overlay doesn't blink on
         // a stable scene. Kept at 1 frame so the stale tray box (and the pill
         // centroids gated by it) clear almost immediately when the camera moves
         // away — a longer hold left a visible ~0.5 s ghost of the old box. The
-        // count is separately protected from a one-frame drop by the median over
-        // PILL_COUNT_SMOOTH_WINDOW, so a short hold is enough.
+        // count is separately protected from a one-frame drop by CountStabilizer,
+        // so a short hold is enough.
         private const val TRAY_HOLD_FRAMES = 1
-        // Report the median pill count over this many recent frames so the shown
-        // number doesn't jitter ±1–2 on a static scene. Median (not mean) ignores
-        // the occasional outlier spike.
-        private const val PILL_COUNT_SMOOTH_WINDOW = 5
 
         // Reject a "tray" whose bbox covers at least this fraction of the frame —
         // a background surface (green table) fills the frame; a real tray is a
@@ -248,14 +239,19 @@ class PillAnalyzer(
             } else {
                 val allPills = Postprocessor.decode(
                     outputs = pillOutputs,
-                    confThreshold = PILL_CONF_STAY,
+                    confThreshold = PRE_NMS_SCORE_FLOOR,
                     scale = scaleInfo.scale,
                     padX = scaleInfo.padX,
                     padY = scaleInfo.padY
                 )
-                val pillsAfterNms = NMS.run(allPills, iouThreshold = PILL_NMS_IOU)
-                val pillsAfterHysteresis = applyHysteresis(pillsAfterNms)
-                logger.i("PillFilter — decoded=${allPills.size} afterNMS=${pillsAfterNms.size} afterHyst=${pillsAfterHysteresis.size} trayDets=$trayCount chuteDets=$chuteCount")
+                val pillsAfterNms = NMS.run(
+                    allPills,
+                    iouThreshold = PILL_NMS_IOU,
+                    nmsTopK = PILL_NMS_TOP_K,
+                    keepTopK = PILL_KEEP_TOP_K
+                )
+                val confirmedPills = pillTracker.update(pillsAfterNms)
+                logger.i("PillFilter — decoded=${allPills.size} afterNMS=${pillsAfterNms.size} confirmed=${confirmedPills.size} trayDets=$trayCount chuteDets=$chuteCount")
 
                 // Pill counting GATE — only count once BOTH a tray AND a chute
                 // are detected in the same frame (co-occurrence). Both models
@@ -266,7 +262,7 @@ class PillAnalyzer(
                 val inScene = if (!gateOpen) {
                     emptyList()
                 } else {
-                    pillsAfterHysteresis.filter { pill ->
+                    confirmedPills.filter { pill ->
                         val cx = pill.rect.centerX().toInt()
                         val cy = pill.rect.centerY().toInt()
                         val inTray = trayDetections.any { t ->
@@ -280,21 +276,20 @@ class PillAnalyzer(
                     }
                 }
                 pillsInTray = inScene
-                previousFramePillRects = pillsInTray.map { it.rect }
             }
 
-            // ── Pill count median smoothing (anti-flicker) ───────────────────
-            // The raw per-frame count jitters ±1–2 even on a static scene; report
-            // the median over the last PILL_COUNT_SMOOTH_WINDOW frames. Markers
-            // still come from the live frame, so they stay responsive.
-            recentCounts.addLast(pillsInTray.size)
-            while (recentCounts.size > PILL_COUNT_SMOOTH_WINDOW) recentCounts.removeFirst()
-            val countedPills = recentCounts.sorted()[recentCounts.size / 2]
+            // Displayed count is smoothed twice: median over the recent window,
+            // then a latch requiring consecutive agreement. Markers stay live.
+            val countedPills = countStabilizer.update(pillsInTray.size)
 
             val totalMs = System.currentTimeMillis() - overallStart
+            // Class breakdown is metadata only — all three classes count as one pill.
+            val classBreakdown = pillsInTray
+                .groupingBy { det -> Postprocessor.PILL_CLASS_NAMES.getOrElse(det.classId) { "cls${det.classId}" } }
+                .eachCount()
             logger.i(
                 "Frame ${originalWidth}x${originalHeight} | trays=${trayDetections.size} " +
-                        "counted=$countedPills gloves=${gloveDetections.size} " +
+                        "counted=$countedPills classes=$classBreakdown gloves=${gloveDetections.size} " +
                         "pill=${pillInferenceMs}ms parallel=${parallelMs}ms total=${totalMs}ms"
             )
 
@@ -346,14 +341,14 @@ class PillAnalyzer(
         hasDetectedAnyGlove = false
         lastGloveRunMs = 0L
         cachedGloveDetections = emptyList()
-        // Drop pill hysteresis history so the next frame requires full conf
-        // to accept pills (no stale rects matching new scene).
-        previousFramePillRects = emptyList()
+        // Drop all tracks so the new scene re-confirms pills from scratch
+        // (no stale rects matching the new scene).
+        pillTracker.reset()
         // Clear anti-flicker smoothing so the new scene starts fresh (no stale
-        // tray held, no carried-over count median).
+        // tray held, no carried-over count).
         heldTrayDetections = emptyList()
         trayMissFrames = 0
-        recentCounts.clear()
+        countStabilizer.reset()
     }
 
     /**
@@ -378,50 +373,6 @@ class PillAnalyzer(
             logger.e("Pill inference failed", e)
             false
         }
-    }
-
-    /**
-     * Hysteresis filter on the post-NMS pill candidates.
-     *
-     * The decoder ran at the LOW (stay) confidence threshold to keep borderline
-     * pills as candidates. Here we drop any candidate that doesn't qualify:
-     *   - Conf >= PILL_CONF_ENTER → always kept (new pills clear the high bar)
-     *   - Conf in [PILL_CONF_STAY, PILL_CONF_ENTER) → kept only if it overlaps
-     *     a pill from the previous frame (IoU >= HYSTERESIS_IOU), meaning it's
-     *     the same pill we already counted last frame.
-     *
-     * This is what removes the 19↔20 flicker on pills whose confidence is
-     * jittering across the threshold from one camera frame to the next.
-     */
-    private fun applyHysteresis(candidates: List<Detection>): List<Detection> {
-        if (candidates.isEmpty()) return candidates
-        val prev = previousFramePillRects
-        var keptByOverlap = 0
-        val kept = candidates.filter { c ->
-            if (c.confidence >= PILL_CONF_ENTER) {
-                true
-            } else {
-                // Borderline conf — must overlap a previous-frame pill.
-                val matched = prev.any { p -> iouRect(c.rect, p) >= HYSTERESIS_IOU }
-                if (matched) keptByOverlap++
-                matched
-            }
-        }
-        if (keptByOverlap > 0) {
-            logger.i("Hysteresis kept $keptByOverlap borderline pill(s) by IoU match with previous frame")
-        }
-        return kept
-    }
-
-    private fun iouRect(a: android.graphics.RectF, b: android.graphics.RectF): Float {
-        val iw = (kotlin.math.min(a.right, b.right) - kotlin.math.max(a.left, b.left))
-            .coerceAtLeast(0f)
-        val ih = (kotlin.math.min(a.bottom, b.bottom) - kotlin.math.max(a.top, b.top))
-            .coerceAtLeast(0f)
-        val inter = iw * ih
-        if (inter <= 0f) return 0f
-        val union = a.width() * a.height() + b.width() * b.height() - inter
-        return if (union > 0f) inter / union else 0f
     }
 
     private fun ByteBuffer.duplicateRewound(): ByteBuffer = duplicate().apply {
