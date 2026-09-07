@@ -48,17 +48,45 @@ jobs:
     uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/push.yml@main
     needs: extract-version
     with:
+      # ---- core ----
       java_version: ${{ needs.extract-version.outputs.java_version }}
       build_variant: "Debug"
       coverage_threshold: "40.00"
       runner: ubuntu-latest  #options are ubuntu-latest and macos-latest
+
       run_tests: true
       run_coverage: true
       run_static_analysis: false
+
+      # ---- coverage ----
+      coverage_branch_threshold: "0"   # 0 disables the branch gate
+
+      # ---- formatting ----
       run_formatting: true
-      fail_on_formatting: false        # warn only while adopting Spotless
       formatting_ratchet_from: "origin/main"
+
+      # ---- android lint ----
+      run_android_lint: true
+      lint_check_all_warnings: false
+
+      # ---- dead code ----
       run_dead_code: true
+      run_deep_dead_code: false
+
+      # ---- security ----
+      run_security: true
+      run_dependency_audit: true
+
+      # ---- static typing strictness ----
+      kotlin_warnings_as_errors: false
+      kotlin_jsr305_strict: true
+
+      # ---- gates ----
+      fail_on_lint: true
+      fail_on_formatting: false        # warn only while adopting Spotless
+      fail_on_android_lint: true
+      fail_on_security: true
+      fail_on_vulnerabilities: false
       fail_on_dead_code: false
     secrets:
       PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
@@ -82,6 +110,11 @@ jobs:
       playstore_status: draft
 
       deploy_to_esper: false
+      esper_org_id: ""
+      esper_app_id: ""
+
+      enable_whats_new: false
+      whats_new_file: ""
 
     secrets:
       ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
@@ -89,3 +122,5 @@ jobs:
       KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
+      ESPER_API_KEY: ${{ secrets.ESPER_API_KEY }}
+      PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
