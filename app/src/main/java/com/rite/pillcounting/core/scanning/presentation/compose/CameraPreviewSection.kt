@@ -47,6 +47,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
@@ -106,6 +107,7 @@ fun CameraPreviewSection(
     // does not need to pass them as a parameter — the wiring is self-contained.
     val trayDetections by viewModel.trayDetections.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
+    val stepType by viewModel.currentStep.collectAsState()
 
     // ── Start camera + begin collecting frames ────────────────────────────────
     LaunchedEffect(cameraHelper) {
@@ -356,7 +358,13 @@ fun CameraPreviewSection(
                             uiState.txnDetailHistory.sumOf { it.count }
                         }
                     val targetCount = (uiState.targetCount - alreadyCounted).coerceAtLeast(0)
-                    val excessCount = (pills.size - targetCount).coerceAtLeast(0)
+                    // The parent-container step pours out the whole stock bottle, so
+                    // no pill is excess there — every dot stays green.
+                    val excessCount = if (stepType == StepState.CONTAINER_INITIATE) {
+                        0
+                    } else {
+                        (pills.size - targetCount).coerceAtLeast(0)
+                    }
                     val excessIndices: Set<Int> = if (excessCount <= 0) {
                         emptySet()
                     } else {
