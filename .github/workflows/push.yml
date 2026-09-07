@@ -51,12 +51,17 @@ jobs:
       java_version: ${{ needs.extract-version.outputs.java_version }}
       build_variant: "Debug"
       coverage_threshold: "40.00"
-
       runner: ubuntu-latest  #options are ubuntu-latest and macos-latest
-
       run_tests: true
       run_coverage: true
       run_static_analysis: false
+      run_formatting: true
+      fail_on_formatting: false        # warn only while adopting Spotless
+      formatting_ratchet_from: "origin/main"
+      run_dead_code: true
+      fail_on_dead_code: false
+    secrets:
+      PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
 
   # CD for version tags
   cd:
