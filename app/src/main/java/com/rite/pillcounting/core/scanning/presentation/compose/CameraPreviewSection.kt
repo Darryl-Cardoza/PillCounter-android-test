@@ -47,12 +47,12 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
 import com.rite.pillcounting.core.scanning.logic.TrayClass
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.utils.common.OverlayUtils
 import kotlinx.coroutines.flow.conflate
 
 // =========================================================
@@ -108,6 +108,8 @@ fun CameraPreviewSection(
     val trayDetections by viewModel.trayDetections.collectAsState()
     val uiState by viewModel.uiState.collectAsState()
     val stepType by viewModel.currentStep.collectAsState()
+    // isDispense drives the pill-dot green/red split — stock counts have no target.
+    val txnInfo by viewModel.txnInfo.collectAsState()
 
     // ── Start camera + begin collecting frames ────────────────────────────────
     LaunchedEffect(cameraHelper) {
@@ -357,14 +359,13 @@ fun CameraPreviewSection(
                         } else {
                             uiState.txnDetailHistory.sumOf { it.count }
                         }
-                    val targetCount = (uiState.targetCount - alreadyCounted).coerceAtLeast(0)
-                    // The parent-container step pours out the whole stock bottle, so
-                    // no pill is excess there — every dot stays green.
-                    val excessCount = if (stepType == StepState.CONTAINER_INITIATE) {
-                        0
-                    } else {
-                        (pills.size - targetCount).coerceAtLeast(0)
-                    }
+                    val excessCount = OverlayUtils.excessPillCount(
+                        pillCount = pills.size,
+                        targetCount = uiState.targetCount,
+                        alreadyCounted = alreadyCounted,
+                        isDispense = txnInfo?.isDispense,
+                        stepType = stepType,
+                    )
                     val excessIndices: Set<Int> = if (excessCount <= 0) {
                         emptySet()
                     } else {
