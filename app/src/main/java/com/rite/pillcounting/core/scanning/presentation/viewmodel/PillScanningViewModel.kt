@@ -235,9 +235,6 @@ class PillScanningViewModel @Inject constructor(
     // True once the still on screen has been written, so a Done re-tap cannot write it twice.
     private var captureCommitted = false
 
-    private val _isTxnFromHl7 = MutableStateFlow(false)
-    val isTxnFromHl7: StateFlow<Boolean> = _isTxnFromHl7
-
     private val _txnInfo = MutableStateFlow<TxnWithDetails?>(null)
     val txnInfo: StateFlow<TxnWithDetails?> = _txnInfo
 
@@ -1541,7 +1538,7 @@ class PillScanningViewModel @Inject constructor(
             }
             val remainingCount =
                 _uiState.value.targetCount - _uiState.value.txnDetailHistory.sumOf { it.count }
-            if (!_isTxnFromHl7.value && preferenceHelper.getShowNotesDialogSetting()) {
+            if (preferenceHelper.getShowNotesDialogSetting()) {
                 _uiState.update { it.copy(showNotesDialog = true) }
             } else if (remainingCount > 0 && _currentStep.value == StepState.CONTAINER_PENDING) {
                 _uiState.update { it.copy(showNotesDialog = true) }
@@ -1717,8 +1714,6 @@ class PillScanningViewModel @Inject constructor(
                 ScheduleCode.CV,
                 ScheduleCode.CVI
             )
-
-            _isTxnFromHl7.value = isComingFromHL7
 
             _steps.value = when {
                 isComingFromHL7 && drugInfo?.drugType?.let {
@@ -1935,7 +1930,6 @@ class PillScanningViewModel @Inject constructor(
             txnDetails = emptyList(),
             isComingFromHL7 = false,
         )
-        _isTxnFromHl7.value = false
         _steps.value = buildWorkflowSteps(
             isFromHl7 = false,
             simpleFlow = true,
