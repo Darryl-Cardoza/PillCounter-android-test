@@ -487,6 +487,37 @@ class ProfileViewModelTest {
         assertEquals("Doe", vm.lastName)
     }
 
+    @Test
+    fun `onPharmacyNameChanged filters digits and special characters`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onPharmacyNameChanged("CVS Pharmacy #10423")
+
+        assertEquals("CVS Pharmacy ", vm.pharmacyName)
+    }
+
+    @Test
+    fun `onPharmacyNameChanged collapses spaces left by stripped characters`() =
+        runTest(testDispatcher) {
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            vm.onPharmacyNameChanged("Smith & Sons Drugs")
+
+            assertEquals("Smith Sons Drugs", vm.pharmacyName)
+        }
+
+    @Test
+    fun `onPharmacyNameChanged caps length at fifty`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onPharmacyNameChanged("a".repeat(60))
+
+        assertEquals(50, vm.pharmacyName.length)
+    }
+
     // ────────────────────────────── updateProfile ──────────────────────────────
 
     @Test
@@ -569,6 +600,25 @@ class ProfileViewModelTest {
         coVerify(exactly = 0) { terminalRepository.updateTerminal(any(), any()) }
         // Only the init-time loadTerminals() call — terminal unchanged should not re-fetch.
         coVerify(exactly = 1) { terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey) }
+    }
+
+    @Test
+    fun `updateProfile trims the pharmacy name it saves`() = runTest(testDispatcher) {
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        selectValidLocation(vm)
+
+        // The field keeps the trailing space left by the stripped "#10423".
+        vm.onPharmacyNameChanged("CVS Pharmacy #10423")
+        assertEquals("CVS Pharmacy ", vm.pharmacyName)
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        coVerify { repository.updateProfile(match { it.pharmacyName == "CVS Pharmacy" }) }
+        coVerify { userDao.update(match<UserEntity> { it.pharmacyName == "CVS Pharmacy" }) }
     }
 
     @Test
