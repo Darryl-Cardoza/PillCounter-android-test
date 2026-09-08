@@ -350,7 +350,7 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun onPharmacyNameChanged(input: String) {
-        pharmacyName = CredentialsValidator.sanitizeName(input)
+        pharmacyName = CredentialsValidator.sanitizeName(input).take(50)
     }
     // ─────────────────────────── Validation ───────────────────────────
     private fun validateInputs(): Boolean {
@@ -394,7 +394,7 @@ class ProfileViewModel @Inject constructor(
             viewModelScope.launch {
                 _updateUiState.value = ProfileUpdateUiState.Loading
                 val request = ProfileUpdateRequest(
-                    pharmacyName = pharmacyName,
+                    pharmacyName = pharmacyName.trim(),
                     phoneNumber = phoneNumber,
                     npiId = npi,
                     isProfileComplete = true,
@@ -423,7 +423,7 @@ class ProfileViewModel @Inject constructor(
                                 fName = firstName.trim(),
                                 lName = lastName.trim(),
                                 phoneNumber = phoneNumber,
-                                pharmacyName = pharmacyName,
+                                pharmacyName = pharmacyName.trim(),
                                 npiId = npi,
                                 notifications = !doNotAskAgain,
                                 country = selectedCountry?.code,

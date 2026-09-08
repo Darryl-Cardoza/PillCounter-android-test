@@ -103,6 +103,13 @@ class CredentialsValidatorTest {
     }
 
     @Test
+    fun `validateRequiredName punctuation only is required failure`() {
+        val r = validator.validateRequiredName("-")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_name_required, r.errorMessageResId)
+    }
+
+    @Test
     fun `validateRequiredName valid success`() {
         assertTrue(validator.validateRequiredName("Mary-Jane O'Neil").isSuccess)
     }
@@ -124,6 +131,25 @@ class CredentialsValidatorTest {
     @Test
     fun `validatePharmacyName two chars boundary success`() {
         assertTrue(validator.validatePharmacyName("CV").isSuccess)
+    }
+
+    @Test
+    fun `validatePharmacyName trailing space does not count towards minimum`() {
+        val r = validator.validatePharmacyName("A ")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_pharmacy_name_invalid, r.errorMessageResId)
+    }
+
+    @Test
+    fun `validatePharmacyName punctuation only failure`() {
+        val r = validator.validatePharmacyName("--")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_pharmacy_name_invalid, r.errorMessageResId)
+    }
+
+    @Test
+    fun `validatePharmacyName whitespace only is optional success`() {
+        assertTrue(validator.validatePharmacyName("  ").isSuccess)
     }
 
     // ─────────────────────────── sanitizeName ───────────────────────────

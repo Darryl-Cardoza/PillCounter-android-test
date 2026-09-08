@@ -71,7 +71,6 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FloatingLabelT
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
-import com.rite.pillcounting.core.utils.validator.CredentialsValidator
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileField
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
@@ -668,10 +667,11 @@ private fun <T> LabeledDropdown(
             BasicTextField(
                 value = searchQuery,
                 onValueChange = {
-                    val sanitized = CredentialsValidator.sanitizeName(it)
-                    searchQuery = sanitized
+                    // Not filtered: this is a filter box, not a saved name, and
+                    // labels like "St. Kitts" need the punctuation to match.
+                    searchQuery = it
                     expanded = true
-                    onQueryChanged(sanitized)
+                    onQueryChanged(it)
                 },
                 singleLine = true,
                 textStyle = TextStyle(

@@ -63,7 +63,10 @@ class CredentialsValidator @Inject constructor() {
      * failure if digits are found.
      */
     fun validateRequiredName(name: String): ValidationResult {
-        if (name.isBlank()) return ValidationResult(false, R.string.error_name_required)
+        // A name made only of spaces, hyphens or apostrophes is as empty as a blank one.
+        if (name.none { it.isLetter() }) {
+            return ValidationResult(false, R.string.error_name_required)
+        }
         if (name.any { it.isDigit() }) {
             return ValidationResult(false, R.string.error_name_invalid)
         }
@@ -82,8 +85,11 @@ class CredentialsValidator @Inject constructor() {
      * failure if too short.
      */
     fun validatePharmacyName(pharmacy: String): ValidationResult {
-        if (pharmacy.isBlank()) return ValidationResult(true)
-        if (pharmacy.length < 2) {
+        // Measured on the trimmed value: the field keeps a trailing space while
+        // typing, and that space must not count towards the minimum.
+        val trimmed = pharmacy.trim()
+        if (trimmed.isEmpty()) return ValidationResult(true)
+        if (trimmed.length < 2 || trimmed.none { it.isLetter() }) {
             return ValidationResult(false, R.string.error_pharmacy_name_invalid)
         }
         return ValidationResult(true)

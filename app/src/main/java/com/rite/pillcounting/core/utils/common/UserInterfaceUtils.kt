@@ -99,6 +99,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.compose.withReplacedText
 import com.rite.pillcounting.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -713,16 +714,8 @@ object UserInterfaceUtils {
         var textFieldValue by remember { mutableStateOf(TextFieldValue(value)) }
 
         // Always show the caller's value, so a keystroke the caller filters out
-        // never stays on screen. Cursor keeps its distance from the end.
-        val shownValue = if (textFieldValue.text == value) {
-            textFieldValue
-        } else {
-            val fromEnd = textFieldValue.text.length - textFieldValue.selection.end
-            textFieldValue.copy(
-                text = value,
-                selection = TextRange((value.length - fromEnd).coerceIn(0, value.length))
-            )
-        }
+        // never stays on screen.
+        val shownValue = withReplacedText(textFieldValue, value)
 
         val isActive = isFocused || value.isNotEmpty()
         val horizontalPadding = 15.dp

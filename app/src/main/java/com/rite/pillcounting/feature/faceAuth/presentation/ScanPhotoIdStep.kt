@@ -65,6 +65,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.compose.HideSystemBarsInCurrentWindow
 import com.rite.pillcounting.core.utils.compose.StepTitleWithSpeech
+import com.rite.pillcounting.core.utils.compose.sanitizeTypedName
 import com.rite.pillcounting.core.utils.validator.CredentialsValidator
 import com.rite.pillcounting.ui.theme.AppTheme
 import kotlinx.coroutines.Dispatchers
@@ -86,18 +87,6 @@ private const val FRAME_STALL_TIMEOUT_MS = 4_000L
 
 /** A [TextFieldValue] whose cursor sits after the last character. */
 private fun String.withCursorAtEnd() = TextFieldValue(this, TextRange(length))
-
-/**
- * Filters typed input to name characters, leaving the cursor after the
- * characters that survived instead of jumping it to the end.
- */
-internal fun sanitizeTypedName(value: TextFieldValue): TextFieldValue {
-    val cleaned = CredentialsValidator.sanitizeName(value.text)
-    if (cleaned == value.text) return value
-    val keptBeforeCursor =
-        CredentialsValidator.sanitizeName(value.text.take(value.selection.end)).length
-    return TextFieldValue(cleaned, TextRange(keptBeforeCursor.coerceAtMost(cleaned.length)))
-}
 
 /** Primary-colored border/label marking the field the next chip tap fills. */
 @Composable
