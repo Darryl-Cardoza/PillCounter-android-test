@@ -15,18 +15,9 @@ import kotlin.math.min
 object OverlayUtils {
 
     /**
-     * How many of the [pillCount] on-tray pills are excess — drawn RED, meant to be
-     * pushed into the chute. Only a dispense past the parent-container step has a
-     * target to exceed: a stock count has none, and the parent-container step pours
-     * out the whole stock bottle, so both keep every dot green.
-     *
-     * [alreadyCounted] pills from earlier in this session reduce the remaining target.
-     * A [targetCount] of 0 means no target is known yet (the target dialog is still
-     * open), which is different from a target that has been fully counted — the former
-     * is all green, the latter makes every pill still on the tray excess.
-     * On CONTAINER_PENDING [targetCount] is the expected leftover, so 0 is real there.
-     *
-     * @param isDispense From the transaction; false for a stock count, null before it loads.
+     * Number of on-tray pills drawn RED (excess, push into the chute) once the
+     * remaining target ([targetCount] minus [alreadyCounted]) is exceeded.
+     * Stock counts, the parent-container step and an unknown target return 0.
      */
     fun excessPillCount(
         pillCount: Int,
