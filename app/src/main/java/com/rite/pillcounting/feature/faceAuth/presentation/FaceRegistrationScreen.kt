@@ -9,8 +9,10 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -40,6 +42,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -61,6 +64,7 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
 import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.TABLET_BREAKPOINT_DP
@@ -68,6 +72,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.feature.faceAuth.domain.model.RegistrationState
 import com.rite.pillcounting.feature.faceAuth.presentation.viewmodel.FaceAuthViewModel
 import com.rite.pillcounting.ui.theme.AppTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 
@@ -157,6 +162,7 @@ fun FaceRegistrationScreen(
                 cameraHelper = cameraHelper,
                 navController = navController,
                 isSessionLocked = isSessionLocked,
+                isVoiceoverEnabled = viewModel.isVoiceoverEnabled,
                 onCaptureRequested = { angle ->
                     cameraHelper.captureImage(onCaptured = { bitmap -> viewModel.captureFrame(bitmap, angle) })
                 },
@@ -183,19 +189,69 @@ private fun ScanFaceStep(
     cameraHelper: CameraHelper,
     navController: NavController,
     isSessionLocked: Boolean,
+    isVoiceoverEnabled: Boolean,
     onCaptureRequested: (FaceCaptureAngle) -> Unit,
     onCameraReady: (isFrontCamera: Boolean) -> Unit,
     onFinish: () -> Unit
 ) {
     val capturing = state as? RegistrationState.Capturing
-    val angle = capturing?.angle ?: FaceCaptureAngle.FRONT
+    val rejected = state as? RegistrationState.Rejected
+    val angle = capturing?.angle ?: rejected?.angle ?: FaceCaptureAngle.FRONT
     val capturedCount = capturing?.capturedCount ?: 0
-    val staticPrompt = when (angle) {
-        FaceCaptureAngle.FRONT -> stringResource(R.string.face_registration_scan_front)
-        FaceCaptureAngle.TILT_LEFT -> stringResource(R.string.face_registration_scan_tilt_left)
-        FaceCaptureAngle.TILT_RIGHT -> stringResource(R.string.face_registration_scan_tilt_right)
+    // After the last angle the state still names it, so say done instead of asking for a tilt again.
+    val isComplete = capturedCount == FaceCaptureAngle.entries.size
+    val staticPrompt = if (isComplete) {
+        Utterance("face_scan_prompt_COMPLETE", stringResource(R.string.face_registration_scan_complete))
+    } else {
+        Utterance(
+            id = "face_scan_prompt_${angle.name}",
+            text = when (angle) {
+                FaceCaptureAngle.FRONT -> stringResource(R.string.face_registration_scan_front)
+                FaceCaptureAngle.TILT_LEFT -> stringResource(R.string.face_registration_scan_tilt_left)
+                FaceCaptureAngle.TILT_RIGHT -> stringResource(R.string.face_registration_scan_tilt_right)
+            }
+        )
     }
-    val prompt = capturing?.guidance?.let { guidanceText(it) } ?: staticPrompt
+    val guidanceSpeech = capturing?.guidance?.let { Utterance("face_guidance_${it.name}", guidanceText(it)) }
+    val rejectionSpeech = rejected?.let { Utterance("face_reject_${it.reason.name}", guidanceText(it.reason)) }
+    val prompt = guidanceSpeech?.text ?: staticPrompt.text
+
+    // Speak each angle's prompt once, as the scanning screens' title chip does.
+    val context = LocalContext.current
+    DisposableEffect(context) {
+        SoundUtils.prewarmTts(context)
+        onDispose { SoundUtils.stopSpeaking() }
+    }
+
+    // New speech cuts off old speech, so hints wait their turn.
+    var lastSpeechAt by remember { mutableLongStateOf(0L) }
+    val speakNow: (Utterance) -> Unit = { utterance ->
+        lastSpeechAt = System.currentTimeMillis()
+        SoundUtils.speak(context = context, text = utterance.text, utteranceId = utterance.id)
+    }
+
+    LaunchedEffect(staticPrompt.id, SoundUtils.isTtsReady, isVoiceoverEnabled) {
+        if (SoundUtils.isTtsReady && isVoiceoverEnabled) {
+            speakNow(staticPrompt)
+        }
+    }
+
+    // Keyed on the id, so the same hint is never spoken twice. If the
+    // hint keeps changing, the delay restarts and nothing is spoken.
+    LaunchedEffect(guidanceSpeech?.id, SoundUtils.isTtsReady, isVoiceoverEnabled) {
+        if (guidanceSpeech == null || !SoundUtils.isTtsReady || !isVoiceoverEnabled) return@LaunchedEffect
+        delay(GUIDANCE_DEBOUNCE_MS)
+        val quietLeft = SPEECH_QUIET_PERIOD_MS - (System.currentTimeMillis() - lastSpeechAt)
+        if (quietLeft > 0) delay(quietLeft)
+        speakNow(guidanceSpeech)
+    }
+
+    // A rejection answers the user's tap, so it speaks right away.
+    LaunchedEffect(rejectionSpeech?.id, SoundUtils.isTtsReady, isVoiceoverEnabled) {
+        if (rejectionSpeech != null && SoundUtils.isTtsReady && isVoiceoverEnabled) {
+            speakNow(rejectionSpeech)
+        }
+    }
 
     var isFrontCamera by remember { mutableStateOf(true) }
     var previewView by remember { mutableStateOf<PreviewView?>(null) }
@@ -230,16 +286,23 @@ private fun ScanFaceStep(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
         AndroidView(
             factory = { ctx -> PreviewView(ctx).also { previewView = it } },
             modifier = Modifier.fillMaxSize()
         )
+        // Full size on tablets, smaller on phones so the oval always fits.
+        val ovalWidth = minOf(
+            FACE_OVAL_MAX_WIDTH,
+            maxWidth * FACE_OVAL_FILL_FRACTION,
+            maxHeight * FACE_OVAL_FILL_FRACTION * FACE_OVAL_ASPECT_RATIO
+        )
         Box(
             modifier = Modifier
                 .align(Alignment.Center)
-                .size(width = 240.dp, height = 300.dp)
-                .border(width = 3.dp, color = MaterialTheme.colorScheme.secondary, shape = RoundedCornerShape(160.dp))
+                .width(ovalWidth)
+                .aspectRatio(FACE_OVAL_ASPECT_RATIO)
+                .border(width = 3.dp, color = MaterialTheme.colorScheme.secondary, shape = RoundedCornerShape(percent = FACE_OVAL_CORNER_PERCENT))
         )
         BackButton(navController = navController, modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
         IconButton(
@@ -318,7 +381,7 @@ private fun ScanFaceStep(
                         }
                     }
                 }
-                if (capturedCount == FaceCaptureAngle.entries.size) {
+                if (isComplete) {
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = onFinish, modifier = Modifier.fillMaxWidth()) {
                         Text(stringResource(R.string.face_registration_continue))
@@ -328,6 +391,18 @@ private fun ScanFaceStep(
         }
     }
 }
+
+/**
+ * A spoken line plus the id the TTS engine tags it with. The id comes from the
+ * enum, so it does not change when the text or the language changes.
+ */
+private data class Utterance(val id: String, val text: String)
+
+// A hint waits this long before it is spoken.
+private const val GUIDANCE_DEBOUNCE_MS = 700L
+
+// A hint stays quiet this long after any other speech.
+private const val SPEECH_QUIET_PERIOD_MS = 2_500L
 
 /** Localized text for a [FaceGuidance] emitted by the capture logic. */
 @Composable
