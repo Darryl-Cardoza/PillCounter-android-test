@@ -139,7 +139,8 @@ interface BottleInfoDao {
             b.expNo AS expiry,
             b.bottleQty AS bottleQty,
             b.looseQty AS looseQty,
-            dm.packageQty AS packageQty
+            dm.packageQty AS packageQty,
+            b.controlledImagePaths AS imagePaths
         FROM bottle_info AS b
         INNER JOIN stock_txn AS s ON b.stockTxnId = s.txnId
         LEFT JOIN drug_master AS dm ON s.drugId = dm.drugId

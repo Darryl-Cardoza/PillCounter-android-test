@@ -773,6 +773,14 @@ fun DispenseFlowScreen(
         }
     }
 
+    // Standalone Rx label whose NDC matched no drug.
+    val rxDrugNotFoundToastText = stringResource(R.string.rx_label_drug_not_found_toast)
+    LaunchedEffect(dispenseState.rxDrugNotFoundToastTick) {
+        if (dispenseState.rxDrugNotFoundToastTick > 0) {
+            showToast(context, rxDrugNotFoundToastText, Toast.LENGTH_SHORT)
+        }
+    }
+
     // VIAL step: scanned vial barcode RX doesn't match the active transaction.
     val vialRxMismatchToastText = stringResource(R.string.vial_rx_mismatch_toast)
     LaunchedEffect(dispenseState.vialRxMismatchToastTick) {
@@ -793,6 +801,7 @@ fun DispenseFlowScreen(
         dispenseState.ndcMismatchToastTick,
         dispenseState.scanNdcToastTick,
         dispenseState.txnNotFoundToastTick,
+        dispenseState.rxDrugNotFoundToastTick,
         dispenseState.vialRxMismatchToastTick,
         dispenseState.ndcNotAllowedToastTick,
         dispenseState.rxAlreadyCompletedToastTick,
@@ -800,6 +809,7 @@ fun DispenseFlowScreen(
         val anyToastTick = dispenseState.ndcMismatchToastTick +
                 dispenseState.scanNdcToastTick +
                 dispenseState.txnNotFoundToastTick +
+                dispenseState.rxDrugNotFoundToastTick +
                 dispenseState.vialRxMismatchToastTick +
                 dispenseState.ndcNotAllowedToastTick +
                 dispenseState.rxAlreadyCompletedToastTick

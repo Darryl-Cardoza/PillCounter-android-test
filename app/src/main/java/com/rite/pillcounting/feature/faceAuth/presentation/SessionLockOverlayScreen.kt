@@ -56,24 +56,36 @@ private enum class LockStage { LOCKED, SCANNING }
  * Description:
  * Mirrors the "Session Locked" mockups' 4 states: idle lock screen, Scan Face
  * (reuses [ScanningStep]), a resuming/welcome-back state that auto-dismisses,
- * and a not-recognized state with Cancel / Try Again / Log Out. The nav graph
+ * and a not-recognized state with Cancel / Try Again. The nav graph
  * keeps composing underneath this overlay, so whatever screen the user was on
  * is exactly where they land once [onUnlocked] fires.
  *
- * @param timeoutMinutes The configured idle timeout, shown in the idle screen's subtitle.
+ * @param startOnScan Skip the idle lock screen and open straight on the verify camera
+ *   (the post-login lock). Cancelling a failed verify still falls back to the lock screen.
  * @param onUnlocked Called once a live face verify matches an enrolled profile.
- * @param onLogout Called when the user gives up recognizing and chooses to log out instead.
  * @param viewModel Supplies verify state and the start/verify actions.
  */
 @Composable
 fun SessionLockOverlayScreen(
-    timeoutMinutes: Int,
+    startOnScan: Boolean,
     onUnlocked: () -> Unit,
-    onLogout: () -> Unit,
     viewModel: FaceAuthViewModel = hiltViewModel()
 ) {
-    var stage by remember { mutableStateOf(LockStage.LOCKED) }
-    val verifyState by viewModel.verifyState.collectAsState()
+    var stage by remember { mutableStateOf(if (startOnScan) LockStage.SCANNING else LockStage.LOCKED) }
+    val rawVerifyState by viewModel.verifyState.collectAsState()
+
+    // The ViewModel is activity-scoped, so the last lock's result is still here.
+    // Ignore it until this lock verifies, or "Welcome back" flashes for a frame.
+    var verifyStarted by remember { mutableStateOf(false) }
+    val startVerify = {
+        viewModel.startVerify()
+        verifyStarted = true
+    }
+    val verifyState = rawVerifyState.takeIf { verifyStarted }
+
+    LaunchedEffect(Unit) {
+        if (startOnScan) startVerify()
+    }
 
     // The ViewModel is activity-scoped (this overlay sits above the nav graph),
     // so the verify loop must be cancelled explicitly when the overlay goes away.
@@ -84,9 +96,8 @@ fun SessionLockOverlayScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         when {
             stage == LockStage.LOCKED -> LockedStep(
-                timeoutMinutes = timeoutMinutes,
                 onVerifyWithFace = {
-                    viewModel.startVerify()
+                    startVerify()
                     stage = LockStage.SCANNING
                 }
             )
@@ -97,14 +108,14 @@ fun SessionLockOverlayScreen(
             }
 
             verifyState is VerifyState.NotRecognized -> LockNotRecognizedStep(
-                onTryAgain = { viewModel.startVerify() },
-                onCancel = { stage = LockStage.LOCKED },
-                onLogout = onLogout
+                onTryAgain = { startVerify() },
+                onCancel = { stage = LockStage.LOCKED }
             )
 
             else -> ScanCameraStep(
                 onCaptureRequested = { bitmap -> viewModel.verifyFrame(bitmap) },
-                onAutoVerifyReady = { frames -> viewModel.startAutoVerify(frames) }
+                onAutoVerifyReady = { frames -> viewModel.startAutoVerify(frames) },
+                isVoiceoverEnabled = viewModel.isVoiceoverEnabled
             )
         }
     }
@@ -113,7 +124,8 @@ fun SessionLockOverlayScreen(
 @Composable
 private fun ScanCameraStep(
     onCaptureRequested: (android.graphics.Bitmap) -> Unit,
-    onAutoVerifyReady: (kotlinx.coroutines.flow.Flow<android.graphics.Bitmap>) -> Unit
+    onAutoVerifyReady: (kotlinx.coroutines.flow.Flow<android.graphics.Bitmap>) -> Unit,
+    isVoiceoverEnabled: Boolean
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -124,12 +136,17 @@ private fun ScanCameraStep(
         onDispose { cameraHelper.pauseCamera() }
     }
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-        ScanningStep(onCaptureRequested = onCaptureRequested, onAutoVerifyReady = onAutoVerifyReady, cameraHelper = cameraHelper)
+        ScanningStep(
+            onCaptureRequested = onCaptureRequested,
+            onAutoVerifyReady = onAutoVerifyReady,
+            cameraHelper = cameraHelper,
+            isVoiceoverEnabled = isVoiceoverEnabled
+        )
     }
 }
 
 @Composable
-private fun LockedStep(timeoutMinutes: Int, onVerifyWithFace: () -> Unit) {
+private fun LockedStep(onVerifyWithFace: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -161,7 +178,7 @@ private fun LockedStep(timeoutMinutes: Int, onVerifyWithFace: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(12.dp))
             Text(
-                text = stringResource(R.string.session_locked_subtitle, timeoutMinutes),
+                text = stringResource(R.string.session_locked_subtitle),
                 color = AppTheme.extendedColors.textColor,
                 textAlign = TextAlign.Center,
                 style = MaterialTheme.typography.bodyMedium
@@ -221,7 +238,7 @@ private fun ResumingStep(firstName: String, onResumed: () -> Unit) {
 }
 
 @Composable
-private fun LockNotRecognizedStep(onTryAgain: () -> Unit, onCancel: () -> Unit, onLogout: () -> Unit) {
+private fun LockNotRecognizedStep(onTryAgain: () -> Unit, onCancel: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()

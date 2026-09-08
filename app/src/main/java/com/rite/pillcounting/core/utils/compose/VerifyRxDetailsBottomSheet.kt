@@ -1174,7 +1174,7 @@ private fun DrugImageTile(
                 painter = rememberAsyncImagePainter(File(drugImagePath)),
                 contentDescription = stringResource(R.string.drug_image),
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.fillMaxSize()
+                modifier = Modifier.matchParentSize()
             )
         } else {
             Icon(
