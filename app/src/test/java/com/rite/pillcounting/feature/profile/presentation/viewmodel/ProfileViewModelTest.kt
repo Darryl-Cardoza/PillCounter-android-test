@@ -56,7 +56,6 @@ import org.junit.Before
 import org.junit.Test
 import retrofit2.HttpException
 import retrofit2.Response
-import java.io.IOException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
@@ -352,8 +351,8 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `init does not crash when device key fetch fails while loading terminals`() = runTest(testDispatcher) {
-        coEvery { deviceKeyProvider.getDeviceKey() } throws IOException("firebase down")
+    fun `init skips terminal fetch when device key unavailable`() = runTest(testDispatcher) {
+        coEvery { deviceKeyProvider.getDeviceKey() } returns null
 
         val vm = createViewModel()
         advanceUntilIdle()
@@ -672,7 +671,7 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `updateProfile terminal changed does not crash when device key fetch fails`() = runTest(testDispatcher) {
+    fun `updateProfile terminal changed skips claim when device key unavailable`() = runTest(testDispatcher) {
         coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
 
         val vm = createViewModel()
@@ -680,8 +679,8 @@ class ProfileViewModelTest {
         selectValidLocation(vm)
         vm.onTerminalSelected(otherTerminal) // change from t1 (held) to t2
 
-        // Device key fetch succeeded during init's loadTerminals(); fails now, during the claim.
-        coEvery { deviceKeyProvider.getDeviceKey() } throws IOException("firebase down")
+        // Device key resolved during init's loadTerminals(); unavailable now, during the claim.
+        coEvery { deviceKeyProvider.getDeviceKey() } returns null
 
         vm.updateProfile()
         advanceUntilIdle()

@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.dashboard.data
 
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenResponse
@@ -34,13 +35,14 @@ class UserDetailRepositoryTest {
     private val api: IUserDetailAPI = mockk()
     private val applicationSettingApi: IApplicationSettingInterface = mockk()
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
+    private val authEventBus: AuthEventBus = mockk(relaxed = true)
     private val testDispatcher = UnconfinedTestDispatcher()
 
     private lateinit var repository: UserDetailRepository
 
     @Before
     fun setup() {
-        repository = UserDetailRepository(api, applicationSettingApi, preferenceHelper, testDispatcher)
+        repository = UserDetailRepository(api, applicationSettingApi, preferenceHelper, testDispatcher, authEventBus)
     }
 
     private fun successApiResponse(data: UserDetail? = null): Response<ApiResponse<UserDetail>> =

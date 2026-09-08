@@ -54,7 +54,9 @@ class DatabaseKeyProviderTest {
         every { anyConstructed<SecurePreferences>().getString("dek_kek_id") } returns kekId
         every { anyConstructed<SecurePreferences>().getInt("dek_kek_version", -1) } returns version
         every { anyConstructed<SecurePreferences>().putString(any(), any()) } returns Unit
+        every { anyConstructed<SecurePreferences>().putString(any(), any(), any()) } returns Unit
         every { anyConstructed<SecurePreferences>().putInt(any(), any()) } returns Unit
+        every { anyConstructed<SecurePreferences>().putInt(any(), any(), any()) } returns Unit
         every { anyConstructed<SecurePreferences>().clear() } returns Unit
     }
 
@@ -166,8 +168,8 @@ class DatabaseKeyProviderTest {
         verify(exactly = 1) { KeystoreAesGcm.unwrap("com.rite.pillcounting.dek_bootstrap_kek", any()) }
         verify(exactly = 1) { KeystoreAesGcm.wrap("com.rite.pillcounting.server_kek_kek-4fdbc6fc", dek) }
         verify(exactly = 1) { KeystoreAesGcm.deleteKeystoreKey("com.rite.pillcounting.dek_bootstrap_kek") }
-        verify(exactly = 1) { anyConstructed<SecurePreferences>().putString("dek_kek_id", "kek-4fdbc6fc") }
-        verify(exactly = 1) { anyConstructed<SecurePreferences>().putInt("dek_kek_version", 1) }
+        verify(exactly = 1) { anyConstructed<SecurePreferences>().putString("dek_kek_id", "kek-4fdbc6fc", true) }
+        verify(exactly = 1) { anyConstructed<SecurePreferences>().putInt("dek_kek_version", 1, true) }
     }
 
     @Test

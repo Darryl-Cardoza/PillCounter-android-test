@@ -141,48 +141,12 @@ class BottleInfoDaoTest {
         assertNull(found)
     }
 
-    // ───────────────────────── findSealedLine ─────────────────────────
+    // ───────────────────────── incrementLooseQtyAndImages ─────────────────────────
 
     @Test
-    fun `findSealedLine matches line with null looseQty`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", looseQty = null))
-        val found = dao.findSealedLine(1L, "L1", null)
-        assertEquals(1L, found?.bottleId)
-    }
-
-    @Test
-    fun `findSealedLine matches line with zero looseQty`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", looseQty = 0))
-        val found = dao.findSealedLine(1L, "L1", null)
-        assertEquals(1L, found?.bottleId)
-    }
-
-    @Test
-    fun `findSealedLine returns null when looseQty is greater than zero`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", looseQty = 5))
-        val found = dao.findSealedLine(1L, "L1", null)
-        assertNull(found)
-    }
-
-    @Test
-    fun `findSealedLine keeps loose and sealed lines separate for same lot and expiry`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "E1", looseQty = 0))
-        dao.insert(BottleInfoEntity(bottleId = 2L, stockTxnId = 1L, lotNo = "L1", expNo = "E1", looseQty = 10))
-
-        val sealed = dao.findSealedLine(1L, "L1", "E1")
-        assertEquals(1L, sealed?.bottleId)
-
-        val anyLine = dao.findLine(1L, "L1", "E1")
-        // findLine has no ORDER BY / uniqueness guarantee beyond LIMIT 1; assert a row from the pair is returned.
-        assertTrue(anyLine?.bottleId == 1L || anyLine?.bottleId == 2L)
-    }
-
-    // ───────────────────────── incrementLooseQty ─────────────────────────
-
-    @Test
-    fun `incrementLooseQty adds to existing looseQty and updates timestamp`() = runTest {
+    fun `incrementLooseQtyAndImages adds to existing looseQty and updates timestamp`() = runTest {
         dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = 10, updatedAt = 0L))
-        dao.incrementLooseQty(1L, 5, now = 12345L)
+        dao.incrementLooseQtyAndImages(1L, 5, paths = null, now = 12345L)
 
         val updated = dao.getById(1L)!!
         assertEquals(15, updated.looseQty)
@@ -190,17 +154,37 @@ class BottleInfoDaoTest {
     }
 
     @Test
-    fun `incrementLooseQty treats null looseQty as zero`() = runTest {
+    fun `incrementLooseQtyAndImages treats null looseQty as zero`() = runTest {
         dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = null))
-        dao.incrementLooseQty(1L, 7, now = 999L)
+        dao.incrementLooseQtyAndImages(1L, 7, paths = null, now = 999L)
 
         assertEquals(7, dao.getById(1L)?.looseQty)
     }
 
     @Test
-    fun `incrementLooseQty on nonexistent bottle affects no rows`() = runTest {
-        dao.incrementLooseQty(999L, 5, now = 1L)
+    fun `incrementLooseQtyAndImages on nonexistent bottle affects no rows`() = runTest {
+        dao.incrementLooseQtyAndImages(999L, 5, paths = null, now = 1L)
         assertNull(dao.getById(999L))
+    }
+
+    @Test
+    fun `incrementLooseQtyAndImages with paths overwrites controlledImagePaths`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = 0, controlledImagePaths = null))
+        dao.incrementLooseQtyAndImages(1L, 3, paths = listOf("/a", "/b"), now = 100L)
+
+        val updated = dao.getById(1L)!!
+        assertEquals(3, updated.looseQty)
+        assertEquals(listOf("/a", "/b"), updated.controlledImagePaths)
+    }
+
+    @Test
+    fun `incrementLooseQtyAndImages with null paths preserves existing controlledImagePaths`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = 0, controlledImagePaths = listOf("/existing")))
+        dao.incrementLooseQtyAndImages(1L, 2, paths = null, now = 200L)
+
+        val updated = dao.getById(1L)!!
+        assertEquals(2, updated.looseQty)
+        assertEquals(listOf("/existing"), updated.controlledImagePaths)
     }
 
     // ───────────────────────── Delete ─────────────────────────
@@ -338,5 +322,23 @@ class BottleInfoDaoTest {
         db.batchDao().insert(BatchEntity(batchId = 1L))
         val result = dao.getByBatchId(1L)
         assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `getByBatchId populates imagePaths from controlledImagePaths column`() = runTest {
+        seedJoinData()
+        dao.insert(
+            BottleInfoEntity(
+                bottleId = 1L,
+                stockTxnId = 1L,
+                batchId = 1L,
+                lotNo = "L1",
+                controlledImagePaths = listOf("/a/img1.jpg", "/a/img2.jpg")
+            )
+        )
+
+        val result = dao.getByBatchId(1L)
+        assertEquals(1, result.size)
+        assertEquals(listOf("/a/img1.jpg", "/a/img2.jpg"), result[0].imagePaths)
     }
 }

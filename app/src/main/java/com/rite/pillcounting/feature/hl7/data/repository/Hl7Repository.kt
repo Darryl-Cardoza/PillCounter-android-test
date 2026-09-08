@@ -22,6 +22,7 @@ import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.scanning.data.DrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
@@ -30,13 +31,17 @@ import com.rite.pillcounting.feature.hl7.core.Hl7MessageSender
 import com.rite.pillcounting.feature.hl7.domain.model.MessageType
 import com.rite.pillcounting.feature.hl7.notification.Hl7Notifier
 import com.rite.pillcounting.feature.hl7.util.HL7Config
+import com.rite.pillcounting.feature.hl7.util.Hl7Format
 import com.rite.pillcounting.feature.hl7.util.HL7MessageBuilder
+import com.rite.pillcounting.feature.hl7.util.isRejectAck
 import com.rite.pillcounting.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.HL7MessageKind
 import org.rite.hl7.model.segment.INVSegment
@@ -70,6 +75,18 @@ class Hl7Repository @Inject constructor(
 
     private val logger = AppLogger.create<Hl7Repository>()
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
+
+    // Guards resendPendingHl7Transactions() so the Room-flow observer and the
+    // onClientConnected trigger can never run concurrently and double-send the
+    // same pending txn's HL7 message before either ACK returns.
+    private val resendMutex = Mutex()
+
+    // txnIds explicitly rejected (MSA|AR) by PMS this session. PMS closes its TCP
+    // connection after every transaction regardless of outcome, which triggers our
+    // auto-reconnect, which re-triggers a resend pass — an AR'd txn would otherwise get
+    // resent unchanged on every one of those reconnects, forever. In-memory only
+    // (no DB): cleared on app restart, not persisted.
+    private val rejectedTxnIds = java.util.Collections.synchronizedSet(mutableSetOf<Long>())
 
     companion object {
         /**
@@ -112,6 +129,20 @@ class Hl7Repository @Inject constructor(
                 logger.e("Invalid or missing dispense count: '$dispenseStr' in ${inboundType.name}. Rejecting message.")
                 throw IllegalArgumentException("Invalid or missing dispense count: $dispenseStr")
             }
+
+            // NDC presence must be checked here, synchronously, before the ACK is built.
+            // The per-segment handlers (handleRdeDispenseRequest / handleZuiOrderPacketDispenseRequest
+            // / handleOrderPacketDispenseRequest) run inside scope.launch below, which is async —
+            // by the time they'd notice a missing NDC and bail, handleIncomingMessage has already
+            // called hl7.ack(message) and sent back AA. Checking here is what actually gates the ACK.
+            val ndcStr = rxe?.giveCode?.trim()?.takeIf { it.isNotBlank() }
+                ?: zni?.ndc?.trim()?.takeIf { it.isNotBlank() }
+                ?: zui?.ndc?.trim()
+
+            if (ndcStr.isNullOrBlank()) {
+                logger.e("Missing NDC in ${inboundType.name}. Rejecting message.")
+                throw IllegalArgumentException("Missing NDC")
+            }
         }
 
         scope.launch {
@@ -144,12 +175,25 @@ class Hl7Repository @Inject constructor(
      * preferences, so RDS/INR messages are versioned per the value fetched from
      * auth/me (settings.hl7Version) rather than the hardcoded default.
      */
-    private fun currentHl7Config(): HL7Config = HL7Config.current(
-        selectedTerminalName = preferenceHelper.getSelectedTerminalName() ?: "PILLCOUNTER",
-        pmsHostName = preferenceHelper.getHl7PmsHost().ifBlank { "PMS" },
-        hl7Version = preferenceHelper.getHl7Version(),
-        hl7Format = preferenceHelper.getHl7Format()
-    )
+    private fun currentHl7Config(): HL7Config {
+        val hl7Format = preferenceHelper.getHl7Format()
+        // Eyecon's PMS-side routing keys off MSH-3 == "EYECON" (its own format
+        // name) rather than this app's display name — DispenseSure/Vivid keep
+        // using the app's display name (context.getString(R.string.app_name)),
+        // unchanged, since PMS already matches on that for those formats.
+        val sendingApplicationName = if (hl7Format == Hl7Format.EYECON) {
+            hl7Format.sendingApplication
+        } else {
+            context.getString(R.string.app_name)
+        }
+        return HL7Config.current(
+            selectedTerminalName = preferenceHelper.getSelectedTerminalName() ?: "PILLCOUNTER",
+            pmsHostName = preferenceHelper.getHl7PmsHost().ifBlank { "PMS" },
+            hl7Version = preferenceHelper.getHl7Version(),
+            hl7Format = hl7Format,
+            sendingApplicationName = sendingApplicationName
+        )
+    }
 
     @SuppressLint("SimpleDateFormat")
     suspend fun buildAndSendSuccessfulDispense(
@@ -189,9 +233,9 @@ class Hl7Repository @Inject constructor(
 
         // Locally-scanned dispenses (isComingFromHL7 = false) have no inbound MSH-10 to reuse,
         // so HL7MessageBuilder falls back to txnId as the outbound control id. Persist that
-        // here so the ACK handler's getByMessageControlId lookup (see markTransactionSynced)
-        // can find this exact row later — without this write the DB column stays null forever
-        // and the ACK correlation always misses.
+        // here so ImageNanoServer's getByMessageControlId lookup can find this exact row when
+        // the PMS pulls images by control id — without this write the DB column stays null
+        // forever and that lookup always misses.
         if (txn.hl7MessageControlId.isNullOrBlank()) {
             txnDao.updateHl7MessageControlId(txnId, txnId.toString())
         }
@@ -208,12 +252,30 @@ class Hl7Repository @Inject constructor(
             pharmacistFamilyName = user?.lName,
             pharmacistGivenName = user?.fName,
             location = location,
+            isControlledSubstance = isControlledDrugType(drug.drugType),
+            isHazardousDrug = drug.isHazardous,
             config = currentHl7Config()
         )
-        logger.i("Dispense HL7 message built for txn $txnId: $message")
-        hl7MessageSender.send(message)
-            .onSuccess { ack -> logger.i("Dispense HL7 sent for txn $txnId — ACK: ${ack.take(120)}") }
-            .onFailure { e -> logger.w("Dispense HL7 send failed for txn $txnId — stays pending: ${e.message}") }
+        val controlId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() } ?: txnId.toString()
+        logger.i("Dispense HL7 message built for txn $txnId | controlId=$controlId | length=${message.length}")
+        val result = hl7MessageSender.send(message)
+        val ack = result.getOrNull()
+        if (result.isSuccess && ack != null && isSuccessAck(ack)) {
+            markTransactionSynced(txnId)
+        } else if (result.isSuccess && ack != null && isRejectAck(ack)) {
+            // Explicit reject (MSA|AR) — PMS rejected this exact message, not a transport
+            // failure. PMS closes its TCP connection right after, which triggers our
+            // auto-reconnect; without this, the next auto-reconnect's resend pass would
+            // resend this same message and get rejected again, forever. Skip it from
+            // automatic resend until the app restarts.
+            rejectedTxnIds.add(txnId)
+            logger.w("Dispense HL7 send for txnId=$txnId rejected (AR) — excluding from automatic resend: $ack")
+        } else {
+            logger.w(
+                "Dispense HL7 send for txnId=$txnId failed or NAKed: " +
+                    "${result.exceptionOrNull()?.message ?: "non-success ACK"} — leaving unsynced for retry"
+            )
+        }
     }
 
     /**
@@ -301,9 +363,6 @@ class Hl7Repository @Inject constructor(
      * (isComingFromHL7 = 0) never qualified for the resend query at all — the pharmacist
      * finished the count and the PMS never heard about it. This is the primary path; the
      * resend-on-connect sweep remains as retry for sends that fail here.
-     *
-     * The txnId is recorded before sending because the success ACK is handled asynchronously
-     * ([markTransactionSynced] reads it back to know which row to flag).
      */
     fun sendDispenseNow(txnId: Long) {
         if (preferenceHelper.isHl7Enabled()) {
@@ -316,21 +375,33 @@ class Hl7Repository @Inject constructor(
         }
     }
 
+    /**
+     * Resends every pending (unsynced, HL7-originated, completed) transaction's HL7
+     * message, one at a time, waiting for each ACK before moving to the next.
+     * [resendMutex] ensures the Room-flow observer and onClientConnected triggers can
+     * never overlap and send the same txn's message twice concurrently.
+     */
     fun resendPendingHl7Transactions() {
         scope.launch {
-            val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
-            if (pendingTxn.isEmpty()) {
-                logger.i("No pending HL7 transactions to sync")
+            if (!resendMutex.tryLock()) {
+                logger.i("resendPendingHl7Transactions already in progress — skipping duplicate trigger")
                 return@launch
             }
-            logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
-            for (txn in pendingTxn) {
-                if (txn.isDispense) {
-                    //Change this condition because we have transaction status that we are handling from pms
-//                        if (txn.targetCount != null) {
-                            buildAndSendSuccessfulDispense(txnId = txn.txnId)
-//                        }
+            try {
+                val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
+                    .filterNot { it.txnId in rejectedTxnIds }
+                if (pendingTxn.isEmpty()) {
+                    logger.i("No pending HL7 transactions to sync")
+                    return@launch
                 }
+                logger.i("Resending ${pendingTxn.size} pending HL7 transactions")
+                for (txn in pendingTxn) {
+                    if (txn.isDispense) {
+                        buildAndSendSuccessfulDispense(txnId = txn.txnId)
+                    }
+                }
+            } finally {
+                resendMutex.unlock()
             }
         }
     }
@@ -350,24 +421,17 @@ class Hl7Repository @Inject constructor(
     }
 
     /**
-     * Marks the transaction that produced [messageId] (the ACKed message's MSH-10, matched
-     * via [PillCountTxnDao.getByMessageControlId]) as synced. Reached only on a success ACK
-     * (see Hl7EventHandler.onAckReceived) — a single shared "last sent txn id" preference used
-     * to stand in for this correlation, which broke whenever two sends were in flight at once
-     * (e.g. a reconnect-triggered resend racing a fresh sendDispenseNow): the ACK for the first
-     * send would resolve against whichever txn id the second send had since overwritten.
+     * Marks [txnId] synced. Called only on a success ACK for the exact message that
+     * was sent for this txn — never from a shared "last sent" slot, so concurrent
+     * in-flight sends can't mark the wrong transaction synced.
      */
-    fun markTransactionSynced(messageId: String) {
+    private fun markTransactionSynced(txnId: Long) {
+        // A synced txn is never resent, so its cached ZUI-8 image encodings can be dropped now.
+        HL7MessageBuilder.evictImageCache(txnId)
         scope.launch {
-            val txn = pillCountTxnDao.getByMessageControlId(messageId)
-            if (txn == null) {
-                logger.w("ACK received for unknown messageId=$messageId — no matching transaction to sync")
-                return@launch
-            }
-            val txnId = txn.txnId
             // Flag the txn synced first, then — when the server disallows local storage —
-            // delete it. The PMS pulls images from the device image server before sending the
-            // success ACK, so the images are already retrieved by the time we delete here.
+            // delete it. The PMS pulls images from the device image server before sending
+            // the success ACK, so the images are already retrieved by the time we delete here.
             pillCountTxnDao.markTxnSynced(txnId)
             if (!preferenceHelper.isAllowLocalStorage()) {
                 // Wait before deleting: the PMS pulls the transaction images from the device
@@ -504,6 +568,7 @@ class Hl7Repository @Inject constructor(
             isSynced = false,
             isNdcVerified = false,
             rxNo = rxNo,
+            transactionOrderId = rxNo,
             priority = priority,
             hl7MessageControlId = message.messageControlId.takeIf { it.isNotBlank() },
             hl7SequenceNumber = message.sequenceNumber.takeIf { it.isNotBlank() }
@@ -544,10 +609,8 @@ class Hl7Repository @Inject constructor(
         val hl7Ndc = orderPacket.ndc.trim()
         val hl7DrugName = orderPacket.drugName
         val targetCount = orderPacket.dispenseAmount.trim().toDoubleOrNull()?.toInt()
-        // Eyecon's rx-only lookup falls back to ZNI's Prescription Number when no
-        // filler order number is present.
-        val rxNo = orderPacket.fillerOrderNumber.takeIf { it.isNotBlank() }
-            ?: orderPacket.prescriptionNumber.takeIf { it.isNotBlank() }
+        val rxNo = orderPacket.prescriptionNumber.takeIf { it.isNotBlank() }
+        val transactionOrderId = orderPacket.fillerOrderNumber.takeIf { it.isNotBlank() }
         val fillNo = orderPacket.fillNumber.takeIf { it.isNotBlank() }
 
         if (hl7Ndc.isBlank()) {
@@ -626,6 +689,7 @@ class Hl7Repository @Inject constructor(
             isSynced = false,
             isNdcVerified = false,
             rxNo = rxNo,
+            transactionOrderId = transactionOrderId,
             refillNo = fillNo,
             priority = priority,
             hl7MessageControlId = message.messageControlId.takeIf { it.isNotBlank() },
@@ -1018,8 +1082,7 @@ class Hl7Repository @Inject constructor(
                 else -> null
             }
 
-            HL7MessageKind.INVENTORY_REQUEST,
-            HL7MessageKind.INVENTORY_RESPONSE ->
+            HL7MessageKind.INVENTORY_REQUEST ->
                 MessageType.INVENTORY_REQUEST
 
             else -> null

@@ -1,5 +1,7 @@
 package com.rite.pillcounting.core.refreshToken.data
 
+import com.rite.pillcounting.core.auth.AuthEvent
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.refreshToken.data.remote.IRefreshTokenAPI
 import com.rite.pillcounting.core.refreshToken.domain.model.RefreshTokenRequest
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -8,6 +10,7 @@ import okhttp3.Authenticator
 import okhttp3.Request
 import okhttp3.Response
 import okhttp3.Route
+import retrofit2.HttpException
 import javax.inject.Inject
 
 /**
@@ -19,7 +22,8 @@ import javax.inject.Inject
  */
 class TokenAuthenticator @Inject constructor(
     private val prefs: PreferenceHelper,
-    private val refreshApi: IRefreshTokenAPI
+    private val refreshApi: IRefreshTokenAPI,
+    private val authEventBus: AuthEventBus
 ) : Authenticator {
 
     /**
@@ -38,10 +42,19 @@ class TokenAuthenticator @Inject constructor(
 
         val currentRefreshToken = prefs.getRefreshToken() ?: return null
 
-        // Perform token refresh synchronously (blocking call)
+        // Perform token refresh synchronously (blocking call). A refresh call that itself
+        // returns HTTP 401 is the ONE condition that declares a session truly expired —
+        // publish it to AuthEventBus so MainActivity can nav to Login and toast. Other
+        // failure modes (network exception, empty body, non-401 error) are offline / bad
+        // luck and stay quiet — the session may still be valid once the network recovers.
         val refreshResponse = runBlocking {
             try {
                 refreshApi.refreshToken(RefreshTokenRequest(currentRefreshToken))
+            } catch (e: HttpException) {
+                if (e.code() == 401) {
+                    authEventBus.tryPublish(AuthEvent.SessionExpired)
+                }
+                null
             } catch (e: Exception) {
                 null
             }

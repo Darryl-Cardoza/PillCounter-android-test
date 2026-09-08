@@ -10,6 +10,7 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
@@ -44,7 +45,7 @@ import org.junit.Test
  * In both cases the ImageProxy must be closed immediately.
  *
  * getDrugInfo tests verify that the correct StepState is resolved from the DAO
- * state and the forceStartOnScan flag.
+ * state and any explicit forceStartStep override.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class PillScanningViewModelFrameTest {
@@ -68,6 +69,7 @@ class PillScanningViewModelFrameTest {
     private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
     private val batchDao: BatchDao = mockk(relaxed = true)
+    private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
 
@@ -98,6 +100,7 @@ class PillScanningViewModelFrameTest {
             drugRepository = drugRepository,
             drugImageDownloader = drugImageDownloader,
             hl7Repository = hl7Repository,
+            appDatabase = appDatabase,
         )
     }
 
@@ -130,20 +133,9 @@ class PillScanningViewModelFrameTest {
 
     // ─────────────────────────── getDrugInfo step resolution ───────────────────────────
 
-    // SCAN_VM_016
-    @Test
-    fun `getDrugInfo with forceStartOnScan=true resolves currentStep to SCAN`() = runTest {
-        // enterStockCountScanMode arms forceStartOnScan; getDrugInfo then forces SCAN
-        viewModel.enterStockCountScanMode(batchId = 1L)
-        viewModel.getDrugInfo()
-        advanceUntilIdle()
-
-        assertEquals(StepState.SCAN, viewModel.currentStep.value)
-    }
-
     // SCAN_VM_017
     @Test
-    fun `getDrugInfo with no txn and forceStartOnScan=false resolves currentStep to TARGET_VERIFICATION`() = runTest {
+    fun `getDrugInfo with no txn resolves currentStep to TARGET_VERIFICATION`() = runTest {
         // Relaxed mocks: getTxnWithDetails → null, getLatestType → null.
         // drugInfo is null (no txn -> no drugId), so drugType.isNullOrEmpty() is true,
         // which falls back to TARGET_VERIFICATION (not CONTAINER_INITIATE, which is only

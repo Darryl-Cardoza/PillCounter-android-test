@@ -119,6 +119,10 @@ interface UserDao {
      *
      * - Unlike [observeByLocalId], this suspends and returns once rather than streaming.
      * - Intended for one-time lookups (e.g. reading the current session's email).
+     * - Transactions reference their operator with [PillCountTxnEntity.localId], which is a FK to
+     *   [UserEntity.localId] — not the business `userId`. Resolving that FK through
+     *   [getByUserId] never matches, so the operator came back null and outbound HL7 carried no
+     *   dispensing provider at all.
      *
      * @param localId The Room primary key for the user.
      * @return The matching [UserEntity], or `null` if not found.

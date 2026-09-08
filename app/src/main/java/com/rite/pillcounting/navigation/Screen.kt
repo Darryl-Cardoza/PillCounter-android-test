@@ -205,6 +205,14 @@ sealed interface Screen {
         const val ARG_FROM_QUEUE = "from_queue"
         const val ARG_ALLOWED_NDCS = "allowed_ndcs"
 
+        /**
+         * SavedStateHandle key used by DispenseFlow to publish a lazily-created
+         * stock-count batchId to the previous back-stack entry (InventoryScanHost).
+         * The host consumes it on resume so its list re-subscribes to the real
+         * batch instead of the initial 0L nav argument.
+         */
+        const val NAV_KEY_STOCK_COUNT_BATCH_ID = "stock_count_batch_id"
+
         override val route: String =
             "$ROUTE_PREFIX/{$ARG_TYPE}?$ARG_FROM_HL7={$ARG_FROM_HL7}&$ARG_FROM_RESUME={$ARG_FROM_RESUME}&$ARG_BATCH_ID={$ARG_BATCH_ID}&$ARG_BUCKET_ID={$ARG_BUCKET_ID}&$ARG_FROM_QUEUE={$ARG_FROM_QUEUE}&$ARG_ALLOWED_NDCS={$ARG_ALLOWED_NDCS}"
 

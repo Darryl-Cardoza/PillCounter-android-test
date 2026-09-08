@@ -7,10 +7,9 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.os.Binder
-import android.os.Handler
 import android.os.IBinder
-import android.os.Looper
 import androidx.core.app.NotificationCompat
+import com.rite.pillcounting.R
 import com.rite.pillcounting.core.hl7.core.Hl7EventListener
 import com.rite.pillcounting.core.hl7.imageWebService.ImageWebServer
 import com.rite.pillcounting.core.hl7.imageWebService.NetworkUtils
@@ -22,9 +21,12 @@ import com.rite.pillcounting.core.hl7.mllp.server.MllpServer
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsSocketFactory
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import com.rite.pillcounting.feature.settings.domain.model.Hl7ServiceConfig
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import org.rite.hl7.HL7
 import org.rite.hl7.model.HL7Message
@@ -48,9 +50,11 @@ import org.rite.hl7.model.HL7Message
  * uses to decide trigger events (e.g. RDS^O13 vs RDS^O01) when building outbound messages.
  */
 class HL7Service : Service() {
+
     companion object {
         private const val CHANNEL_ID = "hl7_bg"
         private const val NOTIFICATION_ID = 7001
+        private const val STATIC_PMS_CONFIG_RETRY_MS = 15_000L
     }
 
     /** HL7 runtime configuration.
@@ -108,17 +112,18 @@ class HL7Service : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        // START_STICKY restarts this service with a null intent. `intent?.let { … }` then left
-        // `config` at its constructed default, whose nsdBroadcastServiceName is
-        // "PillCounter-${Build.MODEL}" — so a restarted service silently stopped advertising the
-        // pharmacist's terminal and started advertising the phone model instead. Two handsets of
-        // the same model then collided on that identical name and the responder renamed one to
-        // " (2)". The identity has to survive a restart, so it is persisted on every good intent
-        // and read back when there is none.
+        // START_STICKY redelivers with a null Intent after the system kills and restarts this
+        // service (e.g. low-memory kill). Previously this silently kept the in-memory
+        // HL7Config() default (bypassTls=false, static PMS disabled, wrong port, and
+        // nsdBroadcastServiceName = "PillCounter-${Build.MODEL}"), which broke TLS/connections
+        // after every such restart and made two handsets of the same model advertise the same
+        // name, colliding until the responder renamed one to " (2)". Rebuild the real config
+        // straight from preferences instead, including the terminal identity.
         if (intent != null) {
             loadConfigFromIntent(intent)
         } else {
-            restoreConfigFromPreferences()
+            logger.w("onStartCommand() — null Intent (system restart), reloading config from preferences")
+            config = loadConfigFromPreferences()
         }
 
         startForeground(NOTIFICATION_ID, buildNotification())
@@ -166,6 +171,7 @@ class HL7Service : Service() {
     }
 
     private suspend fun cleanup() {
+        staticPmsRetryJob?.cancel()
         try {
             server.stop()
         } catch (_: Exception) {
@@ -209,10 +215,14 @@ class HL7Service : Service() {
                 Hl7serviceHandler.EXTRA_IMAGE_SERVICE_PORT,
                 config.imageServicePort
             ),
-            imageServiceSecurePort = intent.getIntExtra(
-                Hl7serviceHandler.EXTRA_IMAGE_SERVICE_SECURE_PORT,
-                config.imageServiceSecurePort
-            )
+            useStaticPmsConnection = intent.getBooleanExtra(
+                Hl7serviceHandler.EXTRA_USE_STATIC_PMS_CONNECTION,
+                config.useStaticPmsConnection
+            ),
+            pmsIp = intent.getStringExtra(Hl7serviceHandler.EXTRA_PMS_IP) ?: config.pmsIp,
+            pmsPort = intent.getIntExtra(Hl7serviceHandler.EXTRA_PMS_PORT, config.pmsPort),
+            bypassTls = intent.getBooleanExtra(Hl7serviceHandler.EXTRA_BYPASS_TLS, config.bypassTls),
+            hl7Version = intent.getStringExtra(Hl7serviceHandler.EXTRA_HL7_VERSION) ?: config.hl7Version
         )
 
         persistIdentity(config)
@@ -233,40 +243,37 @@ class HL7Service : Service() {
         }
     }
 
-    /**
-     * Rebuilds [config] after a restart with no intent. The terminal name comes from the saved
-     * selection rather than [HL7Config]'s model-name default; without a saved selection there is
-     * no terminal to advertise, and the default is used only as a last resort.
-     */
-    private fun restoreConfigFromPreferences() {
-        try {
-            val prefs = PreferenceHelper(applicationContext)
-            val terminalName = prefs.getSelectedTerminalName()
-            val broadcastType = prefs.getNsdBroadcastType().ifBlank { config.nsdBroadcastType }
-            val discoveryType = prefs.getNsdDiscoveryType().ifBlank { config.nsdDiscoveryType }
-
-            if (terminalName.isNullOrBlank()) {
-                logger.w("Restarted with no intent and no saved terminal — advertising ${config.nsdBroadcastServiceName}")
-                return
-            }
-
-            config = config.copy(
-                nsdBroadcastServiceName = terminalName,
-                nsdBroadcastType = broadcastType,
-                nsdDiscoveryType = discoveryType
-            )
-            logger.i("Restarted with no intent — restored terminal '$terminalName' from preferences")
-        } catch (e: Exception) {
-            logger.e("Could not restore config from preferences", e)
-        }
-    }
-
     /** Returns true when [newConfig] actually differs from what's currently running. */
     fun updateConfig(newConfig: HL7Config): Boolean {
         val changed = config != newConfig
         logger.i("Updating config: $newConfig (changed=$changed)")
         this.config = newConfig
         return changed
+    }
+
+    /**
+     * Rebuilds [HL7Config] straight from persisted preferences — used when this service
+     * is restarted by the system (START_STICKY, null Intent) and there is no Intent to
+     * read extras from. Shares [HL7Config.fromPreferences] with the normal app-driven
+     * start (MainActivityViewModel.startHl7Service()) so the two can't drift apart.
+     */
+    private fun loadConfigFromPreferences(): HL7Config {
+        return try {
+            val preferenceHelper = com.rite.pillcounting.core.utils.preference.PreferenceHelper(applicationContext)
+            HL7Config.fromPreferences(
+                preferenceHelper = preferenceHelper,
+                nsdBroadcastType = preferenceHelper.getNsdBroadcastType().takeIf { it.isNotBlank() }
+                    ?: Hl7ServiceConfig.PILL_COUNTER_HOST_NAME,
+                nsdDiscoveryType = preferenceHelper.getNsdDiscoveryType().takeIf { it.isNotBlank() }
+                    ?: Hl7ServiceConfig.PMS_HOST_NAME,
+            )
+        } catch (e: Exception) {
+            // A SecurePreferences/keystore failure here must not crash-loop the service on
+            // every START_STICKY restart — fall back to an unconfigured default config
+            // instead; the next normal app-driven start still rebuilds it properly.
+            logger.e("loadConfigFromPreferences() failed — falling back to default config", e)
+            HL7Config()
+        }
     }
 
     /* -------------------- INITIALIZATION -------------------- */
@@ -286,17 +293,8 @@ class HL7Service : Service() {
         }
         coreInitialized = true
 
-        // Build the hl7Core facade with the persisted HL7 version preference.
-        // PreferenceHelper is injected via Hilt in production; for the service
-        // we access it directly via the application context.
-        val hl7Version = try {
-            val pref = PreferenceHelper(applicationContext)
-            pref.getHl7Version()
-        } catch (_: Exception) {
-            PreferenceHelper.DEFAULT_HL7_VERSION
-        }
-
-        hl7 = HL7(version = hl7Version)
+        // HL7 version comes from config, populated by the feature layer from preferences.
+        hl7 = HL7(version = config.hl7Version)
 
         nsdHelper = NsdHelper(this)
 
@@ -316,11 +314,13 @@ class HL7Service : Service() {
             onConnected = {
                 logger.i("${lastDiscoveredServiceName} CONNECTED")
                 listener?.onClientConnected(lastDiscoveredServiceName, 0)
+                updateNotification(getString(R.string.hl7_notification_connected_to, lastConnectedHost.orEmpty()))
             },
 
             onDisconnected = {
                 logger.w("${lastDiscoveredServiceName} DISCONNECTED")
                 listener?.onClientDisconnected()
+                updateNotification(getString(R.string.hl7_notification_listening))
             },
 
             onCertMismatch = {
@@ -331,7 +331,7 @@ class HL7Service : Service() {
 
         clientManager.startContinuousReconnect()
 
-        logger.d("Core components initialized (HL7 version=$hl7Version)")
+        logger.d("Core components initialized (HL7 version=${config.hl7Version})")
     }
 
 
@@ -361,15 +361,23 @@ class HL7Service : Service() {
     private fun startMllpServer() {
         server = MllpServer(
             port = config.serverPort,
-            bypassTls = PreferenceHelper(applicationContext).isBypassTlsEnabled(),
+            bypassTls = config.bypassTls,
         ) { raw ->
             handleIncomingMessage(raw)
         }
 
         serviceScope.launch {
-            server.start()
-            logger.i("MLLP server listening on ${config.serverPort}")
-            listener?.onServerStarted(config.serverPort)
+            try {
+                server.start()
+                listener?.onServerStarted(config.serverPort)
+            } catch (e: Exception) {
+                // A silent failure here (e.g. port already bound by a leftover instance,
+                // or TLS keystore/context creation failing) previously left the server
+                // looking "started" in the logs while never actually listening — so PMS
+                // could never connect in to send HL7 messages. Surface it loudly instead.
+                logger.e("MLLP server failed to start on port ${config.serverPort} — PMS cannot send HL7 messages until this is fixed", e)
+                serverStarted = false
+            }
         }
     }
 
@@ -438,6 +446,9 @@ class HL7Service : Service() {
     }
 
 
+    /** Raw MLLP connection state — flips instantly, unlike [Hl7EventHandler.connectionState] which waits for [MllpConnectionManager]'s settle delay. */
+    fun isPmsConnected(): Boolean = clientManager.isConnected()
+
     fun clearPmsCertPin() {
         logger.i("clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")
         tlsFactory.clearServerPin()
@@ -446,6 +457,11 @@ class HL7Service : Service() {
     }
 
     fun discoverPmsAndConnect() {
+        if (config.useStaticPmsConnection) {
+            connectToStaticPms()
+            return
+        }
+
         listener?.onNsdDiscoveryStarted()
 
         nsdHelper.discover(config.nsdDiscoveryType) { info ->
@@ -476,6 +492,75 @@ class HL7Service : Service() {
                 } catch (e: Exception) {
                     logger.e("Connect failed", e)
                 }
+            }
+        }
+    }
+
+    private var staticPmsRetryJob: Job? = null
+
+    /**
+     * Connects directly to PMS using the static IP/port configured on the portal,
+     * bypassing NSD/Bonjour discovery entirely.
+     *
+     * If the IP/port aren't populated yet (e.g. this device's auth/me response hasn't
+     * synced them to preferences at the moment the service started), retries on a timer
+     * instead of giving up permanently — mirrors NSD discovery, which keeps listening
+     * indefinitely rather than failing once and stopping.
+     */
+    private fun connectToStaticPms() {
+        // Re-read straight from preferences, not config.pmsIp/pmsPort — auth/me can save the
+        // real IP to preferences well after this service (and its in-memory config) started,
+        // and nothing else pushes that update into config. Without re-reading here, a retry
+        // loop started before the IP was known would keep retrying the same stale/blank value
+        // forever even after preferences have the real address.
+        val preferenceHelper = PreferenceHelper(applicationContext)
+        val host = preferenceHelper.getPmsIP()
+        val port = preferenceHelper.getPmsPort()
+
+        if (host.isNullOrBlank() || port <= 0) {
+            logger.e("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry")
+            scheduleStaticPmsRetry()
+            return
+        }
+
+        staticPmsRetryJob?.cancel()
+
+        logger.i("Static PMS connection enabled — connecting directly to $host:$port")
+
+        if (lastConnectedHost == "$host:$port" && clientManager.isConnected()) {
+            return
+        }
+
+        lastConnectedHost = "$host:$port"
+        lastDiscoveredServiceName = "PMS"
+
+        listener?.onNsdServiceFound("PMS", host, port)
+
+        serviceScope.launch {
+            try {
+                clientManager.connect(host, port)
+            } catch (e: Exception) {
+                logger.e("Static PMS connect failed", e)
+            }
+        }
+    }
+
+    // Reschedules itself from a NEW coroutine each time, not from inside the currently-running
+    // one — the old code called connectToStaticPms() (which can call scheduleStaticPmsRetry()
+    // again) from within the very job that scheduleStaticPmsRetry() had just launched, so the
+    // isActive guard below saw that same still-running job and blocked the next retry from ever
+    // being scheduled. The loop died after exactly one delayed attempt.
+    //
+    // Nulling staticPmsRetryJob before firing the inner call closes a narrower version of the
+    // same race: the inner call can re-enter this method before this job is marked complete,
+    // so the isActive check must not see this (finishing) job as still active.
+    private fun scheduleStaticPmsRetry() {
+        if (staticPmsRetryJob?.isActive == true) return
+        staticPmsRetryJob = serviceScope.launch {
+            delay(STATIC_PMS_CONFIG_RETRY_MS)
+            if (config.useStaticPmsConnection) {
+                staticPmsRetryJob = null
+                serviceScope.launch { connectToStaticPms() }
             }
         }
     }
@@ -526,8 +611,9 @@ class HL7Service : Service() {
     }
 
     /**
-     * Builds a minimal AA ACK from raw MSH fields when the full parse fails,
-     * so the sender doesn't time out waiting for an acknowledgement.
+     * Builds a minimal ACK from raw MSH fields when the full parse fails, so the sender
+     * doesn't time out waiting for an acknowledgement — AA when no error message is given,
+     * AR (with the error text in MSA-3) otherwise.
      */
     private fun buildFallbackAck(raw: String, errorMsg: String? = null): String {
         return try {
@@ -583,13 +669,29 @@ class HL7Service : Service() {
     }
 
     /* -------------------- NOTIFICATION -------------------- */
-    private fun buildNotification(): Notification {
+    private fun buildNotification(
+        contentText: String = getString(R.string.hl7_notification_listening)
+    ): Notification {
         createChannel()
         return NotificationCompat.Builder(this, CHANNEL_ID)
-            .setContentTitle("HL7 Background Service")
-            .setContentText("Listening & responding to HL7")
+            .setContentTitle(getString(R.string.hl7_notification_title))
+            .setContentText(contentText)
+            .setSmallIcon(R.drawable.logo)
             .setOngoing(true)
             .build()
+    }
+
+    private fun updateNotification(contentText: String) {
+        // A notify() failure (e.g. a malformed notification) must never propagate up
+        // through the onConnected/onDisconnected callback into MllpConnectionManager —
+        // it would be caught there as a "connect failed" exception and tear the live
+        // PMS connection down, masquerading a notification bug as a connection flap.
+        try {
+            getSystemService(NotificationManager::class.java)
+                .notify(NOTIFICATION_ID, buildNotification(contentText))
+        } catch (e: Exception) {
+            logger.e("updateNotification() failed — ignoring, does not affect PMS connection", e)
+        }
     }
 
     private fun createChannel() {
@@ -619,6 +721,7 @@ class HL7Service : Service() {
         imageServer.start()
 
         val ip = NetworkUtils.getLocalIpAddress()
-        logger.i("Image server running at https://$ip:8443/images/{fileName}")
+        val scheme = if (config.bypassTls) "http" else "https"
+        logger.i("Image server running at $scheme://$ip:${ImageWebServer.PORT}/images/{fileName}")
     }
 }

@@ -45,6 +45,7 @@ class RdsO13Scope : MessageScope() {
     fun zsn(block: (ZSNBuilder) -> Unit) = add(ZSNBuilder(), block)   // repeating
     fun zsv(block: (ZSVBuilder) -> Unit) = add(ZSVBuilder(), block)
     fun zui(block: (ZUIDispenseBuilder) -> Unit) = add(ZUIDispenseBuilder(), block)
+    fun zuiEyeCon(block: (ZUIEyeConBuilder) -> Unit) = add(ZUIEyeConBuilder(), block)
     fun zni(block: (ZNIBuilder) -> Unit) = add(ZNIBuilder(), block)
 }
 
@@ -87,18 +88,16 @@ class InrU06Scope : MessageScope() {
 
 /**
  * Scope for INU^U05 inventory update — sent as the response to a
- * PMS-initiated INR^U06 request (or unsolicited). INV carries each drug/lot
- * group's combined on-hand total; ZIN rows underneath break that total down
- * by dispenseType (OPENED/SEALED).
- *
- * ZAD is not part of the standard INU_U05 definition; it's kept here as a
- * project-specific extension so cycle-count adjustment reason/approver data
- * still travels on the response.
+ * PMS-initiated INR^U06 request (or unsolicited). One INV per drug/lot group
+ * (Set-ID keyed), followed by OBX rows describing that group (SEALED_QTY/
+ * OPEN_QTY always, IMG_REF when a photo exists) — OBX-4 on those rows carries
+ * the parent INV's Set-ID. A leading OBX (blank sub-id) carries OPERATOR_NAME.
  */
 class InuU05Scope : MessageScope() {
     fun equ(block: (EQUBuilder) -> Unit) = add(EQUBuilder(), block)
     fun orc(block: (ORCBuilder) -> Unit) = add(ORCBuilder(), block)
     fun inv(block: (INVBuilder) -> Unit) = add(INVBuilder(), block)   // repeating
+    fun obx(block: (OBXBuilder) -> Unit) = add(OBXBuilder(), block)   // repeating
     fun zin(block: (ZINBuilder) -> Unit) = add(ZINBuilder(), block)   // repeating
     fun zad(block: (ZADBuilder) -> Unit) = add(ZADBuilder(), block)   // repeating, non-standard extension
     fun nte(block: (NTEBuilder) -> Unit) = add(NTEBuilder(), block)

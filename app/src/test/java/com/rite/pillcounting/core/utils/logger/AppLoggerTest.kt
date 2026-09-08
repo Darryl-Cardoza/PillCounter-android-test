@@ -1,6 +1,7 @@
 package com.rite.pillcounting.core.utils.logger
 
 import android.util.Log
+import com.rite.pillcounting.BuildConfig
 import io.mockk.every
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
@@ -17,12 +18,17 @@ import org.junit.Test
  * Android stub JAR used for JVM unit tests. We mock it statically with mockk so the wrapped
  * calls execute (and can be verified) instead of throwing.
  *
- * Note: d() and i() are gated by BuildConfig.DEBUG. For the debug unit-test variant
- * BuildConfig.DEBUG is true, so those branches execute and the verifications below hold.
+ * Note: d() and i() are gated by BuildConfig.DEBUG. These tests run for both the debug and
+ * release unit-test variants, so those calls are expected exactly once under debug and never
+ * under release.
  */
 class AppLoggerTest {
 
     private val tag = "TestTag"
+
+    // d()/i() only reach android.util.Log in debug builds.
+    private val debugCalls = if (BuildConfig.DEBUG) 1 else 0
+
     private lateinit var logger: AppLogger
 
     @Before
@@ -50,14 +56,14 @@ class AppLoggerTest {
     @Test
     fun `d without throwable delegates to Log d with null throwable`() {
         logger.d("debug message")
-        verify(exactly = 1) { Log.d(tag, "debug message", null) }
+        verify(exactly = debugCalls) { Log.d(tag, "debug message", null) }
     }
 
     @Test
     fun `d with throwable delegates to Log d with that throwable`() {
         val throwable = RuntimeException("boom")
         logger.d("debug message", throwable)
-        verify(exactly = 1) { Log.d(tag, "debug message", throwable) }
+        verify(exactly = debugCalls) { Log.d(tag, "debug message", throwable) }
     }
 
     // -------------------------------------------------------------------------
@@ -69,15 +75,15 @@ class AppLoggerTest {
     @Test
     fun `i without throwable delegates to Log println with just the message`() {
         logger.i("info message")
-        verify(exactly = 1) { Log.println(Log.INFO, tag, "info message") }
+        verify(exactly = debugCalls) { Log.println(Log.INFO, tag, "info message") }
     }
 
     @Test
     fun `i with throwable delegates to Log println with message and stack trace`() {
         val throwable = IllegalStateException("state")
         logger.i("info message", throwable)
-        verify(exactly = 1) { Log.getStackTraceString(throwable) }
-        verify(exactly = 1) { Log.println(Log.INFO, tag, "info message\nstack trace") }
+        verify(exactly = debugCalls) { Log.getStackTraceString(throwable) }
+        verify(exactly = debugCalls) { Log.println(Log.INFO, tag, "info message\nstack trace") }
     }
 
     // -------------------------------------------------------------------------
@@ -131,6 +137,6 @@ class AppLoggerTest {
         val created = AppLogger.create<String>()
         assertEquals(AppLogger::class.java, created::class.java)
         created.d("string tagged")
-        verify(exactly = 1) { Log.d("String", "string tagged", null) }
+        verify(exactly = debugCalls) { Log.d("String", "string tagged", null) }
     }
 }

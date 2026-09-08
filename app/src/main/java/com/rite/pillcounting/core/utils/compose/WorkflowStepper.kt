@@ -39,6 +39,8 @@ fun WorkflowStepper(
     // header title is suppressed, so the user still sees (and, with voiceover on,
     // hears) the step name once.
     autoRevealCurrentStep: Boolean = false,
+    // Fires when the step's reveal is done, so the caller can skip repeats.
+    onAutoRevealed: () -> Unit = {},
     // Per-step title overrides. A step present here uses the mapped string instead
     // of its default [titleRes] for both the bubble and the spoken voiceover —
     // e.g. stock count shows "Scan Open Pills" on the counting step.
@@ -53,7 +55,9 @@ fun WorkflowStepper(
     val resolvedTitles = steps.map { step ->
         stringResource(titleOverrides[step] ?: step.titleRes())
     }
-    val currentTitle = resolvedTitles.getOrNull(currentIndex)
+    // Null until [steps] actually contains [currentStep] — the workflow list is
+    // built asynchronously, and nothing can be announced before it arrives.
+    val currentTitle = if (currentStep in steps) resolvedTitles[currentIndex] else null
 
     // Reuse the process-wide TTS engine (warmed up at app start) so tapping a step
     // — or the auto-reveal on entry — speaks instantly instead of waiting on a
@@ -80,17 +84,20 @@ fun WorkflowStepper(
     // entry and on every current-step change), then let the auto-hide timer above
     // dismiss it after STEP_TOOLTIP_VISIBLE_MS. Speak it aloud too when voiceover
     // is enabled (waits for the TTS engine to finish initialising).
-    LaunchedEffect(autoRevealCurrentStep, currentIndex, SoundUtils.isTtsReady) {
-        if (autoRevealCurrentStep) {
+    LaunchedEffect(autoRevealCurrentStep, currentIndex, currentTitle, SoundUtils.isTtsReady) {
+        if (autoRevealCurrentStep && currentTitle != null) {
             tooltipIndex = currentIndex
             clickNonce++
-            if (isVoiceOverEnabled && SoundUtils.isTtsReady && currentTitle != null) {
+            if (isVoiceOverEnabled && SoundUtils.isTtsReady) {
                 SoundUtils.speak(
                     context = context,
                     text = currentTitle,
                     utteranceId = "step_title_auto_$currentIndex",
                 )
             }
+            // Only mark it announced once it was actually spoken. If TTS isn't
+            // ready yet the effect must stay armed so it can speak later.
+            if (!isVoiceOverEnabled || SoundUtils.isTtsReady) onAutoRevealed()
         }
     }
 

@@ -19,7 +19,7 @@ import org.junit.runner.RunWith
 class FaceEngineInstrumentedTest {
 
     @Test
-    fun `same person across two photos scores above match threshold`() = runBlocking {
+    fun samePersonAcrossTwoPhotosScoresAboveMatchThreshold() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val loader = FaceModelLoader(context)
         val engine = FaceEngine(loader)

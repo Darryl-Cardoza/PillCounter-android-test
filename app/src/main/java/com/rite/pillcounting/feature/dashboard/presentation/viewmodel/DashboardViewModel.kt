@@ -15,6 +15,7 @@ import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
+import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.security.DatabaseKeyProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -70,6 +71,7 @@ class DashboardViewModel @Inject constructor(
     private val hl7EventHandler: Hl7EventHandler,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val deviceKeyProvider: DeviceKeyProvider,
+    private val sessionHealthController: SessionHealthController,
 
 ) : ViewModel() {
 
@@ -321,7 +323,9 @@ class DashboardViewModel @Inject constructor(
                             isNdcVerified = false,
                             isDispense = t.isDispense,
                             priority = null,
-                            drugImagePath = null,
+                            strength = t.strength,
+                            dosageForm = t.dosageForm,
+                            drugImagePath = t.drugImagePath,
                         ),
                         isHazardous = false,
                         isHighPriority = false,
@@ -396,6 +400,19 @@ class DashboardViewModel @Inject constructor(
                 return@launch
             }
 
+            // Gate /auth/me on a healthy /health probe. When offline the HealthGateInterceptor
+            // would already short-circuit the request with a 599, but calling checkHealth first
+            // gives us an immediate recovery opportunity + avoids logging a synthetic failure.
+            // The app-wide OfflineOverlay is the sole UI surface for the unhealthy case.
+            val healthy = sessionHealthController.checkHealth()
+            if (!healthy) {
+                logger.w("Skipping /auth/me — backend is not healthy")
+                _uiState.update {
+                    it.copy(isLoadingUserDetail = false, userDetailError = null)
+                }
+                return@launch
+            }
+
             logger.i("Access token retrieved. Requesting user detail from repository.")
             _uiState.update { it.copy(isLoadingUserDetail = true, userDetailError = null) }
 
@@ -433,6 +450,15 @@ class DashboardViewModel @Inject constructor(
                             detail.settings?.hl7MessageSpec
                                 ?.takeIf { it.isNotBlank() }
                                 ?.let { preferenceHelper.saveHl7Format(Hl7Format.fromSendingApplication(it)) }
+                            // Persist PMS connection info so the dispenser can reach the PMS
+                            // over a static IP/port when the server has configured one.
+                            preferenceHelper.setUseStaticPmsConnection(detail.settings?.useStaticPmsConnection ?: false)
+                            detail.settings?.pmsIP
+                                ?.let { preferenceHelper.savePmsIP(it) }
+                                ?: preferenceHelper.clearPmsIP()
+                            detail.settings?.pmsPort?.toIntOrNull()
+                                ?.let { preferenceHelper.savePmsPort(it) }
+                                ?: preferenceHelper.clearPmsPort()
                             // When the server has now disallowed local storage, clean up dispense
                             // transactions that were already synced (e.g. while the flag was still
                             // true). Runs on each auth/me response, so a true → false change takes
@@ -461,9 +487,7 @@ class DashboardViewModel @Inject constructor(
                                 // auth/me response, so choosing a different terminal in Profile was
                                 // silently reverted on the next dashboard refresh. device_key is the
                                 // only field that distinguishes this install from the others.
-                                val deviceKey = runCatching { deviceKeyProvider.getDeviceKey() }
-                                    .onFailure { logger.e("Could not read device key — keeping local terminal selection", it) }
-                                    .getOrNull()
+                                val deviceKey = deviceKeyProvider.getDeviceKey()
                                 val claimedTerminal = deviceKey?.let { key ->
                                     terminals.firstOrNull { !it.deviceKey.isNullOrBlank() && it.deviceKey == key }
                                 }

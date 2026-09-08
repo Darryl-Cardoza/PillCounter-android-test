@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
 import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
+import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.models.ScheduleCode
 import com.rite.pillcounting.core.room.dao.BatchDao
@@ -61,6 +62,7 @@ class MainActivityViewModelTest {
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
     private lateinit var sessionLockController: SessionLockController
+    private lateinit var sessionHealthController: SessionHealthController
 
     private fun themeColors(primary: String = "#000000") = ThemeColors(
         primary = primary,
@@ -132,6 +134,7 @@ class MainActivityViewModelTest {
         hl7ServiceManager = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
         sessionLockController = mockk(relaxed = true)
+        sessionHealthController = mockk(relaxed = true)
 
         // Defaults so init doesn't crash.
         every { preferenceHelper.getShowNotesDialogSetting() } returns false
@@ -150,6 +153,11 @@ class MainActivityViewModelTest {
         every { preferenceHelper.isUserLoggedIn() } returns false
         every { preferenceHelper.getSelectedTerminalName() } returns null
 
+        val defaultContext = mockk<Context>(relaxed = true)
+        every { defaultContext.getString(com.rite.pillcounting.R.string.pms_not_configured) } returns "PMS IP/port not configured"
+        every { defaultContext.getString(com.rite.pillcounting.R.string.pms_unable_to_reach) } returns "Unable to reach PMS server"
+        every { preferenceHelper.getContext() } returns defaultContext
+
         coEvery { repository.getApplicationSettings() } returns apiResponse(dto())
         coEvery { txnDao.getTransactionsBefore(any()) } returns emptyList()
         coEvery { txnDao.getTransactionDetailsImages(any()) } returns emptyList()
@@ -162,7 +170,7 @@ class MainActivityViewModelTest {
     }
 
     private fun createViewModel() =
-        MainActivityViewModel(repository, preferenceHelper, txnDao, batchDao, stockTxnDao, bottleInfoDao, hl7ServiceManager, hl7EventHandler, sessionLockController)
+        MainActivityViewModel(repository, preferenceHelper, txnDao, batchDao, stockTxnDao, bottleInfoDao, hl7ServiceManager, hl7EventHandler, sessionLockController, sessionHealthController)
 
     // ─────────────────────────── init / theme loading ───────────────────────────
 
@@ -708,5 +716,64 @@ class MainActivityViewModelTest {
         advanceUntilIdle()
 
         coVerify(atLeast = 2) { repository.getApplicationSettings() }
+    }
+
+    // ─────────────────────────── testPmsConnection ───────────────────────────
+
+    @Test
+    fun `testPmsConnection fails immediately when pms ip is not configured`() = runTest(testDispatcher) {
+        every { preferenceHelper.getPmsIP() } returns null
+        every { preferenceHelper.getPmsPort() } returns 0
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.testPmsConnection()
+
+        val state = vm.pmsTestConnectionState.value
+        assertTrue(state is PmsTestConnectionState.Failed)
+        assertEquals("PMS IP/port not configured", (state as PmsTestConnectionState.Failed).reason)
+    }
+
+    @Test
+    fun `testPmsConnection fails immediately when pms port is not configured`() = runTest(testDispatcher) {
+        every { preferenceHelper.getPmsIP() } returns "10.0.0.5"
+        every { preferenceHelper.getPmsPort() } returns 0
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.testPmsConnection()
+
+        assertTrue(vm.pmsTestConnectionState.value is PmsTestConnectionState.Failed)
+    }
+
+    @Test
+    fun `testPmsConnection succeeds immediately when mllp client already connected`() = runTest(testDispatcher) {
+        every { preferenceHelper.getPmsIP() } returns "10.0.0.5"
+        every { preferenceHelper.getPmsPort() } returns 2575
+        every { hl7ServiceManager.isPmsConnected() } returns true
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.testPmsConnection()
+
+        assertEquals(PmsTestConnectionState.Success, vm.pmsTestConnectionState.value)
+    }
+
+    @Test
+    fun `resetPmsTestConnectionState resets to Idle`() = runTest(testDispatcher) {
+        every { preferenceHelper.getPmsIP() } returns null
+        every { preferenceHelper.getPmsPort() } returns 0
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.testPmsConnection()
+        assertTrue(vm.pmsTestConnectionState.value is PmsTestConnectionState.Failed)
+
+        vm.resetPmsTestConnectionState()
+        assertEquals(PmsTestConnectionState.Idle, vm.pmsTestConnectionState.value)
     }
 }

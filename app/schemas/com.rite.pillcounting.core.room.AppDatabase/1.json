@@ -1,0 +1,806 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 1,
+    "identityHash": "6804d9e9c5a41425386aef49faedf520",
+    "entities": [
+      {
+        "tableName": "users",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`localId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `userId` TEXT NOT NULL, `email` TEXT, `fName` TEXT, `lName` TEXT, `phoneNumber` TEXT, `avatarUrl` TEXT, `role` TEXT, `isVerified` INTEGER NOT NULL, `is_profile_completed` INTEGER, `pharmacy_name` TEXT, `npi_id` TEXT, `language` TEXT, `timezone` TEXT, `notifications` INTEGER, `createdAt` INTEGER NOT NULL, `isHl7Enable` INTEGER NOT NULL, `country` TEXT, `state` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "localId",
+            "columnName": "localId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "userId",
+            "columnName": "userId",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "email",
+            "columnName": "email",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "fName",
+            "columnName": "fName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lName",
+            "columnName": "lName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "phoneNumber",
+            "columnName": "phoneNumber",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "avatarUrl",
+            "columnName": "avatarUrl",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "role",
+            "columnName": "role",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isVerified",
+            "columnName": "isVerified",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isProfileCompleted",
+            "columnName": "is_profile_completed",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pharmacyName",
+            "columnName": "pharmacy_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "npiId",
+            "columnName": "npi_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "language",
+            "columnName": "language",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "timezone",
+            "columnName": "timezone",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "notifications",
+            "columnName": "notifications",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isHl7Enable",
+            "columnName": "isHl7Enable",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "country",
+            "columnName": "country",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "state",
+            "columnName": "state",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "localId"
+          ]
+        }
+      },
+      {
+        "tableName": "drug_master",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`drugId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `drugName` TEXT, `ndc` TEXT NOT NULL, `drugType` TEXT, `createdAt` INTEGER NOT NULL, `gtin` TEXT, `packageQty` INTEGER, `isHazardous` INTEGER NOT NULL, `strength` TEXT, `dosageForm` TEXT, `drugImagePath` TEXT)",
+        "fields": [
+          {
+            "fieldPath": "drugId",
+            "columnName": "drugId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "drugName",
+            "columnName": "drugName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "ndc",
+            "columnName": "ndc",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "drugType",
+            "columnName": "drugType",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "gtin",
+            "columnName": "gtin",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "packageQty",
+            "columnName": "packageQty",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isHazardous",
+            "columnName": "isHazardous",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "strength",
+            "columnName": "strength",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dosageForm",
+            "columnName": "dosageForm",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "drugImagePath",
+            "columnName": "drugImagePath",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "drugId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_drug_master_ndc",
+            "unique": true,
+            "columnNames": [
+              "ndc"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_drug_master_ndc` ON `${TABLE_NAME}` (`ndc`)"
+          }
+        ]
+      },
+      {
+        "tableName": "pill_count_txn",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`txnId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `localId` INTEGER, `drugId` INTEGER, `isDispense` INTEGER NOT NULL, `targetCount` INTEGER, `status` TEXT NOT NULL, `note` TEXT, `isSubstitute` INTEGER NOT NULL, `rxNo` TEXT, `refillNo` TEXT, `patientName` TEXT, `isDeleted` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `isComingFromHL7` INTEGER, `isSynced` INTEGER, `isNdcVerified` INTEGER, `bucketId` TEXT, `substitutedDrugId` INTEGER, `workflowStep` TEXT, `priority` TEXT, `isGlovesPresent` INTEGER NOT NULL, `hazardousTrayDetected` INTEGER, `hl7MessageControlId` TEXT, `hl7SequenceNumber` TEXT, `transactionOrderId` TEXT, `bottleInfoListJson` TEXT, FOREIGN KEY(`localId`) REFERENCES `users`(`localId`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`drugId`) REFERENCES `drug_master`(`drugId`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`substitutedDrugId`) REFERENCES `drug_master`(`drugId`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "txnId",
+            "columnName": "txnId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "localId",
+            "columnName": "localId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "drugId",
+            "columnName": "drugId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isDispense",
+            "columnName": "isDispense",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetCount",
+            "columnName": "targetCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isSubstitute",
+            "columnName": "isSubstitute",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rxNo",
+            "columnName": "rxNo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "refillNo",
+            "columnName": "refillNo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "patientName",
+            "columnName": "patientName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isDeleted",
+            "columnName": "isDeleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isComingFromHL7",
+            "columnName": "isComingFromHL7",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isSynced",
+            "columnName": "isSynced",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "isNdcVerified",
+            "columnName": "isNdcVerified",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "bucketId",
+            "columnName": "bucketId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "substitutedDrugId",
+            "columnName": "substitutedDrugId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "workflowStep",
+            "columnName": "workflowStep",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "priority",
+            "columnName": "priority",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isGlovesPresent",
+            "columnName": "isGlovesPresent",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hazardousTrayDetected",
+            "columnName": "hazardousTrayDetected",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "hl7MessageControlId",
+            "columnName": "hl7MessageControlId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "hl7SequenceNumber",
+            "columnName": "hl7SequenceNumber",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "transactionOrderId",
+            "columnName": "transactionOrderId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bottleInfoListJson",
+            "columnName": "bottleInfoListJson",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "txnId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_txn_localId",
+            "unique": false,
+            "columnNames": [
+              "localId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_txn_localId` ON `${TABLE_NAME}` (`localId`)"
+          },
+          {
+            "name": "idx_txn_drugId",
+            "unique": false,
+            "columnNames": [
+              "drugId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_txn_drugId` ON `${TABLE_NAME}` (`drugId`)"
+          },
+          {
+            "name": "idx_txn_substitutedDrugId",
+            "unique": false,
+            "columnNames": [
+              "substitutedDrugId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_txn_substitutedDrugId` ON `${TABLE_NAME}` (`substitutedDrugId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "users",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "localId"
+            ],
+            "referencedColumns": [
+              "localId"
+            ]
+          },
+          {
+            "table": "drug_master",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "drugId"
+            ],
+            "referencedColumns": [
+              "drugId"
+            ]
+          },
+          {
+            "table": "drug_master",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "substitutedDrugId"
+            ],
+            "referencedColumns": [
+              "drugId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "pill_count_txn_details",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`txnDetailsId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `txnId` INTEGER, `pillCount` INTEGER, `imagePath` TEXT, `type` TEXT, `isManual` INTEGER NOT NULL, `isDeleted` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, FOREIGN KEY(`txnId`) REFERENCES `pill_count_txn`(`txnId`) ON UPDATE NO ACTION ON DELETE CASCADE )",
+        "fields": [
+          {
+            "fieldPath": "txnDetailsId",
+            "columnName": "txnDetailsId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "txnId",
+            "columnName": "txnId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "pillCount",
+            "columnName": "pillCount",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "imagePath",
+            "columnName": "imagePath",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isManual",
+            "columnName": "isManual",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDeleted",
+            "columnName": "isDeleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "txnDetailsId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_txn_details_txnId",
+            "unique": false,
+            "columnNames": [
+              "txnId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_txn_details_txnId` ON `${TABLE_NAME}` (`txnId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "pill_count_txn",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "txnId"
+            ],
+            "referencedColumns": [
+              "txnId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "batch",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`batchId` INTEGER NOT NULL, `startDateTime` INTEGER NOT NULL, `endDateTime` INTEGER, `status` TEXT NOT NULL, `isDeleted` INTEGER NOT NULL, `note` TEXT, `bucketId` TEXT, `requestIdFromPMS` TEXT, `isSynced` INTEGER NOT NULL, `lastAckedChunkIndex` INTEGER NOT NULL, `totalChunks` INTEGER, `totalNdcs` INTEGER, `userName` TEXT, PRIMARY KEY(`batchId`))",
+        "fields": [
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "startDateTime",
+            "columnName": "startDateTime",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "endDateTime",
+            "columnName": "endDateTime",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDeleted",
+            "columnName": "isDeleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bucketId",
+            "columnName": "bucketId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "requestIdFromPMS",
+            "columnName": "requestIdFromPMS",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isSynced",
+            "columnName": "isSynced",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastAckedChunkIndex",
+            "columnName": "lastAckedChunkIndex",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalChunks",
+            "columnName": "totalChunks",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "totalNdcs",
+            "columnName": "totalNdcs",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "userName",
+            "columnName": "userName",
+            "affinity": "TEXT"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "batchId"
+          ]
+        }
+      },
+      {
+        "tableName": "stock_txn",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`txnId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `drugId` INTEGER, `status` TEXT NOT NULL, `isDeleted` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `bucketId` TEXT, `batchId` INTEGER, FOREIGN KEY(`drugId`) REFERENCES `drug_master`(`drugId`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`batchId`) REFERENCES `batch`(`batchId`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "txnId",
+            "columnName": "txnId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "drugId",
+            "columnName": "drugId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDeleted",
+            "columnName": "isDeleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bucketId",
+            "columnName": "bucketId",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "txnId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_stock_txn_drugId",
+            "unique": false,
+            "columnNames": [
+              "drugId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_stock_txn_drugId` ON `${TABLE_NAME}` (`drugId`)"
+          },
+          {
+            "name": "idx_stock_txn_batchId",
+            "unique": false,
+            "columnNames": [
+              "batchId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_stock_txn_batchId` ON `${TABLE_NAME}` (`batchId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "drug_master",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "drugId"
+            ],
+            "referencedColumns": [
+              "drugId"
+            ]
+          },
+          {
+            "table": "batch",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "batchId"
+            ],
+            "referencedColumns": [
+              "batchId"
+            ]
+          }
+        ]
+      },
+      {
+        "tableName": "bottle_info",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`bottleId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `stockTxnId` INTEGER NOT NULL, `batchId` INTEGER, `lotNo` TEXT, `expNo` TEXT, `serialNo` TEXT, `bottleQty` INTEGER, `looseQty` INTEGER, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, FOREIGN KEY(`stockTxnId`) REFERENCES `stock_txn`(`txnId`) ON UPDATE NO ACTION ON DELETE CASCADE , FOREIGN KEY(`batchId`) REFERENCES `batch`(`batchId`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "fields": [
+          {
+            "fieldPath": "bottleId",
+            "columnName": "bottleId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stockTxnId",
+            "columnName": "stockTxnId",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "batchId",
+            "columnName": "batchId",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "lotNo",
+            "columnName": "lotNo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "expNo",
+            "columnName": "expNo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "serialNo",
+            "columnName": "serialNo",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "bottleQty",
+            "columnName": "bottleQty",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "looseQty",
+            "columnName": "looseQty",
+            "affinity": "INTEGER"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "createdAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updatedAt",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": true,
+          "columnNames": [
+            "bottleId"
+          ]
+        },
+        "indices": [
+          {
+            "name": "idx_bottle_info_stockTxnId",
+            "unique": false,
+            "columnNames": [
+              "stockTxnId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_bottle_info_stockTxnId` ON `${TABLE_NAME}` (`stockTxnId`)"
+          },
+          {
+            "name": "idx_bottle_info_batchId",
+            "unique": false,
+            "columnNames": [
+              "batchId"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `idx_bottle_info_batchId` ON `${TABLE_NAME}` (`batchId`)"
+          }
+        ],
+        "foreignKeys": [
+          {
+            "table": "stock_txn",
+            "onDelete": "CASCADE",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "stockTxnId"
+            ],
+            "referencedColumns": [
+              "txnId"
+            ]
+          },
+          {
+            "table": "batch",
+            "onDelete": "SET NULL",
+            "onUpdate": "NO ACTION",
+            "columns": [
+              "batchId"
+            ],
+            "referencedColumns": [
+              "batchId"
+            ]
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '6804d9e9c5a41425386aef49faedf520')"
+    ]
+  }
+}

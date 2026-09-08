@@ -9,8 +9,11 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
+import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
@@ -22,16 +25,23 @@ import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.LocationProvider
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.util.MainDispatcherRule
+import androidx.room.withTransaction
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
+import io.mockk.mockkStatic
+import io.mockk.verify
+import io.mockk.slot
 import io.mockk.unmockkAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -72,6 +82,7 @@ class PillScanningViewModelTest {
     private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
     private val batchDao: BatchDao = mockk(relaxed = true)
+    private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
 
@@ -104,11 +115,38 @@ class PillScanningViewModelTest {
             drugRepository = drugRepository,
             drugImageDownloader = drugImageDownloader,
             hl7Repository = hl7Repository,
+            appDatabase = appDatabase,
         )
     }
 
     @After
     fun tearDown() { unmockkAll() }
+
+    // ─────────────────────────── playCountSoundIfEnabled ───────────────────────────
+
+    @Test
+    fun `playCountSoundIfEnabled routes the count cue through SoundUtils`() {
+        mockkObject(SoundUtils)
+        every { SoundUtils.playCountSound(any()) } returns Unit
+        every { preferenceHelper.isSoundEnabled() } returns true
+        every { preferenceHelper.isHapticEnabled() } returns false
+
+        viewModel.playCountSoundIfEnabled()
+
+        verify(exactly = 1) { SoundUtils.playCountSound(any()) }
+    }
+
+    @Test
+    fun `playCountSoundIfEnabled stays silent when the sound preference is off`() {
+        mockkObject(SoundUtils)
+        every { SoundUtils.playCountSound(any()) } returns Unit
+        every { preferenceHelper.isSoundEnabled() } returns false
+        every { preferenceHelper.isHapticEnabled() } returns false
+
+        viewModel.playCountSoundIfEnabled()
+
+        verify(exactly = 0) { SoundUtils.playCountSound(any()) }
+    }
 
     // ─────────────────────────── buildWorkflowSteps ───────────────────────────
 
@@ -294,6 +332,37 @@ class PillScanningViewModelTest {
         assertTrue(viewModel.uiState.value.showNoTransaction)
     }
 
+    // ─────────────────────────── handleDone → notes dialog ───────────────────────────
+
+    @Test
+    fun `DoneClicked shows the notes dialog for an HL7 txn when the notes setting is on`() = runTest {
+        // HL7 txns used to skip the notes prompt; the setting is now the only gate.
+        seedTxnInfoIsDispense(isDispense = true, isComingFromHL7 = true)
+        setCurrentStep(StepState.VIAL)
+        every { preferenceHelper.getShowNotesDialogSetting() } returns true
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+
+        viewModel.onEvent(PillScanningEvent.DoneClicked)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.showNotesDialog)
+        assertFalse(viewModel.uiState.value.showConfirmDialog)
+    }
+
+    @Test
+    fun `DoneClicked skips the notes dialog for an HL7 txn when the notes setting is off`() = runTest {
+        seedTxnInfoIsDispense(isDispense = true, isComingFromHL7 = true)
+        setCurrentStep(StepState.VIAL)
+        every { preferenceHelper.getShowNotesDialogSetting() } returns false
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+
+        viewModel.onEvent(PillScanningEvent.DoneClicked)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.showNotesDialog)
+        assertTrue(viewModel.uiState.value.showConfirmDialog)
+    }
+
     // ─────────────────────────── onNdcRescannedDuringCount ───────────────────────────
 
     @Test
@@ -353,5 +422,121 @@ class PillScanningViewModelTest {
 
         assertTrue(viewModel.uiState.value.detectedPills.isEmpty())
         assertTrue(viewModel.trayDetections.value.isEmpty())
+    }
+
+    // ─────────────────────────── flushStagedDetails (deferred stock commit) ───────────────────────────
+
+    private fun setPrivateField(name: String, value: Any?) {
+        val field = PillScanningViewModel::class.java.getDeclaredField(name)
+        field.isAccessible = true
+        field.set(viewModel, value)
+    }
+
+    private fun getPrivateField(name: String): Any? {
+        val field = PillScanningViewModel::class.java.getDeclaredField(name)
+        field.isAccessible = true
+        return field.get(viewModel)
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun seedTxnInfoIsDispense(isDispense: Boolean, isComingFromHL7: Boolean = false) {
+        val flow = getPrivateField("_txnInfo") as MutableStateFlow<TxnWithDetails?>
+        flow.value = TxnWithDetails(
+            txnId = 0L,
+            drugName = null,
+            drugId = 42L,
+            ndc = null,
+            targetCount = null,
+            note = null,
+            createdAt = 0L,
+            bottleInfoListJson = null,
+            totalPillCount = 0,
+            isDispense = isDispense,
+            drugType = null,
+            txnDetails = emptyList(),
+            isComingFromHL7 = isComingFromHL7,
+        )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun stageDetail(pillCount: Int) {
+        val list = getPrivateField("stagedDetails") as MutableList<PillCountTxnDetailsEntity>
+        list.add(
+            PillCountTxnDetailsEntity(
+                pillCount = pillCount,
+                type = StepState.SCAN.toString(),
+            )
+        )
+    }
+
+    /**
+     * Puts the VM into the deferred-DispenseFlow stock session shape so
+     * flushStagedDetails takes the `stockDrugId != 0L` branch that runs
+     * withTransaction. Fresh batch (stockCountBatchId == 0L), no pre-existing
+     * bottle (stockBottleId == 0L), no pre-existing header (stockTxnId == 0L).
+     */
+    private fun seedDeferredStockSession() {
+        setPrivateField("isStockCountSession", true)
+        setPrivateField("stockDrugId", 42L)
+        setPrivateField("stockBottleId", 0L)
+        setPrivateField("stockTxnId", 0L)
+        setPrivateField("stockCountBatchId", 0L)
+        seedTxnInfoIsDispense(isDispense = false)
+    }
+
+    @Test
+    fun `flushStagedDetails deferred path commits withTransaction and publishes minted batchId`() = runTest {
+        // Standard trick for suspend-extension `withTransaction` (RoomDatabaseKt):
+        // a plain relaxed AppDatabase mock returns the default suspend result WITHOUT
+        // running the lambda, so the transaction body never executes and the caller
+        // suspends indefinitely on the returned Continuation. mockkStatic on the file
+        // is the only way to make the mock actually invoke the block.
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        val txBlock = slot<suspend () -> Pair<Long, Long>>()
+        coEvery {
+            appDatabase.withTransaction<Pair<Long, Long>>(capture(txBlock))
+        } coAnswers { txBlock.captured.invoke() }
+
+        coEvery { batchDao.insert(any()) } returns 111L
+        coEvery { stockTxnDao.findByDrugInBatch(111L, 42L) } returns null
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 222L
+        coEvery { bottleInfoDao.insert(any()) } returns 333L
+        every { preferenceHelper.getTxnId() } returns 5L
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(5L) } returns 0
+
+        seedDeferredStockSession()
+        stageDetail(pillCount = 7)
+
+        viewModel.onEvent(PillScanningEvent.DoneClicked)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { batchDao.insert(any()) }
+        coVerify(exactly = 1) { stockTxnDao.upsertPreservingId(any()) }
+        coVerify(exactly = 1) { bottleInfoDao.insert(any()) }
+        coVerify(exactly = 1) { stockTxnDao.refreshBatchTotalNdcs(111L) }
+        assertEquals(111L, viewModel.stockCountCommittedBatchId.value)
+    }
+
+    @Test
+    fun `flushStagedDetails deferred path preserves staging and surfaces error when withTransaction throws`() = runTest {
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        coEvery {
+            appDatabase.withTransaction<Pair<Long, Long>>(any())
+        } throws RuntimeException("db boom")
+
+        every { preferenceHelper.getTxnId() } returns 5L
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(5L) } returns 0
+
+        seedDeferredStockSession()
+        stageDetail(pillCount = 7)
+
+        viewModel.onEvent(PillScanningEvent.DoneClicked)
+        advanceUntilIdle()
+
+        assertEquals("test error", viewModel.uiState.value.showErrorMessage)
+        val staged = getPrivateField("stagedDetails") as List<*>
+        assertEquals(1, staged.size)
+        coVerify(exactly = 0) { stockTxnDao.updateStatus(any(), any()) }
+        assertEquals(null, viewModel.stockCountCommittedBatchId.value)
     }
 }

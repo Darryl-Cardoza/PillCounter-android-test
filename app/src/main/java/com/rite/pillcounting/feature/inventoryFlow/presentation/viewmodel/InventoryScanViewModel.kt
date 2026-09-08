@@ -5,10 +5,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
@@ -17,7 +17,6 @@ import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.dtos.RequestedDrugDto
-import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
@@ -245,23 +244,47 @@ class InventoryScanViewModel @Inject constructor(
         val existing = _resolvedBatchId.value
         if (existing != 0L) return existing
         return try {
-            val now = System.currentTimeMillis()
-            val newId = batchDao.insert(
-                BatchEntity(
-                    batchId = now,
-                    startDateTime = now,
-                    endDateTime = null,
-                    status = BatchStatus.INPROGRESS,
-                    isDeleted = false,
-                    note = null,
-                    bucketId = _bucketId.value,
-                )
-            )
+            val newId = batchDao.insertNewInProgressBatch(bucketId = _bucketId.value)
             _resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
             logger.e("ensureBatchCreated failed", e)
             0L
+        }
+    }
+
+    /**
+     * Adopts a batchId created lazily by the SCAN PILLS → DispenseFlow entry
+     * point. Called by [com.rite.pillcounting.feature.inventoryFlow.presentation.shell.InventoryScanHost]
+     * after DispenseFlow publishes the id via NavController's SavedStateHandle.
+     *
+     * Only takes effect when this VM has no batch bound yet
+     * ([_resolvedBatchId] == 0L). Setting [_resolvedBatchId] re-triggers the
+     * `flatMapLatest` in [recentRows], which subscribes to
+     * [bottleInfoDao.observeByBatchId] + [stockTxnDao.observeRequestedDrugs]
+     * against the real batch so the just-counted bottle appears in the list.
+     * Also hydrates [_bucketId] and (for PMS batches) [expectedNdcs] the same
+     * way the `init` block does.
+     *
+     * @param batchId The batchId minted by
+     *   `DispenseFlowViewModel.advanceToCountingStage`. Ignored when 0.
+     */
+    fun adoptStockCountBatchId(batchId: Long) {
+        if (batchId == 0L) return
+        if (_resolvedBatchId.value != 0L) return
+        viewModelScope.launch {
+            _resolvedBatchId.value = batchId
+            val batch = batchDao.getById(batchId)
+            // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
+            // is already authoritative (set from argBucketId at init). Reading it back
+            // from a lazily-created batch would clobber the selection with a stale/null
+            // value if the commit hadn't populated bucketId at insert time.
+            if (!batch?.requestIdFromPMS.isNullOrBlank()) {
+                expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
+                    .filter { it.isNotBlank() }
+                    .toSet()
+            }
+            logger.i("INV_SCAN adopted lazily-created batchId=$batchId bucketId=${batch?.bucketId}")
         }
     }
 
@@ -849,23 +872,13 @@ class InventoryScanViewModel @Inject constructor(
     /* ─────────────────────────  Scan pills hand-off  ───────────────────────── */
 
     /**
-     * SCAN PILLS hand-off (Path 1): the user has an active scanned NDC and wants
-     * to count loose/open pills for it. We find-or-create a REGULAR transaction
-     * for that drug in the current batch, mark it PARTIAL (loose-counting in
-     * progress), persist its id via [PreferenceHelper.saveTxnId] so the legacy
-     * pill-count screen picks it up, and invoke [onReady] with (batchId) on the
+     * SCAN PILLS hand-off (Path 1): the user wants to count loose/open pills.
+     * We flush the active card's bottle count so it isn't lost, clear the staged
+     * txnId so the dispense flow starts at PRE_NDC, and invoke [onReady] on the
      * caller so it can navigate.
      *
-     * The legacy flow then counts loose pills into this same txn (it calls
-     * `incrementLooseQty` on every ADD) and marks it COMPLETED on DONE — the
-     * counted pills surface on this NDC's Recent Counts row as loose pills on
-     * top of any sealed bottles (toRecentRows sums bottleQty*packageQty + looseQty).
-     *
      * Works with or without an active NDC. The legacy pill-count flow scans its
-     * own NDC, so SCAN PILLS is always available: with no active NDC we simply
-     * navigate into the batch and let that flow establish its own txn. With an
-     * active NDC we additionally stage that NDC's txn so the counted loose pills
-     * accumulate onto its Recent Counts row.
+     * own NDC and establishes its own txn, so SCAN PILLS is always available.
      *
      * batchId is passed through as-is — including 0L when no batch has been
      * created yet — rather than creating it here. Tapping SCAN PILLS is not
@@ -873,13 +886,13 @@ class InventoryScanViewModel @Inject constructor(
      * PillScanningViewModel on the first successful NDC scan in the dispense
      * flow, same as [onBarcodeDetected] does for the NDC-scan path, so an
      * abandoned session never leaves an empty batch row.
-     */
-    /**
+     *
      * @param onReady Called with (batchId, allowedNdcs) when ready to navigate.
      *   allowedNdcs is the set of NDCs the dispense flow is permitted to accept:
-     *   - Active NDC on card → restrict to just that one NDC.
-     *   - No active NDC, PMS batch → restrict to the full PMS-requested NDC set.
-     *   - No active NDC, manual batch → empty set (no restriction).
+     *   - PMS batch → restrict to the full PMS-requested NDC set.
+     *   - Manual batch → empty set (no restriction).
+     *   An active NDC does NOT narrow this: its count is already persisted, so the
+     *   user may scan a different container to count its loose pills.
      */
     fun onScanPillsForActive(onReady: (batchId: Long, allowedNdcs: Set<String>) -> Unit) {
         val active = _activeNdc.value
@@ -901,14 +914,9 @@ class InventoryScanViewModel @Inject constructor(
                 preferenceHelper.saveTxnId(0)
 
                 // Build the NDC allowlist for the dispense flow.
-                // Active card NDC takes priority (user was working on that drug).
-                // For PMS batches with no active NDC, pass the full expected set.
-                // Manual batches have no restriction.
-                val allowedNdcs: Set<String> = when {
-                    active != null -> setOf(active.ndc)
-                    expectedNdcs != null -> expectedNdcs!!
-                    else -> emptySet()
-                }
+                // Only PMS batches restrict which NDCs may be counted. An active card
+                // does not narrow it — its count is already persisted above.
+                val allowedNdcs: Set<String> = expectedNdcs ?: emptySet()
 
                 logger.d("INV_SCAN onScanPillsForActive active=${active?.ndc} batchId=$batchId allowedNdcs=$allowedNdcs")
                 onReady(batchId, allowedNdcs)

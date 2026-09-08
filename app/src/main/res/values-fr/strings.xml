@@ -7,6 +7,15 @@
     <!--    Common   -->
     <string name="pms">PMS</string>
     <string name="loading">Chargement...</string>
+    <string name="open_settings">Ouvrir les paramètres</string>
+    <string name="not_now">Pas maintenant</string>
+    <string name="location_access">Accès à la localisation</string>
+    <string name="camera">Caméra</string>
+    <string name="notification">Notification</string>
+    <string name="location">Localisation</string>
+
+    <!--    Offline / Session Health   -->
+    <string name="offline_disconnect_message">Votre connexion Internet a été coupée. L\'application se déconnectera dans %1$s.</string>
 
     <!-- ================== AUTH / LOGIN / REGISTER ================== -->
     <string name="email">Email</string>
@@ -53,7 +62,7 @@
     <string name="standalone_kpi_disabled_message">Fonctionnalité non applicable</string>
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
-    <string name="settings_title" translatable="false">SETTINGS</string>
+    <string name="settings_title">PARAMÈTRES</string>
     <string name="setting_ask_to_add_notes">Toujours demander d\'ajouter des notes</string>
     <string name="setting_save_history_for">Enregistrer l\'historique pendant</string>
     <string name="pill_counting_sound">Son du comptage de pilules</string>
@@ -70,8 +79,8 @@
     <string name="non_hazardous_tray_warning">Ce plateau n’est pas le plateau dangereux. Veuillez utiliser le plateau dangereux.</string>
     <string name="clear_tray_color_lists">Effacer les listes de couleurs de plateaux</string>
     <string name="clear_tray_color_lists_confirm">Êtes-vous sûr de vouloir effacer la classification de couleur de plateau dangereux ?</string>
-    <string name="save_history_for_title" translatable="false">SAVE HISTORY FOR</string>
-    <string name="require_double_count_title" translatable="false">REQUIRE DOUBLE COUNTS</string>
+    <string name="save_history_for_title">Sauvegarder l\'historique pour</string>
+    <string name="require_double_count_title">Exiger un double comptage</string>
 
     <string-array name="history_options">
         <item>1 semaine (par défaut)</item>
@@ -262,6 +271,7 @@
     <string name="count_pills_from_the_container">Comptez les pilules du contenant</string>
     <string name="count_prescribed_pills_quantity">Comptez la quantité de pilules prescrites</string>
     <string name="recount_prescribed_quantity">Recomptez la quantité prescrite</string>
+    <string name="count_remaining_pills_in_the_container">Comptez les pilules du contenant</string>
     <string name="capture_photo_of_counted_pills_vial">Prenez une photo du flacon de pilules comptées</string>
     <string name="are_you_sure_you_want_to_complete_this_step">Êtes-vous sûr de vouloir terminer cette étape ?</string>
     <string name="confirm_steps_completion">Confirmer la fin des étapes</string>
@@ -287,6 +297,7 @@
     <string name="vial_rx_mismatch_toast">Le flacon scanné ne correspond pas à cette ordonnance</string>
     <string name="rescan_ndc_does_not_match_toast">Re-scanner — le NDC ne correspond pas</string>
     <string name="transaction_not_found_toast">Transaction introuvable</string>
+    <string name="rx_label_drug_not_found_toast">Médicament introuvable</string>
 
     <!-- Unsynced Transaction-->
     <string name="unsynced_transaction">TRANSACTIONS NON SYNCHRONISÉES</string>
@@ -314,11 +325,6 @@
     <string name="stock_count_dialog_option_second">Continuer le dernier lot</string>
     <string name="partial_stock_counts">Comptages de stock partiels</string>
 
-    <!--    label scanned -->
-    <string name="label_scanned_successfully">Étiquette scannée avec succès</string>
-    <string name="select_container_status">Sélectionnez l\'état du contenant</string>
-    <string name="container_status_sealed">Scellé</string>
-    <string name="container_status_opened">Ouvert</string>
     <string name="select_bucket">Sélectionner un bac</string>
     <string name="rx_number">Numéro Rx</string>
     <string name="quantity">Quantité</string>
@@ -481,6 +487,8 @@
     <string name="permission_notifications_rationale">Les notifications vous tiennent informé des mises à jour importantes. Veuillez les activer dans les Paramètres pour continuer.</string>
     <string name="permission_required_title">Autorisations requises</string>
     <string name="permission_required_combined_message">%1$s autorisation(s) sont requises pour que cette application fonctionne correctement. Veuillez les activer dans les Paramètres pour continuer.</string>
+    <string name="location_services_off_title">Activer la localisation</string>
+    <string name="location_services_off_message">La localisation est désactivée sur cet appareil ; les enregistrements de scan seront donc enregistrés sans localisation. Activez la localisation dans les Paramètres pour l\'inclure.</string>
     <string name="pms_cert_mismatch_message">Le certificat du serveur PMS a changé. Cela peut se produire après une mise à jour du PMS. Appuyez sur Réinitialiser pour accepter le nouveau certificat et vous reconnecter.</string>
     <string name="pms_cert_mismatch_confirm">Réinitialiser et reconnecter</string>
 
@@ -503,6 +511,7 @@
     <string name="face_registration_scan_front">Placez votre visage dans le cadre</string>
     <string name="face_registration_scan_tilt_left">Inclinez le visage vers votre gauche</string>
     <string name="face_registration_scan_tilt_right">Inclinez le visage vers votre droite</string>
+    <string name="face_registration_scan_complete">Détection du visage terminée</string>
     <string name="face_guidance_no_face">aucun visage détecté</string>
     <string name="face_guidance_move_closer">rapprochez-vous</string>
     <string name="face_guidance_move_back">reculez</string>
@@ -520,6 +529,7 @@
     <string name="face_users_empty">Aucun visage enregistré pour le moment.</string>
     <string name="face_users_delete_title">Supprimer des utilisateurs</string>
     <string name="face_users_last_used">Dernière utilisation : %1$s</string>
+    <string name="face_verify_title">Vérifiez votre visage</string>
     <string name="face_verify_capture_button">Capturer le visage</string>
     <string name="face_verify_not_recognized_title">Nous n\'avons pas pu vous reconnaître</string>
     <string name="face_verify_not_recognized_body">Assurez-vous que votre visage est bien éclairé et\ncentré, puis réessayez.</string>
@@ -527,7 +537,7 @@
     <string name="face_verify_cancel">Annuler</string>
     <string name="face_flip_camera">Changer de caméra</string>
     <string name="session_locked_title">Session verrouillée</string>
-    <string name="session_locked_subtitle">Inactif depuis %1$d min.\nVérifiez votre visage pour reprendre\nlà où vous en étiez.</string>
+    <string name="session_locked_subtitle">Vérifiez votre visage pour reprendre\nlà où vous en étiez.</string>
     <string name="session_locked_verify_button">Vérifier avec le visage</string>
     <string name="session_locked_resuming_title">Bon retour, %1$s</string>
     <string name="session_locked_resuming_body">Identité vérifiée.\nReprise de votre session...</string>
@@ -535,5 +545,26 @@
     <string name="setting_face_lock_now_disabled_toast">Enregistrez d\'abord un visage dans Reconnaissance faciale</string>
     <string name="setting_face_auto_lock_after">Verrouillage automatique après</string>
     <string name="setting_face_auto_lock_minutes">%1$d min</string>
+    <string name="setting_pms_connection">Connexion PMS</string>
+    <string name="this_device_dispenser_server">CET APPAREIL (DISPENSESURE)</string>
+    <string name="ip_address">Adresse IP</string>
+    <string name="listener_port">Port d\'écoute</string>
+    <string name="image_server_port">Port du serveur d\'images</string>
+    <string name="pms_server">SERVEUR PMS</string>
+    <string name="pms_ip_address">Adresse IP du PMS</string>
+    <string name="pms_port">Port du PMS</string>
+    <string name="test_connection">Tester la connexion</string>
+    <string name="testing_connection">Test en cours</string>
+    <string name="connection_successful">Connecté à %1$s avec succès</string>
+    <string name="connection_failed_reason">Échec de la connexion : %1$s</string>
+    <string name="no_wifi_connection">Aucune connexion Wi-Fi</string>
+    <string name="pms_not_configured">IP/port du PMS non configurés. Configurez-les sur le portail.</string>
+    <string name="pms_unable_to_reach">Impossible de joindre le serveur PMS</string>
+    <string name="check_wifi_before_testing">Connectez-vous au Wi-Fi avant de tester la connexion</string>
+    <string name="hl7_notification_connected_to">Connecté à %1$s</string>
+    <string name="hl7_notification_listening">Écoute et réponse aux messages HL7</string>
+    <string name="connection_info_title">INFORMATIONS DE CONNEXION</string>
+    <string name="hl7_notification_title">Service d\'arrière-plan HL7</string>
+    <string name="rx_already_completed_message">Cette ordonnance a déjà été délivrée.</string>
 
 </resources>

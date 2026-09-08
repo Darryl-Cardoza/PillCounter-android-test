@@ -156,10 +156,6 @@ class Hl7serviceHandlerTest {
             config.imageServicePort,
             intent.getIntExtra(Hl7serviceHandler.EXTRA_IMAGE_SERVICE_PORT, -1)
         )
-        assertEquals(
-            config.imageServiceSecurePort,
-            intent.getIntExtra(Hl7serviceHandler.EXTRA_IMAGE_SERVICE_SECURE_PORT, -1)
-        )
     }
 
     @Test

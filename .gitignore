@@ -46,9 +46,6 @@ captures/
 # Native build scaffolding (no first-party C/C++ sources in this project)
 .cxx/
 
-# Room exported schemas are generated build output
-app/schemas/
-
 # Cleanup audit workspace (archive of removed code, kept until final approval)
 _cleanup_archive/
 

@@ -18,6 +18,11 @@ abstract class HL7SegmentBuilder(val name: String) {
     // (fieldIndex, componentIndex) -> value, all 1-based.
     private val cells: MutableMap<Int, MutableMap<Int, String>> = mutableMapOf()
 
+    // fieldIndex -> a fully pre-built field, bypassing [cells]/apply()'s plain-value model.
+    // Used when a field's structural delimiters (component/subcomponent) must be emitted
+    // literally rather than escaped as data — e.g. ZUI-8's repeating image payload.
+    private val rawFields: MutableMap<Int, HL7Field> = mutableMapOf()
+
     /** Sets the plain value of field [n] (component 1). */
     protected fun set(n: Int, value: String?) {
         if (value == null) return
@@ -28,6 +33,17 @@ abstract class HL7SegmentBuilder(val name: String) {
     protected fun set(n: Int, c: Int, value: String?) {
         if (value == null) return
         cells.getOrPut(n) { mutableMapOf() }[c] = value
+    }
+
+    /**
+     * Sets field [n] as a list of components, each with its own subcomponents,
+     * emitted with structural (unescaped) component/subcomponent delimiters —
+     * for wire formats where `^`/`&` inside a field are separators, not data
+     * to be escaped (e.g. ZUI-8: `img1B&img1C&img1Data^img2B&img2C&img2Data`).
+     */
+    protected fun setComponentGroups(n: Int, groups: List<List<String>>?) {
+        if (groups.isNullOrEmpty()) return
+        rawFields[n] = HL7Field(listOf(groups.map { HL7Component(it) }))
     }
 
     /** Reads back the plain value of field [n] (component 1), or "". */
@@ -46,7 +62,7 @@ abstract class HL7SegmentBuilder(val name: String) {
     /** Builds the generic segment for the given delimiters and version. */
     open fun build(delimiters: HL7Delimiters, version: HL7Version): HL7Segment {
         apply()
-        val maxFieldIndex = cells.keys.maxOrNull() ?: 0
+        val maxFieldIndex = maxOf(cells.keys.maxOrNull() ?: 0, rawFields.keys.maxOrNull() ?: 0)
         val cap = SegmentCapabilities.maxFields(name, version)
         val limit = if (cap != null) minOf(maxFieldIndex, cap) else maxFieldIndex
 
@@ -54,13 +70,16 @@ abstract class HL7SegmentBuilder(val name: String) {
         val fields = ArrayList<HL7Field>(limit + 1)
         fields += HL7Field.of(name)
         for (n in 1..limit) {
+            val raw = rawFields[n]
             val comps = cells[n]
-            if (comps.isNullOrEmpty()) {
-                fields += HL7Field.EMPTY
-            } else {
-                val maxComp = comps.keys.maxOrNull() ?: 0
-                val components = (1..maxComp).map { c -> HL7Component(listOf(comps[c] ?: "")) }
-                fields += HL7Field(listOf(components))
+            fields += when {
+                raw != null -> raw
+                comps.isNullOrEmpty() -> HL7Field.EMPTY
+                else -> {
+                    val maxComp = comps.keys.maxOrNull() ?: 0
+                    val components = (1..maxComp).map { c -> HL7Component(listOf(comps[c] ?: "")) }
+                    HL7Field(listOf(components))
+                }
             }
         }
         return HL7Segment(name, fields, delimiters)

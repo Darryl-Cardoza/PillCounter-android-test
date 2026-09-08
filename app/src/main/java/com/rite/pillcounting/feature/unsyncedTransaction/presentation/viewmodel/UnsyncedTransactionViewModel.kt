@@ -102,6 +102,9 @@ class UnsyncedTransactionViewModel @Inject constructor(
         date = createdAt.toFormattedDate(),
         isComingFromHL7 = isComingFromHL7,
         isNdcVerified = isNdcVerified,
-        isDispense = isDispense
+        isDispense = isDispense,
+        strength = strength,
+        dosageForm = dosageForm,
+        drugImagePath = drugImagePath
     )
 }

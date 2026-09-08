@@ -8,6 +8,7 @@ import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.ErrorResponse
 import com.rite.pillcounting.core.utils.common.NetworkUtils
+import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -36,14 +37,15 @@ import javax.inject.Inject
  * @param repository The [VerifyPinRepository] handling OTP verification API.
  * @param context The application context, used for localized messages.
  * @param prefs Secure storage for tokens and login state.
- * @param deviceKeyProvider Supplies the stable per-install device_key.
+ * @param deviceKeyProvider Supplies the stable per-device device_key (SSAID).
  */
 @HiltViewModel
 class VerifyPinViewModel @Inject constructor(
     private val repository: VerifyPinRepository,
     @ApplicationContext private val context: Context,
     private val prefs: PreferenceHelper,
-    private val deviceKeyProvider: DeviceKeyProvider
+    private val deviceKeyProvider: DeviceKeyProvider,
+    private val sessionHealthController: SessionHealthController
 ) : ViewModel() {
 
     private val logger = AppLogger.create<VerifyPinViewModel>()
@@ -80,11 +82,12 @@ class VerifyPinViewModel @Inject constructor(
             logger.i("Attempting OTP verification for email: $email")
             _uiState.value = VerifyPinUiState.Loading
 
-            val deviceKey = try {
-                deviceKeyProvider.getDeviceKey()
-            } catch (e: Exception) {
-                logger.e("Failed to fetch device key for OTP verification", e)
-                _uiState.value = VerifyPinUiState.Error(mapExceptionToUserMessage(e))
+            val deviceKey = deviceKeyProvider.getDeviceKey()
+            if (deviceKey == null) {
+                logger.w("OTP verification aborted: device key unavailable")
+                _uiState.value = VerifyPinUiState.Error(
+                    context.getString(R.string.error_server_unavailable)
+                )
                 return@launch
             }
 
@@ -101,6 +104,10 @@ class VerifyPinViewModel @Inject constructor(
                     if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
                         prefs.saveTokens(accessToken, refreshToken)
 //                        prefs.setHl7Enabled(isHL7Enabled)
+                        // Anchor the offline-expiry clock at login-success so the first-launch
+                        // scenario (fresh install + immediate network loss) still expires cleanly
+                        // even though /health has not yet succeeded.
+                        sessionHealthController.markLoggedIn()
                         logger.i("Access and refresh tokens saved securely.")
                     } else {
                         logger.w("Missing access or refresh token in response.")

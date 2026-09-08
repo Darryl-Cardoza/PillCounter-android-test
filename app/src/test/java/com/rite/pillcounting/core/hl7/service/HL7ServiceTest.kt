@@ -6,8 +6,10 @@ import com.rite.pillcounting.core.hl7.core.Hl7EventListener
 import com.rite.pillcounting.core.hl7.mllp.client.MllpConnectionManager
 import com.rite.pillcounting.core.hl7.mllp.nsd.NsdHelper
 import com.rite.pillcounting.core.hl7.mllp.tls.TlsSocketFactory
+import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkConstructor
 import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkAll
@@ -260,7 +262,6 @@ class HL7ServiceTest {
             putExtra(Hl7serviceHandler.EXTRA_NSD_BROADCAST_TYPE, "_mytype._tcp")
             putExtra(Hl7serviceHandler.EXTRA_NSD_DISCOVERY_TYPE, "_mydiscovery._tcp")
             putExtra(Hl7serviceHandler.EXTRA_IMAGE_SERVICE_PORT, 8888)
-            putExtra(Hl7serviceHandler.EXTRA_IMAGE_SERVICE_SECURE_PORT, 8899)
         }
 
         loadConfigFromIntent(intent)
@@ -272,7 +273,6 @@ class HL7ServiceTest {
         assertEquals("_mytype._tcp", config.nsdBroadcastType)
         assertEquals("_mydiscovery._tcp", config.nsdDiscoveryType)
         assertEquals(8888, config.imageServicePort)
-        assertEquals(8899, config.imageServiceSecurePort)
     }
 
     @Test
@@ -290,7 +290,6 @@ class HL7ServiceTest {
         assertEquals(existing.nsdBroadcastType, config.nsdBroadcastType)
         assertEquals(existing.nsdDiscoveryType, config.nsdDiscoveryType)
         assertEquals(existing.imageServicePort, config.imageServicePort)
-        assertEquals(existing.imageServiceSecurePort, config.imageServiceSecurePort)
     }
 
     // ──────────────────────────── updateConfig ────────────────────────────
@@ -447,7 +446,82 @@ class HL7ServiceTest {
         }
     }
 
+    // ──────────────────────────── discoverPmsAndConnect / static PMS ────────────────────────────
+
+    @Test
+    fun `discoverPmsAndConnect uses NSD discovery when static PMS connection is disabled`() {
+        val nsdHelper = mockk<NsdHelper>(relaxed = true)
+        setField("nsdHelper", nsdHelper)
+        setField("config", HL7Config(useStaticPmsConnection = false))
+        val listener = mockk<Hl7EventListener>(relaxed = true)
+        setField("listener", listener)
+
+        service.discoverPmsAndConnect()
+
+        verify(exactly = 1) { nsdHelper.discover(any(), any()) }
+        verify(exactly = 1) { listener.onNsdDiscoveryStarted() }
+    }
+
+    @Test
+    fun `discoverPmsAndConnect connects directly to static PMS ip-port when enabled`() {
+        val clientManager = mockk<MllpConnectionManager>(relaxed = true)
+        coEveryReturns(clientManager, "ACK")
+        every { clientManager.isConnected() } returns false
+        setField("clientManager", clientManager)
+        stubStaticPmsPreferences("10.0.0.5", 2575)
+        setField("config", HL7Config(useStaticPmsConnection = true, pmsIp = "10.0.0.5", pmsPort = 2575))
+        val listener = mockk<Hl7EventListener>(relaxed = true)
+        setField("listener", listener)
+
+        service.discoverPmsAndConnect()
+        drainCoroutines()
+
+        verify(exactly = 1) { listener.onNsdServiceFound("PMS", "10.0.0.5", 2575) }
+        io.mockk.coVerify(exactly = 1) { clientManager.connect("10.0.0.5", 2575) }
+    }
+
+    @Test
+    fun `discoverPmsAndConnect skips reconnect when static PMS host is already connected`() {
+        val clientManager = mockk<MllpConnectionManager>(relaxed = true)
+        every { clientManager.isConnected() } returns true
+        setField("clientManager", clientManager)
+        stubStaticPmsPreferences("10.0.0.5", 2575)
+        setField("config", HL7Config(useStaticPmsConnection = true, pmsIp = "10.0.0.5", pmsPort = 2575))
+        val listener = mockk<Hl7EventListener>(relaxed = true)
+        setField("listener", listener)
+        setField("lastConnectedHost", "10.0.0.5:2575")
+
+        service.discoverPmsAndConnect()
+        drainCoroutines()
+
+        io.mockk.coVerify(exactly = 0) { clientManager.connect(any(), any()) }
+    }
+
+    @Test
+    fun `discoverPmsAndConnect schedules a retry when static PMS ip-port is not configured yet`() {
+        val clientManager = mockk<MllpConnectionManager>(relaxed = true)
+        setField("clientManager", clientManager)
+        stubStaticPmsPreferences(null, 0)
+        setField("config", HL7Config(useStaticPmsConnection = true, pmsIp = null, pmsPort = 0))
+        val listener = mockk<Hl7EventListener>(relaxed = true)
+        setField("listener", listener)
+
+        service.discoverPmsAndConnect()
+        drainCoroutines()
+
+        io.mockk.coVerify(exactly = 0) { clientManager.connect(any(), any()) }
+        verify(exactly = 0) { listener.onNsdServiceFound(any(), any(), any()) }
+    }
+
     // ──────────────────────────── test helpers for coroutine mocks ────────────────────────────
+
+    // connectToStaticPms() re-reads the PMS host/port from a freshly constructed PreferenceHelper
+    // rather than from config, so the static-connection tests must stub that read.
+    private fun stubStaticPmsPreferences(host: String?, port: Int) {
+        mockkConstructor(PreferenceHelper::class)
+        every { anyConstructed<PreferenceHelper>().getPmsIP() } returns host
+        every { anyConstructed<PreferenceHelper>().getPmsPort() } returns port
+    }
 
     private fun coEveryReturns(clientManager: MllpConnectionManager, value: String) {
         io.mockk.coEvery { clientManager.send(any()) } returns value

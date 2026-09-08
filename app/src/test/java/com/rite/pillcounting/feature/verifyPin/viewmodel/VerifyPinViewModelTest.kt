@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import app.cash.turbine.test
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.utils.common.NetworkUtils
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -53,6 +54,7 @@ class VerifyPinViewModelTest {
     private lateinit var context: Context
     private lateinit var prefs: PreferenceHelper
     private lateinit var deviceKeyProvider: DeviceKeyProvider
+    private lateinit var sessionHealthController: SessionHealthController
     private lateinit var viewModel: VerifyPinViewModel
 
     private val email = "user@test.com"
@@ -80,11 +82,12 @@ class VerifyPinViewModelTest {
         context = mockk()
         prefs = mockk(relaxed = true)
         deviceKeyProvider = mockk(relaxed = true)
+        sessionHealthController = mockk(relaxed = true)
         coEvery { deviceKeyProvider.getDeviceKey() } returns testDeviceKey
 
         every { context.getString(any()) } returns "msg"
 
-        viewModel = VerifyPinViewModel(repository, context, prefs, deviceKeyProvider)
+        viewModel = VerifyPinViewModel(repository, context, prefs, deviceKeyProvider, sessionHealthController)
     }
 
     @After
@@ -234,8 +237,8 @@ class VerifyPinViewModelTest {
     // ───────────────────────────── device key fetch failure ─────────────────────────────
 
     @Test
-    fun `verifyPin sets Error instead of crashing when device key fetch fails`() = runTest {
-        coEvery { deviceKeyProvider.getDeviceKey() } throws IOException("firebase down")
+    fun `verifyPin sets Error when device key unavailable`() = runTest {
+        coEvery { deviceKeyProvider.getDeviceKey() } returns null
         every { context.getString(R.string.error_server_unavailable) } returns "server-unavailable"
 
         viewModel.verifyPin(email, otp)

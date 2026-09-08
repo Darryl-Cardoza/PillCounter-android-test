@@ -86,14 +86,14 @@ class Hl7EventHandler @Inject constructor(
      */
     override fun onAckReceived(ackRaw: String, messageId: String) {
         val isSuccess = isSuccessAck(ackRaw)
-        logger.i("HL7 ACK received | msgId=$messageId | success=$isSuccess")
-        // Only a success ACK means the PMS accepted the message; mark synced (and, when
-        // allow_local_storage is false, delete) only then. An error/reject ACK leaves the
-        // transaction unsynced so it is retried on the next reconnect.
-        if (isSuccess) {
-            hl7Repository.markTransactionSynced(messageId)
-        } else {
-            logger.w("Non-success ACK | msgId=$messageId — leaving transaction unsynced for retry")
+        logger.i("HL7 ACK received | msgId=$messageId | success=$isSuccess | raw=${ackRaw.replace("\r", "\\r")}")
+        // Dispense sends are marked synced inline by Hl7Repository.buildAndSendSuccessfulDispense
+        // right after its own send() call returns, using the exact txnId that was sent — not
+        // from this generic callback, which has no reliable txnId correlation and previously
+        // relied on a single shared "last sent" preference slot (a race when multiple sends
+        // were in flight). This callback remains informational/logging only.
+        if (!isSuccess) {
+            logger.w("Non-success ACK | msgId=$messageId")
         }
     }
 

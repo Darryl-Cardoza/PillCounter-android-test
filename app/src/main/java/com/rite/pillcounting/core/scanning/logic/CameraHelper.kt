@@ -17,6 +17,7 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
+import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.TorchState
@@ -108,6 +109,9 @@ class CameraHelper(
     private val _frameChannel = Channel<ImageProxy>(Channel.CONFLATED, onUndeliveredElement = { it.close() })
     val frameFlow = _frameChannel.receiveAsFlow()
     private var imageCapture: ImageCapture? = null
+
+    // Refuses a second takePicture() until the in-flight one succeeds or fails.
+    private val isCapturing = AtomicBoolean(false)
     // ---------------------------------------------------------
     // CAMERA STATE + ZOOM FLOW
     // ---------------------------------------------------------
@@ -501,6 +505,7 @@ class CameraHelper(
         boundCamera = null
         isBound.set(false)
         isStreaming.set(false)
+        isCapturing.set(false)
         analyzerExecutor?.shutdown()
         analyzerExecutor = null
     }
@@ -545,23 +550,48 @@ class CameraHelper(
         )
     }
 
-    fun captureImage(onCaptured: (Bitmap) -> Unit) {
+    /**
+     * Request a still photo.
+     *
+     * @return true when a capture request was issued — exactly one of
+     *   [onCaptured] / [onCaptureError] will then run. Returns false when the
+     *   request was refused (no camera bound, or a capture already in flight),
+     *   in which case neither callback runs.
+     */
+    fun captureImage(
+        onCaptured: (Bitmap) -> Unit,
+        onCaptureError: (Throwable) -> Unit = {}
+    ): Boolean {
 
-        val imageCapture = imageCapture ?: return
+        val imageCapture = imageCapture ?: return false
+
+        if (!isCapturing.compareAndSet(false, true)) {
+            logger.w("Capture already in flight — ignoring duplicate request")
+            return false
+        }
 
         imageCapture.takePicture(
             executor,
             object : ImageCapture.OnImageCapturedCallback() {
 
                 override fun onCaptureSuccess(image: ImageProxy) {
+                    isCapturing.set(false)
 
                     val bitmap = imageProxyToBitmap(image)
                     onCaptured(bitmap)
 
                     image.close()
                 }
+
+                // Clear the flag here too, else one failed capture kills the shutter for good.
+                override fun onError(exception: ImageCaptureException) {
+                    isCapturing.set(false)
+                    logger.e("Capture failed", exception)
+                    onCaptureError(exception)
+                }
             }
         )
 
+        return true
     }
 }

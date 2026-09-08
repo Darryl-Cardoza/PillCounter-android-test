@@ -88,12 +88,15 @@ class PV1Builder : HL7SegmentBuilder("PV1") {
 class ORCBuilder : HL7SegmentBuilder("ORC") {
     var orderControl: String? = null
     var placerOrderNumber: String? = null
+    var placerOrderCorrelationId: String? = null // ORC-2.2 — PMS request id this response correlates with
     var fillerOrderNumber: String? = null
     var orderStatus: String? = null
     var dateTimeOfTransaction: String? = null
     var orderingProviderId: String? = null
     override fun apply() {
-        set(1, orderControl); set(2, 1, placerOrderNumber); set(3, 1, fillerOrderNumber)
+        set(1, orderControl)
+        set(2, 1, placerOrderNumber); set(2, 2, placerOrderCorrelationId)
+        set(3, 1, fillerOrderNumber)
         set(5, orderStatus); set(9, dateTimeOfTransaction); set(12, 1, orderingProviderId)
     }
 }
@@ -166,12 +169,23 @@ class OBXBuilder : HL7SegmentBuilder("OBX") {
     var valueType: String? = null
     var observationId: String? = null
     var observationText: String? = null
+    var observationIdCodingSystem: String? = null
+    var subId: String? = null
     var observationValue: String? = null
+    var observationValueText: String? = null
+    var observationValueCodingSystem: String? = null
     var units: String? = null
     var resultStatus: String? = null
     override fun apply() {
-        set(1, setId); set(2, valueType); set(3, 1, observationId); set(3, 2, observationText)
-        set(5, observationValue); set(6, 1, units); set(11, resultStatus)
+        set(1, setId); set(2, valueType)
+        set(3, 1, observationId); set(3, 2, observationText); set(3, 3, observationIdCodingSystem)
+        set(4, subId)
+        if (observationValueText != null || observationValueCodingSystem != null) {
+            set(5, 1, observationValue); set(5, 2, observationValueText); set(5, 3, observationValueCodingSystem)
+        } else {
+            set(5, observationValue)
+        }
+        set(6, 1, units); set(11, resultStatus)
     }
 }
 
@@ -186,18 +200,33 @@ class EQUBuilder : HL7SegmentBuilder("EQU") {
 
 /** Field positions per HL7 v2.5.1 standard INV layout (see [org.rite.hl7.model.segment.INVSegment]). */
 class INVBuilder : HL7SegmentBuilder("INV") {
-    var substanceCode: String? = null                 // NDC (INV-1.1)
-    var substanceName: String? = null                 // INV-1.2
-    var substanceCodeSystem: String? = null           // INV-1.3
-    var lotNumber: String? = null                      // INV-16
+    var setId: String? = null                          // INV-1
+    var substanceCode: String? = null                  // NDC (INV-2.1)
+    var substanceName: String? = null                  // INV-2.2
+    var substanceCodeSystem: String? = null            // INV-2.3
+    var statusCode: String? = null                      // INV-3.1
+    var statusText: String? = null                      // INV-3.2
+    var statusCodeSystem: String? = null                // INV-3.3
+    var itemTypeCode: String? = null                    // INV-4.1
+    var itemTypeText: String? = null                    // INV-4.2
+    var itemTypeCodeSystem: String? = null              // INV-4.3
+    var quantityOnHand: String? = null                  // INV-7
+    var inventoryOnHandQuantity: String? = null        // INV-8 (Current/Available Quantity)
+    var quantityExpected: String? = null                // INV-9
+    var unitsCode: String? = null                       // INV-11.1
+    var unitsText: String? = null                        // INV-11.2
+    var unitsCodeSystem: String? = null                  // INV-11.3
     var expirationDate: String? = null                // INV-12
-    var inventoryOnHandQuantity: String? = null        // INV-8 (Current Quantity)
-    var units: String? = null                          // INV-11 (Quantity Units)
+    var lotNumber: String? = null                      // INV-15
     override fun apply() {
-        set(1, 1, substanceCode); set(1, 2, substanceName); set(1, 3, substanceCodeSystem)
-        set(8, inventoryOnHandQuantity); set(11, units)
+        set(1, setId)
+        set(2, 1, substanceCode); set(2, 2, substanceName); set(2, 3, substanceCodeSystem)
+        set(3, 1, statusCode); set(3, 2, statusText); set(3, 3, statusCodeSystem)
+        set(4, 1, itemTypeCode); set(4, 2, itemTypeText); set(4, 3, itemTypeCodeSystem)
+        set(7, quantityOnHand); set(8, inventoryOnHandQuantity); set(9, quantityExpected)
+        set(11, 1, unitsCode); set(11, 2, unitsText); set(11, 3, unitsCodeSystem)
         set(12, expirationDate)
-        set(16, lotNumber)
+        set(15, lotNumber)
     }
 }
 
@@ -338,15 +367,58 @@ class ZUIDispenseBuilder : HL7SegmentBuilder("ZUI") {
     var fillNumber: String? = null
     var dispensedQuantity: String? = null
     var transactionStatus: String? = null
-    var drugImage: String? = null
+    /** Each entry: [batchInfo, countInfo, base64Data] — one per tray photo. */
+    var drugImages: List<List<String>>? = null
     var drugLotNumber: String? = null
     var drugSerialNumber: String? = null
     var drugExpirationDate: String? = null
     override fun apply() {
         set(1, ndc); set(2, vividUserName); set(3, transactionOrderId)
         set(4, rxNumber); set(5, fillNumber); set(6, dispensedQuantity)
-        set(7, transactionStatus); set(8, drugImage); set(9, drugLotNumber)
+        set(7, transactionStatus); setComponentGroups(8, drugImages); set(9, drugLotNumber)
         set(10, drugSerialNumber); set(11, drugExpirationDate)
+    }
+}
+
+/**
+ * ZUI EyeCon dispense-result builder (EyeCon → PMS RDS response), 25-field
+ * raw layout per EyeCon spec. Fields 6/18/19/21 are the ones EyeCon's PMS-side
+ * parser actually reads (verified against its C# parsing code) — those indices
+ * must not move. All other positions are context fields or blank placeholders
+ * per the EyeCon spec.
+ */
+class ZUIEyeConBuilder : HL7SegmentBuilder("ZUI") {
+    var ndc: String? = null                    // ZUI-1
+    var drugName: String? = null                // ZUI-2
+    var userName: String? = null                // ZUI-3 (patient/user first name)
+    var prescriptionNumber: String? = null       // ZUI-4
+    var fillNumber: String? = null               // ZUI-5
+    var verifiedBy: String? = null               // ZUI-6 (parsed by PMS)
+    var stockBottleVerification: String? = null  // ZUI-7
+    var packetVersion: String? = null            // ZUI-9
+    var techName: String? = null                 // ZUI-10
+    var transactionOrderId: String? = null        // ZUI-11
+    var dispensedQuantity: String? = null        // ZUI-18 (parsed by PMS)
+    var fillStatus: String? = null               // ZUI-19 (parsed by PMS)
+    var stockBottleBarcodeNdc: String? = null     // ZUI-21 (parsed by PMS)
+    override fun apply() {
+        set(1, ndc)
+        set(2, drugName)
+        set(3, userName)
+        set(4, prescriptionNumber)
+        set(5, fillNumber)
+        set(6, verifiedBy)
+        set(7, stockBottleVerification)
+        set(9, packetVersion)
+        set(10, techName)
+        set(11, transactionOrderId)
+        set(18, dispensedQuantity)
+        set(19, fillStatus)
+        set(21, stockBottleBarcodeNdc)
+        // EyeCon spec segment is a fixed 25-field layout; this blank placeholder
+        // pins the trailing field count so the segment always emits all 25 tokens
+        // even though field 25 itself carries no value.
+        set(25, "")
     }
 }
 

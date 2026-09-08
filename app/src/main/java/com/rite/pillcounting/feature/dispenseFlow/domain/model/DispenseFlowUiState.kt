@@ -2,11 +2,19 @@
 
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
-import com.rite.pillcounting.core.utils.compose.ContainerStatus
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 
 enum class DispenseStage { QUEUE, PRE_RX, PRE_NDC, COUNTING }
+
+/** Rx label values needed to create a standalone dispense txn once the user taps Proceed. */
+data class StandaloneRxDraft(
+    val drugId: Long?,
+    val rxNo: String,
+    val refillNo: String?,
+    val bucket: String?,
+    val targetCount: Int,
+)
 
 data class DispenseFlowUiState(
     val stage: DispenseStage = DispenseStage.PRE_RX,
@@ -42,14 +50,15 @@ data class DispenseFlowUiState(
     val ndcStrength: String? = null,
     val ndcDosageForm: String? = null,
 
-    val selectedContainerStatus: ContainerStatus = ContainerStatus.SEALED,
-
     val showRxDetails: Boolean = false,
     // Set when a scanned RX resolves to an existing PARTIAL transaction and the
     // RX verification sheet is shown. Holds the stage to advance to when the user
     // taps Proceed (PRE_NDC if the NDC isn't verified yet, else COUNTING). The txn
     // already exists, so Proceed resumes it rather than creating a new one.
     val pendingRxResumeStage: DispenseStage? = null,
+    // Rx label staged while the verification sheet is up. Nothing is written to
+    // pill_count_txn until the user taps Proceed, so Cancel / back leaves no row.
+    val pendingStandaloneRx: StandaloneRxDraft? = null,
     val showNdcDetails: Boolean = false,
     val showInvalidScanDialog: Boolean = false,
     val showNdcNotFoundDialog: Boolean = false,
@@ -59,6 +68,8 @@ data class DispenseFlowUiState(
     val scanNdcToastTick: Int = 0,
     val ndcMismatchToastTick: Int = 0,
     val txnNotFoundToastTick: Int = 0,
+    // Fired when a standalone Rx label's NDC matches no drug. No sheet is shown.
+    val rxDrugNotFoundToastTick: Int = 0,
     // Fired when a scanned NDC is rejected by the batch PMS allowlist.
     val ndcNotAllowedToastTick: Int = 0,
     val ndcNotAllowedValue: String = "",
@@ -104,14 +115,10 @@ data class DispenseFlowUiState(
     val batchId: Long = 0L,
 
     // NDC allowlist for batch Scan-Pills from a PMS batch. Non-empty only when the
-    // batch was PMS-sourced (or the user had a specific active NDC on the card).
+    // batch was PMS-sourced.
     // onNdcBarcodeRead rejects any scanned NDC that isn't in this set.
     // Empty = no restriction (manually-started batch or plain dispense flow).
     val allowedNdcs: Set<String> = emptySet(),
-
-    // One-shot navigation signal: non-null after a SEALED stock bottle is confirmed.
-    // The screen observes this and navigates back to the batch, then clears it.
-    val navigateToBatchId: Long? = null,
 
     // One-shot signal: set true when a transaction completes and the queue is empty.
     val navigateToDashboard: Boolean = false,

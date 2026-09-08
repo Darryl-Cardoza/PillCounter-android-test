@@ -3,8 +3,16 @@ package com.rite.pillcounting.core.utils.common
 import android.annotation.SuppressLint
 import android.content.Context
 import android.net.ConnectivityManager
+import android.net.Network
 import android.net.NetworkCapabilities
 import android.os.Build
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import java.net.Inet4Address
 import java.net.NetworkInterface
@@ -58,6 +66,48 @@ object NetworkUtils {
         }
     }
 
+
+    /**
+     * Live network-availability state (Wi-Fi/cellular/ethernet), updated via
+     * [ConnectivityManager.NetworkCallback] so callers don't have to poll.
+     */
+    @Composable
+    fun rememberIsNetworkAvailable(): Boolean {
+        val context = LocalContext.current
+        var isAvailable by remember { mutableStateOf(isNetworkAvailable(context)) }
+
+        DisposableEffect(context) {
+            val connectivityManager =
+                context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+            val callback = object : ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: Network) {
+                    isAvailable = true
+                }
+
+                override fun onLost(network: Network) {
+                    isAvailable = false
+                }
+
+                override fun onCapabilitiesChanged(
+                    network: Network,
+                    networkCapabilities: NetworkCapabilities
+                ) {
+                    isAvailable = networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                        networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) ||
+                        networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+                }
+            }
+
+            connectivityManager.registerDefaultNetworkCallback(callback)
+
+            onDispose {
+                connectivityManager.unregisterNetworkCallback(callback)
+            }
+        }
+
+        return isAvailable
+    }
 
     fun getIpAddressForInterface(interfacePrefix: String): String? {
         return try {

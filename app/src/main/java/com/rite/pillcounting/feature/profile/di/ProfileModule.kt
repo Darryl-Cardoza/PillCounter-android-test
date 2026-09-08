@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.profile.di
 
+import com.rite.pillcounting.core.auth.AuthEventBus
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -74,12 +75,14 @@ object ProfileModule {
         userDao: UserDao,
         preferenceHelper: PreferenceHelper,
         applicationSettingApi: IApplicationSettingInterface,
-        ioDispatcher: CoroutineDispatcher
+        ioDispatcher: CoroutineDispatcher,
+        authEventBus: AuthEventBus
     ): IProfileRepository =
         ProfileRepository(
             profileApi = api,
             ioDispatcher = ioDispatcher,
             preferenceHelper = preferenceHelper,
-            applicationSettingApi = applicationSettingApi
+            applicationSettingApi = applicationSettingApi,
+            authEventBus = authEventBus
         )
 }

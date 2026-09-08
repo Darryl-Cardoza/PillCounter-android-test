@@ -31,13 +31,18 @@ import javax.inject.Singleton
  * no Quick Access set up never locks itself out with nothing to verify against.
  *
  * The lock also survives process death: a cold start with an active login session
- * and an enrolled face profile begins locked, so killing the app can't bypass it.
- * (Enrollment state is mirrored to preferences so this decision is synchronous.)
+ * and an enrolled face profile begins locked. (Enrollment state is mirrored to
+ * preferences so this decision is synchronous.) That initializer is not enough on
+ * its own to stop a kill-and-relaunch bypass — see [onAppLaunch].
  *
  * What it does:
  * - [onUserActivity] resets the idle clock; call on every touch app-wide.
+ * - [onAppLaunch] re-arms the lock on every fresh Activity launch, which is what
+ *   actually covers "killed from recents" — the initializer below cannot, because
+ *   a foreground service keeps the process (and this singleton) alive.
  * - [isLocked] is the single source of truth the UI observes to show/hide the overlay.
- * - [lockNow] lets Settings trigger the same overlay on demand.
+ * - [lockNow] lets Settings (and a fresh login) trigger the same overlay on demand.
+ * - [startOnScan] tells the overlay to open on the verify camera instead of the lock screen.
  * - [unlock] is called after a successful face verify.
  */
 @Singleton
@@ -49,11 +54,17 @@ class SessionLockController @Inject constructor(
     private val lastActivityAt = AtomicLong(System.currentTimeMillis())
 
     // Start locked on a cold start with an active session: process death must not
-    // bypass the face lock (kill-and-relaunch previously reopened the app unlocked).
+    // bypass the face lock. Only covers a genuinely new process — a fresh launch
+    // into a surviving process is [onAppLaunch]'s job.
     private val _isLocked = MutableStateFlow(
         preferenceHelper.isUserLoggedIn() && preferenceHelper.hasEnabledFaceProfile()
     )
     val isLocked: StateFlow<Boolean> = _isLocked.asStateFlow()
+
+    // Whether the current lock should open straight on the verify camera. Only a
+    // fresh login does; idle timeout and cold start keep the idle lock screen.
+    private val _startOnScan = MutableStateFlow(false)
+    val startOnScan: StateFlow<Boolean> = _startOnScan.asStateFlow()
 
     /** Whether at least one enrolled face profile currently participates in verify matching. */
     val hasEnabledProfile: StateFlow<Boolean> = faceProfileRepository.observeProfiles()
@@ -71,7 +82,10 @@ class SessionLockController @Inject constructor(
             hasEnabledProfile.collect { hasEnabled ->
                 preferenceHelper.saveHasEnabledFaceProfile(hasEnabled)
                 // No enabled profile means nothing to verify against — release the lock.
-                if (!hasEnabled && _isLocked.value) _isLocked.value = false
+                if (!hasEnabled && _isLocked.value) {
+                    _isLocked.value = false
+                    _startOnScan.value = false
+                }
             }
         }
     }
@@ -101,19 +115,32 @@ class SessionLockController @Inject constructor(
     }
 
     /**
-     * Manually triggers the lock overlay, e.g. from a Settings "Lock Now" row.
+     * Manually triggers the lock overlay, e.g. from a Settings "Lock Now" row or
+     * right after a successful login.
      *
+     * @param startOnScan Open the overlay on the verify camera instead of the idle lock screen.
      * @return true if the lock engaged, false if there's no enabled face profile to verify against.
      */
-    fun lockNow(): Boolean {
+    fun lockNow(startOnScan: Boolean = false): Boolean {
         if (!hasEnabledProfile.value) return false
+        _startOnScan.value = startOnScan
         _isLocked.value = true
         return true
+    }
+
+    /**
+     * Re-arms the lock on a fresh Activity launch, which the initializer misses.
+     * Returns true if the lock engaged.
+     */
+    fun onAppLaunch(): Boolean {
+        if (!preferenceHelper.isUserLoggedIn()) return false
+        return lockNow()
     }
 
     /** Clears the lock after a successful verify and resets the idle clock. */
     fun unlock() {
         _isLocked.value = false
+        _startOnScan.value = false
         lastActivityAt.set(System.currentTimeMillis())
     }
 }
