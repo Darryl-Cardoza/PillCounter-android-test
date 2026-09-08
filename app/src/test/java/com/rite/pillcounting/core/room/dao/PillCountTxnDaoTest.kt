@@ -63,6 +63,8 @@ class PillCountTxnDaoTest {
         isSynced: Boolean? = null,
         priority: TxnPriority? = null,
         createdAt: Long = System.currentTimeMillis(),
+        isSubstitute: Boolean = false,
+        substitutedDrugId: Long? = null,
     ) = PillCountTxnEntity(
         txnId = txnId,
         isDispense = isDispense,
@@ -75,6 +77,8 @@ class PillCountTxnDaoTest {
         isSynced = isSynced,
         priority = priority,
         createdAt = createdAt,
+        isSubstitute = isSubstitute,
+        substitutedDrugId = substitutedDrugId,
     )
 
     // ───────────────────────── Insert / Upsert ─────────────────────────
@@ -716,7 +720,23 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `getTransactionsWithDrugByDate applies non null isDispense and status filters`() = runTest {
-        dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.COMPLETED, createdAt = 150L))
+        val drugId = drugDao.insertIgnore(
+            DrugMasterEntity(
+                ndc = "N-IMG",
+                drugName = "Imaged",
+                strength = "35 mg/1",
+                dosageForm = "CAPSULE, EXTENDED RELEASE",
+                drugImagePath = "/data/drug/n-img.webp",
+            )
+        )
+        dao.insertIgnore(
+            baseTxn(
+                drugId = drugId,
+                isDispense = true,
+                status = CountStatus.COMPLETED,
+                createdAt = 150L
+            )
+        )
         dao.insertIgnore(baseTxn(isDispense = false, status = CountStatus.COMPLETED, createdAt = 150L))
         dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.PARTIAL, createdAt = 150L))
 
@@ -730,6 +750,58 @@ class PillCountTxnDaoTest {
             assertEquals(1, list.size)
             assertTrue(list.first().isDispense)
             assertEquals(CountStatus.COMPLETED, list.first().status)
+            assertEquals("/data/drug/n-img.webp", list.first().drugImagePath)
+            assertEquals("35 mg/1", list.first().strength)
+            assertEquals("CAPSULE, EXTENDED RELEASE", list.first().dosageForm)
+        }
+    }
+
+    @Test
+    fun `getTransactionsWithDrugByDate prefers substitute drug columns when isSubstitute is set`() = runTest {
+        val drugId = drugDao.insertIgnore(
+            DrugMasterEntity(
+                ndc = "N-BASE",
+                drugName = "Base",
+                drugType = "BRAND",
+                strength = "10 mg/1",
+                dosageForm = "TABLET",
+                drugImagePath = "/data/drug/base.webp",
+            )
+        )
+        val subDrugId = drugDao.insertIgnore(
+            DrugMasterEntity(
+                ndc = "N-SUB",
+                drugName = "Sub",
+                drugType = "GENERIC",
+                strength = "35 mg/1",
+                dosageForm = "CAPSULE, EXTENDED RELEASE",
+                drugImagePath = "/data/drug/sub.webp",
+            )
+        )
+        dao.insertIgnore(
+            baseTxn(
+                drugId = drugId,
+                isDispense = true,
+                status = CountStatus.COMPLETED,
+                createdAt = 150L,
+                isSubstitute = true,
+                substitutedDrugId = subDrugId,
+            )
+        )
+
+        dao.getTransactionsWithDrugByDate(
+            startOfDay = 100L,
+            endOfDay = 200L,
+            isDispense = null,
+            status = null
+        ).test {
+            val row = awaitItem().first()
+            assertEquals("N-SUB", row.ndc)
+            assertEquals("Sub", row.drugName)
+            assertEquals("GENERIC", row.drugType)
+            assertEquals("35 mg/1", row.strength)
+            assertEquals("CAPSULE, EXTENDED RELEASE", row.dosageForm)
+            assertEquals("/data/drug/sub.webp", row.drugImagePath)
         }
     }
 

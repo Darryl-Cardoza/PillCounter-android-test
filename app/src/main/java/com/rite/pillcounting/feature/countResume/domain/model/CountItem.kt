@@ -31,5 +31,8 @@ data class CountItem(
     val isComingFromHL7: Boolean,
     val isNdcVerified: Boolean,
     val isDispense: Boolean = false,
-    val priority: TxnPriority? = null
+    val priority: TxnPriority? = null,
+    val strength: String? = null,
+    val dosageForm: String? = null,
+    val drugImagePath: String? = null
 )
