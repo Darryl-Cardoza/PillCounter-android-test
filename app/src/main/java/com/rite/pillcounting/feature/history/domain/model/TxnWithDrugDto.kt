@@ -15,5 +15,9 @@ data class TxnWithDrugDto(
     val targetCount: Int?,
     val note: String?,
     val bucketId: String?,
-    val drugType: String?
+    val drugType: String?,
+    val strength: String? = null,
+    val dosageForm: String? = null,
+    /** Absolute local path to the downloaded drug image (.webp). Null if not yet downloaded. */
+    val drugImagePath: String? = null,
 )

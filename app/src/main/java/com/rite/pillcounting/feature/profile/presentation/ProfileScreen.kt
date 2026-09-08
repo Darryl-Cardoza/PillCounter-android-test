@@ -397,7 +397,7 @@ private fun ResponsiveProfileFields(
 
         ProfileField(
             viewModel.pharmacyName,
-            { v -> viewModel.pharmacyName = v },
+            { v -> viewModel.onPharmacyNameChanged(v) },
             R.string.pharmacy_name,
             viewModel.pharmacyNameError
         ),
@@ -667,6 +667,8 @@ private fun <T> LabeledDropdown(
             BasicTextField(
                 value = searchQuery,
                 onValueChange = {
+                    // Not filtered: this is a filter box, not a saved name, and
+                    // labels like "St. Kitts" need the punctuation to match.
                     searchQuery = it
                     expanded = true
                     onQueryChanged(it)

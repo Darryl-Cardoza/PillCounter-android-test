@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -12,6 +13,26 @@ import java.util.Locale
 import kotlin.math.min
 
 object OverlayUtils {
+
+    /**
+     * Number of on-tray pills drawn RED (excess, push into the chute) once the
+     * remaining target ([targetCount] minus [alreadyCounted]) is exceeded.
+     * Stock counts, the parent-container step and an unknown target return 0.
+     */
+    fun excessPillCount(
+        pillCount: Int,
+        targetCount: Int,
+        alreadyCounted: Int,
+        isDispense: Boolean?,
+        stepType: StepState,
+    ): Int {
+        if (isDispense != true) return 0
+        if (stepType == StepState.CONTAINER_INITIATE) return 0
+        // 0 means "no target yet", except on CONTAINER_PENDING where it means "bottle empty".
+        if (targetCount <= 0 && stepType != StepState.CONTAINER_PENDING) return 0
+        val remaining = (targetCount - alreadyCounted).coerceAtLeast(0)
+        return (pillCount - remaining).coerceAtLeast(0)
+    }
 
     fun drawDetectionsOnBitmap(
         bitmap: Bitmap,

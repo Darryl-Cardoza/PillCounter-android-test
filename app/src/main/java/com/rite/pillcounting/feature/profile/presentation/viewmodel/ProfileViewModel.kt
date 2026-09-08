@@ -77,6 +77,7 @@ class ProfileViewModel @Inject constructor(
     var lastName by mutableStateOf("")
         private set
     var pharmacyName by mutableStateOf("")
+        private set
     var phoneNumber by mutableStateOf("")
     var email by mutableStateOf("")
     var npi by mutableStateOf("")
@@ -340,18 +341,16 @@ class ProfileViewModel @Inject constructor(
         phoneNumber = limited
     }
 
-    private val allowedNameChars = Regex("[\\p{L} '-]")
-
     fun onFirstNameChanged(input: String) {
-        firstName = input
-            .filter { it.toString().matches(allowedNameChars) }
-            .take(50)
+        firstName = CredentialsValidator.sanitizeName(input).take(50)
     }
 
     fun onLastNameChanged(input: String) {
-        lastName = input
-            .filter { it.toString().matches(allowedNameChars) }
-            .take(50)
+        lastName = CredentialsValidator.sanitizeName(input).take(50)
+    }
+
+    fun onPharmacyNameChanged(input: String) {
+        pharmacyName = CredentialsValidator.sanitizeName(input).take(50)
     }
     // ─────────────────────────── Validation ───────────────────────────
     private fun validateInputs(): Boolean {
@@ -395,7 +394,7 @@ class ProfileViewModel @Inject constructor(
             viewModelScope.launch {
                 _updateUiState.value = ProfileUpdateUiState.Loading
                 val request = ProfileUpdateRequest(
-                    pharmacyName = pharmacyName,
+                    pharmacyName = pharmacyName.trim(),
                     phoneNumber = phoneNumber,
                     npiId = npi,
                     isProfileComplete = true,
@@ -424,7 +423,7 @@ class ProfileViewModel @Inject constructor(
                                 fName = firstName.trim(),
                                 lName = lastName.trim(),
                                 phoneNumber = phoneNumber,
-                                pharmacyName = pharmacyName,
+                                pharmacyName = pharmacyName.trim(),
                                 npiId = npi,
                                 notifications = !doNotAskAgain,
                                 country = selectedCountry?.code,

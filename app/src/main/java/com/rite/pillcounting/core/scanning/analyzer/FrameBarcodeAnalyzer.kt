@@ -51,11 +51,12 @@ class FrameBarcodeAnalyzer(
     private val appContext: Context,
     /**
      * When true, the analyzer does NOT self-pause on a hit. Instead it tracks
-     * the last fired barcode value and the run of empty frames since. A
-     * subsequent fire of the same value only happens after [EMPTY_STREAK_THRESHOLD]
-     * consecutive empty frames (camera lost focus on the label) and re-acquires
-     * the label. A *different* value fires immediately. This is the inventory
-     * "scan a bottle, move it away, scan the next" UX.
+     * the last fired barcode value and when a label was last visible. A
+     * subsequent fire of the same value only happens once the label has been
+     * out of view for [FOCUS_CHANGE_WINDOW_MS] (with empty frames actually seen
+     * in that span) and is then re-acquired. A *different* value fires
+     * immediately. This is the inventory "scan a bottle, move it away, scan
+     * the next" UX.
      *
      * When false (default), the analyzer self-pauses on every hit and waits for
      * an external resume() call — the dispense-flow behavior where a bottom
@@ -119,28 +120,31 @@ class FrameBarcodeAnalyzer(
         /** Default minimum gap between MLKit attempts (overridable per instance). */
         private const val DEFAULT_MIN_INTERVAL_MS = 250L
         /**
-         * In focus-change mode, the real-time window of "label out of view" before
+         * In focus-change mode, how long the label must be out of view before
          * the analyzer will re-fire the same barcode value (a deliberate bottle
-         * swap). Expressed in ms and converted to a frame count via [minIntervalMs]
-         * so the behaviour is stable regardless of the configured frame rate —
-         * enough for a deliberate swap, short enough not to feel laggy.
+         * swap). Wall-clock, not a frame count: upstream frame delivery is not
+         * continuous (CameraHelper drops frames while the AF lens is scanning),
+         * so counting analyzed frames would stretch the window unpredictably.
          */
         private const val FOCUS_CHANGE_WINDOW_MS = 750L
-    }
 
-    /**
-     * Consecutive empty frames that constitute a focus change, derived from the
-     * frame rate so the real-time window stays ~[FOCUS_CHANGE_WINDOW_MS] whether
-     * we run at 4 fps (250ms) or 10 fps (100ms). Floored at 3.
-     */
-    private val emptyStreakThreshold: Int =
-        maxOf(3, (FOCUS_CHANGE_WINDOW_MS / minIntervalMs).toInt())
+        /**
+         * Empty frames that must actually be seen inside the out-of-view window
+         * before a same-value re-fire. Positive evidence that the label left the
+         * scene — a wall-clock gap alone can also mean frames simply stopped
+         * arriving (AF gate closed over a stationary bottle).
+         */
+        private const val FOCUS_CHANGE_MIN_EMPTY_FRAMES = 2
+    }
 
     /** Last value we fired a callback for (focus-change mode). */
     private var lastFiredValue: String? = null
 
-    /** Consecutive empty MLKit frames since the last fired value (focus-change mode). */
+    /** Consecutive empty MLKit frames since the label was last visible (focus-change mode). */
     private var emptyStreak: Int = 0
+
+    /** When an analyzed frame last showed a visible label; 0 = none yet (focus-change mode). */
+    private var lastVisibleLabelAtMs: Long = 0L
 
     fun pause() {
         logger.d("INV_SCAN analyzer.pause() wasPaused=${isPaused.get()} processing=${isProcessing.get()}")
@@ -160,6 +164,7 @@ class FrameBarcodeAnalyzer(
         // even if it matches the last value from before.
         lastFiredValue = null
         emptyStreak = 0
+        lastVisibleLabelAtMs = 0L
     }
 
     /**
@@ -294,10 +299,10 @@ class FrameBarcodeAnalyzer(
                 //
                 //  - Focus-change (inventory): never self-pause. Fire on any new
                 //    value immediately. For a value identical to the last one
-                //    fired, only re-fire after the camera has lost focus on the
-                //    label for [EMPTY_STREAK_THRESHOLD] empty frames (label moved
-                //    away) and then re-acquired it. This is the "scan a bottle,
-                //    move it aside, scan the next" UX.
+                //    fired, only re-fire after the label was out of view for
+                //    [FOCUS_CHANGE_WINDOW_MS] with empty frames actually seen
+                //    (label moved away) and then re-acquired. This is the "scan
+                //    a bottle, move it aside, scan the next" UX.
                 val shouldFire: Boolean = when {
                     barcode == null || isPaused.get() -> false
                     // In focus-change (inventory) mode, ignore non-product
@@ -317,11 +322,14 @@ class FrameBarcodeAnalyzer(
                         logger.d("INV_SCAN focus-change: new value '$rawValue' (last='$lastFiredValue') → FIRE")
                         true
                     }
-                    emptyStreak >= emptyStreakThreshold -> {
-                        // Same value, but we've seen enough empty frames to call
-                        // it a focus change. The user moved the label away and
-                        // brought it (or another bottle of the same NDC) back.
-                        logger.d("INV_SCAN focus-change: same value '$rawValue' after emptyStreak=$emptyStreak → FIRE")
+                    emptyStreak >= FOCUS_CHANGE_MIN_EMPTY_FRAMES &&
+                        lastVisibleLabelAtMs != 0L &&
+                        now - lastVisibleLabelAtMs >= FOCUS_CHANGE_WINDOW_MS -> {
+                        // Same value, but the label was out of view long enough
+                        // (with empty frames seen) to call it a focus change. The
+                        // user moved the label away and brought it (or another
+                        // bottle of the same NDC) back.
+                        logger.d("INV_SCAN focus-change: same value '$rawValue' after ${now - lastVisibleLabelAtMs}ms out of view (emptyStreak=$emptyStreak) → FIRE")
                         true
                     }
                     else -> {
@@ -331,8 +339,9 @@ class FrameBarcodeAnalyzer(
                     }
                 }
 
-                // Track empty-streak for focus-change mode. Any non-null barcode
-                // resets the streak (label visible); a null barcode increments.
+                // Track label visibility for focus-change mode. A visible label
+                // resets the empty streak and stamps the visibility clock; an
+                // empty frame grows the streak.
                 if (enableFocusChangeDebounce) {
                     // Frames where the only visible barcode is a non-product
                     // 1D code count as "empty" for the focus-change debouncer.
@@ -343,6 +352,7 @@ class FrameBarcodeAnalyzer(
                         emptyStreak++
                     } else {
                         emptyStreak = 0
+                        lastVisibleLabelAtMs = now
                     }
                 }
 

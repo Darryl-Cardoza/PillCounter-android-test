@@ -63,7 +63,10 @@ class CredentialsValidator @Inject constructor() {
      * failure if digits are found.
      */
     fun validateRequiredName(name: String): ValidationResult {
-        if (name.isBlank()) return ValidationResult(false, R.string.error_name_required)
+        // A name made only of spaces, hyphens or apostrophes is as empty as a blank one.
+        if (name.none { it.isLetter() }) {
+            return ValidationResult(false, R.string.error_name_required)
+        }
         if (name.any { it.isDigit() }) {
             return ValidationResult(false, R.string.error_name_invalid)
         }
@@ -82,8 +85,11 @@ class CredentialsValidator @Inject constructor() {
      * failure if too short.
      */
     fun validatePharmacyName(pharmacy: String): ValidationResult {
-        if (pharmacy.isBlank()) return ValidationResult(true)
-        if (pharmacy.length < 2) {
+        // Measured on the trimmed value: the field keeps a trailing space while
+        // typing, and that space must not count towards the minimum.
+        val trimmed = pharmacy.trim()
+        if (trimmed.isEmpty()) return ValidationResult(true)
+        if (trimmed.length < 2 || trimmed.none { it.isLetter() }) {
             return ValidationResult(false, R.string.error_pharmacy_name_invalid)
         }
         return ValidationResult(true)
@@ -140,5 +146,26 @@ class CredentialsValidator @Inject constructor() {
             return ValidationResult(false, R.string.error_password_no_special)
         }
         return ValidationResult(true)
+    }
+
+    companion object {
+        private val DISALLOWED_NAME_CHARS = Regex("[^\\p{L} '-]")
+        private val SPACE_RUN = Regex(" {2,}")
+
+        /**
+         * Keeps only letters, spaces, apostrophes and hyphens. Collapses double
+         * spaces and drops a leading one; a trailing space is kept so the user
+         * can type the next word.
+         *
+         * @param input Raw text currently in the field.
+         * @return The same text with disallowed characters removed.
+         *
+         * Example Usage:
+         * sanitizeName("Smith & Sons") // "Smith Sons"
+         */
+        fun sanitizeName(input: String): String =
+            input.replace(DISALLOWED_NAME_CHARS, "")
+                .replace(SPACE_RUN, " ")
+                .removePrefix(" ")
     }
 }

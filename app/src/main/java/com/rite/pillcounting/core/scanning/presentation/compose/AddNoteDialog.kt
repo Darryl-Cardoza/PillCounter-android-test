@@ -50,7 +50,6 @@ fun AddNoteDialog(
     onDismiss: () -> Unit,
     onSkip: () -> Unit,
     onSave: (String) -> Unit,
-    showSkip: Boolean = true
 ) {
     val dimens = AppTheme.dimens
     var noteText by rememberSaveable { mutableStateOf("") }
@@ -156,14 +155,12 @@ fun AddNoteDialog(
                         .padding(horizontal = 10.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    if (showSkip) {
-                        HollowButton(
-                            text = stringResource(R.string.skip).uppercase(),
-                            onClick = onSkip,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                        Spacer(modifier = Modifier.width(dimens.medium))
-                    }
+                    HollowButton(
+                        text = stringResource(R.string.skip).uppercase(),
+                        onClick = onSkip,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Spacer(modifier = Modifier.width(dimens.medium))
                     ActionButtonPrimary(
                         text = stringResource(R.string.save).uppercase(),
                         onClick = {

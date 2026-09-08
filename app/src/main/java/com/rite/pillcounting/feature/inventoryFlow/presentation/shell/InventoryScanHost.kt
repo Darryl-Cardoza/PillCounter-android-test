@@ -252,7 +252,6 @@ fun InventoryScanHost(
                 pendingNote = note
                 showEndCountConfirmDialog = true
             },
-            showSkip = true,
         )
     }
 
