@@ -104,6 +104,35 @@ class ExcessPillCountTest {
                 targetCount = 0,
                 alreadyCounted = 0,
                 isDispense = true,
+                stepType = StepState.TARGET_VERIFICATION,
+            )
+        )
+    }
+
+    // On CONTAINER_PENDING targetCount is the expected leftover, not the Rx quantity.
+    @Test
+    fun `an expected leftover of zero makes every pill on the tray excess`() {
+        assertEquals(
+            3,
+            OverlayUtils.excessPillCount(
+                pillCount = 3,
+                targetCount = 0,
+                alreadyCounted = 0,
+                isDispense = true,
+                stepType = StepState.CONTAINER_PENDING,
+            )
+        )
+    }
+
+    @Test
+    fun `an expected leftover of zero on an empty tray has no excess`() {
+        assertEquals(
+            0,
+            OverlayUtils.excessPillCount(
+                pillCount = 0,
+                targetCount = 0,
+                alreadyCounted = 0,
+                isDispense = true,
                 stepType = StepState.CONTAINER_PENDING,
             )
         )

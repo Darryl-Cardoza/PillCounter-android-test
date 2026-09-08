@@ -24,6 +24,7 @@ object OverlayUtils {
      * A [targetCount] of 0 means no target is known yet (the target dialog is still
      * open), which is different from a target that has been fully counted — the former
      * is all green, the latter makes every pill still on the tray excess.
+     * On CONTAINER_PENDING [targetCount] is the expected leftover, so 0 is real there.
      *
      * @param isDispense From the transaction; false for a stock count, null before it loads.
      */
@@ -36,7 +37,8 @@ object OverlayUtils {
     ): Int {
         if (isDispense != true) return 0
         if (stepType == StepState.CONTAINER_INITIATE) return 0
-        if (targetCount <= 0) return 0
+        // 0 means "no target yet", except on CONTAINER_PENDING where it means "bottle empty".
+        if (targetCount <= 0 && stepType != StepState.CONTAINER_PENDING) return 0
         val remaining = (targetCount - alreadyCounted).coerceAtLeast(0)
         return (pillCount - remaining).coerceAtLeast(0)
     }
