@@ -292,7 +292,6 @@ fun DispenseFlowScreen(
     }
 
     val pillStepType by pillVm.currentStep.collectAsState()
-    val isTxnFromHl7 by pillVm.isTxnFromHl7.collectAsState()
     val capturedBitmap by pillVm.capturedBitmap.collectAsState()
 
     // Resume/HL7 entries jump to their real start stage (COUNTING / PRE_NDC)
@@ -368,7 +367,6 @@ fun DispenseFlowScreen(
             onDismiss = { pillVm.setNoteDialogShown(false) },
             onSkip = { pillVm.onEvent(PillScanningEvent.NoteSkip) },
             onSave = { note -> pillVm.onEvent(PillScanningEvent.NoteSaved(note)) },
-            showSkip = true,
         )
     }
 

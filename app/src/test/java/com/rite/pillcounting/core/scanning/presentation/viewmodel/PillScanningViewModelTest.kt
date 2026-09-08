@@ -334,17 +334,10 @@ class PillScanningViewModelTest {
 
     // ─────────────────────────── handleDone → notes dialog ───────────────────────────
 
-    @Suppress("UNCHECKED_CAST")
-    private fun setTxnFromHl7(fromHl7: Boolean) {
-        val flow = getPrivateField("_isTxnFromHl7") as MutableStateFlow<Boolean>
-        flow.value = fromHl7
-    }
-
     @Test
     fun `DoneClicked shows the notes dialog for an HL7 txn when the notes setting is on`() = runTest {
         // HL7 txns used to skip the notes prompt; the setting is now the only gate.
-        seedTxnInfoIsDispense(isDispense = true)
-        setTxnFromHl7(true)
+        seedTxnInfoIsDispense(isDispense = true, isComingFromHL7 = true)
         setCurrentStep(StepState.VIAL)
         every { preferenceHelper.getShowNotesDialogSetting() } returns true
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
@@ -358,8 +351,7 @@ class PillScanningViewModelTest {
 
     @Test
     fun `DoneClicked skips the notes dialog for an HL7 txn when the notes setting is off`() = runTest {
-        seedTxnInfoIsDispense(isDispense = true)
-        setTxnFromHl7(true)
+        seedTxnInfoIsDispense(isDispense = true, isComingFromHL7 = true)
         setCurrentStep(StepState.VIAL)
         every { preferenceHelper.getShowNotesDialogSetting() } returns false
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
@@ -447,7 +439,7 @@ class PillScanningViewModelTest {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun seedTxnInfoIsDispense(isDispense: Boolean) {
+    private fun seedTxnInfoIsDispense(isDispense: Boolean, isComingFromHL7: Boolean = false) {
         val flow = getPrivateField("_txnInfo") as MutableStateFlow<TxnWithDetails?>
         flow.value = TxnWithDetails(
             txnId = 0L,
@@ -462,7 +454,7 @@ class PillScanningViewModelTest {
             isDispense = isDispense,
             drugType = null,
             txnDetails = emptyList(),
-            isComingFromHL7 = false,
+            isComingFromHL7 = isComingFromHL7,
         )
     }
 
