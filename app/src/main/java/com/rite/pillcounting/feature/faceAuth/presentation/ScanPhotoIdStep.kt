@@ -65,6 +65,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.compose.HideSystemBarsInCurrentWindow
 import com.rite.pillcounting.core.utils.compose.StepTitleWithSpeech
+import com.rite.pillcounting.core.utils.validator.CredentialsValidator
 import com.rite.pillcounting.ui.theme.AppTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -85,6 +86,18 @@ private const val FRAME_STALL_TIMEOUT_MS = 4_000L
 
 /** A [TextFieldValue] whose cursor sits after the last character. */
 private fun String.withCursorAtEnd() = TextFieldValue(this, TextRange(length))
+
+/**
+ * Filters typed input to name characters, leaving the cursor after the
+ * characters that survived instead of jumping it to the end.
+ */
+internal fun sanitizeTypedName(value: TextFieldValue): TextFieldValue {
+    val cleaned = CredentialsValidator.sanitizeName(value.text)
+    if (cleaned == value.text) return value
+    val keptBeforeCursor =
+        CredentialsValidator.sanitizeName(value.text.take(value.selection.end)).length
+    return TextFieldValue(cleaned, TextRange(keptBeforeCursor.coerceAtMost(cleaned.length)))
+}
 
 /** Primary-colored border/label marking the field the next chip tap fills. */
 @Composable
@@ -184,10 +197,14 @@ internal fun ScanPhotoIdStep(
                         // proxy can be closed as soon as it returns.
                         analyzer.analyze(proxy) { result ->
                             result.name?.let {
-                                firstNameValue = it.firstName.withCursorAtEnd()
-                                lastNameValue = it.lastName.withCursorAtEnd()
-                                onFirstNameChange(it.firstName)
-                                onLastNameChange(it.lastName)
+                                // Filter scanned names too, so OCR noise can't
+                                // land in the fields.
+                                val first = CredentialsValidator.sanitizeName(it.firstName)
+                                val last = CredentialsValidator.sanitizeName(it.lastName)
+                                firstNameValue = first.withCursorAtEnd()
+                                lastNameValue = last.withCursorAtEnd()
+                                onFirstNameChange(first)
+                                onLastNameChange(last)
                             }
                             suggestions = result.suggestions
                             activeField = NameField.FIRST
@@ -376,15 +393,16 @@ internal fun ScanPhotoIdStep(
                             SuggestionChip(
                                 onClick = {
                                     onUserInteraction()
+                                    val cleaned = CredentialsValidator.sanitizeName(word)
                                     when (activeField) {
                                         NameField.FIRST -> {
-                                            firstNameValue = word.withCursorAtEnd()
-                                            onFirstNameChange(word)
+                                            firstNameValue = cleaned.withCursorAtEnd()
+                                            onFirstNameChange(cleaned)
                                             activeField = NameField.LAST
                                         }
                                         NameField.LAST -> {
-                                            lastNameValue = word.withCursorAtEnd()
-                                            onLastNameChange(word)
+                                            lastNameValue = cleaned.withCursorAtEnd()
+                                            onLastNameChange(cleaned)
                                         }
                                     }
                                     // Chip taps are pick-not-type: clear focus so
@@ -408,8 +426,9 @@ internal fun ScanPhotoIdStep(
                     value = firstNameValue,
                     onValueChange = {
                         onUserInteraction()
-                        firstNameValue = it
-                        onFirstNameChange(it.text)
+                        val cleaned = sanitizeTypedName(it)
+                        firstNameValue = cleaned
+                        onFirstNameChange(cleaned.text)
                     },
                     label = { Text(stringResource(R.string.face_registration_first_name)) },
                     singleLine = true,
@@ -431,8 +450,9 @@ internal fun ScanPhotoIdStep(
                     value = lastNameValue,
                     onValueChange = {
                         onUserInteraction()
-                        lastNameValue = it
-                        onLastNameChange(it.text)
+                        val cleaned = sanitizeTypedName(it)
+                        lastNameValue = cleaned
+                        onLastNameChange(cleaned.text)
                     },
                     label = { Text(stringResource(R.string.face_registration_last_name)) },
                     singleLine = true,

@@ -141,4 +141,25 @@ class CredentialsValidator @Inject constructor() {
         }
         return ValidationResult(true)
     }
+
+    companion object {
+        private val DISALLOWED_NAME_CHARS = Regex("[^\\p{L} '-]")
+        private val SPACE_RUN = Regex(" {2,}")
+
+        /**
+         * Keeps only letters, spaces, apostrophes and hyphens. Collapses double
+         * spaces and drops a leading one; a trailing space is kept so the user
+         * can type the next word.
+         *
+         * @param input Raw text currently in the field.
+         * @return The same text with disallowed characters removed.
+         *
+         * Example Usage:
+         * sanitizeName("Smith & Sons") // "Smith Sons"
+         */
+        fun sanitizeName(input: String): String =
+            input.replace(DISALLOWED_NAME_CHARS, "")
+                .replace(SPACE_RUN, " ")
+                .removePrefix(" ")
+    }
 }

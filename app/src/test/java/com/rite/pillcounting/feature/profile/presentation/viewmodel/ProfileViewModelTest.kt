@@ -487,6 +487,27 @@ class ProfileViewModelTest {
         assertEquals("Doe", vm.lastName)
     }
 
+    @Test
+    fun `onPharmacyNameChanged filters digits and special characters`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onPharmacyNameChanged("CVS Pharmacy #10423")
+
+        assertEquals("CVS Pharmacy ", vm.pharmacyName)
+    }
+
+    @Test
+    fun `onPharmacyNameChanged collapses spaces left by stripped characters`() =
+        runTest(testDispatcher) {
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            vm.onPharmacyNameChanged("Smith & Sons Drugs")
+
+            assertEquals("Smith Sons Drugs", vm.pharmacyName)
+        }
+
     // ────────────────────────────── updateProfile ──────────────────────────────
 
     @Test

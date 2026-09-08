@@ -71,6 +71,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.FloatingLabelT
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
+import com.rite.pillcounting.core.utils.validator.CredentialsValidator
 import com.rite.pillcounting.feature.profile.domain.model.ProfileDeleteUiState
 import com.rite.pillcounting.feature.profile.domain.model.ProfileField
 import com.rite.pillcounting.feature.profile.domain.model.ProfileUpdateUiState
@@ -397,7 +398,7 @@ private fun ResponsiveProfileFields(
 
         ProfileField(
             viewModel.pharmacyName,
-            { v -> viewModel.pharmacyName = v },
+            { v -> viewModel.onPharmacyNameChanged(v) },
             R.string.pharmacy_name,
             viewModel.pharmacyNameError
         ),
@@ -667,9 +668,10 @@ private fun <T> LabeledDropdown(
             BasicTextField(
                 value = searchQuery,
                 onValueChange = {
-                    searchQuery = it
+                    val sanitized = CredentialsValidator.sanitizeName(it)
+                    searchQuery = sanitized
                     expanded = true
-                    onQueryChanged(it)
+                    onQueryChanged(sanitized)
                 },
                 singleLine = true,
                 textStyle = TextStyle(
