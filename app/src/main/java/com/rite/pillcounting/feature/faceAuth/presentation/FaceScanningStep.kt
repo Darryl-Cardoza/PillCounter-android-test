@@ -5,11 +5,13 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.FlipCameraAndroid
@@ -99,16 +101,23 @@ internal fun ScanningStep(
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
-        Box(modifier = Modifier.fillMaxWidth().weight(1f)) {
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
             AndroidView(
                 factory = { ctx -> PreviewView(ctx).also { previewView = it } },
                 modifier = Modifier.fillMaxSize()
             )
+            // Full size on tablets, smaller on phones so the oval always fits.
+            val ovalWidth = minOf(
+                FACE_OVAL_MAX_WIDTH,
+                maxWidth * FACE_OVAL_FILL_FRACTION,
+                maxHeight * FACE_OVAL_FILL_FRACTION * FACE_OVAL_ASPECT_RATIO
+            )
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
-                    .size(width = 450.dp, height = 550.dp)
-                    .border(width = 3.dp, color = MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(200.dp))
+                    .width(ovalWidth)
+                    .aspectRatio(FACE_OVAL_ASPECT_RATIO)
+                    .border(width = 3.dp, color = MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(percent = FACE_OVAL_CORNER_PERCENT))
             )
             // Same step-title chip the Rx/pill scanning screens show.
             Box(

@@ -60,7 +60,6 @@ private enum class LockStage { LOCKED, SCANNING }
  * keeps composing underneath this overlay, so whatever screen the user was on
  * is exactly where they land once [onUnlocked] fires.
  *
- * @param timeoutMinutes The configured idle timeout, shown in the idle screen's subtitle.
  * @param startOnScan Skip the idle lock screen and open straight on the verify camera
  *   (the post-login lock). Cancelling a failed verify still falls back to the lock screen.
  * @param onUnlocked Called once a live face verify matches an enrolled profile.
@@ -68,24 +67,25 @@ private enum class LockStage { LOCKED, SCANNING }
  */
 @Composable
 fun SessionLockOverlayScreen(
-    timeoutMinutes: Int,
     startOnScan: Boolean,
     onUnlocked: () -> Unit,
     viewModel: FaceAuthViewModel = hiltViewModel()
 ) {
-    // startVerify() has to run before verifyState is first read: the ViewModel is
-    // activity-scoped, so a Matched left over from the previous lock would otherwise
-    // flash "Welcome back" for a frame before the camera appears.
-    val initialStage = remember {
-        if (startOnScan) {
-            viewModel.startVerify()
-            LockStage.SCANNING
-        } else {
-            LockStage.LOCKED
-        }
+    var stage by remember { mutableStateOf(if (startOnScan) LockStage.SCANNING else LockStage.LOCKED) }
+    val rawVerifyState by viewModel.verifyState.collectAsState()
+
+    // The ViewModel is activity-scoped, so the last lock's result is still here.
+    // Ignore it until this lock verifies, or "Welcome back" flashes for a frame.
+    var verifyStarted by remember { mutableStateOf(false) }
+    val startVerify = {
+        viewModel.startVerify()
+        verifyStarted = true
     }
-    var stage by remember { mutableStateOf(initialStage) }
-    val verifyState by viewModel.verifyState.collectAsState()
+    val verifyState = rawVerifyState.takeIf { verifyStarted }
+
+    LaunchedEffect(Unit) {
+        if (startOnScan) startVerify()
+    }
 
     // The ViewModel is activity-scoped (this overlay sits above the nav graph),
     // so the verify loop must be cancelled explicitly when the overlay goes away.
@@ -96,9 +96,8 @@ fun SessionLockOverlayScreen(
     Box(modifier = Modifier.fillMaxSize()) {
         when {
             stage == LockStage.LOCKED -> LockedStep(
-                timeoutMinutes = timeoutMinutes,
                 onVerifyWithFace = {
-                    viewModel.startVerify()
+                    startVerify()
                     stage = LockStage.SCANNING
                 }
             )
@@ -109,7 +108,7 @@ fun SessionLockOverlayScreen(
             }
 
             verifyState is VerifyState.NotRecognized -> LockNotRecognizedStep(
-                onTryAgain = { viewModel.startVerify() },
+                onTryAgain = { startVerify() },
                 onCancel = { stage = LockStage.LOCKED }
             )
 
@@ -147,7 +146,7 @@ private fun ScanCameraStep(
 }
 
 @Composable
-private fun LockedStep(timeoutMinutes: Int, onVerifyWithFace: () -> Unit) {
+private fun LockedStep(onVerifyWithFace: () -> Unit) {
     Box(
         modifier = Modifier
             .fillMaxSize()

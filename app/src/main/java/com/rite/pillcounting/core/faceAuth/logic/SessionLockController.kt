@@ -1,7 +1,6 @@
 package com.rite.pillcounting.core.faceAuth.logic
 
 import com.rite.pillcounting.core.faceAuth.data.FaceProfileRepository
-import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -54,11 +53,6 @@ class SessionLockController @Inject constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lastActivityAt = AtomicLong(System.currentTimeMillis())
 
-    // TEMPORARY diagnostic for the "kill the app but the HL7 service keeps it
-    // alive" lock bypass. w() so it prints on release builds too. Remove once
-    // the failing layer is identified.
-    private val diag = AppLogger("FaceLockDiag")
-
     // Start locked on a cold start with an active session: process death must not
     // bypass the face lock. Only covers a genuinely new process — a fresh launch
     // into a surviving process is [onAppLaunch]'s job.
@@ -78,13 +72,6 @@ class SessionLockController @Inject constructor(
         .stateIn(scope, SharingStarted.Eagerly, preferenceHelper.hasEnabledFaceProfile())
 
     init {
-        // If this line appears on a relaunch, the process really died and the
-        // initializer covered it. If it does NOT, the singleton survived the kill.
-        diag.w(
-            "CONSTRUCTED instance=${Integer.toHexString(System.identityHashCode(this))} " +
-                "initialLocked=${_isLocked.value} loggedIn=${preferenceHelper.isUserLoggedIn()} " +
-                "hasEnabledPref=${preferenceHelper.hasEnabledFaceProfile()}"
-        )
         scope.launch {
             while (isActive) {
                 delay(1_000L)
@@ -94,10 +81,8 @@ class SessionLockController @Inject constructor(
         scope.launch {
             hasEnabledProfile.collect { hasEnabled ->
                 preferenceHelper.saveHasEnabledFaceProfile(hasEnabled)
-                diag.w("hasEnabledProfile emitted $hasEnabled (isLocked=${_isLocked.value})")
                 // No enabled profile means nothing to verify against — release the lock.
                 if (!hasEnabled && _isLocked.value) {
-                    diag.w("RELEASING lock — no enabled profile")
                     _isLocked.value = false
                     _startOnScan.value = false
                 }
@@ -137,46 +122,23 @@ class SessionLockController @Inject constructor(
      * @return true if the lock engaged, false if there's no enabled face profile to verify against.
      */
     fun lockNow(startOnScan: Boolean = false): Boolean {
-        if (!hasEnabledProfile.value) {
-            diag.w("lockNow REFUSED startOnScan=$startOnScan — no enabled profile")
-            return false
-        }
+        if (!hasEnabledProfile.value) return false
         _startOnScan.value = startOnScan
         _isLocked.value = true
-        diag.w("lockNow LOCKED startOnScan=$startOnScan")
         return true
     }
 
     /**
-     * Re-arms the lock for a fresh app launch.
-     *
-     * Description:
-     * The cold-start decision in this class's initializer only runs when the
-     * process is new. A foreground service (HL7) keeps the process alive when the
-     * app is swiped out of recents, so this singleton — and its stale unlocked
-     * state — survives the "kill". The Activity therefore has to ask again on
-     * every fresh launch, or killing the app bypasses the lock.
-     *
-     * @return true if the lock engaged, false if nobody is logged in or there's
-     *   no enabled face profile to verify against.
-     *
-     * Example Usage:
-     * override fun onCreate(savedInstanceState: Bundle?) {
-     *     super.onCreate(savedInstanceState)
-     *     if (savedInstanceState == null) sessionLockController.onAppLaunch()
-     * }
+     * Re-arms the lock on a fresh Activity launch, which the initializer misses.
+     * Returns true if the lock engaged.
      */
     fun onAppLaunch(): Boolean {
-        diag.w("onAppLaunch loggedIn=${preferenceHelper.isUserLoggedIn()} hasEnabledProfile=${hasEnabledProfile.value}")
         if (!preferenceHelper.isUserLoggedIn()) return false
         return lockNow()
     }
 
     /** Clears the lock after a successful verify and resets the idle clock. */
     fun unlock() {
-        // Stack trace: if something clears the lock right after a launch re-arm,
-        // this names the caller. TEMPORARY, remove with the rest of the diag.
-        diag.w("unlock() wasLocked=${_isLocked.value}", Throwable("unlock caller"))
         _isLocked.value = false
         _startOnScan.value = false
         lastActivityAt.set(System.currentTimeMillis())

@@ -59,7 +59,6 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toColor
 import com.rite.pillcounting.core.utils.compose.MaintenanceScreen
 import com.rite.pillcounting.core.utils.compose.OfflineOverlay
 import com.rite.pillcounting.core.utils.compose.UpdateScreen
-import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.notification.FCMService
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.navigation.AUTH_GRAPH_ROUTE
@@ -124,6 +123,10 @@ class MainActivity : ComponentActivity() {
     // its dialogs to stack on top of the original chain's.
     private var permissionChainInProgress = false
 
+    // Set on login so the face verify runs once the chain is done. Locking straight
+    // away puts the verify camera's permission prompt on top of the chain's dialogs.
+    private var lockAfterPermissionChain = false
+
     // True once the "location services are off" dialog has been shown this process.
     private var locationServicesPromptShown = false
 
@@ -148,14 +151,11 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        lockDiag("onCreate savedState=${if (savedInstanceState == null) "null" else "present"} isTaskRoot=$isTaskRoot")
-
         // Re-arm the face lock on every fresh launch, before setContent so the
         // overlay is up on the first frame. Null state only: a config-change or
         // process-death restore must not lock a session the user is mid-way through.
         if (savedInstanceState == null) {
-            val locked = sessionLockController.onAppLaunch()
-            lockDiag("onAppLaunch returned=$locked isLocked=${sessionLockController.isLocked.value}")
+            sessionLockController.onAppLaunch()
         }
 
         // Both phones and tablets are free to rotate by default.
@@ -314,8 +314,8 @@ class MainActivity : ComponentActivity() {
                                         onLogin          = {
                                             settingsViewModel.onUserLoginOrLogOut()
                                             // Enrolled operators verify their face before reaching the
-                                            // dashboard. No-ops on a first login (no profile to match).
-                                            sessionLockController.lockNow(startOnScan = true)
+                                            // dashboard, but only after the permission chain finishes.
+                                            lockAfterPermissionChain = true
                                             if (!permissionChainInProgress) {
                                                 permissionChainInProgress = true
                                                 requestNotificationPermission()
@@ -342,10 +342,8 @@ class MainActivity : ComponentActivity() {
 
                                     val isLocked by sessionLockController.isLocked.collectAsStateWithLifecycle()
                                     val startOnScan by sessionLockController.startOnScan.collectAsStateWithLifecycle()
-                                    val timeoutMinutes by settingsViewModel.faceLockTimeoutMinutes.collectAsStateWithLifecycle()
                                     if (isLocked) {
                                         SessionLockOverlayScreen(
-                                            timeoutMinutes = timeoutMinutes,
                                             startOnScan = startOnScan,
                                             onUnlocked = { sessionLockController.unlock() }
                                         )
@@ -376,28 +374,6 @@ class MainActivity : ComponentActivity() {
         }
     }
 
-    // TEMPORARY diagnostic for the "kill the app but the HL7 service keeps it
-    // alive" lock bypass. Uses w() so it prints on release builds too. Remove
-    // once the failing layer is identified.
-    private fun lockDiag(message: String) {
-        AppLogger("FaceLockDiag").w(
-            "pid=${android.os.Process.myPid()} " +
-                "activity=${Integer.toHexString(System.identityHashCode(this))} " +
-                "controller=${
-                    if (::sessionLockController.isInitialized)
-                        Integer.toHexString(System.identityHashCode(sessionLockController))
-                    else "uninjected"
-                } " +
-                "loggedIn=${preferenceHelper.isUserLoggedIn()} " +
-                "hasEnabledPref=${preferenceHelper.hasEnabledFaceProfile()} | $message"
-        )
-    }
-
-    override fun onDestroy() {
-        lockDiag("onDestroy isFinishing=$isFinishing changingConfig=$isChangingConfigurations")
-        super.onDestroy()
-    }
-
     // Resets the idle-lock clock on every touch, app-wide — this is the only
     // hook that can see activity across every screen without threading a
     // callback through each one individually (see SessionLockController).
@@ -408,7 +384,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onResume() {
         super.onResume()
-        lockDiag("onResume isLocked=${sessionLockController.isLocked.value}")
         // Re-run the chain when returning to the app (e.g. from the Settings screen
         // after granting one of several requested permissions) so any permission
         // still missing gets picked back up instead of being stuck until the next
@@ -433,7 +408,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
-        lockDiag("onStart isLocked=${sessionLockController.isLocked.value}")
         // Register a ConnectivityManager callback so the moment Android reports
         // network reachability restored, we fire /health and (on success) drain
         // pending Room-persisted work.
@@ -601,6 +575,11 @@ class MainActivity : ComponentActivity() {
     private fun finishPermissionChain() {
         // Chain always ends here (see chain comment above) — safe place to mark it done.
         permissionChainInProgress = false
+        // No-ops when nobody has an enabled face profile, e.g. on a first login.
+        if (lockAfterPermissionChain) {
+            lockAfterPermissionChain = false
+            sessionLockController.lockNow(startOnScan = true)
+        }
         if (permanentlyDeniedPermissions.isEmpty()) {
             promptEnableLocationServicesIfNeeded()
             return
