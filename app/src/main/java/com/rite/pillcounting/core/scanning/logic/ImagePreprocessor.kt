@@ -6,19 +6,23 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
 /**
- * Resizes camera frames to the model 640×640 letterbox input and produces the
- * float buffer the per-frame pipeline needs for the TFLite pill + glove models:
+ * Turns camera frames into model inputs. Two steps, because the pill model's
+ * input depends on the tray result:
  *
- *  - [Preprocessed.rgbNormalized]  NHWC RGB / 255 at 640x640 (pill + glove TFLite)
- *  - [Preprocessed.letterboxed]    640x640 ARGB_8888 Bitmap (handed to the tray
- *                                  segmentation detector, which does its own
- *                                  640->384 downscale + [0, 255] rescale internally)
+ *  - [prepareFrame]  ImageProxy → [Frame]: the original Bitmap plus the 640×640
+ *                    letterbox of the whole frame. The letterbox goes to the
+ *                    tray segmentation detector and the glove detector, which
+ *                    do their own resize + [0, 255] rescale internally.
+ *  - [pillInput]     any 640×640 Bitmap → NHWC RGB / 255 float32 direct buffer
+ *                    for the pill model. PillAnalyzer hands it the tray crop
+ *                    when a tray is in view, else the full-frame letterbox.
+ *
+ * [preprocess] runs both on the full frame in one call.
  *
  * **All scratch is reused across frames.** Each frame writes into the same
- * FloatArray and direct ByteBuffer (~10 MB total). PillAnalyzer hands out
- * `duplicate()` views and `coroutineScope { ... }.await()` guarantees all
- * three parallel inferences complete before `analyze()` returns, so the next
- * frame cannot start until the current frame's reads are done.
+ * FloatArray and direct ByteBuffer (~10 MB total). Every inference on a frame
+ * completes before `analyze()` returns, so the next frame cannot start until
+ * the current frame's reads are done.
  *
  * NOT thread-safe across concurrent callers — CameraX's ImageAnalysis use
  * case delivers frames sequentially, which is what makes this safe.
@@ -37,16 +41,32 @@ object ImagePreprocessor {
     private val rgbBuf: ByteBuffer =
         ByteBuffer.allocateDirect(BUFFER_BYTES).order(ByteOrder.nativeOrder())
 
+    data class Frame(
+        val original: Bitmap,
+        val letterboxed: Bitmap
+    )
+
     data class Preprocessed(
         val rgbNormalized: ByteBuffer,
         val letterboxed: Bitmap,
         val original: Bitmap
     )
 
-    fun preprocess(image: ImageProxy): Preprocessed {
+    /** Decode the frame and letterbox the whole of it to 640×640. */
+    fun prepareFrame(image: ImageProxy): Frame {
         val original = image.toBitmap()
-        val letterboxed = Letterbox.preprocess(original, INPUT_SIZE)
+        return Frame(original = original, letterboxed = Letterbox.preprocess(original, INPUT_SIZE))
+    }
 
+    /**
+     * Write [letterboxed] (640×640) into the pill model's NHWC RGB / 255 float
+     * buffer and return it, rewound. The buffer is shared scratch — consume it
+     * before the next call.
+     */
+    fun pillInput(letterboxed: Bitmap): ByteBuffer {
+        require(letterboxed.width == INPUT_SIZE && letterboxed.height == INPUT_SIZE) {
+            "pill input must be ${INPUT_SIZE}x$INPUT_SIZE, got ${letterboxed.width}x${letterboxed.height}"
+        }
         letterboxed.getPixels(pixelScratch, 0, INPUT_SIZE, 0, 0, INPUT_SIZE, INPUT_SIZE)
 
         val rgb = rgbScratch
@@ -59,7 +79,7 @@ object ImagePreprocessor {
             val g = ((p shr 8) and 0xFF).toFloat()
             val b = (p and 0xFF).toFloat()
 
-            // NHWC RGB / 255 — what the pill and glove TFLite models expect.
+            // NHWC RGB / 255 — what the pill TFLite model expects.
             rgb[j] = r / 255f
             rgb[j + 1] = g / 255f
             rgb[j + 2] = b / 255f
@@ -71,11 +91,16 @@ object ImagePreprocessor {
         rgbBuf.clear()
         rgbBuf.asFloatBuffer().put(rgb)
         rgbBuf.rewind()
+        return rgbBuf
+    }
 
+    /** [prepareFrame] + [pillInput] on the full-frame letterbox. */
+    fun preprocess(image: ImageProxy): Preprocessed {
+        val frame = prepareFrame(image)
         return Preprocessed(
-            rgbNormalized = rgbBuf,
-            letterboxed = letterboxed,
-            original = original
+            rgbNormalized = pillInput(frame.letterboxed),
+            letterboxed = frame.letterboxed,
+            original = frame.original
         )
     }
 }

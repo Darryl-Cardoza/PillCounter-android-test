@@ -262,6 +262,25 @@ class PostprocessorTest {
     }
 
     @Test
+    fun `decode shifts boxes by the crop origin after reversing the letterbox`() {
+        val outputs = emptyOutputs()
+        setScore(outputs, 0, 0, 0, 1f)
+        setDistBins(outputs, 0, 0, 0, left = 1, top = 1, right = 1, bottom = 1)
+
+        val plain = Postprocessor.decode(outputs, confThreshold = 0.5f, scale = 2f, padX = 10f, padY = 5f)
+        val cropped = Postprocessor.decode(
+            outputs, confThreshold = 0.5f, scale = 2f, padX = 10f, padY = 5f, offsetX = 300f, offsetY = 120f
+        )
+
+        assertEquals(1, cropped.size)
+        // Same box, translated by the crop's top-left in the source frame.
+        assertEquals(plain[0].rect.left + 300f, cropped[0].rect.left, 0.05f)
+        assertEquals(plain[0].rect.top + 120f, cropped[0].rect.top, 0.05f)
+        assertEquals(plain[0].rect.right + 300f, cropped[0].rect.right, 0.05f)
+        assertEquals(plain[0].rect.bottom + 120f, cropped[0].rect.bottom, 0.05f)
+    }
+
+    @Test
     fun `decode includes anchor exactly at confidence threshold boundary`() {
         val outputs = emptyOutputs()
         setScore(outputs, 0, 0, 0, 0.25f)

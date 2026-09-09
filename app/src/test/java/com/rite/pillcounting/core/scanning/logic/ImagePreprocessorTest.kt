@@ -1,7 +1,10 @@
 package com.rite.pillcounting.core.scanning.logic
 
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
 import androidx.camera.core.ImageProxy
 import io.mockk.every
 import io.mockk.mockk
@@ -183,5 +186,66 @@ class ImagePreprocessorTest {
 
         assertEquals(640, result.letterboxed.width)
         assertEquals(640, result.letterboxed.height)
+    }
+
+    // ------------------------------------------------------------------
+    // Tray crop → pill input (Letterbox.preprocess(srcRect) + pillInput)
+    // ------------------------------------------------------------------
+
+    private fun rgbAt(buf: java.nio.FloatBuffer, x: Int, y: Int): Triple<Float, Float, Float> {
+        val i = (y * 640 + x) * 3
+        return Triple(buf.get(i), buf.get(i + 1), buf.get(i + 2))
+    }
+
+    @Test
+    fun `pillInput of a square tray crop holds only the crop, scaled to fill the canvas`() {
+        // 400x400 frame: white "desk" with a red 100x100 "tray" at (200, 100).
+        val src = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.WHITE)
+        Canvas(src).drawRect(200f, 100f, 300f, 200f, Paint().apply { color = Color.RED })
+
+        val letterboxed = Letterbox.preprocess(src, 640, Rect(200, 100, 300, 200))
+
+        val info = Letterbox.currentScaleInfo!!
+        assertEquals(6.4f, info.scale, 0.0001f)
+        assertEquals(0f, info.padX, 0.0001f)
+        assertEquals(0f, info.padY, 0.0001f)
+        assertEquals(200f, info.offsetX, 0.0001f)
+        assertEquals(100f, info.offsetY, 0.0001f)
+
+        val buf = ImagePreprocessor.pillInput(letterboxed).asFloatBuffer()
+        // Centre and a near-corner pixel are both tray-red: the crop fills the
+        // canvas and none of the white desk around the tray leaked in.
+        for ((x, y) in listOf(320 to 320, 4 to 4, 635 to 635)) {
+            val (r, g, b) = rgbAt(buf, x, y)
+            assertTrue("expected red at (" + x + "," + y + ") got r=" + r + " g=" + g + " b=" + b,
+                abs(r - 1f) < 0.02f && g < 0.02f && b < 0.02f)
+        }
+    }
+
+    @Test
+    fun `non-square tray crop is padded with black, not with neighbouring frame pixels`() {
+        val src = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.WHITE)
+
+        // 400x200 region → scale 1.6, newH 320, padY 160.
+        val letterboxed = Letterbox.preprocess(src, 640, Rect(0, 100, 400, 300))
+
+        val info = Letterbox.currentScaleInfo!!
+        assertEquals(1.6f, info.scale, 0.0001f)
+        assertEquals(160f, info.padY, 0.0001f)
+        assertEquals(100f, info.offsetY, 0.0001f)
+
+        val buf = ImagePreprocessor.pillInput(letterboxed).asFloatBuffer()
+        val (r0, g0, b0) = rgbAt(buf, 320, 10)     // inside the top pad band
+        assertTrue("expected black pad, got r=" + r0 + " g=" + g0 + " b=" + b0, r0 < 0.02f && g0 < 0.02f && b0 < 0.02f)
+        val (r1, g1, b1) = rgbAt(buf, 320, 320)    // crop content
+        assertTrue("expected white crop, got r=" + r1 + " g=" + g1 + " b=" + b1,
+            abs(r1 - 1f) < 0.02f && abs(g1 - 1f) < 0.02f && abs(b1 - 1f) < 0.02f)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `pillInput rejects a bitmap that is not 640x640`() {
+        ImagePreprocessor.pillInput(Bitmap.createBitmap(320, 320, Bitmap.Config.ARGB_8888))
     }
 }

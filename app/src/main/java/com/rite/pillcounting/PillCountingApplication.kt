@@ -7,6 +7,7 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import coil.ImageLoader
 import com.rite.pillcounting.core.utils.coil.EncryptedImageFetcher
 import com.rite.pillcounting.core.utils.common.SoundUtils
+import com.rite.pillcounting.core.scanning.logic.ModelInputDump
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
@@ -14,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.opencv.android.OpenCVLoader
+import java.io.File
 import javax.inject.Inject
 
 @HiltAndroidApp
@@ -34,6 +36,11 @@ class PillCountingApplication : Application() {
         } else {
             logger.i("OpenCV initialized successfully")
         }
+
+        // Debug builds: keep the last few pill-model inputs under files/model_input
+        // so the exact image the detector sees can be pulled with adb (see
+        // ModelInputDump). No-op in release builds.
+        if (BuildConfig.DEBUG) ModelInputDump.directory = File(filesDir, "model_input")
 
         Coil.setImageLoader(
             ImageLoader.Builder(this)

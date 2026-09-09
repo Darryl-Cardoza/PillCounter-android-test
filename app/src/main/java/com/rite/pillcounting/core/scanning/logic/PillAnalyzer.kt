@@ -2,25 +2,39 @@
 
 import android.graphics.Bitmap
 import android.graphics.Matrix
+import android.graphics.PointF
+import android.graphics.Rect
 import androidx.camera.core.ImageProxy
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.withContext
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
+import kotlin.math.ceil
+import kotlin.math.floor
+import kotlin.math.min
+import kotlin.math.sqrt
 
 /**
  * Runs the three-model pipeline on every camera frame:
  *
- *   1. Pre-process — letterbox to 640×640 NHWC float32 RGB-/255.
- *   2. Tray, pill, (optional) glove inference — IN PARALLEL on Dispatchers.Default.
- *      All three share duplicate() views of the same buffer (the on-device exports
- *      all accept the same NHWC RGB-/255 input despite what the docs claim).
- *      Each Interpreter has its own GpuDelegate.
- *   3. Postprocess pill output and filter to pills inside any tray's bbox.
- *   4. Callback to UI.
+ *   1. Pre-process — letterbox the whole frame to 640×640.
+ *   2. Tray + (optional) glove inference — IN PARALLEL on Dispatchers.Default.
+ *      Both take the letterboxed Bitmap and resize it internally. Each
+ *      Interpreter has its own GpuDelegate.
+ *   3. Pill inference on the TRAY CROP. Once a complete tray (tray + chute) is
+ *      in view, only the tray's bounding box is letterboxed to 640×640 NHWC
+ *      RGB-/255 and sent to the pill model — the chute and the rest of the
+ *      frame never reach it, and pills land near the ~35 px scale the model
+ *      was trained at instead of shrinking with the whole frame (deploy
+ *      contract: "feed the detector the tray crop, not the whole frame").
+ *      Without a complete tray the full-frame letterbox is used.
+ *   4. Postprocess pill output (boxes mapped back to full-frame coordinates)
+ *      and keep pills inside the tray mask and outside the chute.
+ *   5. Callback to UI.
  */
 class PillAnalyzer(
     private val pillInterpreter: Interpreter,
@@ -57,13 +71,15 @@ class PillAnalyzer(
     // (enter/keep/exit); the stabilizer decides what number is displayed.
     private val pillTracker = PillTracker()
     private val countStabilizer = CountStabilizer()
+    // Frame-to-frame camera motion, fed to the tracker so a hand-held pan does
+    // not break every pill's association at once.
+    private val motionEstimator = CameraMotionEstimator()
 
-    // ── Anti-flicker temporal smoothing state ──────────────────────────────
-    // Tray seg occasionally misses a frame even when the tray is steady; holding
-    // the last good detections for a few frames stops the overlay + pill gate
-    // from blinking.
+    // ── Tray gate hysteresis state ─────────────────────────────────────────
+    // The last COMPLETE tray set (tray + chute) and how many consecutive frames
+    // have failed to reproduce it. See the gate section in analyze().
     private var heldTrayDetections: List<TrayDetection> = emptyList()
-    private var trayMissFrames = 0
+    private var incompleteFrames = 0
 
     // Reusable inference output buffers. Allocated once via interpreter shape
     // introspection so allocations don't show up as GC pressure on weak devices.
@@ -80,21 +96,43 @@ class PillAnalyzer(
         // Decode floor: below the tracker's keep score nothing can hold a track,
         // so anchors under this never need decoding.
         private const val PRE_NMS_SCORE_FLOOR = 0.35f
-        private const val PILL_NMS_IOU = 0.60f
+        // Deploy contract nms_iou. Measured in the training repo: no two distinct
+        // pills overlap above IoU 0.5, so a second box above it is a duplicate on
+        // the same pill — 0.6 let those through and inflated the count.
+        private const val PILL_NMS_IOU = 0.50f
+        // Reference decoder ceilings: at most this many candidates enter NMS and
+        // this many detections leave it (nms_top_k / keep_top_k).
+        private const val NMS_TOP_K = 1500
+        private const val KEEP_TOP_K = 500
+        // Deploy contract mask_dilate_pill_fraction: the tray mask is treated as
+        // dilated by this × the median pill side, so a pill whose centre sits on
+        // the segmented rim doesn't blink in and out as the boundary jitters.
+        private const val MASK_DILATE_PILL_FRACTION = 0.5f
 
-        // ── Anti-flicker smoothing ──────────────────────────────────────────
-        // Bridge a single dropped tray detection so the overlay doesn't blink on
-        // a stable scene. Kept at 1 frame so the stale tray box (and the pill
-        // centroids gated by it) clear almost immediately when the camera moves
-        // away — a longer hold left a visible ~0.5 s ghost of the old box. The
-        // count is separately protected from a one-frame drop by CountStabilizer,
-        // so a short hold is enough.
+        // ── Tray gate hysteresis ────────────────────────────────────────────
+        // The overlay box is held for at most TRAY_HOLD_FRAMES incomplete frames
+        // so it clears almost immediately when the camera moves away (a longer
+        // hold left a visible ghost box). The pill GATE is held longer: the
+        // segmenter drops the chute (or the tray) for a frame or two on a steady
+        // scene, and every such drop used to zero the pill result — that was the
+        // on-screen flicker. While the gate is held, the last complete tray set
+        // keeps driving the crop and the mask filter.
         private const val TRAY_HOLD_FRAMES = 1
+        private const val GATE_CLOSE_FRAMES = 6
 
         // Reject a "tray" whose bbox covers at least this fraction of the frame —
         // a background surface (green table) fills the frame; a real tray is a
         // bounded object. Tunable from the on-device "TrayGate coverage=" logs.
         private const val TRAY_MAX_FRAME_COVERAGE = 0.75f
+
+        // ── Tray crop for the pill model ────────────────────────────────────
+        // Margin added around the tray bbox per side, as a fraction of the bbox
+        // size, so a pill sitting on the rim (the deploy contract dilates the
+        // tray mask by half a pill) stays whole inside the crop.
+        private const val TRAY_CROP_MARGIN = 0.05f
+        // A crop narrower than this (px) means the tray is too far away to
+        // count from; use the full frame rather than upscale noise.
+        private const val TRAY_CROP_MIN_SIDE = 64
     }
 
     suspend fun analyze(imageProxy: ImageProxy) {
@@ -103,8 +141,8 @@ class PillAnalyzer(
 
         try {
             // ── STEP 1: Pre-process ───────────────────────────────────────────
-            val pre = ImagePreprocessor.preprocess(imageProxy)
-            val originalBitmap = pre.original
+            val frame = ImagePreprocessor.prepareFrame(imageProxy)
+            val originalBitmap = frame.original
             trackingBitmap = originalBitmap
 
             val scaleInfo = Letterbox.currentScaleInfo
@@ -113,12 +151,6 @@ class PillAnalyzer(
             val originalWidth = imageProxy.width
             val originalHeight = imageProxy.height
 
-            // Only pill consumes the NHWC /255 float buffer now.
-            // Tray (semantic seg) and glove (binary classifier) both take the
-            // *letterboxed Bitmap* directly and do their own internal
-            // resize + [0, 255] rescale + in-graph ImageNet normalization.
-            val pillBuf = pre.rgbNormalized.duplicateRewound()
-
             val now = System.currentTimeMillis()
             val interval = if (hasDetectedAnyGlove) GLOVE_STEADY_INTERVAL_MS else 0L
             val runGloveThisFrame = gloveInterpreter != null &&
@@ -126,38 +158,38 @@ class PillAnalyzer(
                     (now - lastGloveRunMs >= interval)
             if (runGloveThisFrame) lastGloveRunMs = now
 
-            // ── STEP 2: Run models in parallel ────────────────────────────────
+            // ── STEP 2: Tray + glove in parallel ──────────────────────────────
             // Tray runs every frame so the UI tracks the camera live — when
             // the user moves the phone away, the tray bbox and the pill
             // centroid markers must disappear in the next frame, not linger
-            // behind a stale cache.
+            // behind a stale cache. Pill inference waits for the tray result
+            // because its input is the tray crop (STEP 3).
             var trayDetections: List<TrayDetection> = emptyList()
-            val pillSucceeded: Boolean
             val gloveDetections: List<GloveDetection>
-            var pillInferenceStart: Long
-            var pillInferenceMs: Long = 0L
+            val cameraMotion: CameraMotionEstimator.Shift?
 
             val parallelStart = System.currentTimeMillis()
             coroutineScope {
+                // Registers this frame's full letterbox against the previous one.
+                // Reads frame.letterboxed only, so it can share the frame with
+                // tray and glove; it must finish before STEP 3 reuses that bitmap.
+                val motionDeferred = async(Dispatchers.Default) {
+                    motionEstimator.estimate(frame.letterboxed)
+                }
                 val trayDeferred = traySegDetector?.let { detector ->
                     async(Dispatchers.Default) {
                         detector.detect(
-                            letterboxedBitmap = pre.letterboxed,
+                            letterboxedBitmap = frame.letterboxed,
                             scaleInfo640 = scaleInfo,
                             originalWidth = originalWidth,
                             originalHeight = originalHeight
                         )
                     }
                 }
-
-                pillInferenceStart = System.currentTimeMillis()
-                val pillDeferred = async(Dispatchers.Default) {
-                    runPillInference(pillBuf)
-                }
                 val gloveDeferred = if (runGloveThisFrame) async(Dispatchers.Default) {
                     GloveDetector.detect(
                         interpreter = gloveInterpreter!!,
-                        letterboxedBitmap = pre.letterboxed,
+                        letterboxedBitmap = frame.letterboxed,
                         scaleInfo640 = scaleInfo,
                         originalWidth = originalWidth,
                         originalHeight = originalHeight,
@@ -165,8 +197,7 @@ class PillAnalyzer(
                 } else null
 
                 if (trayDeferred != null) trayDetections = trayDeferred.await()
-                pillSucceeded = pillDeferred.await()
-                pillInferenceMs = System.currentTimeMillis() - pillInferenceStart
+                cameraMotion = motionDeferred.await()
                 gloveDetections = if (gloveDeferred != null) {
                     val fresh = gloveDeferred.await()
                     cachedGloveDetections = fresh
@@ -177,20 +208,8 @@ class PillAnalyzer(
                 }
             }
             val parallelMs = System.currentTimeMillis() - parallelStart
-
-            // ── Tray temporal hold (anti-flicker) ─────────────────────────────
-            // Bridge brief tray-seg misses so the overlay and the pill gate that
-            // depends on it don't flicker on/off. Clears after TRAY_HOLD_FRAMES
-            // consecutive misses so the tray still disappears when you move away.
-            if (trayDetections.isNotEmpty()) {
-                heldTrayDetections = trayDetections
-                trayMissFrames = 0
-            } else if (trayMissFrames < TRAY_HOLD_FRAMES) {
-                trayMissFrames++
-                trayDetections = heldTrayDetections
-            } else {
-                heldTrayDetections = emptyList()
-            }
+            // Letterbox pixels → frame pixels (the pad cancels in a difference).
+            val cameraShift = cameraMotion?.let { PointF(it.dx / scaleInfo.scale, it.dy / scaleInfo.scale) }
 
             // ── STEP 2b: Detect tray color ────────────────────────────────────────
             // Always runs when trays are present — the classification popup is gated
@@ -226,11 +245,59 @@ class PillAnalyzer(
             val trayFillsFrame = trayCoverage >= TRAY_MAX_FRAME_COVERAGE
 
             val isCompleteTray = trayCount > 0 && chuteCount > 0 && !trayFillsFrame
-            val displayTrayDetections = if (isCompleteTray) trayDetections else emptyList()
-            logger.i("TrayGate — trayCount=$trayCount chuteCount=$chuteCount coverage=${"%.2f".format(trayCoverage)} fillsFrame=$trayFillsFrame complete=$isCompleteTray")
 
-            // ── STEP 3: Postprocess pill output ───────────────────────────────
+            // Hysteresis: open on the first complete frame, close only after
+            // GATE_CLOSE_FRAMES consecutive incomplete ones. gateTrays drives the
+            // crop and the mask filter — this frame's set when it is complete,
+            // otherwise the last complete one.
+            if (isCompleteTray) {
+                heldTrayDetections = trayDetections
+                incompleteFrames = 0
+            } else {
+                incompleteFrames++
+            }
+            val gateOpen = heldTrayDetections.isNotEmpty() && incompleteFrames <= GATE_CLOSE_FRAMES
+            if (!gateOpen) heldTrayDetections = emptyList()
+            val gateTrays = heldTrayDetections
+            val displayTrayDetections =
+                if (gateOpen && incompleteFrames <= TRAY_HOLD_FRAMES) gateTrays else emptyList()
+            logger.i("TrayGate — trayCount=$trayCount chuteCount=$chuteCount coverage=${"%.2f".format(trayCoverage)} fillsFrame=$trayFillsFrame complete=$isCompleteTray gateOpen=$gateOpen incomplete=$incompleteFrames")
+
+            // ── STEP 3: Pill inference on the tray crop ───────────────────────
+            // With a complete tray in view only the tray's bounding box goes to
+            // the pill model: the chute and everything else in the frame are
+            // cropped away, and the pills fill the 640 canvas at the scale the
+            // model was trained on. Without a complete tray (or with the tray
+            // model disabled) the full-frame letterbox is used as before.
+            val pillRegion = if (gateOpen) {
+                trayCropRegion(gateTrays, originalWidth, originalHeight)
+            } else null
+            val pillBitmap: Bitmap
+            val pillScaleInfo: Letterbox.ScaleInfo
+            if (pillRegion != null) {
+                // Reuses Letterbox's cached 640 canvas — tray and glove have
+                // already consumed the full-frame letterbox by this point.
+                pillBitmap = Letterbox.preprocess(originalBitmap, srcRect = pillRegion)
+                pillScaleInfo = Letterbox.currentScaleInfo ?: scaleInfo
+            } else {
+                pillBitmap = frame.letterboxed
+                pillScaleInfo = scaleInfo
+            }
+            // Debug builds only (no-op otherwise): keep a sample of the exact
+            // images handed to the pill model for inspection off-device.
+            ModelInputDump.maybeSave(
+                pillBitmap,
+                pillRegion?.let { "crop_${it.width()}x${it.height()}" } ?: "full"
+            )
+            val pillInferenceStart = System.currentTimeMillis()
+            val pillSucceeded = withContext(Dispatchers.Default) {
+                runPillInference(ImagePreprocessor.pillInput(pillBitmap))
+            }
+            val pillInferenceMs = System.currentTimeMillis() - pillInferenceStart
+
+            // ── STEP 4: Postprocess pill output ───────────────────────────────
             val pillsInTray: List<Detection>
+            var visibleOnTray = 0
             if (!pillSucceeded) {
                 logger.i("PillFilter — inference failed")
                 pillsInTray = emptyList()
@@ -238,42 +305,50 @@ class PillAnalyzer(
                 val allPills = Postprocessor.decode(
                     outputs = pillOutputs,
                     confThreshold = PRE_NMS_SCORE_FLOOR,
-                    scale = scaleInfo.scale,
-                    padX = scaleInfo.padX,
-                    padY = scaleInfo.padY
+                    scale = pillScaleInfo.scale,
+                    padX = pillScaleInfo.padX,
+                    padY = pillScaleInfo.padY,
+                    offsetX = pillScaleInfo.offsetX,
+                    offsetY = pillScaleInfo.offsetY
                 )
-                val pillsAfterNms = NMS.run(allPills, iouThreshold = PILL_NMS_IOU)
-                val confirmedPills = pillTracker.update(pillsAfterNms)
+                val candidates = if (allPills.size > NMS_TOP_K) {
+                    allPills.sortedByDescending { it.confidence }.take(NMS_TOP_K)
+                } else allPills
+                val pillsAfterNms = NMS.run(candidates, iouThreshold = PILL_NMS_IOU).take(KEEP_TOP_K)
+                val confirmedPills = pillTracker.update(pillsAfterNms, cameraShift)
                 logger.i("PillFilter — decoded=${allPills.size} afterNMS=${pillsAfterNms.size} confirmed=${confirmedPills.size} trayDets=$trayCount chuteDets=$chuteCount")
 
-                // Pill counting GATE — only count once BOTH a tray AND a chute
-                // are detected in the same frame (co-occurrence). Both models
-                // keep running every frame; this gates only the pill RESULT, not
-                // inference. Any partial scene (tray-only, chute-only, or neither)
-                // is treated as "not ready" → zero pills, no markers drawn.
-                val gateOpen = isCompleteTray
-                val inScene = if (!gateOpen) {
-                    emptyList()
+                // Pill counting GATE — the pill RESULT (not inference) is gated on
+                // the hysteretic tray gate above: a complete tray (tray + chute)
+                // must have been seen within the last GATE_CLOSE_FRAMES frames.
+                // Deploy-contract mask rule: a pill counts when its centre lies on
+                // the tray mask dilated by half a pill side, and not in the chute.
+                if (!gateOpen) {
+                    pillsInTray = emptyList()
                 } else {
-                    confirmedPills.filter { pill ->
-                        val cx = pill.rect.centerX().toInt()
-                        val cy = pill.rect.centerY().toInt()
-                        val inTray = trayDetections.any { t ->
-                            t.cls == TrayClass.TRAY && t.containsPoint(cx, cy)
+                    val dilate = MASK_DILATE_PILL_FRACTION * medianSide(confirmedPills)
+                    val onTray = { pill: Detection ->
+                        val cx = pill.rect.centerX()
+                        val cy = pill.rect.centerY()
+                        gateTrays.any { t ->
+                            t.cls == TrayClass.TRAY && t.containsPointWithin(cx, cy, dilate)
+                        } && gateTrays.none { t ->
+                            t.cls == TrayClass.CHUTE && t.containsPoint(cx.toInt(), cy.toInt())
                         }
-                        if (!inTray) return@filter false
-                        val inChute = trayDetections.any { t ->
-                            t.cls == TrayClass.CHUTE && t.containsPoint(cx, cy)
-                        }
-                        !inChute
                     }
+                    pillsInTray = confirmedPills.filter(onTray)
+                    // What the detector actually sees on the tray this frame, at the
+                    // score a track can survive on. A coasting or duplicate track has
+                    // no detection under it, so the count is never allowed above this.
+                    visibleOnTray = pillsAfterNms.count { it.confidence >= PillTracker.KEEP_SCORE && onTray(it) }
                 }
-                pillsInTray = inScene
             }
 
             // Displayed count is smoothed twice: median over the recent window,
             // then a latch requiring consecutive agreement. Markers stay live.
-            val countedPills = countStabilizer.update(pillsInTray.size)
+            // Per-frame count = confirmed tracks on the tray, capped by the
+            // detections visible on the tray: tracks add hysteresis, never pills.
+            val countedPills = countStabilizer.update(min(pillsInTray.size, visibleOnTray))
 
             val totalMs = System.currentTimeMillis() - overallStart
             // Class breakdown is metadata only — all three classes count as one pill.
@@ -283,7 +358,10 @@ class PillAnalyzer(
             logger.i(
                 "Frame ${originalWidth}x${originalHeight} | trays=${trayDetections.size} " +
                         "counted=$countedPills classes=$classBreakdown gloves=${gloveDetections.size} " +
-                        "pill=${pillInferenceMs}ms parallel=${parallelMs}ms total=${totalMs}ms"
+                        "pillInput=${pillRegion?.let { "${it.width()}x${it.height()}" } ?: "full"} " +
+                        "visible=$visibleOnTray tracked=${pillsInTray.size} " +
+                        "motion=${cameraMotion?.let { "%.1f,%.1f r=%.2f".format(it.dx, it.dy, it.response) } ?: "n/a"} " +
+                        "pill=${pillInferenceMs}ms trayGlove=${parallelMs}ms total=${totalMs}ms"
             )
 
             if (runGloveThisFrame) {
@@ -302,7 +380,7 @@ class PillAnalyzer(
                 logger.i("GLOVE_FRAME — $summary")
             }
 
-            // ── STEP 4: Callback ──────────────────────────────────────────────
+            // ── STEP 5: Callback ──────────────────────────────────────────────
             onResult(
                 countedPills,
                 pillsInTray,
@@ -314,7 +392,7 @@ class PillAnalyzer(
                 originalHeight
             )
 
-            // pre.letterboxed is owned and reused by Letterbox — do NOT recycle.
+            // frame.letterboxed is owned and reused by Letterbox — do NOT recycle.
 
         } catch (e: Exception) {
             logger.e("[PillAnalyzer] Frame failed", e)
@@ -340,8 +418,37 @@ class PillAnalyzer(
         // Clear anti-flicker smoothing so the new scene starts fresh (no stale
         // tray held, no carried-over count).
         heldTrayDetections = emptyList()
-        trayMissFrames = 0
+        incompleteFrames = 0
         countStabilizer.reset()
+        motionEstimator.reset()
+    }
+
+    /** Median of sqrt(w·h) over [dets]; 0 when there are none. */
+    private fun medianSide(dets: List<Detection>): Float {
+        if (dets.isEmpty()) return 0f
+        val sides = dets.map { sqrt(it.rect.width() * it.rect.height()) }.sorted()
+        return sides[sides.size / 2]
+    }
+
+    /**
+     * The frame region handed to the pill model: the TRAY bounding box (the
+     * chute is a separate class and lies outside it), grown by [TRAY_CROP_MARGIN]
+     * per side and clamped to the frame. Null when there is no tray or the
+     * crop is too small to be worth upscaling.
+     */
+    private fun trayCropRegion(trays: List<TrayDetection>, frameW: Int, frameH: Int): Rect? {
+        val tray = trays
+            .filter { it.cls == TrayClass.TRAY }
+            .maxByOrNull { it.rect.width() * it.rect.height() } ?: return null
+        val mx = tray.rect.width() * TRAY_CROP_MARGIN
+        val my = tray.rect.height() * TRAY_CROP_MARGIN
+        val region = Rect(
+            floor(tray.rect.left - mx).toInt().coerceIn(0, frameW),
+            floor(tray.rect.top - my).toInt().coerceIn(0, frameH),
+            ceil(tray.rect.right + mx).toInt().coerceIn(0, frameW),
+            ceil(tray.rect.bottom + my).toInt().coerceIn(0, frameH)
+        )
+        return if (region.width() >= TRAY_CROP_MIN_SIDE && region.height() >= TRAY_CROP_MIN_SIDE) region else null
     }
 
     /**
@@ -366,10 +473,5 @@ class PillAnalyzer(
             logger.e("Pill inference failed", e)
             false
         }
-    }
-
-    private fun ByteBuffer.duplicateRewound(): ByteBuffer = duplicate().apply {
-        order(this@duplicateRewound.order())
-        rewind()
     }
 }

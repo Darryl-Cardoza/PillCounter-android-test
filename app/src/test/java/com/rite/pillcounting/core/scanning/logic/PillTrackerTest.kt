@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.scanning.logic
 
+import android.graphics.PointF
 import android.graphics.RectF
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -92,6 +93,117 @@ class PillTrackerTest {
         val result = tracker.update(listOf(det(8f, 0f, 18f, 10f, 0.90f)))
         // Original track has now missed 2 frames so it still coasts: 2 confirmed.
         assertEquals(2, result.size)
+    }
+
+    // ── one pill, one track ────────────────────────────────────────────
+
+    @Test
+    fun `a second box on an already tracked pill does not start a second track`() {
+        val tracker = PillTracker()
+        tracker.update(listOf(pill(0.90f)))
+        tracker.update(listOf(pill(0.90f)))
+        // IoU of [0,0,10,10] vs [4,0,14,10] = 60 / 140 = 0.43: past NMS at 0.5,
+        // but at the association threshold, so it is the same pill seen twice.
+        repeat(3) {
+            val result = tracker.update(listOf(pill(0.90f), det(4f, 0f, 14f, 10f, 0.80f)))
+            assertEquals(1, result.size)
+        }
+    }
+
+    @Test
+    fun `a small partial box inside a tracked pill does not start a second track`() {
+        val tracker = PillTracker()
+        tracker.update(listOf(pill(0.90f)))
+        tracker.update(listOf(pill(0.90f)))
+        // [0,0,4,10] is 40% of the pill: IoU 0.40 with the full box but fully
+        // contained in it — a class-flip fragment, not another pill.
+        repeat(3) {
+            val result = tracker.update(listOf(pill(0.90f), det(0f, 0f, 4f, 10f, 0.85f, classId = 2)))
+            assertEquals(1, result.size)
+        }
+    }
+
+    @Test
+    fun `two leftover boxes on one new pill start a single track`() {
+        val tracker = PillTracker()
+        tracker.update(listOf(pill(0.90f), det(4f, 0f, 14f, 10f, 0.80f)))
+        val result = tracker.update(listOf(pill(0.90f), det(4f, 0f, 14f, 10f, 0.80f)))
+        assertEquals(1, result.size)
+    }
+
+    @Test
+    fun `a track superseded by a larger box on the same pill is retired instead of coasting`() {
+        val tracker = PillTracker()
+        tracker.update(listOf(pill(0.90f)))
+        tracker.update(listOf(pill(0.90f)))
+        // The box doubles in size (e.g. the input switched from the full frame to
+        // the tray crop): IoU 100/400 = 0.25 fails association, so a new track starts.
+        tracker.update(listOf(det(0f, 0f, 20f, 20f, 0.90f)))
+        // Next frame the new track confirms and the old one, fully inside it, is a
+        // ghost: it is retired instead of being counted for two more frames.
+        val result = tracker.update(listOf(det(0f, 0f, 20f, 20f, 0.90f)))
+        assertEquals(1, result.size)
+    }
+
+    @Test
+    fun `two distinct touching pills are both tracked`() {
+        val tracker = PillTracker()
+        // Adjacent boxes with a 1 px overlap: IoU 10/190 = 0.05, containment 0.1.
+        val frame = listOf(det(0f, 0f, 10f, 10f, 0.90f), det(9f, 0f, 19f, 10f, 0.90f))
+        tracker.update(frame)
+        assertEquals(2, tracker.update(frame).size)
+        // One goes missing for a frame: it coasts, it is not a ghost of its neighbour.
+        assertEquals(2, tracker.update(listOf(det(0f, 0f, 10f, 10f, 0.90f))).size)
+    }
+
+    // ── camera motion ─────────────────────────────────────────────────
+
+    /** [count] pills in a row, 10 px boxes 30 px apart, all shifted right by [shift]. */
+    private fun row(count: Int, shift: Float) =
+        (0 until count).map { i -> det(i * 30f + shift, 0f, i * 30f + 10f + shift, 10f, 0.90f) }
+
+    @Test
+    fun `a camera pan that moves every pill keeps the existing tracks instead of spawning new ones`() {
+        val tracker = PillTracker()
+        tracker.update(row(5, 0f))
+        assertEquals(5, tracker.update(row(5, 0f)).size)
+        // Every box jumps 9 px per frame: IoU 1/19 with its own old box, far below
+        // TRACK_IOU, yet the count must stay 5 — not ~10 from coasting + spawned
+        // tracks, and not 0 from every track missing.
+        assertEquals(5, tracker.update(row(5, 9f)).size)
+        val result = tracker.update(row(5, 18f))
+        assertEquals(5, result.size)
+        // The tracks moved with the pan.
+        assertEquals(18f, result.minOf { it.rect.left }, 0.01f)
+    }
+
+    @Test
+    fun `a measured camera shift is applied before association even with a single pill`() {
+        val tracker = PillTracker()
+        tracker.update(listOf(pill(0.90f)))
+        tracker.update(listOf(pill(0.90f)))
+        // One pill is too few to vote for a shift on its own, and its box jumped
+        // 9 px (IoU 1/19). Image registration says the whole frame moved 9 px, so
+        // this is the same pill: the track follows it instead of coasting at 0.
+        val result = tracker.update(listOf(det(9f, 0f, 19f, 10f, 0.90f)), PointF(9f, 0f))
+        assertEquals(1, result.size)
+        assertEquals(9f, result[0].rect.left, 0.01f)
+    }
+
+    @Test
+    fun `a single pill moved by hand does not drag the steady tracks with it`() {
+        val tracker = PillTracker()
+        val steady = row(4, 0f)
+        val fifthAt = { left: Float -> det(left, 0f, left + 10f, 10f, 0.90f) }
+        tracker.update(steady + fifthAt(120f))
+        assertEquals(5, tracker.update(steady + fifthAt(120f)).size)
+        // The fifth pill slides 12 px while the other four stay put: the median
+        // camera shift is zero, so the four steady tracks stay exactly in place.
+        tracker.update(steady + fifthAt(132f))
+        val result = tracker.update(steady + fifthAt(132f))
+        val steadyTracks = result.filter { it.rect.left < 100f }
+        assertEquals(4, steadyTracks.size)
+        assertEquals(listOf(0f, 30f, 60f, 90f), steadyTracks.map { it.rect.left }.sorted())
     }
 
     @Test

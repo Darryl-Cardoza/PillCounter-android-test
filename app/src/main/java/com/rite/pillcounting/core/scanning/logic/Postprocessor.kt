@@ -118,13 +118,18 @@ object Postprocessor {
      * @param scale          letterbox scale (640_pixel = source_pixel * scale).
      * @param padX           letterbox horizontal pad in 640-space.
      * @param padY           letterbox vertical pad in 640-space.
+     * @param offsetX        source-frame x of the letterboxed region's origin
+     *                       (non-zero when the input was a tray crop).
+     * @param offsetY        source-frame y of the letterboxed region's origin.
      */
     fun decode(
         outputs: PillOutputs,
         confThreshold: Float,
         scale: Float,
         padX: Float,
-        padY: Float
+        padY: Float,
+        offsetX: Float = 0f,
+        offsetY: Float = 0f
     ): List<Detection> {
         val results = ArrayList<Detection>(64)
 
@@ -172,11 +177,12 @@ object Postprocessor {
                     val cx = (col + 0.5f) * stride
                     val cy = (row + 0.5f) * stride
 
-                    // 640-space → source-frame: reverse the letterbox transform
-                    val x1 = ((cx - dLeft) - padX) / scale
-                    val y1 = ((cy - dTop) - padY) / scale
-                    val x2 = ((cx + dRight) - padX) / scale
-                    val y2 = ((cy + dBottom) - padY) / scale
+                    // 640-space → source-frame: reverse the letterbox transform,
+                    // then shift by the crop origin so boxes land in full-frame coords.
+                    val x1 = ((cx - dLeft) - padX) / scale + offsetX
+                    val y1 = ((cy - dTop) - padY) / scale + offsetY
+                    val x2 = ((cx + dRight) - padX) / scale + offsetX
+                    val y2 = ((cy + dBottom) - padY) / scale + offsetY
 
                     results.add(Detection(rect = RectF(x1, y1, x2, y2), confidence = score, classId = classId))
                 }
