@@ -4,7 +4,9 @@ package com.rite.pillcounting.feature.history.presentation
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -35,11 +37,16 @@ fun HistoryDetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var previewImagePath by remember { mutableStateOf<String?>(null) }
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(AppTheme.extendedColors.secondaryBackground)
+    ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(AppTheme.extendedColors.secondaryBackground),
+            .systemBarsPadding()
+            .displayCutoutPadding(),
     ) {
         if (previewImagePath == null) {
         HeadlineBar(

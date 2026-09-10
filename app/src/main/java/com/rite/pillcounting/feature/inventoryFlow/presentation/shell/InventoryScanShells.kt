@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.inventoryFlow.presentation.shell
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.draggable
@@ -19,15 +20,19 @@ import androidx.compose.material3.SheetValue
 import androidx.compose.material3.rememberBottomSheetScaffoldState
 import androidx.compose.material3.rememberStandardBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.Dp
@@ -40,6 +45,9 @@ import com.rite.pillcounting.feature.inventoryFlow.presentation.variant.BatchSto
 import com.rite.pillcounting.feature.inventoryFlow.presentation.variant.BatchStockCountTabletLandscape
 import com.rite.pillcounting.feature.inventoryFlow.presentation.variant.BatchStockCountTabletPortrait
 import com.rite.pillcounting.ui.theme.AppTheme
+import kotlinx.coroutines.launch
+
+private const val PANEL_FLING_VELOCITY = 400f
 
 // Each shell is layout-only: all VM/camera/analyzer/permission wiring lives in
 // [InventoryScanHost], which supplies a fully-wired [InventoryScanScope].
@@ -125,8 +133,18 @@ fun InventoryPhoneLandscapeShell(
     val detailsCardWidth = 300.dp
     val collapsedWidth = detailsCardWidth + 28.dp
     val expandedWidth = screenWidthDp * 0.9f
-    var expanded by remember { mutableStateOf(false) }
-    val panelWidth = if (expanded) expandedWidth else collapsedWidth
+    val density = LocalDensity.current
+    val collapsedPx = with(density) { collapsedWidth.toPx() }
+    val expandedPx = with(density) { expandedWidth.toPx() }
+    val panelWidthPx = remember { Animatable(collapsedPx) }
+    val dragScope = rememberCoroutineScope()
+    val panelWidth = with(density) { panelWidthPx.value.toDp() }
+    val recentVisible = panelWidthPx.value > collapsedPx + 1f
+    var settledExpanded by remember { mutableStateOf(false) }
+    val editing = editDetails != null
+    LaunchedEffect(editing) {
+        panelWidthPx.animateTo(if (editing || settledExpanded) expandedPx else collapsedPx)
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         CameraPreview(frameTag = "phone-ls", modifier = Modifier.fillMaxSize())
@@ -152,15 +170,28 @@ fun InventoryPhoneLandscapeShell(
                 .background(AppTheme.extendedColors.primaryBackground)
                 .draggable(
                     orientation = Orientation.Horizontal,
+                    enabled = !editing,
                     state = rememberDraggableState { delta ->
-                        if (delta < -8f) expanded = true
-                        else if (delta > 8f) expanded = false
+                        dragScope.launch {
+                            panelWidthPx.snapTo(
+                                (panelWidthPx.value - delta).coerceIn(collapsedPx, expandedPx)
+                            )
+                        }
+                    },
+                    onDragStopped = { velocity ->
+                        val expand = when {
+                            velocity < -PANEL_FLING_VELOCITY -> true
+                            velocity > PANEL_FLING_VELOCITY -> false
+                            else -> panelWidthPx.value > (collapsedPx + expandedPx) / 2f
+                        }
+                        settledExpanded = expand
+                        panelWidthPx.animateTo(if (expand) expandedPx else collapsedPx)
                     },
                 ),
         ) {
             BatchStockCountPhoneLandscape(
                 state = state,
-                recentVisible = expanded,
+                recentVisible = recentVisible,
                 detailsCardWidth = detailsCardWidth,
                 onScanPills = onScanPills,
                 onIncrement = onIncrement,
@@ -170,6 +201,10 @@ fun InventoryPhoneLandscapeShell(
                 onEndCount = onEndCount,
                 endCountEnabled = canEndCount,
                 onRowTapped = onRowTapped,
+                onEdit = onEdit,
+                editDetails = editDetails,
+                onEditDismiss = onEditDismiss,
+                onEditSave = onEditSave,
                 modifier = Modifier.fillMaxHeight(),
             )
         }
@@ -251,6 +286,21 @@ fun InventoryPhonePortraitShell(
     val screenHeightDp = LocalConfiguration.current.screenHeightDp.dp
     var peekHeight by remember { mutableStateOf(320.dp) }
     val listMaxHeight = (screenHeightDp - peekHeight).coerceAtLeast(120.dp)
+    val editMaxHeight = screenHeightDp * 0.9f
+
+    val editing = editDetails != null
+    LaunchedEffect(editing) {
+        if (editing) scaffoldState.bottomSheetState.expand()
+        else scaffoldState.bottomSheetState.partialExpand()
+    }
+
+    LaunchedEffect(peekHeight) {
+        if (!editing &&
+            scaffoldState.bottomSheetState.currentValue == SheetValue.PartiallyExpanded
+        ) {
+            scaffoldState.bottomSheetState.partialExpand()
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         CameraPreview(frameTag = "phone", modifier = Modifier.fillMaxSize())
@@ -264,7 +314,10 @@ fun InventoryPhonePortraitShell(
             sheetContent = {
                 // Cap the sheet at 90% of screen height so it never covers the
                 // full screen when dragged to the top.
-                Box(modifier = Modifier.heightIn(max = screenHeightDp * 0.9f)) {
+                Box(
+                    modifier = Modifier
+                        .heightIn(max = screenHeightDp * 0.9f)
+                ) {
                     BatchStockCountPhonePortrait(
                         state = state,
                         onScanPills = onScanPills,
@@ -280,6 +333,11 @@ fun InventoryPhonePortraitShell(
                             if (measured > 0.dp) peekHeight = measured
                         },
                         listMaxHeight = listMaxHeight,
+                        editMaxHeight = editMaxHeight,
+                        onEdit = onEdit,
+                        editDetails = editDetails,
+                        onEditDismiss = onEditDismiss,
+                        onEditSave = onEditSave,
                     )
                 }
             },

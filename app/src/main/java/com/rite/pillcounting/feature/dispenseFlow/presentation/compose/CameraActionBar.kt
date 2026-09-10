@@ -135,7 +135,7 @@ private fun ActionButtonItems(
         Text(
             text = stringResource(R.string.redo),
             color = if (hasCapture) AppTheme.extendedColors.textColor else Color.White.copy(alpha = 0.5f),
-            fontSize = responsiveSp(12.sp),
+            fontSize = responsiveSp(12.sp, boostOnPhone = false),
         )
     }
 
@@ -173,7 +173,7 @@ private fun ActionButtonItems(
         Text(
             text = stringResource(R.string.done),
             color = if (hasCapture) AppTheme.extendedColors.textColor else Color.White.copy(alpha = 0.5f),
-            fontSize = responsiveSp(12.sp)
+            fontSize = responsiveSp(12.sp, boostOnPhone = false)
         )
     }
 }

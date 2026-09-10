@@ -68,7 +68,7 @@ data class DrugCountRowData(
  * Defaults to the capsule icon for unknown / missing forms.
  */
 @DrawableRes
-private fun dosageFormIcon(dosageForm: String?): Int {
+internal fun dosageFormIcon(dosageForm: String?): Int {
     val form = dosageForm?.uppercase().orEmpty()
     return when {
         "CAPSULE" in form -> R.drawable.pill_icon_48

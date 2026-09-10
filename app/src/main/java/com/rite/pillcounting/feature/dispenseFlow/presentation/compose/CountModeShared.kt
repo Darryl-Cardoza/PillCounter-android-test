@@ -98,25 +98,16 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
             .background(CountModeBarBackground)
             // Leave room on the left for the existing back arrow, plus extra
             // breathing space between the arrow and the NDC / drug-name block.
-            .padding(start = 76.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+            .padding(start = 36.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (!drugImage.isNullOrBlank()) {
-            Image(
-                painter = rememberAsyncImagePainter(
-                    ImageRequest.Builder(LocalContext.current)
-                        .data(File(drugImage))
-                        .size(300, 225)
-                        .placeholder(R.drawable.prescription_icon)
-                        .error(R.drawable.prescription_icon)
-                        .build()
-                ),
-                contentDescription = drugName,
-                contentScale = ContentScale.Crop,
+            DrugImageTile(
+                imageFile = File(drugImage),
+                drugName = drugName,
                 modifier = Modifier
                     .width(80.dp)
                     .height(60.dp)
-                    .clip(RoundedCornerShape(8.dp))
             )
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -147,25 +138,7 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
         Spacer(Modifier.width(16.dp))
 
         if (showGloveIcon) {
-            val handTint = if (glovesDetected) Color.Green else Color.Red
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.15f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Filled.FrontHand,
-                    contentDescription = if (glovesDetected) {
-                        stringResource(R.string.cd_gloves_detected)
-                    } else {
-                        stringResource(R.string.cd_no_gloves_detected)
-                    },
-                    tint = handTint,
-                    modifier = Modifier.size(20.dp)
-                )
-            }
+            GloveIndicator(glovesDetected = glovesDetected)
             Spacer(Modifier.width(16.dp))
         }
 
@@ -183,6 +156,53 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
                 value = bucket
             )
         }
+    }
+}
+
+/**
+ * Drug-image tile used by the details bars. [modifier] supplies the size; the
+ * image is cropped to fill it, falling back to the prescription icon.
+ */
+@Composable
+internal fun DrugImageTile(imageFile: File, drugName: String, modifier: Modifier = Modifier) {
+    Image(
+        painter = rememberAsyncImagePainter(
+            ImageRequest.Builder(LocalContext.current)
+                .data(imageFile)
+                .size(300, 225)
+                .placeholder(R.drawable.prescription_icon)
+                .error(R.drawable.prescription_icon)
+                .build()
+        ),
+        contentDescription = drugName,
+        contentScale = ContentScale.Crop,
+        modifier = modifier.clip(RoundedCornerShape(8.dp))
+    )
+}
+
+/**
+ * Green/red glove indicator, shown in the details bars for hazardous sessions.
+ */
+@Composable
+internal fun GloveIndicator(glovesDetected: Boolean) {
+    val handTint = if (glovesDetected) Color.Green else Color.Red
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.FrontHand,
+            contentDescription = if (glovesDetected) {
+                stringResource(R.string.cd_gloves_detected)
+            } else {
+                stringResource(R.string.cd_no_gloves_detected)
+            },
+            tint = handTint,
+            modifier = Modifier.size(20.dp)
+        )
     }
 }
 

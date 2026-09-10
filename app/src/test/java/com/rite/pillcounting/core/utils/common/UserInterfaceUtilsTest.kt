@@ -1,6 +1,9 @@
 package com.rite.pillcounting.core.utils.common
 
 import androidx.compose.ui.text.AnnotatedString
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.activeOtpIndex
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.sanitizeOtpInput
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.spScale
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toColor
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toDateString
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
@@ -17,6 +20,8 @@ import java.util.TimeZone
  *  - TABLET_BREAKPOINT_DP constant
  *  - String.toColor()           (see NOTE below)
  *  - Long?.toFormattedDate(), Long.toDateString(), Long.toTimeString()
+ *  - sanitizeOtpInput(), activeOtpIndex()
+ *  - spScale()
  *
  * The @Composable members (isTablet, isLandscape, dialogs, text fields, responsive* helpers,
  * AppInfo, etc.) require a Compose runtime / LocalConfiguration and are NOT covered here.
@@ -172,5 +177,73 @@ class UserInterfaceUtilsTest {
         } finally {
             TimeZone.setDefault(tz)
         }
+    }
+
+    // ───────────────────────────── OTP input helpers ─────────────────────────────
+
+    @Test
+    fun sanitizeOtpInput_stripsNonDigits() {
+        assertEquals("123", sanitizeOtpInput("1a2-3", 6))
+    }
+
+    @Test
+    fun sanitizeOtpInput_capsAtBoxCount() {
+        assertEquals("123456", sanitizeOtpInput("1234567890", 6))
+    }
+
+    @Test
+    fun sanitizeOtpInput_empty_returnsEmpty() {
+        assertEquals("", sanitizeOtpInput("", 6))
+    }
+
+    @Test
+    fun sanitizeOtpInput_noDigits_returnsEmpty() {
+        assertEquals("", sanitizeOtpInput("abc", 6))
+    }
+
+    @Test
+    fun activeOtpIndex_empty_isFirstBox() {
+        assertEquals(0, activeOtpIndex("", 6))
+    }
+
+    @Test
+    fun activeOtpIndex_partial_isNextBox() {
+        assertEquals(3, activeOtpIndex("123", 6))
+    }
+
+    @Test
+    fun activeOtpIndex_full_staysOnLastBox() {
+        assertEquals(5, activeOtpIndex("123456", 6))
+    }
+
+    // ───────────────────────────── spScale ─────────────────────────────
+
+    @Test
+    fun spScale_boostedPhone_liftsBothPhoneBuckets() {
+        assertEquals(1.35f, spScale(359, boostOnPhone = true), 0f)
+        assertEquals(1.5f, spScale(360, boostOnPhone = true), 0f)
+        assertEquals(1.5f, spScale(599, boostOnPhone = true), 0f)
+    }
+
+    @Test
+    fun spScale_unboostedPhone_keepsLegacyScale() {
+        assertEquals(0.9f, spScale(359, boostOnPhone = false), 0f)
+        assertEquals(1f, spScale(360, boostOnPhone = false), 0f)
+        assertEquals(1f, spScale(599, boostOnPhone = false), 0f)
+    }
+
+    @Test
+    fun spScale_tablet_ignoresBoostFlag() {
+        assertEquals(1.5f, spScale(600, boostOnPhone = true), 0f)
+        assertEquals(1.5f, spScale(600, boostOnPhone = false), 0f)
+        assertEquals(1.5f, spScale(839, boostOnPhone = true), 0f)
+        assertEquals(2f, spScale(840, boostOnPhone = true), 0f)
+        assertEquals(2f, spScale(840, boostOnPhone = false), 0f)
+    }
+
+    @Test
+    fun spScale_boostedPhone_matchesSmallTabletAcrossTheBreakpoint() {
+        // The old 599 -> 600 size cliff is gone; both render at the same scale.
+        assertEquals(spScale(600, boostOnPhone = true), spScale(599, boostOnPhone = true), 0f)
     }
 }
