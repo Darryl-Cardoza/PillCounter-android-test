@@ -99,6 +99,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.compose.withReplacedText
 import com.rite.pillcounting.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
@@ -712,12 +713,9 @@ object UserInterfaceUtils {
         // Internal TextFieldValue lets us move the cursor to end when focus arrives
         var textFieldValue by remember { mutableStateOf(TextFieldValue(value)) }
 
-        // Keep internal state in sync when the caller updates the value externally
-        LaunchedEffect(value) {
-            if (textFieldValue.text != value) {
-                textFieldValue = textFieldValue.copy(text = value)
-            }
-        }
+        // Always show the caller's value, so a keystroke the caller filters out
+        // never stays on screen.
+        val shownValue = withReplacedText(textFieldValue, value)
 
         val isActive = isFocused || value.isNotEmpty()
         val horizontalPadding = 15.dp
@@ -756,7 +754,7 @@ object UserInterfaceUtils {
 
             // Input text at the bottom portion of the box
             BasicTextField(
-                value = textFieldValue,
+                value = shownValue,
                 onValueChange = { newValue ->
                     val clamped = if (maxLength != null && newValue.text.length > maxLength)
                         newValue.copy(text = newValue.text.take(maxLength))
@@ -798,9 +796,7 @@ object UserInterfaceUtils {
                         isFocused = focusState.isFocused
                         if (focusState.isFocused) {
                             // Move cursor to end when this field gains focus
-                            textFieldValue = textFieldValue.copy(
-                                selection = TextRange(textFieldValue.text.length)
-                            )
+                            textFieldValue = TextFieldValue(value, TextRange(value.length))
                         }
                     }
             )

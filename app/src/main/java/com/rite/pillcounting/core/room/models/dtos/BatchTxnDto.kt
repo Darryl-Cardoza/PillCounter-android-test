@@ -9,5 +9,6 @@ data class BatchTxnDto(
     val expiry: String?,
     val bottleQty: Int?,
     val looseQty: Int?,
-    val packageQty: Int?
+    val packageQty: Int?,
+    val imagePaths: List<String>? = null
 )

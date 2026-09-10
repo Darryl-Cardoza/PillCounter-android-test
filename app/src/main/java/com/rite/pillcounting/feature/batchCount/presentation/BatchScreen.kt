@@ -165,7 +165,6 @@ fun BatchScreen(
                 pendingNote = note
                 showEndBatchDialog = true
             },
-            showSkip = true
         )
     }
 

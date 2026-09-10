@@ -323,4 +323,22 @@ class BottleInfoDaoTest {
         val result = dao.getByBatchId(1L)
         assertTrue(result.isEmpty())
     }
+
+    @Test
+    fun `getByBatchId populates imagePaths from controlledImagePaths column`() = runTest {
+        seedJoinData()
+        dao.insert(
+            BottleInfoEntity(
+                bottleId = 1L,
+                stockTxnId = 1L,
+                batchId = 1L,
+                lotNo = "L1",
+                controlledImagePaths = listOf("/a/img1.jpg", "/a/img2.jpg")
+            )
+        )
+
+        val result = dao.getByBatchId(1L)
+        assertEquals(1, result.size)
+        assertEquals(listOf("/a/img1.jpg", "/a/img2.jpg"), result[0].imagePaths)
+    }
 }

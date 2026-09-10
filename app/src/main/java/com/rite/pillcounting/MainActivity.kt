@@ -123,6 +123,10 @@ class MainActivity : ComponentActivity() {
     // its dialogs to stack on top of the original chain's.
     private var permissionChainInProgress = false
 
+    // Set on login so the face verify runs once the chain is done. Locking straight
+    // away puts the verify camera's permission prompt on top of the chain's dialogs.
+    private var lockAfterPermissionChain = false
+
     // True once the "location services are off" dialog has been shown this process.
     private var locationServicesPromptShown = false
 
@@ -146,6 +150,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // Re-arm the face lock on every fresh launch, before setContent so the
+        // overlay is up on the first frame. Null state only: a config-change or
+        // process-death restore must not lock a session the user is mid-way through.
+        if (savedInstanceState == null) {
+            sessionLockController.onAppLaunch()
+        }
 
         // Both phones and tablets are free to rotate by default.
         // Specific screens (e.g. face registration) lock to portrait on phones via
@@ -302,6 +313,9 @@ class MainActivity : ComponentActivity() {
                                         startDestination = startDestination,
                                         onLogin          = {
                                             settingsViewModel.onUserLoginOrLogOut()
+                                            // Enrolled operators verify their face before reaching the
+                                            // dashboard, but only after the permission chain finishes.
+                                            lockAfterPermissionChain = true
                                             if (!permissionChainInProgress) {
                                                 permissionChainInProgress = true
                                                 requestNotificationPermission()
@@ -327,23 +341,11 @@ class MainActivity : ComponentActivity() {
                                     }
 
                                     val isLocked by sessionLockController.isLocked.collectAsStateWithLifecycle()
-                                    val timeoutMinutes by settingsViewModel.faceLockTimeoutMinutes.collectAsStateWithLifecycle()
+                                    val startOnScan by sessionLockController.startOnScan.collectAsStateWithLifecycle()
                                     if (isLocked) {
                                         SessionLockOverlayScreen(
-                                            timeoutMinutes = timeoutMinutes,
-                                            onUnlocked = { sessionLockController.unlock() },
-                                            onLogout = {
-                                                // Local-only logout (no refresh-token network call), same
-                                                // fallback path MenuScreen uses when no token is available —
-                                                // this overlay sits above the nav graph, not inside a
-                                                // LoginViewModel-scoped screen.
-                                                preferenceHelper.clearTokens()
-                                                preferenceHelper.setUserLoggedIn(false)
-                                                sessionLockController.unlock()
-                                                navController.navigate(AUTH_GRAPH_ROUTE) {
-                                                    popUpTo(0) { inclusive = true }
-                                                }
-                                            }
+                                            startOnScan = startOnScan,
+                                            onUnlocked = { sessionLockController.unlock() }
                                         )
                                     }
                                 }
@@ -573,6 +575,11 @@ class MainActivity : ComponentActivity() {
     private fun finishPermissionChain() {
         // Chain always ends here (see chain comment above) — safe place to mark it done.
         permissionChainInProgress = false
+        // No-ops when nobody has an enabled face profile, e.g. on a first login.
+        if (lockAfterPermissionChain) {
+            lockAfterPermissionChain = false
+            sessionLockController.lockNow(startOnScan = true)
+        }
         if (permanentlyDeniedPermissions.isEmpty()) {
             promptEnableLocationServicesIfNeeded()
             return

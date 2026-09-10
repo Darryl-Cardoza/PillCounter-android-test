@@ -18,6 +18,7 @@ import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
+import com.rite.pillcounting.feature.dashboard.domain.model.QueueItem
 import com.rite.pillcounting.feature.dashboard.domain.model.Terminal
 import com.rite.pillcounting.feature.dashboard.domain.model.UserDetail
 import com.rite.pillcounting.feature.dashboard.domain.model.UserProfile
@@ -182,6 +183,9 @@ class DashboardViewModelTest {
         txnId: Long = 1L,
         createdAt: Long = 1L,
         drugType: String? = null,
+        strength: String? = null,
+        dosageForm: String? = null,
+        drugImagePath: String? = null,
     ) = TxnWithDrugDto(
         txnId = txnId,
         isDispense = true,
@@ -195,6 +199,9 @@ class DashboardViewModelTest {
         note = null,
         bucketId = null,
         drugType = drugType,
+        strength = strength,
+        dosageForm = dosageForm,
+        drugImagePath = drugImagePath,
     )
 
     private fun userEntity(localId: Long = 1L) = UserEntity(
@@ -476,6 +483,33 @@ class DashboardViewModelTest {
         assertNull(vm.uiState.value.activeKpiFilter)
         // 1 completed dispense + 1 completed batch (INPROGRESS filtered out).
         assertEquals(2, vm.uiState.value.recentActivity.size)
+    }
+
+    @Test
+    fun `recent activity rows carry drug image strength and dosage form`() = runTest(testDispatcher) {
+        val completedDispense = listOf(
+            txnWithDrug(
+                txnId = 1,
+                createdAt = 5,
+                strength = "35 mg/1",
+                dosageForm = "CAPSULE",
+                drugImagePath = "/data/drug/1.webp",
+            )
+        )
+        every {
+            pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
+        } returns flowOf(completedDispense)
+        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+        advanceUntilIdle()
+
+        val row = vm.uiState.value.recentActivity.first() as QueueItem.Dispense
+        assertEquals("/data/drug/1.webp", row.txn.drugImagePath)
+        assertEquals("35 mg/1", row.txn.strength)
+        assertEquals("CAPSULE", row.txn.dosageForm)
     }
 
     @Test

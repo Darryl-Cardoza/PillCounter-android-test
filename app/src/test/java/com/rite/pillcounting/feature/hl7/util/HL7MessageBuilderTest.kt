@@ -348,16 +348,17 @@ class HL7MessageBuilderTest {
 
         assertTrue(raw.isNotEmpty())
         assertTrue("should contain MSH", raw.contains("MSH"))
-        assertTrue("should contain BTS", raw.contains("BTS"))
         assertTrue("should contain ORC", raw.contains("ORC"))
         assertTrue("should contain INV", raw.contains("INV"))
-        assertTrue("should contain ZIN", raw.contains("ZIN"))
-        // bucketId used as ORC placer order number
-        assertTrue("ORC should carry bucketId", raw.contains("BUCKET-7"))
-        // both opened+sealed markers present (NA branch has opened=0/sealed=0 but still
-        // emits OPENED/SEALED ZIN rows with quantity 0)
-        assertTrue(raw.contains("OPENED"))
-        assertTrue(raw.contains("SEALED"))
+        assertTrue("should contain SEALED_QTY", raw.contains("SEALED_QTY"))
+        assertTrue("should contain OPEN_QTY", raw.contains("OPEN_QTY"))
+        assertTrue("no BTS on the wire", !raw.contains("BTS"))
+        assertTrue("no ZIN on the wire", !raw.contains("ZIN"))
+        assertTrue("no ZAD on the wire", !raw.contains("ZAD"))
+        assertTrue("no NTE on the wire", !raw.lineSequence().any { it.startsWith("NTE") })
+        // bucketId + requestIdFromPMS carried on ORC-2.1/ORC-2.2
+        val orcLine = raw.lineSequence().first { it.startsWith("ORC|") }
+        assertEquals("RE|BUCKET-7^REQ-FROM-PMS", orcLine.removePrefix("ORC|"))
     }
 
     @Test
@@ -419,5 +420,64 @@ class HL7MessageBuilderTest {
         assertEquals(2, chunks[1].chunkIndex)
         assertTrue(chunks[0].message.contains("NDC1"))
         assertTrue(chunks[1].message.contains("NDC250"))
+    }
+
+    @Test
+    fun `buildInventoryMessage emits IMG_REF only for groups with photos`() {
+        val batch = BatchEntity(batchId = 5L, requestIdFromPMS = null, bucketId = "BUCKET-5")
+        val txns = listOf(
+            BatchTxnDto(
+                1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA",
+                bottleQty = 1, looseQty = 0, packageQty = 1,
+                imagePaths = listOf("images/a1.jpg", "images/a2.jpg"),
+            ),
+            BatchTxnDto(
+                2L, 2L, "DrugB", "NDC-B", "LOTB", "EXPB",
+                bottleQty = 1, looseQty = 0, packageQty = 1,
+                imagePaths = null,
+            ),
+        )
+
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+
+        assertTrue("IMG001 present for first image", raw.contains("IMG001"))
+        assertTrue("IMG002 present for second image", raw.contains("IMG002"))
+        assertTrue(raw.contains("images/a1.jpg"))
+        assertTrue(raw.contains("images/a2.jpg"))
+
+        val lines = raw.split("\r")
+        val invLineA = lines.first { it.startsWith("INV|") && it.contains("NDC-A") }
+        val invSetIdA = invLineA.split("|")[1]
+        val obxForA = lines.filter { it.startsWith("OBX|") && it.split("|").getOrNull(4) == invSetIdA }
+        // Group A has two images: two OBX rows, one per image.
+        assertEquals(2, obxForA.count { it.contains("IMG00") })
+
+        val invLineB = lines.first { it.startsWith("INV|") && it.contains("NDC-B") }
+        val invSetIdB = invLineB.split("|")[1]
+        // Group B has no images: no IMG OBX row linked to its INV Set-ID.
+        val obxForB = lines.filter { it.startsWith("OBX|") && it.split("|").getOrNull(4) == invSetIdB }
+        assertTrue(obxForB.none { it.contains("IMG00") })
+    }
+
+    @Test
+    fun `buildInventoryMessage links OBX rows to parent INV Set-ID across multiple groups`() {
+        val batch = BatchEntity(batchId = 6L, requestIdFromPMS = null, bucketId = "BUCKET-6")
+        val txns = listOf(
+            BatchTxnDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 0, packageQty = 1),
+            BatchTxnDto(2L, 2L, "DrugB", "NDC-B", "LOTB", "EXPB", bottleQty = 0, looseQty = 5, packageQty = 1),
+        )
+
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val lines = raw.split("\r")
+
+        val invLines = lines.filter { it.startsWith("INV|") }
+        assertEquals(2, invLines.size)
+        val setIdA = invLines[0].split("|")[1]
+        val setIdB = invLines[1].split("|")[1]
+        assertTrue(setIdA != setIdB)
+
+        val sealedQtyRows = lines.filter { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
+        assertTrue(sealedQtyRows.any { it.split("|").getOrNull(4) == setIdA })
+        assertTrue(sealedQtyRows.any { it.split("|").getOrNull(4) == setIdB })
     }
 }

@@ -227,7 +227,10 @@ fun CountsSection(
                                         bucketId = rowData.bucketId,
                                         pillCount = rowData.pillCount ?: 0,
                                         targetCount = rowData.targetCount ?: 0,
-                                        isDispense = rowData.isDispense
+                                        isDispense = rowData.isDispense,
+                                        strength = rowData.strength,
+                                        dosageForm = rowData.dosageForm,
+                                        drugImagePath = rowData.drugImagePath
                                     ),
                                     onClick = { onTxnClick(rowData.txnId) }
                                 )
@@ -266,7 +269,10 @@ fun CountsSection(
                                         bucketId = rowData.bucketId,
                                         pillCount = rowData.pillCount ?: 0,
                                         targetCount = rowData.targetCount ?: 0,
-                                        isDispense = rowData.isDispense
+                                        isDispense = rowData.isDispense,
+                                        strength = rowData.strength,
+                                        dosageForm = rowData.dosageForm,
+                                        drugImagePath = rowData.drugImagePath
                                     ),
                                     onClick = { onTxnClick(rowData.txnId) }
                                 )

@@ -495,7 +495,13 @@ interface PillCountTxnDao {
         txn.note,
         txn.bucketId,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
-             THEN subDrug.drugType ELSE drug.drugType END AS drugType
+             THEN subDrug.drugType ELSE drug.drugType END AS drugType,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.strength IS NOT NULL
+             THEN subDrug.strength ELSE drug.strength END AS strength,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.dosageForm IS NOT NULL
+             THEN subDrug.dosageForm ELSE drug.dosageForm END AS dosageForm,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
+             THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId AND details.isDeleted = 0
@@ -536,7 +542,13 @@ interface PillCountTxnDao {
         txn.note,
         txn.bucketId,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
-             THEN subDrug.drugType ELSE drug.drugType END AS drugType
+             THEN subDrug.drugType ELSE drug.drugType END AS drugType,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.strength IS NOT NULL
+             THEN subDrug.strength ELSE drug.strength END AS strength,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.dosageForm IS NOT NULL
+             THEN subDrug.dosageForm ELSE drug.dosageForm END AS dosageForm,
+        CASE WHEN txn.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
+             THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId

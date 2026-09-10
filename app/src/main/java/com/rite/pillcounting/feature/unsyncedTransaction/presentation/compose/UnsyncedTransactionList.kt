@@ -94,7 +94,10 @@ fun UnsyncedTransactionList(
                                 pillCount = item.pillCount,
                                 targetCount = item.target,
                                 isDispense = item.isDispense,
-                                isComingFromHL7 = item.isComingFromHL7
+                                isComingFromHL7 = item.isComingFromHL7,
+                                strength = item.strength,
+                                dosageForm = item.dosageForm,
+                                drugImagePath = item.drugImagePath
                             ),
                             onClick = {}
                         )

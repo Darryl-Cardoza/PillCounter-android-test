@@ -103,6 +103,13 @@ class CredentialsValidatorTest {
     }
 
     @Test
+    fun `validateRequiredName punctuation only is required failure`() {
+        val r = validator.validateRequiredName("-")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_name_required, r.errorMessageResId)
+    }
+
+    @Test
     fun `validateRequiredName valid success`() {
         assertTrue(validator.validateRequiredName("Mary-Jane O'Neil").isSuccess)
     }
@@ -124,6 +131,68 @@ class CredentialsValidatorTest {
     @Test
     fun `validatePharmacyName two chars boundary success`() {
         assertTrue(validator.validatePharmacyName("CV").isSuccess)
+    }
+
+    @Test
+    fun `validatePharmacyName trailing space does not count towards minimum`() {
+        val r = validator.validatePharmacyName("A ")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_pharmacy_name_invalid, r.errorMessageResId)
+    }
+
+    @Test
+    fun `validatePharmacyName punctuation only failure`() {
+        val r = validator.validatePharmacyName("--")
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_pharmacy_name_invalid, r.errorMessageResId)
+    }
+
+    @Test
+    fun `validatePharmacyName whitespace only is optional success`() {
+        assertTrue(validator.validatePharmacyName("  ").isSuccess)
+    }
+
+    // ─────────────────────────── sanitizeName ───────────────────────────
+
+    @Test
+    fun `sanitizeName strips digits`() {
+        assertEquals("John", CredentialsValidator.sanitizeName("Jo3h1n"))
+    }
+
+    @Test
+    fun `sanitizeName strips special characters`() {
+        assertEquals("Pharmacy", CredentialsValidator.sanitizeName("Ph@rm#acy!*"))
+    }
+
+    @Test
+    fun `sanitizeName keeps apostrophe and hyphen`() {
+        assertEquals("Mary-Jane O'Neil", CredentialsValidator.sanitizeName("Mary-Jane O'Neil"))
+    }
+
+    @Test
+    fun `sanitizeName keeps non-ascii letters`() {
+        assertEquals("Zoë Müller", CredentialsValidator.sanitizeName("Zoë Müller"))
+    }
+
+    @Test
+    fun `sanitizeName collapses runs of spaces`() {
+        assertEquals("Smith Sons Drugs", CredentialsValidator.sanitizeName("Smith & Sons  Drugs"))
+    }
+
+    @Test
+    fun `sanitizeName keeps a single trailing space`() {
+        // A trailing space is mid-word typing, not junk — it must survive.
+        assertEquals("John ", CredentialsValidator.sanitizeName("John "))
+    }
+
+    @Test
+    fun `sanitizeName drops a leading space`() {
+        assertEquals("Family Pharmacy", CredentialsValidator.sanitizeName("24/7 Family Pharmacy"))
+    }
+
+    @Test
+    fun `sanitizeName blank stays empty`() {
+        assertEquals("", CredentialsValidator.sanitizeName("123 #$%"))
     }
 
     // ─────────────────────────── validateNpi ───────────────────────────
