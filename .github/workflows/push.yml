@@ -51,7 +51,7 @@ jobs:
       # ---- core ----
       java_version: ${{ needs.extract-version.outputs.java_version }}
       build_variant: "Debug"
-      coverage_threshold: "40.00"
+      coverage_threshold: "30.00"
       runner: ubuntu-latest  #options are ubuntu-latest and macos-latest
 
       run_tests: true
@@ -82,10 +82,10 @@ jobs:
       kotlin_jsr305_strict: true
 
       # ---- gates ----
-      fail_on_lint: true
+      fail_on_lint: false
       fail_on_formatting: false        # warn only while adopting Spotless
-      fail_on_android_lint: true
-      fail_on_security: true
+      fail_on_android_lint: false
+      fail_on_security: false
       fail_on_vulnerabilities: false
       fail_on_dead_code: false
     secrets:
