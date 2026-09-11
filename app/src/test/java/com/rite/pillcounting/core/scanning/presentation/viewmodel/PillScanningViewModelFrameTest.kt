@@ -16,6 +16,9 @@ import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.COUNT_CONFIRM_FRAMES
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.IDLE_STEP_MS
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.IDLE_TIMEOUT_MS
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
@@ -232,8 +235,36 @@ class PillScanningViewModelFrameTest {
         assertTrue(viewModel.uiState.value.showIdleOverlay)
     }
 
-    private companion object {
-        const val IDLE_TIMEOUT_MS = 60_000L
-        const val IDLE_STEP_MS = 5_000L
+    // SCAN_VM_045
+    @Test
+    fun `count flicker that never holds still does not hold off the pause`() = runTest {
+        // A still tray whose detector alternates 11 and 12 every frame.
+        repeat(40) { i ->
+            viewModel.onCountObserved(if (i % 2 == 0) 11 else 12)
+            advanceTimeBy(2_000)
+        }
+
+        assertTrue(viewModel.uiState.value.showIdleOverlay)
+    }
+
+    // SCAN_VM_046
+    @Test
+    fun `a count held for the confirm window counts as activity`() = runTest {
+        advanceTimeBy(IDLE_TIMEOUT_MS / 2)
+        repeat(COUNT_CONFIRM_FRAMES) { viewModel.onCountObserved(11) }
+        advanceTimeBy(IDLE_TIMEOUT_MS)
+
+        assertFalse(viewModel.uiState.value.showIdleOverlay)
+    }
+
+    // SCAN_VM_047
+    @Test
+    fun `a confirmed count that then goes still still pauses`() = runTest {
+        repeat(COUNT_CONFIRM_FRAMES) { viewModel.onCountObserved(11) }
+        // Same count keeps arriving — confirmed once, so no further activity.
+        repeat(20) { viewModel.onCountObserved(11) }
+        advanceTimeBy(IDLE_TIMEOUT_MS + IDLE_STEP_MS + 1_000)
+
+        assertTrue(viewModel.uiState.value.showIdleOverlay)
     }
 }
