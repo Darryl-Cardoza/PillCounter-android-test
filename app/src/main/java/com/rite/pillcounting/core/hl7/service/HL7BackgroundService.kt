@@ -28,6 +28,9 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicReference
 import org.rite.hl7.HL7
 import org.rite.hl7.model.HL7Message
 
@@ -55,6 +58,9 @@ class HL7Service : Service() {
         private const val CHANNEL_ID = "hl7_bg"
         private const val NOTIFICATION_ID = 7001
         private const val STATIC_PMS_CONFIG_RETRY_MS = 15_000L
+
+        /** How long a claimed PMS gets to reach Connected before another instance is tried. */
+        private const val PEER_CONNECT_TIMEOUT_MS = 15_000L
     }
 
     /** HL7 runtime configuration.
@@ -93,6 +99,26 @@ class HL7Service : Service() {
 
     @Volatile
     private var lastDiscoveredServiceName: String = "PMS"
+
+    /**
+     * The PMS instance this terminal has committed to, as "host:port".
+     *
+     * Several servers can advertise the same service type. Every resolution used to call
+     * connect(), so they overwrote each other's target and the terminal flapped between them.
+     * One peer owns the terminal at a time; [peerWatchdogJob] hands the claim on if it never
+     * comes up.
+     */
+    private val pmsPeerClaim = AtomicReference<String?>(null)
+
+    /** Every PMS discovered under the current service type: "host:port" -> instance name. */
+    private val discoveredPmsPeers = ConcurrentHashMap<String, String>()
+
+    /** Peers that failed to come up this round, so failover doesn't immediately retry them. */
+    private val failedPmsPeers: MutableSet<String> =
+        Collections.newSetFromMap(ConcurrentHashMap<String, Boolean>())
+
+    private var peerConnectJob: Job? = null
+    private var peerWatchdogJob: Job? = null
     private val logger = AppLogger("HL7backgroundService")
 
     /** Binder to expose service instance to clients */
@@ -163,8 +189,13 @@ class HL7Service : Service() {
         // of the same terminal name gets auto-renamed ("Terminal 1 (2)", ...)
         // because Android's NSD responder sees what looks like a name conflict.
         try {
-            nsdHelper.shutdown()
-        } catch (_: Exception) {
+            if (::nsdHelper.isInitialized) {
+                nsdHelper.shutdown()
+            } else {
+                logger.w("onDestroy() — nsdHelper was never initialized; nothing to unregister here")
+            }
+        } catch (e: Exception) {
+            logger.e("onDestroy() — nsdHelper.shutdown() failed; NSD may stay advertised", e)
         }
         serviceScope.launch { cleanup() }
         super.onDestroy()
@@ -172,6 +203,8 @@ class HL7Service : Service() {
 
     private suspend fun cleanup() {
         staticPmsRetryJob?.cancel()
+        peerWatchdogJob?.cancel()
+        peerConnectJob?.cancel()
         try {
             server.stop()
         } catch (_: Exception) {
@@ -291,12 +324,12 @@ class HL7Service : Service() {
             logger.d("Core components already initialized — skipping rebuild")
             return
         }
+        nsdHelper = NsdHelper(this)
+
         coreInitialized = true
 
         // HL7 version comes from config, populated by the feature layer from preferences.
         hl7 = HL7(version = config.hl7Version)
-
-        nsdHelper = NsdHelper(this)
 
         tlsFactory = TlsSocketFactory(this)
         val client = MllpClient(tlsFactory)
@@ -321,6 +354,9 @@ class HL7Service : Service() {
                 logger.w("${lastDiscoveredServiceName} DISCONNECTED")
                 listener?.onClientDisconnected()
                 updateNotification(getString(R.string.hl7_notification_listening))
+                // Re-arm failover. A peer that dies mid-session should be able to hand the
+                // terminal on instead of being retried forever while other servers are up.
+                pmsPeerClaim.get()?.let { startPeerWatchdog(it) }
             },
 
             onCertMismatch = {
@@ -446,6 +482,41 @@ class HL7Service : Service() {
     }
 
 
+    /** The service type discovery is currently configured for. */
+    fun currentDiscoveryType(): String = config.nsdDiscoveryType
+
+    /**
+     * Re-points discovery at the current [HL7Config.nsdDiscoveryType] and reconnects.
+     *
+     * The live connection is dropped on purpose: the peer we are talking to was found under
+     * the previous service type and is no longer the one this terminal should use.
+     */
+    fun rediscoverPms() {
+        logger.block(
+            "HL7-NSD · Re-pointing PMS discovery",
+            "Discovery type" to config.nsdDiscoveryType,
+            "Broadcast type" to config.nsdBroadcastType,
+            "Previous peer" to (lastConnectedHost ?: "none"),
+            "Static PMS mode" to config.useStaticPmsConnection,
+        )
+        lastConnectedHost = null
+        // Drop the whole candidate set: it was discovered under the previous service type, so
+        // none of it is a valid fallback any more.
+        pmsPeerClaim.set(null)
+        discoveredPmsPeers.clear()
+        failedPmsPeers.clear()
+        peerWatchdogJob?.cancel()
+        peerConnectJob?.cancel()
+        serviceScope.launch {
+            try {
+                clientManager.dropForPeerChange()
+            } catch (e: Exception) {
+                logger.e("rediscoverPms() — failed to close the previous connection", e)
+            }
+            discoverPmsAndConnect()
+        }
+    }
+
     /** Raw MLLP connection state — flips instantly, unlike [Hl7EventHandler.connectionState] which waits for [MllpConnectionManager]'s settle delay. */
     fun isPmsConnected(): Boolean = clientManager.isConnected()
 
@@ -477,24 +548,126 @@ class HL7Service : Service() {
 
                 logger.d("NSD resolved: serviceName=${info.serviceName} host=$host port=$port")
 
-                // Prevent duplicate connect
-                if (lastConnectedHost == "$host:$port" && clientManager.isConnected()) {
-                    return@launch
+                val peer = "$host:$port"
+
+                // Remember every instance, not just the one we connect to — a peer that never
+                // comes up has to be able to hand the terminal to one of the others.
+                discoveredPmsPeers[peer] = info.serviceName
+
+                // One peer owns the terminal at a time. Without this, several servers
+                // advertising the same type all reached connect() and overwrote each
+                // other's ip/port.
+                if (!pmsPeerClaim.compareAndSet(null, peer)) {
+                    val owner = pmsPeerClaim.get()
+                    if (owner != peer) {
+                        logger.w(
+                            "HL7-NSD · '${info.serviceName}' at $peer kept as a fallback — " +
+                                "this terminal is currently using $owner"
+                        )
+                        return@launch
+                    }
+                    // Same peer resolving again — only reconnect if the link actually dropped.
+                    if (clientManager.isConnected()) return@launch
                 }
 
-                lastConnectedHost = "$host:$port"
-                lastDiscoveredServiceName = info.serviceName
-
-                listener?.onNsdServiceFound(info.serviceName, host, port)
-
-                try {
-                    clientManager.connect(host, port)
-                } catch (e: Exception) {
-                    logger.e("Connect failed", e)
-                }
+                connectToPeer(peer, info.serviceName)
             }
         }
     }
+
+    /**
+     * Connects to one discovered PMS and arms the failover watchdog.
+     *
+     * [peerIdentifier][TlsSocketFactory.peerIdentifier] is assigned here rather than at
+     * resolution time: it is not read until the TLS socket is built, so setting it from a
+     * second resolution would pin this server's certificate under the other server's key.
+     */
+    private fun connectToPeer(peer: String, serviceName: String) {
+        val host = peer.substringBeforeLast(':')
+        val port = peer.substringAfterLast(':').toIntOrNull() ?: return
+
+        peerConnectJob?.cancel()
+
+        lastConnectedHost = peer
+        lastDiscoveredServiceName = serviceName
+        tlsFactory.peerIdentifier = pinIdentifierFor(serviceName)
+
+        logger.block(
+            "HL7-NSD · Connecting to PMS",
+            "Instance" to serviceName,
+            "Address" to peer,
+            "Discovery type" to config.nsdDiscoveryType,
+            "Pin key" to "pin_${tlsFactory.peerIdentifier}",
+            "Fallbacks known" to (discoveredPmsPeers.keys - peer).joinToString()
+                .ifEmpty { "none" },
+        )
+
+        listener?.onNsdServiceFound(serviceName, host, port)
+
+        peerConnectJob = serviceScope.launch {
+            try {
+                clientManager.connect(host, port)
+            } catch (e: Exception) {
+                logger.e("Connect failed for $peer", e)
+            }
+        }
+        startPeerWatchdog(peer)
+    }
+
+    /**
+     * Hands the terminal to another discovered PMS if [peer] hasn't connected in time.
+     *
+     * `retryConnect()` backs off forever on its current target, so without this a terminal that
+     * claimed an unreachable server stayed on it indefinitely while working servers sat idle.
+     */
+    private fun startPeerWatchdog(peer: String) {
+        peerWatchdogJob?.cancel()
+        peerWatchdogJob = serviceScope.launch {
+            delay(PEER_CONNECT_TIMEOUT_MS)
+
+            if (clientManager.isConnected()) return@launch
+            if (pmsPeerClaim.get() != peer) return@launch
+
+            failedPmsPeers += peer
+            val next = discoveredPmsPeers.keys.firstOrNull {
+                it != peer && it !in failedPmsPeers
+            }
+
+            if (next == null) {
+                // Nothing else known. Keep the claim and keep retrying, but clear the failure
+                // list and re-arm so a server appearing later can still be picked up.
+                logger.w(
+                    "HL7-NSD · $peer still not connected after ${PEER_CONNECT_TIMEOUT_MS}ms " +
+                        "and no other PMS is known — continuing to retry it"
+                )
+                failedPmsPeers.clear()
+                startPeerWatchdog(peer)
+                return@launch
+            }
+
+            logger.block(
+                "HL7-NSD · Failing over to another PMS",
+                "Gave up on" to "${discoveredPmsPeers[peer]} at $peer",
+                "Waited" to "${PEER_CONNECT_TIMEOUT_MS}ms",
+                "Trying" to "${discoveredPmsPeers[next]} at $next",
+            )
+
+            pmsPeerClaim.set(next)
+            peerConnectJob?.cancel()
+            try {
+                clientManager.dropForPeerChange()
+            } catch (e: Exception) {
+                logger.e("Failover — failed to close the previous connection", e)
+            }
+            connectToPeer(next, discoveredPmsPeers[next] ?: "PMS")
+        }
+    }
+
+    /** Pin key segment for a peer. Sanitized because it becomes part of a SharedPreferences key. */
+    private fun pinIdentifierFor(raw: String): String =
+        raw.replace(Regex("[^A-Za-z0-9_.-]"), "_")
+            .take(64)
+            .ifBlank { TlsSocketFactory.LEGACY_HOST_IDENTIFIER }
 
     private var staticPmsRetryJob: Job? = null
 
@@ -533,6 +706,8 @@ class HL7Service : Service() {
 
         lastConnectedHost = "$host:$port"
         lastDiscoveredServiceName = "PMS"
+        // Static mode never resolves an mDNS instance name, so key the pin by address.
+        tlsFactory.peerIdentifier = pinIdentifierFor("$host:$port")
 
         listener?.onNsdServiceFound("PMS", host, port)
 

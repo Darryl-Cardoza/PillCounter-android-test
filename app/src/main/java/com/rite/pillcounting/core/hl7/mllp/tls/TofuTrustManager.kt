@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.cert.CertificateException
@@ -25,6 +26,33 @@ class TofuTrustManager(
 
     private val pinKey = "pin_${hostIdentifier}"
     private val keystoreAlias = "com.rite.pillcounting.tofu_key"
+
+    private val logger = AppLogger.create<TofuTrustManager>()
+
+    init {
+        migrateLegacyPin()
+    }
+
+    /**
+     * Moves a pin stored under the old single-peer key onto this peer's key, once.
+     * Without it every upgraded terminal re-does first-contact TOFU, which is a window where
+     * anything answering on the PMS port would be trusted and pinned.
+     */
+    private fun migrateLegacyPin() {
+        if (pinKey == LEGACY_PIN_KEY) return
+        if (plainPrefs.contains(pinKey)) return
+        val legacy = plainPrefs.getString(LEGACY_PIN_KEY, null) ?: return
+        // The stored value is already encrypted — move the blob, don't decrypt and re-encrypt.
+        plainPrefs.edit {
+            putString(pinKey, legacy)
+            remove(LEGACY_PIN_KEY)
+        }
+        logger.block(
+            "HL7-NSD · Migrated legacy TOFU pin to a per-peer key",
+            "From" to LEGACY_PIN_KEY,
+            "To" to pinKey,
+        )
+    }
 
     private val systemTrustManager: X509TrustManager by lazy {
         val factory = TrustManagerFactory.getInstance(
@@ -113,6 +141,12 @@ class TofuTrustManager(
 
         when (storedPin) {
             null -> {
+                logger.block(
+                    "HL7-NSD · TOFU first contact — pinning this certificate",
+                    "Pin key" to pinKey,
+                    "Peer" to hostIdentifier,
+                    "Fingerprint" to incomingPin.take(23),
+                )
                 runCatching {
                     systemTrustManager.checkServerTrusted(chain, authType)
                     savePin(incomingPin)
@@ -121,9 +155,17 @@ class TofuTrustManager(
                 }
             }
             incomingPin -> {
+                logger.w("HL7-NSD · TOFU pin matched for $pinKey")
                 runCatching { systemTrustManager.checkServerTrusted(chain, authType) }
             }
             else -> {
+                logger.block(
+                    "HL7-NSD · TOFU pin MISMATCH — refusing connection",
+                    "Pin key" to pinKey,
+                    "Peer" to hostIdentifier,
+                    "Stored" to storedPin.take(23),
+                    "Presented" to incomingPin.take(23),
+                )
                 throw CertificateException(
                     "Certificate fingerprint mismatch for $hostIdentifier. " +
                             "If the server certificate was legitimately rotated, " +
@@ -145,7 +187,12 @@ class TofuTrustManager(
 
     fun clearPin() {
         plainPrefs.edit { remove(pinKey) }
+        logger.w("HL7-NSD · Cleared TOFU pin for $pinKey")
     }
 
     fun currentPin(): String? = getPin()
+
+    private companion object {
+        const val LEGACY_PIN_KEY = "pin_pms_server"
+    }
 }

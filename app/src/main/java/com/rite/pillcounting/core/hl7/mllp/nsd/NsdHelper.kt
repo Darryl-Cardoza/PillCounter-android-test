@@ -51,6 +51,20 @@ class NsdHelper(context: Context) {
          */
         private val RegistrationLock = Any()
 
+        /**
+         * Discovery state is process-wide for the same reason registration is: a new
+         * [HL7Service] instance can start discovering while the previous instance's listener
+         * is still registered with the daemon, and a per-instance flag cannot see it.
+         */
+        private val DiscoveryLock = Any()
+
+        private var sharedDiscoveryListener: NsdManager.DiscoveryListener? = null
+        private val isDiscovering = AtomicBoolean(false)
+
+        /** What discovery is listening for, so a repeat request can be told from a real change. */
+        @Volatile
+        private var activeDiscoveryType: String? = null
+
         private var sharedListener: NsdManager.RegistrationListener? = null
         private val isRegistered = AtomicBoolean(false)
         private val isRegistering = AtomicBoolean(false)
@@ -84,6 +98,11 @@ class NsdHelper(context: Context) {
          * strands it exactly the way the instance-per-onStartCommand bug used to.
          */
         internal fun resetRegistrationStateForTest() {
+            synchronized(DiscoveryLock) {
+                sharedDiscoveryListener = null
+                isDiscovering.set(false)
+                activeDiscoveryType = null
+            }
             synchronized(RegistrationLock) {
                 sharedListener = null
                 isRegistered.set(false)
@@ -102,10 +121,6 @@ class NsdHelper(context: Context) {
         context.applicationContext.getSystemService(Context.NSD_SERVICE) as NsdManager
 
     private val mainHandler = Handler(Looper.getMainLooper())
-
-    private var discoveryListener: NsdManager.DiscoveryListener? = null
-
-    private val isDiscovering = AtomicBoolean(false)
 
     // ---------------------------------------------------------------------
     // Registration
@@ -320,52 +335,87 @@ class NsdHelper(context: Context) {
     // ---------------------------------------------------------------------
 
     /**
-     * Discover services and always resolve fresh
+     * Discover services and always resolve fresh.
+     *
+     * Idempotent per service type: asking again for the type already being discovered is a
+     * no-op, and asking for a different one stops the old listener first. Without that second
+     * half a changed discovery type never took effect — nothing else in the app stops
+     * discovery, so the old listener kept filtering on the previous type for the whole process.
      */
     fun discover(
         serviceType: String,
         onResolved: (NsdServiceInfo) -> Unit
     ) {
-        if (isDiscovering.get()) return
-
         val normalizedType = normalizeType(serviceType)
 
-        discoveryListener = object : NsdManager.DiscoveryListener {
-
-            override fun onDiscoveryStarted(type: String) {
-                isDiscovering.set(true)
-                logger.i("Discovery started")
+        synchronized(DiscoveryLock) {
+            if (sharedDiscoveryListener != null || isDiscovering.get()) {
+                if (activeDiscoveryType == normalizedType) {
+                    logger.d("Already discovering '$normalizedType' — ignoring duplicate request")
+                    return
+                }
+                logger.block(
+                    "HL7-NSD · Discovery type changed — restarting discovery",
+                    "Was" to activeDiscoveryType,
+                    "Now" to normalizedType,
+                )
+                stopDiscoveryLocked()
             }
 
-            override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                if (serviceInfo.serviceType != normalizedType) return
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                    resolveWithAddressList(serviceInfo, onResolved)
-                } else {
-                    resolveWithIpv4Preference(serviceInfo, attempt = 1, onResolved)
+            val listener = object : NsdManager.DiscoveryListener {
+
+                override fun onDiscoveryStarted(type: String) {
+                    logger.w("HL7-NSD · Discovery started for $type")
+                }
+
+                override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                    if (serviceInfo.serviceType != normalizedType) return
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        resolveWithAddressList(serviceInfo, onResolved)
+                    } else {
+                        resolveWithIpv4Preference(serviceInfo, attempt = 1, onResolved)
+                    }
+                }
+
+                override fun onServiceLost(serviceInfo: NsdServiceInfo) {
+                    logger.w("Service lost: ${serviceInfo.serviceName}")
+                }
+
+                override fun onDiscoveryStopped(type: String) {
+                    logger.w("HL7-NSD · Discovery stopped for $type")
+                    synchronized(DiscoveryLock) { clearIfCurrent(this) }
+                }
+
+                override fun onStartDiscoveryFailed(type: String, errorCode: Int) {
+                    // The listener was never accepted, so handing it back to stopServiceDiscovery
+                    // throws IllegalArgumentException out of this framework callback. Just clear.
+                    logger.e("HL7-NSD · Start discovery FAILED for $type (error $errorCode)")
+                    synchronized(DiscoveryLock) { clearIfCurrent(this) }
+                }
+
+                override fun onStopDiscoveryFailed(type: String, errorCode: Int) {
+                    logger.e("HL7-NSD · Stop discovery FAILED for $type (error $errorCode) — clearing state anyway")
+                    synchronized(DiscoveryLock) { clearIfCurrent(this) }
                 }
             }
 
-            override fun onServiceLost(serviceInfo: NsdServiceInfo) {
-                logger.w("Service lost: ${serviceInfo.serviceName}")
-            }
+            // Set synchronously, before the daemon confirms. onDiscoveryStarted arrives
+            // asynchronously, and two discover() calls landing inside that window used to both
+            // register a listener — the first became unreachable and ran for the whole process.
+            sharedDiscoveryListener = listener
+            activeDiscoveryType = normalizedType
+            isDiscovering.set(true)
 
-            override fun onDiscoveryStopped(type: String) {
-                isDiscovering.set(false)
-            }
-
-            override fun onStartDiscoveryFailed(type: String, errorCode: Int) {
-                isDiscovering.set(false)
-                nsdManager.stopServiceDiscovery(this)
-            }
-
-            override fun onStopDiscoveryFailed(type: String, errorCode: Int) {
-                isDiscovering.set(false)
-                nsdManager.stopServiceDiscovery(this)
-            }
+            nsdManager.discoverServices(normalizedType, PROTOCOL, listener)
         }
+    }
 
-        nsdManager.discoverServices(normalizedType, PROTOCOL, discoveryListener)
+    /** Clears discovery state only if [listener] is still the active one. Hold [DiscoveryLock]. */
+    private fun clearIfCurrent(listener: NsdManager.DiscoveryListener) {
+        if (sharedDiscoveryListener !== listener) return
+        isDiscovering.set(false)
+        sharedDiscoveryListener = null
+        activeDiscoveryType = null
     }
 
     /**
@@ -499,12 +549,25 @@ class NsdHelper(context: Context) {
     }
 
     fun stopDiscovery() {
+        synchronized(DiscoveryLock) { stopDiscoveryLocked() }
+    }
+
+    /** Hold [DiscoveryLock] when calling. */
+    private fun stopDiscoveryLocked() {
+        val listener = sharedDiscoveryListener
+        if (listener == null) {
+            isDiscovering.set(false)
+            activeDiscoveryType = null
+            return
+        }
         try {
-            discoveryListener?.let { nsdManager.stopServiceDiscovery(it) }
-        } catch (_: Exception) {
+            nsdManager.stopServiceDiscovery(listener)
+        } catch (e: Exception) {
+            logger.w("stopServiceDiscovery threw — clearing discovery state anyway: ${e.message}")
         } finally {
             isDiscovering.set(false)
-            discoveryListener = null
+            sharedDiscoveryListener = null
+            activeDiscoveryType = null
         }
     }
 

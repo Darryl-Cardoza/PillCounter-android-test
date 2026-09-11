@@ -5,6 +5,7 @@ import android.content.Context
 import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import java.net.Socket
+import java.util.concurrent.ConcurrentHashMap
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
 
@@ -22,23 +23,36 @@ import javax.net.ssl.SSLSocketFactory
  */
 class TlsSocketFactory(
     private val context: Context,
-    private val hostIdentifier: String = "pms_server"
+    hostIdentifier: String = LEGACY_HOST_IDENTIFIER
 ) {
 
-    private val socketFactory: SSLSocketFactory by lazy {
-        if (BuildConfig.DEBUG) {
-            TlsProvider.createTrustAllClientContext().socketFactory
-        } else {
-            TlsProvider.createTofuClientContext(context, hostIdentifier).socketFactory
+    /**
+     * Which PMS we are about to talk to. The TOFU pin is keyed off this, so switching to a
+     * different PMS no longer collides with the previous one's pin. Set from discovery before
+     * each connect; seeded from the constructor argument.
+     */
+    @Volatile
+    var peerIdentifier: String = hostIdentifier
+
+    // One lazily-built context per peer. A single `by lazy` would pin the identifier at first
+    // use, and the peer is only known after discovery resolves.
+    private val socketFactories = ConcurrentHashMap<String, SSLSocketFactory>()
+
+    private fun socketFactoryFor(identifier: String): SSLSocketFactory =
+        socketFactories.getOrPut(identifier) {
+            if (BuildConfig.DEBUG) {
+                TlsProvider.createTrustAllClientContext().socketFactory
+            } else {
+                TlsProvider.createTofuClientContext(context, identifier).socketFactory
+            }
         }
-    }
 
     fun createSocket(ip: String, port: Int): Socket {
         if (PreferenceHelper(context).isBypassTlsEnabled()) {
             return Socket(ip, port)
         }
 
-        val sslSocket = socketFactory.createSocket(ip, port) as SSLSocket
+        val sslSocket = socketFactoryFor(peerIdentifier).createSocket(ip, port) as SSLSocket
         return try {
             TlsProvider.configureClientSocket(sslSocket, debugMode = BuildConfig.DEBUG)
             sslSocket.startHandshake()
@@ -54,7 +68,7 @@ class TlsSocketFactory(
      * Forces re-pinning on the next connection attempt.
      */
     fun clearServerPin() {
-        TofuTrustManager(context, hostIdentifier).clearPin()
+        TofuTrustManager(context, peerIdentifier).clearPin()
     }
 
     /**
@@ -62,6 +76,11 @@ class TlsSocketFactory(
      * Useful for displaying in an admin/settings screen for verification.
      */
     fun pinnedFingerprint(): String? {
-        return TofuTrustManager(context, hostIdentifier).currentPin()
+        return TofuTrustManager(context, peerIdentifier).currentPin()
+    }
+
+    companion object {
+        /** The single identifier used before pins were keyed per peer. */
+        const val LEGACY_HOST_IDENTIFIER = "pms_server"
     }
 }

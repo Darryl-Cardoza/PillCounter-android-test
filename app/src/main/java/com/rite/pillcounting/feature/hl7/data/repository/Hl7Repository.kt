@@ -188,7 +188,7 @@ class Hl7Repository @Inject constructor(
         }
         return HL7Config.current(
             selectedTerminalName = preferenceHelper.getSelectedTerminalName() ?: "PILLCOUNTER",
-            pmsHostName = preferenceHelper.getHl7PmsHost().ifBlank { "PMS" },
+            pmsHostName = preferenceHelper.getMshReceivingFacility(),
             hl7Version = preferenceHelper.getHl7Version(),
             hl7Format = hl7Format,
             sendingApplicationName = sendingApplicationName

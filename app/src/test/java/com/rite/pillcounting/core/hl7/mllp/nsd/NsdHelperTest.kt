@@ -257,7 +257,7 @@ class NsdHelperTest {
     }
 
     @Test
-    fun `discover does nothing when already discovering`() {
+    fun `discover ignores a repeat request for the same service type`() {
         val listenerSlot = slot<NsdManager.DiscoveryListener>()
         every {
             nsdManager.discoverServices(any<String>(), any<Int>(), capture(listenerSlot))
@@ -266,9 +266,28 @@ class NsdHelperTest {
         helper.discover("http") {}
         listenerSlot.captured.onDiscoveryStarted("_http._tcp.")
 
-        helper.discover("http2") {}
+        helper.discover("http") {}
 
         verify(exactly = 1) { nsdManager.discoverServices(any<String>(), any<Int>(), any<NsdManager.DiscoveryListener>()) }
+    }
+
+    @Test
+    fun `discover restarts discovery when the service type changes`() {
+        val listeners = mutableListOf<NsdManager.DiscoveryListener>()
+        every {
+            nsdManager.discoverServices(any<String>(), any<Int>(), capture(listeners))
+        } answers { }
+
+        helper.discover("http") {}
+        listeners[0].onDiscoveryStarted("_http._tcp.")
+
+        helper.discover("http2") {}
+
+        // The old listener is stopped before the new type starts. Without this the previous
+        // listener keeps filtering on the old type for the life of the process, which is why
+        // a changed discovery type never used to take effect.
+        verify(exactly = 1) { nsdManager.stopServiceDiscovery(listeners[0]) }
+        verify(exactly = 2) { nsdManager.discoverServices(any<String>(), any<Int>(), any<NsdManager.DiscoveryListener>()) }
     }
 
     @Test
@@ -362,7 +381,7 @@ class NsdHelperTest {
     }
 
     @Test
-    fun `onStartDiscoveryFailed clears flag and stops discovery`() {
+    fun `onStartDiscoveryFailed clears state without calling stopServiceDiscovery`() {
         val listenerSlot = slot<NsdManager.DiscoveryListener>()
         every {
             nsdManager.discoverServices(any<String>(), any<Int>(), capture(listenerSlot))
@@ -371,15 +390,17 @@ class NsdHelperTest {
         helper.discover("http") {}
         listenerSlot.captured.onStartDiscoveryFailed("_http._tcp.", 7)
 
-        verify(exactly = 1) { nsdManager.stopServiceDiscovery(listenerSlot.captured) }
+        // The listener was never accepted, so handing it back to stopServiceDiscovery throws
+        // IllegalArgumentException straight out of a framework callback.
+        verify(exactly = 0) { nsdManager.stopServiceDiscovery(any()) }
 
-        // isDiscovering should be false now, allowing a fresh discover() call.
+        // State is cleared, so a fresh discover() call still works.
         helper.discover("http2") {}
         verify(exactly = 2) { nsdManager.discoverServices(any<String>(), any<Int>(), any<NsdManager.DiscoveryListener>()) }
     }
 
     @Test
-    fun `onStopDiscoveryFailed clears flag and stops discovery`() {
+    fun `onStopDiscoveryFailed clears state without calling stopServiceDiscovery again`() {
         val listenerSlot = slot<NsdManager.DiscoveryListener>()
         every {
             nsdManager.discoverServices(any<String>(), any<Int>(), capture(listenerSlot))
@@ -388,7 +409,7 @@ class NsdHelperTest {
         helper.discover("http") {}
         listenerSlot.captured.onStopDiscoveryFailed("_http._tcp.", 9)
 
-        verify(exactly = 1) { nsdManager.stopServiceDiscovery(listenerSlot.captured) }
+        verify(exactly = 0) { nsdManager.stopServiceDiscovery(any()) }
     }
 
     // -------------------------------------------------------------------------
