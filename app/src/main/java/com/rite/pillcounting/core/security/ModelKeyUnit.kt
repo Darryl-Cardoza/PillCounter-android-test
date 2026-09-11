@@ -74,7 +74,6 @@ class ModelKeyUnit(private val context: Context) {
     }
 
     // MARK: - FRAGMENTS
-    // Model key: 5e81e4694423a0bd3c4890a6aeecf233315418e3d939e1125948157b360d5600
     // Each fragment embeds hex chars with interspersed noise; refine() strips non-alphanumeric.
 
     private fun f1() = "5e8*!(1e4@!#694&^%42"

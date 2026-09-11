@@ -1,0 +1,9 @@
+# Fingerprints of known findings that gitleaks scans of git history will
+# always surface, acknowledged and accepted rather than fixed by history
+# rewrite. One fingerprint per line (as printed in gitleaks' own findings
+# output); lines starting with # are comments.
+
+# ModelKeyUnit.kt: a comment that used to spell out the model-decryption key
+# in plaintext (removed from the current source). The underlying key is
+# unchanged; this only suppresses the historical-commit finding.
+807c7f9e94c53fd03a0d42476657c03f6a02ef8a:app/src/main/java/com/rite/pillcounting/core/security/ModelKeyUnit.kt:generic-api-key:77
