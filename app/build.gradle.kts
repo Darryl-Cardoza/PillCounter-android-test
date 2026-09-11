@@ -130,7 +130,6 @@ android {
             useLegacyPackaging = false
         }
     }
-
 }
 
 kotlin {
