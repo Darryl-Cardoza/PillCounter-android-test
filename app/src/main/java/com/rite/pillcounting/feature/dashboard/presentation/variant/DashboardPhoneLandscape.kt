@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -111,7 +110,7 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                 ) {
                     Text(
                         text = stringResource(R.string.quick_actions),
-                        fontSize = responsiveSp(8.sp),
+                        fontSize = responsiveSp(8.sp, boostOnPhone = true),
                         color = extendedColors.textColor,
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.weight(0.55f),

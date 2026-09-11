@@ -1005,12 +1005,9 @@ private fun SheetBody(
             Box(modifier = if (isLandscape) Modifier.weight(1f) else Modifier) {
                 DetailsGrid(
                     drugName = drugName,
-                    quantity = quantity,
-                    bucket = bucket,
                     ndcNumber = ndcNumber,
                     rxNumber = rxNumber,
                     compact = isLandscape,
-                    drugImage = drugImage
                 )
             }
 
@@ -1074,18 +1071,15 @@ private fun SheetBody(
 private val BUTTON_WIDTH = 130.dp
 
 /**
- * Renders three aligned rows: [Form tile | Drug Name], [Quantity tile | NDC Number],
- * [Bucket tile | Rx Number]. Each row's two children share the same vertical center.
+ * Renders three stacked detail rows — Drug Name, NDC Number, Rx Number — separated
+ * by hairline dividers. The tiles live in [DetailTilesRow] below this grid.
  */
 @Composable
 private fun DetailsGrid(
     drugName: String,
-    quantity: String,
-    bucket: String,
     ndcNumber: String,
     rxNumber: String,
     compact: Boolean,
-    drugImage: String
 ) {
     // Hairline separators between rows mirror the reference screenshot. To stop
     // the landscape panel from feeling cramped, each row claims an even share of
@@ -1103,10 +1097,11 @@ private fun DetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
+            DetailItem(
                 label = stringResource(R.string.drugname),
                 value = drugName,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         HorizontalDivider(
@@ -1118,10 +1113,11 @@ private fun DetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
+            DetailItem(
                 label = stringResource(R.string.ndc_number),
                 value = ndcNumber,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         HorizontalDivider(
@@ -1133,33 +1129,13 @@ private fun DetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
+            DetailItem(
                 label = stringResource(R.string.rx_number),
                 value = rxNumber,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
-    }
-}
-
-@Composable
-private fun TileDetailRow(
-    label: String,
-    value: String,
-    compact: Boolean,
-    modifier: Modifier = Modifier,
-) {
-    Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
-    ) {
-        DetailItem(
-            label = label,
-            value = value,
-            compact = compact,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 
@@ -1204,8 +1180,7 @@ private fun DrugImageTile(
     // .height()) so grid callers that pass their own height via `modifier`
     // aren't clamped to tileSize — a hardcoded .height() here would render
     // this tile smaller than its siblings regardless of the caller's weight.
-    // DetailsGrid (which passes no modifier) still gets a visible tileSize
-    // square from the minimum.
+    // A caller that passes no height still gets a visible tileSize square.
     Box(
         modifier = Modifier
             .width(tileSize)
@@ -1388,7 +1363,7 @@ private fun HazardousWarningBanner(modifier: Modifier = Modifier) {
 //   - Bucket tile + Drug name
 //
 // Reuses the same SwipeableSideDrawer / HideSystemNavBar /
-// FormTile / BucketTile / SquareTile / DetailItem / TileDetailRow / TabletButtonRow
+// FormTile / BucketTile / SquareTile / DetailItem / TabletButtonRow
 // helpers above so the look-and-feel matches exactly.
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -1496,22 +1471,18 @@ fun VerifyNdcDetailsSheet(
         )
         isLandscape -> VerifyNdcDetailsSideDrawer(
             drugName = drugName,
-            bucket = bucket,
             ndcNumber = ndcNumber,
             isHazardous = isHazardous,
             strength = strength,
-            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
         )
         else -> VerifyNdcDetailsBottomSheet(
             drugName = drugName,
-            bucket = bucket,
             ndcNumber = ndcNumber,
             isHazardous = isHazardous,
             strength = strength,
-            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1523,14 +1494,12 @@ fun VerifyNdcDetailsSheet(
 @Composable
 private fun VerifyNdcDetailsBottomSheet(
     drugName: String,
-    bucket: String,
     ndcNumber: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
     isHazardous: Boolean = false,
     strength: String = "",
-    dosageForm: String = "",
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -1562,14 +1531,12 @@ private fun VerifyNdcDetailsBottomSheet(
 @Composable
 private fun VerifyNdcDetailsSideDrawer(
     drugName: String,
-    bucket: String,
     ndcNumber: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
     isHazardous: Boolean = false,
     strength: String = "",
-    dosageForm: String = "",
 ) {
     val config = LocalConfiguration.current
     val drawerWidth = (config.screenWidthDp.dp * 0.42f).coerceIn(260.dp, 380.dp)
@@ -1787,10 +1754,11 @@ private fun NdcDetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
+            DetailItem(
                 label = stringResource(R.string.ndc_number),
                 value = ndcNumber,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         HorizontalDivider(
@@ -1802,10 +1770,11 @@ private fun NdcDetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
+            DetailItem(
                 label = stringResource(R.string.drugname),
                 value = drugName,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         if (strength.isNotBlank()) {

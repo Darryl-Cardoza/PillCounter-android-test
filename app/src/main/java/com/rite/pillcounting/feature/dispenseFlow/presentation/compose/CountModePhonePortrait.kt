@@ -197,7 +197,7 @@ private fun BoxWithConstraintsScope.CountModePhonePortraitDetailsBar(
                     Text(
                         text = stringResource(R.string.ndc_value, ndc),
                         color = Color.White.copy(alpha = 0.7f),
-                        fontSize = responsiveSp(8.sp),
+                        fontSize = responsiveSp(8.sp, boostOnPhone = true),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -205,7 +205,7 @@ private fun BoxWithConstraintsScope.CountModePhonePortraitDetailsBar(
                 Text(
                     text = drugName,
                     color = Color.White,
-                    fontSize = responsiveSp(9.sp),
+                    fontSize = responsiveSp(9.sp, boostOnPhone = true),
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
@@ -257,9 +257,7 @@ private fun FormColumn(
     modifier: Modifier = Modifier
 ) {
     val imageFile = remember(drugImage) {
-        drugImage?.takeIf { it.isNotBlank() }
-            ?.let(::File)
-            ?.takeIf { it.exists() && it.length() > 0 }
+        drugImage?.takeIf { it.isNotBlank() }?.let(::File)
     }
 
     Column(modifier = modifier, horizontalAlignment = Alignment.CenterHorizontally) {
@@ -289,7 +287,7 @@ private fun PortraitDetailLabel(text: String) {
     Text(
         text = text,
         color = Color.White.copy(alpha = 0.7f),
-        fontSize = responsiveSp(9.sp),
+        fontSize = responsiveSp(9.sp, boostOnPhone = true),
         maxLines = 1
     )
 }
@@ -303,7 +301,7 @@ private fun PortraitDetailColumn(label: String, value: String, modifier: Modifie
         Text(
             text = value.ifBlank { "—" },
             color = Color.White,
-            fontSize = responsiveSp(9.sp),
+            fontSize = responsiveSp(9.sp, boostOnPhone = true),
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

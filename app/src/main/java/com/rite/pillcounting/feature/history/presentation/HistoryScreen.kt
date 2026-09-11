@@ -7,7 +7,6 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.*
@@ -84,103 +83,103 @@ fun HistoryScreen(
             .fillMaxSize()
             .background(AppTheme.extendedColors.secondaryBackground)
     ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .displayCutoutPadding()
-    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .displayCutoutPadding()
+        ) {
 
-        if (showSearch) {
-            HeadlineBar(
-                navController = navController,
-                title = "",
-                searchQuery = searchQuery,
-                showSearch = true,
-                isMultiSelectMode = false,
-                isAllSelected = false,
-                hasSelection = false,
-                showDelete = false,
-                onSearchClick = {
-                    viewModel.setSearchQuery("")
-                    showSearch = false
-                },
-                onSearchChange = { viewModel.setSearchQuery(it) },
-                onDeleteClick = {},
-                onCancelClick = {},
-                onConfirmDelete = {},
-                onSelectAll = {}
-            )
+            if (showSearch) {
+                HeadlineBar(
+                    navController = navController,
+                    title = "",
+                    searchQuery = searchQuery,
+                    showSearch = true,
+                    isMultiSelectMode = false,
+                    isAllSelected = false,
+                    hasSelection = false,
+                    showDelete = false,
+                    onSearchClick = {
+                        viewModel.setSearchQuery("")
+                        showSearch = false
+                    },
+                    onSearchChange = { viewModel.setSearchQuery(it) },
+                    onDeleteClick = {},
+                    onCancelClick = {},
+                    onConfirmDelete = {},
+                    onSelectAll = {}
+                )
 
-            val openPdfWith = stringResource(R.string.open_pdf_with)
-            CountsSection(
-                counts = counts,
-                batches = batchGroups,
-                initialShowComplete = defaultToComplete,
-                isSearchActive = true,
-                onExportClick = {
-                    val file = pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
-                    file?.let { sharePdfFile(context, it, openPdfWith) }
-                },
-                onDeleteClick = { filter ->
-                    pendingDeleteFilter = filter
-                    showDeleteConfirmationDialog = true
-                },
-                selectedOption = selectedOption,
-                onOptionSelected = { selectedOption = it },
-                onTxnClick = { txnId ->
-                    viewModel.selectCurrentTransaction(txnId)
-                    navController.navigate(Screen.HistoryDetail.route)
-                },
-                onBatchClick = { batchId ->
-                    navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
-                }
-            )
-        } else {
-            SplitResponsive(
-                topOrLeft = {
-                    CalendarSection(
-                        calendarState = calendarState,
-                        selectedDate = selectedDate,
-                        onDateSelected = { viewModel.selectDate(it) },
-                        onBackClick = onBackClick,
-                        navController = navController,
-                        viewModel = viewModel,
-                        showSearch = false,
-                        onSearchToggle = { showSearch = true }
-                    )
-                },
-                bottomOrRight = {
-                    val openPdfWith = stringResource(R.string.open_pdf_with)
-                    CountsSection(
-                        counts = counts,
-                        batches = batchGroups,
-                        initialShowComplete = defaultToComplete,
-                        onExportClick = {
-                            val file =
-                                pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
-                            file?.let { sharePdfFile(context, it, openPdfWith) }
-                        },
-                        selectedOption = selectedOption,
-                        onOptionSelected = { selectedOption = it },
-                        onDeleteClick = { filter ->
-                            pendingDeleteFilter = filter
-                            showDeleteConfirmationDialog = true
-                        },
-                        onTxnClick = { txnId ->
-                            viewModel.selectCurrentTransaction(txnId)
-                            navController.navigate(Screen.HistoryDetail.route)
-                        },
-                        onBatchClick = { batchId ->
-                            navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
-                        }
-                    )
-                },
-                landscapeRatio = startWidthLandScape to endWidthLandscape,
-                portraitRatio = topHeightPortrait to bottomHeightPortrait
-            )
+                val openPdfWith = stringResource(R.string.open_pdf_with)
+                CountsSection(
+                    counts = counts,
+                    batches = batchGroups,
+                    initialShowComplete = defaultToComplete,
+                    isSearchActive = true,
+                    onExportClick = {
+                        val file = pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
+                        file?.let { sharePdfFile(context, it, openPdfWith) }
+                    },
+                    onDeleteClick = { filter ->
+                        pendingDeleteFilter = filter
+                        showDeleteConfirmationDialog = true
+                    },
+                    selectedOption = selectedOption,
+                    onOptionSelected = { selectedOption = it },
+                    onTxnClick = { txnId ->
+                        viewModel.selectCurrentTransaction(txnId)
+                        navController.navigate(Screen.HistoryDetail.route)
+                    },
+                    onBatchClick = { batchId ->
+                        navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
+                    }
+                )
+            } else {
+                SplitResponsive(
+                    topOrLeft = {
+                        CalendarSection(
+                            calendarState = calendarState,
+                            selectedDate = selectedDate,
+                            onDateSelected = { viewModel.selectDate(it) },
+                            onBackClick = onBackClick,
+                            navController = navController,
+                            viewModel = viewModel,
+                            showSearch = false,
+                            onSearchToggle = { showSearch = true }
+                        )
+                    },
+                    bottomOrRight = {
+                        val openPdfWith = stringResource(R.string.open_pdf_with)
+                        CountsSection(
+                            counts = counts,
+                            batches = batchGroups,
+                            initialShowComplete = defaultToComplete,
+                            onExportClick = {
+                                val file =
+                                    pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
+                                file?.let { sharePdfFile(context, it, openPdfWith) }
+                            },
+                            selectedOption = selectedOption,
+                            onOptionSelected = { selectedOption = it },
+                            onDeleteClick = { filter ->
+                                pendingDeleteFilter = filter
+                                showDeleteConfirmationDialog = true
+                            },
+                            onTxnClick = { txnId ->
+                                viewModel.selectCurrentTransaction(txnId)
+                                navController.navigate(Screen.HistoryDetail.route)
+                            },
+                            onBatchClick = { batchId ->
+                                navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
+                            }
+                        )
+                    },
+                    landscapeRatio = startWidthLandScape to endWidthLandscape,
+                    portraitRatio = topHeightPortrait to bottomHeightPortrait
+                )
+            }
         }
-    }
     }
 
     if (showDeleteConfirmationDialog) {

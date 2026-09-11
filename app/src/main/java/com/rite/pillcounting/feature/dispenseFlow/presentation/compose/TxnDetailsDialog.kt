@@ -176,7 +176,7 @@ fun TxnDetailDialog(
                             Text(
                                 text = "${details.count}",
                                 style = MaterialTheme.typography.titleMedium.copy(color = Color.White),
-                                fontSize = responsiveSp(16.sp, boostOnPhone = false),
+                                fontSize = responsiveSp(16.sp),
                                 fontWeight = FontWeight.Medium
                             )
                         }

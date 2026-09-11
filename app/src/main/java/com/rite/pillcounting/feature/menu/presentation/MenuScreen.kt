@@ -73,179 +73,179 @@ fun MenuScreen(
             .fillMaxSize()
             .background(extendedColors.secondaryBackground)
     ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .displayCutoutPadding()
-    ) {
-        BackButton(navController)
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(start = dimens.medium, end = dimens.medium)
-                .background(extendedColors.secondaryBackground)
+                .systemBarsPadding()
+                .displayCutoutPadding()
         ) {
-            // Load options from strings.xml
-            val historyOptions = stringArrayResource(R.array.history_options).toList()
+            BackButton(navController)
 
-            // Get the saved history retention (number of days)
-            val selectedOptionDays = viewModel.getSavedHistoryOption()
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = dimens.medium, end = dimens.medium)
+                    .background(extendedColors.secondaryBackground)
+            ) {
+                // Load options from strings.xml
+                val historyOptions = stringArrayResource(R.array.history_options).toList()
 
-            // Map the number of days to a display string
-            val trailingText = HistoryRetention.getTrailingText(selectedOptionDays, historyOptions)
+                // Get the saved history retention (number of days)
+                val selectedOptionDays = viewModel.getSavedHistoryOption()
+
+                // Map the number of days to a display string
+                val trailingText = HistoryRetention.getTrailingText(selectedOptionDays, historyOptions)
 
 
-            // History
-            SimpleMenuRow(
-                navController = navController,
-                icon = R.drawable.history,
-                iconTint = MaterialTheme.colorScheme.primary,
-                title = stringResource(R.string.menu_history),
-                trailingText = trailingText,
-                onClick = {
-                    navController.navigateSafely(
-                        Screen.History.createRoute(HistoryMode.NORMAL)
+                // History
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.history,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_history),
+                    trailingText = trailingText,
+                    onClick = {
+                        navController.navigateSafely(
+                            Screen.History.createRoute(HistoryMode.NORMAL)
+                        )
+                    }
+                )
+
+                // Unsynced transactions are HL7/PMS sync artifacts. When HL7 is
+                // disabled from the portal, keep the row visible but disabled
+                // (dimmed) and surface a toast on tap instead of navigating.
+                val hl7Enabled = viewModel.isHl7Enabled()
+                HorizontalDivider(color = extendedColors.primaryBackground)
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.unsynced_transaction_icon,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_unsync_transaction),
+                    trailingText = uiState.unsyncedTransactionCount.toString(),
+                    enabled = hl7Enabled,
+                    onClick = {
+                        if (hl7Enabled) {
+                            navController.navigateSafely(
+                                Screen.UnsyncedTransactionScreen.route
+                            )
+                        } else {
+                            showToast(context, R.string.enable_hl7_from_portal_toast)
+                        }
+                    }
+                )
+
+                HorizontalDivider(color = extendedColors.primaryBackground)
+
+                // Settings
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.settings,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_settings),
+                    onClick = { navController.navigate(Screen.Settings.route) }
+                )
+
+                HorizontalDivider(color = extendedColors.primaryBackground)
+
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.profile,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_profile),
+                    onClick = { navController.navigate(Screen.Profile.route) }
+                )
+                HorizontalDivider(color = extendedColors.primaryBackground)
+                // Logout
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.logout,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_logout),
+                    onClick = {
+                        showLogoutConfirmDialog = true
+                    }
+                )
+
+                if (showLogoutConfirmDialog) {
+                    CommonDialog(
+                        message = stringResource(R.string.confirm_logout_text),
+                        title = stringResource(R.string.confirm_logout_title),
+                        confirmText = stringResource(R.string.menu_logout),
+                        cancelText = stringResource(R.string.cancel),
+                        onConfirm = {
+                            showLogoutLoading = true
+                            val refreshToken = loginViewModel.preferenceHelper.getRefreshToken()
+                            if (!refreshToken.isNullOrBlank()) {
+                                loginViewModel.logout(refreshToken)
+                            } else {
+                                // Fallback: clear session locally if token missing
+                                loginViewModel.preferenceHelper.clearTokens()
+                                loginViewModel.preferenceHelper.setUserLoggedIn(false)
+                                showLogoutLoading = false
+                                navController.navigate(AUTH_GRAPH_ROUTE) {
+                                    popUpTo(0) { inclusive = true }
+                                }
+                            }
+                            showLogoutConfirmDialog = false
+                        },
+                        onCancel = { showLogoutConfirmDialog = false }
                     )
                 }
-            )
 
-            // Unsynced transactions are HL7/PMS sync artifacts. When HL7 is
-            // disabled from the portal, keep the row visible but disabled
-            // (dimmed) and surface a toast on tap instead of navigating.
-            val hl7Enabled = viewModel.isHl7Enabled()
-            HorizontalDivider(color = extendedColors.primaryBackground)
-            SimpleMenuRow(
-                navController = navController,
-                icon = R.drawable.unsynced_transaction_icon,
-                iconTint = MaterialTheme.colorScheme.primary,
-                title = stringResource(R.string.menu_unsync_transaction),
-                trailingText = uiState.unsyncedTransactionCount.toString(),
-                enabled = hl7Enabled,
-                onClick = {
-                    if (hl7Enabled) {
-                        navController.navigateSafely(
-                            Screen.UnsyncedTransactionScreen.route
-                        )
-                    } else {
-                        showToast(context, R.string.enable_hl7_from_portal_toast)
+                // Logout UI Feedback
+                when (val state = logoutState) {
+                    is LogoutUiState.Loading -> {
+                        if (showLogoutLoading) {
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(top = 40.dp)
+                            ) {
+                                LoadingIndicator()
+                                Text(
+                                    text = stringResource(R.string.logging_out),
+                                    color = MaterialTheme.colorScheme.primary,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    modifier = Modifier.padding(top = 8.dp)
+                                )
+                            }
+                        }
                     }
-                }
-            )
 
-            HorizontalDivider(color = extendedColors.primaryBackground)
+                    is LogoutUiState.Error -> {
+                        showLogoutLoading = false
+                        Text(
+                            text = state.message,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodyMedium,
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
+                    }
 
-            // Settings
-            SimpleMenuRow(
-                navController = navController,
-                icon = R.drawable.settings,
-                iconTint = MaterialTheme.colorScheme.primary,
-                title = stringResource(R.string.menu_settings),
-                onClick = { navController.navigate(Screen.Settings.route) }
-            )
-
-            HorizontalDivider(color = extendedColors.primaryBackground)
-
-            SimpleMenuRow(
-                navController = navController,
-                icon = R.drawable.profile,
-                iconTint = MaterialTheme.colorScheme.primary,
-                title = stringResource(R.string.menu_profile),
-                onClick = { navController.navigate(Screen.Profile.route) }
-            )
-            HorizontalDivider(color = extendedColors.primaryBackground)
-            // Logout
-            SimpleMenuRow(
-                navController = navController,
-                icon = R.drawable.logout,
-                iconTint = MaterialTheme.colorScheme.primary,
-                title = stringResource(R.string.menu_logout),
-                onClick = {
-                    showLogoutConfirmDialog = true
-                }
-            )
-
-            if (showLogoutConfirmDialog) {
-                CommonDialog(
-                    message = stringResource(R.string.confirm_logout_text),
-                    title = stringResource(R.string.confirm_logout_title),
-                    confirmText = stringResource(R.string.menu_logout),
-                    cancelText = stringResource(R.string.cancel),
-                    onConfirm = {
-                        showLogoutLoading = true
-                        val refreshToken = loginViewModel.preferenceHelper.getRefreshToken()
-                        if (!refreshToken.isNullOrBlank()) {
-                            loginViewModel.logout(refreshToken)
-                        } else {
-                            // Fallback: clear session locally if token missing
-                            loginViewModel.preferenceHelper.clearTokens()
-                            loginViewModel.preferenceHelper.setUserLoggedIn(false)
+                    is LogoutUiState.Success -> {
+                        LaunchedEffect(Unit) {
+                            // Clear user session on successful logout
+                            loginViewModel.clearSession()
+                            loginViewModel.clearAllStates()
                             showLogoutLoading = false
+
+                            // Navigate back to login/auth graph
                             navController.navigate(AUTH_GRAPH_ROUTE) {
                                 popUpTo(0) { inclusive = true }
                             }
-                        }
-                        showLogoutConfirmDialog = false
-                    },
-                    onCancel = { showLogoutConfirmDialog = false }
-                )
-            }
 
-            // Logout UI Feedback
-            when (val state = logoutState) {
-                is LogoutUiState.Loading -> {
-                    if (showLogoutLoading) {
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(top = 40.dp)
-                        ) {
-                            LoadingIndicator()
-                            Text(
-                                text = stringResource(R.string.logging_out),
-                                color = MaterialTheme.colorScheme.primary,
-                                style = MaterialTheme.typography.bodyMedium,
-                                modifier = Modifier.padding(top = 8.dp)
-                            )
+                            if (!loginViewModel.preferenceHelper.isUserLoggedIn()) {
+                                onLogOut()
+                            }
                         }
                     }
+
+                    else -> {}
                 }
-
-                is LogoutUiState.Error -> {
-                    showLogoutLoading = false
-                    Text(
-                        text = state.message,
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodyMedium,
-                        modifier = Modifier.padding(top = 16.dp)
-                    )
-                }
-
-                is LogoutUiState.Success -> {
-                    LaunchedEffect(Unit) {
-                        // Clear user session on successful logout
-                        loginViewModel.clearSession()
-                        loginViewModel.clearAllStates()
-                        showLogoutLoading = false
-
-                        // Navigate back to login/auth graph
-                        navController.navigate(AUTH_GRAPH_ROUTE) {
-                            popUpTo(0) { inclusive = true }
-                        }
-
-                        if (!loginViewModel.preferenceHelper.isUserLoggedIn()) {
-                            onLogOut()
-                        }
-                    }
-                }
-
-                else -> {}
             }
         }
-    }
     }
 
 }

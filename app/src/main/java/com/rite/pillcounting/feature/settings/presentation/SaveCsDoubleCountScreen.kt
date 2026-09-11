@@ -52,57 +52,57 @@ fun SaveCsDoubleCountScreen(
             .fillMaxSize()
             .background(extendedColors.secondaryBackground)
     ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .displayCutoutPadding()
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp)
-        ) {
-            BackButton(navController = navController)
-            Text(
-                text = stringResource(R.string.require_double_count_title),
-                fontSize = 16.sp,
-                color = extendedColors.textColor
-            )
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp)
+                .systemBarsPadding()
+                .displayCutoutPadding()
         ) {
-            schedules.forEach { code ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { viewModel.toggleSchedule(code) }
-                        .padding(vertical = dimens.small)
-                ) {
-                    Checkbox(
-                        checked = selectedSchedules.contains(code),
-                        onCheckedChange = { viewModel.toggleSchedule(code) },
-                        colors = CheckboxDefaults.colors(
-                            checkedColor = MaterialTheme.colorScheme.primary,
-                            uncheckedColor = extendedColors.textColor,
-                            checkmarkColor = Color.White
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                BackButton(navController = navController)
+                Text(
+                    text = stringResource(R.string.require_double_count_title),
+                    fontSize = 16.sp,
+                    color = extendedColors.textColor
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+            ) {
+                schedules.forEach { code ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.toggleSchedule(code) }
+                            .padding(vertical = dimens.small)
+                    ) {
+                        Checkbox(
+                            checked = selectedSchedules.contains(code),
+                            onCheckedChange = { viewModel.toggleSchedule(code) },
+                            colors = CheckboxDefaults.colors(
+                                checkedColor = MaterialTheme.colorScheme.primary,
+                                uncheckedColor = extendedColors.textColor,
+                                checkmarkColor = Color.White
+                            )
                         )
-                    )
-                    Text(
-                        text = code.name,
-                        fontSize = 16.sp,
-                        color = extendedColors.textColor,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
+                        Text(
+                            text = code.name,
+                            fontSize = 16.sp,
+                            color = extendedColors.textColor,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
                 }
             }
         }
-    }
     }
 }

@@ -58,67 +58,67 @@ fun SaveHistoryForScreen(
             .fillMaxSize()
             .background(extendedColors.secondaryBackground)
     ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .displayCutoutPadding()
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp)
-        ) {
-            BackButton(navController = navController)
-            Text(
-                text = stringResource(R.string.save_history_for_title),
-                fontSize = 16.sp,
-                color = extendedColors.textColor
-            )
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp)
+                .systemBarsPadding()
+                .displayCutoutPadding()
         ) {
-            historyOptions.forEach { option ->
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            if (option != selectedOption) {
-                                tempSelectedOption = option
-                                showConfirmationDialog = true
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                BackButton(navController = navController)
+                Text(
+                    text = stringResource(R.string.save_history_for_title),
+                    fontSize = 16.sp,
+                    color = extendedColors.textColor
+                )
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+            ) {
+                historyOptions.forEach { option ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                if (option != selectedOption) {
+                                    tempSelectedOption = option
+                                    showConfirmationDialog = true
+                                }
                             }
-                        }
-                        .padding(vertical =dimens.small, horizontal = 8.dp)
-                ) {
-                    RadioButton(
-                        selected = selectedOption == option,
-                        onClick = {
-                            if (option != selectedOption) {
-                                tempSelectedOption = option
-                                showConfirmationDialog = true
-                            }
-                        },
-                        colors = RadioButtonDefaults.colors(
-                            selectedColor = MaterialTheme.colorScheme.primary
+                            .padding(vertical =dimens.small, horizontal = 8.dp)
+                    ) {
+                        RadioButton(
+                            selected = selectedOption == option,
+                            onClick = {
+                                if (option != selectedOption) {
+                                    tempSelectedOption = option
+                                    showConfirmationDialog = true
+                                }
+                            },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = MaterialTheme.colorScheme.primary
+                            )
                         )
-                    )
-                    Text(
-                        text = option,
-                        fontSize = 16.sp,
-                        color = extendedColors.textColor,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
+                        Text(
+                            text = option,
+                            fontSize = 16.sp,
+                            color = extendedColors.textColor,
+                            modifier = Modifier.padding(start = 8.dp)
+                        )
+                    }
+    //                HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
                 }
-//                HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
             }
         }
-    }
     }
 
     if (showConfirmationDialog) {

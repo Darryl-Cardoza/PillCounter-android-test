@@ -30,7 +30,6 @@
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispensar</string>
-    <string name="inventory">Inventario</string>
     <string name="tap_to_scan_rx_labels">Toca para escanear etiquetas Rx</string>
     <string name="stock_count">Conteo de Stock</string>
     <string name="start_a_new_inventory_count">Iniciar un nuevo conteo de inventario</string>
@@ -354,6 +353,7 @@
     <string name="opend_bottles">Frascos abiertos</string>
     <string name="bucket">Cubeta</string>
     <string name="batch">Lote</string>
+    <string name="batch_number">Lote n.º %1$d</string>
     <string name="no_last_batch_available">No hay último lote disponible</string>
 
 <!--count Section-->

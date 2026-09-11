@@ -183,7 +183,7 @@ fun CircularCountIndicator(
                     Text(
                         text = count.toString(),
                         color = Color.White,
-                        fontSize = responsiveSp(32.sp, boostOnPhone = false)
+                        fontSize = responsiveSp(32.sp)
                     )
                 }
                 val caption = if (isCooldown) {
@@ -195,7 +195,7 @@ fun CircularCountIndicator(
                     Text(
                         text = caption,
                         color = indicatorColor,
-                        fontSize = responsiveSp(13.sp, boostOnPhone = false),
+                        fontSize = responsiveSp(13.sp),
                         fontWeight = FontWeight.SemiBold,
                         letterSpacing = 1.sp,
                     )

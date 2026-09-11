@@ -93,311 +93,311 @@ fun SettingsScreen(
             .fillMaxSize()
             .background(extendedColors.secondaryBackground)
     ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .systemBarsPadding()
-            .displayCutoutPadding()
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp)
-        ) {
-            BackButton(navController = navController)
-
-            Text(
-                text = stringResource(R.string.settings_title),
-                fontSize = 16.sp,
-                color = extendedColors.textColor
-            )
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
-                .verticalScroll(rememberScrollState())
+                .systemBarsPadding()
+                .displayCutoutPadding()
         ) {
-            SettingSwitch(
-                labelRes = R.string.setting_ask_to_add_notes,
-                checked = isAskToAddNotes,
-                onCheckedChange = { newValue ->
-                    viewModel.toggleAskToAddNotes(newValue)
-                },
-                checkedTrackColor = MaterialTheme.colorScheme.primary
-            )
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            Text(
-                text = stringResource(R.string.setting_face_recognition_users),
-                fontSize = 16.sp,
-                color = extendedColors.textColor,
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable { navController.navigate(Screen.FaceRecognitionUsers.route) }
-                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-            )
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showAutoLockDialog = true }
-                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+                    .padding(bottom = 16.dp)
             ) {
+                BackButton(navController = navController)
+
                 Text(
-                    text = stringResource(R.string.setting_face_auto_lock_after),
+                    text = stringResource(R.string.settings_title),
                     fontSize = 16.sp,
                     color = extendedColors.textColor
                 )
-                Text(
-                    text = stringResource(R.string.setting_face_auto_lock_minutes, faceLockTimeoutMinutes),
-                    fontSize = 14.sp,
-                    color = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
             }
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            Text(
-                text = stringResource(R.string.setting_face_lock_now),
-                fontSize = 16.sp,
-                color = if (hasEnabledFaceProfile) extendedColors.textColor
-                else extendedColors.textColor.copy(alpha = disabledAlpha),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        if (hasEnabledFaceProfile) viewModel.lockSessionNow()
-                        else showToast(context, R.string.setting_face_lock_now_disabled_toast)
-                    }
-                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-            )
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        if (hl7Enabled) navController.navigate(Screen.RequireDoubleCount.route)
-                        else onHl7DisabledTap()
-                    }
-                    .padding(vertical = 12.dp, horizontal = 16.dp)
+                    .fillMaxSize()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                Text(
-                    text = stringResource(R.string.require_double_count),
-                    fontSize = 16.sp,
-                    color = if (hl7Enabled) extendedColors.textColor
-                    else extendedColors.textColor.copy(alpha = disabledAlpha)
+                SettingSwitch(
+                    labelRes = R.string.setting_ask_to_add_notes,
+                    checked = isAskToAddNotes,
+                    onCheckedChange = { newValue ->
+                        viewModel.toggleAskToAddNotes(newValue)
+                    },
+                    checkedTrackColor = MaterialTheme.colorScheme.primary
                 )
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    modifier = Modifier.padding(top = 10.dp)
-                ) {
-                    ScheduleCode.entries.forEach { code ->
-                        val codeColor = if (selectedSchedules.contains(code))
-                            MaterialTheme.colorScheme.secondary
-                        else
-                            Color.Gray
-                        Text(
-                            text = code.name,
-                            fontSize = 16.sp,
-                            color = if (hl7Enabled) codeColor else codeColor.copy(alpha = disabledAlpha)
-                        )
-                    }
-                }
-            }
 
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            SettingSwitch(
-                labelRes = R.string.require_back_count,
-                checked = isRequireBackCountEnable,
-                onCheckedChange = { newValue ->
-                    viewModel.toggleRequireBackCountOnOff(newValue)
-                },
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                enabled = hl7Enabled,
-                onDisabledClick = onHl7DisabledTap
-            )
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { navController.navigate(Screen.SaveHistoryFor.route) }
-                    .padding(vertical = 12.dp, horizontal = 16.dp)
-            ) {
-                Text(
-                    text = stringResource(R.string.setting_save_history_for),
-                    fontSize = 16.sp,
-                    color = extendedColors.textColor
-                )
-                Spacer(Modifier.height(10.dp))
-                Text(
-                    text = selectedOption,
-                    fontSize = 16.sp,
-                    color = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            SettingSwitch(
-                labelRes = R.string.pill_counting_sound,
-                checked = isSoundEnabled,
-                onCheckedChange = { newValue ->
-                    viewModel.toggleSoundOnOff(newValue)
-                },
-                checkedTrackColor = MaterialTheme.colorScheme.primary
-            )
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            SettingSwitch(
-                labelRes = R.string.haptic_feedback,
-                checked = isHapticEnable,
-                onCheckedChange = { newValue ->
-                    viewModel.toggleHapticOnOff(newValue)
-                },
-                checkedTrackColor = MaterialTheme.colorScheme.primary
-            )
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            SettingSwitch(
-                labelRes = R.string.voice_feedback,
-                checked = isSoundOverrideEnable,
-                onCheckedChange = { newValue ->
-                    viewModel.toggleSoundOverride(newValue)
-                },
-                checkedTrackColor = MaterialTheme.colorScheme.primary
-            )
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            SettingSwitch(
-                labelRes = R.string.setting_hazardous_drug,
-                checked = isHazardousDrug,
-                onCheckedChange = { newValue ->
-                    viewModel.toggleHazardousDrug(newValue)
-                },
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                enabled = hl7Enabled,
-                onDisabledClick = onHl7DisabledTap
-            )
-
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-            Text(
-                text = stringResource(R.string.clear_tray_color_lists),
-                fontSize = 16.sp,
-                color = if (hl7Enabled) extendedColors.textColor
-                else extendedColors.textColor.copy(alpha = disabledAlpha),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        if (hl7Enabled) showClearTrayColorListsDialog = true
-                        else onHl7DisabledTap()
-                    }
-                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-            )
-
-            if (isUseStaticPmsConnection) {
                 HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
                 Text(
-                    text = stringResource(R.string.setting_pms_connection),
+                    text = stringResource(R.string.setting_face_recognition_users),
                     fontSize = 16.sp,
                     color = extendedColors.textColor,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clickable { showConnectionInfo = true }
+                        .clickable { navController.navigate(Screen.FaceRecognitionUsers.route) }
                         .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
                 )
-            }
 
-            HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
-            Text(
-                text = stringResource(R.string.clear_all_local_data),
-                fontSize = 16.sp,
-                color = extendedColors.textColor,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        showCLearAllDataConfirmDialog = true
-                    }
-                    .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-            )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { showAutoLockDialog = true }
+                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.setting_face_auto_lock_after),
+                        fontSize = 16.sp,
+                        color = extendedColors.textColor
+                    )
+                    Text(
+                        text = stringResource(R.string.setting_face_auto_lock_minutes, faceLockTimeoutMinutes),
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
 
-        }
-    }
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
-    if (showCLearAllDataConfirmDialog) {
-        CommonDialog(
-            message = stringResource(R.string.are_you_sure_you_want_to_clear_all_data),
-            confirmText = stringResource(R.string.ok),
-            cancelText = stringResource(R.string.cancel),
-            onConfirm = {
-                showCLearAllDataConfirmDialog = true
-                viewModel.deleteAllTransaction()
-                showCLearAllDataConfirmDialog = false
-            },
-            onCancel = { showCLearAllDataConfirmDialog = false }
-        )
-    }
+                Text(
+                    text = stringResource(R.string.setting_face_lock_now),
+                    fontSize = 16.sp,
+                    color = if (hasEnabledFaceProfile) extendedColors.textColor
+                    else extendedColors.textColor.copy(alpha = disabledAlpha),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (hasEnabledFaceProfile) viewModel.lockSessionNow()
+                            else showToast(context, R.string.setting_face_lock_now_disabled_toast)
+                        }
+                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+                )
 
-    if (showClearTrayColorListsDialog) {
-        CommonDialog(
-            message = stringResource(R.string.clear_tray_color_lists_confirm),
-            confirmText = stringResource(R.string.ok),
-            cancelText = stringResource(R.string.cancel),
-            onConfirm = {
-                viewModel.clearTrayColorLists()
-                showClearTrayColorListsDialog = false
-            },
-            onCancel = { showClearTrayColorListsDialog = false }
-        )
-    }
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
 
-    if (showConnectionInfo) {
-        ConnectionInfoScreen(onBackClick = { showConnectionInfo = false })
-    }
-
-    if (showAutoLockDialog) {
-        AlertDialog(
-            onDismissRequest = { showAutoLockDialog = false },
-            title = { Text(stringResource(R.string.setting_face_auto_lock_after)) },
-            text = {
-                Column {
-                    autoLockMinuteOptions.forEach { minutes ->
-                        Text(
-                            text = stringResource(R.string.setting_face_auto_lock_minutes, minutes),
-                            fontWeight = if (minutes == faceLockTimeoutMinutes) FontWeight.Bold else FontWeight.Normal,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable {
-                                    viewModel.updateFaceLockTimeoutMinutes(minutes)
-                                    showAutoLockDialog = false
-                                }
-                                .padding(vertical = 12.dp)
-                        )
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (hl7Enabled) navController.navigate(Screen.RequireDoubleCount.route)
+                            else onHl7DisabledTap()
+                        }
+                        .padding(vertical = 12.dp, horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.require_double_count),
+                        fontSize = 16.sp,
+                        color = if (hl7Enabled) extendedColors.textColor
+                        else extendedColors.textColor.copy(alpha = disabledAlpha)
+                    )
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier.padding(top = 10.dp)
+                    ) {
+                        ScheduleCode.entries.forEach { code ->
+                            val codeColor = if (selectedSchedules.contains(code))
+                                MaterialTheme.colorScheme.secondary
+                            else
+                                Color.Gray
+                            Text(
+                                text = code.name,
+                                fontSize = 16.sp,
+                                color = if (hl7Enabled) codeColor else codeColor.copy(alpha = disabledAlpha)
+                            )
+                        }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { showAutoLockDialog = false }) { Text(stringResource(R.string.cancel)) }
+
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                SettingSwitch(
+                    labelRes = R.string.require_back_count,
+                    checked = isRequireBackCountEnable,
+                    onCheckedChange = { newValue ->
+                        viewModel.toggleRequireBackCountOnOff(newValue)
+                    },
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    enabled = hl7Enabled,
+                    onDisabledClick = onHl7DisabledTap
+                )
+
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { navController.navigate(Screen.SaveHistoryFor.route) }
+                        .padding(vertical = 12.dp, horizontal = 16.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.setting_save_history_for),
+                        fontSize = 16.sp,
+                        color = extendedColors.textColor
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        text = selectedOption,
+                        fontSize = 16.sp,
+                        color = MaterialTheme.colorScheme.secondary,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                }
+
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                SettingSwitch(
+                    labelRes = R.string.pill_counting_sound,
+                    checked = isSoundEnabled,
+                    onCheckedChange = { newValue ->
+                        viewModel.toggleSoundOnOff(newValue)
+                    },
+                    checkedTrackColor = MaterialTheme.colorScheme.primary
+                )
+
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                SettingSwitch(
+                    labelRes = R.string.haptic_feedback,
+                    checked = isHapticEnable,
+                    onCheckedChange = { newValue ->
+                        viewModel.toggleHapticOnOff(newValue)
+                    },
+                    checkedTrackColor = MaterialTheme.colorScheme.primary
+                )
+
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                SettingSwitch(
+                    labelRes = R.string.voice_feedback,
+                    checked = isSoundOverrideEnable,
+                    onCheckedChange = { newValue ->
+                        viewModel.toggleSoundOverride(newValue)
+                    },
+                    checkedTrackColor = MaterialTheme.colorScheme.primary
+                )
+
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                SettingSwitch(
+                    labelRes = R.string.setting_hazardous_drug,
+                    checked = isHazardousDrug,
+                    onCheckedChange = { newValue ->
+                        viewModel.toggleHazardousDrug(newValue)
+                    },
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    enabled = hl7Enabled,
+                    onDisabledClick = onHl7DisabledTap
+                )
+
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                Text(
+                    text = stringResource(R.string.clear_tray_color_lists),
+                    fontSize = 16.sp,
+                    color = if (hl7Enabled) extendedColors.textColor
+                    else extendedColors.textColor.copy(alpha = disabledAlpha),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            if (hl7Enabled) showClearTrayColorListsDialog = true
+                            else onHl7DisabledTap()
+                        }
+                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+                )
+
+                if (isUseStaticPmsConnection) {
+                    HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                    Text(
+                        text = stringResource(R.string.setting_pms_connection),
+                        fontSize = 16.sp,
+                        color = extendedColors.textColor,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showConnectionInfo = true }
+                            .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+                    )
+                }
+
+                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
+
+                Text(
+                    text = stringResource(R.string.clear_all_local_data),
+                    fontSize = 16.sp,
+                    color = extendedColors.textColor,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            showCLearAllDataConfirmDialog = true
+                        }
+                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+                )
+
             }
-        )
-    }
+        }
+
+        if (showCLearAllDataConfirmDialog) {
+            CommonDialog(
+                message = stringResource(R.string.are_you_sure_you_want_to_clear_all_data),
+                confirmText = stringResource(R.string.ok),
+                cancelText = stringResource(R.string.cancel),
+                onConfirm = {
+                    showCLearAllDataConfirmDialog = true
+                    viewModel.deleteAllTransaction()
+                    showCLearAllDataConfirmDialog = false
+                },
+                onCancel = { showCLearAllDataConfirmDialog = false }
+            )
+        }
+
+        if (showClearTrayColorListsDialog) {
+            CommonDialog(
+                message = stringResource(R.string.clear_tray_color_lists_confirm),
+                confirmText = stringResource(R.string.ok),
+                cancelText = stringResource(R.string.cancel),
+                onConfirm = {
+                    viewModel.clearTrayColorLists()
+                    showClearTrayColorListsDialog = false
+                },
+                onCancel = { showClearTrayColorListsDialog = false }
+            )
+        }
+
+        if (showConnectionInfo) {
+            ConnectionInfoScreen(onBackClick = { showConnectionInfo = false })
+        }
+
+        if (showAutoLockDialog) {
+            AlertDialog(
+                onDismissRequest = { showAutoLockDialog = false },
+                title = { Text(stringResource(R.string.setting_face_auto_lock_after)) },
+                text = {
+                    Column {
+                        autoLockMinuteOptions.forEach { minutes ->
+                            Text(
+                                text = stringResource(R.string.setting_face_auto_lock_minutes, minutes),
+                                fontWeight = if (minutes == faceLockTimeoutMinutes) FontWeight.Bold else FontWeight.Normal,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable {
+                                        viewModel.updateFaceLockTimeoutMinutes(minutes)
+                                        showAutoLockDialog = false
+                                    }
+                                    .padding(vertical = 12.dp)
+                            )
+                        }
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { showAutoLockDialog = false }) { Text(stringResource(R.string.cancel)) }
+                }
+            )
+        }
     }
 }
 

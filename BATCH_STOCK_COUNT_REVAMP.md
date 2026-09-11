@@ -91,8 +91,8 @@ All 4 variants render the same `BatchStockCountUiState`. The shapes/components d
 
 ### Retired since
 - `feature/batchCount/presentation/BatchScreen.kt` + `Screen.Batch` — deleted. History now routes pending
-  batches to `BatchHistoryDetail` like completed ones. `feature/batchCount` keeps only `BatchNdcCard` and
-  `BatchViewModel`, both consumed by that detail screen.
+  batches to `BatchHistoryDetail` like completed ones. `feature/batchCount` keeps `BatchNdcCard`,
+  `BatchViewModel` and the `BatchDrugGroup` model they share, all consumed by that detail screen.
 
 ---
 

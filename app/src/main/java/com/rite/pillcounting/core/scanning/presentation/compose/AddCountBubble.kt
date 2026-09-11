@@ -22,7 +22,7 @@ fun AddCountBubble(text: String) {
         Text(
             text = text,
             style = MaterialTheme.typography.titleMedium.copy(
-                fontSize = responsiveSp(100.sp, boostOnPhone = false),
+                fontSize = responsiveSp(100.sp),
                 fontWeight = androidx.compose.ui.text.font.FontWeight.Bold
             ),
             color =  MaterialTheme.colorScheme.secondary

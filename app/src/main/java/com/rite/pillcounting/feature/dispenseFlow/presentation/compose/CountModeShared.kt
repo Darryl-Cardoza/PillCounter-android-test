@@ -96,9 +96,10 @@ internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .clip(RoundedCornerShape(12.dp))
             .background(CountModeBarBackground)
-            // Leave room on the left for the existing back arrow, plus extra
-            // breathing space between the arrow and the NDC / drug-name block.
-            .padding(start = 36.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+            // Leave room on the left for the back arrow. The arrow is sized with
+            // responsiveDp, so this gutter has to scale with it — a flat value
+            // either overlaps it on tablet or wastes space on phone.
+            .padding(start = responsiveDp(36.dp) + 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         if (!drugImage.isNullOrBlank()) {

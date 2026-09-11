@@ -220,9 +220,9 @@ class UserInterfaceUtilsTest {
 
     @Test
     fun spScale_boostedPhone_liftsBothPhoneBuckets() {
-        assertEquals(1.35f, spScale(359, boostOnPhone = true), 0f)
-        assertEquals(1.5f, spScale(360, boostOnPhone = true), 0f)
-        assertEquals(1.5f, spScale(599, boostOnPhone = true), 0f)
+        assertEquals(1.45f, spScale(359, boostOnPhone = true), 0f)
+        assertEquals(1.7f, spScale(360, boostOnPhone = true), 0f)
+        assertEquals(1.7f, spScale(599, boostOnPhone = true), 0f)
     }
 
     @Test
@@ -242,8 +242,9 @@ class UserInterfaceUtilsTest {
     }
 
     @Test
-    fun spScale_boostedPhone_matchesSmallTabletAcrossTheBreakpoint() {
-        // The old 599 -> 600 size cliff is gone; both render at the same scale.
-        assertEquals(spScale(600, boostOnPhone = true), spScale(599, boostOnPhone = true), 0f)
+    fun spScale_boostedPhone_exceedsSmallTablet() {
+        // Phone base sizes are tuned smaller than tablet ones, so a boosted phone
+        // deliberately scales past the small-tablet factor.
+        assertTrue(spScale(599, boostOnPhone = true) > spScale(600, boostOnPhone = true))
     }
 }

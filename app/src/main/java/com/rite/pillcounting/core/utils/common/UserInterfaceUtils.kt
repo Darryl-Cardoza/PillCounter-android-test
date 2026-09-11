@@ -1007,7 +1007,7 @@ object UserInterfaceUtils {
     fun activeOtpIndex(otp: String, boxCount: Int): Int =
         otp.length.coerceAtMost(boxCount - 1)
 
-    /** A customizable OTP input field with multiple boxes, auto-focus, and optional password masking. */
+    /** A customizable OTP input field with multiple boxes and auto-focus. */
     @Composable
     fun OTPTextField(
         otp: String,
@@ -1144,11 +1144,11 @@ object UserInterfaceUtils {
     }
 
     /**
-     * Pass `boostOnPhone = false` when [baseSp] is already a phone-legible size,
-     * so only tablets scale it up.
+     * Pass `boostOnPhone = true` when [baseSp] is a small tablet-tuned size that
+     * phones need lifted to stay legible. Tablets scale the same either way.
      */
     @Composable
-    fun responsiveSp(baseSp: TextUnit, boostOnPhone: Boolean = true): TextUnit {
+    fun responsiveSp(baseSp: TextUnit, boostOnPhone: Boolean = false): TextUnit {
         val configuration = LocalConfiguration.current
         val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
         val isTablet = shortestSide >= 600

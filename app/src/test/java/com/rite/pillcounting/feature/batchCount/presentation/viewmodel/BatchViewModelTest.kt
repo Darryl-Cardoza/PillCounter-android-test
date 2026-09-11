@@ -101,6 +101,7 @@ class BatchViewModelTest {
         coVerify(exactly = 0) { batchDao.getById(any()) }
     }
 
+    // BATCH_VM_001
     @Test
     fun `init with zero batch_id arg falls back to latest batch`() = runTest(testDispatcher) {
         val entity = BatchEntity(batchId = 7L, status = BatchStatus.INPROGRESS)
@@ -116,6 +117,7 @@ class BatchViewModelTest {
         assertEquals(3, vm.uniqueNdcCount.value)
     }
 
+    // BATCH_VM_002
     @Test
     fun `init with explicit batch_id loads completed entity`() = runTest(testDispatcher) {
         val entity = BatchEntity(batchId = 9L, status = BatchStatus.COMPLETED)
@@ -282,6 +284,7 @@ class BatchViewModelTest {
 
     // ────────────────────────────── deleteBatch ──────────────────────────────
 
+    // BATCH_VM_004
     @Test
     fun `deleteBatch soft-deletes batch and txns then calls onDone`() = runTest(testDispatcher) {
         val vm = createViewModel(batchId = 4L)
@@ -326,6 +329,7 @@ class BatchViewModelTest {
 
     // ────────────────────────────── getCurrentUser ──────────────────────────────
 
+    // BATCH_VM_005
     @Test
     fun `getCurrentUser returns logged-in email when available`() = runTest(testDispatcher) {
         every { preferenceHelper.getLoggedInEmail() } returns "alice"
@@ -336,6 +340,7 @@ class BatchViewModelTest {
         assertEquals("alice", vm.getCurrentUser())
     }
 
+    // BATCH_VM_006
     @Test
     fun `getCurrentUser falls back to userId when no logged-in email`() = runTest(testDispatcher) {
         every { preferenceHelper.getLoggedInEmail() } returns null
