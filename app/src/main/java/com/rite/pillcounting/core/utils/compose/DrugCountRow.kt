@@ -41,6 +41,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.ui.theme.AppTheme
@@ -219,6 +220,9 @@ fun DrugCountRow(
                 // NDC + drug type | drug name | date + bucket ID + PMS badge
                 Column(modifier = Modifier.weight(1f)) {
                     if (!data.ndc.isNullOrBlank()) {
+                        // Only DEA schedule codes (CII–CVI) render; drugType can hold other values.
+                        val scheduleCode = data.drugType?.trim()?.uppercase()
+                            ?.takeIf { isControlledDrugType(it) }
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 text = stringResource(R.string.ndc).uppercase() + " " + data.ndc,
@@ -229,17 +233,17 @@ fun DrugCountRow(
                                 overflow = TextOverflow.Ellipsis,
                                 modifier = Modifier.weight(1f, fill = false)
                             )
-//                            if (!data.drugType.isNullOrBlank() && data.drugType != "null") {
-//                                Spacer(modifier = Modifier.width(8.dp))
-//                                Text(
-//                                    text = data.drugType,
-//                                    fontSize = 14.sp,
-//                                    fontWeight = FontWeight.SemiBold,
-//                                    color = AppTheme.extendedColors.textColor,
-//                                    maxLines = 1,
-//                                    softWrap = false
-//                                )
-//                            }
+                            if (scheduleCode != null) {
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = scheduleCode,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = AppTheme.extendedColors.textColor,
+                                    maxLines = 1,
+                                    softWrap = false
+                                )
+                            }
                         }
                     }
                     Text(
