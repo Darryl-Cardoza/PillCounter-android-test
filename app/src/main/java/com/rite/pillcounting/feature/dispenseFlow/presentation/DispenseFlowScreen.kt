@@ -34,6 +34,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -838,7 +840,20 @@ fun DispenseFlowScreen(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            // Any touch counts as activity. Initial pass and no consume, so the
+            // camera's pinch-zoom and the back arrow still get the event.
+            .pointerInput(Unit) {
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitPointerEvent(PointerEventPass.Initial)
+                        pillVm.noteCountActivity()
+                    }
+                }
+            }
+    ) {
         // Camera + pill panel are hidden while the history view is up — matches
         // the legacy InventoryFlowScreen behavior so CameraX doesn't rebind on
         // rotation-driven lifecycle restarts behind the history list.

@@ -9,6 +9,7 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import androidx.annotation.VisibleForTesting
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -77,6 +78,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 /**
@@ -114,7 +116,14 @@ class PillScanningViewModel @Inject constructor(
     @Volatile private var isAnalyzingFrame = false
     private var isPaused = false
     private var idleJob: Job? = null
-    private val idleTimeout = 60_000L
+    // Bumped on counting activity. Atomic because the analyzer thread and Main
+    // both bump it.
+    private val activityTicks = AtomicLong(0)
+
+    // Count-confirmation state. See onCountObserved().
+    private var pendingCount = -1
+    private var confirmedCount = -1
+    private var consecutiveSameCount = 0
 
     private val _uiState = MutableStateFlow(PillScanningUiState())
     val uiState: StateFlow<PillScanningUiState> = _uiState.asStateFlow()
@@ -131,10 +140,6 @@ class PillScanningViewModel @Inject constructor(
 
     // --- Duplicate prevention ---
     private var currentScanId: Long = 0L
-
-    // --- Detection snapshot ---
-    private var lastDetectedSnapshot: List<Int> = emptyList()
-    private var lastChangeTimestamp: Long = System.currentTimeMillis()
 
     /** Public read-only flow for observing recent detection counts. */
     val lastTenDetections: StateFlow<ArrayDeque<Int>> = _lastTenDetections
@@ -307,6 +312,17 @@ class PillScanningViewModel @Inject constructor(
     companion object {
         private const val ZERO_DETECTIONS_THRESHOLD = 25
 
+        // Log prefix for the idle watchdog. Filter: logcat -s PillScanningVM.
+        private const val IDLE_TAG = "IDLE_WATCHDOG"
+
+        // Quiet time before the camera pauses.
+        @VisibleForTesting
+        internal const val IDLE_TIMEOUT_MS = 60_000L
+
+        // Watchdog poll step. Sets how close to the timeout the pause lands.
+        @VisibleForTesting
+        internal const val IDLE_STEP_MS = 5_000L
+
         /**
          * How long Add stays disabled after a tap. The Add handler captures the
          * current camera frame, draws the detection overlay, and writes a JPEG to
@@ -324,6 +340,11 @@ class PillScanningViewModel @Inject constructor(
          * feeling slow to the user.
          */
         private const val GLOVE_CONFIRM_FRAMES = 3
+
+        // Frames a count must hold before it counts as activity. Rejects
+        // single-frame flicker on a still tray.
+        @VisibleForTesting
+        internal const val COUNT_CONFIRM_FRAMES = 3
     }
 
     /** Model initialization states */
@@ -944,6 +965,8 @@ class PillScanningViewModel @Inject constructor(
         buffer.addLast(count)
         _lastTenDetections.value = buffer
 
+        onCountObserved(count)
+
         // Map pill centres to normalised [0..1] coordinates
         updateDetectedPills(
             pills = detections.map { det ->
@@ -967,11 +990,10 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
-    // DISABLED FOR PERFORMANCE MONITORING: Idle timeout functionality disabled
-    // to ensure continuous scanning without interruptions
+    // Fired by the watchdog after a window with no count change.
     private fun pauseAndClearBuffers() {
         _lastTenDetections.value.clear()
-        lastDetectedSnapshot = emptyList()
+        resetCountConfirmation()
         _uiState.update { it.copy(showIdleOverlay = true, gloveDetections = emptyList(), pendingTrayColorForClassification = null) }
         _trayDetections.value = emptyList()
         isTrayColorDetectionEnabled = false
@@ -981,20 +1003,66 @@ class PillScanningViewModel @Inject constructor(
         hazardousTrayToastShown = false
         isPaused = true
         _cameraPaused.value = true
-        logger.w("Camera paused due to idle timeout. Buffers cleared.")
+        logger.w("$IDLE_TAG camera paused due to idle timeout. Buffers cleared.")
     }
 
     fun resetIdleTimer() {
         idleJob?.cancel()
         idleJob = viewModelScope.launch {
-            delay(idleTimeout)
-            pauseAndClearBuffers()
+            val quietStepsNeeded = (IDLE_TIMEOUT_MS / IDLE_STEP_MS).toInt()
+            var seen = activityTicks.get()
+            var quietSteps = 0
+            logger.d("$IDLE_TAG armed | timeout=${IDLE_TIMEOUT_MS}ms step=${IDLE_STEP_MS}ms ticks=$seen")
+            while (true) {
+                delay(IDLE_STEP_MS)
+                val ticks = activityTicks.get()
+                if (ticks != seen) {
+                    logger.d("$IDLE_TAG activity=${ticks - seen} -> deadline pushed")
+                    seen = ticks
+                    quietSteps = 0
+                    continue
+                }
+                quietSteps++
+                if (quietSteps >= quietStepsNeeded) {
+                    logger.d("$IDLE_TAG quiet ${quietSteps * IDLE_STEP_MS}ms -> pausing")
+                    pauseAndClearBuffers()
+                    return@launch
+                }
+            }
         }
+    }
+
+    /** Mark counting activity so the watchdog holds off. */
+    fun noteCountActivity() {
+        activityTicks.incrementAndGet()
+    }
+
+    // A count must repeat for COUNT_CONFIRM_FRAMES frames to count as activity,
+    // so detector flicker can't hold the watchdog open forever.
+    @VisibleForTesting
+    internal fun onCountObserved(count: Int) {
+        if (count == pendingCount) {
+            consecutiveSameCount++
+        } else {
+            pendingCount = count
+            consecutiveSameCount = 1
+        }
+        if (consecutiveSameCount == COUNT_CONFIRM_FRAMES && count != confirmedCount) {
+            confirmedCount = count
+            noteCountActivity()
+        }
+    }
+
+    private fun resetCountConfirmation() {
+        pendingCount = -1
+        confirmedCount = -1
+        consecutiveSameCount = 0
     }
 
     fun pauseIdleTimer() {
         idleJob?.cancel()
         idleJob = null
+        logger.d("$IDLE_TAG cancelled")
     }
 
     /** Process an incoming frame from CameraX. */
@@ -1031,8 +1099,7 @@ class PillScanningViewModel @Inject constructor(
         _uiState.update { it.copy(showIdleOverlay = false, pendingTrayColorForClassification = null) }
 
         _lastTenDetections.value.clear()
-        lastDetectedSnapshot = emptyList()
-        lastChangeTimestamp = System.currentTimeMillis()
+        resetCountConfirmation()
         lastAddedScanSignature = null
         _trayDetections.value = emptyList()
         _uiState.update { it.copy(gloveDetections = emptyList()) }
@@ -1055,7 +1122,10 @@ class PillScanningViewModel @Inject constructor(
         isPaused = false
         _cameraPaused.value = false
 
-        logger.i("Idle overlay reset -> Analysis resumed.")
+        // The watchdog job ended when it fired, so re-arm it.
+        resetIdleTimer()
+
+        logger.d("$IDLE_TAG overlay reset -> Analysis resumed.")
     }
 
     fun updateFilteredPills(filtered: List<DetectedPill>) {
@@ -1301,6 +1371,7 @@ class PillScanningViewModel @Inject constructor(
 
         lastAddClickTime = currentTime
         lastAddedScanSignature = signature
+        noteCountActivity()
         logger.i("Adding transaction detail. Count=$currentCount")
 
         viewModelScope.launch(Dispatchers.IO) {

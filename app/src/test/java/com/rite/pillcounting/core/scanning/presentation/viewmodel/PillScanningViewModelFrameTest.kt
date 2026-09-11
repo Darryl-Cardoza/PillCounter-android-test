@@ -14,7 +14,11 @@ import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
+import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.COUNT_CONFIRM_FRAMES
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.IDLE_STEP_MS
+import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.IDLE_TIMEOUT_MS
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.LocationProvider
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
@@ -28,10 +32,13 @@ import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
@@ -153,5 +160,111 @@ class PillScanningViewModelFrameTest {
         advanceUntilIdle()
 
         assertEquals(StepState.TARGET_VERIFICATION, viewModel.currentStep.value)
+    }
+
+    // ─────────────────────────── idle watchdog ───────────────────────────
+    // The overlay must only fire on a genuinely static scene. A changing pill
+    // count is active counting and has to keep pushing the deadline forward.
+
+    // SCAN_VM_039
+    @Test
+    fun `count activity inside the window keeps the idle overlay hidden past the timeout`() = runTest {
+        advanceTimeBy(IDLE_TIMEOUT_MS / 2)
+        viewModel.noteCountActivity()
+        advanceTimeBy(IDLE_TIMEOUT_MS)
+
+        assertFalse(viewModel.uiState.value.showIdleOverlay)
+        assertFalse(viewModel.cameraPaused.value)
+    }
+
+    // SCAN_VM_040
+    @Test
+    fun `no count activity for a full window shows the idle overlay and pauses the camera`() = runTest {
+        advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
+
+        assertTrue(viewModel.uiState.value.showIdleOverlay)
+        assertTrue(viewModel.cameraPaused.value)
+    }
+
+    // SCAN_VM_041
+    @Test
+    fun `pauseIdleTimer stops the overlay from ever firing`() = runTest {
+        viewModel.pauseIdleTimer()
+        advanceTimeBy(IDLE_TIMEOUT_MS * 3)
+
+        assertFalse(viewModel.uiState.value.showIdleOverlay)
+    }
+
+    // SCAN_VM_042
+    @Test
+    fun `resetIdleOverlay re-arms the watchdog so it can fire again`() = runTest {
+        advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
+        assertTrue(viewModel.uiState.value.showIdleOverlay)
+
+        viewModel.resetIdleOverlay()
+        assertFalse(viewModel.uiState.value.showIdleOverlay)
+
+        advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
+        assertTrue(viewModel.uiState.value.showIdleOverlay)
+    }
+
+    // SCAN_VM_043
+    @Test
+    fun `add tap re-arms the watchdog`() = runTest {
+        advanceTimeBy(IDLE_TIMEOUT_MS / 2)
+        viewModel.onEvent(
+            PillScanningEvent.AddTransactionDetailClicked(
+                filteredCount = 5,
+                stepType = StepState.TARGET_VERIFICATION,
+            )
+        )
+        advanceTimeBy(IDLE_TIMEOUT_MS)
+
+        assertFalse(viewModel.uiState.value.showIdleOverlay)
+    }
+
+    // SCAN_VM_044
+    @Test
+    fun `a single early activity tick does not delay the pause by a whole extra window`() = runTest {
+        advanceTimeBy(3_000)
+        viewModel.noteCountActivity()
+
+        // Deadline is ~3s + timeout, not ~2x timeout.
+        advanceTimeBy(IDLE_TIMEOUT_MS + IDLE_STEP_MS + 1_000)
+
+        assertTrue(viewModel.uiState.value.showIdleOverlay)
+    }
+
+    // SCAN_VM_045
+    @Test
+    fun `count flicker that never holds still does not hold off the pause`() = runTest {
+        // A still tray whose detector alternates 11 and 12 every frame.
+        repeat(40) { i ->
+            viewModel.onCountObserved(if (i % 2 == 0) 11 else 12)
+            advanceTimeBy(2_000)
+        }
+
+        assertTrue(viewModel.uiState.value.showIdleOverlay)
+    }
+
+    // SCAN_VM_046
+    @Test
+    fun `a count held for the confirm window counts as activity`() = runTest {
+        advanceTimeBy(IDLE_TIMEOUT_MS / 2)
+        repeat(COUNT_CONFIRM_FRAMES) { viewModel.onCountObserved(11) }
+        advanceTimeBy(IDLE_TIMEOUT_MS)
+
+        assertFalse(viewModel.uiState.value.showIdleOverlay)
+    }
+
+    // SCAN_VM_047
+    @Test
+    fun `a confirmed count that then goes still still pauses`() = runTest {
+        repeat(COUNT_CONFIRM_FRAMES) { viewModel.onCountObserved(11) }
+        // Same count keeps arriving — confirmed once, so no further activity.
+        repeat(20) { viewModel.onCountObserved(11) }
+        advanceTimeBy(IDLE_TIMEOUT_MS + IDLE_STEP_MS + 1_000)
+
+        assertTrue(viewModel.uiState.value.showIdleOverlay)
     }
 }
