@@ -8,11 +8,9 @@ import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
-import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchDrugGroup
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchLotEntry
-import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -33,7 +31,6 @@ class BatchViewModel @Inject constructor(
     private val stockTxnDao: StockTxnDao,
     private val bottleInfoDao: BottleInfoDao,
     private val batchDao: BatchDao,
-    private val hl7Repository: Hl7Repository,
     private val preferenceHelper: PreferenceHelper
 ) : ViewModel() {
 
@@ -41,9 +38,6 @@ class BatchViewModel @Inject constructor(
 
     private val _resolvedBatchId = MutableStateFlow(argBatchId)
     val displayBatchId: StateFlow<Long> = _resolvedBatchId.asStateFlow()
-
-    private val _isBatchCompleted = MutableStateFlow(false)
-    val isBatchCompleted: StateFlow<Boolean> = _isBatchCompleted.asStateFlow()
 
     private val _batchEntity = MutableStateFlow<BatchEntity?>(null)
     val batchEntity: StateFlow<BatchEntity?> = _batchEntity.asStateFlow()
@@ -60,7 +54,6 @@ class BatchViewModel @Inject constructor(
             }
             if (batchId != 0L) {
                 val entity = batchDao.getById(batchId)
-                _isBatchCompleted.value = entity?.status == BatchStatus.COMPLETED
                 _batchEntity.value = entity
                 _uniqueNdcCount.value = stockTxnDao.getUniqueNdcCountForBatch(batchId)
             }
@@ -95,17 +88,6 @@ class BatchViewModel @Inject constructor(
         preferenceHelper.getLoggedInEmail()
             ?: preferenceHelper.getUserId()
             ?: "—"
-
-    fun endBatch(note: String? = null) {
-        viewModelScope.launch {
-            val id = _resolvedBatchId.value
-            if (id != 0L) {
-                batchDao.markAsCompleted(id)
-                if (!note.isNullOrBlank()) batchDao.updateNote(id, note)
-            }
-            hl7Repository.buildAndSendInventoryResponse(id)
-        }
-    }
 
     private fun List<BatchTxnDto>.groupAndMap(): List<BatchDrugGroup> =
         groupBy { it.drugId }

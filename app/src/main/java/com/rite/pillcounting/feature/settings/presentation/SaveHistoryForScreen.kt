@@ -3,11 +3,14 @@ package com.rite.pillcounting.feature.settings.presentation
 import Screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
@@ -50,10 +53,16 @@ fun SaveHistoryForScreen(
     val dimens = AppTheme.dimens
     val extendedColors = LocalExtendedColors.current
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(extendedColors.secondaryBackground)
+    ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .displayCutoutPadding()
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -109,6 +118,7 @@ fun SaveHistoryForScreen(
 //                HorizontalDivider(color = colorResource(R.color.border_gray).copy(alpha = 0.3f))
             }
         }
+    }
     }
 
     if (showConfirmationDialog) {

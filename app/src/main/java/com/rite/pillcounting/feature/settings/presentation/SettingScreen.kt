@@ -9,10 +9,12 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -86,11 +88,16 @@ fun SettingsScreen(
     val disabledAlpha = 0.4f
     val onHl7DisabledTap = { showToast(context, R.string.enable_hl7_from_portal_toast) }
 
-    Box(modifier = Modifier.fillMaxSize()) {
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(extendedColors.secondaryBackground)
+    ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .displayCutoutPadding()
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,

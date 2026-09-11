@@ -21,7 +21,7 @@ network auto-discovery (NSD). Data is persisted in an **encrypted Room
 │  └─ Compose NavHost (navigation/AppNavGraph.kt)                    │
 │      ├─ auth graph: Login → OtpVerify                              │
 │      └─ app graph:  Dashboard, Menu, DispenseFlow, PillScanning,   │
-│                     Batch, History, Profile, Settings, Resume…     │
+│                     History, Profile, Settings, Resume…            │
 └──────────────────────────────────────────────────────────────────┘
             │ Hilt @HiltViewModel                     │ field-injected
             ▼                                          ▼
@@ -116,7 +116,7 @@ presentation-heavy). Shared infrastructure lives under `core/`.
   `MainActivity` based on auth state (auth graph vs. dashboard).
 - Primary flows:
   - `Login → OtpVerify → Dashboard`
-  - `Dashboard → {Menu, Batch, InventoryScan, History, PartialCounts}`
+  - `Dashboard → {Menu, InventoryScan, History, PartialCounts}`
   - `DispenseFlow` is the merged single-screen RX-scan → NDC-scan → pill-count
     transaction flow (also entered from HL7/PMS-created transactions via the
     `from_hl7` flag, and from resume screens).

@@ -7,7 +7,6 @@ import androidx.compose.runtime.Composable
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
-import com.rite.pillcounting.feature.batchCount.presentation.BatchScreen
 import com.rite.pillcounting.feature.dashboard.presentation.DashboardScreen
 import com.rite.pillcounting.feature.dispenseFlow.presentation.DispenseFlowScreen
 import com.rite.pillcounting.feature.faceAuth.presentation.FaceIntroScreen
@@ -116,19 +115,6 @@ fun AppNavGraph(
             arguments = Screen.InventoryScan.navArguments,
         ) {
             InventoryFlowScreen(navController = navController)
-        }
-
-        composable(
-            route = Screen.Batch.route,
-            arguments = Screen.Batch.navArguments
-        ) {
-            val previousRoute = navController.previousBackStackEntry?.destination?.route
-            BatchScreen(
-                navController = navController,
-                onBackClick = {
-                    navController.popBackStack(Screen.Dashboard.route, inclusive = false)
-                }
-            )
         }
 
         composable(

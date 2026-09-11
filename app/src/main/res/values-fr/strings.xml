@@ -350,13 +350,8 @@
     <string name="voice_add_the_pill_count">Ajoutez le comptage de pilules</string>
     <string name="are_you_sure_you_want_to_end_this_count">Êtes-vous sûr de vouloir terminer ce comptage ?</string>
     <string name="no_items_in_that_batch_yet">Aucun article dans ce lot pour le moment</string>
-    <string name="end_this_batch_it_will_be_mark_as_completed">Terminer ce lot ? Il sera marqué comme terminé.</string>
-    <string name="end_batch">Terminer le lot</string>
-    <string name="no_qty_added_message">Veuillez ajouter au moins une quantité d\'article avant de terminer le lot.</string>
     <string name="sealed_bottles">Flacons scellés</string>
     <string name="opend_bottles">Flacons ouverts</string>
-    <string name="end_count">TERMINER LE COMPTAGE</string>
-    <string name="plus_add">+ AJOUTER</string>
     <string name="bucket">Bac</string>
     <string name="batch">Lot</string>
     <string name="no_last_batch_available">Aucun dernier lot disponible</string>

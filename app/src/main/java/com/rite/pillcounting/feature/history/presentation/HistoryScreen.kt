@@ -7,6 +7,7 @@ import android.content.Context
 import android.content.Intent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.runtime.*
@@ -78,11 +79,16 @@ fun HistoryScreen(
         viewModel.setHistoryMode(historyMode)
     }
 
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(AppTheme.extendedColors.secondaryBackground)
+    ) {
     Column(
         modifier = Modifier
             .fillMaxSize()
             .systemBarsPadding()
-            .background(AppTheme.extendedColors.secondaryBackground)
+            .displayCutoutPadding()
     ) {
 
         if (showSearch) {
@@ -127,13 +133,7 @@ fun HistoryScreen(
                     navController.navigate(Screen.HistoryDetail.route)
                 },
                 onBatchClick = { batchId ->
-                    val isCompleted = batchGroups.find { it.batchId == batchId }
-                        ?.status == com.rite.pillcounting.core.room.models.enums.BatchStatus.COMPLETED
-                    if (isCompleted) {
-                        navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
-                    } else {
-                        navController.navigate(Screen.Batch.createRoute(batchId))
-                    }
+                    navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
                 }
             )
         } else {
@@ -172,13 +172,7 @@ fun HistoryScreen(
                             navController.navigate(Screen.HistoryDetail.route)
                         },
                         onBatchClick = { batchId ->
-                            val isCompleted = batchGroups.find { it.batchId == batchId }
-                                ?.status == com.rite.pillcounting.core.room.models.enums.BatchStatus.COMPLETED
-                            if (isCompleted) {
-                                navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
-                            } else {
-                                navController.navigate(Screen.Batch.createRoute(batchId))
-                            }
+                            navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
                         }
                     )
                 },
@@ -186,6 +180,7 @@ fun HistoryScreen(
                 portraitRatio = topHeightPortrait to bottomHeightPortrait
             )
         }
+    }
     }
 
     if (showDeleteConfirmationDialog) {

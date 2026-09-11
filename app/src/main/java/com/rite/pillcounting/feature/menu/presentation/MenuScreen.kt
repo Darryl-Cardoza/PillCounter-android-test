@@ -2,9 +2,12 @@
 
 import Screen
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -65,10 +68,16 @@ fun MenuScreen(
     var showLogoutLoading by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(extendedColors.secondaryBackground)
+    ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .displayCutoutPadding()
     ) {
         BackButton(navController)
 
@@ -236,6 +245,7 @@ fun MenuScreen(
                 else -> {}
             }
         }
+    }
     }
 
 }

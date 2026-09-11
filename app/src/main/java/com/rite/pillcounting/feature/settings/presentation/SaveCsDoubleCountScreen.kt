@@ -4,11 +4,14 @@ import Screen
 import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.MaterialTheme
@@ -44,10 +47,16 @@ fun SaveCsDoubleCountScreen(
     val extendedColors = LocalExtendedColors.current
     val dimens = AppTheme.dimens
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(extendedColors.secondaryBackground)
+    ) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .systemBarsPadding()
+            .displayCutoutPadding()
     ) {
         Row(
             verticalAlignment = Alignment.CenterVertically,
@@ -94,5 +103,6 @@ fun SaveCsDoubleCountScreen(
                 }
             }
         }
+    }
     }
 }

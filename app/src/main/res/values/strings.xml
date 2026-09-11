@@ -425,13 +425,8 @@
     <string name="voice_add_the_pill_count">Add the pill count</string>
     <string name="are_you_sure_you_want_to_end_this_count">Are you sure you want to end this Count?</string>
     <string name="no_items_in_that_batch_yet">No items in this batch yet</string>
-    <string name="end_this_batch_it_will_be_mark_as_completed">End this batch? It will be marked as complete.</string>
-    <string name="end_batch">End Batch</string>
-    <string name="no_qty_added_message">Please add at least one item quantity before ending the batch.</string>
     <string name="sealed_bottles">Sealed Bottles</string>
     <string name="opend_bottles">Opened Bottles</string>
-    <string name="end_count">END COUNT</string>
-    <string name="plus_add">+ ADD</string>
     <string name="bucket">Bucket</string>
     <string name="batch">Batch</string>
     <string name="no_last_batch_available">No last batch available</string>
