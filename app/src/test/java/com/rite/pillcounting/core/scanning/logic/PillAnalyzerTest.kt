@@ -11,6 +11,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.tensorflow.lite.Interpreter
+import java.util.BitSet
 
 /**
  * Unit tests for [PillAnalyzer].
@@ -137,5 +138,66 @@ class PillAnalyzerTest {
         assertEquals(0L, lastRunField.get(analyzer))
         @Suppress("UNCHECKED_CAST")
         assertTrue((cachedField.get(analyzer) as List<GloveDetection>).isEmpty())
+    }
+
+    // ── isOnTray: the deploy-contract mask rule ──────────────────────────
+
+    /**
+     * An 8×8 mask in frame pixels (scale 1, no pad): columns 0–3 are CHUTE,
+     * columns 4–7 are TRAY, so the chute wall runs between x=3 and x=4.
+     */
+    private fun trayAndChute(): List<TrayDetection> {
+        val size = 8
+        val tray = BitSet(size * size)
+        val chute = BitSet(size * size)
+        for (y in 0 until size) for (x in 0 until size) {
+            if (x >= 4) tray.set(y * size + x) else chute.set(y * size + x)
+        }
+        val info = Letterbox.ScaleInfo(scale = 1f, padX = 0f, padY = 0f, inputSize = size)
+        return listOf(
+            TrayDetection(realRect(4f, 0f, 8f, 8f), 1f, TrayClass.TRAY, tray, size, info),
+            TrayDetection(realRect(0f, 0f, 4f, 8f), 1f, TrayClass.CHUTE, chute, size, info)
+        )
+    }
+
+    @Test
+    fun `isOnTray counts a pill resting on the tray side of the chute wall`() {
+        val trays = trayAndChute()
+        // Centre on tray pixel (4, 3), hard against the wall: six of the nine
+        // samples are tray, three are chute, so it counts — and it keeps counting
+        // however the argmax boundary wanders, because a wander moves one vote.
+        assertTrue(PillAnalyzer.isOnTray(4.5f, 3.5f, trays, dilate = 1f))
+    }
+
+    @Test
+    fun `isOnTray rejects a pill sitting in the chute against the wall`() {
+        val trays = trayAndChute()
+        // Centre on chute pixel (3, 3), one pixel the other side of the wall.
+        // The dilation reaches the tray, but six of nine samples are chute, so
+        // the chute wins. This is the pill the old dilation-only rule counted.
+        assertFalse(PillAnalyzer.isOnTray(3.5f, 3.5f, trays, dilate = 1f))
+        assertFalse(PillAnalyzer.isOnTray(3.5f, 3.5f, trays, dilate = 0f))
+    }
+
+    @Test
+    fun `isOnTray rejects a pill deep in the chute`() {
+        val trays = trayAndChute()
+        assertFalse(PillAnalyzer.isOnTray(1.5f, 3.5f, trays, dilate = 1f))
+    }
+
+    @Test
+    fun `isOnTray keeps the dilation where the tray meets background`() {
+        val trays = trayAndChute()
+        // Centre on the tray's outer column (7, 3): three samples fall off the
+        // mask entirely. No chute votes, so tray still wins and a pill on the
+        // rim is not dropped.
+        assertTrue(PillAnalyzer.isOnTray(7.5f, 3.5f, trays, dilate = 1f))
+    }
+
+    @Test
+    fun `isOnTray accepts a centre on the tray and rejects one off every mask`() {
+        val trays = trayAndChute()
+        assertTrue(PillAnalyzer.isOnTray(6.5f, 3.5f, trays, dilate = 0f))
+        assertFalse(PillAnalyzer.isOnTray(20f, 20f, trays, dilate = 1f))
     }
 }

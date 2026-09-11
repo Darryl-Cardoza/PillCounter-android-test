@@ -33,7 +33,7 @@ import kotlin.math.sqrt
  *      contract: "feed the detector the tray crop, not the whole frame").
  *      Without a complete tray the full-frame letterbox is used.
  *   4. Postprocess pill output (boxes mapped back to full-frame coordinates)
- *      and keep pills inside the tray mask and outside the chute.
+ *      and keep pills whose centre is on the tray mask dilated by half a pill.
  *   5. Callback to UI.
  */
 class PillAnalyzer(
@@ -133,6 +133,44 @@ class PillAnalyzer(
         // A crop narrower than this (px) means the tray is too far away to
         // count from; use the full frame rather than upscale noise.
         private const val TRAY_CROP_MIN_SIDE = 64
+
+        /**
+         * The deploy contract's mask rule, decided by vote: a pill counts when
+         * more of the nine samples around its centre (spaced [dilate] px, half a
+         * median pill side) land on TRAY than on CHUTE.
+         *
+         * Two rules were tried before this one and each failed at the chute wall,
+         * where the two classes abut and the argmax boundary wanders 2–4 frame px
+         * per frame:
+         *
+         *  - Tray mask, minus a veto on the raw chute pixel under the centre. The
+         *    veto cancelled the dilation exactly at the wall, so every pill
+         *    resting on the tray side blinked in and out and the count oscillated.
+         *  - Dilated tray mask alone, no chute test. Dilation grows the tray half
+         *    a pill in *every* direction, including into the chute, so the first
+         *    row of pills sitting in the chute against the wall was counted.
+         *
+         * Voting fixes both because it moves the decision line off the boundary
+         * and onto the midpoint between the two classes. A pill on the tray at
+         * the wall has most of its samples on tray and counts; a pill in the
+         * chute at the wall has most on chute and does not; a pill on the tray's
+         * outer rim has some samples on background and none on chute, so tray
+         * still wins and the dilation keeps doing its job. A 2–4 px wander moves
+         * at most one vote of nine, which can only flip a pill already sitting on
+         * the midline.
+         */
+        internal fun isOnTray(cx: Float, cy: Float, trays: List<TrayDetection>, dilate: Float): Boolean {
+            var trayVotes = 0
+            var chuteVotes = 0
+            for (t in trays) {
+                val votes = t.votesWithin(cx, cy, dilate)
+                when (t.cls) {
+                    TrayClass.TRAY -> if (votes > trayVotes) trayVotes = votes
+                    TrayClass.CHUTE -> if (votes > chuteVotes) chuteVotes = votes
+                }
+            }
+            return trayVotes > chuteVotes
+        }
     }
 
     suspend fun analyze(imageProxy: ImageProxy) {
@@ -298,6 +336,9 @@ class PillAnalyzer(
             // ── STEP 4: Postprocess pill output ───────────────────────────────
             val pillsInTray: List<Detection>
             var visibleOnTray = 0
+            // Post-NMS detections the mask rule rejected this frame — the chute,
+            // the rim margin of the crop, or a segmentation boundary that moved.
+            var offTray = 0
             if (!pillSucceeded) {
                 logger.i("PillFilter — inference failed")
                 pillsInTray = emptyList()
@@ -322,25 +363,20 @@ class PillAnalyzer(
                 // the hysteretic tray gate above: a complete tray (tray + chute)
                 // must have been seen within the last GATE_CLOSE_FRAMES frames.
                 // Deploy-contract mask rule: a pill counts when its centre lies on
-                // the tray mask dilated by half a pill side, and not in the chute.
+                // the tray mask dilated by half a pill side (see isOnTray).
                 if (!gateOpen) {
                     pillsInTray = emptyList()
                 } else {
                     val dilate = MASK_DILATE_PILL_FRACTION * medianSide(confirmedPills)
                     val onTray = { pill: Detection ->
-                        val cx = pill.rect.centerX()
-                        val cy = pill.rect.centerY()
-                        gateTrays.any { t ->
-                            t.cls == TrayClass.TRAY && t.containsPointWithin(cx, cy, dilate)
-                        } && gateTrays.none { t ->
-                            t.cls == TrayClass.CHUTE && t.containsPoint(cx.toInt(), cy.toInt())
-                        }
+                        isOnTray(pill.rect.centerX(), pill.rect.centerY(), gateTrays, dilate)
                     }
                     pillsInTray = confirmedPills.filter(onTray)
                     // What the detector actually sees on the tray this frame, at the
                     // score a track can survive on. A coasting or duplicate track has
                     // no detection under it, so the count is never allowed above this.
                     visibleOnTray = pillsAfterNms.count { it.confidence >= PillTracker.KEEP_SCORE && onTray(it) }
+                    offTray = pillsAfterNms.size - visibleOnTray
                 }
             }
 
@@ -359,7 +395,7 @@ class PillAnalyzer(
                 "Frame ${originalWidth}x${originalHeight} | trays=${trayDetections.size} " +
                         "counted=$countedPills classes=$classBreakdown gloves=${gloveDetections.size} " +
                         "pillInput=${pillRegion?.let { "${it.width()}x${it.height()}" } ?: "full"} " +
-                        "visible=$visibleOnTray tracked=${pillsInTray.size} " +
+                        "visible=$visibleOnTray offTray=$offTray tracked=${pillsInTray.size} " +
                         "motion=${cameraMotion?.let { "%.1f,%.1f r=%.2f".format(it.dx, it.dy, it.response) } ?: "n/a"} " +
                         "pill=${pillInferenceMs}ms trayGlove=${parallelMs}ms total=${totalMs}ms"
             )

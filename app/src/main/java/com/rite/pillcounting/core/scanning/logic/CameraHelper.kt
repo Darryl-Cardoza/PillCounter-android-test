@@ -25,6 +25,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.TorchState
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -147,6 +148,16 @@ class CameraHelper(
 
         /** Hard cap on how long the focus gate may stay closed. */
         private const val MAX_GATE_CLOSED_MS = 1_000L
+
+        /**
+         * Analysis stream size. 4:3 to match the sensor, and large enough that a
+         * tray filling ~30% of the frame still gives the pill model ~25 px pills
+         * from real pixels. The previous 1280x720 request resolved to 960x720
+         * (CameraX's default 4:3 aspect strategy + CLOSEST_LOWER), which left
+         * pills ~11 px in the source and blurred after the 2x crop upscale.
+         * CLOSEST_LOWER_THEN_HIGHER lands on 1440x1080 on devices without this size.
+         */
+        val ANALYSIS_RESOLUTION = Size(1920, 1440)
     }
 
     // ---------------------------------------------------------
@@ -155,7 +166,7 @@ class CameraHelper(
 
     fun startCamera(
         previewView: PreviewView,
-        targetResolution: Size = Size(1280, 720),
+        targetResolution: Size = ANALYSIS_RESOLUTION,
         cameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
     ) {
         logger.i("Starting camera | Target=${targetResolution.width}×${targetResolution.height}")
@@ -177,10 +188,11 @@ class CameraHelper(
 
             try {
                 val resolutionSelector = ResolutionSelector.Builder()
+                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
                     .setResolutionStrategy(
                         ResolutionStrategy(
                             targetResolution,
-                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
                         )
                     )
                     .build()
@@ -232,7 +244,10 @@ class CameraHelper(
                 // Fresh bind starts unlocked — the previous options did not survive.
                 aeAwbLocked = false
 
-                logger.i("Camera successfully bound")
+                logger.i(
+                    "Camera successfully bound | analysis=${imageAnalysis?.resolutionInfo?.resolution} " +
+                        "preview=${preview?.resolutionInfo?.resolution} (requested $targetResolution)"
+                )
                 logExposureLockCapability()
 
                 // initial zoom
@@ -569,7 +584,7 @@ class CameraHelper(
 
     fun resumeCamera(
         previewView: PreviewView,
-        targetResolution: Size = Size(1280, 720)
+        targetResolution: Size = ANALYSIS_RESOLUTION
     ) {
         startCamera(previewView, targetResolution)
     }
