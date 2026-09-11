@@ -229,5 +229,14 @@ dependencies {
     // OpenCV — tray color detection
     implementation(libs.opencv)
 
-    implementation(project(":hl7Core"))
+    // targetConfiguration pins resolution to the legacy "default" configuration,
+    // which AGP still publishes as a single unambiguous variant. Without it,
+    // the CycloneDX SBOM task's own dependency-walking code (not AGP's normal
+    // build) can't choose between hl7Core's ~20 android-* runtime variants and
+    // fails cyclonedxBom with an ArtifactSelectionException. cyclonedxBom's
+    // own skipProjects setting does NOT fix this -- it only stops hl7Core from
+    // being scanned as its own target, not from appearing as a dependency
+    // inside :app's classpath, which is what actually crashes. See
+    // https://github.com/CycloneDX/cyclonedx-gradle-plugin/issues/478.
+    implementation(project(":hl7Core", configuration = "default"))
 }
