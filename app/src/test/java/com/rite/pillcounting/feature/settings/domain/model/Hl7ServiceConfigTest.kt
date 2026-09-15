@@ -63,8 +63,18 @@ class Hl7ServiceConfigTest {
     }
 
     @Test
-    fun resolvePmsHostName_acceptsUdp() {
-        assertEquals("_mypms._udp", Hl7ServiceConfig.resolvePmsHostName("_mypms._udp"))
+    fun resolvePmsHostName_udpFallsBackToConstant() {
+        // MLLP is TCP only; a _udp type could never reach the PMS.
+        assertEquals(Hl7ServiceConfig.PMS_HOST_NAME, Hl7ServiceConfig.resolvePmsHostName("_mypms._udp"))
+    }
+
+    @Test
+    fun resolvePmsHostName_labelOver15CharsFallsBackToConstant() {
+        // RFC 6763 caps the label at 15; older NsdManager builds throw on longer ones.
+        assertEquals(
+            Hl7ServiceConfig.PMS_HOST_NAME,
+            Hl7ServiceConfig.resolvePmsHostName("_sixteencharacter._tcp")
+        )
     }
 
     @Test

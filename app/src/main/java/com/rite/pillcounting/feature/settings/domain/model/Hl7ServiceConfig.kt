@@ -10,10 +10,11 @@ object Hl7ServiceConfig {
     const val PILL_COUNTER_HOST_NAME = "_pillcounting._tcp"
 
     /**
-     * mDNS service type: an underscore-prefixed label followed by ._tcp or ._udp.
-     * Anything else is rejected — NsdManager throws on it, and the value also reaches MSH-5.
+     * mDNS service type: an underscore-prefixed label of 1-15 letters, digits or hyphens
+     * followed by ._tcp. RFC 6763 caps the label at 15 and older NsdManager builds throw
+     * on longer ones; MLLP is TCP only, so a _udp type could never reach the PMS.
      */
-    private val SERVICE_TYPE = Regex("^_[A-Za-z0-9_-]{1,61}\\._(tcp|udp)$")
+    private val SERVICE_TYPE = Regex("^_[A-Za-z0-9-]{1,15}\\._tcp$")
 
     /** Server value wins when it is a usable service type; anything else falls back. */
     fun resolvePmsHostName(fromServer: String?): String =
