@@ -71,14 +71,9 @@ jobs:
       lint_check_all_warnings: false
 
       # ---- dead code ----
-      # DAGP (dependency-analysis) can't be injected via this pipeline's
-      # init-script approach for a multi-module project: its own internal
-      # subproject-propagation code (RootPlugin.conditionallyApplyToSubprojects)
-      # applies itself to every subproject by string id, and that can never
-      # resolve from an initscript-injected classpath -- true in both 1.x and
-      # 2.x, so no version pin fixes it. Off until DAGP is added directly to
-      # this repo's own settings.gradle.kts/build.gradle.kts instead.
-      run_dead_code: false
+      # Report-only for now: enable once the buildHealth findings have been
+      # triaged, then flip fail_on_dead_code to true.
+      run_dead_code: true
       run_deep_dead_code: false
 
       # ---- security ----
