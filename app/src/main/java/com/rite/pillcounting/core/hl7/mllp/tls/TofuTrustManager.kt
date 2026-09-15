@@ -29,31 +29,6 @@ class TofuTrustManager(
 
     private val logger = AppLogger.create<TofuTrustManager>()
 
-    init {
-        migrateLegacyPin()
-    }
-
-    /**
-     * Moves a pin stored under the old single-peer key onto this peer's key, once.
-     * Without it every upgraded terminal re-does first-contact TOFU, which is a window where
-     * anything answering on the PMS port would be trusted and pinned.
-     */
-    private fun migrateLegacyPin() {
-        if (pinKey == LEGACY_PIN_KEY) return
-        if (plainPrefs.contains(pinKey)) return
-        val legacy = plainPrefs.getString(LEGACY_PIN_KEY, null) ?: return
-        // The stored value is already encrypted — move the blob, don't decrypt and re-encrypt.
-        plainPrefs.edit {
-            putString(pinKey, legacy)
-            remove(LEGACY_PIN_KEY)
-        }
-        logger.block(
-            "HL7-NSD · Migrated legacy TOFU pin to a per-peer key",
-            "From" to LEGACY_PIN_KEY,
-            "To" to pinKey,
-        )
-    }
-
     private val systemTrustManager: X509TrustManager by lazy {
         val factory = TrustManagerFactory.getInstance(
             TrustManagerFactory.getDefaultAlgorithm()
@@ -126,6 +101,13 @@ class TofuTrustManager(
         plainPrefs.edit { putString(pinKey, encrypt(pin)) }
     }
 
+    /** The old single-peer pin, or null when this peer already is the legacy key. */
+    private fun legacyPin(): String? {
+        if (pinKey == LEGACY_PIN_KEY) return null
+        val stored = plainPrefs.getString(LEGACY_PIN_KEY, null) ?: return null
+        return try { decrypt(stored) } catch (e: Exception) { null }
+    }
+
     // ── X509TrustManager ─────────────────────────────────────────────
 
     override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {
@@ -141,6 +123,22 @@ class TofuTrustManager(
 
         when (storedPin) {
             null -> {
+                // Same cert as the old single-peer pin means this is the server that was
+                // already trusted, so adopt it instead of re-doing first contact. A different
+                // cert is a different box and takes its own key. The legacy key is left in
+                // place: static mode uses it directly, and deleting it on a guess was what
+                // bricked the second PMS on a multi-server site.
+                if (legacyPin() == incomingPin) {
+                    savePin(incomingPin)
+                    logger.block(
+                        "HL7-NSD · Adopted the legacy TOFU pin for this peer",
+                        "From" to LEGACY_PIN_KEY,
+                        "To" to pinKey,
+                        "Fingerprint" to incomingPin.take(23),
+                    )
+                    return
+                }
+
                 logger.block(
                     "HL7-NSD · TOFU first contact — pinning this certificate",
                     "Pin key" to pinKey,

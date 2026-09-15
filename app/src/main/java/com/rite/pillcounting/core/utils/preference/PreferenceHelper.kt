@@ -61,7 +61,6 @@ private const val KEY_HAZARDOUS_DRUG = "key_hazardous_drug"
 private const val KEY_HAZARDOUS_TRAY_COLOR = "key_hazardous_tray_color"
 private const val KEY_HL7_PMS_HOST = "key_hl7_pms_host"
 private const val KEY_HL7_PILLCOUNTER_HOST = "key_hl7_pillcounter_host"
-private const val KEY_HL7_MSH_RECEIVING_FACILITY = "key_hl7_msh_receiving_facility"
 private const val KEY_HL7_CONFIG_FETCHED = "key_hl7_config_fetched"
 private const val KEY_HL7_VERSION = "key_hl7_version"
 private const val KEY_BYPASS_TLS = "key_bypass_tls"
@@ -468,12 +467,6 @@ class PreferenceHelper @Inject constructor(
     fun getHl7PillCounterHost(): String =
         prefs.getString(KEY_HL7_PILLCOUNTER_HOST) ?: ""
 
-    /**
-     * MSH-5 receiving facility. Deliberately separate from the NSD service types: those are now
-     * backend-writable, and an mDNS service type is not a facility identifier.
-     */
-    fun getMshReceivingFacility(): String =
-        prefs.getString(KEY_HL7_MSH_RECEIVING_FACILITY)?.takeIf { it.isNotBlank() } ?: "PMS"
     // ─────────────────────────── TERMINALS ───────────────────────────
 
     /**

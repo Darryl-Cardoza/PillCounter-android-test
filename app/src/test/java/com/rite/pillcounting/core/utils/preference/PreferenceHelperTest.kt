@@ -544,11 +544,6 @@ class PreferenceHelperTest {
         assertEquals("_other._tcp", helper.getHl7PmsHost())
     }
 
-    @Test
-    fun `getMshReceivingFacility defaults to PMS`() {
-        assertEquals("PMS", helper.getMshReceivingFacility())
-    }
-
     // ─────────────────────────── TERMINALS ───────────────────────────
 
     @Test

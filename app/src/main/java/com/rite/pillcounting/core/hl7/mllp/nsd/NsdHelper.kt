@@ -59,7 +59,6 @@ class NsdHelper(context: Context) {
         private val DiscoveryLock = Any()
 
         private var sharedDiscoveryListener: NsdManager.DiscoveryListener? = null
-        private val isDiscovering = AtomicBoolean(false)
 
         /** What discovery is listening for, so a repeat request can be told from a real change. */
         @Volatile
@@ -100,7 +99,6 @@ class NsdHelper(context: Context) {
         internal fun resetRegistrationStateForTest() {
             synchronized(DiscoveryLock) {
                 sharedDiscoveryListener = null
-                isDiscovering.set(false)
                 activeDiscoveryType = null
             }
             synchronized(RegistrationLock) {
@@ -344,12 +342,13 @@ class NsdHelper(context: Context) {
      */
     fun discover(
         serviceType: String,
+        onLost: (NsdServiceInfo) -> Unit = {},
         onResolved: (NsdServiceInfo) -> Unit
     ) {
         val normalizedType = normalizeType(serviceType)
 
         synchronized(DiscoveryLock) {
-            if (sharedDiscoveryListener != null || isDiscovering.get()) {
+            if (sharedDiscoveryListener != null) {
                 if (activeDiscoveryType == normalizedType) {
                     logger.d("Already discovering '$normalizedType' — ignoring duplicate request")
                     return
@@ -379,6 +378,7 @@ class NsdHelper(context: Context) {
 
                 override fun onServiceLost(serviceInfo: NsdServiceInfo) {
                     logger.w("Service lost: ${serviceInfo.serviceName}")
+                    onLost(serviceInfo)
                 }
 
                 override fun onDiscoveryStopped(type: String) {
@@ -404,7 +404,6 @@ class NsdHelper(context: Context) {
             // register a listener — the first became unreachable and ran for the whole process.
             sharedDiscoveryListener = listener
             activeDiscoveryType = normalizedType
-            isDiscovering.set(true)
 
             nsdManager.discoverServices(normalizedType, PROTOCOL, listener)
         }
@@ -413,7 +412,6 @@ class NsdHelper(context: Context) {
     /** Clears discovery state only if [listener] is still the active one. Hold [DiscoveryLock]. */
     private fun clearIfCurrent(listener: NsdManager.DiscoveryListener) {
         if (sharedDiscoveryListener !== listener) return
-        isDiscovering.set(false)
         sharedDiscoveryListener = null
         activeDiscoveryType = null
     }
@@ -556,7 +554,6 @@ class NsdHelper(context: Context) {
     private fun stopDiscoveryLocked() {
         val listener = sharedDiscoveryListener
         if (listener == null) {
-            isDiscovering.set(false)
             activeDiscoveryType = null
             return
         }
@@ -565,7 +562,6 @@ class NsdHelper(context: Context) {
         } catch (e: Exception) {
             logger.w("stopServiceDiscovery threw — clearing discovery state anyway: ${e.message}")
         } finally {
-            isDiscovering.set(false)
             sharedDiscoveryListener = null
             activeDiscoveryType = null
         }

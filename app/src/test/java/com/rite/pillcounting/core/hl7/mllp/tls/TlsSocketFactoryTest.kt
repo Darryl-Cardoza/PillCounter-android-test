@@ -7,7 +7,9 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.unmockkAll
+import io.mockk.verify
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -122,5 +124,44 @@ class TlsSocketFactoryTest {
         // storage key, not construction/lazy-init behavior itself.
         assertNull(factoryA.pinnedFingerprint())
         assertNull(factoryB.pinnedFingerprint())
+    }
+
+    // ── peerIdentifier ──────────────────────────────────────────────────
+
+    @Test
+    fun `peerIdentifier defaults to the legacy host identifier`() {
+        val factory = TlsSocketFactory(context)
+
+        assertEquals(TlsSocketFactory.LEGACY_HOST_IDENTIFIER, factory.peerIdentifier)
+    }
+
+    @Test
+    fun `peerIdentifier selects which pin key is read`() {
+        val keys = mutableListOf<String>()
+        val prefs: SharedPreferences = mockk(relaxed = true)
+        every { prefs.getString(capture(keys), null) } returns null
+        every { context.getSharedPreferences("tofu_pins", Context.MODE_PRIVATE) } returns prefs
+
+        val factory = TlsSocketFactory(context)
+        factory.peerIdentifier = "PMS_A"
+        factory.pinnedFingerprint()
+        factory.peerIdentifier = "PMS_B"
+        factory.pinnedFingerprint()
+
+        assertEquals(listOf("pin_PMS_A", "pin_PMS_B"), keys)
+    }
+
+    @Test
+    fun `clearServerPin removes the key for the current peerIdentifier`() {
+        val editor: SharedPreferences.Editor = mockk(relaxed = true)
+        val prefs: SharedPreferences = mockk(relaxed = true)
+        every { prefs.edit() } returns editor
+        every { context.getSharedPreferences("tofu_pins", Context.MODE_PRIVATE) } returns prefs
+
+        val factory = TlsSocketFactory(context)
+        factory.peerIdentifier = "PMS_A"
+        factory.clearServerPin()
+
+        verify { editor.remove("pin_PMS_A") }
     }
 }

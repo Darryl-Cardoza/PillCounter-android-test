@@ -475,4 +475,41 @@ class NsdHelperTest {
         verify(exactly = 1) { nsdManager.stopServiceDiscovery(discListenerSlot.captured) }
         verify(exactly = 1) { nsdManager.unregisterService(regListenerSlot.captured) }
     }
+
+    // -------------------------------------------------------------------------
+    // onServiceLost
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `onServiceLost forwards the service to the onLost callback`() {
+        val listenerSlot = slot<NsdManager.DiscoveryListener>()
+        every {
+            nsdManager.discoverServices(any<String>(), any<Int>(), capture(listenerSlot))
+        } answers { }
+
+        var lost: String? = null
+        helper.discover("http", onLost = { lost = it.serviceName }) {}
+
+        val gone: NsdServiceInfo = mockk(relaxed = true)
+        every { gone.serviceName } returns "PMS A"
+        listenerSlot.captured.onServiceLost(gone)
+
+        assertEquals("PMS A", lost)
+    }
+
+    @Test
+    fun `onServiceLost is a no-op when no onLost callback was given`() {
+        val listenerSlot = slot<NsdManager.DiscoveryListener>()
+        every {
+            nsdManager.discoverServices(any<String>(), any<Int>(), capture(listenerSlot))
+        } answers { }
+
+        helper.discover("http") {}
+
+        val gone: NsdServiceInfo = mockk(relaxed = true)
+        every { gone.serviceName } returns "PMS A"
+
+        // The default callback must not throw — old call sites pass no onLost at all.
+        listenerSlot.captured.onServiceLost(gone)
+    }
 }

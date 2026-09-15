@@ -228,8 +228,9 @@ class Hl7ServiceManager @Inject constructor(
 
     /**
      * Applies new NSD service types to the running service: re-registers the broadcast and
-     * re-points discovery. The PMS connection is dropped as part of the re-discovery, because
-     * the peer it found was discovered under the previous type.
+     * re-points discovery. Each is gated on its own type — a broadcast-only change must not
+     * drop a healthy PMS connection. Re-discovery does drop it, because the peer it found was
+     * discovered under the previous type.
      */
     fun updateServiceTypes(nsdBroadcastType: String, nsdDiscoveryType: String) {
         val existing = currentConfig
@@ -238,9 +239,10 @@ class Hl7ServiceManager @Inject constructor(
             return
         }
 
-        if (existing.nsdBroadcastType == nsdBroadcastType &&
-            existing.nsdDiscoveryType == nsdDiscoveryType
-        ) {
+        val broadcastChanged = existing.nsdBroadcastType != nsdBroadcastType
+        val discoveryChanged = existing.nsdDiscoveryType != nsdDiscoveryType
+
+        if (!broadcastChanged && !discoveryChanged) {
             logger.i("NSD service types unchanged — nothing to do")
             return
         }
@@ -271,7 +273,7 @@ class Hl7ServiceManager @Inject constructor(
             return
         }
 
-        service.rebroadcastNsd()
-        service.rediscoverPms()
+        if (broadcastChanged) service.rebroadcastNsd()
+        if (discoveryChanged) service.rediscoverPms()
     }
 }

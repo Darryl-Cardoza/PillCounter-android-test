@@ -420,14 +420,13 @@ class HL7Service : Service() {
     /* -------------------- NSD -------------------- */
 
     private fun startNsdBroadcast() {
-        logger.i("┌──────────────────────────────────────────────────────┐")
-        logger.i("│ HL7Service: Starting NSD Broadcast                  │")
-        logger.i("├──────────────────────────────────────────────────────┤")
-        logger.i("│ Service Name: ${config.nsdBroadcastServiceName}")
-        logger.i("│ Service Type: ${config.nsdBroadcastType}")
-        logger.i("│ Port: ${config.serverPort}")
-        logger.i("│ Protocol: MLLP/TLS")
-        logger.i("└──────────────────────────────────────────────────────┘")
+        logger.block(
+            "HL7-NSD · Starting NSD broadcast",
+            "Service name" to config.nsdBroadcastServiceName,
+            "Service type" to config.nsdBroadcastType,
+            "Port" to config.serverPort,
+            "Protocol" to "MLLP/TLS",
+        )
 
         // Report from the daemon's callback, not from here. Registration is asynchronous and
         // may be refused or renamed, so announcing success inline logged a registration that
@@ -456,15 +455,12 @@ class HL7Service : Service() {
      * - Terminal name changes
      */
     fun rebroadcastNsd() {
-        logger.w("═══════════════════════════════════════════════════════════")
-        logger.w("HL7Service: REBROADCASTING NSD")
-        logger.w("  Current Config:")
-        logger.w("    • Service Name: ${config.nsdBroadcastServiceName}")
-        logger.w("    • Service Type: ${config.nsdBroadcastType}")
-        logger.w("    • Port: ${config.serverPort}")
-        logger.w("  → Step 1: Stopping current NSD registration...")
-
-        logger.w("Rebroadcasting NSD service with name: ${config.nsdBroadcastServiceName}")
+        logger.block(
+            "HL7-NSD · Rebroadcasting NSD",
+            "Service name" to config.nsdBroadcastServiceName,
+            "Service type" to config.nsdBroadcastType,
+            "Port" to config.serverPort,
+        )
 
         // Wait for the daemon to confirm the instance name is free instead of guessing a
         // delay. A fixed 500ms wait was not enough on real devices: the old record was still
@@ -492,12 +488,18 @@ class HL7Service : Service() {
      * the previous service type and is no longer the one this terminal should use.
      */
     fun rediscoverPms() {
+        // Static mode never discovers, so a service-type change cannot affect its peer.
+        // Dropping the connection here would reconnect to the same address for nothing.
+        if (config.useStaticPmsConnection) {
+            logger.w("HL7-NSD · Static PMS mode — service types are not used; keeping the connection")
+            return
+        }
+
         logger.block(
             "HL7-NSD · Re-pointing PMS discovery",
             "Discovery type" to config.nsdDiscoveryType,
             "Broadcast type" to config.nsdBroadcastType,
             "Previous peer" to (lastConnectedHost ?: "none"),
-            "Static PMS mode" to config.useStaticPmsConnection,
         )
         lastConnectedHost = null
         // Drop the whole candidate set: it was discovered under the previous service type, so
@@ -535,7 +537,10 @@ class HL7Service : Service() {
 
         listener?.onNsdDiscoveryStarted()
 
-        nsdHelper.discover(config.nsdDiscoveryType) { info ->
+        nsdHelper.discover(
+            config.nsdDiscoveryType,
+            onLost = { info -> removeLostPeer(info.serviceName) },
+        ) { info ->
             serviceScope.launch {
 
                 // Prefer IPv4 — IPv6 link-local addresses (fe80::) cause TCP
@@ -614,6 +619,10 @@ class HL7Service : Service() {
         startPeerWatchdog(peer)
     }
 
+    /** The next candidate to try after [peer] failed, or null when nothing else is known. */
+    private fun nextFailoverPeer(peer: String): String? =
+        discoveredPmsPeers.keys.firstOrNull { it != peer && it !in failedPmsPeers }
+
     /**
      * Hands the terminal to another discovered PMS if [peer] hasn't connected in time.
      *
@@ -629,9 +638,7 @@ class HL7Service : Service() {
             if (pmsPeerClaim.get() != peer) return@launch
 
             failedPmsPeers += peer
-            val next = discoveredPmsPeers.keys.firstOrNull {
-                it != peer && it !in failedPmsPeers
-            }
+            val next = nextFailoverPeer(peer)
 
             if (next == null) {
                 // Nothing else known. Keep the claim and keep retrying, but clear the failure
@@ -661,6 +668,14 @@ class HL7Service : Service() {
             }
             connectToPeer(next, discoveredPmsPeers[next] ?: "PMS")
         }
+    }
+
+    /** Drops a vanished PMS from the candidate set so failover stops paying 15s for a dead peer. */
+    private fun removeLostPeer(serviceName: String) {
+        val peer = discoveredPmsPeers.entries.firstOrNull { it.value == serviceName }?.key ?: return
+        discoveredPmsPeers.remove(peer)
+        failedPmsPeers.remove(peer)
+        logger.w("HL7-NSD · '$serviceName' at $peer went away — dropped from failover candidates")
     }
 
     /** Pin key segment for a peer. Sanitized because it becomes part of a SharedPreferences key. */
@@ -706,8 +721,8 @@ class HL7Service : Service() {
 
         lastConnectedHost = "$host:$port"
         lastDiscoveredServiceName = "PMS"
-        // Static mode never resolves an mDNS instance name, so key the pin by address.
-        tlsFactory.peerIdentifier = pinIdentifierFor("$host:$port")
+        // One PMS in static mode, so the pin must not move when the address does.
+        tlsFactory.peerIdentifier = TlsSocketFactory.LEGACY_HOST_IDENTIFIER
 
         listener?.onNsdServiceFound("PMS", host, port)
 
