@@ -433,6 +433,26 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
+    /**
+     * Clears everything a reset discards, leaving the order itself (Rx, target, bucket,
+     * HL7 ids) intact so the same transaction restarts at the container scan.
+     */
+    @Query(
+        """
+    UPDATE pill_count_txn SET
+        isNdcVerified = 0,
+        workflowStep = NULL,
+        bottleInfoListJson = NULL,
+        isSubstitute = 0,
+        substitutedDrugId = NULL,
+        hazardousTrayDetected = NULL,
+        isGlovesPresent = 0,
+        updatedAt = :now
+    WHERE txnId = :txnId
+    """
+    )
+    suspend fun resetForRecount(txnId: Long, now: Long = System.currentTimeMillis())
+
     @Query("UPDATE pill_count_txn SET hl7MessageControlId = :messageControlId, updatedAt = :now WHERE txnId = :txnId")
     suspend fun updateHl7MessageControlId(
         txnId: Long,

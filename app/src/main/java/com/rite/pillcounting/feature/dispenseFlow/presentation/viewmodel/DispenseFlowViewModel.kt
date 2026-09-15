@@ -164,6 +164,10 @@ class DispenseFlowViewModel @Inject constructor(
                     refillNo = txn.refillNo,
                     qty = txn.targetCount?.toString(),
                     isHazardous = drug?.isHazardous ?: false,
+                    // Shown on the container-scan step's details bar.
+                    drugImage = drug?.drugImagePath.orEmpty(),
+                    ndcStrength = drug?.strength,
+                    selectedBucketId = txn.bucketId.orEmpty(),
                 )
             }
             logger.i("[HAZARDOUS] HL7 init: txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
@@ -223,6 +227,10 @@ class DispenseFlowViewModel @Inject constructor(
                         refillNo = txn.refillNo,
                         qty = txn.targetCount?.toString(),
                         isHazardous = drug?.isHazardous ?: false,
+                        // Shown on the container-scan step's details bar.
+                        drugImage = drug?.drugImagePath.orEmpty(),
+                        ndcStrength = drug?.strength,
+                        selectedBucketId = txn.bucketId.orEmpty(),
                     )
                 }
                 logger.i("[HAZARDOUS] Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
@@ -862,6 +870,42 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /** User confirmed they want to continue the existing PARTIAL transaction. */
+    /**
+     * Sends the flow back to the container scan after a reset. The Rx details stay —
+     * it is the same order — only the container scan's own state is cleared.
+     */
+    fun returnToContainerScan() {
+        viewModelScope.launch {
+            // The container scan replaced drugImage with the server's image URL, but
+            // the details bar loads a local file. Take the drug row's own path back,
+            // the same value the counting header reads.
+            // Same txn id resetTransaction works from, so both halves of a reset
+            // agree on which transaction they are restarting.
+            val txnId = _uiState.value.txnId.takeIf { it != 0L } ?: preferenceHelper.getTxnId()
+            val drug = txnId.takeIf { it != 0L }
+                ?.let { pillCountTxnDao.getById(it) }
+                ?.drugId?.let { drugMasterDao.getDrugById(it) }
+
+            _uiState.update {
+                it.copy(
+                    stage = DispenseStage.PRE_NDC,
+                    ndcScannedValue = "",
+                    ndcDrugName = "",
+                    ndcPackageQty = null,
+                    ndcDrugType = null,
+                    pendingFirstBottle = null,
+                    isSubstituteConfirmed = false,
+                    stockBottleId = 0L,
+                    showNdcDetails = false,
+                    showNdcEquivalenceDialog = false,
+                    drugImage = drug?.drugImagePath ?: it.drugImage,
+                    ndcStrength = drug?.strength ?: it.ndcStrength,
+                )
+            }
+            logger.i("Reset: returning to container scan for txn=${_uiState.value.txnId}")
+        }
+    }
+
     fun confirmContinueRx() {
         val txnId = _uiState.value.txnId
         viewModelScope.launch {
@@ -887,6 +931,10 @@ class DispenseFlowViewModel @Inject constructor(
                     refillNo = txn.refillNo,
                     qty = txn.targetCount?.toString(),
                     isHazardous = drug?.isHazardous ?: false,
+                    // Shown on the container-scan step's details bar.
+                    drugImage = drug?.drugImagePath ?: it.drugImage,
+                    ndcStrength = drug?.strength ?: it.ndcStrength,
+                    selectedBucketId = txn.bucketId ?: it.selectedBucketId,
                 )
             }
             logger.i("[HAZARDOUS] Continue RX: txn=$txnId isNdcVerified=${txn.isNdcVerified} isHazardous=${drug?.isHazardous ?: false} → $targetStage")
@@ -1155,6 +1203,10 @@ class DispenseFlowViewModel @Inject constructor(
                     refillNo = txn.refillNo,
                     qty = txn.targetCount?.toString(),
                     isHazardous = drug?.isHazardous ?: false,
+                    // Shown on the container-scan step's details bar.
+                    drugImage = drug?.drugImagePath ?: it.drugImage,
+                    ndcStrength = drug?.strength ?: it.ndcStrength,
+                    selectedBucketId = txn.bucketId ?: it.selectedBucketId,
                 )
             }
         }

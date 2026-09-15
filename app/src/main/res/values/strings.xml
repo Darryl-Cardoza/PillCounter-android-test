@@ -337,6 +337,10 @@
     <string name="pill_scanning_all_done">All Done</string>
     <string name="pill_scanning_add_this">ADD</string>
     <string name="pill_scanning_view_all_counts">View all</string>
+    <string name="reset">Reset</string>
+    <string name="reset_count_title">Reset count?</string>
+    <string name="reset_count_message">This deletes every count and image collected for this prescription. You will scan the container again. This cannot be undone.</string>
+    <string name="cd_reset_count">Reset this count</string>
     <string name="detail_label_form">Form</string>
     <string name="detail_label_strength">Strength</string>
     <string name="detail_label_bucket">Bucket</string>

@@ -1207,6 +1207,66 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Throws away everything collected for the active count so it can restart at the
+     * container scan. Hard deletes only — nothing here is recoverable.
+     *
+     * @param stockBottleId The stock-count bottle line to remove, or 0 for a dispense.
+     */
+    suspend fun resetTransaction(stockBottleId: Long) {
+        val txnId = preferenceHelper.getTxnId()
+        if (txnId != 0L) {
+            // Files first: once the rows are gone their paths are unrecoverable.
+            deleteFiles(pillCountTxnDetailsDao.getImagePathsForTxn(txnId))
+            pillCountTxnDetailsDao.deleteAllForTxn(txnId)
+            pillCountTxnDao.resetForRecount(txnId)
+        }
+        if (stockBottleId != 0L) {
+            bottleInfoDao.getById(stockBottleId)?.controlledImagePaths?.let { deleteFiles(it) }
+            bottleInfoDao.delete(stockBottleId)
+        }
+
+        stagedDetails.clear()
+        stagingActive = false
+        stockCountBaseTotal = -1
+        _capturedBitmap.value = null
+        _txnInfo.value = null
+        _uiState.update {
+            it.copy(
+                detectedPills = emptyList(),
+                txnDetailHistory = emptyList(),
+                stockCountSessionTotal = 0,
+            )
+        }
+        logger.i("Transaction reset. txnId=$txnId stockBottleId=$stockBottleId")
+    }
+
+    /**
+     * Recomputes whether reset may be offered. A count that has reached the pharmacy
+     * system can no longer be thrown away locally.
+     */
+    fun refreshResetAvailability(batchId: Long) {
+        viewModelScope.launch {
+            val txnId = preferenceHelper.getTxnId()
+            val available = when {
+                txnId != 0L -> pillCountTxnDao.getById(txnId)?.isSynced != true
+                batchId != 0L -> batchDao.getById(batchId)
+                    ?.let { !it.isSynced && it.lastAckedChunkIndex == 0 } ?: true
+                // Stock count with no batch has nowhere to have synced to.
+                else -> true
+            }
+            _uiState.update { it.copy(canReset = available) }
+        }
+    }
+
+    /** Best-effort file removal; a missing file is already the desired state. */
+    private fun deleteFiles(paths: List<String>) {
+        paths.forEach { path ->
+            runCatching { java.io.File(path).takeIf { it.exists() }?.delete() }
+                .onFailure { logger.w("Reset could not delete $path: ${it.message}") }
+        }
+    }
+
     /** Clear the workflow step list so the WorkflowStepper hides when returning to QUEUE/PRE_RX. */
     fun resetWorkflowSteps() {
         _steps.value = emptyList()
@@ -1774,44 +1834,10 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch {
             val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
             _txnInfo.value = txnInfo
-            val isDispense = txnInfo?.isDispense
-            val isComingFromHL7 = txnInfo?.isComingFromHL7 ?: false
             val drugId = txnInfo?.drugId
             val drugInfo = drugMasterDao.getDrugById(drugId)
-            val controlledSchedules = setOf(
-                ScheduleCode.CII,
-                ScheduleCode.CIII,
-                ScheduleCode.CIV,
-                ScheduleCode.CV,
-                ScheduleCode.CVI
-            )
 
-            _steps.value = when {
-                isComingFromHL7 && drugInfo?.drugType?.let {
-                    runCatching { ScheduleCode.valueOf(it) }.getOrNull()
-                } in controlledSchedules -> buildWorkflowSteps(
-                    isFromHl7 = true,
-                    simpleFlow = false,
-                    drugType = drugInfo?.drugType.orEmpty(),
-                    isDispense = isDispense
-                )
-
-                isComingFromHL7 && drugInfo?.drugType?.let {
-                    runCatching { ScheduleCode.valueOf(it) }.getOrNull()
-                } !in controlledSchedules -> buildWorkflowSteps(
-                    isFromHl7 = true,
-                    simpleFlow = true,
-                    drugType = drugInfo?.drugType.orEmpty(),
-                    isDispense = isDispense
-                )
-
-                else -> buildWorkflowSteps(
-                    isFromHl7 = false,
-                    simpleFlow = true,
-                    drugType = drugInfo?.drugType.orEmpty(),
-                    isDispense = isDispense
-                )
-            }
+            _steps.value = resolveWorkflowSteps(txnInfo, drugInfo)
 
             val currentSteps = _steps.value
             val savedWorkflowStep = txnInfo?.workflowStep
@@ -2022,6 +2048,7 @@ class PillScanningViewModel @Inject constructor(
                 dosageForm = drug.dosageForm.orEmpty(),
                 bucket = "Normal",
                 targetCount = 0,
+                drugImage = drug.drugImagePath.orEmpty(),
             )
         }
         _currentStep.value = StepState.TARGET_VERIFICATION
@@ -2144,6 +2171,56 @@ class PillScanningViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             pillCountTxnDao.updateWorkflowStep(preferenceHelper.getTxnId(), next.name)
+        }
+    }
+
+    /**
+     * Derives the workflow steps for a transaction. HL7 entries on a controlled drug
+     * run the full flow; everything else runs the simple one.
+     */
+    private fun resolveWorkflowSteps(
+        txnInfo: TxnWithDetails?, drugInfo: DrugMasterEntity?
+    ): List<StepState> {
+        val isComingFromHL7 = txnInfo?.isComingFromHL7 ?: false
+        val controlledSchedules = setOf(
+            ScheduleCode.CII,
+            ScheduleCode.CIII,
+            ScheduleCode.CIV,
+            ScheduleCode.CV,
+            ScheduleCode.CVI
+        )
+        val isControlled = drugInfo?.drugType?.let {
+            runCatching { ScheduleCode.valueOf(it) }.getOrNull()
+        } in controlledSchedules
+
+        return buildWorkflowSteps(
+            isFromHl7 = isComingFromHL7,
+            simpleFlow = !(isComingFromHL7 && isControlled),
+            drugType = drugInfo?.drugType.orEmpty(),
+            isDispense = txnInfo?.isDispense
+        )
+    }
+
+    /**
+     * Lands the workflow on the SCAN step: publishes the steps and marks SCAN as the
+     * current one, so the stepper can be shown there like any other step.
+     * [getDrugInfo] reassigns both when counting starts. The saved workflowStep column
+     * is deliberately not touched — a resume must not come back to SCAN.
+     */
+    fun enterScanStep() {
+        // Set first, so the stepper never renders a stale step while the steps load.
+        _currentStep.value = StepState.SCAN
+        viewModelScope.launch {
+            // Stock counts have no transaction row until the container is scanned,
+            // and their workflow never varies.
+            if (_uiState.value.scanType == CountType.REGULAR.name) {
+                _steps.value = buildWorkflowSteps(
+                    isFromHl7 = false, simpleFlow = true, drugType = "", isDispense = false
+                )
+                return@launch
+            }
+            val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
+            _steps.value = resolveWorkflowSteps(txnInfo, drugMasterDao.getDrugById(txnInfo?.drugId))
         }
     }
 

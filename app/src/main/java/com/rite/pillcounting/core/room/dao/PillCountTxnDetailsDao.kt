@@ -97,6 +97,14 @@ interface PillCountTxnDetailsDao {
     @Query("DELETE FROM pill_count_txn_details WHERE txnId = :txnId AND type = :type")
     suspend fun deleteVialByTxnId(txnId: Long, type: StepState)
 
+    /** Image paths for a transaction, so the files can be removed before the rows go. */
+    @Query("SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId AND imagePath IS NOT NULL")
+    suspend fun getImagePathsForTxn(txnId: Long): List<String>
+
+    /** Physical delete of every detail for a transaction. Used by reset, which keeps nothing. */
+    @Query("DELETE FROM pill_count_txn_details WHERE txnId = :txnId")
+    suspend fun deleteAllForTxn(txnId: Long)
+
     // ─────────────────────────────── Aggregations ───────────────────────────────
 
     /**

@@ -10,11 +10,14 @@ import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.AppDatabase
+import com.rite.pillcounting.core.room.models.BatchEntity
+import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.room.models.enums.CountStatus
+import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
@@ -52,6 +55,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.io.File
 
 /**
  * Unit tests for [PillScanningViewModel] covering areas not exercised by the sibling
@@ -271,6 +275,165 @@ class PillScanningViewModelTest {
             listOf(StepState.SCAN, StepState.CONTAINER_INITIATE, StepState.TARGET_VERIFICATION, StepState.VIAL),
             steps
         )
+    }
+
+    // ─────────────────────────── enterScanStep ───────────────────────────
+
+    @Test
+    fun `enterScanStep publishes the dispense workflow steps`() = runTest {
+        viewModel.setScanType(CountType.FIXED.name)
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { pillCountTxnDao.getTxnWithDetails(7L) } returns TxnWithDetails(
+            txnId = 7L,
+            drugName = "Drug",
+            drugId = 42L,
+            ndc = "NDC1",
+            targetCount = 30,
+            note = null,
+            createdAt = 0L,
+            bottleInfoListJson = null,
+            totalPillCount = 0,
+            isDispense = true,
+            drugType = "REGULAR",
+            txnDetails = emptyList(),
+            isComingFromHL7 = false,
+        )
+        coEvery { drugMasterDao.getDrugById(42L) } returns DrugMasterEntity(
+            drugId = 42L, ndc = "NDC1", drugName = "Drug", drugType = "REGULAR"
+        )
+
+        viewModel.enterScanStep()
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(StepState.SCAN, StepState.CONTAINER_INITIATE, StepState.TARGET_VERIFICATION, StepState.VIAL),
+            viewModel.steps.value
+        )
+    }
+
+    @Test
+    fun `enterScanStep makes SCAN the current step without waiting on the steps lookup`() = runTest {
+        viewModel.setScanType(CountType.FIXED.name)
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { pillCountTxnDao.getTxnWithDetails(7L) } returns null
+
+        viewModel.enterScanStep()
+
+        assertEquals(StepState.SCAN, viewModel.currentStep.value)
+    }
+
+    @Test
+    fun `enterScanStep uses the stock-count steps for a REGULAR count`() = runTest {
+        viewModel.setScanType(CountType.REGULAR.name)
+
+        viewModel.enterScanStep()
+        advanceUntilIdle()
+
+        assertEquals(listOf(StepState.SCAN, StepState.TARGET_VERIFICATION), viewModel.steps.value)
+    }
+
+    // ─────────────────────────── resetTransaction ───────────────────────────
+
+    @Test
+    fun `resetTransaction hard-deletes the details and clears the txn fields`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForTxn(7L) } returns emptyList()
+
+        viewModel.resetTransaction(stockBottleId = 0L)
+
+        coVerify(exactly = 1) { pillCountTxnDetailsDao.deleteAllForTxn(7L) }
+        coVerify(exactly = 1) { pillCountTxnDao.resetForRecount(7L, any()) }
+    }
+
+    @Test
+    fun `resetTransaction deletes the captured image files`() = runTest {
+        val image = File.createTempFile("reset", ".jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForTxn(7L) } returns listOf(image.absolutePath)
+
+        viewModel.resetTransaction(stockBottleId = 0L)
+
+        assertFalse(image.exists())
+    }
+
+    @Test
+    fun `resetTransaction removes the stock bottle line and its images`() = runTest {
+        val image = File.createTempFile("bottle", ".jpg").apply { writeBytes(byteArrayOf(1)) }
+        every { preferenceHelper.getTxnId() } returns 0L
+        coEvery { bottleInfoDao.getById(55L) } returns BottleInfoEntity(
+            bottleId = 55L,
+            stockTxnId = 3L,
+            controlledImagePaths = listOf(image.absolutePath),
+        )
+
+        viewModel.resetTransaction(stockBottleId = 55L)
+
+        coVerify(exactly = 1) { bottleInfoDao.delete(55L) }
+        assertFalse(image.exists())
+    }
+
+    @Test
+    fun `resetTransaction clears the staging buffer`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForTxn(7L) } returns emptyList()
+        stageDetail(pillCount = 5)
+
+        viewModel.resetTransaction(stockBottleId = 0L)
+
+        @Suppress("UNCHECKED_CAST")
+        val staged = getPrivateField("stagedDetails") as MutableList<PillCountTxnDetailsEntity>
+        assertTrue(staged.isEmpty())
+    }
+
+    // ─────────────────────────── refreshResetAvailability ───────────────────────────
+
+    @Test
+    fun `reset is unavailable once the dispense txn has synced`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { pillCountTxnDao.getById(7L) } returns PillCountTxnEntity(
+            txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = true,
+        )
+
+        viewModel.refreshResetAvailability(batchId = 0L)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.canReset)
+    }
+
+    @Test
+    fun `reset is available while the dispense txn is unsynced`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 7L
+        coEvery { pillCountTxnDao.getById(7L) } returns PillCountTxnEntity(
+            txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = false,
+        )
+
+        viewModel.refreshResetAvailability(batchId = 0L)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.canReset)
+    }
+
+    @Test
+    fun `reset is unavailable once the batch has acked a chunk`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 0L
+        coEvery { batchDao.getById(9L) } returns BatchEntity(
+            batchId = 9L, isSynced = false, lastAckedChunkIndex = 2,
+        )
+
+        viewModel.refreshResetAvailability(batchId = 9L)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.canReset)
+    }
+
+    @Test
+    fun `reset is available for a batch-less stock count`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 0L
+
+        viewModel.refreshResetAvailability(batchId = 0L)
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.canReset)
     }
 
     // ─────────────────────────── isVialLastStep ───────────────────────────

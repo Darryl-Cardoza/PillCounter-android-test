@@ -264,6 +264,10 @@
     <string name="pill_scanning_all_done">Todo hecho</string>
     <string name="pill_scanning_add_this">AÑADIR</string>
     <string name="pill_scanning_view_all_counts">Ver todo</string>
+    <string name="reset">Restablecer</string>
+    <string name="reset_count_title">¿Restablecer el recuento?</string>
+    <string name="reset_count_message">Esto elimina todos los recuentos e imágenes recopilados para esta receta. Volverá a escanear el envase. Esta acción no se puede deshacer.</string>
+    <string name="cd_reset_count">Restablecer este recuento</string>
     <string name="detail_label_form">Forma</string>
     <string name="detail_label_strength">Fuerza</string>
     <string name="detail_label_bucket">Cubeta</string>

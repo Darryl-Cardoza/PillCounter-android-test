@@ -1811,4 +1811,48 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
         coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
     }
+
+    // ───────────────────────── returnToContainerScan ─────────────────────────
+
+    @Test
+    fun `returnToContainerScan goes back to PRE_NDC and clears the container scan state`() =
+        runTest(testDispatcher) {
+            val vm = createViewModel()
+
+            vm.returnToContainerScan()
+            advanceUntilIdle()
+
+            val state = vm.uiState.value
+            assertEquals(DispenseStage.PRE_NDC, state.stage)
+            assertEquals("", state.ndcScannedValue)
+            assertEquals("", state.ndcDrugName)
+            assertNull(state.pendingFirstBottle)
+            assertFalse(state.isSubstituteConfirmed)
+            assertEquals(0L, state.stockBottleId)
+        }
+
+    @Test
+    fun `returnToContainerScan restores the drug image from the drug row`() =
+        runTest(testDispatcher) {
+            // The container scan leaves the server's image URL in state; the details
+            // bar loads a local file, so reset has to take the drug row's path back.
+            val vm = createViewModel()
+            every { preferenceHelper.getTxnId() } returns 7L
+            coEvery { pillCountTxnDao.getById(any()) } returns PillCountTxnEntity(
+                txnId = 7L, drugId = 42L, isDispense = true, status = CountStatus.PARTIAL,
+            )
+            coEvery { drugMasterDao.getDrugById(42L) } returns DrugMasterEntity(
+                drugId = 42L,
+                ndc = "NDC1",
+                drugName = "Drug",
+                drugImagePath = "/local/drug.webp",
+                strength = "20mg",
+            )
+
+            vm.returnToContainerScan()
+            advanceUntilIdle()
+
+            assertEquals("/local/drug.webp", vm.uiState.value.drugImage)
+            assertEquals("20mg", vm.uiState.value.ndcStrength)
+        }
 }

@@ -264,6 +264,10 @@
     <string name="pill_scanning_all_done">Tout est fait</string>
     <string name="pill_scanning_add_this">AJOUTER</string>
     <string name="pill_scanning_view_all_counts">Voir tout</string>
+    <string name="reset">Réinitialiser</string>
+    <string name="reset_count_title">Réinitialiser le comptage ?</string>
+    <string name="reset_count_message">Cela supprime tous les comptages et images collectés pour cette ordonnance. Vous scannerez de nouveau le contenant. Cette action est irréversible.</string>
+    <string name="cd_reset_count">Réinitialiser ce comptage</string>
     <string name="detail_label_form">Forme</string>
     <string name="detail_label_strength">Force</string>
     <string name="detail_label_bucket">Bac</string>
