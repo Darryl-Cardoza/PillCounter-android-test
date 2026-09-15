@@ -87,8 +87,12 @@ All 4 variants render the same `BatchStockCountUiState`. The shapes/components d
 
 ### Untouched (legacy, still in use elsewhere)
 - `core/utils/compose/VerifyRxDetailsBottomSheet.kt` — verify-Rx / verify-NDC sheet, still used by Dispense flow. Do not remove.
-- `feature/batchCount/presentation/BatchScreen.kt` — legacy drug-group list, still reachable from history. Do not remove.
 - `feature/dispenseScan/presentation/DispenseScanScreen.kt` — legacy dispense flow.
+
+### Retired since
+- `feature/batchCount/presentation/BatchScreen.kt` + `Screen.Batch` — deleted. History now routes pending
+  batches to `BatchHistoryDetail` like completed ones. `feature/batchCount` keeps `BatchNdcCard`,
+  `BatchViewModel` and the `BatchDrugGroup` model they share, all consumed by that detail screen.
 
 ---
 
@@ -190,7 +194,7 @@ Reason for deferral: the legacy `PillScanningScreen` flow is large (idle overlay
 - All 4 variants share `BatchStockCountComponents.kt`; only the outer layout differs.
 
 ### 7e. Loose ends
-- Decide whether the legacy `Screen.Batch` / `BatchScreen` (drug-group list) is still reachable from Inventory paths (e.g. from history). If yes, keep it. If no, plan its retirement separately — out of scope for this revamp.
+- ✅ Legacy `Screen.Batch` / `BatchScreen` (drug-group list): retired. History was its only caller; pending batches now open `BatchHistoryDetail`, and the only resume path is Dashboard → queue tile → `InventoryScan`.
 - ✅ Localization: all new-panel strings moved to `strings.xml` under `batch_stock_count_*` keys.
 
 ---

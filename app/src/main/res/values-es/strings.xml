@@ -30,7 +30,6 @@
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispensar</string>
-    <string name="inventory">Inventario</string>
     <string name="tap_to_scan_rx_labels">Toca para escanear etiquetas Rx</string>
     <string name="stock_count">Conteo de Stock</string>
     <string name="start_a_new_inventory_count">Iniciar un nuevo conteo de inventario</string>
@@ -354,15 +353,11 @@
     <string name="voice_add_the_pill_count">Añada el conteo de pastillas</string>
     <string name="are_you_sure_you_want_to_end_this_count">¿Está seguro de que desea finalizar este conteo?</string>
     <string name="no_items_in_that_batch_yet">Aún no hay artículos en este lote</string>
-    <string name="end_this_batch_it_will_be_mark_as_completed">¿Finalizar este lote? Se marcará como completado.</string>
-    <string name="end_batch">Finalizar lote</string>
-    <string name="no_qty_added_message">Por favor, añada al menos una cantidad de artículo antes de finalizar el lote.</string>
     <string name="sealed_bottles">Frascos sellados</string>
     <string name="opend_bottles">Frascos abiertos</string>
-    <string name="end_count">FINALIZAR CONTEO</string>
-    <string name="plus_add">+ AGREGAR</string>
     <string name="bucket">Cubeta</string>
     <string name="batch">Lote</string>
+    <string name="batch_number">Lote n.º %1$d</string>
     <string name="no_last_batch_available">No hay último lote disponible</string>
 
 <!--count Section-->

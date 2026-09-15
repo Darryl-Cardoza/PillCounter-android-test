@@ -24,7 +24,7 @@ picture see [`/docs/architecture.md`](../../../../../../../docs/architecture.md)
 | `menu` | Navigation hub + quick stats | `Menu` | `MenuViewModel` | — (reads DB) |
 | `dispenseFlow` | RX/NDC scan → pill count → persist → HL7 (orchestration only) | `DispenseFlow` | `DispenseFlowViewModel` | `IDrugAPI` (via `core/scanning`) |
 | `inventoryFlow` | Batch stock-count scan screen + stock-count variants | `InventoryScan` | `InventoryScanViewModel` (+ shared `PillScanningViewModel`) | — |
-| `batchCount` | Batch / stock-count grouping by NDC | `Batch` | `BatchViewModel` | — (reads DB) |
+| `batchCount` | Batch / stock-count grouping by NDC (`BatchNdcCard`, consumed by `BatchHistoryDetail`) | — (no route of its own) | `BatchViewModel` | — (reads DB) |
 | `countResume` | Resume partial/fixed/regular counts | `ResumeFixedCounts`, `ResumeRegularCounts`, `PartialCountsScreen` | `CountsViewModel`, `PartialCountsViewModel` | — |
 | `history` | Transaction & batch history, PDF export | `History`, `HistoryDetail`, `BatchHistoryDetail` | `HistoryViewModel`, `HistoryDetailsViewModel` | — (reads DB) |
 | `unsyncedTransaction` | List transactions awaiting sync | `UnsyncedTransactionScreen` | `UnsyncedTransactionViewModel` | — |

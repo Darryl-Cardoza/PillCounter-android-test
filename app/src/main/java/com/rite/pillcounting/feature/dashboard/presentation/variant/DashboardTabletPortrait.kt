@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -50,10 +51,14 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .systemBarsPadding()
             .background(extendedColors.primaryBackground)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .displayCutoutPadding()
+        ) {
             ScaffoldTopBar(
                 pharmacyName = uiState.userDetail?.profile?.pharmacyName,
                 terminalAndUserLine = buildTerminalUserLine(uiState, includeTerminal = params.isHl7Enabled),
@@ -89,7 +94,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                         iconSize = 110.dp
                     )
                     ScaffoldQuickActionCard(
-                        title = stringResource(R.string.inventory),
+                        title = stringResource(R.string.stock_count),
                         subtitle = stringResource(R.string.start_inventory_count),
                         innerIconRes = R.drawable.fixed_count_inner,
                         onClick = params.onInventoryQuickAction,

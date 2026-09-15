@@ -17,6 +17,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.Spacer
@@ -62,6 +63,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.isSpecified
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
@@ -163,6 +165,7 @@ fun VerifyRxDetailsInlinePanel(
                 isLandscape = true,
                 onCancel = onCancel,
                 onProceed = onProceed,
+                strength = strength,
                 drugImage = drugImage
             )
         }
@@ -240,6 +243,7 @@ fun VerifyRxDetailsSheet(
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
+            strength = strength,
             drugImage = drugImage
         )
         else -> VerifyRxDetailsBottomSheet(
@@ -251,6 +255,7 @@ fun VerifyRxDetailsSheet(
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
+            strength = strength,
             drugImage = drugImage
         )
     }
@@ -343,6 +348,7 @@ private fun VerifyRxDetailsBottomSheet(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    strength: String,
     drugImage: String
 ) {
     val sheetState = rememberModalBottomSheetState(
@@ -376,6 +382,7 @@ private fun VerifyRxDetailsBottomSheet(
             isLandscape = false,
             onCancel = onCancel,
             onProceed = onProceed,
+            strength = strength,
             drugImage = drugImage
         )
     }
@@ -391,6 +398,7 @@ private fun VerifyRxDetailsSideDrawer(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
+    strength: String,
     drugImage: String
 ) {
     val config = LocalConfiguration.current
@@ -411,6 +419,7 @@ private fun VerifyRxDetailsSideDrawer(
             isLandscape = true,
             onCancel = animatedCancel,
             onProceed = onProceed,
+            strength = strength,
             drugImage = drugImage
         )
     }
@@ -737,16 +746,14 @@ private fun TabletHorizontalBody(
         // claims an equal weighted share of the row so the cards are wider and
         // span the full width (Figma proportions) rather than sitting at their
         // default 84dp square width.
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            QuantityTile(quantity = quantity, modifier = Modifier.weight(0.7f).height(120.dp))
-            DrugImageTile(drugImagePath = drugImage,modifier = Modifier.weight(0.7f).height(120.dp))
-            StrengthTile(strength = strength, modifier = Modifier.weight(0.7f).height(120.dp))
-            BucketTile(bucket = bucket, modifier = Modifier.weight(0.7f).height(120.dp))
-        }
+        DetailTilesRow(
+            quantity = quantity,
+            drugImage = drugImage,
+            strength = strength,
+            bucket = bucket,
+            spacing = 16.dp,
+            tileHeight = 120.dp,
+        )
 
         // Weighted spacer pushes the buttons to the bottom of the taller sheet so
         // the extra height sits between the tiles and the buttons.
@@ -951,6 +958,7 @@ private fun SheetBody(
     isLandscape: Boolean,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
+    strength: String,
     drugImage: String
 ) {
     // 3-section layout: fixed title, scrollable middle (gets remaining height),
@@ -993,14 +1001,25 @@ private fun SheetBody(
                     if (isLandscape) Modifier else Modifier.verticalScroll(rememberScrollState())
                 )
         ) {
-            DetailsGrid(
-                drugName = drugName,
+
+            Box(modifier = if (isLandscape) Modifier.weight(1f) else Modifier) {
+                DetailsGrid(
+                    drugName = drugName,
+                    ndcNumber = ndcNumber,
+                    rxNumber = rxNumber,
+                    compact = isLandscape,
+                )
+            }
+
+            Spacer(modifier = Modifier.height(if (isLandscape) 12.dp else 14.dp))
+
+            DetailTilesRow(
                 quantity = quantity,
+                drugImage = drugImage,
+                strength = strength,
                 bucket = bucket,
-                ndcNumber = ndcNumber,
-                rxNumber = rxNumber,
-                compact = isLandscape,
-                drugImage = drugImage
+                compact = true,
+                spacing = if (isLandscape) 6.dp else 10.dp,
             )
         }
 
@@ -1052,18 +1071,15 @@ private fun SheetBody(
 private val BUTTON_WIDTH = 130.dp
 
 /**
- * Renders three aligned rows: [Form tile | Drug Name], [Quantity tile | NDC Number],
- * [Bucket tile | Rx Number]. Each row's two children share the same vertical center.
+ * Renders three stacked detail rows — Drug Name, NDC Number, Rx Number — separated
+ * by hairline dividers. The tiles live in [DetailTilesRow] below this grid.
  */
 @Composable
 private fun DetailsGrid(
     drugName: String,
-    quantity: String,
-    bucket: String,
     ndcNumber: String,
     rxNumber: String,
     compact: Boolean,
-    drugImage: String
 ) {
     // Hairline separators between rows mirror the reference screenshot. To stop
     // the landscape panel from feeling cramped, each row claims an even share of
@@ -1072,7 +1088,7 @@ private fun DetailsGrid(
     // keeps natural flow with spacedBy() since the sheet doesn't have a bounded
     // height there.
     val dividerColor = AppTheme.extendedColors.textColor.copy(alpha = 0.5f)
-    val dividerPadding = if (compact) 14.dp else 10.dp
+    val dividerPadding = if (compact) 6.dp else 10.dp
 
     Column(
         modifier = if (compact) Modifier.fillMaxHeight() else Modifier,
@@ -1081,11 +1097,11 @@ private fun DetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
-                tile = { DrugImageTile(drugImagePath = drugImage,compact = compact) },
+            DetailItem(
                 label = stringResource(R.string.drugname),
                 value = drugName,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         HorizontalDivider(
@@ -1097,11 +1113,11 @@ private fun DetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
-                tile = { QuantityTile(quantity = quantity, compact = compact) },
+            DetailItem(
                 label = stringResource(R.string.ndc_number),
                 value = ndcNumber,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         HorizontalDivider(
@@ -1113,36 +1129,42 @@ private fun DetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
-                tile = { BucketTile(bucket = bucket, compact = compact) },
+            DetailItem(
                 label = stringResource(R.string.rx_number),
                 value = rxNumber,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
     }
 }
 
 @Composable
-private fun TileDetailRow(
-    tile: @Composable () -> Unit,
-    label: String,
-    value: String,
-    compact: Boolean,
+private fun DetailTilesRow(
+    quantity: String,
+    drugImage: String,
+    strength: String,
+    bucket: String,
     modifier: Modifier = Modifier,
+    compact: Boolean = false,
+    spacing: Dp = 12.dp,
+    tileHeight: Dp = Dp.Unspecified,
 ) {
     Row(
-        modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        modifier = modifier
+            .fillMaxWidth()
+            .then(if (tileHeight.isSpecified) Modifier else Modifier.height(IntrinsicSize.Min)),
+        horizontalArrangement = Arrangement.spacedBy(spacing),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        tile()
-        DetailItem(
-            label = label,
-            value = value,
-            compact = compact,
-            modifier = Modifier.weight(1f)
-        )
+        val tileModifier = Modifier
+            .weight(1f)
+            .let { if (tileHeight.isSpecified) it.height(tileHeight) else it.fillMaxHeight() }
+
+        QuantityTile(quantity = quantity, compact = compact, modifier = tileModifier)
+        DrugImageTile(drugImagePath = drugImage, compact = compact, modifier = tileModifier)
+        StrengthTile(strength = strength, compact = compact, modifier = tileModifier)
+        BucketTile(bucket = bucket, compact = compact, modifier = tileModifier)
     }
 }
 
@@ -1158,8 +1180,7 @@ private fun DrugImageTile(
     // .height()) so grid callers that pass their own height via `modifier`
     // aren't clamped to tileSize — a hardcoded .height() here would render
     // this tile smaller than its siblings regardless of the caller's weight.
-    // DetailsGrid (which passes no modifier) still gets a visible tileSize
-    // square from the minimum.
+    // A caller that passes no height still gets a visible tileSize square.
     Box(
         modifier = Modifier
             .width(tileSize)
@@ -1194,7 +1215,9 @@ private fun QuantityTile(quantity: String, compact: Boolean = false, modifier: M
             text = quantity,
             color = MaterialTheme.colorScheme.secondary,
             fontSize = if (compact) 14.sp else 20.sp,
-            fontWeight = FontWeight.SemiBold
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -1208,7 +1231,7 @@ private fun StrengthTile(strength: String, compact: Boolean = false, modifier: M
             fontSize = if (compact) 14.sp else 20.sp,
             fontWeight = FontWeight.SemiBold,
             textAlign = TextAlign.Center,
-            maxLines = 2,
+            maxLines = if (compact) 1 else 2,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -1222,7 +1245,9 @@ private fun BucketTile(bucket: String, compact: Boolean = false, modifier: Modif
             color = MaterialTheme.colorScheme.secondary,
             fontSize = if (compact) 14.sp else 20.sp,
             fontWeight = FontWeight.SemiBold,
-            textAlign = TextAlign.Center
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -1252,7 +1277,9 @@ private fun SquareTile(
             text = label,
             color = AppTheme.extendedColors.textColor,
             fontSize = if (compact) 12.sp else 16.sp,
-            fontWeight = FontWeight.Normal
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         Box(
             modifier = Modifier.height(if (compact) 26.dp else 34.dp),
@@ -1275,14 +1302,16 @@ private fun DetailItem(
 ) {
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(2.dp)
+        verticalArrangement = Arrangement.spacedBy(1.dp)
     ) {
         // Header (e.g. "Drug Name") → white.
         Text(
             text = label,
             color = AppTheme.extendedColors.textColor,
-            fontSize = if (compact) 12.sp else 16.sp,
-            fontWeight = FontWeight.Normal
+            fontSize = if (compact) 12.sp else 14.sp,
+            fontWeight = FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
         // Value below the header → secondary accent. Figma renders the Drug Name /
         // Rx / NDC values in the accent color (matching the tile values), not the
@@ -1292,7 +1321,7 @@ private fun DetailItem(
             color = MaterialTheme.colorScheme.secondary,
             fontSize = if (compact) 12.sp else 16.sp,
             fontWeight = FontWeight.SemiBold,
-            maxLines = valueMaxLines,
+            maxLines = if (compact) 1 else valueMaxLines,
             overflow = TextOverflow.Ellipsis,
         )
     }
@@ -1334,7 +1363,7 @@ private fun HazardousWarningBanner(modifier: Modifier = Modifier) {
 //   - Bucket tile + Drug name
 //
 // Reuses the same SwipeableSideDrawer / HideSystemNavBar /
-// FormTile / BucketTile / SquareTile / DetailItem / TileDetailRow / TabletButtonRow
+// FormTile / BucketTile / SquareTile / DetailItem / TabletButtonRow
 // helpers above so the look-and-feel matches exactly.
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -1380,12 +1409,10 @@ fun VerifyNdcDetailsInlinePanel(
         } else {
             NdcSheetBody(
                 drugName = drugName,
-                bucket = bucket,
                 ndcNumber = ndcNumber,
                 isLandscape = true,
                 isHazardous = isHazardous,
                 strength = strength,
-                dosageForm = dosageForm,
                 onCancel = onCancel,
                 onProceed = onProceed,
             )
@@ -1444,22 +1471,18 @@ fun VerifyNdcDetailsSheet(
         )
         isLandscape -> VerifyNdcDetailsSideDrawer(
             drugName = drugName,
-            bucket = bucket,
             ndcNumber = ndcNumber,
             isHazardous = isHazardous,
             strength = strength,
-            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
         )
         else -> VerifyNdcDetailsBottomSheet(
             drugName = drugName,
-            bucket = bucket,
             ndcNumber = ndcNumber,
             isHazardous = isHazardous,
             strength = strength,
-            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
             dismissible = dismissible,
@@ -1471,14 +1494,12 @@ fun VerifyNdcDetailsSheet(
 @Composable
 private fun VerifyNdcDetailsBottomSheet(
     drugName: String,
-    bucket: String,
     ndcNumber: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
     isHazardous: Boolean = false,
     strength: String = "",
-    dosageForm: String = "",
 ) {
     val sheetState = rememberModalBottomSheetState(
         skipPartiallyExpanded = true,
@@ -1497,12 +1518,10 @@ private fun VerifyNdcDetailsBottomSheet(
         HideSystemBarsInCurrentWindow()
         NdcSheetBody(
             drugName = drugName,
-            bucket = bucket,
             ndcNumber = ndcNumber,
             isLandscape = false,
             isHazardous = isHazardous,
             strength = strength,
-            dosageForm = dosageForm,
             onCancel = onCancel,
             onProceed = onProceed,
         )
@@ -1512,14 +1531,12 @@ private fun VerifyNdcDetailsBottomSheet(
 @Composable
 private fun VerifyNdcDetailsSideDrawer(
     drugName: String,
-    bucket: String,
     ndcNumber: String,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     dismissible: Boolean = true,
     isHazardous: Boolean = false,
     strength: String = "",
-    dosageForm: String = "",
 ) {
     val config = LocalConfiguration.current
     val drawerWidth = (config.screenWidthDp.dp * 0.42f).coerceIn(260.dp, 380.dp)
@@ -1532,12 +1549,10 @@ private fun VerifyNdcDetailsSideDrawer(
     ) { animatedCancel ->
         NdcSheetBody(
             drugName = drugName,
-            bucket = bucket,
             ndcNumber = ndcNumber,
             isLandscape = true,
             isHazardous = isHazardous,
             strength = strength,
-            dosageForm = dosageForm,
             onCancel = animatedCancel,
             onProceed = onProceed,
         )
@@ -1630,15 +1645,12 @@ private fun VerifyNdcDetailsTabletSideDrawer(
 @Composable
 private fun NdcSheetBody(
     drugName: String,
-    bucket: String,
     ndcNumber: String,
     isLandscape: Boolean,
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     isHazardous: Boolean = false,
     strength: String = "",
-    dosageForm: String = "",
-    drugImage: String = ""
 ) {
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
     // Landscape gets slightly bigger outer padding so the panel doesn't feel
@@ -1679,12 +1691,9 @@ private fun NdcSheetBody(
             }
             NdcDetailsGrid(
                 drugName = drugName,
-                bucket = bucket,
                 ndcNumber = ndcNumber,
                 compact = isLandscape,
                 strength = strength,
-                dosageForm = dosageForm,
-                drugImage = drugImage
             )
         }
 
@@ -1732,12 +1741,9 @@ private fun NdcSheetBody(
 @Composable
 private fun NdcDetailsGrid(
     drugName: String,
-    bucket: String,
     ndcNumber: String,
     compact: Boolean,
     strength: String = "",
-    dosageForm: String = "",
-    drugImage: String = "",
 ) {
     val dividerColor = AppTheme.extendedColors.textColor.copy(alpha = 0.5f)
     val dividerPadding = if (compact) 14.dp else 10.dp
@@ -1748,11 +1754,11 @@ private fun NdcDetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
-                tile = { DrugImageTile(compact = compact, drugImagePath = drugImage) },
+            DetailItem(
                 label = stringResource(R.string.ndc_number),
                 value = ndcNumber,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         HorizontalDivider(
@@ -1764,11 +1770,11 @@ private fun NdcDetailsGrid(
             modifier = if (compact) Modifier.weight(1f) else Modifier,
             contentAlignment = Alignment.Center,
         ) {
-            TileDetailRow(
-                tile = { BucketTile(bucket = bucket, compact = compact) },
+            DetailItem(
                 label = stringResource(R.string.drugname),
                 value = drugName,
                 compact = compact,
+                modifier = Modifier.fillMaxWidth(),
             )
         }
         if (strength.isNotBlank()) {

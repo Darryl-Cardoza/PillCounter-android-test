@@ -13,7 +13,7 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 
 /** Step circle diameter for the phone-landscape stepper. */
-private val PHONE_LANDSCAPE_STEP_SIZE = 35.dp
+private val PHONE_LANDSCAPE_STEP_SIZE = 40.dp
 
 /**
  * Phone, landscape. Full-bleed count overlay over the camera feed.

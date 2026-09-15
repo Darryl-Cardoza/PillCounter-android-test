@@ -14,10 +14,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -83,109 +85,116 @@ fun FaceUsersListScreen(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(AppTheme.extendedColors.primaryBackground)
-            .padding(vertical = 16.dp)
     ) {
-        HeadlineBar(
-            navController = navController,
-            title = stringResource(R.string.face_users_title),
-            searchQuery = "",
-            showSearch = false,
-            isMultiSelectMode = isDeleteMode,
-            isAllSelected = isAllSelected,
-            hasSelection = selectedIds.isNotEmpty(),
-            showDelete = profiles.isNotEmpty(),
-            showSearchIcon = false,
-            onSearchClick = {},
-            onSearchChange = {},
-            onDeleteClick = { isDeleteMode = true },
-            onCancelClick = { handleBack() },
-            onConfirmDelete = {},
-            onSelectAll = {
-                selectedIds = if (isAllSelected) emptySet()
-                else profiles.map { it.id }.toSet()
-            },
-            onBackClick = { handleBack() },
-            deleteModeTitle = stringResource(R.string.face_users_delete_title)
-        )
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .displayCutoutPadding()
+                .padding(vertical = 16.dp)
+        ) {
+            HeadlineBar(
+                navController = navController,
+                title = stringResource(R.string.face_users_title),
+                searchQuery = "",
+                showSearch = false,
+                isMultiSelectMode = isDeleteMode,
+                isAllSelected = isAllSelected,
+                hasSelection = selectedIds.isNotEmpty(),
+                showDelete = profiles.isNotEmpty(),
+                showSearchIcon = false,
+                onSearchClick = {},
+                onSearchChange = {},
+                onDeleteClick = { isDeleteMode = true },
+                onCancelClick = { handleBack() },
+                onConfirmDelete = {},
+                onSelectAll = {
+                    selectedIds = if (isAllSelected) emptySet()
+                    else profiles.map { it.id }.toSet()
+                },
+                onBackClick = { handleBack() },
+                deleteModeTitle = stringResource(R.string.face_users_delete_title)
+            )
 
-        if (profiles.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(
-                    text = stringResource(R.string.face_users_empty),
-                    color = AppTheme.extendedColors.textColor,
-                    style = MaterialTheme.typography.bodyMedium
-                )
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .padding(horizontal = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-                contentPadding = PaddingValues(vertical = 8.dp)
-            ) {
-                items(profiles, key = { it.id }) { profile ->
-                    FaceUserCard(
-                        profile = profile,
-                        isDeleteMode = isDeleteMode,
-                        isSelected = profile.id in selectedIds,
-                        onToggleSelect = {
-                            selectedIds = if (profile.id in selectedIds)
-                                selectedIds - profile.id
-                            else
-                                selectedIds + profile.id
-                        },
-                        onToggle = { enabled -> viewModel.setProfileEnabled(profile, enabled) }
+            if (profiles.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = stringResource(R.string.face_users_empty),
+                        color = AppTheme.extendedColors.textColor,
+                        style = MaterialTheme.typography.bodyMedium
                     )
                 }
+            } else {
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    contentPadding = PaddingValues(vertical = 8.dp)
+                ) {
+                    items(profiles, key = { it.id }) { profile ->
+                        FaceUserCard(
+                            profile = profile,
+                            isDeleteMode = isDeleteMode,
+                            isSelected = profile.id in selectedIds,
+                            onToggleSelect = {
+                                selectedIds = if (profile.id in selectedIds)
+                                    selectedIds - profile.id
+                                else
+                                    selectedIds + profile.id
+                            },
+                            onToggle = { enabled -> viewModel.setProfileEnabled(profile, enabled) }
+                        )
+                    }
+                }
             }
-        }
 
-        if (isDeleteMode) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                HollowButton(
-                    text = stringResource(R.string.cancel).uppercase(),
-                    onClick = { handleBack() },
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.width(responsiveDp(120.dp))
-                )
-                ActionButtonPrimary(
-                    text = stringResource(R.string.delete).uppercase(),
-                    onClick = {
-                        if (selectedIds.isNotEmpty()) showDeleteConfirmDialog = true
-                    },
-                    fixedWidth = true,
-                    modifier = Modifier.width(dimens.dialogButtonWidth)
-                )
-            }
-        } else {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 12.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                ActionButtonPrimary(
-                    text = stringResource(R.string.face_users_add_user).uppercase(),
-                    onClick = { navController.navigate(Screen.FaceRegistration.route) },
-                    color = MaterialTheme.colorScheme.primary
-                )
+            if (isDeleteMode) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterHorizontally),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    HollowButton(
+                        text = stringResource(R.string.cancel).uppercase(),
+                        onClick = { handleBack() },
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.width(responsiveDp(120.dp))
+                    )
+                    ActionButtonPrimary(
+                        text = stringResource(R.string.delete).uppercase(),
+                        onClick = {
+                            if (selectedIds.isNotEmpty()) showDeleteConfirmDialog = true
+                        },
+                        fixedWidth = true,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                    )
+                }
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    ActionButtonPrimary(
+                        text = stringResource(R.string.face_users_add_user).uppercase(),
+                        onClick = { navController.navigate(Screen.FaceRegistration.route) },
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             }
         }
     }

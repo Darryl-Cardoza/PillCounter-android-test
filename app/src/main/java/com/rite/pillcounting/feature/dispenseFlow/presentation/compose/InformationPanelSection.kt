@@ -194,6 +194,7 @@ fun InformationPanelSection(
             showHistory = onShowHistory,
             autoRevealCurrentStep = autoRevealCurrentStep,
             onAutoRevealed = onAutoRevealed,
+            dosageForm = uiState.dosageForm,
             drugImage = uiState.drugImage,
             showGloveIcon = showGloveIcon,
             glovesDetected = glovesDetected,
