@@ -161,9 +161,6 @@
     <string name="total_count">Nombre total</string>
     <string name="max_count_reached">Le comptage total de la transaction dépasse l\'objectif.</string>
     <string name="no_transaction_found">Aucune transaction trouvée, veuillez commencer le comptage des pilules</string>
-    <string name="confirm_done">Confirmer la Finalisation</string>
-    <string name="confirm_done_desc_regular">Êtes-vous sûr de vouloir marquer cette transaction comme terminée ?</string>
-    <string name="confirm_done_desc_fixed">Objectif non atteint. Cette transaction sera marquée comme terminée.</string>
     <string name="rx_already_exists_title">La RX existe déjà</string>
     <string name="rx_already_exists_message">Cette RX est déjà présente dans vos transactions. Voulez-vous continuer avec elle ?</string>
     <string name="rx_on_hold_title">Transaction en attente</string>
@@ -360,6 +357,8 @@
     <string name="bucket">Bac</string>
     <string name="batch">Lot</string>
     <string name="no_last_batch_available">Aucun dernier lot disponible</string>
+    <string name="skip_step_title">Plus rien à numériser</string>
+    <string name="skip_step_message">Il ne reste aucune unité dans le flacon ; l\'étape de comptage en retour n\'est donc pas nécessaire. Appuyez sur « Passer » pour terminer cette transaction.</string>
 
 <!--count Section-->
     <string name="toggle_with_count">%1$s (%2$d)</string>

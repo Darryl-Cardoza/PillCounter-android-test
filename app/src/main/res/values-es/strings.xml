@@ -161,9 +161,6 @@
     <string name="total_count">Conteo Total</string>
     <string name="max_count_reached">El conteo total de la transacción excede el objetivo.</string>
     <string name="no_transaction_found">No se encontró ninguna transacción, por favor comience a contar pastillas</string>
-    <string name="confirm_done">Confirmar Finalización</string>
-    <string name="confirm_done_desc_regular">¿Está seguro de que desea marcar esta transacción como completada?</string>
-    <string name="confirm_done_desc_fixed">Objetivo no alcanzado. Esta transacción se marcará como completada.</string>
     <string name="rx_already_exists_title">La RX ya existe</string>
     <string name="rx_already_exists_message">Esta RX ya está presente en sus transacciones. ¿Desea continuar con ella?</string>
     <string name="rx_on_hold_title">Transacción en espera</string>
@@ -360,6 +357,8 @@
     <string name="bucket">Cubeta</string>
     <string name="batch">Lote</string>
     <string name="no_last_batch_available">No hay último lote disponible</string>
+    <string name="skip_step_title">No queda nada por escanear</string>
+    <string name="skip_step_message">A la botella no le queda cantidad, por lo que no es necesario realizar el paso de recuento posterior. Pulse «Omitir» para completar esta transacción.</string>
 
 <!--count Section-->
     <string name="toggle_with_count">%1$s (%2$d)</string>
