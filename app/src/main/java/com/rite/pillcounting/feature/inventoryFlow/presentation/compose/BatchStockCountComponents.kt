@@ -413,6 +413,8 @@ private fun DetailField(label: String, value: String, modifier: Modifier = Modif
  * @param compact when true (portrait, per Figma) the row is shorter with smaller
  *   icons and value text so the counter reads tight against the detail fields
  *   instead of dominating the card.
+ * @param rowHeight height of the row, i.e. of the +/- tiles. Phone landscape
+ *   passes a shorter value; every other form factor keeps the 76dp default.
  */
 @Composable
 internal fun CounterRow(
@@ -422,9 +424,9 @@ internal fun CounterRow(
     onDecrement: () -> Unit,
     tileFill: Color? = null,
     compact: Boolean = false,
+    rowHeight: Dp = 76.dp,
 ) {
     val borderColor = AppTheme.extendedColors.primaryBackground
-    val rowHeight = 76.dp
     val iconSize = if (compact) 24.dp else 30.dp
     val valueSize = responsiveSp(10.sp)
     Row(
@@ -685,17 +687,14 @@ internal fun ScannedDrugDetailsPhone(
     // [dense] tightens the inter-field spacing so the counter + CANCEL/ADD fit
     // without being clipped at the panel's bottom edge.
     dense: Boolean = false,
+    onEdit: () -> Unit = {},
 ) {
     val fieldGap = if (dense) 6.dp else 12.dp
     val dividerGap = if (dense) 6.dp else 12.dp
     val buttonGap = if (dense) 10.dp else 16.dp
+    val counterHeight = if (dense) 56.dp else 76.dp
     Column(modifier = modifier.fillMaxWidth()) {
-        Text(
-            text = stringResource(R.string.batch_stock_count_scanned_drug_details),
-            color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
-            fontSize = responsiveSp(8.sp),
-            fontWeight = FontWeight.SemiBold,
-        )
+        ScannedDetailsHeaderRow(onEdit = onEdit)
         Spacer(modifier = Modifier.height(fieldGap))
 
         // Row 1: Drug Name (2x) | Bucket (1x).
@@ -747,6 +746,7 @@ internal fun ScannedDrugDetailsPhone(
             onDecrement = onDecrement,
             tileFill = AppTheme.extendedColors.primaryBackground,
             compact = true,
+            rowHeight = counterHeight,
         )
 
         // Gap so CANCEL/ADD don't sit flush against the counter (matches Figma).

@@ -26,18 +26,6 @@ class ScreenTest {
         Assert.assertEquals("require_double_count", Screen.RequireDoubleCount.route)
     }
 
-    // ─────────────────────────── Batch ───────────────────────────
-
-    @Test
-    fun `Batch route createRoute and args`() {
-        Assert.assertEquals("batch?batch_id={batch_id}", Screen.Batch.route)
-        Assert.assertEquals("batch_id", Screen.Batch.ARG_BATCH_ID)
-        Assert.assertEquals("batch?batch_id=0", Screen.Batch.createRoute())
-        Assert.assertEquals("batch?batch_id=42", Screen.Batch.createRoute(42L))
-        Assert.assertEquals(1, Screen.Batch.navArguments.size)
-        Assert.assertEquals(Screen.Batch.ARG_BATCH_ID, Screen.Batch.navArguments[0].name)
-    }
-
     // ─────────────────────────── InventoryScan ───────────────────────────
 
     @Test

@@ -10,7 +10,6 @@ import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.batchCount.domain.model.BatchDrugGroup
-import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -40,7 +39,6 @@ class BatchViewModelTest {
     private lateinit var stockTxnDao: StockTxnDao
     private lateinit var bottleInfoDao: BottleInfoDao
     private lateinit var batchDao: BatchDao
-    private lateinit var hl7Repository: Hl7Repository
     private lateinit var preferenceHelper: PreferenceHelper
 
     @Before
@@ -49,7 +47,6 @@ class BatchViewModelTest {
         stockTxnDao = mockk(relaxed = true)
         bottleInfoDao = mockk(relaxed = true)
         batchDao = mockk(relaxed = true)
-        hl7Repository = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
 
         // Sensible defaults so the init block does not blow up.
@@ -75,7 +72,6 @@ class BatchViewModelTest {
             stockTxnDao,
             bottleInfoDao,
             batchDao,
-            hl7Repository,
             preferenceHelper,
         )
     }
@@ -100,12 +96,12 @@ class BatchViewModelTest {
         advanceUntilIdle()
 
         assertEquals(0L, vm.displayBatchId.value)
-        assertEquals(false, vm.isBatchCompleted.value)
         assertNull(vm.batchEntity.value)
         assertEquals(0, vm.uniqueNdcCount.value)
         coVerify(exactly = 0) { batchDao.getById(any()) }
     }
 
+    // BATCH_VM_001
     @Test
     fun `init with zero batch_id arg falls back to latest batch`() = runTest(testDispatcher) {
         val entity = BatchEntity(batchId = 7L, status = BatchStatus.INPROGRESS)
@@ -117,11 +113,11 @@ class BatchViewModelTest {
         advanceUntilIdle()
 
         assertEquals(7L, vm.displayBatchId.value)
-        assertEquals(false, vm.isBatchCompleted.value)
         assertEquals(entity, vm.batchEntity.value)
         assertEquals(3, vm.uniqueNdcCount.value)
     }
 
+    // BATCH_VM_002
     @Test
     fun `init with explicit batch_id loads completed entity`() = runTest(testDispatcher) {
         val entity = BatchEntity(batchId = 9L, status = BatchStatus.COMPLETED)
@@ -132,21 +128,19 @@ class BatchViewModelTest {
         advanceUntilIdle()
 
         assertEquals(9L, vm.displayBatchId.value)
-        assertTrue(vm.isBatchCompleted.value)
         assertEquals(entity, vm.batchEntity.value)
         assertEquals(5, vm.uniqueNdcCount.value)
         coVerify(exactly = 0) { batchDao.getLatest() }
     }
 
     @Test
-    fun `init with explicit batch_id but missing entity leaves completed false`() = runTest(testDispatcher) {
+    fun `init with explicit batch_id but missing entity leaves batchEntity null`() = runTest(testDispatcher) {
         coEvery { batchDao.getById(9L) } returns null
 
         val vm = createViewModel(batchId = 9L)
         advanceUntilIdle()
 
         assertEquals(9L, vm.displayBatchId.value)
-        assertEquals(false, vm.isBatchCompleted.value)
         assertNull(vm.batchEntity.value)
     }
 
@@ -290,6 +284,7 @@ class BatchViewModelTest {
 
     // ────────────────────────────── deleteBatch ──────────────────────────────
 
+    // BATCH_VM_004
     @Test
     fun `deleteBatch soft-deletes batch and txns then calls onDone`() = runTest(testDispatcher) {
         val vm = createViewModel(batchId = 4L)
@@ -334,6 +329,7 @@ class BatchViewModelTest {
 
     // ────────────────────────────── getCurrentUser ──────────────────────────────
 
+    // BATCH_VM_005
     @Test
     fun `getCurrentUser returns logged-in email when available`() = runTest(testDispatcher) {
         every { preferenceHelper.getLoggedInEmail() } returns "alice"
@@ -344,6 +340,7 @@ class BatchViewModelTest {
         assertEquals("alice", vm.getCurrentUser())
     }
 
+    // BATCH_VM_006
     @Test
     fun `getCurrentUser falls back to userId when no logged-in email`() = runTest(testDispatcher) {
         every { preferenceHelper.getLoggedInEmail() } returns null
@@ -366,56 +363,4 @@ class BatchViewModelTest {
         assertEquals("—", vm.getCurrentUser())
     }
 
-    // ────────────────────────────── endBatch ──────────────────────────────
-
-    @Test
-    fun `endBatch marks completed and updates note when note provided`() = runTest(testDispatcher) {
-        val vm = createViewModel(batchId = 6L)
-        advanceUntilIdle()
-
-        vm.endBatch("counted twice")
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { batchDao.markAsCompleted(6L, any()) }
-        coVerify(exactly = 1) { batchDao.updateNote(6L, "counted twice") }
-        coVerify(exactly = 1) { hl7Repository.buildAndSendInventoryResponse(6L) }
-    }
-
-    @Test
-    fun `endBatch skips note update when note is null`() = runTest(testDispatcher) {
-        val vm = createViewModel(batchId = 6L)
-        advanceUntilIdle()
-
-        vm.endBatch(null)
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { batchDao.markAsCompleted(6L, any()) }
-        coVerify(exactly = 0) { batchDao.updateNote(any(), any()) }
-        coVerify(exactly = 1) { hl7Repository.buildAndSendInventoryResponse(6L) }
-    }
-
-    @Test
-    fun `endBatch skips note update when note is blank`() = runTest(testDispatcher) {
-        val vm = createViewModel(batchId = 6L)
-        advanceUntilIdle()
-
-        vm.endBatch("   ")
-        advanceUntilIdle()
-
-        coVerify(exactly = 1) { batchDao.markAsCompleted(6L, any()) }
-        coVerify(exactly = 0) { batchDao.updateNote(any(), any()) }
-    }
-
-    @Test
-    fun `endBatch with zero id only sends hl7 response`() = runTest(testDispatcher) {
-        val vm = createViewModel(batchId = 0L)
-        advanceUntilIdle()
-
-        vm.endBatch("ignored")
-        advanceUntilIdle()
-
-        coVerify(exactly = 0) { batchDao.markAsCompleted(any()) }
-        coVerify(exactly = 0) { batchDao.updateNote(any(), any()) }
-        coVerify(exactly = 1) { hl7Repository.buildAndSendInventoryResponse(0L) }
-    }
 }

@@ -4,12 +4,15 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
@@ -75,7 +78,7 @@ fun ConnectionInfoScreen(
         onDispose { }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(extendedColors.secondaryBackground)
@@ -87,142 +90,149 @@ fun ConnectionInfoScreen(
                 onClick = {}
             )
     ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp)
-        ) {
-            BackButton(onClick = onBackClick)
-            Text(
-                text = stringResource(R.string.connection_info_title),
-                style = MaterialTheme.typography.bodyMedium,
-                color = extendedColors.textColor
-            )
-        }
-
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 16.dp)
-                .verticalScroll(rememberScrollState())
+                .systemBarsPadding()
+                .displayCutoutPadding()
         ) {
-            SectionHeader(text = stringResource(R.string.this_device_dispenser_server))
-
-            ConnectionInfoRow(
-                label = stringResource(R.string.ip_address),
-                value = deviceIpAddress.ifBlank { stringResource(R.string.no_wifi_connection) },
-                isError = !isNetworkAvailable
-            )
-
-            ConnectionInfoRow(
-                label = stringResource(R.string.listener_port),
-                value = listenerPort
-            )
-
-            ConnectionInfoRow(
-                label = stringResource(R.string.image_server_port),
-                value = imageServerPort
-            )
-
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
-                modifier = Modifier.padding(top = 16.dp)
-            )
-
-            SectionHeader(
-                text = stringResource(R.string.pms_server),
-                modifier = Modifier.padding(top = 8.dp)
-            )
-
-            ConnectionInfoRow(
-                label = stringResource(R.string.pms_ip_address),
-                value = pmsIpAddress.ifBlank { "—" },
-                isError = pmsIpAddress.isBlank()
-            )
-
-            ConnectionInfoRow(
-                label = stringResource(R.string.pms_port),
-                value = pmsPort.ifBlank { "—" },
-                isError = pmsPort.isBlank()
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp)
+            ) {
+                BackButton(onClick = onBackClick)
+                Text(
+                    text = stringResource(R.string.connection_info_title),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = extendedColors.textColor
+                )
+            }
 
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 40.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .fillMaxSize()
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(rememberScrollState())
             ) {
-                val isTesting = testConnectionState is PmsTestConnectionState.Testing
-                val canTest = isNetworkAvailable && !pmsNotConfigured && !isTesting
+                SectionHeader(text = stringResource(R.string.this_device_dispenser_server))
 
-                Button(
-                    onClick = { viewModel.testPmsConnection() },
-                    enabled = canTest,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary
-                    ),
-                    shape = MaterialTheme.shapes.medium
+                ConnectionInfoRow(
+                    label = stringResource(R.string.ip_address),
+                    value = deviceIpAddress.ifBlank { stringResource(R.string.no_wifi_connection) },
+                    isError = !isNetworkAvailable
+                )
+
+                ConnectionInfoRow(
+                    label = stringResource(R.string.listener_port),
+                    value = listenerPort
+                )
+
+                ConnectionInfoRow(
+                    label = stringResource(R.string.image_server_port),
+                    value = imageServerPort
+                )
+
+                HorizontalDivider(
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.3f),
+                    modifier = Modifier.padding(top = 16.dp)
+                )
+
+                SectionHeader(
+                    text = stringResource(R.string.pms_server),
+                    modifier = Modifier.padding(top = 8.dp)
+                )
+
+                ConnectionInfoRow(
+                    label = stringResource(R.string.pms_ip_address),
+                    value = pmsIpAddress.ifBlank { "—" },
+                    isError = pmsIpAddress.isBlank()
+                )
+
+                ConnectionInfoRow(
+                    label = stringResource(R.string.pms_port),
+                    value = pmsPort.ifBlank { "—" },
+                    isError = pmsPort.isBlank()
+                )
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 40.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    if (isTesting) {
-                        CircularProgressIndicator(
-                            modifier = Modifier
-                                .padding(end = 8.dp)
-                                .size(16.dp),
-                            color = MaterialTheme.colorScheme.onPrimary,
-                            strokeWidth = 2.dp
-                        )
-                    }
-                    Text(
-                        text = if (isTesting) {
-                            stringResource(R.string.testing_connection)
-                        } else {
-                            stringResource(R.string.test_connection)
-                        },
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimary
-                    )
-                }
+                    val isTesting = testConnectionState is PmsTestConnectionState.Testing
+                    val canTest = isNetworkAvailable && !pmsNotConfigured && !isTesting
 
-                when {
-                    !isNetworkAvailable -> {
-                        Text(
-                            text = stringResource(R.string.check_wifi_before_testing),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
-                    }
-
-                    pmsNotConfigured -> {
-                        Text(
-                            text = stringResource(R.string.pms_not_configured),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.error,
-                            modifier = Modifier.padding(top = 12.dp)
-                        )
-                    }
-
-                    else -> when (val state = testConnectionState) {
-                        is PmsTestConnectionState.Success -> {
-                            Text(
-                                text = stringResource(R.string.connection_successful, pmsIpAddress),
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                modifier = Modifier.padding(top = 12.dp)
+                    Button(
+                        onClick = { viewModel.testPmsConnection() },
+                        enabled = canTest,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.primary
+                        ),
+                        shape = MaterialTheme.shapes.medium
+                    ) {
+                        if (isTesting) {
+                            CircularProgressIndicator(
+                                modifier = Modifier
+                                    .padding(end = 8.dp)
+                                    .size(16.dp),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp
                             )
                         }
+                        Text(
+                            text = if (isTesting) {
+                                stringResource(R.string.testing_connection)
+                            } else {
+                                stringResource(R.string.test_connection)
+                            },
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
 
-                        is PmsTestConnectionState.Failed -> {
+                    when {
+                        !isNetworkAvailable -> {
                             Text(
-                                text = stringResource(R.string.connection_failed_reason, state.reason),
+                                text = stringResource(R.string.check_wifi_before_testing),
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.error,
                                 modifier = Modifier.padding(top = 12.dp)
                             )
                         }
 
-                        else -> Unit
+                        pmsNotConfigured -> {
+                            Text(
+                                text = stringResource(R.string.pms_not_configured),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.padding(top = 12.dp)
+                            )
+                        }
+
+                        else -> when (val state = testConnectionState) {
+                            is PmsTestConnectionState.Success -> {
+                                Text(
+                                    text = stringResource(R.string.connection_successful, pmsIpAddress),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.padding(top = 12.dp)
+                                )
+                            }
+
+                            is PmsTestConnectionState.Failed -> {
+                                Text(
+                                    text = stringResource(R.string.connection_failed_reason, state.reason),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.padding(top = 12.dp)
+                                )
+                            }
+
+                            else -> Unit
+                        }
                     }
                 }
             }

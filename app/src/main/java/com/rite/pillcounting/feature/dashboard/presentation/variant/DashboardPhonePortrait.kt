@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -13,7 +14,6 @@ import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -22,7 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldKpiScrollRow
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldQueueList
@@ -51,10 +53,16 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .systemBarsPadding()
             .background(extendedColors.primaryBackground)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        // Background stays full-bleed; only the content is inset so the notch
+        // strip is painted instead of showing the bare window background.
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .displayCutoutPadding()
+        ) {
             ScaffoldTopBar(
                 pharmacyName = uiState.userDetail?.profile?.pharmacyName,
                 terminalAndUserLine = buildTerminalUserLine(uiState, includeTerminal = params.isHl7Enabled),
@@ -74,7 +82,7 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
 
                 Text(
                     text = stringResource(R.string.quick_actions),
-                    style = MaterialTheme.typography.labelSmall,
+                    fontSize = responsiveSp(8.sp, boostOnPhone = true),
                     color = extendedColors.textColor,
                     fontWeight = FontWeight.SemiBold,
                 )
