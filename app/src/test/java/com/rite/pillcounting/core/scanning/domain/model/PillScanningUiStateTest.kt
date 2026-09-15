@@ -49,7 +49,10 @@ class PillScanningUiStateTest {
         showCountMismatchDialog = true,
         showEndStockCountDialog = true,
         stockCountSessionTotal = 50,
-        pendingTrayColorForClassification = TrayColor.WHITE
+        pendingTrayColorForClassification = TrayColor.WHITE,
+        showAddBottleDialog = true,
+        showReplaceBottleDialog = true,
+        showSkipStepDialog = true
     )
 
     @Test
@@ -82,6 +85,9 @@ class PillScanningUiStateTest {
         assertFalse(s.showEndStockCountDialog)
         assertEquals(0, s.stockCountSessionTotal)
         assertNull(s.pendingTrayColorForClassification)
+        assertFalse(s.showAddBottleDialog)
+        assertFalse(s.showReplaceBottleDialog)
+        assertFalse(s.showSkipStepDialog)
     }
 
     @Test
@@ -114,6 +120,9 @@ class PillScanningUiStateTest {
         assertTrue(s.showEndStockCountDialog)
         assertEquals(50, s.stockCountSessionTotal)
         assertEquals(TrayColor.WHITE, s.pendingTrayColorForClassification)
+        assertTrue(s.showAddBottleDialog)
+        assertTrue(s.showReplaceBottleDialog)
+        assertTrue(s.showSkipStepDialog)
     }
 
     @Test
@@ -175,5 +184,8 @@ class PillScanningUiStateTest {
         assertTrue(s.component30())                     // showEndStockCountDialog
         assertEquals(50, s.component31())               // stockCountSessionTotal
         assertEquals(TrayColor.WHITE, s.component32())  // pendingTrayColorForClassification
+        assertTrue(s.component33())                     // showAddBottleDialog
+        assertTrue(s.component34())                     // showReplaceBottleDialog
+        assertTrue(s.component35())                     // showSkipStepDialog
     }
 }

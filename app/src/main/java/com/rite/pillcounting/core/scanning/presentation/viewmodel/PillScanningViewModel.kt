@@ -2158,8 +2158,9 @@ class PillScanningViewModel @Inject constructor(
     /**
      * True when VIAL is the final step of the active workflow. The auto-capture
      * path uses this to decide whether scanning the vial should finish the flow
-     * outright (show the "Confirm Done" dialog) or merely capture the still and
-     * wait for the user to tap Done before advancing to the remaining step(s).
+     * outright (complete the transaction, or show the notes prompt when that
+     * setting is on) or merely capture the still and wait for the user to tap Done
+     * before advancing to the remaining step(s).
      */
     fun isVialLastStep(): Boolean = _steps.value.lastOrNull() == StepState.VIAL
 
@@ -2168,9 +2169,9 @@ class PillScanningViewModel @Inject constructor(
      *
      * @param autoConfirm when true (auto-capture path, where the vial's RX matched
      *   the active transaction), immediately commit the photo as if the user tapped
-     *   "Done" once the bitmap lands — this advances the workflow and surfaces the
-     *   "Confirm Done" dialog. When false (manual capture), the still is shown and
-     *   the user confirms via the Done button.
+     *   "Done" once the bitmap lands — this advances the workflow and completes the
+     *   transaction. When false (manual capture), the still is shown and the user
+     *   confirms via the Done button.
      *
      * A second call while a capture is still in flight is a no-op: no sound, no
      * flash, no capture request. See [isCapturing].
@@ -2235,7 +2236,10 @@ class PillScanningViewModel @Inject constructor(
             val poured = pillCountTxnDetailsDao
                 .observeAllForTxn(preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE)
                 .first().sumOf { it.pillCount ?: 0 }
-            if (poured - (_txnInfo.value?.targetCount ?: 0) == 0) {
+            if (poured == (_txnInfo.value?.targetCount ?: 0)) {
+                // No camera frames arrive while the dialog sits on the vial still, so
+                // the watchdog would fire and drop the idle overlay behind it.
+                pauseIdleTimer()
                 _uiState.update { it.copy(showSkipStepDialog = true) }
             } else {
                 moveNextStep()
@@ -2260,14 +2264,10 @@ class PillScanningViewModel @Inject constructor(
         isPaused = false
         _cameraPaused.value = false
         _uiState.update { it.copy(showIdleOverlay = false) }
-        // Clear the captured still only when the step has actually advanced beyond
-        // VIAL (i.e. moveNextStep moved to CONTAINER_PENDING or similar). When the
-        // step is still VIAL it means handleDone() was called and its coroutine
-        // clears capturedBitmap itself on completion — keeping the still up here
-        // stops CameraPreviewSection briefly resuming the live camera underneath.
-        if (_currentStep.value != StepState.VIAL) {
-            _capturedBitmap.value = null
-        }
+        // The still is left up here on purpose. Whichever way advanceFromVial goes it
+        // clears the bitmap itself — redoCaptureImage on the CONTAINER_PENDING entry,
+        // handleConfirmDone on completion — so clearing it here only flashes the live
+        // camera underneath.
         resetIdleTimer()
     }
 

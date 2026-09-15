@@ -15,6 +15,7 @@ import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
+import com.rite.pillcounting.core.scanning.domain.model.PillScanningUiState
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
@@ -164,6 +165,15 @@ class PillScanningViewModelCaptureTest {
             txnDetails = emptyList(),
             isComingFromHL7 = false,
         )
+    }
+
+    /** Raise the skip dialog so a "clears it" assertion is not passing on the default. */
+    private fun seedSkipDialogShown() {
+        val field = PillScanningViewModel::class.java.getDeclaredField("_uiState")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val flow = field.get(viewModel) as MutableStateFlow<PillScanningUiState>
+        flow.value = flow.value.copy(showSkipStepDialog = true)
     }
 
     /** Stub the CONTAINER_INITIATE rows the back-count gate sums; other steps stay empty. */
@@ -445,6 +455,8 @@ class PillScanningViewModelCaptureTest {
         every { preferenceHelper.getTxnId() } returns 42L
         every { preferenceHelper.getShowNotesDialogSetting() } returns true
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+        seedSkipDialogShown()
+        assertTrue(viewModel.uiState.value.showSkipStepDialog)
 
         viewModel.skipBackCount()
         advanceUntilIdle()
