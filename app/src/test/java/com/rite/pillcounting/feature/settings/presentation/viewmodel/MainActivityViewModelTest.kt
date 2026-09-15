@@ -174,7 +174,18 @@ class MainActivityViewModelTest {
     }
 
     private fun createViewModel() =
-        MainActivityViewModel(repository, preferenceHelper, txnDao, batchDao, stockTxnDao, bottleInfoDao, hl7ServiceManager, hl7EventHandler, sessionLockController, sessionHealthController)
+        MainActivityViewModel(
+            repository,
+            preferenceHelper,
+            txnDao,
+            batchDao,
+            stockTxnDao,
+            bottleInfoDao,
+            hl7ServiceManager,
+            hl7EventHandler,
+            sessionLockController,
+            sessionHealthController,
+        )
 
     // ─────────────────────────── init / theme loading ───────────────────────────
 
