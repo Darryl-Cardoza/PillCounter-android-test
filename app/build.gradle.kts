@@ -12,6 +12,7 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.gms.google-services")
     alias(libs.plugins.androidx.room)
+    id("com.autonomousapps.dependency-analysis")
 }
 
 val keystorePropsFile = rootProject.file("keystore.properties")

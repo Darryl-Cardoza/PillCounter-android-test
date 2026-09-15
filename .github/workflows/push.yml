@@ -71,8 +71,13 @@ jobs:
       lint_check_all_warnings: false
 
       # ---- dead code ----
-      # Report-only for now: enable once the buildHealth findings have been
-      # triaged, then flip fail_on_dead_code to true.
+      # `app` applies AGP, so DAGP is declared directly on it (root
+      # build.gradle.kts + app/build.gradle.kts) rather than relying on the
+      # pipeline's init-script injection, which can't reach Android modules
+      # (classloader isolation from AGP -- see ops-rite-android-pipeline
+      # README's "Dead code on Android modules"). hl7Core still gets DAGP via
+      # injection since it's a plain Kotlin/JVM module. Report-only for now;
+      # flip fail_on_dead_code once the buildHealth findings are triaged.
       run_dead_code: true
       run_deep_dead_code: false
 

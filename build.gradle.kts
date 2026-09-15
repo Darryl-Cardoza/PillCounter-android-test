@@ -19,4 +19,10 @@ plugins {
 
     // KSP
     id("com.google.devtools.ksp") version "2.3.8" apply false
+
+    // Dependency Analysis (dead-code gate) -- declared directly here, not
+    // injected, because the `app` module applies AGP. See ops-rite-android-
+    // pipeline README's "Dead code on Android modules" for why. Keep this
+    // version in sync with DAGP_VERSION in that pipeline's push.yml.
+    id("com.autonomousapps.dependency-analysis") version "1.33.0" apply false
 }
