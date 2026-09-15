@@ -12,7 +12,6 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * Securely assembles and vends the AES-256 model decryption key.
@@ -53,13 +52,9 @@ class ModelKeyUnit(private val context: Context) {
 
     // MARK: - ASSEMBLY
 
-    private fun compose(): String {
-        return listOf(f1(), f2(), f3(), f4(), f5(), f6()).joinToString("")
-    }
+    private fun compose(): String = listOf(f1(), f2(), f3(), f4(), f5(), f6()).joinToString("")
 
-    private fun refine(value: String): String {
-        return value.filter { it.isLetterOrDigit() }
-    }
+    private fun refine(value: String): String = value.filter { it.isLetterOrDigit() }
 
     private fun destroy(value: String) {
         try {
@@ -96,18 +91,18 @@ class ModelKeyUnit(private val context: Context) {
 
         KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES,
-            "AndroidKeyStore"
+            "AndroidKeyStore",
         ).apply {
             init(
                 KeyGenParameterSpec.Builder(
                     alias,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
                 )
                     .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                     .setKeySize(256)
                     .setUserAuthenticationRequired(false)
-                    .build()
+                    .build(),
             )
         }.generateKey()
 

@@ -26,7 +26,19 @@ plugins {
     // through one classloader, so once any module needs it declared
     // directly, root must have a real application too, and the pipeline's
     // init script backs off for this whole repo. See ops-rite-android-
-    // pipeline README's "Dead code on Android modules" for why. Keep this
-    // version in sync with DAGP_VERSION in that pipeline's push.yml.
-    id("com.autonomousapps.dependency-analysis") version "1.33.0"
+    // pipeline README's "Dead code on Android modules" for why.
+    //
+    // Version is intentionally NOT synced to the pipeline's DAGP_VERSION
+    // (1.33.0): that pin exists only for the pipeline's init-script
+    // injection path (needs 1.x's autoapply escape hatch), which doesn't
+    // apply here since this repo declares DAGP directly. 1.33.0's bundled
+    // kotlin-metadata-jvm reader tops out at Kotlin metadata 2.1.0 and can't
+    // parse this project's Kotlin 2.3.20 output ("Provided Metadata instance
+    // has version 2.3.0, while maximum supported version is 2.1.0"). 3.19.1
+    // requires AGP >= 8.10.0 (we're on 8.11.0) and reads newer Kotlin
+    // metadata. Safe to bump independently of the pipeline's pin going
+    // forward -- just check the changelog for breaking changes to the
+    // `dependencyAnalysis { issues { ... } }` DSL the pipeline's init script
+    // configures via DAGP_SEVERITY.
+    id("com.autonomousapps.dependency-analysis") version "3.19.1"
 }
