@@ -20,9 +20,13 @@ plugins {
     // KSP
     id("com.google.devtools.ksp") version "2.3.8" apply false
 
-    // Dependency Analysis (dead-code gate) -- declared directly here, not
-    // injected, because the `app` module applies AGP. See ops-rite-android-
+    // Dependency Analysis (dead-code gate) -- applied for real here (NOT
+    // `apply false`), not injected by the pipeline, because both `app` and
+    // `hl7Core` apply AGP. DAGP coordinates root + every analyzed module
+    // through one classloader, so once any module needs it declared
+    // directly, root must have a real application too, and the pipeline's
+    // init script backs off for this whole repo. See ops-rite-android-
     // pipeline README's "Dead code on Android modules" for why. Keep this
     // version in sync with DAGP_VERSION in that pipeline's push.yml.
-    id("com.autonomousapps.dependency-analysis") version "1.33.0" apply false
+    id("com.autonomousapps.dependency-analysis") version "1.33.0"
 }
