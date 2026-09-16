@@ -83,19 +83,19 @@ class MainActivityViewModelTest {
     private fun settingsResponse(colors: ColorSettings = colorSettings(), appLogo: String = "logo_url") = ApplicationSettingsResponse(
         colors = colors,
         appLogo = appLogo,
-        placeholderLogo = "placeholder"
+        placeholderLogo = "placeholder",
     )
 
     private fun dto(
         minVersion: String? = null,
         isMaintenanceMode: Boolean = false,
         settings: ApplicationSettingsResponse = settingsResponse(),
-        hl7Config: ApplicationSettingsHL7Config? = null
+        hl7Config: ApplicationSettingsHL7Config? = null,
     ) = SettingsDataDto(
         minVersion = minVersion,
         isMaintenanceMode = isMaintenanceMode,
         settings = settings,
-        hl7Config = hl7Config
+        hl7Config = hl7Config,
     )
 
     private fun apiResponse(data: SettingsDataDto?) = ApiResponse(
@@ -103,7 +103,7 @@ class MainActivityViewModelTest {
         isSuccess = true,
         message = "ok",
         token = null,
-        data = data
+        data = data,
     )
 
     @Before
