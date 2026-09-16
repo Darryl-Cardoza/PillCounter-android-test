@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.profile.di
 
 import com.rite.pillcounting.core.auth.AuthEventBus
+import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
 import com.rite.pillcounting.feature.profile.data.remote.IProfileApi
@@ -37,6 +38,7 @@ class ProfileModuleTest {
     @Test
     fun `provideProfileRepository returns non-null ProfileRepository`() {
         val api = mockk<IProfileApi>(relaxed = true)
+        val userDao = mockk<UserDao>(relaxed = true)
         val preferenceHelper = mockk<PreferenceHelper>(relaxed = true)
         val applicationSettingApi = mockk<IApplicationSettingInterface>(relaxed = true)
         val ioDispatcher = UnconfinedTestDispatcher()
@@ -44,6 +46,7 @@ class ProfileModuleTest {
 
         val repository: IProfileRepository = ProfileModule.provideProfileRepository(
             api = api,
+            userDao = userDao,
             preferenceHelper = preferenceHelper,
             applicationSettingApi = applicationSettingApi,
             ioDispatcher = ioDispatcher,

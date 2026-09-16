@@ -117,11 +117,7 @@ internal fun ScanningStep(
                     .align(Alignment.Center)
                     .width(ovalWidth)
                     .aspectRatio(FACE_OVAL_ASPECT_RATIO)
-                    .border(
-                        width = 3.dp,
-                        color = MaterialTheme.colorScheme.primary,
-                        shape = RoundedCornerShape(percent = FACE_OVAL_CORNER_PERCENT)
-                    )
+                    .border(width = 3.dp, color = MaterialTheme.colorScheme.primary, shape = RoundedCornerShape(percent = FACE_OVAL_CORNER_PERCENT))
             )
             // Same step-title chip the Rx/pill scanning screens show.
             Box(

@@ -43,7 +43,9 @@ class OverlayUtilsTest {
 
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
-            detectedPills = emptyList()
+            detectedPills = emptyList(),
+            previewWidth = 200,
+            previewHeight = 200
         )
 
         assertEquals(200, result.width)
@@ -56,7 +58,9 @@ class OverlayUtilsTest {
 
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
-            detectedPills = emptyList()
+            detectedPills = emptyList(),
+            previewWidth = 150,
+            previewHeight = 150
         )
 
         assertTrue(result !== bitmap)
@@ -68,7 +72,9 @@ class OverlayUtilsTest {
 
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
-            detectedPills = emptyList()
+            detectedPills = emptyList(),
+            previewWidth = 100,
+            previewHeight = 100
         )
 
         assertNotNull(result)
@@ -89,7 +95,9 @@ class OverlayUtilsTest {
 
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
-            detectedPills = pills
+            detectedPills = pills,
+            previewWidth = 300,
+            previewHeight = 300
         )
 
         // The circle center should no longer be pure white since something was drawn there.
@@ -107,7 +115,9 @@ class OverlayUtilsTest {
 
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
-            detectedPills = pills
+            detectedPills = pills,
+            previewWidth = 100,
+            previewHeight = 100
         )
 
         // Should complete without throwing an out-of-bounds exception and produce a valid bitmap.
@@ -123,6 +133,8 @@ class OverlayUtilsTest {
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
             detectedPills = emptyList(),
+            previewWidth = 120,
+            previewHeight = 120,
             count = "42"
         )
 
@@ -137,6 +149,8 @@ class OverlayUtilsTest {
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
             detectedPills = emptyList(),
+            previewWidth = 120,
+            previewHeight = 120,
             count = "42"
         )
 
@@ -151,7 +165,10 @@ class OverlayUtilsTest {
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
             detectedPills = emptyList(),
+            previewWidth = 400,
+            previewHeight = 400,
             userName = null,
+            userId = null,
             location = "",
             ndc = "00071015523",
             count = "30",
@@ -180,7 +197,10 @@ class OverlayUtilsTest {
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
             detectedPills = emptyList(),
+            previewWidth = 500,
+            previewHeight = 500,
             userName = "John Doe",
+            userId = "u123",
             location = "Pharmacy A",
             ndc = "00071015523",
             count = "30",
@@ -208,7 +228,9 @@ class OverlayUtilsTest {
 
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
-            detectedPills = pills
+            detectedPills = pills,
+            previewWidth = 200,
+            previewHeight = 200
         )
 
         val centerPixel = result.getPixel(100, 100)
@@ -223,6 +245,8 @@ class OverlayUtilsTest {
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
             detectedPills = emptyList(),
+            previewWidth = 80,
+            previewHeight = 80,
             timestamp = 0L
         )
 
@@ -235,7 +259,9 @@ class OverlayUtilsTest {
 
         val result = OverlayUtils.drawDetectionsOnBitmap(
             bitmap = bitmap,
-            detectedPills = listOf(DetectedPill(x = 0.5f, y = 0.5f, confidence = 0.5f))
+            detectedPills = listOf(DetectedPill(x = 0.5f, y = 0.5f, confidence = 0.5f)),
+            previewWidth = 2,
+            previewHeight = 2
         )
 
         assertEquals(2, result.width)

@@ -135,6 +135,7 @@ object HL7MessageBuilder {
         // structured components a receiver needs to render an operator name.
         pharmacistFamilyName: String? = null,
         pharmacistGivenName: String? = null,
+        location: String? = null,
         // Optional fields that may not yet exist on every PillCountTxnEntity build;
         // passed explicitly until Room entities are confirmed to carry them.
         lotNumber: String? = null,
@@ -600,10 +601,7 @@ object HL7MessageBuilder {
         }.takeIf { it.isNotEmpty() }
     }
 
-    /**
-     * Reads, decrypts, and base64-encodes an image file, cached per-txn by (path, lastModified) so
-     * repeat resends of the same unchanged file skip the disk read and re-encode.
-     */
+    /** Reads, decrypts, and base64-encodes an image file, cached per-txn by (path, lastModified) so repeat resends of the same unchanged file skip the disk read and re-encode. */
     private fun encodeImageCached(txnId: Long, path: String): String? {
         val file = File(path)
         val lastModified = file.lastModified()

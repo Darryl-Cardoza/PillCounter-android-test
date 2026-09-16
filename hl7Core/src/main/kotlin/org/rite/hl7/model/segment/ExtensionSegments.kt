@@ -8,8 +8,7 @@ import org.rite.hl7.model.ast.HL7Segment
  * ZSN — Serial Number Capture (DSCSA). New §10 extension.
  *
  * Field map (project-authoritative):
- * `ZSN|setId|packageSerialNumber|nationalDrugCode|lotNumber|expirationDate|transactionType|
- * quantityFromThisStockItem|captureSource|captureTimestamp`
+ * `ZSN|setId|packageSerialNumber|nationalDrugCode|lotNumber|expirationDate|transactionType|quantityFromThisStockItem|captureSource|captureTimestamp`
  * transactionType: D = dispense, R = return.
  * captureSource: GS1 / NDC_LINEAR / MANUAL / UNKNOWN.
  */
@@ -89,8 +88,7 @@ class ZADSegment(raw: HL7Segment) : TypedSegment(raw) {
  * Source: Avery Weigh-Tronix GSE-02 "Eyecon Native Interface Protocol" (X25).
  *
  * Field map (minimum valid packet = fields 1-14; max = fields 1-15):
- * `ZNI|mode|ndc|stockBottleBarcode|drugName|stockBottleVerification|userName|countType||packetVersion|
- * patientName|fillerOrderNumber|substitutionStatus|dispenseAmount|prescriptionNumber|fillNumber`
+ * `ZNI|mode|ndc|stockBottleBarcode|drugName|stockBottleVerification|userName|countType||packetVersion|patientName|fillerOrderNumber|substitutionStatus|dispenseAmount|prescriptionNumber|fillNumber`
  * mode: B/b buffer, I/i immediate, C cycle count, Q query inventory.
  * stockBottleVerification: A always / N never / U user-choice / blank defer to Eyecon setting.
  * substitutionStatus: Y/N/A (default A).
@@ -139,8 +137,7 @@ class ZNISegment(raw: HL7Segment) : TypedSegment(raw) {
  * fillNumber: optional, numeric.
  *
  * Pharmacy Dispense Message (RDS, VIVID → PMSS):
- * `ZUI|ndc|vividUserName|transactionOrderId|rxNumber|fillNumber|dispensedQuantity|transactionStatus|
- * drugImage|drugLotNumber|drugSerialNumber|drugExpirationDate`
+ * `ZUI|ndc|vividUserName|transactionOrderId|rxNumber|fillNumber|dispensedQuantity|transactionStatus|drugImage|drugLotNumber|drugSerialNumber|drugExpirationDate`
  * vividUserName: "Anonymous" if in Anonymous Mode.
  * transactionStatus: Done / Cancelled / Partial / Overfill — see [org.rite.hl7.builder.ZuiTransactionStatus].
  * drugImage: optional, base64 encoded string.

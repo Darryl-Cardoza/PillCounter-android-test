@@ -43,7 +43,8 @@ class HistoryRepository @Inject constructor(
     suspend fun deleteBatchesForDateRange(
         startDate: LocalDate,
         endDate: LocalDate,
-        isCompleted: Boolean?
+        isCompleted: Boolean?,
+        userLocalId: Long
     ) {
         val zoneId = ZoneId.systemDefault()
         val startMillis = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
@@ -58,7 +59,8 @@ class HistoryRepository @Inject constructor(
 
     fun getBatchSummaries(
         startDate: LocalDate,
-        endDate: LocalDate
+        endDate: LocalDate,
+        userLocalId: Long
     ): Flow<List<BatchSummary>> {
         val zoneId = ZoneId.systemDefault()
         val startMillis = startDate.atStartOfDay(zoneId).toInstant().toEpochMilli()

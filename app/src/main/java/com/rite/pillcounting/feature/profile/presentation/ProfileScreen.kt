@@ -564,7 +564,7 @@ private fun ResponsiveProfileFields(
             isSearchable = true,
             error = viewModel.countryError?.let { stringResource(it) },
             focusRequester = countryFocusRequester,
-            onQueryChanged = { viewModel.onCountryQueryChanged() }
+            onQueryChanged = { viewModel.onCountryQueryChanged(it) }
         )
         LabeledDropdown(
             label = stringResource(R.string.state),
@@ -580,7 +580,7 @@ private fun ResponsiveProfileFields(
             isSearchable = true,
             error = viewModel.stateError?.let { stringResource(it) },
             focusRequester = stateFocusRequester,
-            onQueryChanged = { viewModel.onStateQueryChanged() }
+            onQueryChanged = { viewModel.onStateQueryChanged(it) }
         )
     }
 

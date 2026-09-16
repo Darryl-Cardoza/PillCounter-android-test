@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.profile.di
 
 import com.rite.pillcounting.core.auth.AuthEventBus
+import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.profile.data.ProfileRepository
@@ -61,6 +62,7 @@ object ProfileModule {
      * logic and data flow, ensuring separation of concerns and testability.
      *
      * @param api The [IProfileApi] used for remote API interactions.
+     * @param userDao The [UserDao] used for local profile caching and database access.
      * @param preferenceHelper The [PreferenceHelper] used for user-specific settings and preferences.
      * @param applicationSettingApi The [IApplicationSettingInterface] used for retrieving configuration data.
      * @param ioDispatcher The [CoroutineDispatcher] used for performing I/O-bound operations on background threads.
@@ -70,6 +72,7 @@ object ProfileModule {
     @Singleton
     fun provideProfileRepository(
         api: IProfileApi,
+        userDao: UserDao,
         preferenceHelper: PreferenceHelper,
         applicationSettingApi: IApplicationSettingInterface,
         ioDispatcher: CoroutineDispatcher,

@@ -101,10 +101,7 @@ interface PillCountTxnDao {
             }
         } catch (e: android.database.sqlite.SQLiteConstraintException) {
             // Log the error and rethrow a more descriptive one or handle it
-            throw IllegalArgumentException(
-                "Foreign key constraint failed: Ensure User, Drug, and Batch exist before creating a transaction. " +
-                    "${e.message}"
-            )
+            throw IllegalArgumentException("Foreign key constraint failed: Ensure User, Drug, and Batch exist before creating a transaction. ${e.message}")
         }
     }
 

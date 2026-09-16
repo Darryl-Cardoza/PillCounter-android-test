@@ -52,7 +52,7 @@ class HistoryViewModelTest {
     fun setup() {
         every { preferenceHelper.getLocalId() } returns 1L
         every { repository.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(emptyList())
-        every { repository.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
+        every { repository.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
         viewModel = HistoryViewModel(repository, preferenceHelper)
     }
 
@@ -230,34 +230,34 @@ class HistoryViewModelTest {
     // HIST_VM_009
     @Test
     fun `deleteCountsForSelectedDate STOCK ALL calls deleteBatchesForDateRange with null isCompleted`() = runTest {
-        coJustRun { repository.deleteBatchesForDateRange(any(), any(), isNull()) }
+        coJustRun { repository.deleteBatchesForDateRange(any(), any(), isNull(), any()) }
 
         viewModel.deleteCountsForSelectedDate(ToggleOption.STOCK, HistoryDeleteFilter.ALL)
         advanceUntilIdle()
 
-        coVerify { repository.deleteBatchesForDateRange(any(), any(), null) }
+        coVerify { repository.deleteBatchesForDateRange(any(), any(), null, 1L) }
     }
 
     // HIST_VM_010
     @Test
     fun `deleteCountsForSelectedDate STOCK COMPLETED passes isCompleted=true`() = runTest {
-        coJustRun { repository.deleteBatchesForDateRange(any(), any(), any()) }
+        coJustRun { repository.deleteBatchesForDateRange(any(), any(), any(), any()) }
 
         viewModel.deleteCountsForSelectedDate(ToggleOption.STOCK, HistoryDeleteFilter.COMPLETED)
         advanceUntilIdle()
 
-        coVerify { repository.deleteBatchesForDateRange(any(), any(), true) }
+        coVerify { repository.deleteBatchesForDateRange(any(), any(), true, any()) }
     }
 
     // HIST_VM_011
     @Test
     fun `deleteCountsForSelectedDate STOCK PENDING passes isCompleted=false`() = runTest {
-        coJustRun { repository.deleteBatchesForDateRange(any(), any(), any()) }
+        coJustRun { repository.deleteBatchesForDateRange(any(), any(), any(), any()) }
 
         viewModel.deleteCountsForSelectedDate(ToggleOption.STOCK, HistoryDeleteFilter.PENDING)
         advanceUntilIdle()
 
-        coVerify { repository.deleteBatchesForDateRange(any(), any(), false) }
+        coVerify { repository.deleteBatchesForDateRange(any(), any(), false, any()) }
     }
 
     // HIST_VM_012
@@ -302,7 +302,7 @@ class HistoryViewModelTest {
             batchId = 42L, createdAt = 1000L, uniqueNdcCount = 5,
             status = BatchStatus.COMPLETED, bucketId = null, requestIdFromPMS = null
         )
-        every { repository.getBatchSummaries(any(), any()) } returns flowOf(listOf(batch))
+        every { repository.getBatchSummaries(any(), any(), any()) } returns flowOf(listOf(batch))
 
         viewModel.batchGroups.test {
             awaitItem()
@@ -321,7 +321,7 @@ class HistoryViewModelTest {
             status = BatchStatus.INPROGRESS, bucketId = "BUCKET-A", requestIdFromPMS = null)
         val batch2 = BatchSummary(batchId = 2L, createdAt = 2000L, uniqueNdcCount = 2,
             status = BatchStatus.COMPLETED, bucketId = "BUCKET-B", requestIdFromPMS = null)
-        every { repository.getBatchSummaries(any(), any()) } returns flowOf(listOf(batch1, batch2))
+        every { repository.getBatchSummaries(any(), any(), any()) } returns flowOf(listOf(batch1, batch2))
 
         viewModel.batchGroups.test {
             awaitItem()

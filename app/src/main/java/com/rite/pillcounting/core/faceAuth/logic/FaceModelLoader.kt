@@ -108,10 +108,7 @@ class FaceModelLoader @Inject constructor(
             rewind()
         }
 
-    /**
-     * TEMPORARY: dumps every input/output tensor's declared shape + dtype so we can confirm
-     * our preprocessing assumptions match the actual model file.
-     */
+    /** TEMPORARY: dumps every input/output tensor's declared shape + dtype so we can confirm our preprocessing assumptions match the actual model file. */
     private fun logTensorSpecs(logger: AppLogger, label: String, interpreter: Interpreter) {
         for (i in 0 until interpreter.inputTensorCount) {
             val t = interpreter.getInputTensor(i)

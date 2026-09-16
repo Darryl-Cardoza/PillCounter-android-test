@@ -108,10 +108,7 @@ class FaceEngine @Inject constructor(
         return embedding
     }
 
-    /**
-     * Letterboxes [bitmap] into a [w]x[h] canvas; returns the input buffer and the scale
-     * factor mapping detector-space back to original-frame-space.
-     */
+    /** Letterboxes [bitmap] into a [w]x[h] canvas; returns the input buffer and the scale factor mapping detector-space back to original-frame-space. */
     private fun letterbox(bitmap: Bitmap, w: Int, h: Int): Pair<ByteBuffer, Float> {
         val scaleToFit = minOf(w.toFloat() / bitmap.width, h.toFloat() / bitmap.height)
         val newW = (bitmap.width * scaleToFit).toInt().coerceAtLeast(1)

@@ -110,159 +110,6 @@ private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
 
 private const val HAZARDOUS_TAG = "HazardousFlow"
 
-// ── Pure helper functions extracted from the DispenseFlowScreen composable ──
-// These contain no Compose state/side effects; they are plain computations
-// factored out verbatim from inline expressions to reduce the parent
-// composable's cyclomatic complexity without touching behavior.
-
-/**
- * Header step type shown in the top title bar for the given stage. Mirrors
- * the inline `when` previously inline in DispenseFlowScreen.
- */
-private fun computeHeaderStepType(
-    stage: DispenseStage,
-    pillStepType: StepState,
-): StepState = when (stage) {
-    DispenseStage.QUEUE -> StepState.RX_LABEL
-    DispenseStage.PRE_RX -> StepState.RX_LABEL
-    DispenseStage.PRE_NDC -> StepState.SCAN
-    DispenseStage.COUNTING -> pillStepType
-}
-
-/**
- * End padding for the top header bar so its Alignment.Center lands in the
- * middle of the visible camera area (not the full screen width) when a
- * landscape side panel (pill count / queue) occupies part of the screen.
- */
-private fun computeHeaderEndPadding(
-    isLandscape: Boolean,
-    stage: DispenseStage,
-    isTabletDevice: Boolean,
-    screenWidthDp: androidx.compose.ui.unit.Dp,
-): androidx.compose.ui.unit.Dp {
-    if (!isLandscape) return 0.dp
-    return when (stage) {
-        DispenseStage.COUNTING -> screenWidthDp * 0.3f
-        DispenseStage.QUEUE -> screenWidthDp * if (isTabletDevice) 0.4f else 0.45f
-        else -> 0.dp
-    }
-}
-
-/**
- * True while any verification sheet, error dialog, or loading indicator is
- * on top of the camera — used to pause pill detection during modal UI.
- */
-private fun computeAnyOverlayActive(
-    showRxDetails: Boolean,
-    showNdcDetails: Boolean,
-    showNdcNotFoundDialog: Boolean,
-    showInvalidScanDialog: Boolean,
-    showNdcEquivalenceDialog: Boolean,
-    showRxScannedInStockCountDialog: Boolean,
-    isLoading: Boolean,
-): Boolean = showRxDetails ||
-        showNdcDetails ||
-        showNdcNotFoundDialog ||
-        showInvalidScanDialog ||
-        showNdcEquivalenceDialog ||
-        showRxScannedInStockCountDialog ||
-        isLoading
-
-/**
- * True while the barcode analyzer should be actively scanning frames, based
- * on stage, vial/counting sub-steps, any modal overlay, and scan cooldown.
- */
-private fun computeShouldRunBarcodeAnalyzer(
-    stage: DispenseStage,
-    isVialCaptureStep: Boolean,
-    isCountingScanStep: Boolean,
-    showRxDetails: Boolean,
-    showNdcDetails: Boolean,
-    showNdcNotFoundDialog: Boolean,
-    showInvalidScanDialog: Boolean,
-    showNdcEquivalenceDialog: Boolean,
-    showRxScannedInStockCountDialog: Boolean,
-    isLoading: Boolean,
-    scanCooldownActive: Boolean,
-): Boolean = (stage == DispenseStage.QUEUE ||
-        stage == DispenseStage.PRE_RX ||
-        stage == DispenseStage.PRE_NDC ||
-        isVialCaptureStep ||
-        isCountingScanStep) &&
-        !showRxDetails &&
-        !showNdcDetails &&
-        !showNdcNotFoundDialog &&
-        !showInvalidScanDialog &&
-        !showNdcEquivalenceDialog &&
-        !showRxScannedInStockCountDialog &&
-        !isLoading &&
-        !scanCooldownActive
-
-/**
- * True while any overlay that should steal focus from the BT scanner input
- * field is showing (includes showOnHoldDialog and isLoading, which the
- * barcode-analyzer overlay check above does not).
- */
-private fun computeBtScannerOverlayActive(
-    showRxDetails: Boolean,
-    showNdcDetails: Boolean,
-    showNdcNotFoundDialog: Boolean,
-    showInvalidScanDialog: Boolean,
-    showNdcEquivalenceDialog: Boolean,
-    showRxScannedInStockCountDialog: Boolean,
-    showOnHoldDialog: Boolean,
-    isLoading: Boolean,
-): Boolean = showRxDetails ||
-        showNdcDetails ||
-        showNdcNotFoundDialog ||
-        showInvalidScanDialog ||
-        showNdcEquivalenceDialog ||
-        showRxScannedInStockCountDialog ||
-        showOnHoldDialog ||
-        isLoading
-
-/**
- * Modifier for the pill-count panel box (full pill panel or pre-COUNTING
- * count circle container), matching the previous inline landscape/portrait ×
- * vial/non-vial branching exactly.
- */
-private fun androidx.compose.foundation.layout.BoxScope.pillPanelBoxModifier(
-    isLandscape: Boolean,
-    isVialStep: Boolean,
-): Modifier {
-    return if (isLandscape) {
-        if (isVialStep) {
-            // Original landscape sizing for the vial capture bar.
-            Modifier
-                .align(Alignment.CenterEnd)
-                .fillMaxHeight()
-                .fillMaxWidth(0.3f)
-        } else {
-            // New overlay design: details bar on top, count
-            // circle centered over the camera feed, progress bar
-            // at the bottom. Spans the full preview.
-            Modifier
-                .align(Alignment.Center)
-                .fillMaxSize()
-        }
-    } else {
-        if (isVialStep) {
-            // Portrait vial capture keeps the original bottom strip.
-            Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .fillMaxHeight(0.25f)
-        } else {
-            // New full-bleed overlay (matches landscape): top details
-            // bar, centered count circle over the feed, bottom progress
-            // bar. Spans the full preview.
-            Modifier
-                .align(Alignment.Center)
-                .fillMaxSize()
-        }
-    }
-}
-
 @Composable
 fun DispenseFlowScreen(
     navController: NavController,
@@ -494,32 +341,105 @@ fun DispenseFlowScreen(
     }
 
     // === Pill-VM dialogs ===
-    TargetCountDialogIfShown(
-        show = pillState.showTargetCountDialog,
-        fromQueue = fromQueue,
-        navController = navController,
-        pillVm = pillVm,
-        dispenseVm = dispenseVm,
-    )
+    if (pillState.showTargetCountDialog) {
+        TargetPillsCountDialog(
+            onDismiss = {
+                pillVm.setTargetCountDialogShown(false)
+                if (fromQueue) {
+                    pillVm.resetWorkflowSteps()
+                    dispenseVm.resetToQueue()
+                } else {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(Screen.Dashboard.route) { inclusive = true }
+                    }
+                }
+            },
+            onOkay = { count ->
+                pillVm.updateTargetCount(count)
+                pillVm.setTargetCountDialogShown(false)
+            }
+        )
+    }
 
-    NotesDialogIfShown(show = pillState.showNotesDialog, pillVm = pillVm)
+    if (pillState.showNotesDialog) {
+        AddNoteDialog(
+            onDismiss = { pillVm.setNoteDialogShown(false) },
+            onSkip = { pillVm.onEvent(PillScanningEvent.NoteSkip) },
+            onSave = { note -> pillVm.onEvent(PillScanningEvent.NoteSaved(note)) },
+        )
+    }
 
-    ConfirmDoneDialogIfShown(
-        show = pillState.showConfirmDialog,
-        countType = countType,
-        isContainerPending = pillStepType.equals(StepState.CONTAINER_PENDING),
-        countedTotal = pillState.txnDetailHistory.sumOf { it.count },
-        targetCount = pillState.targetCount,
-        pillVm = pillVm,
-    )
+    // "Confirm Done" — fires after the user taps All Done and the pill VM
+    // decides whether the count is final. For FIXED counts under target, the
+    // message text is the "did you mean to stop short?" warning.
+    if (pillState.showConfirmDialog) {
+        val warningText = if (
+            countType == CountType.FIXED.toString() && pillStepType.equals(StepState.CONTAINER_PENDING) &&
+            pillState.txnDetailHistory.sumOf { it.count } < pillState.targetCount
+        ) {
+            stringResource(R.string.confirm_done_desc_fixed)
+        } else {
+            stringResource(R.string.confirm_done_desc_regular)
+        }
+        CommonDialog(
+            message = warningText,
+            title = stringResource(R.string.confirm_done),
+            confirmText = stringResource(R.string.ok),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = { pillVm.onEvent(PillScanningEvent.ConfirmDone) },
+            onCancel = { pillVm.onEvent(PillScanningEvent.CancelDone) },
+        )
+    }
 
-    CountMismatchDialogIfShown(show = pillState.showCountMismatchDialog, pillVm = pillVm)
+    if (pillState.showCountMismatchDialog) {
+        CommonDialog(
+            message = stringResource(R.string.the_counted_quantity_does_not_match_the_target_count),
+            title = stringResource(R.string.count_mismatch),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = { pillVm.moveNextStep() },
+            onCancel = {
+                pillVm.resetIdleOverlay()
+                pillVm.handleDismissDialog()
+            },
+        )
+    }
 
-    AddBottleDialogIfShown(show = pillState.showAddBottleDialog, pillVm = pillVm)
+    if (pillState.showAddBottleDialog) {
+        CommonDialog(
+            message = stringResource(R.string.add_new_bottle_confirm_message),
+            title = stringResource(R.string.new_bottle_detected),
+            confirmText = stringResource(R.string.ok),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = { pillVm.onEvent(PillScanningEvent.ConfirmAddBottle) },
+            onCancel = { pillVm.onEvent(PillScanningEvent.CancelAddBottle) },
+        )
+    }
 
-    ReplaceBottleDialogIfShown(show = pillState.showReplaceBottleDialog, pillVm = pillVm)
+    if (pillState.showReplaceBottleDialog) {
+        CommonDialog(
+            message = stringResource(R.string.replace_bottle_confirm_message),
+            title = stringResource(R.string.replace_bottle_detected),
+            confirmText = stringResource(R.string.ok),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = { pillVm.onEvent(PillScanningEvent.ConfirmReplaceBottle) },
+            onCancel = { pillVm.onEvent(PillScanningEvent.CancelReplaceBottle) },
+        )
+    }
 
-    EndStockCountDialogIfShown(show = pillState.showEndStockCountDialog, pillVm = pillVm)
+    if (pillState.showEndStockCountDialog) {
+        CommonDialog(
+            message = stringResource(R.string.are_you_sure_you_want_to_end_this_count),
+            title = stringResource(R.string.confirmation),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = { pillVm.moveNextStep() },
+            onCancel = {
+                pillVm.resetIdleOverlay()
+                pillVm.handleDismissDialog()
+            },
+        )
+    }
 
     // ── Tray color classification popup ─────────────────────────────────────
     // Shown when a tray color is detected during a hazardous transaction and has
@@ -551,11 +471,7 @@ fun DispenseFlowScreen(
     // LaunchedEffect below).
     LaunchedEffect(dispenseState.stage) {
         if (dispenseState.stage == DispenseStage.COUNTING) {
-            Log.i(
-                HAZARDOUS_TAG,
-                "Stage → COUNTING | countType=$countType | txnId=${dispenseState.txnId} | " +
-                    "drug=${dispenseState.drugName} | isHazardous=${dispenseState.isHazardous}"
-            )
+            Log.i(HAZARDOUS_TAG, "Stage → COUNTING | countType=$countType | txnId=${dispenseState.txnId} | drug=${dispenseState.drugName} | isHazardous=${dispenseState.isHazardous}")
             pillVm.resumePillDetection()
             // Stock count (REGULAR): no pill_count_txn — count loose pills into the
             // already-created BottleInfo line via the stock-count session. Dispense (FIXED)
@@ -610,15 +526,13 @@ fun DispenseFlowScreen(
         dispenseState.showRxScannedInStockCountDialog,
         dispenseState.isLoading,
     ) {
-        val anyOverlay = computeAnyOverlayActive(
-            showRxDetails = dispenseState.showRxDetails,
-            showNdcDetails = dispenseState.showNdcDetails,
-            showNdcNotFoundDialog = dispenseState.showNdcNotFoundDialog,
-            showInvalidScanDialog = dispenseState.showInvalidScanDialog,
-            showNdcEquivalenceDialog = dispenseState.showNdcEquivalenceDialog,
-            showRxScannedInStockCountDialog = dispenseState.showRxScannedInStockCountDialog,
-            isLoading = dispenseState.isLoading,
-        )
+        val anyOverlay = dispenseState.showRxDetails ||
+                dispenseState.showNdcDetails ||
+                dispenseState.showNdcNotFoundDialog ||
+                dispenseState.showInvalidScanDialog ||
+                dispenseState.showNdcEquivalenceDialog ||
+                dispenseState.showRxScannedInStockCountDialog ||
+                dispenseState.isLoading
         if (anyOverlay) pillVm.pausePillDetection()
         else pillVm.resumePillDetection()
     }
@@ -683,19 +597,19 @@ fun DispenseFlowScreen(
         // Pre-stages scan for the RX / NDC labels; the VIAL step scans the vial
         // label to auto-capture when its RX matches the active transaction; the
         // counting steps scan for a same-NDC bottle rescan mid-count.
-        val shouldRun = computeShouldRunBarcodeAnalyzer(
-            stage = dispenseState.stage,
-            isVialCaptureStep = isVialCaptureStep,
-            isCountingScanStep = isCountingScanStep,
-            showRxDetails = dispenseState.showRxDetails,
-            showNdcDetails = dispenseState.showNdcDetails,
-            showNdcNotFoundDialog = dispenseState.showNdcNotFoundDialog,
-            showInvalidScanDialog = dispenseState.showInvalidScanDialog,
-            showNdcEquivalenceDialog = dispenseState.showNdcEquivalenceDialog,
-            showRxScannedInStockCountDialog = dispenseState.showRxScannedInStockCountDialog,
-            isLoading = dispenseState.isLoading,
-            scanCooldownActive = scanCooldownActive,
-        )
+        val shouldRun = (dispenseState.stage == DispenseStage.QUEUE ||
+                dispenseState.stage == DispenseStage.PRE_RX ||
+                dispenseState.stage == DispenseStage.PRE_NDC ||
+                isVialCaptureStep ||
+                isCountingScanStep) &&
+                !dispenseState.showRxDetails &&
+                !dispenseState.showNdcDetails &&
+                !dispenseState.showNdcNotFoundDialog &&
+                !dispenseState.showInvalidScanDialog &&
+                !dispenseState.showNdcEquivalenceDialog &&
+                !dispenseState.showRxScannedInStockCountDialog &&
+                !dispenseState.isLoading &&
+                !scanCooldownActive
         if (shouldRun) barcodeAnalyzer.resume() else barcodeAnalyzer.pause()
     }
 
@@ -772,17 +686,53 @@ fun DispenseFlowScreen(
 
     // RX already has a PARTIAL transaction: ask the user whether to continue it.
     // "Yes" advances to PRE_NDC to scan the container; "No" goes to Dashboard.
-    ContinueRxDialogIfShown(
-        show = dispenseState.showContinueRxDialog,
-        fromQueue = fromQueue,
-        navController = navController,
-        pillVm = pillVm,
-        dispenseVm = dispenseVm,
-    )
+    if (dispenseState.showContinueRxDialog) {
+        CommonDialog(
+            title = stringResource(R.string.rx_already_exists_title),
+            message = stringResource(R.string.rx_already_exists_message),
+            confirmText = stringResource(R.string.yes),
+            cancelText = stringResource(R.string.no),
+            onConfirm = { dispenseVm.confirmContinueRx() },
+            onCancel = {
+                dispenseVm.dismissContinueRxDialog()
+                if (fromQueue) {
+                    pillVm.resetWorkflowSteps()
+                    dispenseVm.resetToQueue()
+                } else {
+                    navController.navigate(Screen.Dashboard.route) {
+                        popUpTo(0)
+                        launchSingleTop = true
+                    }
+                }
+            },
+        )
+    }
 
-    OnHoldDialogIfShown(show = dispenseState.showOnHoldDialog, dispenseVm = dispenseVm)
+    // RX transaction is ON_HOLD: block the user with an informational dialog.
+    if (dispenseState.showOnHoldDialog) {
+        CommonDialog(
+            title = stringResource(R.string.rx_on_hold_title),
+            message = stringResource(R.string.rx_on_hold_message),
+            confirmText = stringResource(R.string.ok),
+            cancelText = "",
+            onConfirm = { dispenseVm.dismissOnHoldDialog() },
+            onCancel = {},
+            isSingleButton = true,
+        )
+    }
 
-    NdcEquivalenceDialogIfShown(show = dispenseState.showNdcEquivalenceDialog, dispenseVm = dispenseVm)
+    // Substitute drug confirmation: surfaces when the scanned NDC is reported
+    // by the server as a generic equivalent of the HL7-expected NDC.
+    if (dispenseState.showNdcEquivalenceDialog) {
+        CommonDialog(
+            title = stringResource(R.string.scan_container_qr_code),
+            message = stringResource(R.string.scanned_item_is_a_generic_equivalent_to_the_specific_drug),
+            confirmText = stringResource(R.string.substitute),
+            cancelText = stringResource(R.string.cancel),
+            onConfirm = { dispenseVm.confirmSubstitute() },
+            onCancel = { dispenseVm.dismissNdcEquivalenceDialog() },
+        )
+    }
 
     val rxScannedInStockCountToastText = stringResource(R.string.scan_correct_label)
     LaunchedEffect(dispenseState.showRxScannedInStockCountDialog) {
@@ -869,16 +819,14 @@ fun DispenseFlowScreen(
 
     // Re-focus the BT scanner field whenever all overlays dismiss so the next
     // scan is captured without the user tapping the field.
-    val btScannerOverlayActive = computeBtScannerOverlayActive(
-        showRxDetails = dispenseState.showRxDetails,
-        showNdcDetails = dispenseState.showNdcDetails,
-        showNdcNotFoundDialog = dispenseState.showNdcNotFoundDialog,
-        showInvalidScanDialog = dispenseState.showInvalidScanDialog,
-        showNdcEquivalenceDialog = dispenseState.showNdcEquivalenceDialog,
-        showRxScannedInStockCountDialog = dispenseState.showRxScannedInStockCountDialog,
-        showOnHoldDialog = dispenseState.showOnHoldDialog,
-        isLoading = dispenseState.isLoading,
-    )
+    val btScannerOverlayActive = dispenseState.showRxDetails ||
+            dispenseState.showNdcDetails ||
+            dispenseState.showNdcNotFoundDialog ||
+            dispenseState.showInvalidScanDialog ||
+            dispenseState.showNdcEquivalenceDialog ||
+            dispenseState.showRxScannedInStockCountDialog ||
+            dispenseState.showOnHoldDialog ||
+            dispenseState.isLoading
     LaunchedEffect(btScannerOverlayActive, dispenseState.stage) {
         if (!btScannerOverlayActive && dispenseState.stage != DispenseStage.COUNTING) {
             btScannerInput = ""
@@ -973,8 +921,8 @@ fun DispenseFlowScreen(
                     modifier = Modifier.fillMaxSize(),
                     imageFrameWidth = pillState.imageFrameWidth,
                     imageFrameHeight = pillState.imageFrameHeight,
-                    onPreviewSizeKnown = { _, _ ->
-                        pillVm.initializeInterpreter()
+                    onPreviewSizeKnown = { w, h ->
+                        pillVm.initializeInterpreter(retryCount = 2, viewWidth = w, viewHeight = h)
                     }
                 )
             }
@@ -1011,7 +959,37 @@ fun DispenseFlowScreen(
                     // pill-counting steps use the new full-bleed overlay.
                     val isVialStep = pillStepType == StepState.VIAL
                     Box(
-                        modifier = pillPanelBoxModifier(isLandscape = isLandscape, isVialStep = isVialStep)
+                        modifier = if (isLandscape) {
+                            if (isVialStep) {
+                                // Original landscape sizing for the vial capture bar.
+                                Modifier
+                                    .align(Alignment.CenterEnd)
+                                    .fillMaxHeight()
+                                    .fillMaxWidth(0.3f)
+                            } else {
+                                // New overlay design: details bar on top, count
+                                // circle centered over the camera feed, progress bar
+                                // at the bottom. Spans the full preview.
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .fillMaxSize()
+                            }
+                        } else {
+                            if (isVialStep) {
+                                // Portrait vial capture keeps the original bottom strip.
+                                Modifier
+                                    .align(Alignment.BottomCenter)
+                                    .fillMaxWidth()
+                                    .fillMaxHeight(0.25f)
+                            } else {
+                                // New full-bleed overlay (matches landscape): top details
+                                // bar, centered count circle over the feed, bottom progress
+                                // bar. Spans the full preview.
+                                Modifier
+                                    .align(Alignment.Center)
+                                    .fillMaxSize()
+                            }
+                        }
                     ) {
                         InformationPanelSection(
                             uiState = pillState,
@@ -1207,12 +1185,14 @@ fun DispenseFlowScreen(
             // In landscape the right side is occupied by a panel (pill count / queue).
             // Pad the header end by the same fraction so Alignment.Center lands in
             // the middle of the visible camera area rather than the full screen width.
-            val headerEndPadding = computeHeaderEndPadding(
-                isLandscape = isLandscape,
-                stage = dispenseState.stage,
-                isTabletDevice = isTabletDevice,
-                screenWidthDp = configuration.screenWidthDp.dp,
-            )
+            val headerEndPadding = if (isLandscape) {
+                val screenW = configuration.screenWidthDp.dp
+                when (dispenseState.stage) {
+                    DispenseStage.COUNTING -> screenW * 0.3f
+                    DispenseStage.QUEUE -> screenW * if (isTabletDevice) 0.4f else 0.45f
+                    else -> 0.dp
+                }
+            } else 0.dp
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
@@ -1264,10 +1244,12 @@ fun DispenseFlowScreen(
                         }
                     },
                 )
-                val headerStepType = computeHeaderStepType(
-                    stage = dispenseState.stage,
-                    pillStepType = pillStepType,
-                )
+                val headerStepType = when (dispenseState.stage) {
+                    DispenseStage.QUEUE -> StepState.RX_LABEL
+                    DispenseStage.PRE_RX -> StepState.RX_LABEL
+                    DispenseStage.PRE_NDC -> StepState.SCAN
+                    DispenseStage.COUNTING -> pillStepType
+                }
                 Box(modifier = Modifier.align(Alignment.Center)) {
                     // Stock count (REGULAR) during COUNTING no longer shows a
                     // persistent "Scan open pills" header banner. The step name is
@@ -1438,208 +1420,6 @@ fun DispenseFlowScreen(
     }
 }
 
-// ── Modal dialog blocks extracted from the DispenseFlowScreen composable ───
-// Each function reproduces its original `if (show) { CommonDialog(...) }`
-// block verbatim (same condition, same params, same callback bodies) and is
-// called from the exact same position DispenseFlowScreen previously inlined
-// it at. None of these contain remember/LaunchedEffect/rememberSaveable, so
-// extracting them does not alter Compose slot-table positions/keys.
-
-@Composable
-private fun TargetCountDialogIfShown(
-    show: Boolean,
-    fromQueue: Boolean,
-    navController: NavController,
-    pillVm: PillScanningViewModel,
-    dispenseVm: DispenseFlowViewModel,
-) {
-    if (!show) return
-    TargetPillsCountDialog(
-        onDismiss = {
-            pillVm.setTargetCountDialogShown(false)
-            if (fromQueue) {
-                pillVm.resetWorkflowSteps()
-                dispenseVm.resetToQueue()
-            } else {
-                navController.navigate(Screen.Dashboard.route) {
-                    popUpTo(Screen.Dashboard.route) { inclusive = true }
-                }
-            }
-        },
-        onOkay = { count ->
-            pillVm.updateTargetCount(count)
-            pillVm.setTargetCountDialogShown(false)
-        }
-    )
-}
-
-@Composable
-private fun NotesDialogIfShown(show: Boolean, pillVm: PillScanningViewModel) {
-    if (!show) return
-    AddNoteDialog(
-        onDismiss = { pillVm.setNoteDialogShown(false) },
-        onSkip = { pillVm.onEvent(PillScanningEvent.NoteSkip) },
-        onSave = { note -> pillVm.onEvent(PillScanningEvent.NoteSaved(note)) },
-    )
-}
-
-/**
- * "Confirm Done" — fires after the user taps All Done and the pill VM
- * decides whether the count is final. For FIXED counts under target, the
- * message text is the "did you mean to stop short?" warning.
- */
-@Composable
-private fun ConfirmDoneDialogIfShown(
-    show: Boolean,
-    countType: String,
-    isContainerPending: Boolean,
-    countedTotal: Int,
-    targetCount: Int,
-    pillVm: PillScanningViewModel,
-) {
-    if (!show) return
-    val warningText = if (
-        countType == CountType.FIXED.toString() && isContainerPending &&
-        countedTotal < targetCount
-    ) {
-        stringResource(R.string.confirm_done_desc_fixed)
-    } else {
-        stringResource(R.string.confirm_done_desc_regular)
-    }
-    CommonDialog(
-        message = warningText,
-        title = stringResource(R.string.confirm_done),
-        confirmText = stringResource(R.string.ok),
-        cancelText = stringResource(R.string.cancel),
-        onConfirm = { pillVm.onEvent(PillScanningEvent.ConfirmDone) },
-        onCancel = { pillVm.onEvent(PillScanningEvent.CancelDone) },
-    )
-}
-
-@Composable
-private fun CountMismatchDialogIfShown(show: Boolean, pillVm: PillScanningViewModel) {
-    if (!show) return
-    CommonDialog(
-        message = stringResource(R.string.the_counted_quantity_does_not_match_the_target_count),
-        title = stringResource(R.string.count_mismatch),
-        confirmText = stringResource(R.string.yes),
-        cancelText = stringResource(R.string.no),
-        onConfirm = { pillVm.moveNextStep() },
-        onCancel = {
-            pillVm.resetIdleOverlay()
-            pillVm.handleDismissDialog()
-        },
-    )
-}
-
-@Composable
-private fun AddBottleDialogIfShown(show: Boolean, pillVm: PillScanningViewModel) {
-    if (!show) return
-    CommonDialog(
-        message = stringResource(R.string.add_new_bottle_confirm_message),
-        title = stringResource(R.string.new_bottle_detected),
-        confirmText = stringResource(R.string.ok),
-        cancelText = stringResource(R.string.cancel),
-        onConfirm = { pillVm.onEvent(PillScanningEvent.ConfirmAddBottle) },
-        onCancel = { pillVm.onEvent(PillScanningEvent.CancelAddBottle) },
-    )
-}
-
-@Composable
-private fun ReplaceBottleDialogIfShown(show: Boolean, pillVm: PillScanningViewModel) {
-    if (!show) return
-    CommonDialog(
-        message = stringResource(R.string.replace_bottle_confirm_message),
-        title = stringResource(R.string.replace_bottle_detected),
-        confirmText = stringResource(R.string.ok),
-        cancelText = stringResource(R.string.cancel),
-        onConfirm = { pillVm.onEvent(PillScanningEvent.ConfirmReplaceBottle) },
-        onCancel = { pillVm.onEvent(PillScanningEvent.CancelReplaceBottle) },
-    )
-}
-
-@Composable
-private fun EndStockCountDialogIfShown(show: Boolean, pillVm: PillScanningViewModel) {
-    if (!show) return
-    CommonDialog(
-        message = stringResource(R.string.are_you_sure_you_want_to_end_this_count),
-        title = stringResource(R.string.confirmation),
-        confirmText = stringResource(R.string.yes),
-        cancelText = stringResource(R.string.no),
-        onConfirm = { pillVm.moveNextStep() },
-        onCancel = {
-            pillVm.resetIdleOverlay()
-            pillVm.handleDismissDialog()
-        },
-    )
-}
-
-/**
- * RX already has a PARTIAL transaction: ask the user whether to continue it.
- * "Yes" advances to PRE_NDC to scan the container; "No" goes to Dashboard.
- */
-@Composable
-private fun ContinueRxDialogIfShown(
-    show: Boolean,
-    fromQueue: Boolean,
-    navController: NavController,
-    pillVm: PillScanningViewModel,
-    dispenseVm: DispenseFlowViewModel,
-) {
-    if (!show) return
-    CommonDialog(
-        title = stringResource(R.string.rx_already_exists_title),
-        message = stringResource(R.string.rx_already_exists_message),
-        confirmText = stringResource(R.string.yes),
-        cancelText = stringResource(R.string.no),
-        onConfirm = { dispenseVm.confirmContinueRx() },
-        onCancel = {
-            dispenseVm.dismissContinueRxDialog()
-            if (fromQueue) {
-                pillVm.resetWorkflowSteps()
-                dispenseVm.resetToQueue()
-            } else {
-                navController.navigate(Screen.Dashboard.route) {
-                    popUpTo(0)
-                    launchSingleTop = true
-                }
-            }
-        },
-    )
-}
-
-/** RX transaction is ON_HOLD: block the user with an informational dialog. */
-@Composable
-private fun OnHoldDialogIfShown(show: Boolean, dispenseVm: DispenseFlowViewModel) {
-    if (!show) return
-    CommonDialog(
-        title = stringResource(R.string.rx_on_hold_title),
-        message = stringResource(R.string.rx_on_hold_message),
-        confirmText = stringResource(R.string.ok),
-        cancelText = "",
-        onConfirm = { dispenseVm.dismissOnHoldDialog() },
-        onCancel = {},
-        isSingleButton = true,
-    )
-}
-
-/**
- * Substitute drug confirmation: surfaces when the scanned NDC is reported
- * by the server as a generic equivalent of the HL7-expected NDC.
- */
-@Composable
-private fun NdcEquivalenceDialogIfShown(show: Boolean, dispenseVm: DispenseFlowViewModel) {
-    if (!show) return
-    CommonDialog(
-        title = stringResource(R.string.scan_container_qr_code),
-        message = stringResource(R.string.scanned_item_is_a_generic_equivalent_to_the_specific_drug),
-        confirmText = stringResource(R.string.substitute),
-        cancelText = stringResource(R.string.cancel),
-        onConfirm = { dispenseVm.confirmSubstitute() },
-        onCancel = { dispenseVm.dismissNdcEquivalenceDialog() },
-    )
-}
-
 /**
  * Decode a raw scanned barcode and dispatch it to the appropriate stage handler.
  * Mirrors the decoding flow from
@@ -1658,8 +1438,8 @@ internal fun handleBarcode(
     imagePath: String?,
     stage: DispenseStage,
     countType: String,
-    onRx: (String) -> Unit,
-    onNdc: (String, BottleInfo?) -> Unit,
+    onRx: (String, String?) -> Unit,
+    onNdc: (String, String?, BottleInfo?) -> Unit,
     onRxInNdcStage: () -> Unit,
     onRxInStockCount: () -> Unit,
 ): Boolean {
@@ -1667,7 +1447,7 @@ internal fun handleBarcode(
     return when (stage) {
         DispenseStage.QUEUE,
         DispenseStage.PRE_RX -> {
-            onRx(value)
+            onRx(value, imagePath)
             true
         }
         DispenseStage.PRE_NDC -> {
@@ -1704,7 +1484,7 @@ internal fun handleBarcode(
                     serialNumber = decoded?.serialNumber,
                     barcodeImagePath = imagePath,
                 )
-                onNdc(finalGtin14, firstBottle)
+                onNdc(finalGtin14, imagePath, firstBottle)
                 true
             }
         }

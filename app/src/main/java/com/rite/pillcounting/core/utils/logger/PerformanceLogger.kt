@@ -168,10 +168,7 @@ class PerformanceLogger @Inject constructor(
 
         // System snapshot during inference
         val memInfo = getMemoryInfo()
-        writeLog(
-            "Available RAM: ${formatBytes(memInfo.availableMemory)} " +
-                "(${((memInfo.availableMemory * 100.0) / memInfo.totalMemory).toInt()}%)"
-        )
+        writeLog("Available RAM: ${formatBytes(memInfo.availableMemory)} (${((memInfo.availableMemory * 100.0) / memInfo.totalMemory).toInt()}%)")
 
         val cpuUsage = getCpuUsage()
         writeLog("App CPU Usage: ${"%.1f".format(cpuUsage)}%")
@@ -193,10 +190,7 @@ class PerformanceLogger @Inject constructor(
         val appMemInfo = getAppMemoryInfo()
         writeLog("\nSystem Memory:")
         writeLog("  Total: ${formatBytes(memInfo.totalMemory)}")
-        writeLog(
-            "  Available: ${formatBytes(memInfo.availableMemory)} " +
-                "(${((memInfo.availableMemory * 100.0) / memInfo.totalMemory).toInt()}%)"
-        )
+        writeLog("  Available: ${formatBytes(memInfo.availableMemory)} (${((memInfo.availableMemory * 100.0) / memInfo.totalMemory).toInt()}%)")
         writeLog("  Low Memory Warning: ${memInfo.lowMemory}")
 
         writeLog("\nApp Memory:")
