@@ -5,6 +5,7 @@ import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInt
 import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsRepository
 import com.rite.pillcounting.feature.settings.domain.model.SettingsDataDto
 import com.rite.pillcounting.core.utils.logger.AppLogger
+import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import retrofit2.HttpException
 import javax.inject.Inject
 
@@ -12,9 +13,11 @@ import javax.inject.Inject
  * Implementation of [IApplicationSettingsRepository] that retrieves settings via network.
  *
  * @property apiService Retrofit service for settings and auth.
+ * @property preferenceHelper Manages local access and refresh tokens.
  */
 class ApplicationSettingsRepository @Inject constructor(
-    private val apiService: IApplicationSettingInterface
+    private val apiService: IApplicationSettingInterface,
+    private val preferenceHelper: PreferenceHelper
 ) : IApplicationSettingsRepository {
 
     private val logger = AppLogger.Companion.create<ApplicationSettingsRepository>()

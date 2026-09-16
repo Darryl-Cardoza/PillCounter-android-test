@@ -75,19 +75,6 @@ class Hl7Repository @Inject constructor(
     private val logger = AppLogger.create<Hl7Repository>()
     private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO)
 
-    // Shared "resolve drug locally or via API" logic used by all three inbound dispense-request
-    // handlers (RDE / ZNI order-packet / ZUI order-packet). Instantiated directly (not
-    // DI-injected) so it stays an implementation detail of this repository; it reuses this
-    // repository's own logger instance so log tags are unaffected by the extraction.
-    private val dispenseDrugResolver = DispenseDrugResolver(
-        drugMasterDao = drugMasterDao,
-        drugRepository = drugRepository,
-        notifier = notifier,
-        context = context,
-        drugImageDownloader = drugImageDownloader,
-        logger = logger,
-    )
-
     // Guards resendPendingHl7Transactions() so the Room-flow observer and the
     // onClientConnected trigger can never run concurrently and double-send the
     // same pending txn's HL7 message before either ACK returns.
@@ -126,69 +113,58 @@ class Hl7Repository @Inject constructor(
         val inboundType = classifyInboundMessage(message) ?: return
 
         if (inboundType == MessageType.DISPENSE_REQUEST || inboundType == MessageType.EDIT_DISPENSE_REQUEST) {
-            validateDispenseRequestBeforeAck(message, inboundType)
+            val rxe = message.segment<RXESegment>(RXESegment.NAME)
+            // ZNI (Eyecon order packet) and ZUI (PMSS order data packet) can carry the
+            // dispense amount standalone, without RXE.
+            val zni = message.segment<ZNISegment>(ZNISegment.NAME)
+            val zui = message.segment<ZUISegment>(ZUISegment.NAME)
+            val dispenseStr = rxe?.dispenseAmount?.trim()?.takeIf { it.isNotBlank() }
+                ?: rxe?.giveAmountMinimum?.trim()?.takeIf { it.isNotBlank() }
+                ?: zni?.dispenseAmount?.trim()
+                ?: zui?.orderDispenseQuantity?.trim()
+            val parsedCount = dispenseStr?.toDoubleOrNull()?.toInt()
+
+            if (parsedCount == null || parsedCount <= 0) {
+                logger.e("Invalid or missing dispense count: '$dispenseStr' in ${inboundType.name}. Rejecting message.")
+                throw IllegalArgumentException("Invalid or missing dispense count: $dispenseStr")
+            }
+
+            // NDC presence must be checked here, synchronously, before the ACK is built.
+            // The per-segment handlers (handleRdeDispenseRequest / handleZuiOrderPacketDispenseRequest
+            // / handleOrderPacketDispenseRequest) run inside scope.launch below, which is async —
+            // by the time they'd notice a missing NDC and bail, handleIncomingMessage has already
+            // called hl7.ack(message) and sent back AA. Checking here is what actually gates the ACK.
+            val ndcStr = rxe?.giveCode?.trim()?.takeIf { it.isNotBlank() }
+                ?: zni?.ndc?.trim()?.takeIf { it.isNotBlank() }
+                ?: zui?.ndc?.trim()
+
+            if (ndcStr.isNullOrBlank()) {
+                logger.e("Missing NDC in ${inboundType.name}. Rejecting message.")
+                throw IllegalArgumentException("Missing NDC")
+            }
         }
 
         scope.launch {
-            routeInboundMessage(inboundType, message)
-        }
-    }
-
-    /**
-     * Validates dispense count and NDC presence synchronously, before the ACK is built.
-     * The per-segment handlers (handleRdeDispenseRequest / handleZuiOrderPacketDispenseRequest
-     * / handleOrderPacketDispenseRequest) run inside scope.launch, which is async — by the time
-     * they'd notice a missing NDC and bail, handleIncomingMessage has already called
-     * hl7.ack(message) and sent back AA. Checking here is what actually gates the ACK.
-     */
-    private fun validateDispenseRequestBeforeAck(message: HL7Message, inboundType: MessageType) {
-        val rxe = message.segment<RXESegment>(RXESegment.NAME)
-        // ZNI (Eyecon order packet) and ZUI (PMSS order data packet) can carry the
-        // dispense amount standalone, without RXE.
-        val zni = message.segment<ZNISegment>(ZNISegment.NAME)
-        val zui = message.segment<ZUISegment>(ZUISegment.NAME)
-        val dispenseStr = rxe?.dispenseAmount?.trim()?.takeIf { it.isNotBlank() }
-            ?: rxe?.giveAmountMinimum?.trim()?.takeIf { it.isNotBlank() }
-            ?: zni?.dispenseAmount?.trim()
-            ?: zui?.orderDispenseQuantity?.trim()
-        val parsedCount = dispenseStr?.toDoubleOrNull()?.toInt()
-
-        if (parsedCount == null || parsedCount <= 0) {
-            logger.e("Invalid or missing dispense count: '$dispenseStr' in ${inboundType.name}. Rejecting message.")
-            throw IllegalArgumentException("Invalid or missing dispense count: $dispenseStr")
-        }
-
-        val ndcStr = rxe?.giveCode?.trim()?.takeIf { it.isNotBlank() }
-            ?: zni?.ndc?.trim()?.takeIf { it.isNotBlank() }
-            ?: zui?.ndc?.trim()
-
-        if (ndcStr.isNullOrBlank()) {
-            logger.e("Missing NDC in ${inboundType.name}. Rejecting message.")
-            throw IllegalArgumentException("Missing NDC")
-        }
-    }
-
-    /** Dispatches [message] to the async handler matching [inboundType]. */
-    private suspend fun routeInboundMessage(inboundType: MessageType, message: HL7Message) {
-        when (inboundType) {
-            MessageType.DISPENSE_REQUEST -> {
-                val hasRxe = message.segment<RXESegment>(RXESegment.NAME) != null
-                val hasZui = message.segment<ZUISegment>(ZUISegment.NAME) != null
-                when {
-                    hasRxe -> handleRdeDispenseRequest(message)
-                    hasZui -> handleZuiOrderPacketDispenseRequest(message)
-                    else -> handleOrderPacketDispenseRequest(message)
+            when (inboundType) {
+                MessageType.DISPENSE_REQUEST -> {
+                    val hasRxe = message.segment<RXESegment>(RXESegment.NAME) != null
+                    val hasZui = message.segment<ZUISegment>(ZUISegment.NAME) != null
+                    when {
+                        hasRxe -> handleRdeDispenseRequest(message)
+                        hasZui -> handleZuiOrderPacketDispenseRequest(message)
+                        else -> handleOrderPacketDispenseRequest(message)
+                    }
                 }
+
+                MessageType.EDIT_DISPENSE_REQUEST ->
+                    handleOrderEdit(message)
+
+                MessageType.INVENTORY_REQUEST ->
+                    handleInrInventoryRequest(message)
+
+                MessageType.CANCEL_ORDER ->
+                    handleOrderCancellation(message)
             }
-
-            MessageType.EDIT_DISPENSE_REQUEST ->
-                handleOrderEdit(message)
-
-            MessageType.INVENTORY_REQUEST ->
-                handleInrInventoryRequest(message)
-
-            MessageType.CANCEL_ORDER ->
-                handleOrderCancellation(message)
         }
     }
 
@@ -274,6 +250,7 @@ class Hl7Repository @Inject constructor(
                 .joinToString(" "),
             pharmacistFamilyName = user?.lName,
             pharmacistGivenName = user?.fName,
+            location = location,
             isControlledSubstance = isControlledDrugType(drug.drugType),
             isHazardousDrug = drug.isHazardous,
             config = currentHl7Config()
@@ -343,11 +320,28 @@ class Hl7Repository @Inject constructor(
             val resumeFromChunk = batch.lastAckedChunkIndex + 1
             logger.i("Sending ${chunks.size} inventory chunk(s) for batchId=$batchId, resuming at chunk $resumeFromChunk")
 
-            val allChunksSent = sendInventoryChunks(batchId, chunks, resumeFromChunk)
-            if (!allChunksSent) {
-                // Stopped early — do not send later chunks out of order. The batch
-                // stays unsynced and will resume at this exact chunk next time.
-                return
+            for (chunk in chunks) {
+                if (chunk.chunkIndex < resumeFromChunk) {
+                    // Already ACKed on a prior attempt — do not resend.
+                    continue
+                }
+
+                logger.i("Sending inventory chunk ${chunk.chunkIndex}/${chunk.totalChunks} for batchId=$batchId")
+                val result = hl7MessageSender.sendRaw(chunk.message)
+                val ackAccepted = result.getOrNull()?.let { isSuccessAck(it) } ?: false
+
+                if (result.isSuccess && ackAccepted) {
+                    batchDao.markChunkAcked(batchId, chunk.chunkIndex)
+                    logger.i("Chunk ${chunk.chunkIndex}/${chunk.totalChunks} ACKed for batchId=$batchId")
+                } else {
+                    // Stop here — do not send later chunks out of order. The batch
+                    // stays unsynced and will resume at this exact chunk next time.
+                    logger.e(
+                        "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed/NAKed for batchId=$batchId: " +
+                            "${result.exceptionOrNull()?.message ?: "non-success ACK"}"
+                    )
+                    return
+                }
             }
 
             batchDao.markBatchSynced(batchId)
@@ -356,41 +350,6 @@ class Hl7Repository @Inject constructor(
         } catch (e: Exception) {
             logger.e("buildAndSendInventoryResponse failed for batchId=$batchId", e)
         }
-    }
-
-    /**
-     * Sends [chunks] strictly in order, one at a time, skipping any already ACKed on a
-     * prior attempt (index < [resumeFromChunk]), waiting for each ACK before moving to
-     * the next. Returns true only if every remaining chunk ACKed successfully; returns
-     * false the moment one fails/NAKs, without sending any later chunks.
-     */
-    private suspend fun sendInventoryChunks(
-        batchId: Long,
-        chunks: List<HL7MessageBuilder.InventoryChunk>,
-        resumeFromChunk: Int
-    ): Boolean {
-        for (chunk in chunks) {
-            if (chunk.chunkIndex < resumeFromChunk) {
-                // Already ACKed on a prior attempt — do not resend.
-                continue
-            }
-
-            logger.i("Sending inventory chunk ${chunk.chunkIndex}/${chunk.totalChunks} for batchId=$batchId")
-            val result = hl7MessageSender.sendRaw(chunk.message)
-            val ackAccepted = result.getOrNull()?.let { isSuccessAck(it) } ?: false
-
-            if (result.isSuccess && ackAccepted) {
-                batchDao.markChunkAcked(batchId, chunk.chunkIndex)
-                logger.i("Chunk ${chunk.chunkIndex}/${chunk.totalChunks} ACKed for batchId=$batchId")
-            } else {
-                logger.e(
-                    "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed/NAKed for batchId=$batchId: " +
-                        "${result.exceptionOrNull()?.message ?: "non-success ACK"}"
-                )
-                return false
-            }
-        }
-        return true
     }
 
     /**
@@ -511,24 +470,6 @@ class Hl7Repository @Inject constructor(
         }
     }
 
-    /**
-     * Shows the "new Rx" notification shared by all three dispense-request handlers
-     * (RDE, ZNI order-packet, ZUI order-packet): a single-drug message when a positive
-     * target count is known, otherwise a generic multi-item message.
-     */
-    private fun notifyNewDispenseRequest(rxNo: String?, hl7DrugName: String, targetCount: Int?) {
-        val notifBody = if (targetCount != null && targetCount > 0) {
-            context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), hl7DrugName, targetCount)
-        } else {
-            context.getString(R.string.hl7_notification_new_rx_multiple, rxNo.orEmpty(), 1)
-        }
-        notifier.show(
-            title = context.getString(R.string.hl7_notification_new_rx_title),
-            message = notifBody
-        )
-    }
-
-
     // ─────────────────────────── INBOUND HANDLER: RDE^O11 (DISPENSE REQUEST) ───────────────────────────
 
     private suspend fun handleRdeDispenseRequest(message: HL7Message) {
@@ -547,9 +488,60 @@ class Hl7Repository @Inject constructor(
             return
         }
 
-        val finalDrug = when (val resolution = dispenseDrugResolver.resolve(hl7Ndc, downloadImage = true)) {
-            DispenseDrugResolver.Resolution.Aborted -> return
-            is DispenseDrugResolver.Resolution.Success -> resolution.drug
+        // Local-first check
+        val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
+
+        val finalDrug = if (localDrug != null) {
+            logger.i("Drug found in local DB for NDC: $hl7Ndc")
+            localDrug
+        } else {
+            logger.i("Drug not found locally for NDC: $hl7Ndc, calling API")
+
+            val request = GetNdcRequestModel(
+                target_ndc = hl7Ndc,
+                scanned_ndc = hl7Ndc
+            )
+
+            val drugInfo = try {
+                drugRepository.getDrugInfoByNdc(request)
+            } catch (e: Exception) {
+                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
+                )
+                return
+            }
+
+            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() }
+
+            val resolvedDrugName = drugInfo?.genericName
+                ?.takeIf { it.isNotBlank() }
+
+            if (resolvedDrugName.isNullOrBlank()) {
+                logger.w("No drug name resolved for NDC: $hl7Ndc")
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_no_drug, hl7Ndc)
+                )
+                return
+            }
+
+            resolvedNdc?.let {
+                val imagePath = drugImageDownloader.downloadAndSave(
+                    url = drugInfo.imageUrl,
+                    drugName = resolvedDrugName
+                )
+                DrugMasterEntity(
+                    ndc = it,
+                    drugName = resolvedDrugName,
+                    drugType = drugInfo.drugType,
+                    isHazardous = drugInfo.isHazardous ?: false,
+                    strength = drugInfo.strength,
+                    dosageForm = drugInfo.dosageForm,
+                    drugImagePath = imagePath,
+                )
+            }
         }
 
         val drugId = finalDrug?.let { drugMasterDao.upsertPreservingId(it) }
@@ -587,7 +579,15 @@ class Hl7Repository @Inject constructor(
         preferenceHelper.saveTxnId(txnId)
         insertZinContainerDetails(txnId, message)
 
-        notifyNewDispenseRequest(rxNo, hl7DrugName, targetCount)
+        val notifBody = if (targetCount != null && targetCount > 0) {
+            context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), hl7DrugName, targetCount)
+        } else {
+            context.getString(R.string.hl7_notification_new_rx_multiple, rxNo.orEmpty(), 1)
+        }
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_new_rx_title),
+            message = notifBody
+        )
     }
 
     // ─────────────────────────── INBOUND HANDLER: STANDALONE ORDER-PACKET DISPENSE REQUEST ───────────────────────────
@@ -617,9 +617,55 @@ class Hl7Repository @Inject constructor(
             return
         }
 
-        val finalDrug = when (val resolution = dispenseDrugResolver.resolve(hl7Ndc, downloadImage = false)) {
-            DispenseDrugResolver.Resolution.Aborted -> return
-            is DispenseDrugResolver.Resolution.Success -> resolution.drug
+        // Local-first check
+        val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
+
+        val finalDrug = if (localDrug != null) {
+            logger.i("Drug found in local DB for NDC: $hl7Ndc")
+            localDrug
+        } else {
+            logger.i("Drug not found locally for NDC: $hl7Ndc, calling API")
+
+            val request = GetNdcRequestModel(
+                target_ndc = hl7Ndc,
+                scanned_ndc = hl7Ndc
+            )
+
+            val drugInfo = try {
+                drugRepository.getDrugInfoByNdc(request)
+            } catch (e: Exception) {
+                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
+                )
+                return
+            }
+
+            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() }
+
+            val resolvedDrugName = drugInfo?.genericName
+                ?.takeIf { it.isNotBlank() }
+
+            if (resolvedDrugName.isNullOrBlank()) {
+                logger.w("No drug name resolved for NDC: $hl7Ndc")
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_no_drug, hl7Ndc)
+                )
+                return
+            }
+
+            resolvedNdc?.let {
+                DrugMasterEntity(
+                    ndc = it,
+                    drugName = resolvedDrugName,
+                    drugType = drugInfo?.drugType,
+                    isHazardous = drugInfo?.isHazardous ?: false,
+                    strength = drugInfo?.strength,
+                    dosageForm = drugInfo?.dosageForm,
+                )
+            }
         }
 
         val drugId = finalDrug?.let { drugMasterDao.upsertPreservingId(it) }
@@ -656,7 +702,15 @@ class Hl7Repository @Inject constructor(
         preferenceHelper.saveTxnId(txnId)
         insertZinContainerDetails(txnId, message)
 
-        notifyNewDispenseRequest(rxNo, hl7DrugName, targetCount)
+        val notifBody = if (targetCount != null && targetCount > 0) {
+            context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), hl7DrugName, targetCount)
+        } else {
+            context.getString(R.string.hl7_notification_new_rx_multiple, rxNo.orEmpty(), 1)
+        }
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_new_rx_title),
+            message = notifBody
+        )
     }
 
     // ─────────────────────────── INBOUND HANDLER: ZUI ORDER DATA PACKET DISPENSE REQUEST ───────────────────────────
@@ -684,9 +738,55 @@ class Hl7Repository @Inject constructor(
             return
         }
 
-        val finalDrug = when (val resolution = dispenseDrugResolver.resolve(hl7Ndc, downloadImage = false)) {
-            DispenseDrugResolver.Resolution.Aborted -> return
-            is DispenseDrugResolver.Resolution.Success -> resolution.drug
+        // Local-first check
+        val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
+
+        val finalDrug = if (localDrug != null) {
+            logger.i("Drug found in local DB for NDC: $hl7Ndc")
+            localDrug
+        } else {
+            logger.i("Drug not found locally for NDC: $hl7Ndc, calling API")
+
+            val request = GetNdcRequestModel(
+                target_ndc = hl7Ndc,
+                scanned_ndc = hl7Ndc
+            )
+
+            val drugInfo = try {
+                drugRepository.getDrugInfoByNdc(request)
+            } catch (e: Exception) {
+                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
+                )
+                return
+            }
+
+            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() }
+
+            val resolvedDrugName = drugInfo?.genericName
+                ?.takeIf { it.isNotBlank() }
+
+            if (resolvedDrugName.isNullOrBlank()) {
+                logger.w("No drug name resolved for NDC: $hl7Ndc")
+                notifier.show(
+                    title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                    message = context.getString(R.string.hl7_notification_drug_not_found_no_drug, hl7Ndc)
+                )
+                return
+            }
+
+            resolvedNdc?.let {
+                DrugMasterEntity(
+                    ndc = it,
+                    drugName = resolvedDrugName,
+                    drugType = drugInfo?.drugType,
+                    isHazardous = drugInfo?.isHazardous ?: false,
+                    strength = drugInfo?.strength,
+                    dosageForm = drugInfo?.dosageForm,
+                )
+            }
         }
 
         val drugId = finalDrug?.let { drugMasterDao.upsertPreservingId(it) }
@@ -717,16 +817,21 @@ class Hl7Repository @Inject constructor(
             isDispense = true
         )
 
-        logger.i(
-            "Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' " +
-                "hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'"
-        )
+        logger.i("Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
         preferenceHelper.saveTxnId(txnId)
         insertZinContainerDetails(txnId, message)
 
-        notifyNewDispenseRequest(rxNo, hl7DrugName, targetCount)
+        val notifBody = if (targetCount != null && targetCount > 0) {
+            context.getString(R.string.hl7_notification_new_rx_single, rxNo.orEmpty(), hl7DrugName, targetCount)
+        } else {
+            context.getString(R.string.hl7_notification_new_rx_multiple, rxNo.orEmpty(), 1)
+        }
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_new_rx_title),
+            message = notifBody
+        )
     }
 
     private data class ResolvedInventoryItem(
@@ -743,34 +848,6 @@ class Hl7Repository @Inject constructor(
     private suspend fun handleInrInventoryRequest(message: HL7Message) {
         logger.i("Handling INR Inventory Request | msgId=${message.messageControlId}")
 
-        val resolvedItems = resolveInrInventoryItems(message) ?: return
-
-        if (resolvedItems.isEmpty()) {
-            logger.w("No valid drugs resolved from local DB or API. Batch will not be created.")
-            notifier.show(
-                title = context.getString(R.string.hl7_notification_inventory_title),
-                message = context.getString(R.string.hl7_notification_inventory_no_drugs)
-            )
-            return
-        }
-
-        val batchId = createInventoryBatch(message, resolvedItems)
-
-        logger.i("Processed ${resolvedItems.size} inventory items for batchId: $batchId")
-
-        notifier.show(
-            title = context.getString(R.string.hl7_notification_inventory_title),
-            message = context.getString(R.string.hl7_notification_inventory_items_count, resolvedItems.size)
-        )
-    }
-
-    /**
-     * Resolves the inventory items carried by [message]: from INV segments when present,
-     * or — for PMS senders that omit INV (e.g. this INR^U04 variant) — from the RXE
-     * segment instead. Returns null when neither source yields a usable NDC (message
-     * should be ignored entirely, matching the original inline `return`).
-     */
-    private suspend fun resolveInrInventoryItems(message: HL7Message): List<ResolvedInventoryItem>? {
         // INV segments carry the substance / drug info in an INR message
         val invSegments = message.segments<INVSegment>(INVSegment.NAME)
 
@@ -803,7 +880,7 @@ class Hl7Repository @Inject constructor(
             val ndc = rxe?.giveCode?.trim().orEmpty()
             if (rxe == null || ndc.isBlank()) {
                 logger.w("No INV or usable RXE segment found in HL7 message — ignoring")
-                return null
+                return
             }
             val targetCount = (rxe.dispenseAmount.trim().takeIf { it.isNotBlank() }
                 ?: rxe.giveAmountMinimum.trim())
@@ -818,17 +895,15 @@ class Hl7Repository @Inject constructor(
             )?.let { resolvedItems.add(it) }
         }
 
-        return resolvedItems
-    }
+        if (resolvedItems.isEmpty()) {
+            logger.w("No valid drugs resolved from local DB or API. Batch will not be created.")
+            notifier.show(
+                title = context.getString(R.string.hl7_notification_inventory_title),
+                message = context.getString(R.string.hl7_notification_inventory_no_drugs)
+            )
+            return
+        }
 
-    /**
-     * Creates the [BatchEntity] and its [StockTxnEntity] rows for [resolvedItems], then
-     * refreshes the batch's live NDC total and running user. Returns the new batchId.
-     */
-    private suspend fun createInventoryBatch(
-        message: HL7Message,
-        resolvedItems: List<ResolvedInventoryItem>
-    ): Long {
         val now = System.currentTimeMillis()
         val batch = BatchEntity(
             batchId = now,
@@ -852,8 +927,7 @@ class Hl7Repository @Inject constructor(
             val txnId = stockTxnDao.upsertPreservingId(txn)
 
             logger.i(
-                "Inserted stock txn for NDC: ${item.ndc}, drugId: ${item.drugId}, txnId: $txnId, " +
-                    "lotNo: ${item.lot}, expiry: ${item.expiry}, targetCount: ${item.targetCount}"
+                "Inserted stock txn for NDC: ${item.ndc}, drugId: ${item.drugId}, txnId: $txnId, lotNo: ${item.lot}, expiry: ${item.expiry}, targetCount: ${item.targetCount}"
             )
         }
 
@@ -864,7 +938,12 @@ class Hl7Repository @Inject constructor(
             preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
         )
 
-        return batchId
+        logger.i("Processed ${resolvedItems.size} inventory items for batchId: $batchId")
+
+        notifier.show(
+            title = context.getString(R.string.hl7_notification_inventory_title),
+            message = context.getString(R.string.hl7_notification_inventory_items_count, resolvedItems.size)
+        )
     }
 
     /**
@@ -1034,14 +1113,16 @@ class Hl7Repository @Inject constructor(
      * - [PillCountTxnEntity.targetCount] — from RXE quantity
      * - [PillCountTxnEntity.isSynced]    — reset to false so the updated result is re-sent
      */
-    /**
-     * Locates the active (PARTIAL, non-deleted) transaction for [rxNo], restoring it first
-     * if it was previously soft-deleted, so the ORC|XO edit can be applied. Returns null
-     * when neither an active nor a restorable transaction exists — in that case a
-     * "not found" notification has already been shown, and the caller must abort exactly
-     * like the original inline `return`.
-     */
-    private suspend fun findOrRestoreActiveTxnForEdit(rxNo: String, orderStatusRaw: String): PillCountTxnEntity? {
+    private suspend fun handleOrderEdit(message: HL7Message) {
+        val orc = message.segment<ORCSegment>(ORCSegment.NAME) ?: return
+        val rxNo = orc.placerOrderNumber.takeIf { it.isNotBlank() } ?: return
+        val rxe = message.segment<RXESegment>(RXESegment.NAME) ?: return
+
+        val orderStatusRaw = orc.orderStatus.uppercase()
+
+        logger.i("Received ORC|XO for rxNo=$rxNo orderStatus=$orderStatusRaw — looking up existing transaction")
+
+        // 1. Locate the active transaction; if soft-deleted, restore it so the edit can be applied
         var existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
         if (existingTxn == null) {
             val deletedTxn = pillCountTxnDao.getDeletedByRxNo(rxNo)
@@ -1057,37 +1138,53 @@ class Hl7Repository @Inject constructor(
                 title = context.getString(R.string.hl7_notification_edit_rx_title),
                 message = context.getString(R.string.hl7_notification_edit_rx_not_found, rxNo)
             )
+            return
         }
-        return existingTxn
-    }
 
-    /** Outcome of [resolveEditDrug]: mirrors [DispenseDrugResolver.Resolution] but for the ORC|XO edit flow. */
-    private sealed class EditDrugResolution {
-        data class Success(val drug: DrugMasterEntity?) : EditDrugResolution()
-        object Aborted : EditDrugResolution()
-    }
+        // 2. Resolve the updated drug (local DB first, then API fallback)
+        val hl7Ndc = rxe.giveCode.trim()
+        val hl7DrugName = rxe.giveName
+        val dispenseStr = rxe.dispenseAmount.trim().takeIf { it.isNotBlank() } ?: rxe.giveAmountMinimum.trim()
+        val newTargetCount = dispenseStr.toDoubleOrNull()?.toInt()
 
-    /**
-     * Resolves the updated drug for an ORC|XO edit (local DB first, then API fallback).
-     * On an unusable API drug name, or an API failure, shows the "drug not found"
-     * notification and returns [EditDrugResolution.Aborted] — the caller must abort the
-     * edit at that point exactly like the original inline `return`.
-     */
-    private suspend fun resolveEditDrug(hl7Ndc: String, rxNo: String): EditDrugResolution {
         val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
 
-        if (localDrug != null) {
+        val resolvedDrug = if (localDrug != null) {
             logger.i("ORC|XO: drug found locally for NDC=$hl7Ndc")
-            return EditDrugResolution.Success(localDrug)
-        }
-
-        logger.i("ORC|XO: drug not found locally for NDC=$hl7Ndc, calling API")
-        val request = GetNdcRequestModel(target_ndc = hl7Ndc, scanned_ndc = hl7Ndc)
-        val drug = try {
-            val drugInfo = drugRepository.getDrugInfoByNdc(request)
-            val resolvedName = drugInfo?.genericName?.takeIf { it.isNotBlank() }
-            if (resolvedName.isNullOrBlank()) {
-                logger.w("ORC|XO: API returned no drug name for NDC=$hl7Ndc — aborting edit")
+            localDrug
+        } else {
+            logger.i("ORC|XO: drug not found locally for NDC=$hl7Ndc, calling API")
+            val request = GetNdcRequestModel(target_ndc = hl7Ndc, scanned_ndc = hl7Ndc)
+            try {
+                val drugInfo = drugRepository.getDrugInfoByNdc(request)
+                val resolvedName = drugInfo?.genericName?.takeIf { it.isNotBlank() }
+                if (resolvedName.isNullOrBlank()) {
+                    logger.w("ORC|XO: API returned no drug name for NDC=$hl7Ndc — aborting edit")
+                    notifier.show(
+                        title = context.getString(R.string.hl7_notification_edit_rx_title),
+                        message = context.getString(
+                            R.string.hl7_notification_edit_rx_drug_not_found,
+                            rxNo,
+                            hl7Ndc
+                        )
+                    )
+                    return
+                }
+                val imagePath = drugImageDownloader.downloadAndSave(
+                    url = drugInfo.imageUrl,
+                    drugName = resolvedName
+                )
+                DrugMasterEntity(
+                    ndc = drugInfo.ndc.takeIf { it.isNotBlank() } ?: hl7Ndc,
+                    drugName = resolvedName,
+                    drugType = drugInfo.drugType,
+                    isHazardous = drugInfo.isHazardous ?: false,
+                    strength = drugInfo.strength,
+                    dosageForm = drugInfo.dosageForm,
+                    drugImagePath = imagePath,
+                )
+            } catch (e: Exception) {
+                logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e)
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_edit_rx_title),
                     message = context.getString(
@@ -1096,57 +1193,8 @@ class Hl7Repository @Inject constructor(
                         hl7Ndc
                     )
                 )
-                return EditDrugResolution.Aborted
+                return
             }
-            val imagePath = drugImageDownloader.downloadAndSave(
-                url = drugInfo.imageUrl,
-                drugName = resolvedName
-            )
-            DrugMasterEntity(
-                ndc = drugInfo.ndc.takeIf { it.isNotBlank() } ?: hl7Ndc,
-                drugName = resolvedName,
-                drugType = drugInfo.drugType,
-                isHazardous = drugInfo.isHazardous ?: false,
-                strength = drugInfo.strength,
-                dosageForm = drugInfo.dosageForm,
-                drugImagePath = imagePath,
-            )
-        } catch (e: Exception) {
-            logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e)
-            notifier.show(
-                title = context.getString(R.string.hl7_notification_edit_rx_title),
-                message = context.getString(
-                    R.string.hl7_notification_edit_rx_drug_not_found,
-                    rxNo,
-                    hl7Ndc
-                )
-            )
-            return EditDrugResolution.Aborted
-        }
-        return EditDrugResolution.Success(drug)
-    }
-
-    private suspend fun handleOrderEdit(message: HL7Message) {
-        val orc = message.segment<ORCSegment>(ORCSegment.NAME) ?: return
-        val rxNo = orc.placerOrderNumber.takeIf { it.isNotBlank() } ?: return
-        val rxe = message.segment<RXESegment>(RXESegment.NAME) ?: return
-
-        val orderStatusRaw = orc.orderStatus.uppercase()
-
-        logger.i("Received ORC|XO for rxNo=$rxNo orderStatus=$orderStatusRaw — looking up existing transaction")
-
-        // 1. Locate the active transaction; if soft-deleted, restore it so the edit can be applied
-        val existingTxn = findOrRestoreActiveTxnForEdit(rxNo, orderStatusRaw) ?: return
-
-        // 2. Resolve the updated drug (local DB first, then API fallback)
-        val hl7Ndc = rxe.giveCode.trim()
-        val hl7DrugName = rxe.giveName
-        val dispenseStr = rxe.dispenseAmount.trim().takeIf { it.isNotBlank() } ?: rxe.giveAmountMinimum.trim()
-        val newTargetCount = dispenseStr.toDoubleOrNull()?.toInt()
-
-        val resolvedDrug = when (val resolution = resolveEditDrug(hl7Ndc, rxNo)) {
-            EditDrugResolution.Aborted -> return
-            is EditDrugResolution.Success -> resolution.drug
         }
 
         val newDrugId = resolvedDrug?.let { drugMasterDao.upsertPreservingId(it) }

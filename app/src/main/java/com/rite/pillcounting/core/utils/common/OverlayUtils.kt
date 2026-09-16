@@ -37,7 +37,10 @@ object OverlayUtils {
     fun drawDetectionsOnBitmap(
         bitmap: Bitmap,
         detectedPills: List<DetectedPill>,
+        previewWidth: Int,
+        previewHeight: Int,
         userName: String? = null,
+        userId: String? = null,
         location: String? = null,
         ndc: String? = null,
         count: String? = null,

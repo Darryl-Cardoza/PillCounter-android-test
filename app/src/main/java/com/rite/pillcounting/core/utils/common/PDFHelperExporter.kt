@@ -84,7 +84,7 @@ class PDFHelperExporter(private val context: Context) {
         strokeWidth = 1f
     }
 
-    private fun generateFileName(drugName: String, ndc: String): String {
+    private fun generateFileName(drugName: String, ndc: String, batch: String): String {
         val safeDrugName = drugName.replace(" ", "_").replace("[^a-zA-Z0-9_]".toRegex(), "")
         return "DrugHistory_${safeDrugName}_${ndc}.pdf"
     }
@@ -111,7 +111,7 @@ class PDFHelperExporter(private val context: Context) {
         }
 
         // 3. Define File
-        val fileName = generateFileName(drugName, ndc)
+        val fileName = generateFileName(drugName, ndc, lotNo)
         val file = File(directory, fileName)
 
         // Print this to Logcat

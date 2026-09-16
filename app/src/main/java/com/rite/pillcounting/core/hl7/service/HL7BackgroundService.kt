@@ -446,10 +446,7 @@ class HL7Service : Service() {
     }
 
 
-    /**
-     * Raw MLLP connection state — flips instantly, unlike [Hl7EventHandler.connectionState]
-     * which waits for [MllpConnectionManager]'s settle delay.
-     */
+    /** Raw MLLP connection state — flips instantly, unlike [Hl7EventHandler.connectionState] which waits for [MllpConnectionManager]'s settle delay. */
     fun isPmsConnected(): Boolean = clientManager.isConnected()
 
     fun clearPmsCertPin() {
@@ -635,8 +632,7 @@ class HL7Service : Service() {
             val cleanError = errorMsg?.replace("|", " ")?.replace("\r", " ")?.replace("\n", " ") ?: ""
             val textMessage = if (cleanError.isNotEmpty()) "|$cleanError" else ""
 
-            "MSH|^~\\&|$recvApp|$recvFac|$sendingApp|$sendingFac|$ts||ACK^R01|ACK$controlId|" +
-                "$procId|$version\rMSA|$ackCode|$controlId$textMessage"
+            "MSH|^~\\&|$recvApp|$recvFac|$sendingApp|$sendingFac|$ts||ACK^R01|ACK$controlId|$procId|$version\rMSA|$ackCode|$controlId$textMessage"
         } catch (_: Exception) {
             val ackCode = if (errorMsg != null) "AR" else "AA"
             val cleanError = errorMsg?.replace("|", " ")?.replace("\r", " ")?.replace("\n", " ") ?: ""

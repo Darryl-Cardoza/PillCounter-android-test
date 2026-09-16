@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
 
+import android.content.Context
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
@@ -50,6 +51,7 @@ class DispenseFlowViewModelTest {
 
     private val testDispatcher = StandardTestDispatcher()
 
+    private lateinit var appContext: Context
     private lateinit var drugRepository: IDrugRepository
     private lateinit var drugMasterDao: DrugMasterDao
     private lateinit var preferenceHelper: PreferenceHelper
@@ -78,6 +80,7 @@ class DispenseFlowViewModelTest {
 
         Dispatchers.setMain(testDispatcher)
 
+        appContext = mockk(relaxed = true)
         drugRepository = mockk(relaxed = true)
         drugMasterDao = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
@@ -100,7 +103,7 @@ class DispenseFlowViewModelTest {
     }
 
     private fun createViewModel() = DispenseFlowViewModel(
-        drugRepository, drugMasterDao, preferenceHelper, pillCountTxnDao,
+        appContext, drugRepository, drugMasterDao, preferenceHelper, pillCountTxnDao,
         drugImageDownloader
     )
 
@@ -294,7 +297,7 @@ class DispenseFlowViewModelTest {
         val vm = createViewModel()
         vm.setCountType("REGULAR") // PRE_NDC
         advanceUntilIdle()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertFalse(vm.uiState.value.isLoading)
         coVerify(exactly = 0) { pillCountTxnDao.getActiveByRxNo(any()) }
@@ -306,7 +309,7 @@ class DispenseFlowViewModelTest {
         vm.enterQueueMode()
         advanceUntilIdle()
         coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         // txn not found -> tick bumped
         assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
@@ -315,7 +318,7 @@ class DispenseFlowViewModelTest {
     @Test
     fun `onRxBarcodeRead blank gtin shows invalid dialog`() = runTest(testDispatcher) {
         val vm = createViewModel()
-        vm.onRxBarcodeRead("   ")
+        vm.onRxBarcodeRead("   ", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.showInvalidScanDialog)
     }
@@ -324,7 +327,7 @@ class DispenseFlowViewModelTest {
     fun `onRxBarcodeRead parsed null fields shows invalid dialog`() = runTest(testDispatcher) {
         every { parseScanData(any(), any()) } returns validParsed(ndcNo = null)
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.showInvalidScanDialog)
         assertFalse(vm.uiState.value.isLoading)
@@ -337,7 +340,7 @@ class DispenseFlowViewModelTest {
             // on the relaxed mock, so the txn-creation branch must not run at all.
             coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
             assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
             coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
@@ -348,7 +351,7 @@ class DispenseFlowViewModelTest {
         coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns txn(status = CountStatus.ON_HOLD)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.showOnHoldDialog)
     }
@@ -362,7 +365,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "99999-111-22")
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
@@ -376,7 +379,7 @@ class DispenseFlowViewModelTest {
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals(DispenseStage.PRE_RX, vm.uiState.value.stage)
         assertTrue(vm.uiState.value.showRxDetails)
@@ -390,7 +393,7 @@ class DispenseFlowViewModelTest {
             txn(status = CountStatus.PARTIAL, isNdcVerified = true)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
     }
@@ -404,7 +407,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "99999-111-22")
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
@@ -425,7 +428,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "99999-111-22")
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
@@ -442,7 +445,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugById(10L) } returns drug(ndc = "1234567890")
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             assertTrue(vm.uiState.value.showRxDetails)
@@ -458,7 +461,7 @@ class DispenseFlowViewModelTest {
                 txn(drugId = null, status = CountStatus.PARTIAL, isNdcVerified = false)
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             assertTrue(vm.uiState.value.showRxDetails)
@@ -473,7 +476,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugById(10L) } returns drug()
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             assertEquals("B1", vm.uiState.value.selectedBucketId)
@@ -487,7 +490,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugById(10L) } returns drug()
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             assertEquals("B9", vm.uiState.value.selectedBucketId)
@@ -503,7 +506,7 @@ class DispenseFlowViewModelTest {
                 drug(ndc = "NDC123").copy(drugImagePath = "/data/drug1.webp", strength = "50 mg")
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
             assertEquals("Aspirin", vm.uiState.value.drugName)
             assertEquals("/data/drug1.webp", vm.uiState.value.drugImage)
@@ -516,7 +519,7 @@ class DispenseFlowViewModelTest {
             every { parseScanData(any(), any()) } returns validParsed(rxNo = "RX888", bucket = null)
             coEvery { pillCountTxnDao.getActiveByRxNo("RX888") } returns
                 txn(txnId = 2L, drugId = null, status = CountStatus.PARTIAL, isNdcVerified = false, rxNo = "RX888")
-            vm.onRxBarcodeRead("gtin2")
+            vm.onRxBarcodeRead("gtin2", null)
             advanceUntilIdle()
 
             assertTrue(vm.uiState.value.showRxDetails)
@@ -537,7 +540,7 @@ class DispenseFlowViewModelTest {
             drug(ndc = "NDC123", isHazardous = true).copy(drugImagePath = "/data/drug1.webp", strength = "50 mg")
 
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         vm.onRxCancelled()
         advanceUntilIdle()
@@ -559,7 +562,7 @@ class DispenseFlowViewModelTest {
     fun `onRxBarcodeRead else status shows not found tick`() = runTest(testDispatcher) {
         coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns txn(status = CountStatus.COMPLETED)
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
     }
@@ -568,7 +571,7 @@ class DispenseFlowViewModelTest {
     fun `onRxBarcodeRead exception sets error`() = runTest(testDispatcher) {
         coEvery { pillCountTxnDao.getActiveByRxNo(any()) } throws RuntimeException("boom")
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals("boom", vm.uiState.value.error)
         assertFalse(vm.uiState.value.isLoading)
@@ -579,9 +582,9 @@ class DispenseFlowViewModelTest {
         coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
         val vm = createViewModel()
         // Set loading by starting one call but not advancing
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         // second call while isLoading true (already set synchronously)
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         coVerify(exactly = 1) { pillCountTxnDao.getActiveByRxNo("RX999") }
     }
@@ -596,7 +599,7 @@ class DispenseFlowViewModelTest {
         // preferenceHelper is relaxed-mocked, so isStandaloneMode() defaults to false.
         coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.txnNotFoundToastTick > 0)
         coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) }
@@ -609,7 +612,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
 
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
 
         // The point of the fix: the scan writes nothing.
@@ -652,7 +655,7 @@ class DispenseFlowViewModelTest {
             coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 201L
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             coVerify { drugRepository.getDrugInfoByNdc(any()) }
@@ -677,7 +680,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             // Local, then GTIN, then the API — all three are tried first.
@@ -714,7 +717,7 @@ class DispenseFlowViewModelTest {
             )
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
 
             assertTrue(vm.uiState.value.showRxDetails)
@@ -728,7 +731,7 @@ class DispenseFlowViewModelTest {
         coEvery { pillCountTxnDao.getMostRecentByRxNo("RX999") } returns
             txn(status = CountStatus.COMPLETED)
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.rxAlreadyCompletedToastTick > 0)
         coVerify(exactly = 0) { pillCountTxnDao.getActiveByRxNo(any()) }
@@ -740,7 +743,7 @@ class DispenseFlowViewModelTest {
         coEvery { pillCountTxnDao.getMostRecentByRxNo("RX999") } returns
             txn(status = CountStatus.FORCE_COMPLETED)
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.rxAlreadyCompletedToastTick > 0)
     }
@@ -753,7 +756,7 @@ class DispenseFlowViewModelTest {
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals(0, vm.uiState.value.rxAlreadyCompletedToastTick)
         assertTrue(vm.uiState.value.showRxDetails)
@@ -768,7 +771,7 @@ class DispenseFlowViewModelTest {
             coEvery { pillCountTxnDao.getByRxNoAndFillNo("RX999", "1") } returns null
             coEvery { pillCountTxnDao.getActiveByRxNo("RX999") } returns null
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
             assertEquals(0, vm.uiState.value.rxAlreadyCompletedToastTick)
             coVerify(exactly = 0) { pillCountTxnDao.getMostRecentByRxNo(any()) }
@@ -781,7 +784,7 @@ class DispenseFlowViewModelTest {
             coEvery { pillCountTxnDao.getByRxNoAndFillNo("RX999", "0") } returns
                 txn(status = CountStatus.COMPLETED)
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
             assertTrue(vm.uiState.value.rxAlreadyCompletedToastTick > 0)
         }
@@ -792,7 +795,7 @@ class DispenseFlowViewModelTest {
     fun `onRxBarcodeRead non-numeric qty shows invalid scan dialog`() = runTest(testDispatcher) {
         every { parseScanData(any(), any()) } returns validParsed(qty = "not-a-number")
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.showInvalidScanDialog)
         assertFalse(vm.uiState.value.isLoading)
@@ -810,7 +813,7 @@ class DispenseFlowViewModelTest {
     @Test
     fun `onNdcBarcodeRead wrong stage ignored`() = runTest(testDispatcher) {
         val vm = createViewModel() // PRE_RX
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         coVerify(exactly = 0) { drugMasterDao.getDrugByGtin(any()) }
     }
@@ -819,7 +822,7 @@ class DispenseFlowViewModelTest {
     fun `onNdcBarcodeRead blank shows invalid`() = runTest(testDispatcher) {
         val vm = ndcVm()
         advanceUntilIdle()
-        vm.onNdcBarcodeRead("  ")
+        vm.onNdcBarcodeRead("  ", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.showInvalidScanDialog)
     }
@@ -832,7 +835,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
         coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.ndcNotAllowedToastTick > 0)
         assertEquals("gtin", vm.uiState.value.ndcNotAllowedValue)
@@ -852,7 +855,7 @@ class DispenseFlowViewModelTest {
                 brandName = null, genericName = "Gen", ndc = "OTHER",
                 is_ndc_equivalent = false, drugType = "CII", qty = 1, isHazardous = false
             )
-            vm.onNdcBarcodeRead("gtin")
+            vm.onNdcBarcodeRead("gtin", null)
             advanceUntilIdle()
             assertTrue(vm.uiState.value.ndcNotAllowedToastTick > 0)
             assertEquals("OTHER", vm.uiState.value.ndcNotAllowedValue)
@@ -872,7 +875,7 @@ class DispenseFlowViewModelTest {
                 brandName = null, genericName = "Gen", ndc = "ALLOWED",
                 is_ndc_equivalent = false, drugType = "CII", qty = 1, isHazardous = false
             )
-            vm.onNdcBarcodeRead("gtin")
+            vm.onNdcBarcodeRead("gtin", null)
             advanceUntilIdle()
             assertEquals(0, vm.uiState.value.ndcNotAllowedToastTick)
             assertEquals("ALLOWED", vm.uiState.value.ndcScannedValue)
@@ -886,7 +889,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
         coEvery { pillCountTxnDao.getById(any()) } returns txn(txnId = 50L)
         // make advanceToCountingStage create batch txn (txnId 0)
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
     }
@@ -901,7 +904,7 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
         coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertFalse(vm.uiState.value.showNdcDetails)
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
@@ -923,7 +926,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns null
         coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns null
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.showNdcNotFoundDialog)
     }
@@ -938,7 +941,7 @@ class DispenseFlowViewModelTest {
             brandName = "B", genericName = "Generic", ndc = "SRV1",
             is_ndc_equivalent = true, drugType = "CII", qty = 3, isHazardous = false
         )
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.showNdcEquivalenceDialog)
         assertEquals("SRV1", vm.uiState.value.ndcScannedValue)
@@ -959,7 +962,7 @@ class DispenseFlowViewModelTest {
             brandName = null, genericName = "Gen", ndc = "DIFFERENT",
             is_ndc_equivalent = false, drugType = "CII", qty = 1, isHazardous = null
         )
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertTrue(vm.uiState.value.ndcMismatchToastTick > 0)
     }
@@ -978,7 +981,7 @@ class DispenseFlowViewModelTest {
             is_ndc_equivalent = false, drugType = "X", qty = 2, isHazardous = true
         )
         coEvery { drugMasterDao.getDrugIdByNdc("SRV") } returns 12L
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertFalse(vm.uiState.value.showNdcDetails)
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
@@ -1001,7 +1004,7 @@ class DispenseFlowViewModelTest {
             brandName = null, genericName = "Gen", ndc = "SRV",
             is_ndc_equivalent = false, drugType = "X", qty = 2, isHazardous = false
         )
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
     }
@@ -1012,7 +1015,7 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin(any()) } throws RuntimeException("ndcfail")
         coEvery { drugMasterDao.getDrugByNdc(any()) } throws RuntimeException("ndcfail")
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals("ndcfail", vm.uiState.value.error)
     }
@@ -1022,8 +1025,8 @@ class DispenseFlowViewModelTest {
         val vm = ndcVm()
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
-        vm.onNdcBarcodeRead("gtin")
-        vm.onNdcBarcodeRead("gtin") // second blocked by isLoading
+        vm.onNdcBarcodeRead("gtin", null)
+        vm.onNdcBarcodeRead("gtin", null) // second blocked by isLoading
         advanceUntilIdle()
         coVerify(atMost = 1) { drugMasterDao.getDrugByGtin("gtin") }
     }
@@ -1046,7 +1049,7 @@ class DispenseFlowViewModelTest {
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         vm.onRxConfirmed()
         advanceUntilIdle()
@@ -1074,7 +1077,7 @@ class DispenseFlowViewModelTest {
         coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 200L
 
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         vm.onRxConfirmed()
         advanceUntilIdle()
@@ -1113,7 +1116,7 @@ class DispenseFlowViewModelTest {
             coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 204L
 
             val vm = createViewModel()
-            vm.onRxBarcodeRead("gtin")
+            vm.onRxBarcodeRead("gtin", null)
             advanceUntilIdle()
             vm.onRxConfirmed()
             advanceUntilIdle()
@@ -1132,7 +1135,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByNdc("NDC123") } returns drug(drugId = 55L, ndc = "NDC123")
 
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         vm.onRxCancelled()
         advanceUntilIdle()
@@ -1155,7 +1158,7 @@ class DispenseFlowViewModelTest {
         coEvery { pillCountTxnDao.upsertPreservingId(any<PillCountTxnEntity>()) } returns 200L
 
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         vm.onRxConfirmed()
         vm.onRxConfirmed()
@@ -1175,7 +1178,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
 
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
         vm.onRxConfirmed()
         vm.onRxConfirmed()
@@ -1354,7 +1357,7 @@ class DispenseFlowViewModelTest {
         val vm = createViewModel()
         vm.initializeFromResumedTxn() // txnId 7 (FIXED), PRE_NDC
         advanceUntilIdle()
-        vm.onNdcBarcodeRead("gtin") // server substitute -> sets ndcScannedValue + equivalence dialog
+        vm.onNdcBarcodeRead("gtin", null) // server substitute -> sets ndcScannedValue + equivalence dialog
         advanceUntilIdle()
         vm.confirmSubstitute() // FIXED txn!=0 -> needsSheet false -> advanceToCountingStage substitute branch
         advanceUntilIdle()
@@ -1391,7 +1394,7 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
         coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
-        vm.onNdcBarcodeRead("gtin")
+        vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
         assertEquals(0L, vm.uiState.value.txnId)
@@ -1648,7 +1651,7 @@ class DispenseFlowViewModelTest {
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin") // sets state.rxNo = RX999
+        vm.onRxBarcodeRead("gtin", null) // sets state.rxNo = RX999
         advanceUntilIdle()
 
         every { parseScanData(any(), "RX999|NDC123|10|B1") } returns validParsed(rxNo = "RX999")
@@ -1663,7 +1666,7 @@ class DispenseFlowViewModelTest {
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin") // sets state.rxNo = RX999
+        vm.onRxBarcodeRead("gtin", null) // sets state.rxNo = RX999
         advanceUntilIdle()
 
         val matched = vm.onVialBarcodeRead("rx999") // case-insensitive, no pipe
@@ -1676,7 +1679,7 @@ class DispenseFlowViewModelTest {
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
 
         val matched = vm.onVialBarcodeRead("WRONGRX")
@@ -1690,7 +1693,7 @@ class DispenseFlowViewModelTest {
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
 
         vm.onVialBarcodeRead("WRONGRX")
@@ -1705,7 +1708,7 @@ class DispenseFlowViewModelTest {
             txn(status = CountStatus.PARTIAL, isNdcVerified = false)
         coEvery { drugMasterDao.getDrugById(10L) } returns drug()
         val vm = createViewModel()
-        vm.onRxBarcodeRead("gtin")
+        vm.onRxBarcodeRead("gtin", null)
         advanceUntilIdle()
 
         every { parseScanData(any(), "garbage|data") } returns validParsed(rxNo = null)
@@ -1726,7 +1729,7 @@ class DispenseFlowViewModelTest {
 
             coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "EXPECTED")
             val firstBottle = BottleInfo(lotNumber = "LOT1", expirationDate = "2030-01", serialNumber = "SN1")
-            vm.onNdcBarcodeRead("gtin", firstBottle = firstBottle) // trustLocal, needsSheet false -> advance
+            vm.onNdcBarcodeRead("gtin", null, firstBottle = firstBottle) // trustLocal, needsSheet false -> advance
             advanceUntilIdle()
 
             coVerify {
@@ -1755,7 +1758,7 @@ class DispenseFlowViewModelTest {
         val vm = createViewModel()
         vm.initializeFromResumedTxn() // txnId 7 (FIXED), PRE_NDC
         advanceUntilIdle()
-        vm.onNdcBarcodeRead("gtin") // server substitute -> ndcScannedValue = SUBNDC
+        vm.onNdcBarcodeRead("gtin", null) // server substitute -> ndcScannedValue = SUBNDC
         advanceUntilIdle()
 
         // Substitute drug was already cached during the NDC scan with an image path;
@@ -1786,7 +1789,7 @@ class DispenseFlowViewModelTest {
         advanceUntilIdle()
         coEvery { drugMasterDao.getDrugByGtin("gtin") } returns drug(ndc = "L1")
         coEvery { drugMasterDao.getDrugIdByNdc("L1") } returns 10L
-        vm.onNdcBarcodeRead("gtin") // trustLocal, needsSheet false (batch set) -> advance
+        vm.onNdcBarcodeRead("gtin", null) // trustLocal, needsSheet false (batch set) -> advance
         advanceUntilIdle()
         assertEquals(DispenseStage.COUNTING, vm.uiState.value.stage)
         assertEquals(0L, vm.uiState.value.txnId)

@@ -44,7 +44,9 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
+import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
+import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent
 import com.rite.pillcounting.core.scanning.domain.data.PillScanningEvent
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
@@ -98,6 +100,8 @@ class PillScanningViewModel @Inject constructor(
     private val modelLoader: PillDetectionModelLoader,
     private val performanceLogger: PerformanceLogger,
     private val barcodeDecoder: BarcodeDecoder,
+    private val drugRepository: IDrugRepository,
+    private val drugImageDownloader: DrugImageDownloader,
     private val hl7Repository: Hl7Repository,
     private val appDatabase: AppDatabase,
 ) : AndroidViewModel(app) {
@@ -262,6 +266,9 @@ class PillScanningViewModel @Inject constructor(
     private var isHazardousTxn = false
     // Prevents the "using hazardous tray" toast from firing on every frame for non-hazardous txns.
     private var hazardousTrayToastShown = false
+
+    private var lastPreviewWidth = 0
+    private var lastPreviewHeight = 0
 
     // ── NEW: expose tray detections so the UI can draw the tray boundary ──────
     private val _trayDetections = MutableStateFlow<List<TrayDetection>>(emptyList())
@@ -455,107 +462,35 @@ class PillScanningViewModel @Inject constructor(
             return true
         }
         val stagedSum = stagedDetails.sumOf { it.pillCount ?: 0 }
-        val flushSucceeded = if (isStockCountSession) {
-            flushStagedStockCountSession(stagedSum)
-        } else {
-            flushStagedDispenseSession(txnId, stagedSum)
-            true
-        }
-        if (!flushSucceeded) return false
-        stagedDetails.clear()
-        stagingActive = false
-        return true
-    }
-
-    /**
-     * Stock loose counting: the per-count detail rows/images are session-only —
-     * only the aggregate loose total is persisted onto a BottleInfo line. For
-     * controlled substances (DEA CII–CVI) the captured pill-image paths from
-     * this session are also persisted; non-controlled sessions leave them null
-     * so the DB is not bloated with paths we never need.
-     *
-     * Returns false when the deferred-session atomic insert throws (rolled back
-     * by withTransaction) — see [flushStagedDetails] for caller behavior on false.
-     */
-    private suspend fun flushStagedStockCountSession(stagedSum: Int): Boolean {
-        if (stagedSum <= 0) return true
-        // Derive from _txnInfo (populated by startStockCounting) rather than a
-        // cached flag — one source of truth, no drift risk if a future entry path
-        // forgets to set the flag.
-        val isControlled = isControlledDrugType(_txnInfo.value?.drugType)
-        val controlledPaths: List<String>? = if (isControlled) {
-            stagedDetails.mapNotNull { it.imagePath }.takeIf { it.isNotEmpty() }
-        } else null
-        if (stockBottleId != 0L) {
-            // DispenseFlow hand-off ([enterStockCountSession]) with a pre-existing bottle:
-            // accumulate this session's loose total onto it. Single atomic UPDATE so a
-            // process death mid-flush can't save the count while dropping the image paths.
-            bottleInfoDao.incrementLooseQtyAndImages(stockBottleId, stagedSum, controlledPaths)
-            logger.i(
-                "Flushed stock loose count onto existing line. stagedSum=$stagedSum " +
-                    "bottleId=$stockBottleId controlledPaths=${controlledPaths?.size ?: 0}"
-            )
-        } else if (stockTxnId != 0L) {
-            // "Scan Pills" loose flow: every counting session is its own line so the same
-            // NDC keeps separate loose entries rather than merging onto one line. This line
-            // holds only loose/open pills, so bottleQty stays 0 — it must NOT count as a
-            // sealed bottle.
-            val newBottleId = bottleInfoDao.insert(
-                BottleInfoEntity(
-                    stockTxnId = stockTxnId,
-                    batchId = stockCountBatchId,
-                    lotNo = stockLotNo,
-                    expNo = stockExpNo,
-                    bottleQty = 0,
-                    looseQty = stagedSum,
-                    controlledImagePaths = controlledPaths,
-                )
-            )
-            logger.i(
-                "Flushed stock loose count as new line. stagedSum=$stagedSum " +
-                    "stockTxnId=$stockTxnId bottleId=$newBottleId controlledPaths=${controlledPaths?.size ?: 0}"
-            )
-        } else if (stockDrugId != 0L) {
-            // Deferred DispenseFlow stock session. Two entry paths land here:
-            //  1. Fresh stock count (no batch context) — [stockCountBatchId] == 0L.
-            //     Mint batch + stock_txn + bottle_info atomically.
-            //  2. Continuing an existing batch from the "Scan Pills" hand-off —
-            //     [stockCountBatchId] != 0L (seeded via [enterStockCountSession]).
-            //     Reuse the existing batchId; if the drug already has a stock_txn
-            //     header under that batch, append a new bottle line onto it —
-            //     otherwise insert a fresh stock_txn under the same batch. This
-            //     prevents every counting session from spawning a duplicate batch.
-            //
-            // Wrapped in try/catch because a DB failure here (unique constraint,
-            // disk full, foreign-key violation) would otherwise crash the app on
-            // All Done. On failure the transaction rolls back (withTransaction is
-            // atomic), the staging buffer is kept intact so the user can retap
-            // Done without losing the count, and a toast surfaces the failure.
-            try {
-                // withTransaction returns the freshly-committed ids so the field
-                // mirrors + published event only run on success. Publishing inside
-                // the block would leak a batchId to InventoryScan that the rollback
-                // then wiped from the DB, leaving Recent Counts bound to a phantom.
-                val committed = appDatabase.withTransaction {
-                    val effectiveBatchId = if (stockCountBatchId != 0L) {
-                        stockCountBatchId
-                    } else {
-                        batchDao.insertNewInProgressBatch(bucketId = stockBucketId)
-                    }
-                    val existingStockTxn = stockTxnDao.findByDrugInBatch(effectiveBatchId, stockDrugId)
-                    val effectiveStockTxnId = existingStockTxn?.txnId
-                        ?: stockTxnDao.upsertPreservingId(
-                            StockTxnEntity(
-                                drugId = stockDrugId,
-                                status = CountStatus.PARTIAL,
-                                batchId = effectiveBatchId,
-                                bucketId = stockBucketId,
-                            )
-                        )
-                    bottleInfoDao.insert(
+        if (isStockCountSession) {
+            // Stock loose counting: the per-count detail rows/images are session-only —
+            // only the aggregate loose total is persisted onto a BottleInfo line. For
+            // controlled substances (DEA CII–CVI) the captured pill-image paths from
+            // this session are also persisted; non-controlled sessions leave them null
+            // so the DB is not bloated with paths we never need.
+            if (stagedSum > 0) {
+                // Derive from _txnInfo (populated by startStockCounting) rather than a
+                // cached flag — one source of truth, no drift risk if a future entry path
+                // forgets to set the flag.
+                val isControlled = isControlledDrugType(_txnInfo.value?.drugType)
+                val controlledPaths: List<String>? = if (isControlled) {
+                    stagedDetails.mapNotNull { it.imagePath }.takeIf { it.isNotEmpty() }
+                } else null
+                if (stockBottleId != 0L) {
+                    // DispenseFlow hand-off ([enterStockCountSession]) with a pre-existing bottle:
+                    // accumulate this session's loose total onto it. Single atomic UPDATE so a
+                    // process death mid-flush can't save the count while dropping the image paths.
+                    bottleInfoDao.incrementLooseQtyAndImages(stockBottleId, stagedSum, controlledPaths)
+                    logger.i("Flushed stock loose count onto existing line. stagedSum=$stagedSum bottleId=$stockBottleId controlledPaths=${controlledPaths?.size ?: 0}")
+                } else if (stockTxnId != 0L) {
+                    // "Scan Pills" loose flow: every counting session is its own line so the same
+                    // NDC keeps separate loose entries rather than merging onto one line. This line
+                    // holds only loose/open pills, so bottleQty stays 0 — it must NOT count as a
+                    // sealed bottle.
+                    val newBottleId = bottleInfoDao.insert(
                         BottleInfoEntity(
-                            stockTxnId = effectiveStockTxnId,
-                            batchId = effectiveBatchId,
+                            stockTxnId = stockTxnId,
+                            batchId = stockCountBatchId,
                             lotNo = stockLotNo,
                             expNo = stockExpNo,
                             bottleQty = 0,
@@ -563,61 +498,107 @@ class PillScanningViewModel @Inject constructor(
                             controlledImagePaths = controlledPaths,
                         )
                     )
-                    stockTxnDao.refreshBatchTotalNdcs(effectiveBatchId)
-                    stockTxnDao.updateBatchUserName(
-                        effectiveBatchId,
-                        preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
-                    )
-                    effectiveBatchId to effectiveStockTxnId
+                    logger.i("Flushed stock loose count as new line. stagedSum=$stagedSum stockTxnId=$stockTxnId bottleId=$newBottleId controlledPaths=${controlledPaths?.size ?: 0}")
+                } else if (stockDrugId != 0L) {
+                    // Deferred DispenseFlow stock session. Two entry paths land here:
+                    //  1. Fresh stock count (no batch context) — [stockCountBatchId] == 0L.
+                    //     Mint batch + stock_txn + bottle_info atomically.
+                    //  2. Continuing an existing batch from the "Scan Pills" hand-off —
+                    //     [stockCountBatchId] != 0L (seeded via [enterStockCountSession]).
+                    //     Reuse the existing batchId; if the drug already has a stock_txn
+                    //     header under that batch, append a new bottle line onto it —
+                    //     otherwise insert a fresh stock_txn under the same batch. This
+                    //     prevents every counting session from spawning a duplicate batch.
+                    //
+                    // Wrapped in try/catch because a DB failure here (unique constraint,
+                    // disk full, foreign-key violation) would otherwise crash the app on
+                    // All Done. On failure the transaction rolls back (withTransaction is
+                    // atomic), the staging buffer is kept intact so the user can retap
+                    // Done without losing the count, and a toast surfaces the failure.
+                    try {
+                        // withTransaction returns the freshly-committed ids so the field
+                        // mirrors + published event only run on success. Publishing inside
+                        // the block would leak a batchId to InventoryScan that the rollback
+                        // then wiped from the DB, leaving Recent Counts bound to a phantom.
+                        val committed = appDatabase.withTransaction {
+                            val effectiveBatchId = if (stockCountBatchId != 0L) {
+                                stockCountBatchId
+                            } else {
+                                batchDao.insertNewInProgressBatch(bucketId = stockBucketId)
+                            }
+                            val existingStockTxn = stockTxnDao.findByDrugInBatch(effectiveBatchId, stockDrugId)
+                            val effectiveStockTxnId = existingStockTxn?.txnId
+                                ?: stockTxnDao.upsertPreservingId(
+                                    StockTxnEntity(
+                                        drugId = stockDrugId,
+                                        status = CountStatus.PARTIAL,
+                                        batchId = effectiveBatchId,
+                                        bucketId = stockBucketId,
+                                    )
+                                )
+                            bottleInfoDao.insert(
+                                BottleInfoEntity(
+                                    stockTxnId = effectiveStockTxnId,
+                                    batchId = effectiveBatchId,
+                                    lotNo = stockLotNo,
+                                    expNo = stockExpNo,
+                                    bottleQty = 0,
+                                    looseQty = stagedSum,
+                                    controlledImagePaths = controlledPaths,
+                                )
+                            )
+                            stockTxnDao.refreshBatchTotalNdcs(effectiveBatchId)
+                            stockTxnDao.updateBatchUserName(
+                                effectiveBatchId,
+                                preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
+                            )
+                            effectiveBatchId to effectiveStockTxnId
+                        }
+                        // Transaction committed — mirror ids into VM fields so subsequent
+                        // flushes in this same session accumulate onto the same line/header,
+                        // and publish the batchId so the screen can adopt it into
+                        // InventoryScan's Recent Counts.
+                        stockCountBatchId = committed.first
+                        stockTxnId = committed.second
+                        _stockCountCommittedBatchId.value = committed.first
+                        logger.i("Committed deferred stock session. stagedSum=$stagedSum drugId=$stockDrugId batchId=$stockCountBatchId stockTxnId=$stockTxnId controlledPaths=${controlledPaths?.size ?: 0}")
+                    } catch (e: Exception) {
+                        logger.e("Deferred stock session commit failed — staging preserved for retry", e)
+                        _uiState.update {
+                            it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_save_failed))
+                        }
+                        return false
+                    }
                 }
-                // Transaction committed — mirror ids into VM fields so subsequent
-                // flushes in this same session accumulate onto the same line/header,
-                // and publish the batchId so the screen can adopt it into
-                // InventoryScan's Recent Counts.
-                stockCountBatchId = committed.first
-                stockTxnId = committed.second
-                _stockCountCommittedBatchId.value = committed.first
-                logger.i(
-                    "Committed deferred stock session. stagedSum=$stagedSum drugId=$stockDrugId " +
-                        "batchId=$stockCountBatchId stockTxnId=$stockTxnId controlledPaths=${controlledPaths?.size ?: 0}"
-                )
-            } catch (e: Exception) {
-                logger.e("Deferred stock session commit failed — staging preserved for retry", e)
-                _uiState.update {
-                    it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_save_failed))
+                // Non-controlled stock sessions never persist image paths onto
+                // BottleInfo, so the on-disk JPEGs written during Add taps have no
+                // DB row referencing them post-commit. Delete them here so they
+                // don't accumulate as orphans. Controlled sessions keep the files —
+                // BottleInfo.controlledImagePaths still points at them.
+                if (!isControlled) {
+                    deleteStagedImageFiles()
                 }
-                return false
             }
+        } else {
+            // Regular dispense flow: each staged detail hits pill_count_txn_details, plus a
+            // second write to bump the parent txn's bottle-info list (linkDetailToActiveBottle
+            // decodes, appends the new detail id to the active bottle, then re-encodes and
+            // persists). A process death between those two writes previously left a detail
+            // row unreferenced by any bottle. withTransaction wraps the whole flush so either
+            // all details + their linkages commit or nothing does.
+            appDatabase.withTransaction {
+                val txn = pillCountTxnDao.getById(txnId)
+                val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
+                stagedDetails.forEach { entity ->
+                    val newDetailsId = pillCountTxnDetailsDao.insert(entity.copy(txnId = txnId))
+                    linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+                }
+            }
+            logger.i("Flushed ${stagedDetails.size} staged details to DB. stagedSum=$stagedSum txnId=$txnId")
         }
-        // Non-controlled stock sessions never persist image paths onto
-        // BottleInfo, so the on-disk JPEGs written during Add taps have no
-        // DB row referencing them post-commit. Delete them here so they
-        // don't accumulate as orphans. Controlled sessions keep the files —
-        // BottleInfo.controlledImagePaths still points at them.
-        if (!isControlled) {
-            deleteStagedImageFiles()
-        }
+        stagedDetails.clear()
+        stagingActive = false
         return true
-    }
-
-    /**
-     * Regular dispense flow: each staged detail hits pill_count_txn_details, plus a
-     * second write to bump the parent txn's bottle-info list (linkDetailToActiveBottle
-     * decodes, appends the new detail id to the active bottle, then re-encodes and
-     * persists). A process death between those two writes previously left a detail
-     * row unreferenced by any bottle. withTransaction wraps the whole flush so either
-     * all details + their linkages commit or nothing does.
-     */
-    private suspend fun flushStagedDispenseSession(txnId: Long, stagedSum: Int) {
-        appDatabase.withTransaction {
-            val txn = pillCountTxnDao.getById(txnId)
-            val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
-            stagedDetails.forEach { entity ->
-                val newDetailsId = pillCountTxnDetailsDao.insert(entity.copy(txnId = txnId))
-                linkDetailToActiveBottle(txnId, bottles, newDetailsId)
-            }
-        }
-        logger.i("Flushed ${stagedDetails.size} staged details to DB. stagedSum=$stagedSum txnId=$txnId")
     }
 
     /**
@@ -695,7 +676,12 @@ class PillScanningViewModel @Inject constructor(
      * Now calls [PillDetectionModelLoader.getOrLoadInterpreters] which returns
      * both the pill and tray interpreters loaded in parallel.
      */
-    fun initializeInterpreter() {
+    fun initializeInterpreter(
+        retryCount: Int = 1, viewWidth: Int, viewHeight: Int
+    ) {
+        lastPreviewWidth = viewWidth
+        lastPreviewHeight = viewHeight
+
         if (_modelState.value is ModelState.Ready) {
             logger.w("Interpreter already initialized, skipping reinitialization.")
             return
@@ -723,6 +709,8 @@ class PillScanningViewModel @Inject constructor(
                             gloveDets     = gloveDetections,
                             bitmap        = bitmap,
                             matrix        = matrix,
+                            previewWidth  = viewWidth,
+                            previewHeight = viewHeight,
                             imageWidth    = imageWidth,
                             imageHeight   = imageHeight
                         )
@@ -755,6 +743,8 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val models = modelLoader.getOrLoadInterpreters(includeGlove = true)
+                val w = lastPreviewWidth
+                val h = lastPreviewHeight
 
                 val analyzer = PillAnalyzer(
                     pillInterpreter  = models.pillInterpreter,
@@ -770,6 +760,8 @@ class PillScanningViewModel @Inject constructor(
                             gloveDets     = gloveDetections,
                             bitmap        = bitmap,
                             matrix        = matrix,
+                            previewWidth  = w,
+                            previewHeight = h,
                             imageWidth    = imageWidth,
                             imageHeight   = imageHeight
                         )
@@ -791,6 +783,8 @@ class PillScanningViewModel @Inject constructor(
     private suspend fun unloadGloveAndRebuildAnalyzer() {
         modelLoader.unloadGloveModel()
         val models = modelLoader.getOrLoadInterpreters(includeGlove = false)
+        val w = lastPreviewWidth
+        val h = lastPreviewHeight
         val analyzer = PillAnalyzer(
             pillInterpreter  = models.pillInterpreter,
             traySegDetector = models.traySegDetector,
@@ -805,6 +799,8 @@ class PillScanningViewModel @Inject constructor(
                     gloveDets     = gloveDetections,
                     bitmap        = bitmap,
                     matrix        = matrix,
+                    previewWidth  = w,
+                    previewHeight = h,
                     imageWidth    = imageWidth,
                     imageHeight   = imageHeight
                 )
@@ -831,6 +827,8 @@ class PillScanningViewModel @Inject constructor(
         gloveDets: List<GloveDetection>,
         bitmap: Bitmap,
         matrix: Matrix,
+        previewWidth: Int,
+        previewHeight: Int,
         imageWidth: Int,
         imageHeight: Int
     ) {
@@ -850,9 +848,94 @@ class PillScanningViewModel @Inject constructor(
         _trayDetections.value = trayDets
         _uiState.update { it.copy(gloveDetections = gloveDets) }
 
-        handleTrayColorHazardDetection(trayDets)
+        // ── Tray color classification + hazardousTrayDetected DB save ────────
+        // Runs only for hazardous drug transactions. Saves exactly once per txn.
+        //
+        // Scenario 1 (setting OFF): immediate save — true if in hazardous list, false otherwise.
+        // Scenario 2 (setting ON):  true if in hazardous list (immediate), otherwise show popup;
+        //                           user response (yes/no) determines the saved value.
+        logger.d(
+            "Frame: detectionEnabled=$isTrayColorDetectionEnabled popupEnabled=$hazardousTrayPopupEnabled " +
+            "resultSaved=$hazardousTrayResultSaved trays=${trayDets.size} " +
+            "pending=${_uiState.value.pendingTrayColorForClassification?.label}"
+        )
+        if (isTrayColorDetectionEnabled) {
+            val trayColor = trayDets.firstOrNull { it.trayColor != TrayColor.UNKNOWN }?.trayColor
+            logger.d("  First known tray color: ${trayColor?.label ?: "none"} hazardousColor=$cachedHazardousColor isHazardousTxn=$isHazardousTxn")
 
-        handleGloveDetectionFrame(gloveDets)
+            if (trayColor != null) {
+                if (isHazardousTxn && !hazardousTrayResultSaved) {
+                    when {
+                        cachedHazardousColor == null -> {
+                            // No hazardous color saved yet — first hazardous transaction.
+                            // Show prompt so the user can designate this tray (setting must be ON).
+                            if (hazardousTrayPopupEnabled &&
+                                _uiState.value.pendingTrayColorForClassification == null &&
+                                trayColor !in promptedTrayColors) {
+                                promptedTrayColors.add(trayColor)
+                                _uiState.update { it.copy(pendingTrayColorForClassification = trayColor) }
+                                logger.i("[HAZARDOUS] First hazardous txn — showing tray classification popup for ${trayColor.label}")
+                            } else if (!hazardousTrayPopupEnabled) {
+                                // Global setting OFF — nothing to classify, save false.
+                                logger.i("[HAZARDOUS] No saved color, setting OFF — saving false for ${trayColor.label}")
+                                saveHazardousTrayDetected(false)
+                            }
+                        }
+                        trayColor.name == cachedHazardousColor -> {
+                            // Correct hazardous tray detected — save true.
+                            logger.i("[HAZARDOUS] Tray ${trayColor.label} matches hazardous color — saving true")
+                            saveHazardousTrayDetected(true)
+                        }
+                        else -> {
+                            // A hazardous color is saved but this tray does not match it.
+                            if (!hazardousTrayPopupEnabled) {
+                                // Global setting OFF — save false silently.
+                                logger.i("[HAZARDOUS] Setting OFF, tray ${trayColor.label} != hazardous color — saving false")
+                                saveHazardousTrayDetected(false)
+                            } else if (!hazardousTrayToastShown) {
+                                // Setting ON — warn user to swap to the correct hazardous tray.
+                                hazardousTrayToastShown = true
+                                logger.i("[HAZARDOUS] Tray ${trayColor.label} is NOT the hazardous tray — showing warning toast")
+                                viewModelScope.launch(Dispatchers.Main) {
+                                    showToast(context, context.getString(R.string.non_hazardous_tray_warning))
+                                }
+                            }
+                        }
+                    }
+                } else if (!isHazardousTxn && !hazardousTrayToastShown && trayColor.name == cachedHazardousColor) {
+                    // Non-hazardous transaction using the hazardous tray — warn the user.
+                    hazardousTrayToastShown = true
+                    logger.i("[HAZARDOUS] Hazardous tray ${trayColor.label} detected in non-hazardous transaction — showing toast")
+                    viewModelScope.launch(Dispatchers.Main) {
+                        showToast(context, context.getString(R.string.hazardous_tray_warning))
+                    }
+                }
+            }
+        }
+
+        // ── Check if gloves detected - if yes, stop running glove detection ──
+        // Require several CONSECUTIVE strong detections before locking the session
+        // state — a single flickery frame (e.g. a bare hand momentarily misclassified
+        // as "gloves") must not permanently commit "gloves detected".
+        if (!_glovesDetected.value) {
+            val strongGloveThisFrame = gloveDets.any { it.classId == 0 && it.confidence >= 0.75f }
+            consecutiveGloveFrames = if (strongGloveThisFrame) consecutiveGloveFrames + 1 else 0
+
+            if (consecutiveGloveFrames >= GLOVE_CONFIRM_FRAMES) {
+                _glovesDetected.value = true
+                shouldRunGloveDetection = false
+                val best = gloveDets.filter { it.classId == 0 }.maxByOrNull { it.confidence }
+                logger.i("GLOVE_ICON — turning GREEN (bestConfidence=${best?.confidence}, consecutiveFrames=$consecutiveGloveFrames) - unloading glove model and saving DB flag")
+                viewModelScope.launch {
+                    unloadGloveAndRebuildAnalyzer()
+                    val txnId = preferenceHelper.getTxnId()
+                    if (txnId != 0L) {
+                        pillCountTxnDao.updateGlovesPresent(txnId, true)
+                        logger.i("isGlovesPresent saved for txn=$txnId")
+                    }
+                }
+            }
+        }
 
         // Rolling count buffer
         val buffer = ArrayDeque(_lastTenDetections.value)
@@ -870,109 +953,6 @@ class PillScanningViewModel @Inject constructor(
                 )
             }, frameWidth = imageWidth, frameHeight = imageHeight
         )
-    }
-
-    /**
-     * Tray color classification + hazardousTrayDetected DB save. Runs only for
-     * hazardous drug transactions. Saves exactly once per txn.
-     *
-     * Scenario 1 (setting OFF): immediate save — true if in hazardous list, false otherwise.
-     * Scenario 2 (setting ON):  true if in hazardous list (immediate), otherwise show popup;
-     *                           user response (yes/no) determines the saved value.
-     */
-    private fun handleTrayColorHazardDetection(trayDets: List<TrayDetection>) {
-        logger.d(
-            "Frame: detectionEnabled=$isTrayColorDetectionEnabled popupEnabled=$hazardousTrayPopupEnabled " +
-            "resultSaved=$hazardousTrayResultSaved trays=${trayDets.size} " +
-            "pending=${_uiState.value.pendingTrayColorForClassification?.label}"
-        )
-        if (!isTrayColorDetectionEnabled) return
-
-        val trayColor = trayDets.firstOrNull { it.trayColor != TrayColor.UNKNOWN }?.trayColor
-        logger.d(
-            "  First known tray color: ${trayColor?.label ?: "none"} " +
-                "hazardousColor=$cachedHazardousColor isHazardousTxn=$isHazardousTxn"
-        )
-
-        if (trayColor == null) return
-
-        if (isHazardousTxn && !hazardousTrayResultSaved) {
-            when {
-                cachedHazardousColor == null -> {
-                    // No hazardous color saved yet — first hazardous transaction.
-                    // Show prompt so the user can designate this tray (setting must be ON).
-                    if (hazardousTrayPopupEnabled &&
-                        _uiState.value.pendingTrayColorForClassification == null &&
-                        trayColor !in promptedTrayColors) {
-                        promptedTrayColors.add(trayColor)
-                        _uiState.update { it.copy(pendingTrayColorForClassification = trayColor) }
-                        logger.i("[HAZARDOUS] First hazardous txn — showing tray classification popup for ${trayColor.label}")
-                    } else if (!hazardousTrayPopupEnabled) {
-                        // Global setting OFF — nothing to classify, save false.
-                        logger.i("[HAZARDOUS] No saved color, setting OFF — saving false for ${trayColor.label}")
-                        saveHazardousTrayDetected(false)
-                    }
-                }
-                trayColor.name == cachedHazardousColor -> {
-                    // Correct hazardous tray detected — save true.
-                    logger.i("[HAZARDOUS] Tray ${trayColor.label} matches hazardous color — saving true")
-                    saveHazardousTrayDetected(true)
-                }
-                else -> {
-                    // A hazardous color is saved but this tray does not match it.
-                    if (!hazardousTrayPopupEnabled) {
-                        // Global setting OFF — save false silently.
-                        logger.i("[HAZARDOUS] Setting OFF, tray ${trayColor.label} != hazardous color — saving false")
-                        saveHazardousTrayDetected(false)
-                    } else if (!hazardousTrayToastShown) {
-                        // Setting ON — warn user to swap to the correct hazardous tray.
-                        hazardousTrayToastShown = true
-                        logger.i("[HAZARDOUS] Tray ${trayColor.label} is NOT the hazardous tray — showing warning toast")
-                        viewModelScope.launch(Dispatchers.Main) {
-                            showToast(context, context.getString(R.string.non_hazardous_tray_warning))
-                        }
-                    }
-                }
-            }
-        } else if (!isHazardousTxn && !hazardousTrayToastShown && trayColor.name == cachedHazardousColor) {
-            // Non-hazardous transaction using the hazardous tray — warn the user.
-            hazardousTrayToastShown = true
-            logger.i("[HAZARDOUS] Hazardous tray ${trayColor.label} detected in non-hazardous transaction — showing toast")
-            viewModelScope.launch(Dispatchers.Main) {
-                showToast(context, context.getString(R.string.hazardous_tray_warning))
-            }
-        }
-    }
-
-    /**
-     * Check if gloves detected - if yes, stop running glove detection. Requires
-     * several CONSECUTIVE strong detections before locking the session state —
-     * a single flickery frame (e.g. a bare hand momentarily misclassified as
-     * "gloves") must not permanently commit "gloves detected".
-     */
-    private fun handleGloveDetectionFrame(gloveDets: List<GloveDetection>) {
-        if (_glovesDetected.value) return
-
-        val strongGloveThisFrame = gloveDets.any { it.classId == 0 && it.confidence >= 0.75f }
-        consecutiveGloveFrames = if (strongGloveThisFrame) consecutiveGloveFrames + 1 else 0
-
-        if (consecutiveGloveFrames >= GLOVE_CONFIRM_FRAMES) {
-            _glovesDetected.value = true
-            shouldRunGloveDetection = false
-            val best = gloveDets.filter { it.classId == 0 }.maxByOrNull { it.confidence }
-            logger.i(
-                "GLOVE_ICON — turning GREEN (bestConfidence=${best?.confidence}, " +
-                    "consecutiveFrames=$consecutiveGloveFrames) - unloading glove model and saving DB flag"
-            )
-            viewModelScope.launch {
-                unloadGloveAndRebuildAnalyzer()
-                val txnId = preferenceHelper.getTxnId()
-                if (txnId != 0L) {
-                    pillCountTxnDao.updateGlovesPresent(txnId, true)
-                    logger.i("isGlovesPresent saved for txn=$txnId")
-                }
-            }
-        }
     }
 
     /** Update the list of detected pills in UI state AND the frame dimensions. */
@@ -1117,10 +1097,7 @@ class PillScanningViewModel @Inject constructor(
 
         logger.d("=== setHazardousTransaction ===")
         logger.d("  drugFlag=$isHazardousByDrug  globalSettingOn=$globalSettingOn")
-        logger.d(
-            "  detectionEnabled=$isTrayColorDetectionEnabled  popupEnabled=$hazardousTrayPopupEnabled  " +
-                "hazardousColor=$cachedHazardousColor"
-        )
+        logger.d("  detectionEnabled=$isTrayColorDetectionEnabled  popupEnabled=$hazardousTrayPopupEnabled  hazardousColor=$cachedHazardousColor")
 
         if (isHazardousByDrug) {
             promptedTrayColors.clear()
@@ -1288,9 +1265,20 @@ class PillScanningViewModel @Inject constructor(
         }
 
         val stepType = event.stepType
+        val totalBatchCount =
+            _uiState.value.txnDetailHistory.filter { it.type == stepType }.sumOf { it.count }
+        val targetCount = _uiState.value.targetCount
         val currentCount = event.filteredCount
+        val predictedTotal = totalBatchCount + currentCount
+        val skipRestriction = stepType in listOf(StepState.CONTAINER_INITIATE)
 
-        if (isAddRestrictedByTarget(stepType, currentCount)) return
+        if (!skipRestriction) {
+            if (_uiState.value.scanType == CountType.FIXED.toString() && predictedTotal > targetCount) {
+                _uiState.update { it.copy(restrictAdd = true) }
+                logger.w("Add blocked: predicted total exceeds target count.")
+                return
+            }
+        }
         if (currentCount == 0) {
             showToast(context, context.getString(R.string.add_zero_detected))
             logger.w("Add blocked: detected count is 0.")
@@ -1298,8 +1286,15 @@ class PillScanningViewModel @Inject constructor(
         }
         triggerAddPop(currentCount)
 
-        val signature = buildAddScanSignature(currentCount)
-        if (isDuplicateAddSignature(signature)) return
+        val signature = _uiState.value.detectedPills.joinToString(separator = "|") {
+            "${"%.3f".format(it.x)}-${"%.3f".format(it.y)}"
+        } + "|count=$currentCount"
+
+        if (signature == lastAddedScanSignature) {
+            showToast(context, context.getString(R.string.duplicate_scan_ignored))
+            logger.w("Duplicate add prevented: no change in detection pattern.")
+            return
+        }
 
         startAddCooldown()
 
@@ -1308,158 +1303,119 @@ class PillScanningViewModel @Inject constructor(
         logger.i("Adding transaction detail. Count=$currentCount")
 
         viewModelScope.launch(Dispatchers.IO) {
-            persistAddedTransactionDetail(stepType, currentCount)
-        }
-    }
+            val userId = preferenceHelper.getUserId().orEmpty()
+            val user = userDao.getByUserId(userId)
+            val location = locationProvider.getCurrentLocationAsString()
 
-    /** True (and side-effecting) when a FIXED-count Add would push the running total past target. */
-    private fun isAddRestrictedByTarget(stepType: StepState, currentCount: Int): Boolean {
-        val totalBatchCount =
-            _uiState.value.txnDetailHistory.filter { it.type == stepType }.sumOf { it.count }
-        val targetCount = _uiState.value.targetCount
-        val predictedTotal = totalBatchCount + currentCount
-        val skipRestriction = stepType in listOf(StepState.CONTAINER_INITIATE)
-
-        if (!skipRestriction) {
-            if (_uiState.value.scanType == CountType.FIXED.toString() && predictedTotal > targetCount) {
-                _uiState.update { it.copy(restrictAdd = true) }
-                logger.w("Add blocked: predicted total exceeds target count.")
-                return true
+            val base = currentFrameBitmap
+            if (base == null || base.isRecycled) {
+                logger.e("Base frame bitmap is null or recycled, skipping save")
+                return@launch
             }
-        }
-        return false
-    }
 
-    private fun buildAddScanSignature(currentCount: Int): String {
-        return _uiState.value.detectedPills.joinToString(separator = "|") {
-            "${"%.3f".format(it.x)}-${"%.3f".format(it.y)}"
-        } + "|count=$currentCount"
-    }
-
-    private fun isDuplicateAddSignature(signature: String): Boolean {
-        if (signature == lastAddedScanSignature) {
-            showToast(context, context.getString(R.string.duplicate_scan_ignored))
-            logger.w("Duplicate add prevented: no change in detection pattern.")
-            return true
-        }
-        return false
-    }
-
-    /**
-     * Captures the current frame, draws the detection overlay, saves the JPEG, and either
-     * stages or immediately persists the resulting [PillCountTxnDetailsEntity]. Runs on
-     * [Dispatchers.IO] from [handleAddTransaction].
-     */
-    private suspend fun persistAddedTransactionDetail(stepType: StepState, currentCount: Int) {
-        val userId = preferenceHelper.getUserId().orEmpty()
-        val user = userDao.getByUserId(userId)
-        val location = locationProvider.getCurrentLocationAsString()
-
-        val base = currentFrameBitmap
-        if (base == null || base.isRecycled) {
-            logger.e("Base frame bitmap is null or recycled, skipping save")
-            return
-        }
-
-        val workingBitmap = try {
-            base.copy(Bitmap.Config.ARGB_8888, true)
-        } catch (e: Exception) {
-            logger.e("Failed to copy base bitmap", e)
-            return
-        }
-        if (workingBitmap == null) {
-            logger.e("Bitmap.copy() returned null, skipping save")
-            return
-        }
-
-        val filteredPills = _uiState.value.filteredPills
-        val txnId = preferenceHelper.getTxnId()
-        val txn = pillCountTxnDao.getById(txnId)
-        val drug = drugMasterDao.getDrugById(txn?.drugId)
-
-        // Resolve the currently active bottle (last one scanned) once — used both to
-        // watermark this photo with its lot/exp/serial and to tag the detail row below.
-        val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
-        val activeBottle = bottles.lastOrNull()
-
-        val overlayBitmap = if (filteredPills.isNotEmpty()) {
-            try {
-                OverlayUtils.drawDetectionsOnBitmap(
-                    bitmap = workingBitmap,
-                    detectedPills = filteredPills,
-                    userName = listOfNotNull(user?.fName, user?.lName).joinToString(" "),
-                    location = location,
-                    timestamp = System.currentTimeMillis(),
-                    ndc = drug?.ndc,
-                    count = currentCount.toString(),
-                    rx = txn?.rxNo,
-                    stepLabel = stepType.name,
-                    lotNumber = activeBottle?.lotNumber,
-                    expirationDate = activeBottle?.expirationDate,
-                    serialNumber = activeBottle?.serialNumber,
-                )
+            val workingBitmap = try {
+                base.copy(Bitmap.Config.ARGB_8888, true)
             } catch (e: Exception) {
-                logger.e("Overlay drawing failed, using bitmap without overlay", e)
+                logger.e("Failed to copy base bitmap", e)
+                return@launch
+            }
+            if (workingBitmap == null) {
+                logger.e("Bitmap.copy() returned null, skipping save")
+                return@launch
+            }
+
+            val filteredPills = _uiState.value.filteredPills
+            val txnId = preferenceHelper.getTxnId()
+            val txn = pillCountTxnDao.getById(txnId)
+            val drug = drugMasterDao.getDrugById(txn?.drugId)
+
+            // Resolve the currently active bottle (last one scanned) once — used both to
+            // watermark this photo with its lot/exp/serial and to tag the detail row below.
+            val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
+            val activeBottle = bottles.lastOrNull()
+
+            val overlayBitmap = if (filteredPills.isNotEmpty()) {
+                try {
+                    OverlayUtils.drawDetectionsOnBitmap(
+                        bitmap = workingBitmap,
+                        detectedPills = filteredPills,
+                        previewWidth = cameraHelper?.getPreviewWidth() ?: workingBitmap.width,
+                        previewHeight = cameraHelper?.getPreviewHeight() ?: workingBitmap.height,
+                        userName = listOfNotNull(user?.fName, user?.lName).joinToString(" "),
+                        userId = user?.userId,
+                        location = location,
+                        timestamp = System.currentTimeMillis(),
+                        ndc = drug?.ndc,
+                        count = currentCount.toString(),
+                        rx = txn?.rxNo,
+                        stepLabel = stepType.name,
+                        lotNumber = activeBottle?.lotNumber,
+                        expirationDate = activeBottle?.expirationDate,
+                        serialNumber = activeBottle?.serialNumber,
+                    )
+                } catch (e: Exception) {
+                    logger.e("Overlay drawing failed, using bitmap without overlay", e)
+                    workingBitmap
+                }
+            } else {
                 workingBitmap
             }
-        } else {
-            workingBitmap
-        }
 
-        val filePath = try {
-            if (!overlayBitmap.isRecycled) {
-                saveBitmapToFile(
-                    getApplication(),
-                    overlayBitmap,
-                    "txn_detail_${System.currentTimeMillis()}.jpg",
-                    "transaction_details",
-                    grayscale = true
-                )
-            } else null
-        } catch (e: Exception) {
-            logger.e("Failed saving bitmap", e)
-            null
-        }
+            val filePath = try {
+                if (!overlayBitmap.isRecycled) {
+                    saveBitmapToFile(
+                        getApplication(),
+                        overlayBitmap,
+                        "txn_detail_${System.currentTimeMillis()}.jpg",
+                        "transaction_details",
+                        grayscale = true
+                    )
+                } else null
+            } catch (e: Exception) {
+                logger.e("Failed saving bitmap", e)
+                null
+            }
 
-        val detail = PillCountTxnDetailsEntity(
-            txnId = txnId,
-            pillCount = currentCount,
-            imagePath = filePath,
-            createdAt = System.currentTimeMillis(),
-            updatedAt = System.currentTimeMillis(),
-            type = stepType.toString(),
-        )
+            val detail = PillCountTxnDetailsEntity(
+                txnId = txnId,
+                pillCount = currentCount,
+                imagePath = filePath,
+                createdAt = System.currentTimeMillis(),
+                updatedAt = System.currentTimeMillis(),
+                type = stepType.toString(),
+            )
 
-        if (stagingEnabled) {
-            // SCAN PILLS hand-off: STAGE in memory instead of writing to the
-            // DB. The image file IS saved to disk above (staging on disk is
-            // fine); only the DB row + looseQty increment are deferred until
-            // the user confirms Done. looseQty for REGULAR is incremented
-            // once, on flush, for the whole staged sum (see handleConfirmDone
-            // / handleDone flush blocks). On back-out these are discarded.
-            // Bottle linkage (txnDetailsIds) is done in flushStagedDetails, once
-            // real row ids exist — staged rows have no id yet.
-            stagedDetails.add(detail)
-            stagingActive = true
+            if (stagingEnabled) {
+                // SCAN PILLS hand-off: STAGE in memory instead of writing to the
+                // DB. The image file IS saved to disk above (staging on disk is
+                // fine); only the DB row + looseQty increment are deferred until
+                // the user confirms Done. looseQty for REGULAR is incremented
+                // once, on flush, for the whole staged sum (see handleConfirmDone
+                // / handleDone flush blocks). On back-out these are discarded.
+                // Bottle linkage (txnDetailsIds) is done in flushStagedDetails, once
+                // real row ids exist — staged rows have no id yet.
+                stagedDetails.add(detail)
+                stagingActive = true
 
-            if (!workingBitmap.isRecycled) workingBitmap.recycle()
-            refreshStagedHistory(stepType)
-            currentFrameBitmap = null
+                if (!workingBitmap.isRecycled) workingBitmap.recycle()
+                refreshStagedHistory(stepType)
+                currentFrameBitmap = null
 
-            logger.i("Transaction detail STAGED (in memory). Count=$currentCount, File=$filePath, stagedCount=${stagedDetails.size}")
-        } else {
-            // Regular dispense flow: persist each ADD immediately so a session
-            // backed out before Done is still saved (shows under Pending). The
-            // DB observer (observeTxnDetailsForTxn) drives uiState because
-            // stagingActive stays false. looseQty for REGULAR is incremented
-            // per-ADD here to match the per-row insert.
-            val newDetailsId = pillCountTxnDetailsDao.insert(detail)
-            linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+                logger.i("Transaction detail STAGED (in memory). Count=$currentCount, File=$filePath, stagedCount=${stagedDetails.size}")
+            } else {
+                // Regular dispense flow: persist each ADD immediately so a session
+                // backed out before Done is still saved (shows under Pending). The
+                // DB observer (observeTxnDetailsForTxn) drives uiState because
+                // stagingActive stays false. looseQty for REGULAR is incremented
+                // per-ADD here to match the per-row insert.
+                val newDetailsId = pillCountTxnDetailsDao.insert(detail)
+                linkDetailToActiveBottle(txnId, bottles, newDetailsId)
 
-            if (!workingBitmap.isRecycled) workingBitmap.recycle()
-            currentFrameBitmap = null
+                if (!workingBitmap.isRecycled) workingBitmap.recycle()
+                currentFrameBitmap = null
 
-            logger.i("Transaction detail INSERTED (immediate). Count=$currentCount, File=$filePath")
+                logger.i("Transaction detail INSERTED (immediate). Count=$currentCount, File=$filePath")
+            }
         }
     }
 
@@ -1507,16 +1463,12 @@ class PillScanningViewModel @Inject constructor(
             }
 
             StepState.TARGET_VERIFICATION -> {
-                if (_txnInfo.value?.isDispense == true &&
-                    _uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }
-                ) {
+                if (_txnInfo.value?.isDispense == true && _uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }) {
                     moveNextStep()
                 } else if (_txnInfo.value?.isDispense == false) {
                     handleDone()
                 } else {
-                    _uiState.update {
-                        it.copy(showErrorMessage = context.getString(R.string.pills_count_should_be_greater_than_target_count))
-                    }
+                    _uiState.update { it.copy(showErrorMessage = context.getString(R.string.pills_count_should_be_greater_than_target_count)) }
                 }
             }
 
@@ -1728,9 +1680,7 @@ class PillScanningViewModel @Inject constructor(
             _txnInfo.value = txnInfo
 
             val shouldShowDialog =
-                countType == CountType.FIXED.toString() &&
-                    (txnInfo?.targetCount == null || txnInfo.targetCount == 0) &&
-                    !_uiState.value.showTargetCountDialog
+                countType == CountType.FIXED.toString() && (txnInfo?.targetCount == null || txnInfo.targetCount == 0) && !_uiState.value.showTargetCountDialog
 
             _uiState.update {
                 it.copy(
@@ -1756,14 +1706,71 @@ class PillScanningViewModel @Inject constructor(
             val isComingFromHL7 = txnInfo?.isComingFromHL7 ?: false
             val drugId = txnInfo?.drugId
             val drugInfo = drugMasterDao.getDrugById(drugId)
+            val controlledSchedules = setOf(
+                ScheduleCode.CII,
+                ScheduleCode.CIII,
+                ScheduleCode.CIV,
+                ScheduleCode.CV,
+                ScheduleCode.CVI
+            )
 
-            _steps.value = resolveWorkflowStepsForTxn(isComingFromHL7, drugInfo, isDispense)
+            _steps.value = when {
+                isComingFromHL7 && drugInfo?.drugType?.let {
+                    runCatching { ScheduleCode.valueOf(it) }.getOrNull()
+                } in controlledSchedules -> buildWorkflowSteps(
+                    isFromHl7 = true,
+                    simpleFlow = false,
+                    drugType = drugInfo?.drugType.orEmpty(),
+                    isDispense = isDispense
+                )
+
+                isComingFromHL7 && drugInfo?.drugType?.let {
+                    runCatching { ScheduleCode.valueOf(it) }.getOrNull()
+                } !in controlledSchedules -> buildWorkflowSteps(
+                    isFromHl7 = true,
+                    simpleFlow = true,
+                    drugType = drugInfo?.drugType.orEmpty(),
+                    isDispense = isDispense
+                )
+
+                else -> buildWorkflowSteps(
+                    isFromHl7 = false,
+                    simpleFlow = true,
+                    drugType = drugInfo?.drugType.orEmpty(),
+                    isDispense = isDispense
+                )
+            }
 
             val currentSteps = _steps.value
             val savedWorkflowStep = txnInfo?.workflowStep
                 ?.let { runCatching { StepState.valueOf(it) }.getOrNull() }
 
-            val resolvedStep = resolveStartStep(forceStartStep, savedWorkflowStep, currentSteps, drugInfo)
+            val resolvedStep = when {
+                // Caller explicitly overrides the start step (e.g. DispenseFlowScreen
+                // entering COUNTING after NDC was already scanned in PRE_NDC, so we
+                // skip straight to the pill-count step).
+                forceStartStep != null -> forceStartStep
+                savedWorkflowStep == null -> {
+                    // No saved step yet — fall back to deriving from details history
+                    val latestStep = pillCountTxnDetailsDao.getLatestType(preferenceHelper.getTxnId())
+                    if (drugInfo?.drugType.isNullOrEmpty() || drugInfo?.drugType.equals("null", true)) {
+                        latestStep ?: StepState.TARGET_VERIFICATION
+                    } else {
+                        latestStep ?: StepState.CONTAINER_INITIATE
+                    }
+                }
+                savedWorkflowStep in currentSteps -> savedWorkflowStep
+                else -> {
+                    // Saved step was removed by a settings change (e.g. double-count or
+                    // back-count toggled off).  Find the nearest valid step:
+                    //   - For a middle step (TARGET_REVERIFICATION): advance to the next
+                    //     step that still exists in the workflow.
+                    //   - For a tail step (CONTAINER_PENDING): fall back to the last
+                    //     remaining step (VIAL).
+                    val savedOrdinal = savedWorkflowStep.ordinal
+                    currentSteps.firstOrNull { it.ordinal > savedOrdinal } ?: currentSteps.last()
+                }
+            }
 
             _currentStep.value = resolvedStep
             if (resolvedStep == StepState.VIAL) {
@@ -1771,83 +1778,6 @@ class PillScanningViewModel @Inject constructor(
                 loadExistingVialPhoto(preferenceHelper.getTxnId())
             }
             observeTxnDetailsForTxn(resolvedStep)
-        }
-    }
-
-    /** Picks the workflow step list based on HL7 origin and whether the drug is a controlled schedule. */
-    private fun resolveWorkflowStepsForTxn(
-        isComingFromHL7: Boolean,
-        drugInfo: DrugMasterEntity?,
-        isDispense: Boolean?,
-    ): List<StepState> {
-        val controlledSchedules = setOf(
-            ScheduleCode.CII,
-            ScheduleCode.CIII,
-            ScheduleCode.CIV,
-            ScheduleCode.CV,
-            ScheduleCode.CVI
-        )
-
-        return when {
-            isComingFromHL7 && drugInfo?.drugType?.let {
-                runCatching { ScheduleCode.valueOf(it) }.getOrNull()
-            } in controlledSchedules -> buildWorkflowSteps(
-                simpleFlow = false,
-                drugType = drugInfo?.drugType.orEmpty(),
-                isDispense = isDispense
-            )
-
-            isComingFromHL7 && drugInfo?.drugType?.let {
-                runCatching { ScheduleCode.valueOf(it) }.getOrNull()
-            } !in controlledSchedules -> buildWorkflowSteps(
-                simpleFlow = true,
-                drugType = drugInfo?.drugType.orEmpty(),
-                isDispense = isDispense
-            )
-
-            else -> buildWorkflowSteps(
-                simpleFlow = true,
-                drugType = drugInfo?.drugType.orEmpty(),
-                isDispense = isDispense
-            )
-        }
-    }
-
-    /**
-     * Resolves the step to land on when (re-)entering the workflow: an explicit caller
-     * override, the saved workflow step if still valid, a derived fallback from details
-     * history when nothing was saved yet, or the nearest valid step when the saved one was
-     * removed by a settings change.
-     */
-    private suspend fun resolveStartStep(
-        forceStartStep: StepState?,
-        savedWorkflowStep: StepState?,
-        currentSteps: List<StepState>,
-        drugInfo: DrugMasterEntity?,
-    ): StepState = when {
-        // Caller explicitly overrides the start step (e.g. DispenseFlowScreen
-        // entering COUNTING after NDC was already scanned in PRE_NDC, so we
-        // skip straight to the pill-count step).
-        forceStartStep != null -> forceStartStep
-        savedWorkflowStep == null -> {
-            // No saved step yet — fall back to deriving from details history
-            val latestStep = pillCountTxnDetailsDao.getLatestType(preferenceHelper.getTxnId())
-            if (drugInfo?.drugType.isNullOrEmpty() || drugInfo?.drugType.equals("null", true)) {
-                latestStep ?: StepState.TARGET_VERIFICATION
-            } else {
-                latestStep ?: StepState.CONTAINER_INITIATE
-            }
-        }
-        savedWorkflowStep in currentSteps -> savedWorkflowStep
-        else -> {
-            // Saved step was removed by a settings change (e.g. double-count or
-            // back-count toggled off).  Find the nearest valid step:
-            //   - For a middle step (TARGET_REVERIFICATION): advance to the next
-            //     step that still exists in the workflow.
-            //   - For a tail step (CONTAINER_PENDING): fall back to the last
-            //     remaining step (VIAL).
-            val savedOrdinal = savedWorkflowStep.ordinal
-            currentSteps.firstOrNull { it.ordinal > savedOrdinal } ?: currentSteps.last()
         }
     }
 
@@ -1877,64 +1807,59 @@ class PillScanningViewModel @Inject constructor(
 
         viewModelScope.launch {
             try {
-                resolveNdcRescanDuringCount(rawValue, imagePath)
+                val txnId = preferenceHelper.getTxnId()
+                val activeNdc = _txnInfo.value?.ndc
+                if (activeNdc.isNullOrBlank()) return@launch
+
+                val isGs1 = barcodeDecoder.isGs1Barcode(rawValue)
+                val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
+                val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
+                val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
+
+                val scannedDrug = gtin14?.let { drugMasterDao.getDrugByGtin(it) ?: drugMasterDao.getDrugByNdc(it) }
+                if (scannedDrug == null || scannedDrug.ndc != activeNdc) {
+                    // Not the same drug (or unreadable) — ignore, no popup, no lookup, no DB write.
+                    return@launch
+                }
+
+                val lotNumber = decoded?.lotNumber
+                val expirationDate = decoded?.expirationDate?.format(
+                    java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
+                )
+                val serialNumber = decoded?.serialNumber
+
+                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                val bottles = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
+                val lastBottle = bottles.lastOrNull()
+
+                if (lastBottle != null && isGs1 &&
+                    lastBottle.lotNumber == lotNumber &&
+                    lastBottle.expirationDate == expirationDate &&
+                    lastBottle.serialNumber == serialNumber
+                ) {
+                    _uiState.update { it.copy(showErrorMessage = context.getString(R.string.bottle_already_scanned)) }
+                    return@launch
+                }
+
+                val currentCount = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
+                val scannedBottle = BottleInfo(
+                    lotNumber = lotNumber,
+                    expirationDate = expirationDate,
+                    serialNumber = serialNumber,
+                    txnId = txnId,
+                    barcodeImagePath = imagePath,
+                )
+                pendingBottleScan = scannedBottle
+                if (currentCount > 0 || bottles.isEmpty()) {
+                    _uiState.update { it.copy(showAddBottleDialog = true) }
+                } else {
+                    _uiState.update { it.copy(showReplaceBottleDialog = true) }
+                }
             } catch (e: Exception) {
                 logger.e("BOTTLE_SCAN onNdcRescannedDuringCount failed", e)
             } finally {
                 isProcessingBottleScan = false
             }
-        }
-    }
-
-    /** Body of [onNdcRescannedDuringCount]'s coroutine, factored out so the try/catch/finally stays tiny. */
-    private suspend fun resolveNdcRescanDuringCount(rawValue: String, imagePath: String?) {
-        val txnId = preferenceHelper.getTxnId()
-        val activeNdc = _txnInfo.value?.ndc
-        if (activeNdc.isNullOrBlank()) return
-
-        val isGs1 = barcodeDecoder.isGs1Barcode(rawValue)
-        val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
-        val extractedGtin = if (isGs1) decoded?.gtin else barcodeDecoder.toGtin14(rawValue)
-        val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
-
-        val scannedDrug = gtin14?.let { drugMasterDao.getDrugByGtin(it) ?: drugMasterDao.getDrugByNdc(it) }
-        if (scannedDrug == null || scannedDrug.ndc != activeNdc) {
-            // Not the same drug (or unreadable) — ignore, no popup, no lookup, no DB write.
-            return
-        }
-
-        val lotNumber = decoded?.lotNumber
-        val expirationDate = decoded?.expirationDate?.format(
-            java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
-        )
-        val serialNumber = decoded?.serialNumber
-
-        val txn = pillCountTxnDao.getById(txnId) ?: return
-        val bottles = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
-        val lastBottle = bottles.lastOrNull()
-
-        if (lastBottle != null && isGs1 &&
-            lastBottle.lotNumber == lotNumber &&
-            lastBottle.expirationDate == expirationDate &&
-            lastBottle.serialNumber == serialNumber
-        ) {
-            _uiState.update { it.copy(showErrorMessage = context.getString(R.string.bottle_already_scanned)) }
-            return
-        }
-
-        val currentCount = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
-        val scannedBottle = BottleInfo(
-            lotNumber = lotNumber,
-            expirationDate = expirationDate,
-            serialNumber = serialNumber,
-            txnId = txnId,
-            barcodeImagePath = imagePath,
-        )
-        pendingBottleScan = scannedBottle
-        if (currentCount > 0 || bottles.isEmpty()) {
-            _uiState.update { it.copy(showAddBottleDialog = true) }
-        } else {
-            _uiState.update { it.copy(showReplaceBottleDialog = true) }
         }
     }
 
@@ -2005,6 +1930,7 @@ class PillScanningViewModel @Inject constructor(
             isComingFromHL7 = false,
         )
         _steps.value = buildWorkflowSteps(
+            isFromHl7 = false,
             simpleFlow = true,
             drugType = drug.drugType.orEmpty(),
             isDispense = false,
@@ -2150,7 +2076,7 @@ class PillScanningViewModel @Inject constructor(
     }
 
     fun buildWorkflowSteps(
-        simpleFlow: Boolean, drugType: String, isDispense: Boolean?
+        isFromHl7: Boolean, simpleFlow: Boolean, drugType: String, isDispense: Boolean?
     ): List<StepState> {
 
         if (isDispense == false) {

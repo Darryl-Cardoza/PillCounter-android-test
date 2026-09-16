@@ -31,8 +31,7 @@ class VerifyPinRepository @Inject constructor(
      *
      * @param email The user's email address to associate with the OTP.
      * @param otp The one-time password entered by the user.
-     * @param deviceKey Stable per-device identifier (SSAID / Settings.Secure.ANDROID_ID).
-     * Survives reinstall with the same signing key; reset by factory reset.
+     * @param deviceKey Stable per-device identifier (SSAID / Settings.Secure.ANDROID_ID). Survives reinstall with the same signing key; reset by factory reset.
      * @param appVersion The app's version name.
      * @return A [Result] wrapper containing the [VerifyPinResponse] on success or an exception on failure.
      */

@@ -302,11 +302,7 @@ private fun ScanFaceStep(
                 .align(Alignment.Center)
                 .width(ovalWidth)
                 .aspectRatio(FACE_OVAL_ASPECT_RATIO)
-                .border(
-                    width = 3.dp,
-                    color = MaterialTheme.colorScheme.secondary,
-                    shape = RoundedCornerShape(percent = FACE_OVAL_CORNER_PERCENT)
-                )
+                .border(width = 3.dp, color = MaterialTheme.colorScheme.secondary, shape = RoundedCornerShape(percent = FACE_OVAL_CORNER_PERCENT))
         )
         BackButton(navController = navController, modifier = Modifier.align(Alignment.TopStart).padding(16.dp))
         IconButton(

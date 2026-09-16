@@ -106,10 +106,7 @@ class MainActivityViewModel @Inject constructor(
     /** HL7 toggle from the portal (cached in prefs). */
     fun isHl7Enabled(): Boolean = preferenceHelper.isHl7Enabled()
 
-    /**
-     * Live "use static PMS connection" flag, so the Settings screen reacts to changes
-     * made elsewhere (e.g. profile sync) without needing to be reopened.
-     */
+    /** Live "use static PMS connection" flag, so the Settings screen reacts to changes made elsewhere (e.g. profile sync) without needing to be reopened. */
     val isUseStaticPmsConnection: StateFlow<Boolean> = callbackFlow {
         trySend(preferenceHelper.isUseStaticPmsConnection())
 
@@ -154,11 +151,7 @@ class MainActivityViewModel @Inject constructor(
     private val _pmsTestConnectionState = MutableStateFlow<PmsTestConnectionState>(PmsTestConnectionState.Idle)
     val pmsTestConnectionState: StateFlow<PmsTestConnectionState> = _pmsTestConnectionState
 
-    /**
-     * Resets test-connection result — call when
-     * [ConnectionInfoScreen][com.rite.pillcounting.feature.settings.presentation.ConnectionInfoScreen]
-     * is (re-)entered.
-     */
+    /** Resets test-connection result — call when [ConnectionInfoScreen][com.rite.pillcounting.feature.settings.presentation.ConnectionInfoScreen] is (re-)entered. */
     fun resetPmsTestConnectionState() {
         _pmsTestConnectionState.value = PmsTestConnectionState.Idle
     }
@@ -297,7 +290,7 @@ class MainActivityViewModel @Inject constructor(
             try {
                 logger.i("Fetching remote application settings...")
                 val response = repository.getApplicationSettings()
-                updateHl7Config()
+                updateHl7Config(response)
                 applyAndStoreSettings(response)
                 // Forward the server-supplied offline threshold to the health controller so the
                 // OFFLINE timer reflects the current backend policy. Null means the backend did
@@ -493,7 +486,7 @@ class MainActivityViewModel @Inject constructor(
     /**
      * Updates and caches the HL7 network service discovery (NSD) types from remote settings.
      */
-    private fun updateHl7Config() {
+    private fun updateHl7Config(setting: ApiResponse<SettingsDataDto>) {
 
         // Guard 1: Don't process HL7 config if HL7 is disabled for this device
         if (!preferenceHelper.isHl7Enabled()) {
@@ -573,10 +566,7 @@ class MainActivityViewModel @Inject constructor(
                 logger.i("startHl7Service() — already running with this identity, skipping duplicate init")
                 return
             }
-            logger.i(
-                "startHl7Service() — identity changed since last start (preloaded cache vs fresh fetch, " +
-                    "or updated PMS/connection settings), restarting HL7"
-            )
+            logger.i("startHl7Service() — identity changed since last start (preloaded cache vs fresh fetch, or updated PMS/connection settings), restarting HL7")
             hl7ServiceManager.shutdown()
         }
         hl7StartedWithIdentity = identity

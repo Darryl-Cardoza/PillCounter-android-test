@@ -112,6 +112,8 @@ class PillScanningViewModelTest {
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
             barcodeDecoder = barcodeDecoder,
+            drugRepository = drugRepository,
+            drugImageDownloader = drugImageDownloader,
             hl7Repository = hl7Repository,
             appDatabase = appDatabase,
         )
@@ -151,7 +153,7 @@ class PillScanningViewModelTest {
     @Test
     fun `buildWorkflowSteps returns SCAN and TARGET_VERIFICATION when isDispense is false regardless of other params`() {
         val steps = viewModel.buildWorkflowSteps(
-            simpleFlow = false, drugType = "CII", isDispense = false
+            isFromHl7 = true, simpleFlow = false, drugType = "CII", isDispense = false
         )
         assertEquals(listOf(StepState.SCAN, StepState.TARGET_VERIFICATION), steps)
     }
@@ -159,7 +161,7 @@ class PillScanningViewModelTest {
     @Test
     fun `buildWorkflowSteps returns 3-step simple flow when isDispense true, simpleFlow true, and drugType is empty`() {
         val steps = viewModel.buildWorkflowSteps(
-            simpleFlow = true, drugType = "", isDispense = true
+            isFromHl7 = false, simpleFlow = true, drugType = "", isDispense = true
         )
         assertEquals(listOf(StepState.SCAN, StepState.TARGET_VERIFICATION, StepState.VIAL), steps)
     }
@@ -167,7 +169,7 @@ class PillScanningViewModelTest {
     @Test
     fun `buildWorkflowSteps returns 3-step simple flow when drugType is the literal string null`() {
         val steps = viewModel.buildWorkflowSteps(
-            simpleFlow = true, drugType = "null", isDispense = true
+            isFromHl7 = false, simpleFlow = true, drugType = "null", isDispense = true
         )
         assertEquals(listOf(StepState.SCAN, StepState.TARGET_VERIFICATION, StepState.VIAL), steps)
     }
@@ -178,7 +180,7 @@ class PillScanningViewModelTest {
         every { preferenceHelper.isRequireBackCountEnabled() } returns false
 
         val steps = viewModel.buildWorkflowSteps(
-            simpleFlow = false, drugType = "REGULAR", isDispense = true
+            isFromHl7 = false, simpleFlow = false, drugType = "REGULAR", isDispense = true
         )
 
         assertEquals(
@@ -194,7 +196,7 @@ class PillScanningViewModelTest {
         every { preferenceHelper.isRequireBackCountEnabled() } returns false
 
         val steps = viewModel.buildWorkflowSteps(
-            simpleFlow = false, drugType = "CII", isDispense = true
+            isFromHl7 = false, simpleFlow = false, drugType = "CII", isDispense = true
         )
 
         assertEquals(
@@ -213,7 +215,7 @@ class PillScanningViewModelTest {
         every { preferenceHelper.isRequireBackCountEnabled() } returns false
 
         val steps = viewModel.buildWorkflowSteps(
-            simpleFlow = false, drugType = "REGULAR", isDispense = true
+            isFromHl7 = false, simpleFlow = false, drugType = "REGULAR", isDispense = true
         )
 
         assertFalse(steps.contains(StepState.TARGET_REVERIFICATION))
@@ -225,7 +227,7 @@ class PillScanningViewModelTest {
         every { preferenceHelper.isRequireBackCountEnabled() } returns true
 
         val steps = viewModel.buildWorkflowSteps(
-            simpleFlow = false, drugType = "REGULAR", isDispense = true
+            isFromHl7 = false, simpleFlow = false, drugType = "REGULAR", isDispense = true
         )
 
         assertEquals(
@@ -244,7 +246,7 @@ class PillScanningViewModelTest {
         every { preferenceHelper.isRequireBackCountEnabled() } returns true
 
         val steps = viewModel.buildWorkflowSteps(
-            simpleFlow = false, drugType = "CII", isDispense = true
+            isFromHl7 = true, simpleFlow = false, drugType = "CII", isDispense = true
         )
 
         assertEquals(
@@ -262,7 +264,7 @@ class PillScanningViewModelTest {
         every { preferenceHelper.isRequireBackCountEnabled() } returns false
 
         val steps = viewModel.buildWorkflowSteps(
-            simpleFlow = false, drugType = "REGULAR", isDispense = null
+            isFromHl7 = false, simpleFlow = false, drugType = "REGULAR", isDispense = null
         )
 
         assertEquals(

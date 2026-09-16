@@ -72,8 +72,7 @@ class TerminalRepository @Inject constructor(
      * Fetches the list of terminals for the pharmacy.
      *
      * @param availableOnly When true, restricts to free terminals plus the one [deviceKey] already holds.
-     * @param deviceKey Stable per-device identifier (SSAID / Settings.Secure.ANDROID_ID).
-     * Survives reinstall with the same signing key; reset by factory reset.
+     * @param deviceKey Stable per-device identifier (SSAID / Settings.Secure.ANDROID_ID). Survives reinstall with the same signing key; reset by factory reset.
      * @return [Result] containing [TerminalListResponse] on success, or an exception on failure.
      */
     suspend fun getTerminals(

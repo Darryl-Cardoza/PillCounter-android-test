@@ -26,10 +26,7 @@ import kotlin.math.sqrt
  */
 object FaceAligner {
 
-    /**
-     * Canonical ArcFace/InsightFace 112×112 destination template, in YuNet's own landmark
-     * order: right eye, left eye, nose, right mouth, left mouth.
-     */
+    /** Canonical ArcFace/InsightFace 112×112 destination template, in YuNet's own landmark order: right eye, left eye, nose, right mouth, left mouth. */
     val ARCFACE_TEMPLATE_112: Array<FloatArray> = arrayOf(
         floatArrayOf(38.2946f, 51.6963f),
         floatArrayOf(73.5318f, 51.5014f),

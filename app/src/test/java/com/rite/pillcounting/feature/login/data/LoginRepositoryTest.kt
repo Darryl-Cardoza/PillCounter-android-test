@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.login.data
 
+import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.feature.login.data.remote.ILoginApi
 import com.rite.pillcounting.feature.login.domain.model.LoginRequest
 import com.rite.pillcounting.feature.login.domain.model.LoginResponse
@@ -24,13 +25,14 @@ import java.io.IOException
 class LoginRepositoryTest {
 
     private val loginApi: ILoginApi = mockk()
+    private val userDao: UserDao = mockk(relaxed = true)
     private val testDispatcher = UnconfinedTestDispatcher()
 
     private lateinit var repository: LoginRepository
 
     @Before
     fun setup() {
-        repository = LoginRepository(loginApi, testDispatcher)
+        repository = LoginRepository(userDao, loginApi, testDispatcher)
     }
 
     // -------------------------------------------------------------------------

@@ -317,11 +317,7 @@ fun DispensedStockToggleRow(
             title = stringResource(R.string.toggle_with_count, dispensedLabel, dispensedCount),
             isSelected = selectedOption == ToggleOption.DISPENSED,
             onClick = { onOptionSelected(ToggleOption.DISPENSED) },
-            modifier = Modifier.padding(
-                bottom = dimens.toggleVerticalPadding,
-                top = dimens.toggleVerticalPadding,
-                end = dimens.toggleVerticalPadding
-            )
+            modifier = Modifier.padding(bottom = dimens.toggleVerticalPadding, top = dimens.toggleVerticalPadding, end = dimens.toggleVerticalPadding)
         )
 
         ToggleItem(

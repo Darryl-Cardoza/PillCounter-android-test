@@ -71,6 +71,8 @@ object SecurityUtils {
         // This is the most reliable signal and works on all API levels
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             try {
+                val wm = context.getSystemService(Context.WINDOW_SERVICE)
+                        as android.view.WindowManager
                 // If our own app doesn't have overlay permission but
                 // Settings.canDrawOverlays returns false for us, another
                 // app with the permission may be drawing over us

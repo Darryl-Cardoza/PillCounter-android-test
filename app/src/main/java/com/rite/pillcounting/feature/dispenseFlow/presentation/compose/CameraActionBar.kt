@@ -90,6 +90,7 @@ private fun ActionButtons(
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val dimens = AppTheme.dimens
+    val spacing = dimens.xxxLarge
 
     if (isLandscape) {
         Column(
