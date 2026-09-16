@@ -190,7 +190,12 @@ class PillDetectionModelLoader @Inject constructor(
                                 gpuDelegateEnabled = holder.usesGpu
                             )
                             logTensorInfo(holder.interpreter, "Tray model")
-                            Log.i(TAG, "Tray model — ✅ TFLite ${if (holder.usesGpu) "GPU" else "CPU+XNNPACK"} ready (load=${trayBufferTime}ms init=${trayCreateTime}ms size=${trayBuffer.capacity() / 1024} KB)")
+                            Log.i(
+                                TAG,
+                                "Tray model — ✅ TFLite ${if (holder.usesGpu) "GPU" else "CPU+XNNPACK"} ready " +
+                                    "(load=${trayBufferTime}ms init=${trayCreateTime}ms " +
+                                    "size=${trayBuffer.capacity() / 1024} KB)"
+                            )
                             TraySegmentationDetector(holder.interpreter)
                         } else {
                             Log.i(TAG, "Tray skipped (init failed) — pill counting will not be tray-filtered")

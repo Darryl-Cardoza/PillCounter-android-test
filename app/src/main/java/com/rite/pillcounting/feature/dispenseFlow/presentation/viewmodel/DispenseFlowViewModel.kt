@@ -1,6 +1,5 @@
 package com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
@@ -26,7 +25,6 @@ import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseFlowUiSta
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.DispenseStage
 import com.rite.pillcounting.feature.dispenseFlow.domain.model.StandaloneRxDraft
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -61,7 +59,6 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class DispenseFlowViewModel @Inject constructor(
-    @ApplicationContext private val appContext: Context,
     private val drugRepository: IDrugRepository,
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
@@ -166,7 +163,10 @@ class DispenseFlowViewModel @Inject constructor(
                     isHazardous = drug?.isHazardous ?: false,
                 )
             }
-            logger.i("[HAZARDOUS] HL7 init: txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
+            logger.i(
+                "[HAZARDOUS] HL7 init: txn=$txnId drug=${drug?.drugName} " +
+                    "expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}"
+            )
         }
     }
 
@@ -208,7 +208,10 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drug?.isHazardous ?: false,
                     )
                 }
-                logger.i("[HAZARDOUS] Resume init (NDC verified): txn=$txnId drug=${drug?.drugName} isHazardous=${drug?.isHazardous ?: false} — jumping to COUNTING")
+                logger.i(
+                    "[HAZARDOUS] Resume init (NDC verified): txn=$txnId drug=${drug?.drugName} " +
+                        "isHazardous=${drug?.isHazardous ?: false} — jumping to COUNTING"
+                )
             } else {
                 // Container not yet scanned — land in PRE_NDC so the user only scans the container.
                 _uiState.update {
@@ -225,7 +228,10 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drug?.isHazardous ?: false,
                     )
                 }
-                logger.i("[HAZARDOUS] Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
+                logger.i(
+                    "[HAZARDOUS] Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} " +
+                        "expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}"
+                )
             }
         }
     }
@@ -235,7 +241,7 @@ class DispenseFlowViewModel @Inject constructor(
      * qty using the configured regex, validates, then looks up the drug locally
      * first and falls back to the server. On success surfaces the RX bottomsheet.
      */
-    fun onRxBarcodeRead(gtin14: String, imagePath: String?) {
+    fun onRxBarcodeRead(gtin14: String) {
         if (_uiState.value.stage != DispenseStage.PRE_RX &&
             _uiState.value.stage != DispenseStage.QUEUE) return
         // Advance from QUEUE to PRE_RX so the rest of the RX logic works normally.
@@ -321,7 +327,10 @@ class DispenseFlowViewModel @Inject constructor(
                 // The label's NDC has to match the drug PMS ordered. No drug on
                 // the txn means nothing to compare, so the check is skipped.
                 if (gatedStatus && drug != null && !ndcDigitsMatch(parsedNdc, drug.ndc)) {
-                    logger.w("Rx label NDC does not match the txn drug: label=$parsedNdc txnNdc=${drug.ndc} rxNo=$rxNo txn=${existingTxn.txnId}")
+                    logger.w(
+                        "Rx label NDC does not match the txn drug: label=$parsedNdc " +
+                            "txnNdc=${drug.ndc} rxNo=$rxNo txn=${existingTxn.txnId}"
+                    )
                     _uiState.update {
                         it.copy(
                             isLoading = false,
@@ -440,7 +449,10 @@ class DispenseFlowViewModel @Inject constructor(
                 selectedBucketId = bucket.orEmpty(),
             )
         }
-        logger.i("[HAZARDOUS] Standalone RX staged: ndc=$parsedNdc rx=$rxNo drug=${drug.drugName} isHazardous=${drug.isHazardous} — awaiting Proceed")
+        logger.i(
+            "[HAZARDOUS] Standalone RX staged: ndc=$parsedNdc rx=$rxNo drug=${drug.drugName} " +
+                "isHazardous=${drug.isHazardous} — awaiting Proceed"
+        )
     }
 
     /**
@@ -532,7 +544,7 @@ class DispenseFlowViewModel @Inject constructor(
      *      confirmation dialog instead of the success popup. The user has to
      *      accept the substitute explicitly via [confirmSubstitute].
      */
-    fun onNdcBarcodeRead(gtin14: String, imagePath: String?, firstBottle: BottleInfo? = null) {
+    fun onNdcBarcodeRead(gtin14: String, firstBottle: BottleInfo? = null) {
         if (_uiState.value.stage != DispenseStage.PRE_NDC) return
         if (_uiState.value.isLoading) return
         if (gtin14.isBlank()) {
@@ -601,7 +613,10 @@ class DispenseFlowViewModel @Inject constructor(
                             isHazardous = localDrug.isHazardous,
                         )
                     }
-                    logger.i("[HAZARDOUS] NDC scan → local DB: ndc=${localDrug!!.ndc} drug=${localDrug.drugName} isHazardous=${localDrug.isHazardous}")
+                    logger.i(
+                        "[HAZARDOUS] NDC scan → local DB: ndc=${localDrug!!.ndc} " +
+                            "drug=${localDrug.drugName} isHazardous=${localDrug.isHazardous}"
+                    )
                     advanceToCountingStage()
                     return@launch
                 }
@@ -657,7 +672,11 @@ class DispenseFlowViewModel @Inject constructor(
                             isHazardous = drugInfo.isHazardous ?: false,
                         )
                     }
-                    logger.i("[HAZARDOUS] NDC scan → substitute: scanned=$gtin14 serverNdc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}")
+                    logger.i(
+                        "[HAZARDOUS] NDC scan → substitute: scanned=$gtin14 " +
+                            "serverNdc=${drugInfo.ndc} drug=$displayName " +
+                            "isHazardous=${drugInfo.isHazardous ?: false}"
+                    )
                     return@launch
                 }
 
@@ -666,7 +685,11 @@ class DispenseFlowViewModel @Inject constructor(
                 // substitute. Surface a non-blocking toast and let the user
                 // rescan — the popup-style dialog was too heavy for this case.
                 if (!expectedNdc.isNullOrBlank() && drugInfo.ndc != expectedNdc) {
-                    logger.w("[HAZARDOUS] NDC scan → mismatch: scanned=$gtin14 serverNdc=${drugInfo.ndc} expectedNdc=$expectedNdc isHazardous=${drugInfo.isHazardous ?: false}")
+                    logger.w(
+                        "[HAZARDOUS] NDC scan → mismatch: scanned=$gtin14 " +
+                            "serverNdc=${drugInfo.ndc} expectedNdc=$expectedNdc " +
+                            "isHazardous=${drugInfo.isHazardous ?: false}"
+                    )
                     _uiState.update {
                         it.copy(
                             isLoading = false,
@@ -689,7 +712,10 @@ class DispenseFlowViewModel @Inject constructor(
                         isHazardous = drugInfo.isHazardous ?: false,
                     )
                 }
-                logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}")
+                logger.i(
+                    "[HAZARDOUS] NDC scan → server match: ndc=${drugInfo.ndc} " +
+                        "drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}"
+                )
                 advanceToCountingStage()
             } catch (e: Exception) {
                 logger.e("NDC barcode processing failed", e)
@@ -728,7 +754,11 @@ class DispenseFlowViewModel @Inject constructor(
                     val txnId = createStandaloneDispenseTxn(draft)
                     preferenceHelper.saveTxnId(txnId)
                     _uiState.update { it.copy(stage = DispenseStage.PRE_NDC, txnId = txnId) }
-                    logger.i("[HAZARDOUS] Standalone RX confirmed: rx=${draft.rxNo} drugId=${draft.drugId} isHazardous=${state.isHazardous} txn=$txnId → PRE_NDC")
+                    logger.i(
+                        "[HAZARDOUS] Standalone RX confirmed: rx=${draft.rxNo} " +
+                            "drugId=${draft.drugId} isHazardous=${state.isHazardous} " +
+                            "txn=$txnId → PRE_NDC"
+                    )
                 } catch (e: Exception) {
                     // Surface the failure the way the scan-time path used to.
                     logger.e("Standalone dispense txn creation failed", e)
@@ -819,7 +849,11 @@ class DispenseFlowViewModel @Inject constructor(
                     stockDrugId = drugId,
                 )
             }
-            logger.i("[HAZARDOUS] NDC auto-confirmed (deferred stock): isHazardous=${state.isHazardous} drugId=$drugId batchId=${state.batchId} stockTxnId=${state.stockTxnId} stockBottleId=${state.stockBottleId} → COUNTING")
+            logger.i(
+                "[HAZARDOUS] NDC auto-confirmed (deferred stock): isHazardous=${state.isHazardous} " +
+                    "drugId=$drugId batchId=${state.batchId} stockTxnId=${state.stockTxnId} " +
+                    "stockBottleId=${state.stockBottleId} → COUNTING"
+            )
             return
         }
 
@@ -889,7 +923,10 @@ class DispenseFlowViewModel @Inject constructor(
                     isHazardous = drug?.isHazardous ?: false,
                 )
             }
-            logger.i("[HAZARDOUS] Continue RX: txn=$txnId isNdcVerified=${txn.isNdcVerified} isHazardous=${drug?.isHazardous ?: false} → $targetStage")
+            logger.i(
+                "[HAZARDOUS] Continue RX: txn=$txnId isNdcVerified=${txn.isNdcVerified} " +
+                    "isHazardous=${drug?.isHazardous ?: false} → $targetStage"
+            )
         }
     }
 

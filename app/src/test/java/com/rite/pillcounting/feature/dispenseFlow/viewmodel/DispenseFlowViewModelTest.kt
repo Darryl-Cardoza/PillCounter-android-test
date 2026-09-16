@@ -1,6 +1,5 @@
 package com.rite.pillcounting.feature.dispenseFlow.viewmodel
 
-import android.content.Context
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
@@ -41,7 +40,6 @@ class DispenseFlowViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    private val appContext: Context = mockk(relaxed = true)
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
@@ -56,7 +54,6 @@ class DispenseFlowViewModelTest {
     @Before
     fun setup() {
         viewModel = DispenseFlowViewModel(
-            appContext = appContext,
             drugRepository = drugRepository,
             drugMasterDao = drugMasterDao,
             preferenceHelper = preferenceHelper,

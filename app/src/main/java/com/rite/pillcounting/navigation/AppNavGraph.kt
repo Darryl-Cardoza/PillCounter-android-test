@@ -121,7 +121,6 @@ fun AppNavGraph(
             route = Screen.Batch.route,
             arguments = Screen.Batch.navArguments
         ) {
-            val previousRoute = navController.previousBackStackEntry?.destination?.route
             BatchScreen(
                 navController = navController,
                 onBackClick = {

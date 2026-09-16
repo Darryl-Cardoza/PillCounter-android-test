@@ -280,7 +280,10 @@ class FrameBarcodeAnalyzer(
                     ?: barcodes.firstOrNull()
                 val rawValue = barcode?.rawValue
                 val isProductBarcode = rawValue?.isGtinLike() == true
-                logger.d("INV_SCAN MLKit success token=$token barcodes=${barcodes.size} first='$rawValue' gtinLike=$isProductBarcode paused=${isPaused.get()}")
+                logger.d(
+                    "INV_SCAN MLKit success token=$token barcodes=${barcodes.size} first='$rawValue' " +
+                        "gtinLike=$isProductBarcode paused=${isPaused.get()}"
+                )
 
                 // Log every detected barcode so scan results are visible in logcat.
                 if (barcodes.isNotEmpty()) {
@@ -329,7 +332,10 @@ class FrameBarcodeAnalyzer(
                         // (with empty frames seen) to call it a focus change. The
                         // user moved the label away and brought it (or another
                         // bottle of the same NDC) back.
-                        logger.d("INV_SCAN focus-change: same value '$rawValue' after ${now - lastVisibleLabelAtMs}ms out of view (emptyStreak=$emptyStreak) → FIRE")
+                        logger.d(
+                            "INV_SCAN focus-change: same value '$rawValue' after ${now - lastVisibleLabelAtMs}ms " +
+                                "out of view (emptyStreak=$emptyStreak) → FIRE"
+                        )
                         true
                     }
                     else -> {

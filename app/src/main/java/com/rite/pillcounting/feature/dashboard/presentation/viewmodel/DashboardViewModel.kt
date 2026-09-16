@@ -499,7 +499,10 @@ class DashboardViewModel @Inject constructor(
                                     claimedTerminal.terminalName?.let { name ->
                                         preferenceHelper.saveSelectedTerminalName(name)
                                     }
-                                    logger.i("Terminal claimed by this device: ${claimedTerminal.terminalName} (ID: ${claimedTerminal.terminalId})")
+                                    logger.i(
+                                        "Terminal claimed by this device: ${claimedTerminal.terminalName} " +
+                                            "(ID: ${claimedTerminal.terminalId})"
+                                    )
                                 } else {
                                     // Nothing is bound to this install. Leave any existing local
                                     // selection alone rather than adopting another device's

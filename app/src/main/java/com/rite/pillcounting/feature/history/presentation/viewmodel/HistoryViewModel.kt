@@ -122,8 +122,7 @@ class HistoryViewModel @Inject constructor(
             .flatMapLatest { (start, end) ->
                 repository.getBatchSummaries(
                     startDate = start,
-                    endDate = end,
-                    userLocalId = preferenceHelper.getLocalId()
+                    endDate = end
                 )
             }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
@@ -165,8 +164,7 @@ class HistoryViewModel @Inject constructor(
                 repository.deleteBatchesForDateRange(
                     startDate = _startDate.value,
                     endDate = _endDate.value,
-                    isCompleted = isCompleted,
-                    userLocalId = preferenceHelper.getLocalId()
+                    isCompleted = isCompleted
                 )
             } else {
                 val (isDispense, _) = currentMode.value.toQueryParams()

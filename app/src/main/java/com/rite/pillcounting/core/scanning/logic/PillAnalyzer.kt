@@ -238,7 +238,10 @@ class PillAnalyzer(
 
             val isCompleteTray = trayCount > 0 && chuteCount > 0 && !trayFillsFrame
             val displayTrayDetections = if (isCompleteTray) trayDetections else emptyList()
-            logger.i("TrayGate — trayCount=$trayCount chuteCount=$chuteCount coverage=${"%.2f".format(trayCoverage)} fillsFrame=$trayFillsFrame complete=$isCompleteTray")
+            logger.i(
+                "TrayGate — trayCount=$trayCount chuteCount=$chuteCount coverage=${"%.2f".format(trayCoverage)} " +
+                    "fillsFrame=$trayFillsFrame complete=$isCompleteTray"
+            )
 
             // ── STEP 3: Postprocess pill output ───────────────────────────────
             val pillsInTray: List<Detection>
@@ -255,7 +258,10 @@ class PillAnalyzer(
                 )
                 val pillsAfterNms = NMS.run(allPills, iouThreshold = PILL_NMS_IOU)
                 val pillsAfterHysteresis = applyHysteresis(pillsAfterNms)
-                logger.i("PillFilter — decoded=${allPills.size} afterNMS=${pillsAfterNms.size} afterHyst=${pillsAfterHysteresis.size} trayDets=$trayCount chuteDets=$chuteCount")
+                logger.i(
+                    "PillFilter — decoded=${allPills.size} afterNMS=${pillsAfterNms.size} " +
+                        "afterHyst=${pillsAfterHysteresis.size} trayDets=$trayCount chuteDets=$chuteCount"
+                )
 
                 // Pill counting GATE — only count once BOTH a tray AND a chute
                 // are detected in the same frame (co-occurrence). Both models

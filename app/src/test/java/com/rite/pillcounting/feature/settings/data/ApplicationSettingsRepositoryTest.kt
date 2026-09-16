@@ -2,7 +2,6 @@ package com.rite.pillcounting.feature.settings.data
 
 import android.util.Log
 import com.rite.pillcounting.core.models.ApiResponse
-import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
 import com.rite.pillcounting.feature.settings.domain.model.SettingsDataDto
 import io.mockk.coEvery
@@ -26,7 +25,6 @@ import retrofit2.Response
 class ApplicationSettingsRepositoryTest {
 
     private lateinit var apiService: IApplicationSettingInterface
-    private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var repository: ApplicationSettingsRepository
 
     @Before
@@ -39,11 +37,9 @@ class ApplicationSettingsRepositoryTest {
         every { Log.e(any(), any(), any()) } returns 0
 
         apiService = mockk()
-        preferenceHelper = mockk(relaxed = true)
 
         repository = ApplicationSettingsRepository(
-            apiService = apiService,
-            preferenceHelper = preferenceHelper
+            apiService = apiService
         )
     }
 

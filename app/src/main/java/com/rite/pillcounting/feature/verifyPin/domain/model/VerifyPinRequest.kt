@@ -9,7 +9,8 @@ import com.squareup.moshi.JsonClass
  * @property email The user's email address to associate the OTP with.
  * @property otp The one-time password entered by the user.
  * @property fcmToken Firebase push token for this install.
- * @property deviceKey Stable per-device identifier (SSAID / Settings.Secure.ANDROID_ID). Survives reinstall with the same signing key; reset by factory reset.
+ * @property deviceKey Stable per-device identifier (SSAID / Settings.Secure.ANDROID_ID).
+ * Survives reinstall with the same signing key; reset by factory reset.
  * @property platform Client platform, always "android" for this app.
  * @property appVersion The app's version name.
  */

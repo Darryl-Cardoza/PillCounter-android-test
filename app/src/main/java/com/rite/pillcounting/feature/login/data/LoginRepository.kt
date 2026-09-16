@@ -1,6 +1,5 @@
 package com.rite.pillcounting.feature.login.data
 
-import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.feature.login.data.remote.ILoginApi
 import com.rite.pillcounting.feature.login.domain.data.ILoginRepository
@@ -16,12 +15,10 @@ import javax.inject.Inject
  * Default implementation of [ILoginRepository] that interacts with both
  * a remote API and a local Room database.
  *
- * @property userDao DAO for user-related local persistence.
  * @property loginApi Retrofit service for network authentication.
  * @property ioDispatcher Coroutine dispatcher for offloading I/O operations.
  */
 class LoginRepository @Inject constructor(
-    private val userDao: UserDao,
     private val loginApi: ILoginApi,
     private val ioDispatcher: CoroutineDispatcher
 ) : ILoginRepository {
