@@ -58,6 +58,22 @@ class AppLogger(private val tag: String) {
     }
 
     /**
+     * Logs a titled block as one logcat entry, so a multi-line trace stays together instead of
+     * interleaving with other tags. Emitted at warning level like [w], not [i]: the flows this
+     * traces also run in release builds, where [i] is compiled out.
+     */
+    fun block(title: String, vararg lines: Pair<String, Any?>) {
+        val rule = "─".repeat(58)
+        Log.w(tag, buildString {
+            append('\n').append('┌').append(rule).append('\n')
+            append("│ ").append(title).append('\n')
+            append('├').append(rule)
+            lines.forEach { (label, value) -> append('\n').append("│ ").append(label).append(": ").append(value) }
+            append('\n').append('└').append(rule)
+        })
+    }
+
+    /**
      * Logcat truncates any single log line around 4KB, which silently chops long HL7
      * messages (chunked inventory batches can run to tens of KB) so only their tail shows up.
      * Split into ~3500-char slices so the full payload is visible across multiple log lines.

@@ -39,8 +39,6 @@ private const val KEY_RECENT_LOGINS = "recent_logins"
 private const val KEY_HISTORY_RETENTION = "history_retention"
 
 // HL7
-private const val KEY_NSD_BROADCAST_TYPE = "key_nsd_broadcast_type"
-private const val KEY_NSD_DISCOVERY_TYPE = "key_nsd_discovery_type"
 private const val KEY_STANDALONE_MODE = "key_standalone_mode"
 private const val KEY_HL7_ENABLED = "key_hl7_enabled"
 private const val KEY_SOUND = "key_pill_count_sound_enabled"
@@ -318,21 +316,25 @@ class PreferenceHelper @Inject constructor(
 
     // ─────────────────────────── NSD / HL7 SETTINGS ───────────────────────────
 
+    // One pair of keys for the NSD service types, shared with saveHl7Config. The service used
+    // to persist its own copy, which went stale whenever the API value changed — and a
+    // START_STICKY restart then came back on the old type.
+
     fun saveNsdBroadcastType(type: String) {
-        prefs.putString(KEY_NSD_BROADCAST_TYPE, type)
+        prefs.putString(KEY_HL7_PILLCOUNTER_HOST, type)
         logger.i("Saved NSD broadcast type")
     }
 
     fun getNsdBroadcastType(): String =
-        prefs.getString(KEY_NSD_BROADCAST_TYPE) ?: ""
+        prefs.getString(KEY_HL7_PILLCOUNTER_HOST) ?: ""
 
     fun saveNsdDiscoveryType(type: String) {
-        prefs.putString(KEY_NSD_DISCOVERY_TYPE, type)
+        prefs.putString(KEY_HL7_PMS_HOST, type)
         logger.i("Saved NSD discovery type")
     }
 
     fun getNsdDiscoveryType(): String =
-        prefs.getString(KEY_NSD_DISCOVERY_TYPE) ?: ""
+        prefs.getString(KEY_HL7_PMS_HOST) ?: ""
 
     fun setHl7Enabled(enabled: Boolean) {
         prefs.putBoolean(KEY_HL7_ENABLED, enabled)
@@ -464,6 +466,7 @@ class PreferenceHelper @Inject constructor(
 
     fun getHl7PillCounterHost(): String =
         prefs.getString(KEY_HL7_PILLCOUNTER_HOST) ?: ""
+
     // ─────────────────────────── TERMINALS ───────────────────────────
 
     /**

@@ -368,6 +368,58 @@ class MllpConnectionManagerTest {
         assertTrue(manager.isConnected())
     }
 
+    // ── dropForPeerChange() ────────────────────────────────────────────────
+
+    @Test
+    fun `dropForPeerChange closes the client and marks state disconnected`() = scope.runTest {
+        coEvery { client.connect(any(), any()) } returns Unit
+        every { client.isConnected() } returns true
+
+        manager.connect("10.0.0.1", 5000)
+        advanceUntilIdle()
+        assertTrue(manager.isConnected())
+
+        manager.dropForPeerChange()
+        advanceUntilIdle()
+
+        assertFalse(manager.isConnected())
+        coVerify(atLeast = 1) { client.close() }
+    }
+
+    @Test
+    fun `dropForPeerChange leaves the manager usable, unlike shutdown`() = scope.runTest {
+        coEvery { client.connect(any(), any()) } returns Unit
+        every { client.isConnected() } returns true
+
+        manager.connect("10.0.0.1", 5000)
+        advanceUntilIdle()
+
+        manager.dropForPeerChange()
+        advanceUntilIdle()
+
+        // A different peer connects straight away — no shutdown/reset dance needed.
+        manager.connect("10.0.0.2", 5000)
+        advanceUntilIdle()
+
+        assertTrue(manager.isConnected())
+    }
+
+    @Test
+    fun `dropForPeerChange clears the target so the reconnect loop cannot race back`() = scope.runTest {
+        coEvery { client.connect(any(), any()) } returns Unit
+        every { client.isConnected() } returns true
+
+        manager.connect("10.0.0.1", 5000)
+        advanceUntilIdle()
+
+        manager.dropForPeerChange()
+        every { client.isConnected() } returns false
+        advanceUntilIdle()
+
+        // Only the original connect — the loop did not retry the peer we just left.
+        coVerify(exactly = 1) { client.connect("10.0.0.1", 5000) }
+    }
+
     // ── passive reader onDisconnected callback ──────────────────────────
 
     @Test

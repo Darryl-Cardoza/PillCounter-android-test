@@ -225,4 +225,55 @@ class Hl7ServiceManager @Inject constructor(
         logger.i("Rebroadcasting NSD as '${config.nsdBroadcastServiceName}'")
         service.rebroadcastNsd()
     }
+
+    /**
+     * Applies new NSD service types to the running service: re-registers the broadcast and
+     * re-points discovery. Each is gated on its own type — a broadcast-only change must not
+     * drop a healthy PMS connection. Re-discovery does drop it, because the peer it found was
+     * discovered under the previous type.
+     */
+    fun updateServiceTypes(nsdBroadcastType: String, nsdDiscoveryType: String) {
+        val existing = currentConfig
+        if (existing == null) {
+            logger.w("Cannot apply NSD service types — HL7 has not been initialized")
+            return
+        }
+
+        val broadcastChanged = existing.nsdBroadcastType != nsdBroadcastType
+        val discoveryChanged = existing.nsdDiscoveryType != nsdDiscoveryType
+
+        if (!broadcastChanged && !discoveryChanged) {
+            logger.i("NSD service types unchanged — nothing to do")
+            return
+        }
+
+        logger.block(
+            "HL7-NSD · Applying new service types from settings",
+            "Broadcast was" to existing.nsdBroadcastType,
+            "Broadcast now" to nsdBroadcastType,
+            "Discovery was" to existing.nsdDiscoveryType,
+            "Discovery now" to nsdDiscoveryType,
+        )
+
+        val updated = existing.copy(
+            nsdBroadcastType = nsdBroadcastType,
+            nsdDiscoveryType = nsdDiscoveryType,
+        )
+        currentConfig = updated
+        serviceManager.updateConfig(updated)
+
+        val service = serviceManager.getService()
+        if (service == null) {
+            logger.w(
+                "HL7-NSD · Cannot re-point NSD yet — service is not bound " +
+                    "(started=${serviceManager.isServiceStarted()} bound=${serviceManager.isBound()}). " +
+                    "Rebinding; the new types are applied when the binding lands."
+            )
+            serviceManager.bindService()
+            return
+        }
+
+        if (broadcastChanged) service.rebroadcastNsd()
+        if (discoveryChanged) service.rediscoverPms()
+    }
 }

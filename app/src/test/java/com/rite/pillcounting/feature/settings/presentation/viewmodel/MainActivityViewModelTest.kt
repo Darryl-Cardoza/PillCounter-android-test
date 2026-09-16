@@ -392,32 +392,54 @@ class MainActivityViewModelTest {
     }
 
     @Test
-    fun `updateHl7Config loads from prefs when already fetched`() = runTest(testDispatcher) {
+    fun `updateHl7Config uses server values over cached prefs`() = runTest(testDispatcher) {
         every { preferenceHelper.isHl7Enabled() } returns true
         every { preferenceHelper.isHl7ConfigFetched() } returns true
         every { preferenceHelper.getHl7PillCounterHost() } returns "_pillcounting._tcp"
         every { preferenceHelper.getHl7PmsHost() } returns "_ritepmsserver._tcp"
+        coEvery { repository.getApplicationSettings() } returns apiResponse(
+            dto(
+                hl7Config = ApplicationSettingsHL7Config(
+                    pmsHostName = "_newpms._tcp",
+                    pillCounterHostName = "_newcounter._tcp",
+                    barcodeFormat = "^(?<rxnumber>[^|]{1,32})$"
+                )
+            )
+        )
 
         val vm = createViewModel()
         advanceUntilIdle()
 
         val state = vm.uiState.value
         assertEquals(true, state.isHl7Enabled)
-        assertEquals("_pillcounting._tcp", state.nsdBroadcastType)
-        assertEquals("_ritepmsserver._tcp", state.nsdDiscoveryType)
-        verify(exactly = 0) { preferenceHelper.saveHl7Config(any(), any()) }
+        assertEquals("_newcounter._tcp", state.nsdBroadcastType)
+        assertEquals("_newpms._tcp", state.nsdDiscoveryType)
+        verify {
+            preferenceHelper.saveHl7Config(
+                pmsHost = "_newpms._tcp",
+                pillCounterHost = "_newcounter._tcp"
+            )
+        }
     }
 
     @Test
-    fun `updateHl7Config saves config and updates state when fresh`() = runTest(testDispatcher) {
+    fun `updateHl7Config falls back to constants when server omits host names`() = runTest(testDispatcher) {
         every { preferenceHelper.isHl7Enabled() } returns true
         every { preferenceHelper.isHl7ConfigFetched() } returns false
+        coEvery { repository.getApplicationSettings() } returns apiResponse(
+            dto(
+                hl7Config = ApplicationSettingsHL7Config(
+                    pmsHostName = null,
+                    pillCounterHostName = null,
+                    barcodeFormat = "^(?<rxnumber>[^|]{1,32})$"
+                )
+            )
+        )
 
         val vm = createViewModel()
         advanceUntilIdle()
 
         val state = vm.uiState.value
-        assertEquals(true, state.isHl7Enabled)
         assertEquals("_pillcounting._tcp", state.nsdBroadcastType)
         assertEquals("_ritepmsserver._tcp", state.nsdDiscoveryType)
         verify {
@@ -426,6 +448,45 @@ class MainActivityViewModelTest {
                 pillCounterHost = "_pillcounting._tcp"
             )
         }
+    }
+
+    @Test
+    fun `updateHl7Config falls back to constants when hl7Config is absent`() = runTest(testDispatcher) {
+        every { preferenceHelper.isHl7Enabled() } returns true
+        every { preferenceHelper.isHl7ConfigFetched() } returns false
+        coEvery { repository.getApplicationSettings() } returns apiResponse(dto(hl7Config = null))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals("_pillcounting._tcp", state.nsdBroadcastType)
+        assertEquals("_ritepmsserver._tcp", state.nsdDiscoveryType)
+    }
+
+    @Test
+    fun `nsd type change re-points the live service instead of restarting`() = runTest(testDispatcher) {
+        every { preferenceHelper.isHl7Enabled() } returns true
+        every { preferenceHelper.isUserLoggedIn() } returns true
+        every { preferenceHelper.getSelectedTerminalName() } returns "Terminal-A"
+        every { preferenceHelper.isHl7ConfigFetched() } returns true
+        every { preferenceHelper.getHl7PillCounterHost() } returns "_pillcounting._tcp"
+        every { preferenceHelper.getHl7PmsHost() } returns "_ritepmsserver._tcp"
+        coEvery { repository.getApplicationSettings() } returns apiResponse(
+            dto(
+                hl7Config = ApplicationSettingsHL7Config(
+                    pmsHostName = "_newpms._tcp",
+                    pillCounterHostName = "_pillcounting._tcp",
+                    barcodeFormat = "^(?<rxnumber>[^|]{1,32})$"
+                )
+            )
+        )
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        verify { hl7ServiceManager.updateServiceTypes("_pillcounting._tcp", "_newpms._tcp") }
+        verify(exactly = 0) { hl7ServiceManager.shutdown() }
     }
 
     // ─────────────────────────── evaluateHl7State / start / stop ───────────────────────────
