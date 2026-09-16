@@ -164,6 +164,11 @@ class DispenseFlowViewModel @Inject constructor(
                     refillNo = txn.refillNo,
                     qty = txn.targetCount?.toString(),
                     isHazardous = drug?.isHazardous ?: false,
+                    // Shown on the container-scan step's details bar.
+                    drugImage = drug?.drugImagePath.orEmpty(),
+                    ndcStrength = drug?.strength,
+                    ndcDosageForm = drug?.dosageForm,
+                    selectedBucketId = txn.bucketId.orEmpty(),
                 )
             }
             logger.i("[HAZARDOUS] HL7 init: txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
@@ -223,6 +228,11 @@ class DispenseFlowViewModel @Inject constructor(
                         refillNo = txn.refillNo,
                         qty = txn.targetCount?.toString(),
                         isHazardous = drug?.isHazardous ?: false,
+                        // Shown on the container-scan step's details bar.
+                        drugImage = drug?.drugImagePath.orEmpty(),
+                        ndcStrength = drug?.strength,
+                        ndcDosageForm = drug?.dosageForm,
+                        selectedBucketId = txn.bucketId.orEmpty(),
                     )
                 }
                 logger.i("[HAZARDOUS] Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
@@ -369,6 +379,7 @@ class DispenseFlowViewModel @Inject constructor(
                                 // sheet. Overwritten with the API value once the NDC
                                 // is scanned in PRE_NDC.
                                 ndcStrength = drug?.strength,
+                                ndcDosageForm = drug?.dosageForm,
                                 drugImage = drug?.drugImagePath.orEmpty(),
                                 // PMS may send no bucket — fall back to the label's.
                                 selectedBucketId = existingTxn.bucketId ?: bucket.orEmpty(),
@@ -436,6 +447,7 @@ class DispenseFlowViewModel @Inject constructor(
                 qty = targetCount.toString(),
                 isHazardous = drug.isHazardous,
                 ndcStrength = drug.strength,
+                ndcDosageForm = drug.dosageForm,
                 drugImage = drug.drugImagePath.orEmpty(),
                 selectedBucketId = bucket.orEmpty(),
             )
@@ -861,6 +873,47 @@ class DispenseFlowViewModel @Inject constructor(
         logger.i("[HAZARDOUS] NDC auto-confirmed: txn=$txnId substitute=$isSubstitute isHazardous=${state.isHazardous} → COUNTING")
     }
 
+    /**
+     * Sends the flow back to the container scan after a reset. The Rx details stay —
+     * it is the same order — only the container scan's own state is cleared.
+     *
+     * [resetCount] runs first and on this scope, so leaving the screen mid-reset cannot
+     * strand a wiped transaction with the stage still on COUNTING.
+     */
+    fun returnToContainerScan(resetCount: suspend () -> Unit = {}) {
+        viewModelScope.launch {
+            resetCount()
+            // The container scan replaced drugImage with the server's image URL, but
+            // the details bar loads a local file. Take the drug row's own path back,
+            // the same value the counting header reads.
+            // Same txn id resetTransaction works from, so both halves of a reset
+            // agree on which transaction they are restarting.
+            val txnId = _uiState.value.txnId.takeIf { it != 0L } ?: preferenceHelper.getTxnId()
+            val drug = txnId.takeIf { it != 0L }
+                ?.let { pillCountTxnDao.getById(it) }
+                ?.drugId?.let { drugMasterDao.getDrugById(it) }
+
+            _uiState.update {
+                it.copy(
+                    stage = DispenseStage.PRE_NDC,
+                    ndcScannedValue = "",
+                    ndcDrugName = "",
+                    ndcPackageQty = null,
+                    ndcDrugType = null,
+                    pendingFirstBottle = null,
+                    isSubstituteConfirmed = false,
+                    stockBottleId = 0L,
+                    showNdcDetails = false,
+                    showNdcEquivalenceDialog = false,
+                    drugImage = drug?.drugImagePath ?: it.drugImage,
+                    ndcStrength = drug?.strength ?: it.ndcStrength,
+                    ndcDosageForm = drug?.dosageForm ?: it.ndcDosageForm,
+                )
+            }
+            logger.i("Reset: returning to container scan for txn=${_uiState.value.txnId}")
+        }
+    }
+
     /** User confirmed they want to continue the existing PARTIAL transaction. */
     fun confirmContinueRx() {
         val txnId = _uiState.value.txnId
@@ -887,6 +940,11 @@ class DispenseFlowViewModel @Inject constructor(
                     refillNo = txn.refillNo,
                     qty = txn.targetCount?.toString(),
                     isHazardous = drug?.isHazardous ?: false,
+                    // Shown on the container-scan step's details bar.
+                    drugImage = drug?.drugImagePath ?: it.drugImage,
+                    ndcStrength = drug?.strength ?: it.ndcStrength,
+                    ndcDosageForm = drug?.dosageForm ?: it.ndcDosageForm,
+                    selectedBucketId = txn.bucketId ?: it.selectedBucketId,
                 )
             }
             logger.i("[HAZARDOUS] Continue RX: txn=$txnId isNdcVerified=${txn.isNdcVerified} isHazardous=${drug?.isHazardous ?: false} → $targetStage")
@@ -1155,6 +1213,11 @@ class DispenseFlowViewModel @Inject constructor(
                     refillNo = txn.refillNo,
                     qty = txn.targetCount?.toString(),
                     isHazardous = drug?.isHazardous ?: false,
+                    // Shown on the container-scan step's details bar.
+                    drugImage = drug?.drugImagePath ?: it.drugImage,
+                    ndcStrength = drug?.strength ?: it.ndcStrength,
+                    ndcDosageForm = drug?.dosageForm ?: it.ndcDosageForm,
+                    selectedBucketId = txn.bucketId ?: it.selectedBucketId,
                 )
             }
         }

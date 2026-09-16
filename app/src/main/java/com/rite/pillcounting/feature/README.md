@@ -68,7 +68,7 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
   and from `inventoryFlow`'s SCAN PILLS hand-off (with a `batchId`).
 - **Key classes.** `DispenseFlowScreen`, `DispenseFlowViewModel`,
   `DispenseFlowUiState`; count-mode UI in `presentation/compose/`
-  (`InformationPanelSection`, `CountModePortrait/Landscape`, `CameraActionBar`,
+  (`InformationPanelSection`, `CountModePhone*`/`CountModeTablet*`, `CameraActionBar`,
   `HistoryMode*`, `TargetPillsCountDialog`, …). Shared engine via `core/scanning`.
 - **Known risks.** `Screen.PillCount`/`Screen.ScanBarcode` referenced in resume
   screens are **not wired** in the nav graph (latent crash) — see

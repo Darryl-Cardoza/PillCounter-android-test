@@ -1,8 +1,8 @@
 package com.rite.pillcounting.feature.dispenseFlow.presentation.compose
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -36,12 +36,11 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
-import com.rite.pillcounting.core.utils.compose.WorkflowStepper
 import com.rite.pillcounting.core.utils.compose.dosageFormIcon
 import java.io.File
 
 /** Step circle diameter for the phone-portrait stepper. */
-private val PHONE_PORTRAIT_STEP_SIZE = 36.dp
+private val PHONE_PORTRAIT_STEP_SIZE = 32.dp
 private val FORM_IMAGE_WIDTH = 64.dp
 private const val FORM_IMAGE_ASPECT = 4f / 3f
 
@@ -77,6 +76,7 @@ fun CountModePhonePortrait(
     drugImage: String? = "",
     showGloveIcon: Boolean = false,
     glovesDetected: Boolean = false,
+    onReset: (() -> Unit)? = null,
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val stepType by viewModel.currentStep.collectAsState()
@@ -115,54 +115,28 @@ fun CountModePhonePortrait(
             onDone = onDone,
         )
 
-        Column(
-            modifier = Modifier
-                .align(Alignment.BottomCenter)
-                .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp),
-        ) {
-            // Steps float on the camera feed — no black background behind them.
-            WorkflowStepper(
-                steps = steps,
-                currentStep = stepType,
-                isVoiceOverEnabled = isVoiceOverEnabled,
-                circleSize = PHONE_PORTRAIT_STEP_SIZE,
-                // Announce every counting step on entry (and on step change) via the
-                // stepper bubble + voiceover — the header stays silent for these
-                // steps. REGULAR also labels the counting step "Scan Open Pills".
-                autoRevealCurrentStep = autoRevealCurrentStep,
-                onAutoRevealed = onAutoRevealed,
-                titleOverrides = if (isRegular) {
-                    mapOf(StepState.TARGET_VERIFICATION to R.string.scan_open_pills)
-                } else {
-                    emptyMap()
-                },
-                modifier = Modifier.fillMaxWidth(),
-            )
-
-            Spacer(Modifier.height(8.dp))
-
-            // Translucent row: View all counts | progress | count | context button.
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(CountModeBarBackground)
-                    .padding(horizontal = 16.dp, vertical = 12.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                ViewAllCountsLink(onClick = showHistory)
-                Spacer(Modifier.width(12.dp))
-                BottomProgressAndCount(
-                    isFixed = isFixed,
-                    totalCount = totalCount,
-                    targetCount = targetCount,
-                    showProceed = showProceed,
-                    onProceed = onDone,
-                    pushCountToEnd = true,
-                )
-            }
-        }
+        CountModeBottomStrip(
+            steps = steps,
+            currentStep = stepType,
+            isVoiceOverEnabled = isVoiceOverEnabled,
+            circleSize = PHONE_PORTRAIT_STEP_SIZE,
+            isLandscape = false,
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
+            isFixed = isFixed,
+            totalCount = totalCount,
+            targetCount = targetCount,
+            onShowHistory = showHistory,
+            onProceed = onDone,
+            // REGULAR labels the counting step "Scan Open Pills".
+            titleOverrides = if (isRegular) {
+                mapOf(StepState.TARGET_VERIFICATION to R.string.scan_open_pills)
+            } else {
+                emptyMap()
+            },
+            showProceed = showProceed,
+            onReset = onReset,
+        )
     }
 }
 
@@ -170,9 +144,12 @@ fun CountModePhonePortrait(
  * Phone-portrait top details bar: NDC + drug name stacked above a
  * Form / Strength / Bucket row. The other form factors keep the single-row
  * [CountModeTopDetailsBar].
+ *
+ * Every phone-portrait step uses this one — the counting steps, the vial capture
+ * and the container scan — so the header keeps its shape for the whole flow.
  */
 @Composable
-private fun BoxWithConstraintsScope.CountModePhonePortraitDetailsBar(
+internal fun BoxScope.CountModePhonePortraitDetailsBar(
     ndc: String,
     drugName: String,
     strength: String,

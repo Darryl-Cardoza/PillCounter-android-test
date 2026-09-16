@@ -954,4 +954,49 @@ class PillCountTxnDaoTest {
             assertEquals(1, list.size)
         }
     }
+
+    // ───────────────────────── resetForRecount ─────────────────────────
+
+    @Test
+    fun `resetForRecount clears the count state but keeps the order`() = runTest {
+        val id = dao.insertIgnore(
+            PillCountTxnEntity(
+                localId = 1L,
+                drugId = 42L,
+                isDispense = true,
+                targetCount = 30,
+                status = CountStatus.PARTIAL,
+                rxNo = "RX999",
+                refillNo = "1",
+                bucketId = "B1",
+                isNdcVerified = true,
+                workflowStep = StepState.VIAL.name,
+                bottleInfoListJson = "[{}]",
+                isSubstitute = true,
+                substitutedDrugId = 7L,
+                hazardousTrayDetected = true,
+                isGlovesPresent = true,
+                hl7MessageControlId = "MSG1",
+            )
+        )
+
+        dao.resetForRecount(id)
+
+        val txn = dao.getById(id)!!
+        assertEquals(false, txn.isNdcVerified)
+        assertNull(txn.workflowStep)
+        assertNull(txn.bottleInfoListJson)
+        assertFalse(txn.isSubstitute)
+        assertNull(txn.substitutedDrugId)
+        assertNull(txn.hazardousTrayDetected)
+        assertFalse(txn.isGlovesPresent)
+        // The order itself survives — same transaction, restarted.
+        assertEquals("RX999", txn.rxNo)
+        assertEquals("1", txn.refillNo)
+        assertEquals(30, txn.targetCount)
+        assertEquals("B1", txn.bucketId)
+        assertEquals(42L, txn.drugId)
+        assertEquals(CountStatus.PARTIAL, txn.status)
+        assertEquals("MSG1", txn.hl7MessageControlId)
+    }
 }

@@ -6,8 +6,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
@@ -44,6 +46,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -51,7 +54,9 @@ import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import kotlin.math.roundToInt
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.utils.compose.WorkflowStepper
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -80,7 +85,7 @@ internal val CountModeBarBackground = Color.Black.copy(alpha = 0.45f)
  * Bucket on the right. Identical in every form factor.
  */
 @Composable
-internal fun BoxWithConstraintsScope.CountModeTopDetailsBar(
+internal fun BoxScope.CountModeTopDetailsBar(
     ndc: String,
     drugName: String,
     strength: String,
@@ -290,13 +295,35 @@ internal fun BoxWithConstraintsScope.CountModeCenterCircle(
     }
 }
 
+/**
+ * The reset icon shown left of "View all counts" while a count can still be thrown
+ * away. Tinted to match that link so the two read as one control group.
+ */
+@Composable
+internal fun ResetCountButton(onClick: () -> Unit) {
+    // 48dp touch target on a destructive control; the icon itself stays 20dp.
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.reset),
+            contentDescription = stringResource(R.string.cd_reset_count),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(responsiveDp(20.dp)),
+        )
+    }
+}
+
 /** The tappable "View all counts ›" link shown in the bottom bar. */
 @Composable
 internal fun ViewAllCountsLink(onClick: () -> Unit) {
     Text(
         text = stringResource(R.string.pill_scanning_view_all_counts) + " ›",
         color = MaterialTheme.colorScheme.primary,
-        fontSize = responsiveSp(8.sp),
+        fontSize = responsiveSp(8.sp, boostOnPhone = true),
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         softWrap = false,
@@ -372,6 +399,160 @@ internal fun RowScope.BottomProgressAndCount(
             onClick = { onProceed() },
         )
     }
+}
+
+/**
+ * The bottom strip, shared by the SCAN step and the counting steps so the two sit
+ * in exactly the same place and nothing jumps when the stage flips.
+ *
+ * Portrait floats the steps above the translucent bar; landscape puts everything
+ * inline in one bar. SCAN switches off the widgets that need a transaction
+ * ([showViewAllCounts], [showProceed]) and keeps the rest.
+ */
+@Composable
+internal fun BoxScope.CountModeBottomStrip(
+    steps: List<StepState>,
+    currentStep: StepState,
+    isVoiceOverEnabled: Boolean,
+    circleSize: Dp,
+    isLandscape: Boolean,
+    autoRevealCurrentStep: Boolean,
+    onAutoRevealed: () -> Unit,
+    isFixed: Boolean,
+    totalCount: Int,
+    targetCount: Int,
+    onShowHistory: () -> Unit,
+    onProceed: () -> Unit,
+    titleOverrides: Map<StepState, Int> = emptyMap(),
+    showViewAllCounts: Boolean = true,
+    // Off on the SCAN step: nothing is counted until a container is scanned.
+    showCount: Boolean = true,
+    showProceed: Boolean = false,
+    // Null hides the reset control — on the SCAN step, and once the count has synced.
+    onReset: (() -> Unit)? = null,
+    // Portrait only: false drops the translucent bar and leaves the steps floating.
+    // The SCAN step has nothing to put in the bar on any device.
+    showBar: Boolean = true,
+    // Rendered directly above the strip, inside the same bottom-aligned column —
+    // the VIAL step puts its capture controls here.
+    leading: (@Composable ColumnScope.() -> Unit)? = null,
+) {
+    val stepper: @Composable (Modifier) -> Unit = { stepperModifier ->
+        WorkflowStepper(
+            steps = steps,
+            currentStep = currentStep,
+            isVoiceOverEnabled = isVoiceOverEnabled,
+            circleSize = circleSize,
+            // Announce every step on entry (and on step change) via the stepper
+            // bubble + voiceover — no step carries a persistent header title.
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
+            titleOverrides = titleOverrides,
+            modifier = stepperModifier,
+        )
+    }
+
+    // Unstyled outer column so [leading] sits above the bar without inheriting its
+    // background or padding.
+    Column(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth(),
+    ) {
+        leading?.invoke(this)
+
+        if (isLandscape) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CountModeBarBackground)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    onReset?.let {
+                        ResetCountButton(onClick = it)
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    if (showViewAllCounts) {
+                        ViewAllCountsLink(onClick = onShowHistory)
+                        Spacer(Modifier.width(8.dp))
+                    }
+
+                    // Workflow steps live inline between "View all counts" and the
+                    // progress bar. Weighted so it shares the leftover space with the
+                    // progress bar instead of taking a fixed footprint.
+                    Box(modifier = Modifier.weight(1f)) { stepper(Modifier) }
+
+                    Spacer(Modifier.width(12.dp))
+
+                    if (showCount) {
+                        BottomProgressAndCount(
+                            isFixed = isFixed,
+                            totalCount = totalCount,
+                            targetCount = targetCount,
+                            showProceed = showProceed,
+                            onProceed = onProceed,
+                        )
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                // Steps float on the camera feed — no black background behind them.
+                stepper(Modifier.fillMaxWidth())
+
+                if (showBar) {
+                    Spacer(Modifier.height(8.dp))
+
+                    // Translucent row: View all counts | progress | count | button.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(CountModeBarBackground)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        onReset?.let {
+                            ResetCountButton(onClick = it)
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        if (showViewAllCounts) {
+                            ViewAllCountsLink(onClick = onShowHistory)
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        if (showCount) {
+                            BottomProgressAndCount(
+                                isFixed = isFixed,
+                                totalCount = totalCount,
+                                targetCount = targetCount,
+                                showProceed = showProceed,
+                                onProceed = onProceed,
+                                pushCountToEnd = true,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Step circle diameter for the strip outside the four count-mode variants (the SCAN
+ * and VIAL steps). Mirrors the variants' own per-form-factor constants.
+ */
+@Composable
+internal fun countModeStepSize(isTablet: Boolean, isLandscape: Boolean): Dp = when {
+    isTablet -> 34.dp
+    isLandscape -> 40.dp
+    else -> 32.dp
 }
 
 /** A small label-over-value column used in the top details bar. */

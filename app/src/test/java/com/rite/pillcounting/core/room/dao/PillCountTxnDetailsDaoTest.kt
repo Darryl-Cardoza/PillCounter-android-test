@@ -223,6 +223,36 @@ class PillCountTxnDetailsDaoTest {
         assertEquals(1, dao.getAllForTxn("1").size)
     }
 
+    // ───────────────────────── reset: hard delete ─────────────────────────
+
+    @Test
+    fun `deleteAllForTxn physically removes every detail for that txn only`() = runTest {
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 3, type = StepState.SCAN.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 4, type = StepState.VIAL.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 2L, pillCount = 9, type = StepState.SCAN.name))
+
+        dao.deleteAllForTxn(1L)
+
+        assertEquals(0, dao.getAllForTxn("1").size)
+        assertEquals(1, dao.getAllForTxn("2").size)
+    }
+
+    @Test
+    fun `getImagePathsForTxn returns only the non-null paths`() = runTest {
+        dao.insert(
+            PillCountTxnDetailsEntity(txnId = 1L, imagePath = "/a.jpg", type = StepState.SCAN.name)
+        )
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, imagePath = null, type = StepState.SCAN.name))
+        dao.insert(
+            PillCountTxnDetailsEntity(txnId = 1L, imagePath = "/b.jpg", type = StepState.VIAL.name)
+        )
+        dao.insert(
+            PillCountTxnDetailsEntity(txnId = 2L, imagePath = "/other.jpg", type = StepState.SCAN.name)
+        )
+
+        assertEquals(listOf("/a.jpg", "/b.jpg"), dao.getImagePathsForTxn(1L).sorted())
+    }
+
     // ───────────────────────── getTotalPillCountForTxn ─────────────────────────
 
     @Test
