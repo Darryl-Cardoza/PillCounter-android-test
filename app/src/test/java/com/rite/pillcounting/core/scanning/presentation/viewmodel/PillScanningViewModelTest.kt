@@ -368,16 +368,18 @@ class PillScanningViewModelTest {
         assertTrue(staged.isEmpty())
     }
 
-    // ─────────────────────────── refreshResetAvailability ───────────────────────────
+    // ─────────────────────────── observeResetAvailability ───────────────────────────
 
     @Test
     fun `reset is unavailable once the dispense txn has synced`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { pillCountTxnDao.getById(7L) } returns PillCountTxnEntity(
-            txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = true,
+        every { pillCountTxnDao.observeById(7L) } returns flowOf(
+            PillCountTxnEntity(
+                txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = true,
+            )
         )
 
-        viewModel.refreshResetAvailability(batchId = 0L)
+        viewModel.observeResetAvailability(batchId = 0L)
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.canReset)
@@ -386,11 +388,13 @@ class PillScanningViewModelTest {
     @Test
     fun `reset is available while the dispense txn is unsynced`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { pillCountTxnDao.getById(7L) } returns PillCountTxnEntity(
-            txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = false,
+        every { pillCountTxnDao.observeById(7L) } returns flowOf(
+            PillCountTxnEntity(
+                txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = false,
+            )
         )
 
-        viewModel.refreshResetAvailability(batchId = 0L)
+        viewModel.observeResetAvailability(batchId = 0L)
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.canReset)
@@ -399,11 +403,11 @@ class PillScanningViewModelTest {
     @Test
     fun `reset is unavailable once the batch has acked a chunk`() = runTest {
         every { preferenceHelper.getTxnId() } returns 0L
-        coEvery { batchDao.getById(9L) } returns BatchEntity(
-            batchId = 9L, isSynced = false, lastAckedChunkIndex = 2,
+        every { batchDao.observeById(9L) } returns flowOf(
+            BatchEntity(batchId = 9L, isSynced = false, lastAckedChunkIndex = 2)
         )
 
-        viewModel.refreshResetAvailability(batchId = 9L)
+        viewModel.observeResetAvailability(batchId = 9L)
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.canReset)
@@ -413,10 +417,30 @@ class PillScanningViewModelTest {
     fun `reset is available for a batch-less stock count`() = runTest {
         every { preferenceHelper.getTxnId() } returns 0L
 
-        viewModel.refreshResetAvailability(batchId = 0L)
+        viewModel.observeResetAvailability(batchId = 0L)
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.canReset)
+    }
+
+    @Test
+    fun `reset goes unavailable when the txn syncs while the screen is up`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 7L
+        val txn = MutableStateFlow(
+            PillCountTxnEntity(
+                txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = false,
+            )
+        )
+        every { pillCountTxnDao.observeById(7L) } returns txn
+
+        viewModel.observeResetAvailability(batchId = 0L)
+        advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.canReset)
+
+        txn.value = txn.value.copy(isSynced = true)
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.canReset)
     }
 
     // ─────────────────────────── isVialLastStep ───────────────────────────

@@ -27,7 +27,6 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -37,8 +36,10 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -85,7 +86,6 @@ import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.Dispens
 import com.rite.pillcounting.ui.theme.AppTheme
 import com.rite.pillcounting.ui.theme.AppTheme.dimens
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
 import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
@@ -116,15 +116,6 @@ import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNa
 // Grace period before hiding the count circle after detections drop to 0,
 // so momentary empty frames don't flicker the circle off and on.
 private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
-
-// Space the SCAN step's bottom strip takes, so the live count circle can be lifted
-// clear of it. Portrait shows the steps alone on SCAN — no bar below them.
-private val SCAN_STEPS_ONLY_RESERVED_HEIGHT = 72.dp
-
-// Shown on the container scan when the transaction carries no bucket. Mirrors the
-// same default PillScanningViewModel.showTxnInfo applies on the counting steps, so
-// the bucket does not blank out when a reset lands back here.
-private const val DEFAULT_BUCKET = "Normal"
 
 private const val HAZARDOUS_TAG = "HazardousFlow"
 
@@ -331,7 +322,11 @@ fun DispenseFlowScreen(
 
     // Reset confirmation. Screen-local: nothing outside this screen needs it.
     var showResetDialog by rememberSaveable { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
+
+    // Real height of the SCAN step's strip, so the live count circle clears it without
+    // a hardcoded guess. Zero for one frame on first composition.
+    var scanStripHeight by remember { mutableStateOf(0.dp) }
+    val density = LocalDensity.current
 
     // Resume/HL7 entries jump to their real start stage (COUNTING / PRE_NDC)
     // asynchronously via initializeFromResumedTxn()/initializeFromHl7Txn(). Until
@@ -521,7 +516,7 @@ fun DispenseFlowScreen(
                 pillVm.getDrugInfo(forceStartStep = null)
                 pillVm.showTxnInfo(countType)
             }
-            pillVm.refreshResetAvailability(batchId = dispenseState.batchId)
+            pillVm.observeResetAvailability(batchId = dispenseState.batchId)
             // Enable tray color detection for all transactions (hazardous and non-hazardous).
             Log.i(HAZARDOUS_TAG, "Calling setHazardousTransaction(isHazardous=${dispenseState.isHazardous})")
             pillVm.setHazardousTransaction(dispenseState.isHazardous)
@@ -877,7 +872,9 @@ fun DispenseFlowScreen(
             onCancel = { showResetDialog = false },
             onConfirm = {
                 showResetDialog = false
-                scope.launch {
+                // One call on the view model's scope. Disposing the screen mid-reset
+                // must not leave a wiped transaction with the stage on COUNTING.
+                dispenseVm.returnToContainerScan {
                     // Delete first, then move the stage — otherwise the SCAN strip
                     // renders against counts that are still on their way out.
                     pillVm.resetTransaction()
@@ -886,10 +883,9 @@ fun DispenseFlowScreen(
                     // against the step we just left and spent its announcement on it.
                     // The effect repeating the call after the flip is harmless.
                     pillVm.enterScanStep()
-                    dispenseVm.returnToContainerScan()
-                    // The analyzer self-pauses after every read; re-arm it for the rescan.
-                    barcodeAnalyzer.resume()
                 }
+                // The analyzer self-pauses after every read; re-arm it for the rescan.
+                barcodeAnalyzer.resume()
             },
         )
     }
@@ -1065,7 +1061,7 @@ fun DispenseFlowScreen(
                                 // into it, so the circle keeps its size on short screens.
                                 .offset(
                                     y = if (dispenseState.stage == DispenseStage.PRE_NDC) {
-                                        -SCAN_STEPS_ONLY_RESERVED_HEIGHT
+                                        -scanStripHeight
                                     } else {
                                         0.dp
                                     }
@@ -1089,6 +1085,9 @@ fun DispenseFlowScreen(
         // transaction loaded this early.
         if (dispenseState.stage == DispenseStage.PRE_NDC && !showHistory && !awaitingResume) {
             if (showScanDetailsBar) {
+                // Same default the counting steps apply, so the bucket does not blank
+                // out when a reset lands back on the container scan.
+                val defaultBucket = stringResource(R.string.default_bucket)
                 // Phone portrait drops the image, strength and bucket onto a second
                 // row. Same bar as the steps that follow, so the header does not
                 // change shape once the container is scanned.
@@ -1097,7 +1096,7 @@ fun DispenseFlowScreen(
                         ndc = dispenseState.ndc,
                         drugName = dispenseState.drugName,
                         strength = dispenseState.ndcStrength.orEmpty(),
-                        bucket = dispenseState.selectedBucketId.ifBlank { DEFAULT_BUCKET },
+                        bucket = dispenseState.selectedBucketId.ifBlank { defaultBucket },
                         dosageForm = dispenseState.ndcDosageForm.orEmpty(),
                         drugImage = dispenseState.drugImage,
                         showGloveIcon = false,
@@ -1108,7 +1107,7 @@ fun DispenseFlowScreen(
                         ndc = dispenseState.ndc,
                         drugName = dispenseState.drugName,
                         strength = dispenseState.ndcStrength.orEmpty(),
-                        bucket = dispenseState.selectedBucketId.ifBlank { DEFAULT_BUCKET },
+                        bucket = dispenseState.selectedBucketId.ifBlank { defaultBucket },
                         drugImage = dispenseState.drugImage,
                     )
                 }
@@ -1116,28 +1115,35 @@ fun DispenseFlowScreen(
             // The same bottom strip the counting steps use. Every counting widget is
             // off — nothing has been counted before a container is scanned — so the
             // steps are all it carries.
-            CountModeBottomStrip(
-                steps = pillSteps,
-                currentStep = pillStepType,
-                isVoiceOverEnabled = isSoundEnabled,
-                circleSize = countModeStepSize(
-                    isTablet = isTabletDevice,
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .onSizeChanged { scanStripHeight = with(density) { it.height.toDp() } },
+            ) {
+                CountModeBottomStrip(
+                    steps = pillSteps,
+                    currentStep = pillStepType,
+                    isVoiceOverEnabled = isSoundEnabled,
+                    circleSize = countModeStepSize(
+                        isTablet = isTabletDevice,
+                        isLandscape = isLandscape,
+                    ),
                     isLandscape = isLandscape,
-                ),
-                isLandscape = isLandscape,
-                autoRevealCurrentStep = announcedScanStep != pillStepType,
-                onAutoRevealed = { announcedScanStep = pillStepType },
-                isFixed = countType == CountType.FIXED.toString(),
-                totalCount = 0,
-                targetCount = 0,
-                onShowHistory = {},
-                onProceed = {},
-                showViewAllCounts = false,
-                showCount = false,
-                // Portrait has nothing to put in the bar on SCAN, on any device — the
-                // steps float on the feed instead of sitting above an empty strip.
-                showBar = isLandscape,
-            )
+                    autoRevealCurrentStep = announcedScanStep != pillStepType,
+                    onAutoRevealed = { announcedScanStep = pillStepType },
+                    isFixed = countType == CountType.FIXED.toString(),
+                    totalCount = 0,
+                    targetCount = 0,
+                    onShowHistory = {},
+                    onProceed = {},
+                    showViewAllCounts = false,
+                    showCount = false,
+                    // Portrait has nothing to put in the bar on SCAN, on any device — the
+                    // steps float on the feed instead of sitting above an empty strip.
+                    showBar = isLandscape,
+                )
+            }
         }
 
         // ── QUEUE stage overlay ───────────────────────────────────────────────

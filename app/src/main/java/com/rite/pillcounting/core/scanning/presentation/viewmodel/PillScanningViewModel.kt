@@ -116,6 +116,7 @@ class PillScanningViewModel @Inject constructor(
     @Volatile private var isAnalyzingFrame = false
     private var isPaused = false
     private var idleJob: Job? = null
+    private var resetAvailabilityJob: Job? = null
     // Bumped on counting activity. Atomic because the analyzer thread and Main
     // both bump it.
     private val activityTicks = AtomicLong(0)
@@ -1244,20 +1245,25 @@ class PillScanningViewModel @Inject constructor(
     }
 
     /**
-     * Recomputes whether reset may be offered. A count that has reached the pharmacy
-     * system can no longer be thrown away locally.
+     * Keeps reset availability live. A count that has reached the pharmacy system can no
+     * longer be thrown away locally, and that can land while the screen is still up.
      */
-    fun refreshResetAvailability(batchId: Long) {
-        viewModelScope.launch {
+    fun observeResetAvailability(batchId: Long) {
+        resetAvailabilityJob?.cancel()
+        resetAvailabilityJob = viewModelScope.launch {
             val txnId = preferenceHelper.getTxnId()
-            val available = when {
-                txnId != 0L -> pillCountTxnDao.getById(txnId)?.isSynced != true
-                batchId != 0L -> batchDao.getById(batchId)
-                    ?.let { !it.isSynced && it.lastAckedChunkIndex == 0 } ?: true
+            when {
+                txnId != 0L -> pillCountTxnDao.observeById(txnId).collect { txn ->
+                    _uiState.update { it.copy(canReset = txn?.isSynced != true) }
+                }
+                batchId != 0L -> batchDao.observeById(batchId).collect { batch ->
+                    val available =
+                        batch?.let { b -> !b.isSynced && b.lastAckedChunkIndex == 0 } ?: true
+                    _uiState.update { it.copy(canReset = available) }
+                }
                 // Stock count with no batch has nowhere to have synced to.
-                else -> true
+                else -> _uiState.update { it.copy(canReset = true) }
             }
-            _uiState.update { it.copy(canReset = available) }
         }
     }
 
@@ -1809,7 +1815,8 @@ class PillScanningViewModel @Inject constructor(
                     ndc = txnInfo?.ndc.orEmpty(),
                     strength = txnInfo?.strength.orEmpty(),
                     dosageForm = txnInfo?.dosageForm.orEmpty(),
-                    bucket = txnInfo?.bucketId?.takeIf { b -> b.isNotBlank() } ?: "Normal",
+                    bucket = txnInfo?.bucketId?.takeIf { b -> b.isNotBlank() }
+                        ?: context.getString(R.string.default_bucket),
                     targetCount = txnInfo?.targetCount ?: 0,
                     showTargetCountDialog = shouldShowDialog,
                     drugImage = txnInfo?.drugImage.orEmpty()
@@ -2035,7 +2042,7 @@ class PillScanningViewModel @Inject constructor(
                 ndc = drug.ndc,
                 strength = drug.strength.orEmpty(),
                 dosageForm = drug.dosageForm.orEmpty(),
-                bucket = "Normal",
+                bucket = context.getString(R.string.default_bucket),
                 targetCount = 0,
                 drugImage = drug.drugImagePath.orEmpty(),
             )

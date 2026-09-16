@@ -167,6 +167,7 @@ class DispenseFlowViewModel @Inject constructor(
                     // Shown on the container-scan step's details bar.
                     drugImage = drug?.drugImagePath.orEmpty(),
                     ndcStrength = drug?.strength,
+                    ndcDosageForm = drug?.dosageForm,
                     selectedBucketId = txn.bucketId.orEmpty(),
                 )
             }
@@ -230,6 +231,7 @@ class DispenseFlowViewModel @Inject constructor(
                         // Shown on the container-scan step's details bar.
                         drugImage = drug?.drugImagePath.orEmpty(),
                         ndcStrength = drug?.strength,
+                        ndcDosageForm = drug?.dosageForm,
                         selectedBucketId = txn.bucketId.orEmpty(),
                     )
                 }
@@ -377,6 +379,7 @@ class DispenseFlowViewModel @Inject constructor(
                                 // sheet. Overwritten with the API value once the NDC
                                 // is scanned in PRE_NDC.
                                 ndcStrength = drug?.strength,
+                                ndcDosageForm = drug?.dosageForm,
                                 drugImage = drug?.drugImagePath.orEmpty(),
                                 // PMS may send no bucket — fall back to the label's.
                                 selectedBucketId = existingTxn.bucketId ?: bucket.orEmpty(),
@@ -444,6 +447,7 @@ class DispenseFlowViewModel @Inject constructor(
                 qty = targetCount.toString(),
                 isHazardous = drug.isHazardous,
                 ndcStrength = drug.strength,
+                ndcDosageForm = drug.dosageForm,
                 drugImage = drug.drugImagePath.orEmpty(),
                 selectedBucketId = bucket.orEmpty(),
             )
@@ -872,9 +876,13 @@ class DispenseFlowViewModel @Inject constructor(
     /**
      * Sends the flow back to the container scan after a reset. The Rx details stay —
      * it is the same order — only the container scan's own state is cleared.
+     *
+     * [resetCount] runs first and on this scope, so leaving the screen mid-reset cannot
+     * strand a wiped transaction with the stage still on COUNTING.
      */
-    fun returnToContainerScan() {
+    fun returnToContainerScan(resetCount: suspend () -> Unit = {}) {
         viewModelScope.launch {
+            resetCount()
             // The container scan replaced drugImage with the server's image URL, but
             // the details bar loads a local file. Take the drug row's own path back,
             // the same value the counting header reads.
@@ -899,6 +907,7 @@ class DispenseFlowViewModel @Inject constructor(
                     showNdcEquivalenceDialog = false,
                     drugImage = drug?.drugImagePath ?: it.drugImage,
                     ndcStrength = drug?.strength ?: it.ndcStrength,
+                    ndcDosageForm = drug?.dosageForm ?: it.ndcDosageForm,
                 )
             }
             logger.i("Reset: returning to container scan for txn=${_uiState.value.txnId}")
@@ -934,6 +943,7 @@ class DispenseFlowViewModel @Inject constructor(
                     // Shown on the container-scan step's details bar.
                     drugImage = drug?.drugImagePath ?: it.drugImage,
                     ndcStrength = drug?.strength ?: it.ndcStrength,
+                    ndcDosageForm = drug?.dosageForm ?: it.ndcDosageForm,
                     selectedBucketId = txn.bucketId ?: it.selectedBucketId,
                 )
             }
@@ -1206,6 +1216,7 @@ class DispenseFlowViewModel @Inject constructor(
                     // Shown on the container-scan step's details bar.
                     drugImage = drug?.drugImagePath ?: it.drugImage,
                     ndcStrength = drug?.strength ?: it.ndcStrength,
+                    ndcDosageForm = drug?.dosageForm ?: it.ndcDosageForm,
                     selectedBucketId = txn.bucketId ?: it.selectedBucketId,
                 )
             }

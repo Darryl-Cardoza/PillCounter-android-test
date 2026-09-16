@@ -428,6 +428,9 @@
     <string name="sealed_bottles">Sealed Bottles</string>
     <string name="opend_bottles">Opened Bottles</string>
     <string name="bucket">Bucket</string>
+    <!-- Bucket shown when the transaction carries none. Server bucket names come down
+         untranslated, so this stays "Normal" in every locale. -->
+    <string name="default_bucket">Normal</string>
     <string name="batch">Batch</string>
     <string name="batch_number">Batch #%1$d</string>
     <string name="no_last_batch_available">No last batch available</string>

@@ -1855,4 +1855,44 @@ class DispenseFlowViewModelTest {
             assertEquals("/local/drug.webp", vm.uiState.value.drugImage)
             assertEquals("20mg", vm.uiState.value.ndcStrength)
         }
+
+    @Test
+    fun `returnToContainerScan restores the dosage form from the drug row`() =
+        runTest(testDispatcher) {
+            // The SCAN bar falls back to a form icon when there is no local image, so
+            // the dosage form has to come back with the strength and the image path.
+            val vm = createViewModel()
+            every { preferenceHelper.getTxnId() } returns 7L
+            coEvery { pillCountTxnDao.getById(any()) } returns PillCountTxnEntity(
+                txnId = 7L, drugId = 42L, isDispense = true, status = CountStatus.PARTIAL,
+            )
+            coEvery { drugMasterDao.getDrugById(42L) } returns DrugMasterEntity(
+                drugId = 42L,
+                ndc = "NDC1",
+                drugName = "Drug",
+                drugImagePath = "/local/drug.webp",
+                strength = "20mg",
+                dosageForm = "CAPSULE",
+            )
+
+            vm.returnToContainerScan()
+            advanceUntilIdle()
+
+            assertEquals("CAPSULE", vm.uiState.value.ndcDosageForm)
+        }
+
+    @Test
+    fun `returnToContainerScan runs the reset prelude before flipping the stage`() =
+        runTest(testDispatcher) {
+            // The screen hands the count delete in as the prelude. It has to finish
+            // before the stage moves, or the SCAN strip composes against dying counts.
+            val vm = createViewModel()
+            var stageDuringPrelude: DispenseStage? = null
+
+            vm.returnToContainerScan { stageDuringPrelude = vm.uiState.value.stage }
+            advanceUntilIdle()
+
+            assertEquals(DispenseStage.PRE_RX, stageDuringPrelude)
+            assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
+        }
 }

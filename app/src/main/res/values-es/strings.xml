@@ -353,6 +353,7 @@
     <string name="sealed_bottles">Frascos sellados</string>
     <string name="opend_bottles">Frascos abiertos</string>
     <string name="bucket">Cubeta</string>
+    <string name="default_bucket">Normal</string>
     <string name="batch">Lote</string>
     <string name="batch_number">Lote n.º %1$d</string>
     <string name="no_last_batch_available">No hay último lote disponible</string>

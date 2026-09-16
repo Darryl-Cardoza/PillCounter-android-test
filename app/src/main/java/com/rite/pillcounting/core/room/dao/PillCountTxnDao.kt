@@ -117,6 +117,13 @@ interface PillCountTxnDao {
     suspend fun getById(id: Long): PillCountTxnEntity?
 
     /**
+     * Emits the transaction whenever its row changes. Used to keep reset availability
+     * live — a count can sync while the counting screen is still up.
+     */
+    @Query("SELECT * FROM pill_count_txn WHERE txnId = :id LIMIT 1")
+    fun observeById(id: Long): Flow<PillCountTxnEntity?>
+
+    /**
      * Observes all **partial transactions** for a specific [CountType],
      * along with their associated drug names and total pill counts.
      *

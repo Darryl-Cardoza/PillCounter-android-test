@@ -353,6 +353,7 @@
     <string name="sealed_bottles">Flacons scellés</string>
     <string name="opend_bottles">Flacons ouverts</string>
     <string name="bucket">Bac</string>
+    <string name="default_bucket">Normal</string>
     <string name="batch">Lot</string>
     <string name="batch_number">Lot n° %1$d</string>
     <string name="no_last_batch_available">Aucun dernier lot disponible</string>
