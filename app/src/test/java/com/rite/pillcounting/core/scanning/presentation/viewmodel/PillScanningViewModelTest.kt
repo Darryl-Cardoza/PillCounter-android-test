@@ -11,7 +11,6 @@ import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.room.models.BatchEntity
-import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
@@ -339,7 +338,7 @@ class PillScanningViewModelTest {
         every { preferenceHelper.getTxnId() } returns 7L
         coEvery { pillCountTxnDetailsDao.getImagePathsForTxn(7L) } returns emptyList()
 
-        viewModel.resetTransaction(stockBottleId = 0L)
+        viewModel.resetTransaction()
 
         coVerify(exactly = 1) { pillCountTxnDetailsDao.deleteAllForTxn(7L) }
         coVerify(exactly = 1) { pillCountTxnDao.resetForRecount(7L, any()) }
@@ -351,24 +350,8 @@ class PillScanningViewModelTest {
         every { preferenceHelper.getTxnId() } returns 7L
         coEvery { pillCountTxnDetailsDao.getImagePathsForTxn(7L) } returns listOf(image.absolutePath)
 
-        viewModel.resetTransaction(stockBottleId = 0L)
+        viewModel.resetTransaction()
 
-        assertFalse(image.exists())
-    }
-
-    @Test
-    fun `resetTransaction removes the stock bottle line and its images`() = runTest {
-        val image = File.createTempFile("bottle", ".jpg").apply { writeBytes(byteArrayOf(1)) }
-        every { preferenceHelper.getTxnId() } returns 0L
-        coEvery { bottleInfoDao.getById(55L) } returns BottleInfoEntity(
-            bottleId = 55L,
-            stockTxnId = 3L,
-            controlledImagePaths = listOf(image.absolutePath),
-        )
-
-        viewModel.resetTransaction(stockBottleId = 55L)
-
-        coVerify(exactly = 1) { bottleInfoDao.delete(55L) }
         assertFalse(image.exists())
     }
 
@@ -378,7 +361,7 @@ class PillScanningViewModelTest {
         coEvery { pillCountTxnDetailsDao.getImagePathsForTxn(7L) } returns emptyList()
         stageDetail(pillCount = 5)
 
-        viewModel.resetTransaction(stockBottleId = 0L)
+        viewModel.resetTransaction()
 
         @Suppress("UNCHECKED_CAST")
         val staged = getPrivateField("stagedDetails") as MutableList<PillCountTxnDetailsEntity>

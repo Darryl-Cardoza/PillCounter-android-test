@@ -80,15 +80,31 @@ fun InformationPanelSection(
                 )
             }
 
-            CountModeTopDetailsBar(
-                ndc = uiState.ndc,
-                drugName = drugName,
-                strength = uiState.strength,
-                bucket = uiState.bucket,
-                drugImage = uiState.drugImage,
-                showGloveIcon = showGloveIcon,
-                glovesDetected = glovesDetected,
-            )
+            // Phone portrait drops the image, strength and bucket onto a second row.
+            // Same bar as its counting steps, so the header does not change shape when
+            // the flow reaches the vial.
+            if (!isTablet && !isLandscape) {
+                CountModePhonePortraitDetailsBar(
+                    ndc = uiState.ndc,
+                    drugName = drugName,
+                    strength = uiState.strength,
+                    bucket = uiState.bucket,
+                    dosageForm = uiState.dosageForm,
+                    drugImage = uiState.drugImage,
+                    showGloveIcon = showGloveIcon,
+                    glovesDetected = glovesDetected,
+                )
+            } else {
+                CountModeTopDetailsBar(
+                    ndc = uiState.ndc,
+                    drugName = drugName,
+                    strength = uiState.strength,
+                    bucket = uiState.bucket,
+                    drugImage = uiState.drugImage,
+                    showGloveIcon = showGloveIcon,
+                    glovesDetected = glovesDetected,
+                )
+            }
 
             // Landscape puts the capture controls in a column down the right edge,
             // clear of the details bar and the strip. Portrait keeps them as a row

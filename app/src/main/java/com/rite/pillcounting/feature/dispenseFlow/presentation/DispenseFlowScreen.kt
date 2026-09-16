@@ -76,6 +76,7 @@ import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.DispenseQ
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModeLandscape
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.HistoryModePortrait
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.CountModeBottomStrip
+import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.CountModePhonePortraitDetailsBar
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.CountModeTopDetailsBar
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.countModeStepSize
 import com.rite.pillcounting.feature.dispenseFlow.presentation.compose.InformationPanelSection
@@ -117,9 +118,13 @@ import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNa
 private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
 
 // Space the SCAN step's bottom strip takes, so the live count circle can be lifted
-// clear of it. Phone portrait shows the steps alone; the rest add the bar below them.
-private val SCAN_STRIP_RESERVED_HEIGHT = 124.dp
+// clear of it. Portrait shows the steps alone on SCAN — no bar below them.
 private val SCAN_STEPS_ONLY_RESERVED_HEIGHT = 72.dp
+
+// Shown on the container scan when the transaction carries no bucket. Mirrors the
+// same default PillScanningViewModel.showTxnInfo applies on the counting steps, so
+// the bucket does not blank out when a reset lands back here.
+private const val DEFAULT_BUCKET = "Normal"
 
 private const val HAZARDOUS_TAG = "HazardousFlow"
 
@@ -325,7 +330,7 @@ fun DispenseFlowScreen(
         (dispenseState.drugName.isNotBlank() || dispenseState.ndc.isNotBlank())
 
     // Reset confirmation. Screen-local: nothing outside this screen needs it.
-    var showResetDialog by remember { mutableStateOf(false) }
+    var showResetDialog by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
 
     // Resume/HL7 entries jump to their real start stage (COUNTING / PRE_NDC)
@@ -875,10 +880,11 @@ fun DispenseFlowScreen(
                 scope.launch {
                     // Delete first, then move the stage — otherwise the SCAN strip
                     // renders against counts that are still on their way out.
-                    pillVm.resetTransaction(stockBottleId = dispenseState.stockBottleId)
+                    pillVm.resetTransaction()
                     // Land on SCAN before the stage flips. The stage effect would do
                     // it a frame later, by which time the strip has already composed
                     // against the step we just left and spent its announcement on it.
+                    // The effect repeating the call after the flip is harmless.
                     pillVm.enterScanStep()
                     dispenseVm.returnToContainerScan()
                     // The analyzer self-pauses after every read; re-arm it for the rescan.
@@ -1058,10 +1064,10 @@ fun DispenseFlowScreen(
                                 // Lift clear of the SCAN strip rather than padding
                                 // into it, so the circle keeps its size on short screens.
                                 .offset(
-                                    y = when {
-                                        dispenseState.stage != DispenseStage.PRE_NDC -> 0.dp
-                                        isTabletDevice -> -SCAN_STRIP_RESERVED_HEIGHT
-                                        else -> -SCAN_STEPS_ONLY_RESERVED_HEIGHT
+                                    y = if (dispenseState.stage == DispenseStage.PRE_NDC) {
+                                        -SCAN_STEPS_ONLY_RESERVED_HEIGHT
+                                    } else {
+                                        0.dp
                                     }
                                 )
                         },
@@ -1083,13 +1089,29 @@ fun DispenseFlowScreen(
         // transaction loaded this early.
         if (dispenseState.stage == DispenseStage.PRE_NDC && !showHistory && !awaitingResume) {
             if (showScanDetailsBar) {
-                CountModeTopDetailsBar(
-                    ndc = dispenseState.ndc,
-                    drugName = dispenseState.drugName,
-                    strength = dispenseState.ndcStrength.orEmpty(),
-                    bucket = dispenseState.selectedBucketId,
-                    drugImage = dispenseState.drugImage,
-                )
+                // Phone portrait drops the image, strength and bucket onto a second
+                // row. Same bar as the steps that follow, so the header does not
+                // change shape once the container is scanned.
+                if (!isTabletDevice && !isLandscape) {
+                    CountModePhonePortraitDetailsBar(
+                        ndc = dispenseState.ndc,
+                        drugName = dispenseState.drugName,
+                        strength = dispenseState.ndcStrength.orEmpty(),
+                        bucket = dispenseState.selectedBucketId.ifBlank { DEFAULT_BUCKET },
+                        dosageForm = dispenseState.ndcDosageForm.orEmpty(),
+                        drugImage = dispenseState.drugImage,
+                        showGloveIcon = false,
+                        glovesDetected = false,
+                    )
+                } else {
+                    CountModeTopDetailsBar(
+                        ndc = dispenseState.ndc,
+                        drugName = dispenseState.drugName,
+                        strength = dispenseState.ndcStrength.orEmpty(),
+                        bucket = dispenseState.selectedBucketId.ifBlank { DEFAULT_BUCKET },
+                        drugImage = dispenseState.drugImage,
+                    )
+                }
             }
             // The same bottom strip the counting steps use. Every counting widget is
             // off — nothing has been counted before a container is scanned — so the
@@ -1111,11 +1133,10 @@ fun DispenseFlowScreen(
                 onShowHistory = {},
                 onProceed = {},
                 showViewAllCounts = false,
-                showProgress = false,
                 showCount = false,
-                // Phone portrait: nothing would be left in the bar, so drop it and
-                // leave the steps floating on the feed.
-                showBar = isTabletDevice || isLandscape,
+                // Portrait has nothing to put in the bar on SCAN, on any device — the
+                // steps float on the feed instead of sitting above an empty strip.
+                showBar = isLandscape,
             )
         }
 

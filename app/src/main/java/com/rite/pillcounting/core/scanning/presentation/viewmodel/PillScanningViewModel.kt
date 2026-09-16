@@ -1211,19 +1211,21 @@ class PillScanningViewModel @Inject constructor(
      * Throws away everything collected for the active count so it can restart at the
      * container scan. Hard deletes only — nothing here is recoverable.
      *
-     * @param stockBottleId The stock-count bottle line to remove, or 0 for a dispense.
+     * Runs on viewModelScope rather than the caller's: leaving the screen mid-reset must
+     * not strand a txn whose details are deleted but whose flags are still set. The caller
+     * joins, so the stage flip still happens after the delete.
      */
-    suspend fun resetTransaction(stockBottleId: Long) {
+    suspend fun resetTransaction() {
+        viewModelScope.launch { performReset() }.join()
+    }
+
+    private suspend fun performReset() {
         val txnId = preferenceHelper.getTxnId()
         if (txnId != 0L) {
             // Files first: once the rows are gone their paths are unrecoverable.
             deleteFiles(pillCountTxnDetailsDao.getImagePathsForTxn(txnId))
             pillCountTxnDetailsDao.deleteAllForTxn(txnId)
             pillCountTxnDao.resetForRecount(txnId)
-        }
-        if (stockBottleId != 0L) {
-            bottleInfoDao.getById(stockBottleId)?.controlledImagePaths?.let { deleteFiles(it) }
-            bottleInfoDao.delete(stockBottleId)
         }
 
         stagedDetails.clear()
@@ -1238,7 +1240,7 @@ class PillScanningViewModel @Inject constructor(
                 stockCountSessionTotal = 0,
             )
         }
-        logger.i("Transaction reset. txnId=$txnId stockBottleId=$stockBottleId")
+        logger.i("Transaction reset. txnId=$txnId")
     }
 
     /**

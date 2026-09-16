@@ -301,15 +301,20 @@ internal fun BoxWithConstraintsScope.CountModeCenterCircle(
  */
 @Composable
 internal fun ResetCountButton(onClick: () -> Unit) {
-    Icon(
-        painter = painterResource(R.drawable.reset),
-        contentDescription = stringResource(R.string.cd_reset_count),
-        tint = MaterialTheme.colorScheme.primary,
+    // 48dp touch target on a destructive control; the icon itself stays 20dp.
+    Box(
         modifier = Modifier
-            .clickable { onClick() }
-            .padding(6.dp)
-            .size(responsiveDp(20.dp))
-    )
+            .size(48.dp)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.reset),
+            contentDescription = stringResource(R.string.cd_reset_count),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(responsiveDp(20.dp)),
+        )
+    }
 }
 
 /** The tappable "View all counts ›" link shown in the bottom bar. */
@@ -344,11 +349,8 @@ internal fun RowScope.BottomProgressAndCount(
     showProceed: Boolean,
     onProceed: () -> Unit,
     pushCountToEnd: Boolean = false,
-    // Off on the SCAN step, where nothing has been counted yet — the count itself
-    // still shows, so the target is visible before counting starts.
-    showProgress: Boolean = true,
 ) {
-    val hasProgress = showProgress && isFixed && targetCount > 0
+    val hasProgress = isFixed && targetCount > 0
     if (hasProgress) {
         val progress = (totalCount.toFloat() / targetCount.toFloat()).coerceIn(0f, 1f)
         LinearProgressIndicator(
@@ -405,7 +407,7 @@ internal fun RowScope.BottomProgressAndCount(
  *
  * Portrait floats the steps above the translucent bar; landscape puts everything
  * inline in one bar. SCAN switches off the widgets that need a transaction
- * ([showViewAllCounts], [showProgress], [showProceed]) and keeps the rest.
+ * ([showViewAllCounts], [showProceed]) and keeps the rest.
  */
 @Composable
 internal fun BoxScope.CountModeBottomStrip(
@@ -423,14 +425,13 @@ internal fun BoxScope.CountModeBottomStrip(
     onProceed: () -> Unit,
     titleOverrides: Map<StepState, Int> = emptyMap(),
     showViewAllCounts: Boolean = true,
-    showProgress: Boolean = true,
     // Off on the SCAN step: nothing is counted until a container is scanned.
     showCount: Boolean = true,
     showProceed: Boolean = false,
     // Null hides the reset control — on the SCAN step, and once the count has synced.
     onReset: (() -> Unit)? = null,
     // Portrait only: false drops the translucent bar and leaves the steps floating.
-    // The SCAN step on a phone has nothing to put in the bar.
+    // The SCAN step has nothing to put in the bar on any device.
     showBar: Boolean = true,
     // Rendered directly above the strip, inside the same bottom-aligned column —
     // the VIAL step puts its capture controls here.
@@ -493,7 +494,6 @@ internal fun BoxScope.CountModeBottomStrip(
                             targetCount = targetCount,
                             showProceed = showProceed,
                             onProceed = onProceed,
-                            showProgress = showProgress,
                         )
                     }
                 }
@@ -535,7 +535,6 @@ internal fun BoxScope.CountModeBottomStrip(
                                 showProceed = showProceed,
                                 onProceed = onProceed,
                                 pushCountToEnd = true,
-                                showProgress = showProgress,
                             )
                         }
                     }
@@ -553,7 +552,7 @@ internal fun BoxScope.CountModeBottomStrip(
 internal fun countModeStepSize(isTablet: Boolean, isLandscape: Boolean): Dp = when {
     isTablet -> 34.dp
     isLandscape -> 40.dp
-    else -> 36.dp
+    else -> 32.dp
 }
 
 /** A small label-over-value column used in the top details bar. */

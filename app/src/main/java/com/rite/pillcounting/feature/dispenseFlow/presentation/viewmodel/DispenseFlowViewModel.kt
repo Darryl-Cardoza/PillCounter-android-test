@@ -869,7 +869,6 @@ class DispenseFlowViewModel @Inject constructor(
         logger.i("[HAZARDOUS] NDC auto-confirmed: txn=$txnId substitute=$isSubstitute isHazardous=${state.isHazardous} → COUNTING")
     }
 
-    /** User confirmed they want to continue the existing PARTIAL transaction. */
     /**
      * Sends the flow back to the container scan after a reset. The Rx details stay —
      * it is the same order — only the container scan's own state is cleared.
@@ -906,6 +905,7 @@ class DispenseFlowViewModel @Inject constructor(
         }
     }
 
+    /** User confirmed they want to continue the existing PARTIAL transaction. */
     fun confirmContinueRx() {
         val txnId = _uiState.value.txnId
         viewModelScope.launch {

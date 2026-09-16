@@ -1,8 +1,8 @@
 package com.rite.pillcounting.feature.dispenseFlow.presentation.compose
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.BoxWithConstraintsScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -40,7 +40,7 @@ import com.rite.pillcounting.core.utils.compose.dosageFormIcon
 import java.io.File
 
 /** Step circle diameter for the phone-portrait stepper. */
-private val PHONE_PORTRAIT_STEP_SIZE = 36.dp
+private val PHONE_PORTRAIT_STEP_SIZE = 32.dp
 private val FORM_IMAGE_WIDTH = 64.dp
 private const val FORM_IMAGE_ASPECT = 4f / 3f
 
@@ -144,9 +144,12 @@ fun CountModePhonePortrait(
  * Phone-portrait top details bar: NDC + drug name stacked above a
  * Form / Strength / Bucket row. The other form factors keep the single-row
  * [CountModeTopDetailsBar].
+ *
+ * Every phone-portrait step uses this one — the counting steps, the vial capture
+ * and the container scan — so the header keeps its shape for the whole flow.
  */
 @Composable
-private fun BoxWithConstraintsScope.CountModePhonePortraitDetailsBar(
+internal fun BoxScope.CountModePhonePortraitDetailsBar(
     ndc: String,
     drugName: String,
     strength: String,
