@@ -169,19 +169,18 @@ class MainActivityViewModelTest {
         unmockkAll()
     }
 
-    private fun createViewModel() =
-        MainActivityViewModel(
-            repository,
-            preferenceHelper,
-            txnDao,
-            batchDao,
-            stockTxnDao,
-            bottleInfoDao,
-            hl7ServiceManager,
-            hl7EventHandler,
-            sessionLockController,
-            sessionHealthController,
-        )
+    private fun createViewModel() = MainActivityViewModel(
+        repository,
+        preferenceHelper,
+        txnDao,
+        batchDao,
+        stockTxnDao,
+        bottleInfoDao,
+        hl7ServiceManager,
+        hl7EventHandler,
+        sessionLockController,
+        sessionHealthController,
+    )
 
     // ─────────────────────────── init / theme loading ───────────────────────────
 
@@ -238,7 +237,7 @@ class MainActivityViewModelTest {
     @Test
     fun `fetch success with theme persists theme and updates state`() = runTest(testDispatcher) {
         coEvery { repository.getApplicationSettings() } returns apiResponse(
-            dto(isMaintenanceMode = true)
+            dto(isMaintenanceMode = true),
         )
 
         val vm = createViewModel()
@@ -268,7 +267,7 @@ class MainActivityViewModelTest {
     @Test
     fun `fetch with non-blank barcode format saves regex`() = runTest(testDispatcher) {
         coEvery { repository.getApplicationSettings() } returns apiResponse(
-            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "REGEX123"))
+            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "REGEX123")),
         )
 
         val vm = createViewModel()
@@ -280,7 +279,7 @@ class MainActivityViewModelTest {
     @Test
     fun `fetch with blank barcode format does not save regex`() = runTest(testDispatcher) {
         coEvery { repository.getApplicationSettings() } returns apiResponse(
-            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "   "))
+            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "   ")),
         )
 
         val vm = createViewModel()
@@ -434,7 +433,7 @@ class MainActivityViewModelTest {
         verify {
             preferenceHelper.saveHl7Config(
                 pmsHost = "_ritepmsserver._tcp",
-                pillCounterHost = "_pillcounting._tcp"
+                pillCounterHost = "_pillcounting._tcp",
             )
         }
     }
@@ -560,9 +559,7 @@ class MainActivityViewModelTest {
             txnId = 5L,
             isDispense = true,
             status = CountStatus.COMPLETED,
-            bottleInfoListJson = BottleInfoJson.encode(
-                listOf(BottleInfo(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png"))
-            ),
+            bottleInfoListJson = BottleInfoJson.encode(listOf(BottleInfo(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png"))),
         )
         coEvery { txnDao.getTransactionsBefore(any()) } returns listOf(txn)
         coEvery { txnDao.getTransactionDetailsImages(5L) } returns listOf("C:/nonexistent/detail.png")
