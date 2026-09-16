@@ -1,7 +1,6 @@
 ﻿package com.rite.pillcounting.feature.hl7.notification
 
 
-import Screen
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager

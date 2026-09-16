@@ -1,6 +1,5 @@
 ﻿package com.rite.pillcounting.navigation
 
-import Screen
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
 import androidx.compose.runtime.Composable

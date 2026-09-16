@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.room.models.dtos
 
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 
 data class PillCountWithDrugAndTotal(

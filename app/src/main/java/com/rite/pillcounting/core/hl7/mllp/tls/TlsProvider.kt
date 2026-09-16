@@ -3,7 +3,10 @@ package com.rite.pillcounting.core.hl7.mllp.tls
 import android.content.Context
 import java.security.SecureRandom
 import java.security.cert.X509Certificate
-import javax.net.ssl.*
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 
 object TlsProvider {
 

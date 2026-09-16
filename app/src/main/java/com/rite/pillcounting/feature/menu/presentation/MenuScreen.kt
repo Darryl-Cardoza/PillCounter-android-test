@@ -1,6 +1,5 @@
 ﻿package com.rite.pillcounting.feature.menu.presentation
 
-import Screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize

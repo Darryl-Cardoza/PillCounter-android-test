@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.api.interfaceDetail
 
-import com.rite.pillcounting.BuildConfig
 import com.rite.pillcounting.core.security.RuntimeUnit
 import com.rite.pillcounting.core.utils.constants.URLConstant
 import okhttp3.Interceptor

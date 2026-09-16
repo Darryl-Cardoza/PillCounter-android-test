@@ -1,6 +1,5 @@
 package com.rite.pillcounting.core.scanning.data
 
-import com.google.gson.Gson
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.core.scanning.data.remote.IDrugAPI

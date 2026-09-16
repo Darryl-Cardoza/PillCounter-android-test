@@ -36,7 +36,6 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForPillCountingScreen
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
-import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable
 fun CountModePortrait(
