@@ -6,7 +6,9 @@ import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.flow.flowOf
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -117,5 +119,48 @@ class SessionLockControllerTest {
         assertFalse(controller.onAppLaunch())
 
         assertFalse(controller.isLocked.value)
+    }
+
+    // ───────────────────────── verified face user ─────────────────────────
+
+    @Test
+    fun `onFaceVerified records who verified into this session`() {
+        val controller = controller(hasEnabledProfile = true)
+
+        controller.onFaceVerified(7L)
+
+        assertEquals(7L, controller.verifiedFaceProfileId.value)
+    }
+
+    @Test
+    fun `unlock keeps the verified user - it runs right after a successful verify`() {
+        val controller = controller(hasEnabledProfile = true)
+        controller.onFaceVerified(7L)
+
+        controller.unlock()
+
+        assertEquals(7L, controller.verifiedFaceProfileId.value)
+    }
+
+    @Test
+    fun `lockNow clears the verified user so the next session must verify again`() {
+        val controller = controller(hasEnabledProfile = true)
+        controller.onFaceVerified(7L)
+
+        controller.lockNow()
+
+        assertNull(controller.verifiedFaceProfileId.value)
+    }
+
+    @Test
+    fun `onAppLaunch clears the verified user even when it cannot lock`() {
+        // A foreground service keeps this singleton alive across an app kill, so a relaunch
+        // would otherwise inherit the previous session's operator.
+        val controller = controller(hasEnabledProfile = true, isLoggedIn = false)
+        controller.onFaceVerified(7L)
+
+        assertFalse(controller.onAppLaunch())
+
+        assertNull(controller.verifiedFaceProfileId.value)
     }
 }

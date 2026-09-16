@@ -357,4 +357,37 @@ class PillCountTxnDetailsDaoTest {
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, type = null, createdAt = 100L))
         assertNull(dao.getLatestType(1L))
     }
+
+    // ───────────────────────── getPillCountForStep ─────────────────────────
+
+    @Test
+    fun `getPillCountForStep sums only rows of that step`() = runTest {
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 60, type = StepState.CONTAINER_INITIATE.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 20, type = StepState.TARGET_VERIFICATION.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 3, type = StepState.TARGET_VERIFICATION.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 23, type = StepState.TARGET_REVERIFICATION.name))
+
+        assertEquals(23, dao.getPillCountForStep(1L, StepState.TARGET_VERIFICATION.name))
+        // The all-steps sum still spans every row — other callers rely on that.
+        assertEquals(106, dao.getTotalPillCountForTxn(1L))
+    }
+
+    @Test
+    fun `getPillCountForStep ignores soft-deleted rows`() = runTest {
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 20, type = StepState.TARGET_VERIFICATION.name))
+        dao.insert(
+            PillCountTxnDetailsEntity(
+                txnId = 1L, pillCount = 5, type = StepState.TARGET_VERIFICATION.name, isDeleted = true
+            )
+        )
+
+        assertEquals(20, dao.getPillCountForStep(1L, StepState.TARGET_VERIFICATION.name))
+    }
+
+    @Test
+    fun `getPillCountForStep returns zero when the step has no rows`() = runTest {
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 60, type = StepState.CONTAINER_INITIATE.name))
+
+        assertEquals(0, dao.getPillCountForStep(1L, StepState.TARGET_VERIFICATION.name))
+    }
 }

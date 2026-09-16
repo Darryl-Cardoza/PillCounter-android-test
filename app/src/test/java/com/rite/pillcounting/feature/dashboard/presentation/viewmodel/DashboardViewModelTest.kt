@@ -26,6 +26,8 @@ import com.rite.pillcounting.feature.dashboard.domain.model.UserSettings
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import com.rite.pillcounting.feature.history.domain.model.TxnWithDrugDto
+import com.rite.pillcounting.core.faceAuth.data.OperatorName
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -58,6 +60,7 @@ class DashboardViewModelTest {
     private lateinit var userDetailRepository: IUserDetailRepository
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var userDao: UserDao
+    private lateinit var operatorNameProvider: OperatorNameProvider
     private lateinit var batchDao: BatchDao
     private lateinit var pillCountTxnDao: PillCountTxnDao
     private lateinit var hl7EventHandler: Hl7EventHandler
@@ -87,6 +90,7 @@ class DashboardViewModelTest {
         userDetailRepository = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
         userDao = mockk(relaxed = true)
+        operatorNameProvider = mockk(relaxed = true)
         batchDao = mockk(relaxed = true)
         pillCountTxnDao = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
@@ -110,6 +114,8 @@ class DashboardViewModelTest {
         every { preferenceHelper.isHl7Enabled() } returns false
 
         every { userDao.observeByLocalId(any()) } returns flowOf(null)
+        // Relaxed mocks hand back a mock Flow, which never emits — give every test a real one.
+        every { operatorNameProvider.observe() } returns flowOf(OperatorName(null, null))
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 5L
         every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(emptyList())
@@ -130,6 +136,7 @@ class DashboardViewModelTest {
         userDetailRepository,
         preferenceHelper,
         userDao,
+        operatorNameProvider,
         batchDao,
         pillCountTxnDao,
         hl7EventHandler,
@@ -301,6 +308,30 @@ class DashboardViewModelTest {
 
         assertEquals(listOf("x", "y"), vm.getBucketList())
     }
+
+    // ─────────────────────────────── observeOperatorName ───────────────────────────────
+
+    @Test
+    fun `operatorName carries the face user when one is enabled`() = runTest(testDispatcher) {
+        every { operatorNameProvider.observe() } returns flowOf(OperatorName("Bruce", "Wayne"))
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals("Bruce Wayne", vm.uiState.value.operatorName)
+    }
+
+    @Test
+    fun `operatorName falls back to the account name when no profile is enabled`() =
+        runTest(testDispatcher) {
+            // The provider already applies the fallback; the dashboard just renders it.
+            every { operatorNameProvider.observe() } returns flowOf(OperatorName("Jane", "Doe"))
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            assertEquals("Jane Doe", vm.uiState.value.operatorName)
+        }
 
     // ─────────────────────────────── observeUserDetail / toUserDetail ───────────────────────────────
 

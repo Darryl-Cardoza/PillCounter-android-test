@@ -12,6 +12,8 @@ import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
+import com.rite.pillcounting.core.faceAuth.data.OperatorName
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
@@ -57,6 +59,7 @@ class InventoryScanViewModelTest {
     private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
+    private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
@@ -89,6 +92,7 @@ class InventoryScanViewModelTest {
         bottleInfoDao = bottleInfoDao,
         drugMasterDao = drugMasterDao,
         preferenceHelper = preferenceHelper,
+        operatorNameProvider = operatorNameProvider,
         barcodeDecoder = barcodeDecoder,
         drugRepository = drugRepository,
         hl7Repository = hl7Repository,
@@ -345,5 +349,19 @@ class InventoryScanViewModelTest {
 
         assertTrue(vm.batchEnded.value)
         coVerify(exactly = 0) { batchDao.markAsCompleted(any(), any()) }
+    }
+
+    // ─────────────────────────── batch operator name ───────────────────────────
+
+    @Test
+    fun `a scanned line writes the operator name onto the batch`() = runTest {
+        setupScanMocks()
+        coEvery { operatorNameProvider() } returns OperatorName("Bruce", "Wayne")
+        advanceUntilIdle()
+
+        viewModel.onBarcodeDetected(TEST_NDC)
+        advanceUntilIdle()
+
+        coVerify { stockTxnDao.updateBatchUserName(any(), "Bruce Wayne") }
     }
 }

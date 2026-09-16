@@ -80,7 +80,10 @@ internal fun buildTerminalUserLine(
     val activeTerminalName = uiState.selectedTerminalName?.takeIf { it.isNotBlank() }
     // Terminal is HL7/PMS-driven — omit it from the top bar when HL7 is disabled.
     val terminal = if (includeTerminal) activeTerminalName else null
-    val user = listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
+    // The face user at the device wins over the account name — same rule HL7 uses for its
+    // operator. Falls back to the account only before operatorName's first emission.
+    val user = uiState.operatorName?.ifBlank { null }
+        ?: listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }
 

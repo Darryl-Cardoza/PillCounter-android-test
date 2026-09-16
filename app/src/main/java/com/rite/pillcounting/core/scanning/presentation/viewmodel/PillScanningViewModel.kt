@@ -16,6 +16,7 @@ import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.AppDatabase
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
@@ -97,6 +98,7 @@ class PillScanningViewModel @Inject constructor(
     private val bottleInfoDao: BottleInfoDao,
     private val batchDao: BatchDao,
     private val userDao: UserDao,
+    private val operatorNameProvider: OperatorNameProvider,
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao,
     private val locationProvider: LocationProvider,
     private val drugMasterDao: DrugMasterDao,
@@ -573,7 +575,7 @@ class PillScanningViewModel @Inject constructor(
                             stockTxnDao.refreshBatchTotalNdcs(effectiveBatchId)
                             stockTxnDao.updateBatchUserName(
                                 effectiveBatchId,
-                                preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
+                                operatorNameProvider().display()
                             )
                             effectiveBatchId to effectiveStockTxnId
                         }
@@ -1710,8 +1712,20 @@ class PillScanningViewModel @Inject constructor(
             if (total == 0) {
                 return@launch
             }
+            // Only the prescribed-count step decides partial vs complete. The pour-out and
+            // recount steps count other pills and used to push this past the target.
+            val dispensedCount = pillCountTxnDetailsDao
+                .getPillCountForStep(txnId, StepState.TARGET_VERIFICATION.name)
             val status =
-                if (txn.isDispense && txn.targetCount != null && total < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+                if (txn.isDispense && txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+
+            // Stamp who ran this count now, not at send time: an unsynced txn resent later
+            // must still report this operator, not whoever is at the device then.
+            // MUST be written before the status flips to COMPLETED — that write wakes
+            // observePendingHl7Txn, whose resend sweep reads this row and would build a
+            // message with a blank operator if it got there first.
+            val operator = operatorNameProvider()
+            pillCountTxnDao.updateOperatorName(txnId, operator.firstName, operator.lastName)
 
             if (txn.isComingFromHL7 == true) {
                 pillCountTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)

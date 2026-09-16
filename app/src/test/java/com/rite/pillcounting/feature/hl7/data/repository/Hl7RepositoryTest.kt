@@ -8,7 +8,7 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
@@ -87,7 +87,7 @@ class Hl7RepositoryTest {
     private lateinit var pillCountTxnDao: PillCountTxnDao
     private lateinit var stockTxnDao: StockTxnDao
     private lateinit var bottleInfoDao: BottleInfoDao
-    private lateinit var userDao: UserDao
+    private lateinit var operatorNameProvider: OperatorNameProvider
     private lateinit var batchDao: BatchDao
     private lateinit var hl7MessageSender: Hl7MessageSender
     private lateinit var drugRepository: DrugRepository
@@ -120,7 +120,7 @@ class Hl7RepositoryTest {
         pillCountTxnDao = mockk(relaxed = true)
         stockTxnDao = mockk(relaxed = true)
         bottleInfoDao = mockk(relaxed = true)
-        userDao = mockk(relaxed = true)
+        operatorNameProvider = mockk(relaxed = true)
         batchDao = mockk(relaxed = true)
         hl7MessageSender = mockk(relaxed = true)
         drugRepository = mockk(relaxed = true)
@@ -155,7 +155,7 @@ class Hl7RepositoryTest {
         pillCountTxnDao = pillCountTxnDao,
         stockTxnDao = stockTxnDao,
         bottleInfoDao = bottleInfoDao,
-        userDao = userDao,
+        operatorNameProvider = operatorNameProvider,
         batchDao = batchDao,
         hl7MessageSender = hl7MessageSender,
         drugRepository = drugRepository,
@@ -239,6 +239,8 @@ class Hl7RepositoryTest {
         txnId: Long = 1L,
         drugId: Long? = 5L,
         isDispense: Boolean = true,
+        operatorFirstName: String? = null,
+        operatorLastName: String? = null,
     ) = PillCountTxnEntity(
         txnId = txnId,
         localId = 1L,
@@ -246,6 +248,8 @@ class Hl7RepositoryTest {
         isDispense = isDispense,
         status = CountStatus.PARTIAL,
         rxNo = "RX1",
+        operatorFirstName = operatorFirstName,
+        operatorLastName = operatorLastName,
     )
 
     // ─────────────────────────────── init / observe ───────────────────────────────
@@ -369,7 +373,6 @@ class Hl7RepositoryTest {
         coEvery { txnDao.getById(1L) } returns txnEntity(drugId = 5L)
         coEvery { txnDetailsDao.getAllForTxn("1") } returns
             listOf(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5))
-        coEvery { userDao.getByLocalId(any()) } returns null
         coEvery { locationProvider.getCurrentLocationAsString() } returns "loc"
         coEvery { drugMasterDao.getDrugById(5L) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
@@ -380,20 +383,21 @@ class Hl7RepositoryTest {
     }
 
     /**
-     * The operator is resolved through the transaction's localId, which is a FK to
-     * UserEntity.localId. It used to be looked up with getByUserId — a Room row id compared
-     * against a JWT-derived string — so it never resolved and RXD-10 went out empty, leaving the
-     * Companion's Operator column blank on every dispense.
+     * The operator is stamped onto the transaction when the count completes, so a resend
+     * reports whoever ran the count. RXD-10 carries the name only — PMS is sent no
+     * operator id.
      */
     @Test
-    fun `buildAndSendSuccessfulDispense puts the operator in RXD-10 as ID caret family caret given`() =
+    fun `buildAndSendSuccessfulDispense puts the operator in RXD-10 as caret family caret given`() =
         runTest(testDispatcher) {
             val repo = createRepo()
-            coEvery { txnDao.getById(1L) } returns txnEntity(drugId = 5L)
+            coEvery { txnDao.getById(1L) } returns txnEntity(
+                drugId = 5L,
+                operatorFirstName = "Yash",
+                operatorLastName = "Wadajkar",
+            )
             coEvery { txnDetailsDao.getAllForTxn("1") } returns
                 listOf(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5))
-            coEvery { userDao.getByLocalId(1L) } returns
-                UserEntity(localId = 1L, userId = "u-77", fName = "Yash", lName = "Wadajkar")
             coEvery { locationProvider.getCurrentLocationAsString() } returns "loc"
             coEvery { drugMasterDao.getDrugById(5L) } returns
                 DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
@@ -405,7 +409,7 @@ class Hl7RepositoryTest {
 
             val rxd = sent.captured.split("\r").first { it.startsWith("RXD|") }
             val rxd10 = rxd.split("|")[10]
-            assertEquals("u-77^Wadajkar^Yash", rxd10)
+            assertEquals("^Wadajkar^Yash", rxd10)
         }
 
     // ─────────────────────────────── buildAndSendInventoryResponse ───────────────────────────────
@@ -613,7 +617,6 @@ class Hl7RepositoryTest {
         // FIXED -> buildAndSendSuccessfulDispense
         coEvery { txnDao.getById(1L) } returns txnEntity(txnId = 1L, drugId = 5L)
         coEvery { txnDetailsDao.getAllForTxn("1") } returns emptyList()
-        coEvery { userDao.getByLocalId(any()) } returns null
         coEvery { drugMasterDao.getDrugById(5L) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
 
@@ -676,7 +679,6 @@ class Hl7RepositoryTest {
         coEvery { txnDao.getById(1L) } returns txnEntity(drugId = 5L)
         coEvery { txnDetailsDao.getAllForTxn("1") } returns
             listOf(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5))
-        coEvery { userDao.getByLocalId(any()) } returns null
         coEvery { locationProvider.getCurrentLocationAsString() } returns "loc"
         coEvery { drugMasterDao.getDrugById(5L) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
@@ -694,7 +696,6 @@ class Hl7RepositoryTest {
         coEvery { txnDao.getById(1L) } returns txnEntity(drugId = 5L)
         coEvery { txnDetailsDao.getAllForTxn("1") } returns
             listOf(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5))
-        coEvery { userDao.getByLocalId(any()) } returns null
         coEvery { locationProvider.getCurrentLocationAsString() } returns "loc"
         coEvery { drugMasterDao.getDrugById(5L) } returns
             DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")

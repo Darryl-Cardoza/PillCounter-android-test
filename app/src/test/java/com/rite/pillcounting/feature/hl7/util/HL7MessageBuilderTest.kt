@@ -90,7 +90,7 @@ class HL7MessageBuilderTest {
     @Test
     fun `buildDispenseMessage with rxNo null uses txnId and adds barcode obx`() {
         val details = listOf(
-            detail(txnDetailsId = 1L, pillCount = 10, type = "fixed", imagePath = "/a/b/img1.png"),
+            detail(txnDetailsId = 1L, pillCount = 10, type = StepState.TARGET_VERIFICATION.name, imagePath = "/a/b/img1.png"),
             // null pillCount/type/imagePath -> defaults 0/UNKNOWN/""
             detail(txnDetailsId = 2L, pillCount = null, type = null, imagePath = null),
         )
@@ -107,7 +107,6 @@ class HL7MessageBuilderTest {
             drugCode = "12345-678-90",
             scannedDrugCode = "12345-678-90",
             drugName = "Atorvastatin",
-            pharmacistId = "PH1",
             pharmacistName = "John",
             location = "Counter1",
         )
@@ -162,7 +161,6 @@ class HL7MessageBuilderTest {
             drugCode = "NDC1",
             scannedDrugCode = "NDC1",
             drugName = "Drug",
-            pharmacistId = null,
             pharmacistName = null,
             location = null,
         )
@@ -189,7 +187,7 @@ class HL7MessageBuilderTest {
             note = null,
         )
         val details = listOf(
-            detail(pillCount = 20, type = "fixed", imagePath = "/a/img.png"),
+            detail(pillCount = 20, type = StepState.TARGET_VERIFICATION.name, imagePath = "/a/img.png"),
         )
 
         val raw = HL7MessageBuilder.buildDispenseMessage(
@@ -198,7 +196,6 @@ class HL7MessageBuilderTest {
             drugCode = "12345-678-90",
             scannedDrugCode = "12345-678-90",
             drugName = "Atorvastatin",
-            pharmacistId = "PH1",
             pharmacistName = "Jane Doe",
             pharmacistGivenName = "Jane",
             pharmacistFamilyName = "Doe",
@@ -265,7 +262,6 @@ class HL7MessageBuilderTest {
             drugCode = "11111-222-33",
             scannedDrugCode = "11111-222-33",
             drugName = "Drug",
-            pharmacistId = null,
             pharmacistName = null,
             config = HL7Config.current(
                 selectedTerminalName = "PILLCOUNTER",
@@ -307,7 +303,6 @@ class HL7MessageBuilderTest {
             drugCode = "NDC",
             scannedDrugCode = "NDC",
             drugName = "Drug",
-            pharmacistId = null,
             pharmacistName = null,
             config = HL7Config.current(
                 selectedTerminalName = "PILLCOUNTER",
@@ -321,6 +316,69 @@ class HL7MessageBuilderTest {
         val fields = zuiLine.split("|")
         // ZUI-8 has no images -> field emitted empty (drugImages was null).
         assertEquals("", fields.getOrElse(8) { "" })
+    }
+
+    // ============================ DISPENSED QUANTITY ============================
+
+    @Test
+    fun `buildDispenseMessage emits RXD-10 as name only with no id component`() {
+        val details = listOf(
+            detail(txnDetailsId = 1L, pillCount = 12, type = StepState.TARGET_VERIFICATION.name)
+        )
+
+        val raw = HL7MessageBuilder.buildDispenseMessage(
+            txn = txn(txnId = 777L, rxNo = "RX-1", note = null),
+            txnDetails = details,
+            drugCode = "12345-678-90",
+            scannedDrugCode = "12345-678-90",
+            drugName = "Atorvastatin",
+            pharmacistName = "Jane Doe",
+            pharmacistGivenName = "Jane",
+            pharmacistFamilyName = "Doe",
+        )
+
+        val rxd = raw.lineSequence().first { it.startsWith("RXD|") }.split("|")
+        assertEquals("^Doe^Jane", rxd[10])
+    }
+
+    @Test
+    fun `buildDispenseMessage counts only the prescribed-count step`() {
+        // One dispense of 23, surrounded by steps that measure other things:
+        // a 60-pill pour-out, a 23-pill recount of the same pills, and a remainder count.
+        val details = listOf(
+            detail(txnDetailsId = 1L, pillCount = 60, type = StepState.CONTAINER_INITIATE.name),
+            detail(txnDetailsId = 2L, pillCount = 20, type = StepState.TARGET_VERIFICATION.name),
+            detail(txnDetailsId = 3L, pillCount = 3, type = StepState.TARGET_VERIFICATION.name),
+            detail(txnDetailsId = 4L, pillCount = 23, type = StepState.TARGET_REVERIFICATION.name),
+            detail(txnDetailsId = 5L, pillCount = 0, type = StepState.VIAL.name),
+            detail(txnDetailsId = 6L, pillCount = 37, type = StepState.CONTAINER_PENDING.name),
+        )
+        val txn = txn(
+            txnId = 900L,
+            rxNo = "RX-COUNT",
+            barcodeImage = "/storage/images/barcode_900.png",
+            bottleTxnDetailsIds = listOf(1L, 2L, 3L, 4L, 5L, 6L),
+            note = null,
+        )
+
+        val raw = HL7MessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "00054-0244-24",
+            scannedDrugCode = "00054-0244-24",
+            drugName = "codeine sulfate 30mg tablet",
+            pharmacistName = null,
+        )
+
+        // RXD-4 actualDispenseAmount: 20 + 3, not 143.
+        assertEquals("23", raw.lineSequence().first { it.startsWith("RXD|") }.split("|")[4])
+        // ZSN-7 quantityFromThisStockItem follows the same rule.
+        assertEquals("23", raw.lineSequence().first { it.startsWith("ZSN|") }.split("|")[7])
+        assertTrue(raw.contains("Total Count: 23"))
+
+        // Every step still gets its image OBX row — only the counting changed.
+        assertTrue(raw.contains("before_dispense_stock_bottle_count"))
+        assertTrue(raw.contains("dispense_recount"))
     }
 
     // ============================ INVENTORY ============================

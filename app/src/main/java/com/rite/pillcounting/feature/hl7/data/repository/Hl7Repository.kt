@@ -9,7 +9,7 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.room.dao.UserDao
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
@@ -65,7 +65,7 @@ class Hl7Repository @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
     private val stockTxnDao: StockTxnDao,
     private val bottleInfoDao: BottleInfoDao,
-    private val userDao: UserDao,
+    private val operatorNameProvider: OperatorNameProvider,
     private val batchDao: BatchDao,
     private val hl7MessageSender: Hl7MessageSender,
     private val drugRepository: DrugRepository,
@@ -210,14 +210,6 @@ class Hl7Repository @Inject constructor(
 //        if (totalCount == 0) {
 //            return
 //        }
-        // txn.localId is a FK to UserEntity.localId, not the business userId. Resolving it with
-        // getByUserId compared a Room row id against a JWT-derived string, so it never matched:
-        // the operator was always null, RXD-10 was omitted, and every dispense arrived at the
-        // Companion with a blank Operator column.
-        val user = txn.localId?.let { userDao.getByLocalId(it) }
-        if (user == null) {
-            logger.w("Dispense $txnId has no resolvable operator (localId=${txn.localId}) — RXD-10 will be empty")
-        }
         val location = locationProvider.getCurrentLocationAsString()
 
         val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
@@ -246,11 +238,10 @@ class Hl7Repository @Inject constructor(
             drugCode = drug.ndc,
             scannedDrugCode = scannedNdc,
             drugName = drug.drugName ?: "",
-            pharmacistId = user?.userId,
-            pharmacistName = listOfNotNull(user?.fName, user?.lName)
+            pharmacistName = listOfNotNull(txn.operatorFirstName, txn.operatorLastName)
                 .joinToString(" "),
-            pharmacistFamilyName = user?.lName,
-            pharmacistGivenName = user?.fName,
+            pharmacistFamilyName = txn.operatorLastName,
+            pharmacistGivenName = txn.operatorFirstName,
             location = location,
             isControlledSubstance = isControlledDrugType(drug.drugType),
             isHazardousDrug = drug.isHazardous,
@@ -934,10 +925,7 @@ class Hl7Repository @Inject constructor(
 
         // Stock txns added → persist the batch's live NDC total and running user.
         stockTxnDao.refreshBatchTotalNdcs(batchId)
-        stockTxnDao.updateBatchUserName(
-            batchId,
-            preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
-        )
+        stockTxnDao.updateBatchUserName(batchId, operatorNameProvider().display())
 
         logger.i("Processed ${resolvedItems.size} inventory items for batchId: $batchId")
 

@@ -8,10 +8,14 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.AppDatabase
+import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
+import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.faceAuth.data.OperatorName
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
@@ -26,6 +30,7 @@ import com.rite.pillcounting.util.MainDispatcherRule
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.unmockkAll
@@ -62,6 +67,7 @@ class PillScanningViewModelEventTest {
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
     private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
+    private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
@@ -94,6 +100,7 @@ class PillScanningViewModelEventTest {
             bottleInfoDao = bottleInfoDao,
             batchDao = batchDao,
             userDao = userDao,
+            operatorNameProvider = operatorNameProvider,
             pillCountTxnDetailsDao = pillCountTxnDetailsDao,
             locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
@@ -258,5 +265,72 @@ class PillScanningViewModelEventTest {
 
         assertTrue(viewModel.uiState.value.detectedPills.isEmpty())
         assertTrue(viewModel.trayDetections.value.isEmpty())
+    }
+
+    // ─────────────────────────── operator stamp on completion ───────────────────────────
+
+    @Test
+    fun `completing a count stamps the operator name on the txn`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 42L
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(42L) } returns 5
+        coEvery { pillCountTxnDao.getById(42L) } returns PillCountTxnEntity(
+            txnId = 42L,
+            isDispense = true,
+            status = CountStatus.PARTIAL,
+            targetCount = 5,
+        )
+        coEvery { operatorNameProvider() } returns OperatorName("Bruce", "Wayne")
+
+        viewModel.onEvent(PillScanningEvent.NoteSkip)
+        advanceUntilIdle()
+
+        coVerify { pillCountTxnDao.updateOperatorName(42L, "Bruce", "Wayne", any()) }
+    }
+
+    @Test
+    fun `operator is stamped before the status write that wakes the resend sweep`() = runTest {
+        // observePendingHl7Txn fires on status = COMPLETED. If the operator lands after
+        // that write, the resend sweep can read the row first and send a blank operator.
+        every { preferenceHelper.getTxnId() } returns 44L
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(44L) } returns 5
+        coEvery {
+            pillCountTxnDetailsDao.getPillCountForStep(44L, StepState.TARGET_VERIFICATION.name)
+        } returns 5
+        coEvery { pillCountTxnDao.getById(44L) } returns PillCountTxnEntity(
+            txnId = 44L,
+            isDispense = true,
+            status = CountStatus.PARTIAL,
+            targetCount = 5,
+        )
+        coEvery { operatorNameProvider() } returns OperatorName("Bruce", "Wayne")
+
+        viewModel.onEvent(PillScanningEvent.NoteSkip)
+        advanceUntilIdle()
+
+        coVerifyOrder {
+            pillCountTxnDao.updateOperatorName(44L, "Bruce", "Wayne", any())
+            pillCountTxnDao.updateTxnStatus(44L, CountStatus.COMPLETED, any())
+        }
+    }
+
+    @Test
+    fun `a short dispense is stored PARTIAL even when other steps counted more pills`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 43L
+        // All steps together clear the target; the prescribed step alone does not.
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(43L) } returns 35
+        coEvery {
+            pillCountTxnDetailsDao.getPillCountForStep(43L, StepState.TARGET_VERIFICATION.name)
+        } returns 15
+        coEvery { pillCountTxnDao.getById(43L) } returns PillCountTxnEntity(
+            txnId = 43L,
+            isDispense = true,
+            status = CountStatus.PARTIAL,
+            targetCount = 20,
+        )
+
+        viewModel.onEvent(PillScanningEvent.NoteSkip)
+        advanceUntilIdle()
+
+        coVerify { pillCountTxnDao.updateTxnStatus(43L, CountStatus.PARTIAL, any()) }
     }
 }
