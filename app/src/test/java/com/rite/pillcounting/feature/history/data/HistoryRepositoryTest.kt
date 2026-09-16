@@ -83,7 +83,7 @@ class HistoryRepositoryTest {
         )
         every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(listOf(dto))
 
-        repository.getBatchSummaries(today, today, 1L).test {
+        repository.getBatchSummaries(today, today).test {
             val list = awaitItem()
             assertEquals(1, list.size)
             val summary = list[0]
@@ -106,7 +106,7 @@ class HistoryRepositoryTest {
         )
         every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(listOf(dto))
 
-        repository.getBatchSummaries(today, today, 1L).test {
+        repository.getBatchSummaries(today, today).test {
             val summary = awaitItem()[0]
             assertEquals(BatchStatus.INPROGRESS, summary.status)
             cancelAndIgnoreRemainingEvents()
@@ -131,7 +131,7 @@ class HistoryRepositoryTest {
         coJustRun { batchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any()) }
         coJustRun { stockTxnDao.deleteByBatchIds(any()) }
 
-        repository.deleteBatchesForDateRange(today, today, null, 1L)
+        repository.deleteBatchesForDateRange(today, today, null)
 
         coVerify { batchDao.softDeleteBatchesByDate(any(), any(), null, any(), any()) }
         coVerify { stockTxnDao.deleteByBatchIds(batchIds) }
@@ -142,7 +142,7 @@ class HistoryRepositoryTest {
     fun `deleteBatchesForDateRange skips soft-delete when no batch IDs found`() = runTest {
         coEvery { batchDao.getBatchIdsByDate(any(), any(), any(), any(), any()) } returns emptyList()
 
-        repository.deleteBatchesForDateRange(today, today, null, 1L)
+        repository.deleteBatchesForDateRange(today, today, null)
 
         coVerify(exactly = 0) { batchDao.softDeleteBatchesByDate(any(), any(), any(), any(), any()) }
         coVerify(exactly = 0) { stockTxnDao.deleteByBatchIds(any()) }

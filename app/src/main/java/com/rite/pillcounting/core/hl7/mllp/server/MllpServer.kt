@@ -85,7 +85,7 @@ class MllpServer(
                 clients[id] = socket
 
                 scope.launch {
-                    handleClient(socket, id)
+                    handleClient(socket)
                     clients.remove(id)
                 }
             }catch (e: Exception) {
@@ -96,7 +96,7 @@ class MllpServer(
         }
     }
 
-    private suspend fun handleClient(socket: Socket, id: String) {
+    private suspend fun handleClient(socket: Socket) {
         try {
             if (socket is SSLSocket) socket.startHandshake()
 

@@ -355,7 +355,10 @@ class InventoryScanViewModel @Inject constructor(
                 }
 
                 val localDrug = drugMasterDao.getDrugByGtin(scanKey) ?: drugMasterDao.getDrugByNdc(scanKey)
-                logger.d("INV_SCAN local lookup scanKey=$scanKey → drug=${localDrug?.ndc} (${localDrug?.drugName}) hazardous=${localDrug?.isHazardous}")
+                logger.d(
+                    "INV_SCAN local lookup scanKey=$scanKey → drug=${localDrug?.ndc} " +
+                        "(${localDrug?.drugName}) hazardous=${localDrug?.isHazardous}"
+                )
 
                 // Fall back to the server when the drug isn't cached locally.
                 // Matches the dispense flow's behavior — unknown drugs are
@@ -370,7 +373,10 @@ class InventoryScanViewModel @Inject constructor(
                         logger.e("server drug lookup failed for scanKey=$scanKey", e)
                         null
                     }
-                    logger.d("INV_SCAN server lookup scanKey=$scanKey → drugInfo=${drugInfo?.ndc} (${drugInfo?.genericName}) hazardous=${drugInfo?.isHazardous}")
+                    logger.d(
+                        "INV_SCAN server lookup scanKey=$scanKey → drugInfo=${drugInfo?.ndc} " +
+                            "(${drugInfo?.genericName}) hazardous=${drugInfo?.isHazardous}"
+                    )
                     if (drugInfo == null) {
                         _errorMessage.value = LocalizedError(R.string.batch_stock_count_drug_not_found, scanKey)
                         _scannerPaused.value = false
@@ -432,7 +438,10 @@ class InventoryScanViewModel @Inject constructor(
                 // Skip the commit when the same NDC is rescanned — we'll re-activate
                 // its existing row instead.
                 val currentActive = _activeNdc.value
-                logger.d("INV_SCAN pre-switch currentActive=${currentActive?.ndc} newDrug=${drug.ndc} sameNdc=${currentActive?.ndc == drug.ndc}")
+                logger.d(
+                    "INV_SCAN pre-switch currentActive=${currentActive?.ndc} newDrug=${drug.ndc} " +
+                        "sameNdc=${currentActive?.ndc == drug.ndc}"
+                )
                 if (currentActive != null && currentActive.ndc != drug.ndc) {
                     logger.d("INV_SCAN auto-committing previous active ndc=${currentActive.ndc} bottles=${currentActive.bottles}")
                     persistActive(currentActive)
@@ -454,7 +463,10 @@ class InventoryScanViewModel @Inject constructor(
                     bottleInfoDao.findLine(it.txnId, lotNo, expiry)
                 }
 
-                logger.d("INV_SCAN existing-line lookup batchId=$batchId drugId=${drug.drugId} lot=$lotNo expiry=$expiry → existing=${existing?.bottleId} prevBottles=${existing?.bottleQty}")
+                logger.d(
+                    "INV_SCAN existing-line lookup batchId=$batchId drugId=${drug.drugId} lot=$lotNo " +
+                        "expiry=$expiry → existing=${existing?.bottleId} prevBottles=${existing?.bottleQty}"
+                )
                 // Same-NDC rescan = "+1 bottle". If the card already shows this
                 // NDC, bump its bottle count. Otherwise this is a fresh scan
                 // (or a switch back to an NDC that was previously committed): seed
@@ -489,7 +501,10 @@ class InventoryScanViewModel @Inject constructor(
                 )
                 _activeNdc.value = newActive
                 lastSameNdcIncrementAtMs = System.currentTimeMillis()
-                logger.d("INV_SCAN activeNdc SET ndc=${drug.ndc} drug=${drug.drugName} bottles=$startBottles hazardous=${drug.isHazardous} batchId=${_resolvedBatchId.value}")
+                logger.d(
+                    "INV_SCAN activeNdc SET ndc=${drug.ndc} drug=${drug.drugName} bottles=$startBottles " +
+                        "hazardous=${drug.isHazardous} batchId=${_resolvedBatchId.value}"
+                )
 
                 // Persist immediately so the batch is durable from the first scan —
                 // BACK/app-kill before ADD must not drop the count. persistActive
@@ -611,7 +626,10 @@ class InventoryScanViewModel @Inject constructor(
             return
         }
         val batchId = _resolvedBatchId.value
-        logger.d("INV_SCAN persistActive START ndc=${active.ndc} bottles=${active.bottles} batchId=$batchId lot=${active.batchNo} expiry=${active.expiry}")
+        logger.d(
+            "INV_SCAN persistActive START ndc=${active.ndc} bottles=${active.bottles} batchId=$batchId " +
+                "lot=${active.batchNo} expiry=${active.expiry}"
+        )
         if (batchId == 0L) {
             logger.w("INV_SCAN persistActive ABORT: no batchId")
             _errorMessage.value = LocalizedError(R.string.batch_stock_count_no_active_batch)

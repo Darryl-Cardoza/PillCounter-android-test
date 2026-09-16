@@ -27,24 +27,24 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
     private val mH = 40f
 
     // ── Palette ───────────────────────────────────────────────────────────────
-    private val C_BLUE      = Color.parseColor("#2563EB")
-    private val C_BLUE_DARK = Color.parseColor("#1E3A8A")
-    private val C_GREEN     = Color.parseColor("#059669")
-    private val C_SURFACE   = Color.parseColor("#F8FAFC")
-    private val C_LGRAY     = Color.parseColor("#F1F5F9")
-    private val C_DIVIDER   = Color.parseColor("#E2E8F0")
-    private val C_TEXT_DARK = Color.parseColor("#0F172A")
-    private val C_TEXT_MED  = Color.parseColor("#64748B")
-    private val C_TEXT_LIGHT= Color.parseColor("#94A3B8")
+    private val cBlue      = Color.parseColor("#2563EB")
+    private val cBlueDark = Color.parseColor("#1E3A8A")
+    private val cGreen     = Color.parseColor("#059669")
+    private val cSurface   = Color.parseColor("#F8FAFC")
+    private val cLgray     = Color.parseColor("#F1F5F9")
+    private val cDivider   = Color.parseColor("#E2E8F0")
+    private val cTextDark = Color.parseColor("#0F172A")
+    private val cTextMed  = Color.parseColor("#64748B")
+    private val cTextLight= Color.parseColor("#94A3B8")
 
     // ── Row / card heights ───────────────────────────────────────────────────
-    private val ROW_SECTION_HDR = 36f
-    private val ROW_KV          = 26f
-    private val ROW_COUNT_HERO  = 52f
-    private val ROW_TBL_HDR     = 26f
-    private val ROW_BATCH       = 24f
-    private val ROW_TOTAL       = 28f
-    private val CARD_PAD_BOT    = 14f
+    private val rowSectionHdr = 36f
+    private val rowKv          = 26f
+    private val rowCountHero  = 52f
+    private val rowTblHdr     = 26f
+    private val rowBatch       = 24f
+    private val rowTotal       = 28f
+    private val cardPadBot    = 14f
 
     // ── Paint helpers ─────────────────────────────────────────────────────────
     private fun bp(c: Int, sz: Float, a: Paint.Align = Paint.Align.LEFT) = Paint().apply {
@@ -216,8 +216,8 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
 
     private fun drawHeader(cv: Canvas, genTime: String): Float {
         val h = 78f
-        cv.drawRect(0f, 0f, pageW.toFloat(), h, fp(C_BLUE))
-        cv.drawRect(0f, h - 3f, pageW.toFloat(), h, fp(C_BLUE_DARK))
+        cv.drawRect(0f, 0f, pageW.toFloat(), h, fp(cBlue))
+        cv.drawRect(0f, h - 3f, pageW.toFloat(), h, fp(cBlueDark))
 
         val cx = mH + 22f; val cy = h / 2f
         fp(Color.WHITE).also { it.alpha = 20 }.let { cv.drawCircle(cx, cy, 22f, it) }
@@ -249,19 +249,19 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
 
         // Left: drug name + date
         val displayName = if (drugName.length > 44) drugName.take(42) + "…" else drugName
-        cv.drawText(displayName, lx, top + 22f, bp(C_TEXT_DARK, 13f))
-        cv.drawText(txnDate, lx, top + 42f, np(C_TEXT_MED, 9f))
+        cv.drawText(displayName, lx, top + 22f, bp(cTextDark, 13f))
+        cv.drawText(txnDate, lx, top + 42f, np(cTextMed, 9f))
 
         // Right: "PREPARED BY" label + username value
         val truncUser = if (userName.length > 28) userName.take(26) + "…" else userName
-        bp(C_TEXT_LIGHT, 7.5f, Paint.Align.RIGHT).let {
+        bp(cTextLight, 7.5f, Paint.Align.RIGHT).let {
             cv.drawText(context.getString(R.string.pdf_prepared_by_label), rx, top + 18f, it)
         }
-        bp(C_TEXT_DARK, 11f, Paint.Align.RIGHT).let {
+        bp(cTextDark, 11f, Paint.Align.RIGHT).let {
             cv.drawText(truncUser, rx, top + 36f, it)
         }
 
-        cv.drawLine(mH, top + h, pageW - mH, top + h, sp(C_DIVIDER))
+        cv.drawLine(mH, top + h, pageW - mH, top + h, sp(cDivider))
         return top + h
     }
 
@@ -276,11 +276,11 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
             val mid = pageW / 2f
 
             fun tile(rect: RectF, label: String, value: String, lx: Float, align: Paint.Align) {
-                cv.drawRoundRect(rect, 8f, 8f, fp(C_LGRAY))
-                cv.drawRoundRect(rect, 8f, 8f, sp(C_DIVIDER))
-                cv.drawRoundRect(RectF(rect.left, rect.top, rect.right, rect.top + 3f), 8f, 8f, fp(C_BLUE))
-                cv.drawText(label, lx, rect.top + 20f, bp(C_TEXT_MED, 8f, align))
-                cv.drawText(value, lx, rect.bottom - 10f, bp(C_GREEN, 32f, align))
+                cv.drawRoundRect(rect, 8f, 8f, fp(cLgray))
+                cv.drawRoundRect(rect, 8f, 8f, sp(cDivider))
+                cv.drawRoundRect(RectF(rect.left, rect.top, rect.right, rect.top + 3f), 8f, 8f, fp(cBlue))
+                cv.drawText(label, lx, rect.top + 20f, bp(cTextMed, 8f, align))
+                cv.drawText(value, lx, rect.bottom - 10f, bp(cGreen, 32f, align))
             }
 
             tile(RectF(mH, top, mid - gap / 2f, top + h),
@@ -290,11 +290,11 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
         } else {
             // Single wide tile
             val rect = RectF(mH, top, pageW - mH, top + h)
-            cv.drawRoundRect(rect, 8f, 8f, fp(C_LGRAY))
-            cv.drawRoundRect(rect, 8f, 8f, sp(C_DIVIDER))
-            cv.drawRoundRect(RectF(rect.left, rect.top, rect.right, rect.top + 3f), 8f, 8f, fp(C_BLUE))
-            cv.drawText(context.getString(R.string.pdf_total_count_label), mH + 14f, rect.top + 20f, bp(C_TEXT_MED, 8f))
-            cv.drawText(count.toString(), mH + 14f, rect.bottom - 10f, bp(C_GREEN, 32f))
+            cv.drawRoundRect(rect, 8f, 8f, fp(cLgray))
+            cv.drawRoundRect(rect, 8f, 8f, sp(cDivider))
+            cv.drawRoundRect(RectF(rect.left, rect.top, rect.right, rect.top + 3f), 8f, 8f, fp(cBlue))
+            cv.drawText(context.getString(R.string.pdf_total_count_label), mH + 14f, rect.top + 20f, bp(cTextMed, 8f))
+            cv.drawText(count.toString(), mH + 14f, rect.bottom - 10f, bp(cGreen, 32f))
         }
         return top + h
     }
@@ -302,7 +302,7 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
     // ── Key-value card ────────────────────────────────────────────────────────
 
     private fun kvCardHeight(rows: List<Pair<String, String>>) =
-        ROW_SECTION_HDR + rows.size * ROW_KV + CARD_PAD_BOT
+        rowSectionHdr + rows.size * rowKv + cardPadBot
 
     private fun drawKvCard(ctx: Ctx, title: String, rows: List<Pair<String, String>>): Float {
         val h = kvCardHeight(rows)
@@ -316,25 +316,25 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
         val ix    = left + 20f
 
         cv.drawRoundRect(RectF(left, top, right, top + h), 10f, 10f, fp(Color.WHITE))
-        cv.drawRoundRect(RectF(left, top, right, top + h), 10f, 10f, sp(C_DIVIDER))
-        cv.drawRoundRect(RectF(left, top + 10f, left + 4f, top + h - 10f), 2f, 2f, fp(C_BLUE))
+        cv.drawRoundRect(RectF(left, top, right, top + h), 10f, 10f, sp(cDivider))
+        cv.drawRoundRect(RectF(left, top + 10f, left + 4f, top + h - 10f), 2f, 2f, fp(cBlue))
 
         // Section header bar
-        cv.drawRoundRect(RectF(left, top, right, top + ROW_SECTION_HDR), 10f, 10f, fp(C_LGRAY))
-        cv.drawLine(left, top + ROW_SECTION_HDR, right, top + ROW_SECTION_HDR, sp(C_DIVIDER))
-        bp(C_TEXT_DARK, 11f).also { it.letterSpacing = 0.04f }.let {
-            cv.drawText(title, ix, bl(top, ROW_SECTION_HDR, it), it)
+        cv.drawRoundRect(RectF(left, top, right, top + rowSectionHdr), 10f, 10f, fp(cLgray))
+        cv.drawLine(left, top + rowSectionHdr, right, top + rowSectionHdr, sp(cDivider))
+        bp(cTextDark, 11f).also { it.letterSpacing = 0.04f }.let {
+            cv.drawText(title, ix, bl(top, rowSectionHdr, it), it)
         }
 
-        var y = top + ROW_SECTION_HDR
+        var y = top + rowSectionHdr
         val labelW = (right - left) * 0.38f
 
         rows.forEachIndexed { i, (key, value) ->
-            if (i % 2 == 1) cv.drawRect(left + 4f, y, right, y + ROW_KV, fp(C_SURFACE))
-            cv.drawText(key,   ix,          bl(y, ROW_KV, np(C_TEXT_MED, 10f)), np(C_TEXT_MED, 10f))
-            cv.drawText(value, ix + labelW, bl(y, ROW_KV, bp(C_TEXT_DARK, 10.5f)), bp(C_TEXT_DARK, 10.5f))
-            y += ROW_KV
-            if (i < rows.lastIndex) cv.drawLine(left + 4f, y, right, y, sp(C_LGRAY, 0.5f))
+            if (i % 2 == 1) cv.drawRect(left + 4f, y, right, y + rowKv, fp(cSurface))
+            cv.drawText(key,   ix,          bl(y, rowKv, np(cTextMed, 10f)), np(cTextMed, 10f))
+            cv.drawText(value, ix + labelW, bl(y, rowKv, bp(cTextDark, 10.5f)), bp(cTextDark, 10.5f))
+            y += rowKv
+            if (i < rows.lastIndex) cv.drawLine(left + 4f, y, right, y, sp(cLgray, 0.5f))
         }
 
         return top + h
@@ -342,51 +342,51 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
 
     // ── Count card (batch tray / vial table) ──────────────────────────────────
 
-    private fun countCardHeight(batches: List<TxnDetailInfo>, isVial: Boolean): Float {
+    private fun countCardHeight(batches: List<TxnDetailInfo>): Float {
         val tableH = if (batches.isNotEmpty())
-            ROW_TBL_HDR + batches.size * ROW_BATCH + ROW_TOTAL
-        else ROW_BATCH
-        return ROW_SECTION_HDR + ROW_COUNT_HERO + tableH + CARD_PAD_BOT
+            rowTblHdr + batches.size * rowBatch + rowTotal
+        else rowBatch
+        return rowSectionHdr + rowCountHero + tableH + cardPadBot
     }
 
     private fun drawCountCard(ctx: Ctx, title: String, batches: List<TxnDetailInfo>, isVial: Boolean): Float {
-        val h = countCardHeight(batches, isVial)
+        val h = countCardHeight(batches)
         ctx.need(h)
         return drawCountCardAt(ctx.cv, ctx.y, title, batches, isVial).also { ctx.y = it }
     }
 
     private fun drawCountCardAt(cv: Canvas, top: Float, title: String,
                                 batches: List<TxnDetailInfo>, isVial: Boolean): Float {
-        val h     = countCardHeight(batches, isVial)
+        val h     = countCardHeight(batches)
         val left  = mH; val right = pageW - mH
         val ix    = left + 20f; val irx = right - 16f
         val total = batches.sumOf { it.pillCount ?: 0 }
 
         cv.drawRoundRect(RectF(left, top, right, top + h), 10f, 10f, fp(Color.WHITE))
-        cv.drawRoundRect(RectF(left, top, right, top + h), 10f, 10f, sp(C_DIVIDER))
-        cv.drawRoundRect(RectF(left, top + 10f, left + 4f, top + h - 10f), 2f, 2f, fp(C_BLUE))
+        cv.drawRoundRect(RectF(left, top, right, top + h), 10f, 10f, sp(cDivider))
+        cv.drawRoundRect(RectF(left, top + 10f, left + 4f, top + h - 10f), 2f, 2f, fp(cBlue))
 
         // Section header
-        cv.drawRoundRect(RectF(left, top, right, top + ROW_SECTION_HDR), 10f, 10f, fp(C_LGRAY))
-        cv.drawLine(left, top + ROW_SECTION_HDR, right, top + ROW_SECTION_HDR, sp(C_DIVIDER))
-        bp(C_TEXT_DARK, 11f).also { it.letterSpacing = 0.04f }.let {
-            cv.drawText(title, ix, bl(top, ROW_SECTION_HDR, it), it)
+        cv.drawRoundRect(RectF(left, top, right, top + rowSectionHdr), 10f, 10f, fp(cLgray))
+        cv.drawLine(left, top + rowSectionHdr, right, top + rowSectionHdr, sp(cDivider))
+        bp(cTextDark, 11f).also { it.letterSpacing = 0.04f }.let {
+            cv.drawText(title, ix, bl(top, rowSectionHdr, it), it)
         }
 
         // Hero count
-        var y = top + ROW_SECTION_HDR
+        var y = top + rowSectionHdr
         if (!isVial) {
-            bp(C_GREEN, 28f, Paint.Align.RIGHT).let { cv.drawText(total.toString(), irx, bl(y, ROW_COUNT_HERO, it), it) }
-            np(C_TEXT_MED, 9f).let {
-                cv.drawText(context.getString(R.string.pdf_total_count_label), ix, bl(y, ROW_COUNT_HERO, it), it)
+            bp(cGreen, 28f, Paint.Align.RIGHT).let { cv.drawText(total.toString(), irx, bl(y, rowCountHero, it), it) }
+            np(cTextMed, 9f).let {
+                cv.drawText(context.getString(R.string.pdf_total_count_label), ix, bl(y, rowCountHero, it), it)
             }
         } else {
-            np(C_TEXT_MED, 9f).let {
-                cv.drawText(context.getString(R.string.pdf_images_captured, batches.size), ix, bl(y, ROW_COUNT_HERO, it), it)
+            np(cTextMed, 9f).let {
+                cv.drawText(context.getString(R.string.pdf_images_captured, batches.size), ix, bl(y, rowCountHero, it), it)
             }
         }
-        y += ROW_COUNT_HERO
-        cv.drawLine(left + 4f, y, right, y, sp(C_DIVIDER))
+        y += rowCountHero
+        cv.drawLine(left + 4f, y, right, y, sp(cDivider))
 
         // Batch table
         if (batches.isNotEmpty()) {
@@ -394,44 +394,44 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
             val c1W = tW * 0.15f; val c2W = tW * 0.70f
 
             // Table header
-            cv.drawRect(tL, y, tR, y + ROW_TBL_HDR, fp(C_LGRAY))
-            bp(C_TEXT_LIGHT, 8.5f).let { cv.drawText("#", tL + 4f, bl(y, ROW_TBL_HDR, it), it) }
-            bp(C_TEXT_LIGHT, 8.5f, Paint.Align.CENTER).let {
-                cv.drawText(context.getString(R.string.batch), tL + c1W + c2W / 2f, bl(y, ROW_TBL_HDR, it), it)
+            cv.drawRect(tL, y, tR, y + rowTblHdr, fp(cLgray))
+            bp(cTextLight, 8.5f).let { cv.drawText("#", tL + 4f, bl(y, rowTblHdr, it), it) }
+            bp(cTextLight, 8.5f, Paint.Align.CENTER).let {
+                cv.drawText(context.getString(R.string.batch), tL + c1W + c2W / 2f, bl(y, rowTblHdr, it), it)
             }
-            if (!isVial) bp(C_TEXT_LIGHT, 8.5f, Paint.Align.RIGHT).let {
-                cv.drawText(context.getString(R.string.count), tR, bl(y, ROW_TBL_HDR, it), it)
+            if (!isVial) bp(cTextLight, 8.5f, Paint.Align.RIGHT).let {
+                cv.drawText(context.getString(R.string.count), tR, bl(y, rowTblHdr, it), it)
             }
-            y += ROW_TBL_HDR
+            y += rowTblHdr
 
             batches.forEachIndexed { idx, batch ->
-                if (idx % 2 == 1) cv.drawRect(tL, y, tR, y + ROW_BATCH, fp(C_SURFACE))
-                np(C_TEXT_DARK, 10f).let { cv.drawText("${idx + 1}", tL + 4f, bl(y, ROW_BATCH, it), it) }
-                np(C_TEXT_MED, 9.5f, Paint.Align.CENTER).let {
-                    cv.drawText(context.getString(R.string.pdf_batch_entry, idx + 1), tL + c1W + c2W / 2f, bl(y, ROW_BATCH, it), it)
+                if (idx % 2 == 1) cv.drawRect(tL, y, tR, y + rowBatch, fp(cSurface))
+                np(cTextDark, 10f).let { cv.drawText("${idx + 1}", tL + 4f, bl(y, rowBatch, it), it) }
+                np(cTextMed, 9.5f, Paint.Align.CENTER).let {
+                    cv.drawText(context.getString(R.string.pdf_batch_entry, idx + 1), tL + c1W + c2W / 2f, bl(y, rowBatch, it), it)
                 }
-                if (!isVial) np(C_TEXT_DARK, 10f, Paint.Align.RIGHT).let {
-                    cv.drawText((batch.pillCount ?: 0).toString(), tR, bl(y, ROW_BATCH, it), it)
+                if (!isVial) np(cTextDark, 10f, Paint.Align.RIGHT).let {
+                    cv.drawText((batch.pillCount ?: 0).toString(), tR, bl(y, rowBatch, it), it)
                 }
-                y += ROW_BATCH
-                cv.drawLine(tL, y, tR, y, sp(C_LGRAY, 0.5f))
+                y += rowBatch
+                cv.drawLine(tL, y, tR, y, sp(cLgray, 0.5f))
             }
 
             if (!isVial) {
-                cv.drawRect(tL, y, tR, y + ROW_TOTAL, fp(C_SURFACE))
-                bp(C_TEXT_DARK, 10.5f).let {
-                    cv.drawText(context.getString(R.string.total), tL + 4f, bl(y, ROW_TOTAL, it), it)
+                cv.drawRect(tL, y, tR, y + rowTotal, fp(cSurface))
+                bp(cTextDark, 10.5f).let {
+                    cv.drawText(context.getString(R.string.total), tL + 4f, bl(y, rowTotal, it), it)
                 }
-                bp(C_GREEN, 10.5f, Paint.Align.RIGHT).let {
-                    cv.drawText(total.toString(), tR, bl(y, ROW_TOTAL, it), it)
+                bp(cGreen, 10.5f, Paint.Align.RIGHT).let {
+                    cv.drawText(total.toString(), tR, bl(y, rowTotal, it), it)
                 }
-                y += ROW_TOTAL
+                y += rowTotal
             }
         } else {
-            np(C_TEXT_LIGHT, 9.5f).let {
-                cv.drawText(context.getString(R.string.no_batches_recorded), ix, bl(y, ROW_BATCH, it), it)
+            np(cTextLight, 9.5f).let {
+                cv.drawText(context.getString(R.string.no_batches_recorded), ix, bl(y, rowBatch, it), it)
             }
-            y += ROW_BATCH
+            y += rowBatch
         }
 
         return top + h
@@ -442,7 +442,7 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
     private fun drawNotesCard(ctx: Ctx, note: String): Float {
         val contentW  = (pageW - 2 * mH - 24f).toInt()
         val textPaint = TextPaint().apply {
-            color = C_TEXT_DARK; textSize = 11f; isAntiAlias = true
+            color = cTextDark; textSize = 11f; isAntiAlias = true
         }
         val displayNote = note.ifBlank { "—" }
         val layout = StaticLayout.Builder
@@ -452,7 +452,7 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
             .setIncludePad(false)
             .build()
 
-        val cardH = ROW_SECTION_HDR + CARD_PAD_BOT + layout.height + CARD_PAD_BOT
+        val cardH = rowSectionHdr + cardPadBot + layout.height + cardPadBot
         ctx.need(cardH)
 
         val top  = ctx.y
@@ -460,17 +460,17 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
         val ix   = left + 20f
 
         ctx.cv.drawRoundRect(RectF(left, top, right, top + cardH), 10f, 10f, fp(Color.WHITE))
-        ctx.cv.drawRoundRect(RectF(left, top, right, top + cardH), 10f, 10f, sp(C_DIVIDER))
-        ctx.cv.drawRoundRect(RectF(left, top + 10f, left + 4f, top + cardH - 10f), 2f, 2f, fp(C_BLUE))
+        ctx.cv.drawRoundRect(RectF(left, top, right, top + cardH), 10f, 10f, sp(cDivider))
+        ctx.cv.drawRoundRect(RectF(left, top + 10f, left + 4f, top + cardH - 10f), 2f, 2f, fp(cBlue))
 
-        ctx.cv.drawRoundRect(RectF(left, top, right, top + ROW_SECTION_HDR), 10f, 10f, fp(C_LGRAY))
-        ctx.cv.drawLine(left, top + ROW_SECTION_HDR, right, top + ROW_SECTION_HDR, sp(C_DIVIDER))
-        bp(C_TEXT_DARK, 11f).also { it.letterSpacing = 0.04f }.let {
-            ctx.cv.drawText(context.getString(R.string.notes), ix, bl(top, ROW_SECTION_HDR, it), it)
+        ctx.cv.drawRoundRect(RectF(left, top, right, top + rowSectionHdr), 10f, 10f, fp(cLgray))
+        ctx.cv.drawLine(left, top + rowSectionHdr, right, top + rowSectionHdr, sp(cDivider))
+        bp(cTextDark, 11f).also { it.letterSpacing = 0.04f }.let {
+            ctx.cv.drawText(context.getString(R.string.notes), ix, bl(top, rowSectionHdr, it), it)
         }
 
         ctx.cv.save()
-        ctx.cv.translate(ix, top + ROW_SECTION_HDR + CARD_PAD_BOT)
+        ctx.cv.translate(ix, top + rowSectionHdr + cardPadBot)
         layout.draw(ctx.cv)
         ctx.cv.restore()
 
@@ -482,11 +482,11 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
 
     private fun drawFooter(cv: Canvas, pageNum: Int) {
         val lineY = pageH - 28f; val textY = pageH - 13f
-        cv.drawLine(mH, lineY, pageW - mH, lineY, sp(C_DIVIDER))
-        np(C_TEXT_LIGHT, 7.5f).let {
+        cv.drawLine(mH, lineY, pageW - mH, lineY, sp(cDivider))
+        np(cTextLight, 7.5f).let {
             cv.drawText(context.getString(R.string.pdf_footer_drug_detail), mH, textY, it)
         }
-        np(C_TEXT_LIGHT, 7.5f, Paint.Align.RIGHT).let {
+        np(cTextLight, 7.5f, Paint.Align.RIGHT).let {
             cv.drawText(context.getString(R.string.pdf_page, pageNum), pageW - mH, textY, it)
         }
     }

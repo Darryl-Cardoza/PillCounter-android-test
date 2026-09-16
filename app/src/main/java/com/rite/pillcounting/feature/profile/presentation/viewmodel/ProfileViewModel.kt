@@ -304,12 +304,10 @@ class ProfileViewModel @Inject constructor(
      * without picking an item from the dropdown, so a stale selection can't be saved
      * under mismatched displayed text.
      *
-     * @param query Raw text currently typed into the country search field.
-     *
      * Example Usage:
-     * onCountryQueryChanged("Ind")
+     * onCountryQueryChanged()
      */
-    fun onCountryQueryChanged(query: String) {
+    fun onCountryQueryChanged() {
         if (selectedCountry != null) {
             selectedCountry = null
             states = emptyList()
@@ -322,12 +320,10 @@ class ProfileViewModel @Inject constructor(
      * without picking an item from the dropdown, so a stale selection can't be saved
      * under mismatched displayed text.
      *
-     * @param query Raw text currently typed into the state search field.
-     *
      * Example Usage:
-     * onStateQueryChanged("Cal")
+     * onStateQueryChanged()
      */
-    fun onStateQueryChanged(query: String) {
+    fun onStateQueryChanged() {
         if (selectedState != null) {
             selectedState = null
         }
@@ -475,7 +471,10 @@ class ProfileViewModel @Inject constructor(
                                 if (selectedTerminal != null && selectedTerminal?.terminalId != heldTerminal?.terminalId) {
                                     val terminalId = selectedTerminal?.terminalId
                                     if (terminalId != null) {
-                                        logger.i("Terminal changed from ${heldTerminal?.terminalName} to ${selectedTerminal?.terminalName}, updating...")
+                                        logger.i(
+                                            "Terminal changed from ${heldTerminal?.terminalName} to " +
+                                                "${selectedTerminal?.terminalName}, updating..."
+                                        )
 
                                         val claimDeviceKey = claimDeviceKeyForCheck
                                             ?: deviceKeyProvider.getDeviceKey()
@@ -489,7 +488,10 @@ class ProfileViewModel @Inject constructor(
                                         // separate release call for the old one. Server assigns
                                         // deviceKey to the new terminal; old terminal's deviceKey is
                                         // just cleared locally so the UI reflects the swap immediately.
-                                        logger.i("Terminal claim flow: heldTerminal=${heldTerminal?.terminalId}(${heldTerminal?.terminalName}) newTerminal=$terminalId(${selectedTerminal?.terminalName})")
+                                        logger.i(
+                                            "Terminal claim flow: heldTerminal=${heldTerminal?.terminalId}" +
+                                                "(${heldTerminal?.terminalName}) newTerminal=$terminalId(${selectedTerminal?.terminalName})"
+                                        )
                                         val terminalRequest = TerminalUpdateRequest(
                                             terminalName = selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME,
                                             isActive = true,
@@ -516,14 +518,18 @@ class ProfileViewModel @Inject constructor(
 
                                                 // Save updated terminal selection to preferences
                                                 preferenceHelper.saveSelectedTerminalId(terminalId)
-                                                preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
+                                                preferenceHelper.saveSelectedTerminalName(
+                                                    selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME
+                                                )
                                                 preferenceHelper.saveTerminals(terminals)
 
                                                 // Update initial terminal to current selection
                                                 initialTerminal = selectedTerminal
 
                                                 // Update HL7 service with new terminal name and rebroadcast NSD
-                                                updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
+                                                updateHl7ConfigWithNewTerminal(
+                                                    selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME
+                                                )
                                             }
                                             .onFailure { e ->
                                                 logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)

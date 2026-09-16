@@ -22,24 +22,24 @@ class BatchStockCountPdfExporter(private val context: Context) {
     private val mH    = 40f
 
     // ── Palette ───────────────────────────────────────────────────────────────
-    private val C_BLUE       = Color.parseColor("#2563EB")
-    private val C_BLUE_DARK  = Color.parseColor("#1E3A8A")
-    private val C_GREEN      = Color.parseColor("#059669")
-    private val C_AMBER      = Color.parseColor("#D97706")
-    private val C_SURFACE    = Color.parseColor("#F8FAFC")
-    private val C_LGRAY      = Color.parseColor("#F1F5F9")
-    private val C_DIVIDER    = Color.parseColor("#E2E8F0")
-    private val C_TEXT_DARK  = Color.parseColor("#0F172A")
-    private val C_TEXT_MED   = Color.parseColor("#64748B")
-    private val C_TEXT_LIGHT = Color.parseColor("#94A3B8")
+    private val cBlue       = Color.parseColor("#2563EB")
+    private val cBlueDark  = Color.parseColor("#1E3A8A")
+    private val cGreen      = Color.parseColor("#059669")
+    private val cAmber      = Color.parseColor("#D97706")
+    private val cSurface    = Color.parseColor("#F8FAFC")
+    private val cLgray      = Color.parseColor("#F1F5F9")
+    private val cDivider    = Color.parseColor("#E2E8F0")
+    private val cTextDark  = Color.parseColor("#0F172A")
+    private val cTextMed   = Color.parseColor("#64748B")
+    private val cTextLight = Color.parseColor("#94A3B8")
 
     // ── Card row heights — must match between cardHeight() & drawDrugCard() ───
-    private val ROW_DRUG_HDR = 60f
-    private val ROW_SECTION  = 32f
-    private val ROW_TBL_HDR  = 26f
-    private val ROW_LOT      = 24f
-    private val ROW_TOTAL    = 28f
-    private val CARD_PAD_BOT = 14f
+    private val rowDrugHdr = 60f
+    private val rowSection  = 32f
+    private val rowTblHdr  = 26f
+    private val rowLot      = 24f
+    private val rowTotal    = 28f
+    private val cardPadBot = 14f
 
     // ── Paint helpers ─────────────────────────────────────────────────────────
     private fun bp(c: Int, sz: Float, a: Paint.Align = Paint.Align.LEFT) = Paint().apply {
@@ -82,7 +82,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
                 context.getString(R.string.pdf_status_completed)
             else
                 context.getString(R.string.pdf_status_in_progress)
-            val statusColor  = if (batchStatus == "COMPLETED") C_GREEN else C_AMBER
+            val statusColor  = if (batchStatus == "COMPLETED") cGreen else cAmber
 
             var pageNum = 1
             var page = pdf.startPage(PdfDocument.PageInfo.Builder(pageW, pageH, pageNum).create())
@@ -140,8 +140,8 @@ class BatchStockCountPdfExporter(private val context: Context) {
     private fun drawHeader(cv: Canvas, genTime: String): Float {
         val h = 78f
 
-        cv.drawRect(0f, 0f, pageW.toFloat(), h, fp(C_BLUE))
-        cv.drawRect(0f, h - 3f, pageW.toFloat(), h, fp(C_BLUE_DARK))
+        cv.drawRect(0f, 0f, pageW.toFloat(), h, fp(cBlue))
+        cv.drawRect(0f, h - 3f, pageW.toFloat(), h, fp(cBlueDark))
 
         // "PC" badge
         val cx = mH + 22f; val cy = h / 2f
@@ -182,7 +182,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
         val lineY = top + h
 
         // Row 1: "Batch  #ID" bold + status pill
-        val batchP = bp(C_TEXT_DARK, 13f)
+        val batchP = bp(cTextDark, 13f)
         val batchText = context.getString(R.string.pdf_batch_id, batchId)
         cv.drawText(batchText, lx, top + 22f, batchP)
 
@@ -203,12 +203,12 @@ class BatchStockCountPdfExporter(private val context: Context) {
 
         // Row 2: date · prepared by
         val truncUser = if (userName.length > 30) userName.take(28) + "…" else userName
-        np(C_TEXT_MED, 9f).let {
+        np(cTextMed, 9f).let {
             cv.drawText("$date   ·   ${context.getString(R.string.pdf_prepared_by)} $truncUser", lx, top + 42f, it)
         }
 
         // Bottom separator
-        cv.drawLine(mH, lineY, pageW - mH, lineY, sp(C_DIVIDER))
+        cv.drawLine(mH, lineY, pageW - mH, lineY, sp(cDivider))
 
         return lineY
     }
@@ -221,12 +221,12 @@ class BatchStockCountPdfExporter(private val context: Context) {
         val mid = pageW / 2f
 
         fun tile(rect: RectF, label: String, value: String, labelAlign: Paint.Align, valueAlign: Paint.Align, lx: Float) {
-            cv.drawRoundRect(rect, 8f, 8f, fp(C_LGRAY))
-            cv.drawRoundRect(rect, 8f, 8f, sp(C_DIVIDER))
+            cv.drawRoundRect(rect, 8f, 8f, fp(cLgray))
+            cv.drawRoundRect(rect, 8f, 8f, sp(cDivider))
             // accent top border
-            cv.drawRoundRect(RectF(rect.left, rect.top, rect.right, rect.top + 3f), 8f, 8f, fp(C_BLUE))
-            cv.drawText(label, lx, rect.top + 20f, bp(C_TEXT_MED, 8f, labelAlign))
-            cv.drawText(value, lx, rect.bottom - 10f, bp(C_GREEN, 32f, valueAlign))
+            cv.drawRoundRect(RectF(rect.left, rect.top, rect.right, rect.top + 3f), 8f, 8f, fp(cBlue))
+            cv.drawText(label, lx, rect.top + 20f, bp(cTextMed, 8f, labelAlign))
+            cv.drawText(value, lx, rect.bottom - 10f, bp(cGreen, 32f, valueAlign))
         }
 
         // Left tile
@@ -246,9 +246,9 @@ class BatchStockCountPdfExporter(private val context: Context) {
 
     private fun cardHeight(group: BatchDrugGroup): Float {
         val lotsH = if (group.sealedLots.isNotEmpty())
-            ROW_TBL_HDR + group.sealedLots.size * ROW_LOT + ROW_TOTAL
+            rowTblHdr + group.sealedLots.size * rowLot + rowTotal
         else 0f
-        return ROW_DRUG_HDR + ROW_SECTION + lotsH + ROW_SECTION + CARD_PAD_BOT
+        return rowDrugHdr + rowSection + lotsH + rowSection + cardPadBot
     }
 
     private fun drawDrugCard(cv: Canvas, top: Float, group: BatchDrugGroup): Float {
@@ -260,27 +260,27 @@ class BatchStockCountPdfExporter(private val context: Context) {
 
         // Card background
         cv.drawRoundRect(RectF(left, top, right, top + h), 10f, 10f, fp(Color.WHITE))
-        cv.drawRoundRect(RectF(left, top, right, top + h), 10f, 10f, sp(C_DIVIDER))
+        cv.drawRoundRect(RectF(left, top, right, top + h), 10f, 10f, sp(cDivider))
         // Blue left accent
-        cv.drawRoundRect(RectF(left, top + 10f, left + 4f, top + h - 10f), 2f, 2f, fp(C_BLUE))
+        cv.drawRoundRect(RectF(left, top + 10f, left + 4f, top + h - 10f), 2f, 2f, fp(cBlue))
 
         // Drug name + NDC + total count
-        cv.drawText(group.drugName, ix, top + 24f, bp(C_TEXT_DARK, 13f))
-        cv.drawText("${context.getString(R.string.pdf_ndc_label)}: ${group.ndc}", ix, top + 41f, np(C_TEXT_MED, 9.5f))
-        bp(C_GREEN, 24f, Paint.Align.RIGHT).let { cv.drawText(group.totalCount.toString(), irx, top + 34f, it) }
+        cv.drawText(group.drugName, ix, top + 24f, bp(cTextDark, 13f))
+        cv.drawText("${context.getString(R.string.pdf_ndc_label)}: ${group.ndc}", ix, top + 41f, np(cTextMed, 9.5f))
+        bp(cGreen, 24f, Paint.Align.RIGHT).let { cv.drawText(group.totalCount.toString(), irx, top + 34f, it) }
 
         // Divider
-        var y = top + ROW_DRUG_HDR
-        cv.drawLine(left + 4f, y, right, y, sp(C_DIVIDER))
+        var y = top + rowDrugHdr
+        cv.drawLine(left + 4f, y, right, y, sp(cDivider))
 
         // Section label / value paints (reused for Sealed + Opened)
-        val secLbl = bp(C_TEXT_MED, 9f).also { it.letterSpacing = 0.06f }
-        val secVal = bp(C_TEXT_DARK, 11f, Paint.Align.RIGHT)
+        val secLbl = bp(cTextMed, 9f).also { it.letterSpacing = 0.06f }
+        val secVal = bp(cTextDark, 11f, Paint.Align.RIGHT)
 
         // SEALED BOTTLES
-        cv.drawText(context.getString(R.string.sealed_bottles).uppercase(), ix, bl(y, ROW_SECTION, secLbl), secLbl)
-        cv.drawText(group.sealedTotal.toString(), irx, bl(y, ROW_SECTION, secVal), secVal)
-        y += ROW_SECTION
+        cv.drawText(context.getString(R.string.sealed_bottles).uppercase(), ix, bl(y, rowSection, secLbl), secLbl)
+        cv.drawText(group.sealedTotal.toString(), irx, bl(y, rowSection, secVal), secVal)
+        y += rowSection
 
         // Lot table
         if (group.sealedLots.isNotEmpty()) {
@@ -291,48 +291,48 @@ class BatchStockCountPdfExporter(private val context: Context) {
             val c2W = tW * 0.37f
 
             // Table header
-            cv.drawRect(tL, y, tR, y + ROW_TBL_HDR, fp(C_LGRAY))
-            bp(C_TEXT_LIGHT, 8.5f).let {
-                cv.drawText(context.getString(R.string.lot_No), tL + 4f, bl(y, ROW_TBL_HDR, it), it)
+            cv.drawRect(tL, y, tR, y + rowTblHdr, fp(cLgray))
+            bp(cTextLight, 8.5f).let {
+                cv.drawText(context.getString(R.string.lot_No), tL + 4f, bl(y, rowTblHdr, it), it)
             }
-            bp(C_TEXT_LIGHT, 8.5f, Paint.Align.CENTER).let {
-                cv.drawText(context.getString(R.string.expiry_date), tL + c1W + c2W / 2f, bl(y, ROW_TBL_HDR, it), it)
+            bp(cTextLight, 8.5f, Paint.Align.CENTER).let {
+                cv.drawText(context.getString(R.string.expiry_date), tL + c1W + c2W / 2f, bl(y, rowTblHdr, it), it)
             }
-            bp(C_TEXT_LIGHT, 8.5f, Paint.Align.RIGHT).let {
-                cv.drawText(context.getString(R.string.pills), tR, bl(y, ROW_TBL_HDR, it), it)
+            bp(cTextLight, 8.5f, Paint.Align.RIGHT).let {
+                cv.drawText(context.getString(R.string.pills), tR, bl(y, rowTblHdr, it), it)
             }
-            y += ROW_TBL_HDR
+            y += rowTblHdr
 
             // Lot rows
             for (lot in group.sealedLots) {
-                np(C_TEXT_DARK, 10f).let {
-                    cv.drawText(lot.lotNo?.takeIf(String::isNotBlank) ?: "—", tL + 4f, bl(y, ROW_LOT, it), it)
+                np(cTextDark, 10f).let {
+                    cv.drawText(lot.lotNo?.takeIf(String::isNotBlank) ?: "—", tL + 4f, bl(y, rowLot, it), it)
                 }
-                np(C_TEXT_DARK, 10f, Paint.Align.CENTER).let {
-                    cv.drawText(lot.expiry?.takeIf(String::isNotBlank) ?: "—", tL + c1W + c2W / 2f, bl(y, ROW_LOT, it), it)
+                np(cTextDark, 10f, Paint.Align.CENTER).let {
+                    cv.drawText(lot.expiry?.takeIf(String::isNotBlank) ?: "—", tL + c1W + c2W / 2f, bl(y, rowLot, it), it)
                 }
-                np(C_TEXT_DARK, 10f, Paint.Align.RIGHT).let {
-                    cv.drawText(lot.count.toString(), tR, bl(y, ROW_LOT, it), it)
+                np(cTextDark, 10f, Paint.Align.RIGHT).let {
+                    cv.drawText(lot.count.toString(), tR, bl(y, rowLot, it), it)
                 }
-                y += ROW_LOT
-                cv.drawLine(tL, y, tR, y, sp(C_LGRAY))
+                y += rowLot
+                cv.drawLine(tL, y, tR, y, sp(cLgray))
             }
 
             // Total row
-            cv.drawRect(tL, y, tR, y + ROW_TOTAL, fp(C_SURFACE))
-            bp(C_TEXT_DARK, 10.5f).let {
-                cv.drawText(context.getString(R.string.total), tL + 4f, bl(y, ROW_TOTAL, it), it)
+            cv.drawRect(tL, y, tR, y + rowTotal, fp(cSurface))
+            bp(cTextDark, 10.5f).let {
+                cv.drawText(context.getString(R.string.total), tL + 4f, bl(y, rowTotal, it), it)
             }
-            bp(C_TEXT_DARK, 10.5f, Paint.Align.RIGHT).let {
-                cv.drawText(group.sealedTotal.toString(), tR, bl(y, ROW_TOTAL, it), it)
+            bp(cTextDark, 10.5f, Paint.Align.RIGHT).let {
+                cv.drawText(group.sealedTotal.toString(), tR, bl(y, rowTotal, it), it)
             }
-            y += ROW_TOTAL
-            cv.drawLine(left + 4f, y, right, y, sp(C_DIVIDER))
+            y += rowTotal
+            cv.drawLine(left + 4f, y, right, y, sp(cDivider))
         }
 
         // OPENED BOTTLES
-        cv.drawText(context.getString(R.string.opend_bottles).uppercase(), ix, bl(y, ROW_SECTION, secLbl), secLbl)
-        cv.drawText(group.openedTotal.toString(), irx, bl(y, ROW_SECTION, secVal), secVal)
+        cv.drawText(context.getString(R.string.opend_bottles).uppercase(), ix, bl(y, rowSection, secLbl), secLbl)
+        cv.drawText(group.openedTotal.toString(), irx, bl(y, rowSection, secVal), secVal)
 
         return top + h
     }
@@ -342,11 +342,11 @@ class BatchStockCountPdfExporter(private val context: Context) {
     private fun drawFooter(cv: Canvas, pageNum: Int) {
         val lineY = pageH - 28f
         val textY = pageH - 13f
-        cv.drawLine(mH, lineY, pageW - mH, lineY, sp(C_DIVIDER))
-        np(C_TEXT_LIGHT, 7.5f).let {
+        cv.drawLine(mH, lineY, pageW - mH, lineY, sp(cDivider))
+        np(cTextLight, 7.5f).let {
             cv.drawText(context.getString(R.string.pdf_footer_stock_count), mH, textY, it)
         }
-        np(C_TEXT_LIGHT, 7.5f, Paint.Align.RIGHT).let {
+        np(cTextLight, 7.5f, Paint.Align.RIGHT).let {
             cv.drawText(context.getString(R.string.pdf_page, pageNum), pageW - mH, textY, it)
         }
     }

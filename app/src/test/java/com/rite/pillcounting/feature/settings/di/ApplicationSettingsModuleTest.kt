@@ -1,6 +1,5 @@
 package com.rite.pillcounting.feature.settings.di
 
-import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.settings.data.ApplicationSettingsRepository
 import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
 import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsRepository
@@ -31,12 +30,10 @@ class ApplicationSettingsModuleTest {
     @Test
     fun `provideApplicationSettingsRepository returns non-null ApplicationSettingsRepository`() {
         val apiService = mockk<IApplicationSettingInterface>(relaxed = true)
-        val preferenceHelper = mockk<PreferenceHelper>(relaxed = true)
 
         val repository: IApplicationSettingsRepository =
             ApplicationSettingsModule.provideApplicationSettingsRepository(
-                apiService = apiService,
-                preferenceHelper = preferenceHelper
+                apiService = apiService
             )
 
         assertNotNull(repository)

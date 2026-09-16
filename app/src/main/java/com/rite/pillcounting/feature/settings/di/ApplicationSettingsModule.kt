@@ -3,7 +3,6 @@ package com.rite.pillcounting.feature.settings.di
 import com.rite.pillcounting.feature.settings.data.ApplicationSettingsRepository
 import com.rite.pillcounting.feature.settings.data.remote.IApplicationSettingInterface
 import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsRepository
-import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -52,17 +51,14 @@ object ApplicationSettingsModule {
      * and persistence logic for application settings.
      *
      * @param apiService The [IApplicationSettingInterface] implementation for API calls.
-     * @param preferenceHelper The [PreferenceHelper] instance used for caching and local storage.
      * @return A concrete implementation of [IApplicationSettingsRepository].
      */
     @Provides
     @Singleton
     fun provideApplicationSettingsRepository(
-        apiService: IApplicationSettingInterface,
-        preferenceHelper: PreferenceHelper
+        apiService: IApplicationSettingInterface
     ): IApplicationSettingsRepository =
         ApplicationSettingsRepository(
             apiService = apiService,
-            preferenceHelper = preferenceHelper,
         )
 }

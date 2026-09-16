@@ -109,7 +109,6 @@ class HL7MessageBuilderTest {
             drugName = "Atorvastatin",
             pharmacistId = "PH1",
             pharmacistName = "John",
-            location = "Counter1",
         )
 
         assertTrue(raw.isNotEmpty())
@@ -164,7 +163,6 @@ class HL7MessageBuilderTest {
             drugName = "Drug",
             pharmacistId = null,
             pharmacistName = null,
-            location = null,
         )
 
         // rxNo present -> used directly as prescription number / patient id

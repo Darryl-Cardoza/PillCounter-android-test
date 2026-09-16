@@ -60,7 +60,9 @@ object FaceMatcher {
      *
      * @param probe A single embedding to identify (e.g. one live capture during verify).
      * @param gallery Every enrolled embedding to compare against.
-     * @return The best-scoring entry's `faceProfileId` if its score clears [MATCH_THRESHOLD], else null; [MatchResult.bestScore] is always the raw best score found (0 if the gallery is empty).
+     * @return The best-scoring entry's `faceProfileId` if its score clears [MATCH_THRESHOLD],
+     * else null; [MatchResult.bestScore] is always the raw best score found (0 if the gallery
+     * is empty).
      *
      * Example Usage:
      * val result = FaceMatcher.identify(probeEmbedding, galleryEntries)

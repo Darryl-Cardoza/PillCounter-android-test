@@ -100,8 +100,6 @@ class PillScanningViewModelEventTest {
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
             barcodeDecoder = barcodeDecoder,
-            drugRepository = drugRepository,
-            drugImageDownloader = drugImageDownloader,
             hl7Repository = hl7Repository,
             appDatabase = appDatabase,
         )
