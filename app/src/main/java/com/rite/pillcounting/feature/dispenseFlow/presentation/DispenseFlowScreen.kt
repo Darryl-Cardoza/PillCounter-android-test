@@ -404,28 +404,6 @@ fun DispenseFlowScreen(
         )
     }
 
-    // "Confirm Done" — fires after the user taps All Done and the pill VM
-    // decides whether the count is final. For FIXED counts under target, the
-    // message text is the "did you mean to stop short?" warning.
-    if (pillState.showConfirmDialog) {
-        val warningText = if (
-            countType == CountType.FIXED.toString() && pillStepType.equals(StepState.CONTAINER_PENDING) &&
-            pillState.txnDetailHistory.sumOf { it.count } < pillState.targetCount
-        ) {
-            stringResource(R.string.confirm_done_desc_fixed)
-        } else {
-            stringResource(R.string.confirm_done_desc_regular)
-        }
-        CommonDialog(
-            message = warningText,
-            title = stringResource(R.string.confirm_done),
-            confirmText = stringResource(R.string.ok),
-            cancelText = stringResource(R.string.cancel),
-            onConfirm = { pillVm.onEvent(PillScanningEvent.ConfirmDone) },
-            onCancel = { pillVm.onEvent(PillScanningEvent.CancelDone) },
-        )
-    }
-
     if (pillState.showCountMismatchDialog) {
         CommonDialog(
             message = stringResource(R.string.the_counted_quantity_does_not_match_the_target_count),
@@ -473,6 +451,18 @@ fun DispenseFlowScreen(
                 pillVm.resetIdleOverlay()
                 pillVm.handleDismissDialog()
             },
+        )
+    }
+
+    if (pillState.showSkipStepDialog) {
+        CommonDialog(
+            message = stringResource(R.string.skip_step_message),
+            title = stringResource(R.string.skip_step_title),
+            confirmText = stringResource(R.string.skip),
+            cancelText = "",
+            onConfirm = { pillVm.skipBackCount() },
+            onCancel = {},
+            isSingleButton = true
         )
     }
 
@@ -978,11 +968,11 @@ fun DispenseFlowScreen(
                                     // Auto-capture: always grab the still on a match.
                                     // Only auto-commit (as if Done was tapped) when
                                     // VIAL is the LAST workflow step — then the
-                                    // "Confirm Done" dialog appears without a manual
-                                    // tap. When VIAL is followed by more steps, just
-                                    // show the captured image and wait for the user to
-                                    // tap Done before advancing. Manual capture (camera
-                                    // button) always requires a Done tap.
+                                    // transaction completes without a manual tap. When
+                                    // VIAL is followed by more steps, just show the
+                                    // captured image and wait for the user to tap Done
+                                    // before advancing. Manual capture (camera button)
+                                    // always requires a Done tap.
                                     pillVm.captureImage(autoConfirm = pillVm.isVialLastStep())
                                 } else {
                                     barcodeAnalyzer.resume()

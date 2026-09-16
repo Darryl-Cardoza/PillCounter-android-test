@@ -315,4 +315,69 @@ class Hl7ServiceManagerTest {
 
         verify(exactly = 1) { serviceHandler.updateConfig(config) }
     }
+
+    // ──────────────────────────── updateServiceTypes ────────────────────────────
+
+    /** Puts the manager in the initialized state updateServiceTypes needs, with a bound service. */
+    private fun initializedManager(): HL7Service {
+        val service = mockk<HL7Service>(relaxed = true)
+        every { serviceHandler.getService() } returns service
+        every { serviceHandler.isServiceStarted() } returns true
+        every { serviceHandler.isBound() } returns true
+        manager.initialize(config, mockk<Hl7EventHandler>(relaxed = true))
+        return service
+    }
+
+    @Test
+    fun `updateServiceTypes rebroadcasts only when the broadcast type changed`() {
+        val service = initializedManager()
+
+        manager.updateServiceTypes(
+            nsdBroadcastType = "_newcounter._tcp",
+            nsdDiscoveryType = config.nsdDiscoveryType,
+        )
+
+        verify(exactly = 1) { service.rebroadcastNsd() }
+        verify(exactly = 0) { service.rediscoverPms() }
+    }
+
+    @Test
+    fun `updateServiceTypes rediscovers only when the discovery type changed`() {
+        val service = initializedManager()
+
+        manager.updateServiceTypes(
+            nsdBroadcastType = config.nsdBroadcastType,
+            nsdDiscoveryType = "_newpms._tcp",
+        )
+
+        verify(exactly = 0) { service.rebroadcastNsd() }
+        verify(exactly = 1) { service.rediscoverPms() }
+    }
+
+    @Test
+    fun `updateServiceTypes does both when both types changed`() {
+        val service = initializedManager()
+
+        manager.updateServiceTypes("_newcounter._tcp", "_newpms._tcp")
+
+        verify(exactly = 1) { service.rebroadcastNsd() }
+        verify(exactly = 1) { service.rediscoverPms() }
+    }
+
+    @Test
+    fun `updateServiceTypes does nothing when neither type changed`() {
+        val service = initializedManager()
+
+        manager.updateServiceTypes(config.nsdBroadcastType, config.nsdDiscoveryType)
+
+        verify(exactly = 0) { service.rebroadcastNsd() }
+        verify(exactly = 0) { service.rediscoverPms() }
+    }
+
+    @Test
+    fun `updateServiceTypes returns without binding when HL7 was never initialized`() {
+        manager.updateServiceTypes("_newcounter._tcp", "_newpms._tcp")
+
+        verify(exactly = 0) { serviceHandler.bindService() }
+    }
 }

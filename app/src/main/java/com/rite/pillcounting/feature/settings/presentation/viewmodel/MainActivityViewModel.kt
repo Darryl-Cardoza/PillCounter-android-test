@@ -484,41 +484,33 @@ class MainActivityViewModel @Inject constructor(
 
 
     /**
-     * Updates and caches the HL7 network service discovery (NSD) types from remote settings.
+     * Applies the HL7 NSD service types from the settings response.
+     *
+     * The server value wins on every fetch — prefs are only the cold-start cache. The cached-
+     * config guard that used to sit here returned early forever after the first successful
+     * fetch, so a backend change could never reach the device.
      */
     private fun updateHl7Config(setting: ApiResponse<SettingsDataDto>) {
-
-        // Guard 1: Don't process HL7 config if HL7 is disabled for this device
         if (!preferenceHelper.isHl7Enabled()) {
             logger.i("HL7 disabled for this device — skipping HL7 config update")
             return
         }
 
-        // Guard 2: Don't re-process if we already have a cached config
-        // (avoids re-saving hostnames to prefs on every app launch)
-        if (preferenceHelper.isHl7ConfigFetched()) {
-            logger.i("HL7 config already cached — loading from prefs")
-            _uiState.update {
-                it.copy(
-                    nsdBroadcastType = preferenceHelper.getHl7PillCounterHost(),
-                    nsdDiscoveryType = preferenceHelper.getHl7PmsHost(),
-                    isHl7Enabled = true
-                )
-            }
-            return
-        }
+        val hl7Config = setting.data?.hl7Config
+        val nsdDiscoveryType = Hl7ServiceConfig.resolvePmsHostName(hl7Config?.pmsHostName)
+        val nsdBroadcastType =
+            Hl7ServiceConfig.resolvePillCounterHostName(hl7Config?.pillCounterHostName)
 
-        // Guard 3: Server didn't return hl7_config (future server-side fix)
-        val nsdDiscoveryType = Hl7ServiceConfig.PMS_HOST_NAME
-        val nsdBroadcastType = Hl7ServiceConfig.PILL_COUNTER_HOST_NAME
+        logger.block(
+            "HL7-NSD · Service types from settings API",
+            "Discovery (pms_host_name)" to nsdDiscoveryType,
+            "Broadcast (pillcounter_host_name)" to nsdBroadcastType,
+            "Server sent discovery" to (hl7Config?.pmsHostName ?: "— using default"),
+            "Server sent broadcast" to (hl7Config?.pillCounterHostName ?: "— using default"),
+            "Cached discovery" to preferenceHelper.getHl7PmsHost().ifBlank { "none" },
+            "Cached broadcast" to preferenceHelper.getHl7PillCounterHost().ifBlank { "none" },
+        )
 
-        // Only store and expose if both values are non-empty
-        if (nsdDiscoveryType.isBlank() || nsdBroadcastType.isBlank()) {
-            logger.w("HL7 config received but host names are empty — skipping")
-            return
-        }
-
-        // Persist so subsequent launches don't need to re-fetch
         preferenceHelper.saveHl7Config(
             pmsHost = nsdDiscoveryType,
             pillCounterHost = nsdBroadcastType
@@ -531,9 +523,6 @@ class MainActivityViewModel @Inject constructor(
                 isHl7Enabled = true
             )
         }
-        logger.i("NSD settings updated and saved to preferences:")
-        logger.i("  • Broadcast Type: $nsdBroadcastType")
-        logger.i("  • Discovery Type: $nsdDiscoveryType")
     }
 
 
@@ -546,6 +535,13 @@ class MainActivityViewModel @Inject constructor(
      * can never both call through to [Hl7ServiceManager.initialize] for the same process.
      */
     private fun startHl7Service() {
+        // Defence in depth. Both callers already gate on login, but nothing in here did — so a
+        // future third call site could have started HL7 for a logged-out user.
+        if (!preferenceHelper.isUserLoggedIn()) {
+            logger.w("startHl7Service() — refusing to start HL7: no user is logged in")
+            return
+        }
+
         val broadCastServiceName = _uiState.value.nsdBroadcastType ?: return
         val discoverServiceName = _uiState.value.nsdDiscoveryType ?: return
         // Use terminal name from preferences, fallback to device model if not available
@@ -561,9 +557,25 @@ class MainActivityViewModel @Inject constructor(
             hl7Version = preferenceHelper.getHl7Version(),
         )
 
-        if (hl7StartedWithIdentity != null) {
-            if (identity == hl7StartedWithIdentity) {
+        val previousIdentity = hl7StartedWithIdentity
+        if (previousIdentity != null) {
+            if (identity == previousIdentity) {
                 logger.i("startHl7Service() — already running with this identity, skipping duplicate init")
+                return
+            }
+            // Only the NSD service types moved: re-point the running service instead of tearing
+            // it down. stopService() is async and initialize() fires straight after, so the
+            // restart path races itself; the live path has no such window.
+            if (isOnlyNsdTypeChange(previousIdentity, identity)) {
+                logger.block(
+                    "HL7-NSD · Only the service types changed — re-pointing the live service",
+                    "Broadcast was" to previousIdentity.broadCastServiceName,
+                    "Broadcast now" to identity.broadCastServiceName,
+                    "Discovery was" to previousIdentity.discoverServiceName,
+                    "Discovery now" to identity.discoverServiceName,
+                )
+                hl7StartedWithIdentity = identity
+                hl7ServiceManager.updateServiceTypes(broadCastServiceName, discoverServiceName)
                 return
             }
             logger.i("startHl7Service() — identity changed since last start (preloaded cache vs fresh fetch, or updated PMS/connection settings), restarting HL7")
@@ -578,6 +590,13 @@ class MainActivityViewModel @Inject constructor(
         )
         hl7ServiceManager.initialize(config, hl7EventHandler)
     }
+
+    /** True when [new] differs from [old] only in the two NSD service types. */
+    private fun isOnlyNsdTypeChange(old: Hl7Identity, new: Hl7Identity): Boolean =
+        old.copy(
+            broadCastServiceName = new.broadCastServiceName,
+            discoverServiceName = new.discoverServiceName,
+        ) == new
 
 
     /**

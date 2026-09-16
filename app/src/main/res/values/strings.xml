@@ -232,9 +232,6 @@
     <string name="total_count">Total Count</string>
     <string name="max_count_reached">Total Transaction count exceeds target.</string>
     <string name="no_transaction_found">No Transaction Found, please start counting pills</string>
-    <string name="confirm_done">Confirm Completion</string>
-    <string name="confirm_done_desc_regular">Are you sure you want to mark this transaction as completed?</string>
-    <string name="confirm_done_desc_fixed">Target not reached. This transaction will be marked as Completed.</string>
     <string name="rx_already_exists_title">RX Already Exists</string>
     <string name="rx_already_exists_message">This RX is already present in your transactions. Do you want to continue with it?</string>
     <string name="rx_on_hold_title">Transaction On Hold</string>
@@ -434,6 +431,8 @@
     <string name="batch">Batch</string>
     <string name="batch_number">Batch #%1$d</string>
     <string name="no_last_batch_available">No last batch available</string>
+    <string name="skip_step_title">Nothing Left to Scan</string>
+    <string name="skip_step_message">The bottle has no remaining count, so the back count step is not needed. Tap Skip to complete this transaction.</string>
 
 <!--count Section-->
     <string name="toggle_with_count">%1$s (%2$d)</string>

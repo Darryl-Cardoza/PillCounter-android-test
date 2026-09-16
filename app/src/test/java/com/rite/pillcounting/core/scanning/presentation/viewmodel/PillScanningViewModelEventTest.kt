@@ -43,7 +43,7 @@ import org.junit.Rule
 import org.junit.Test
 
 /**
- * Unit tests for [PillScanningViewModel] event handling: Rescan, CancelDone, delete
+ * Unit tests for [PillScanningViewModel] event handling: Rescan, delete
  * transaction details, note save/skip, FinalDone routing, and ancillary public API
  * (resetWorkflowSteps, updateFilteredPills, pausePillDetection).
  *
@@ -118,17 +118,6 @@ class PillScanningViewModelEventTest {
         viewModel.onEvent(PillScanningEvent.RescanClicked)
 
         assertTrue(viewModel.uiState.value.detectedPills.isEmpty())
-    }
-
-    // ─────────────────────────── CancelDone ───────────────────────────
-
-    // SCAN_VM_027
-    @Test
-    fun `CancelDone clears capturedBitmap and sets showConfirmDialog to false`() = runTest {
-        viewModel.onEvent(PillScanningEvent.CancelDone)
-
-        assertNull(viewModel.capturedBitmap.value)
-        assertFalse(viewModel.uiState.value.showConfirmDialog)
     }
 
     // ─────────────────────────── resetWorkflowSteps ───────────────────────────

@@ -1324,8 +1324,6 @@ class PillScanningViewModel @Inject constructor(
             PillScanningEvent.DoneClicked -> handleDone()
             is PillScanningEvent.NoteSaved -> handleNoteSaved(event)
             PillScanningEvent.NoteSkip -> handleNoteSkip()
-            is PillScanningEvent.ConfirmDone -> handleConfirmDone()
-            is PillScanningEvent.CancelDone -> handleCancelDone()
             is PillScanningEvent.TransactionDetailDeleted -> handleDeleteTransaction(event)
             is PillScanningEvent.AllTransactionDetailsDeleted -> handleDeleteAllTransactionDetails(
                 event
@@ -1674,7 +1672,7 @@ class PillScanningViewModel @Inject constructor(
             } else if (remainingCount > 0 && _currentStep.value == StepState.CONTAINER_PENDING) {
                 _uiState.update { it.copy(showNotesDialog = true) }
             } else {
-                showConfirmDialogAfterDone()
+                handleConfirmDone()
             }
         }
     }
@@ -1683,13 +1681,13 @@ class PillScanningViewModel @Inject constructor(
         setNoteDialogShown(false)
         viewModelScope.launch {
             pillCountTxnDao.updateNote(preferenceHelper.getTxnId(), event.note)
-            showConfirmDialogAfterDone()
+            handleConfirmDone()
         }
     }
 
     private fun handleNoteSkip() {
         setNoteDialogShown(false)
-        showConfirmDialogAfterDone()
+        handleConfirmDone()
     }
 
     private fun handleConfirmDone() {
@@ -1702,7 +1700,6 @@ class PillScanningViewModel @Inject constructor(
             val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
             val txn = pillCountTxnDao.getById(txnId) ?: return@launch
             if (total == 0) {
-                _uiState.update { it.copy(showConfirmDialog = false) }
                 return@launch
             }
             val status =
@@ -1724,19 +1721,9 @@ class PillScanningViewModel @Inject constructor(
             }
 
             _capturedBitmap.value = null
-            _uiState.update { it.copy(showConfirmDialog = false) }
             _navigationEvent.send(NavigationEvent.NavigateToDashboard)
             logger.i("Transaction completed. Status=$status")
         }
-    }
-
-    private fun handleCancelDone() {
-        // Clear the captured still so the VIAL step returns to the live camera view,
-        // allowing the user to capture a new photo or click Done again.
-        _capturedBitmap.value = null
-        captureCommitted = false
-        _uiState.update { it.copy(showConfirmDialog = false) }
-        logger.i("Confirm dialog cancelled.")
     }
 
     private fun handleDeleteTransaction(event: PillScanningEvent.TransactionDetailDeleted) {
@@ -2082,14 +2069,6 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
-    private fun showConfirmDialogAfterDone() {
-        // Do NOT clear capturedBitmap here. The confirm dialog is shown on top of
-        // the captured still, so the user never sees the live camera underneath.
-        // capturedBitmap is cleared in handleCancelDone (returns user to live VIAL
-        // camera) and is irrelevant on confirm (navigation destroys the screen).
-        _uiState.update { it.copy(showConfirmDialog = true) }
-    }
-
     fun triggerAddPop(count: Int) {
         _addPopEvents.tryEmit(count)
     }
@@ -2256,8 +2235,9 @@ class PillScanningViewModel @Inject constructor(
     /**
      * True when VIAL is the final step of the active workflow. The auto-capture
      * path uses this to decide whether scanning the vial should finish the flow
-     * outright (show the "Confirm Done" dialog) or merely capture the still and
-     * wait for the user to tap Done before advancing to the remaining step(s).
+     * outright (complete the transaction, or show the notes prompt when that
+     * setting is on) or merely capture the still and wait for the user to tap Done
+     * before advancing to the remaining step(s).
      */
     fun isVialLastStep(): Boolean = _steps.value.lastOrNull() == StepState.VIAL
 
@@ -2266,9 +2246,9 @@ class PillScanningViewModel @Inject constructor(
      *
      * @param autoConfirm when true (auto-capture path, where the vial's RX matched
      *   the active transaction), immediately commit the photo as if the user tapped
-     *   "Done" once the bitmap lands — this advances the workflow and surfaces the
-     *   "Confirm Done" dialog. When false (manual capture), the still is shown and
-     *   the user confirms via the Done button.
+     *   "Done" once the bitmap lands — this advances the workflow and completes the
+     *   transaction. When false (manual capture), the still is shown and the user
+     *   confirms via the Done button.
      *
      * A second call while a capture is still in flight is a no-op: no sound, no
      * flash, no capture request. See [isCapturing].
@@ -2314,6 +2294,42 @@ class PillScanningViewModel @Inject constructor(
         _capturedBitmap.value?.let { processCapturedImage(it) }
     }
 
+    /**
+     * Advance past VIAL, or offer to skip the back count.
+     *
+     * CONTAINER_PENDING re-counts what is left in the stock bottle. When the bottle was
+     * poured out and fully dispensed there is nothing left, so the step is offered as a
+     * skip instead of being walked into with a target of 0. The CONTAINER_INITIATE total
+     * is read from the DAO because uiState only ever holds the current step's rows.
+     */
+    private fun advanceFromVial() {
+        val steps = _steps.value
+        val next = steps.getOrNull(steps.indexOf(StepState.VIAL) + 1)
+        if (next != StepState.CONTAINER_PENDING) {
+            moveNextStep()
+            return
+        }
+        viewModelScope.launch {
+            val poured = pillCountTxnDetailsDao
+                .observeAllForTxn(preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE)
+                .first().sumOf { it.pillCount ?: 0 }
+            if (poured == (_txnInfo.value?.targetCount ?: 0)) {
+                // No camera frames arrive while the dialog sits on the vial still, so
+                // the watchdog would fire and drop the idle overlay behind it.
+                pauseIdleTimer()
+                _uiState.update { it.copy(showSkipStepDialog = true) }
+            } else {
+                moveNextStep()
+            }
+        }
+    }
+
+    /** Single-button "Skip": finish the txn without entering CONTAINER_PENDING. */
+    fun skipBackCount() {
+        _uiState.update { it.copy(showSkipStepDialog = false) }
+        handleDone()
+    }
+
     private fun processCapturedImage(bitmap: Bitmap) {
         // Guard only the photo write. handleDone has exits that leave the user on VIAL
         // (notes dialog dismissed, total 0), so a Done re-tap must still advance the flow.
@@ -2321,20 +2337,14 @@ class PillScanningViewModel @Inject constructor(
             captureCommitted = true
             onEvent(PillScanningEvent.AddVialPhotoInTxn(0, bitmap))
         }
-        moveNextStep()
+        advanceFromVial()
         isPaused = false
         _cameraPaused.value = false
         _uiState.update { it.copy(showIdleOverlay = false) }
-        // Clear the captured still only when the step has actually advanced beyond
-        // VIAL (i.e. moveNextStep moved to CONTAINER_PENDING or similar). When the
-        // step is still VIAL it means handleDone() was called and its coroutine
-        // will finish with showConfirmDialogAfterDone(), which clears capturedBitmap
-        // and sets showConfirmDialog in the same synchronous dispatch — preventing
-        // CameraPreviewSection from briefly resuming the live camera in the window
-        // between the image disappearing and the dialog appearing.
-        if (_currentStep.value != StepState.VIAL) {
-            _capturedBitmap.value = null
-        }
+        // The still is left up here on purpose. Whichever way advanceFromVial goes it
+        // clears the bitmap itself — redoCaptureImage on the CONTAINER_PENDING entry,
+        // handleConfirmDone on completion — so clearing it here only flashes the live
+        // camera underneath.
         resetIdleTimer()
     }
 

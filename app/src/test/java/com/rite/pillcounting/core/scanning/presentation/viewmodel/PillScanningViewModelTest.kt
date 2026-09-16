@@ -509,7 +509,8 @@ class PillScanningViewModelTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.showNotesDialog)
-        assertFalse(viewModel.uiState.value.showConfirmDialog)
+        // getById is only reached by handleConfirmDone, so the notes prompt still gates completion.
+        coVerify(exactly = 0) { pillCountTxnDao.getById(any()) }
     }
 
     @Test
@@ -523,7 +524,8 @@ class PillScanningViewModelTest {
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.showNotesDialog)
-        assertTrue(viewModel.uiState.value.showConfirmDialog)
+        // No confirm dialog any more: Done completes the txn straight through.
+        coVerify(exactly = 1) { pillCountTxnDao.getById(any()) }
     }
 
     // ─────────────────────────── onNdcRescannedDuringCount ───────────────────────────
