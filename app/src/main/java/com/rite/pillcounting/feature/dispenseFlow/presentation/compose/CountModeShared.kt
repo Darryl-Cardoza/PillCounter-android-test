@@ -323,7 +323,7 @@ internal fun ViewAllCountsLink(onClick: () -> Unit) {
     Text(
         text = stringResource(R.string.pill_scanning_view_all_counts) + " ›",
         color = MaterialTheme.colorScheme.primary,
-        fontSize = responsiveSp(8.sp),
+        fontSize = responsiveSp(8.sp, boostOnPhone = true),
         fontWeight = FontWeight.Medium,
         maxLines = 1,
         softWrap = false,
