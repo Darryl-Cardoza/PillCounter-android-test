@@ -62,7 +62,7 @@ jobs:
 
       run_tests: true
       run_coverage: true
-      run_static_analysis: false
+      run_static_analysis: true
       # Checks only on a PR or a plain push to main -- no APK/AAB assembled.
       # Only a tag push builds, since that's the only case `cd` below needs
       # an artifact to sign and ship.

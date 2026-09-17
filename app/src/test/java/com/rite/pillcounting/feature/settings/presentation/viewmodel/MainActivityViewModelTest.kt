@@ -80,7 +80,10 @@ class MainActivityViewModelTest {
         dark = themeColors("#bbbbbb"),
     )
 
-    private fun settingsResponse(colors: ColorSettings = colorSettings(), appLogo: String = "logo_url") = ApplicationSettingsResponse(
+    private fun settingsResponse(
+        colors: ColorSettings = colorSettings(),
+        appLogo: String = "logo_url",
+    ) = ApplicationSettingsResponse(
         colors = colors,
         appLogo = appLogo,
         placeholderLogo = "placeholder",
@@ -620,7 +623,9 @@ class MainActivityViewModelTest {
             txnId = 5L,
             isDispense = true,
             status = CountStatus.COMPLETED,
-            bottleInfoListJson = BottleInfoJson.encode(listOf(BottleInfo(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png"))),
+            bottleInfoListJson = BottleInfoJson.encode(
+                listOf(BottleInfo(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png")),
+            ),
         )
         coEvery { txnDao.getTransactionsBefore(any()) } returns listOf(txn)
         coEvery { txnDao.getTransactionDetailsImages(5L) } returns listOf("C:/nonexistent/detail.png")
