@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.faceAuth.logic
 
+import android.content.SharedPreferences
 import com.rite.pillcounting.core.faceAuth.data.FaceProfileRepository
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import kotlinx.coroutines.CoroutineScope
@@ -72,6 +73,15 @@ class SessionLockController @Inject constructor(
     private val _verifiedFaceProfileId = MutableStateFlow<Long?>(null)
     val verifiedFaceProfileId: StateFlow<Long?> = _verifiedFaceProfileId.asStateFlow()
 
+    // Watches the pref, not each logout call site — several flip it directly. Held as a field:
+    // the platform keeps only a weak reference to the listener.
+    private val loggedOutListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == preferenceHelper.userLoggedInKey && !preferenceHelper.isUserLoggedIn()) {
+                _verifiedFaceProfileId.value = null
+            }
+        }
+
     /** Whether at least one enrolled face profile currently participates in verify matching. */
     val hasEnabledProfile: StateFlow<Boolean> = faceProfileRepository.observeProfiles()
         .map { profiles -> profiles.any { it.isEnabled } }
@@ -94,6 +104,7 @@ class SessionLockController @Inject constructor(
                 }
             }
         }
+        preferenceHelper.registerOnChangeListener(loggedOutListener)
     }
 
     private fun tick() {
@@ -116,11 +127,6 @@ class SessionLockController @Inject constructor(
      */
     fun onFaceVerified(faceProfileId: Long) {
         _verifiedFaceProfileId.value = faceProfileId
-    }
-
-    /** Drops the verified identity without locking. Call on logout. */
-    fun clearVerifiedFaceUser() {
-        _verifiedFaceProfileId.value = null
     }
 
     /**

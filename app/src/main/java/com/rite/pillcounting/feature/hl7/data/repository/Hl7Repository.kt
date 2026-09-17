@@ -379,7 +379,8 @@ class Hl7Repository @Inject constructor(
 
     /**
      * Resends every pending (unsynced, HL7-originated, completed) transaction's HL7
-     * message, one at a time, waiting for each ACK before moving to the next.
+     * message, one at a time, waiting for each ACK — and for the isSynced write that
+     * follows it — before moving to the next.
      * [resendMutex] ensures the Room-flow observer and onClientConnected triggers can
      * never overlap and send the same txn's message twice concurrently.
      */
@@ -427,15 +428,17 @@ class Hl7Repository @Inject constructor(
      * was sent for this txn — never from a shared "last sent" slot, so concurrent
      * in-flight sends can't mark the wrong transaction synced.
      */
-    private fun markTransactionSynced(txnId: Long) {
+    private suspend fun markTransactionSynced(txnId: Long) {
         // A synced txn is never resent, so its cached ZUI-8 image encodings can be dropped now.
         HL7MessageBuilder.evictImageCache(txnId)
-        scope.launch {
-            // Flag the txn synced first, then — when the server disallows local storage —
-            // delete it. The PMS pulls images from the device image server before sending
-            // the success ACK, so the images are already retrieved by the time we delete here.
-            pillCountTxnDao.markTxnSynced(txnId)
-            if (!preferenceHelper.isAllowLocalStorage()) {
+        // Flag the txn synced first, then — when the server disallows local storage —
+        // delete it. The PMS pulls images from the device image server before sending
+        // the success ACK, so the images are already retrieved by the time we delete here.
+        // Awaited, not launched: the caller still holds resendMutex, and releasing it before
+        // this row lands would let a concurrent send read isSynced = 0 and send a second copy.
+        pillCountTxnDao.markTxnSynced(txnId)
+        if (!preferenceHelper.isAllowLocalStorage()) {
+            scope.launch {
                 // Wait before deleting: the PMS pulls the transaction images from the device
                 // image server (ImageNanoServer) *after* the success ACK. Deleting immediately
                 // would remove the image files before that pull completes, leaving the PMS

@@ -13,7 +13,6 @@ import com.rite.pillcounting.core.utils.validator.CredentialsValidator
 import com.rite.pillcounting.feature.login.domain.model.LoginUiState
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
 import com.google.gson.Gson
-import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.hl7.service.Hl7serviceHandler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -38,7 +37,6 @@ import javax.inject.Inject
  * @param validator Performs email format validation before login.
  * @param context Required to resolve error strings.
  * @param preferenceHelper Utility to persist token and login state.
- * @param sessionLockController Holds who verified into this session; cleared on logout.
  */
 @HiltViewModel
 class LoginViewModel @Inject constructor(
@@ -46,8 +44,7 @@ class LoginViewModel @Inject constructor(
     private val validator: CredentialsValidator,
     @ApplicationContext private val context: Context,
     val preferenceHelper: PreferenceHelper,
-    val serviceManager: Hl7serviceHandler,
-    private val sessionLockController: SessionLockController
+    val serviceManager: Hl7serviceHandler
 ) : ViewModel() {
 
     private val logger = AppLogger.create<LoginViewModel>()
@@ -138,9 +135,6 @@ class LoginViewModel @Inject constructor(
         preferenceHelper.setUserLoggedIn(false)
         preferenceHelper.clearLoggedInAt()
         preferenceHelper.saveLocalId(0)
-        // The next account must not inherit this one's operator; don't wait for the
-        // post-login lockNow to do it.
-        sessionLockController.clearVerifiedFaceUser()
     }
 
     fun clearAllStates() {
