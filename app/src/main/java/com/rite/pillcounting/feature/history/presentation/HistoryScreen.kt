@@ -78,113 +78,107 @@ fun HistoryScreen(
         viewModel.setHistoryMode(historyMode)
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .systemBarsPadding()
             .background(AppTheme.extendedColors.secondaryBackground)
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .displayCutoutPadding()
+        ) {
 
-        if (showSearch) {
-            HeadlineBar(
-                navController = navController,
-                title = "",
-                searchQuery = searchQuery,
-                showSearch = true,
-                isMultiSelectMode = false,
-                isAllSelected = false,
-                hasSelection = false,
-                showDelete = false,
-                onSearchClick = {
-                    viewModel.setSearchQuery("")
-                    showSearch = false
-                },
-                onSearchChange = { viewModel.setSearchQuery(it) },
-                onDeleteClick = {},
-                onCancelClick = {},
-                onConfirmDelete = {},
-                onSelectAll = {}
-            )
+            if (showSearch) {
+                HeadlineBar(
+                    navController = navController,
+                    title = "",
+                    searchQuery = searchQuery,
+                    showSearch = true,
+                    isMultiSelectMode = false,
+                    isAllSelected = false,
+                    hasSelection = false,
+                    showDelete = false,
+                    onSearchClick = {
+                        viewModel.setSearchQuery("")
+                        showSearch = false
+                    },
+                    onSearchChange = { viewModel.setSearchQuery(it) },
+                    onDeleteClick = {},
+                    onCancelClick = {},
+                    onConfirmDelete = {},
+                    onSelectAll = {}
+                )
 
-            val openPdfWith = stringResource(R.string.open_pdf_with)
-            CountsSection(
-                counts = counts,
-                batches = batchGroups,
-                initialShowComplete = defaultToComplete,
-                isSearchActive = true,
-                onExportClick = {
-                    val file = pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
-                    file?.let { sharePdfFile(context, it, openPdfWith) }
-                },
-                onDeleteClick = { filter ->
-                    pendingDeleteFilter = filter
-                    showDeleteConfirmationDialog = true
-                },
-                selectedOption = selectedOption,
-                onOptionSelected = { selectedOption = it },
-                onTxnClick = { txnId ->
-                    viewModel.selectCurrentTransaction(txnId)
-                    navController.navigate(Screen.HistoryDetail.route)
-                },
-                onBatchClick = { batchId ->
-                    val isCompleted = batchGroups.find { it.batchId == batchId }
-                        ?.status == com.rite.pillcounting.core.room.models.enums.BatchStatus.COMPLETED
-                    if (isCompleted) {
+                val openPdfWith = stringResource(R.string.open_pdf_with)
+                CountsSection(
+                    counts = counts,
+                    batches = batchGroups,
+                    initialShowComplete = defaultToComplete,
+                    isSearchActive = true,
+                    onExportClick = {
+                        val file = pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
+                        file?.let { sharePdfFile(context, it, openPdfWith) }
+                    },
+                    onDeleteClick = { filter ->
+                        pendingDeleteFilter = filter
+                        showDeleteConfirmationDialog = true
+                    },
+                    selectedOption = selectedOption,
+                    onOptionSelected = { selectedOption = it },
+                    onTxnClick = { txnId ->
+                        viewModel.selectCurrentTransaction(txnId)
+                        navController.navigate(Screen.HistoryDetail.route)
+                    },
+                    onBatchClick = { batchId ->
                         navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
-                    } else {
-                        navController.navigate(Screen.Batch.createRoute(batchId))
                     }
-                }
-            )
-        } else {
-            SplitResponsive(
-                topOrLeft = {
-                    CalendarSection(
-                        calendarState = calendarState,
-                        selectedDate = selectedDate,
-                        onDateSelected = { viewModel.selectDate(it) },
-                        onBackClick = onBackClick,
-                        navController = navController,
-                        viewModel = viewModel,
-                        showSearch = false,
-                        onSearchToggle = { showSearch = true }
-                    )
-                },
-                bottomOrRight = {
-                    val openPdfWith = stringResource(R.string.open_pdf_with)
-                    CountsSection(
-                        counts = counts,
-                        batches = batchGroups,
-                        initialShowComplete = defaultToComplete,
-                        onExportClick = {
-                            val file =
-                                pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
-                            file?.let { sharePdfFile(context, it, openPdfWith) }
-                        },
-                        selectedOption = selectedOption,
-                        onOptionSelected = { selectedOption = it },
-                        onDeleteClick = { filter ->
-                            pendingDeleteFilter = filter
-                            showDeleteConfirmationDialog = true
-                        },
-                        onTxnClick = { txnId ->
-                            viewModel.selectCurrentTransaction(txnId)
-                            navController.navigate(Screen.HistoryDetail.route)
-                        },
-                        onBatchClick = { batchId ->
-                            val isCompleted = batchGroups.find { it.batchId == batchId }
-                                ?.status == com.rite.pillcounting.core.room.models.enums.BatchStatus.COMPLETED
-                            if (isCompleted) {
+                )
+            } else {
+                SplitResponsive(
+                    topOrLeft = {
+                        CalendarSection(
+                            calendarState = calendarState,
+                            selectedDate = selectedDate,
+                            onDateSelected = { viewModel.selectDate(it) },
+                            onBackClick = onBackClick,
+                            navController = navController,
+                            viewModel = viewModel,
+                            showSearch = false,
+                            onSearchToggle = { showSearch = true }
+                        )
+                    },
+                    bottomOrRight = {
+                        val openPdfWith = stringResource(R.string.open_pdf_with)
+                        CountsSection(
+                            counts = counts,
+                            batches = batchGroups,
+                            initialShowComplete = defaultToComplete,
+                            onExportClick = {
+                                val file =
+                                    pdfExporter.generateHistoryPdf(counts, selectedDate.toString())
+                                file?.let { sharePdfFile(context, it, openPdfWith) }
+                            },
+                            selectedOption = selectedOption,
+                            onOptionSelected = { selectedOption = it },
+                            onDeleteClick = { filter ->
+                                pendingDeleteFilter = filter
+                                showDeleteConfirmationDialog = true
+                            },
+                            onTxnClick = { txnId ->
+                                viewModel.selectCurrentTransaction(txnId)
+                                navController.navigate(Screen.HistoryDetail.route)
+                            },
+                            onBatchClick = { batchId ->
                                 navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
-                            } else {
-                                navController.navigate(Screen.Batch.createRoute(batchId))
                             }
-                        }
-                    )
-                },
-                landscapeRatio = startWidthLandScape to endWidthLandscape,
-                portraitRatio = topHeightPortrait to bottomHeightPortrait
-            )
+                        )
+                    },
+                    landscapeRatio = startWidthLandScape to endWidthLandscape,
+                    portraitRatio = topHeightPortrait to bottomHeightPortrait
+                )
+            }
         }
     }
 

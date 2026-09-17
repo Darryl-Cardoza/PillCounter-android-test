@@ -531,6 +531,19 @@ class PreferenceHelperTest {
         assertFalse(helper.isHl7ConfigFetched())
     }
 
+    @Test
+    fun `nsd type accessors share storage with saveHl7Config`() {
+        helper.saveHl7Config(pmsHost = "_pms._tcp", pillCounterHost = "_counter._tcp")
+        assertEquals("_pms._tcp", helper.getNsdDiscoveryType())
+        assertEquals("_counter._tcp", helper.getNsdBroadcastType())
+    }
+
+    @Test
+    fun `saveNsdDiscoveryType is visible to getHl7PmsHost`() {
+        helper.saveNsdDiscoveryType("_other._tcp")
+        assertEquals("_other._tcp", helper.getHl7PmsHost())
+    }
+
     // ─────────────────────────── TERMINALS ───────────────────────────
 
     @Test

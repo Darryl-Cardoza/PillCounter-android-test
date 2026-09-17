@@ -28,7 +28,10 @@ import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.BatchStockCountHeader
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.BatchStockCountUiState
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditBatchRow
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.RecentBatchRow
+import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.EditDetailsContent
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.RecentCountsLabelRow
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.ScannedDrugDetailsPhone
@@ -46,6 +49,7 @@ import com.rite.pillcounting.ui.theme.AppTheme
  *  - Collapsed (peek): header + the SCANNED NDC DETAILS card/counter (active) or
  *    the "scan a new bottle" placeholder + SCANNED SUMMARY (empty).
  *  - Expanded (pull up): the RECENT COUNTS list is revealed below the card.
+ *  - Editing: the whole sheet becomes the Edit Details card (host expands it).
  *
  * Single column throughout (the tablet side-by-side Row is too cramped on a
  * phone). The card content reuses [ScannedDrugDetailsPhone] / [ScannedSummaryRow]
@@ -64,6 +68,9 @@ fun BatchStockCountPhonePortrait(
     // LazyColumn bounded (a fillMaxSize/weight LazyColumn in a wrap-content sheet
     // crashes with "measured with infinity").
     listMaxHeight: Dp,
+    // Height the edit-mode column takes (the sheet's expanded max); the inner
+    // editor uses weight(1f), which needs a bounded height in a wrap-content sheet.
+    editMaxHeight: Dp,
     modifier: Modifier = Modifier,
     // END COUNT is disabled until at least one NDC has been scanned.
     endCountEnabled: Boolean = true,
@@ -72,6 +79,10 @@ fun BatchStockCountPhonePortrait(
     // card) so the host can size the sheet's peek to exactly show it — no fixed
     // guess that clips the counter, no dead space above.
     onPeekHeightChanged: (Int) -> Unit = {},
+    onEdit: () -> Unit = {},
+    editDetails: EditDrugDetails? = null,
+    onEditDismiss: () -> Unit = {},
+    onEditSave: (sealed: List<EditBatchRow>, open: List<EditBatchRow>) -> Unit = { _, _ -> },
 ) {
     // NO own background / rounded surface here — the hosting BottomSheetScaffold
     // provides the grey sheet container, rounded top corners, and the drag handle.
@@ -83,6 +94,42 @@ fun BatchStockCountPhonePortrait(
             .fillMaxWidth()
             .padding(horizontal = 16.dp),
     ) {
+        // Edit mode: the header morphs to "Edit Details" + X and a single full-width
+        // card hosts the editable batch rows. Recent counts stay hidden, and the peek
+        // height is left untouched so the collapsed sheet is unchanged on dismiss.
+        if (editDetails != null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(editMaxHeight),
+            ) {
+                Spacer(modifier = Modifier.height(20.dp))
+                BatchStockCountHeader(
+                    onScanPills = onScanPills,
+                    editing = true,
+                    onClose = onEditDismiss,
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(AppTheme.extendedColors.secondaryBackground)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                ) {
+                    EditDetailsContent(
+                        details = editDetails,
+                        onDismiss = onEditDismiss,
+                        onSave = onEditSave,
+                        showTitle = false,
+                    )
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+            return@Column
+        }
+
         // Peek region: top padding + header + the details/counter card + a bottom
         // gap. ALL of it is INSIDE the measured region so the peek height matches
         // it exactly — no extra space below (which leaked the recent-counts header
@@ -111,6 +158,7 @@ fun BatchStockCountPhonePortrait(
                         onDecrement = onDecrement,
                         onClear = onClear,
                         onAdd = onAdd,
+                        onEdit = onEdit,
                     )
                 } else {
                     EmptyScannedDetailsPhone(

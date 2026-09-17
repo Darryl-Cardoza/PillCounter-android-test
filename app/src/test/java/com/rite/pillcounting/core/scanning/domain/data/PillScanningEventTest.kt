@@ -61,14 +61,10 @@ class PillScanningEventTest {
         assertTrue(PillScanningEvent.RescanClicked is PillScanningEvent)
         assertTrue(PillScanningEvent.PauseClicked is PillScanningEvent)
         assertTrue(PillScanningEvent.DoneClicked is PillScanningEvent)
-        assertTrue(PillScanningEvent.ConfirmDone is PillScanningEvent)
-        assertTrue(PillScanningEvent.CancelDone is PillScanningEvent)
         assertTrue(PillScanningEvent.NoteSkip is PillScanningEvent)
         assertSame(PillScanningEvent.RescanClicked, PillScanningEvent.RescanClicked)
         assertSame(PillScanningEvent.PauseClicked, PillScanningEvent.PauseClicked)
         assertSame(PillScanningEvent.DoneClicked, PillScanningEvent.DoneClicked)
-        assertSame(PillScanningEvent.ConfirmDone, PillScanningEvent.ConfirmDone)
-        assertSame(PillScanningEvent.CancelDone, PillScanningEvent.CancelDone)
         assertSame(PillScanningEvent.NoteSkip, PillScanningEvent.NoteSkip)
     }
 

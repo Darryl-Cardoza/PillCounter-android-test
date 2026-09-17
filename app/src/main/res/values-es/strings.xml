@@ -30,7 +30,6 @@
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispensar</string>
-    <string name="inventory">Inventario</string>
     <string name="tap_to_scan_rx_labels">Toca para escanear etiquetas Rx</string>
     <string name="stock_count">Conteo de Stock</string>
     <string name="start_a_new_inventory_count">Iniciar un nuevo conteo de inventario</string>
@@ -161,9 +160,6 @@
     <string name="total_count">Conteo Total</string>
     <string name="max_count_reached">El conteo total de la transacción excede el objetivo.</string>
     <string name="no_transaction_found">No se encontró ninguna transacción, por favor comience a contar pastillas</string>
-    <string name="confirm_done">Confirmar Finalización</string>
-    <string name="confirm_done_desc_regular">¿Está seguro de que desea marcar esta transacción como completada?</string>
-    <string name="confirm_done_desc_fixed">Objetivo no alcanzado. Esta transacción se marcará como completada.</string>
     <string name="rx_already_exists_title">La RX ya existe</string>
     <string name="rx_already_exists_message">Esta RX ya está presente en sus transacciones. ¿Desea continuar con ella?</string>
     <string name="rx_on_hold_title">Transacción en espera</string>
@@ -264,6 +260,10 @@
     <string name="pill_scanning_all_done">Todo hecho</string>
     <string name="pill_scanning_add_this">AÑADIR</string>
     <string name="pill_scanning_view_all_counts">Ver todo</string>
+    <string name="reset">Restablecer</string>
+    <string name="reset_count_title">¿Restablecer el recuento?</string>
+    <string name="reset_count_message">Esto elimina todos los recuentos e imágenes recopilados para esta receta. Volverá a escanear el envase. Esta acción no se puede deshacer.</string>
+    <string name="cd_reset_count">Restablecer este recuento</string>
     <string name="detail_label_form">Forma</string>
     <string name="detail_label_strength">Fuerza</string>
     <string name="detail_label_bucket">Cubeta</string>
@@ -350,16 +350,15 @@
     <string name="voice_add_the_pill_count">Añada el conteo de pastillas</string>
     <string name="are_you_sure_you_want_to_end_this_count">¿Está seguro de que desea finalizar este conteo?</string>
     <string name="no_items_in_that_batch_yet">Aún no hay artículos en este lote</string>
-    <string name="end_this_batch_it_will_be_mark_as_completed">¿Finalizar este lote? Se marcará como completado.</string>
-    <string name="end_batch">Finalizar lote</string>
-    <string name="no_qty_added_message">Por favor, añada al menos una cantidad de artículo antes de finalizar el lote.</string>
     <string name="sealed_bottles">Frascos sellados</string>
     <string name="opend_bottles">Frascos abiertos</string>
-    <string name="end_count">FINALIZAR CONTEO</string>
-    <string name="plus_add">+ AGREGAR</string>
     <string name="bucket">Cubeta</string>
+    <string name="default_bucket">Normal</string>
     <string name="batch">Lote</string>
+    <string name="batch_number">Lote n.º %1$d</string>
     <string name="no_last_batch_available">No hay último lote disponible</string>
+    <string name="skip_step_title">No queda nada por escanear</string>
+    <string name="skip_step_message">A la botella no le queda cantidad, por lo que no es necesario realizar el paso de recuento posterior. Pulse «Omitir» para completar esta transacción.</string>
 
 <!--count Section-->
     <string name="toggle_with_count">%1$s (%2$d)</string>

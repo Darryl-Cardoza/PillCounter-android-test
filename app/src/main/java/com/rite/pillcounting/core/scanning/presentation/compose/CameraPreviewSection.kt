@@ -173,13 +173,9 @@ fun CameraPreviewSection(
     // frame of detection updates, and allocating Paint/Rect inside the draw loop
     // is the kind of per-frame churn that wrecks frame budget on weak devices.
     // Paints are immutable per-class so we can share them across frames.
-    // Resume live camera when the captured still is cleared, but NOT while the
-    // confirm-completion dialog is open — processCapturedImage() nulls the bitmap
-    // just before the dialog appears, which would restart the camera underneath it.
-    // When the dialog is dismissed (cancel), showConfirmDialog flips back to false
-    // and this effect re-fires, restoring the live preview correctly.
-    LaunchedEffect(capturedBitmap, uiState.showConfirmDialog) {
-        if (capturedBitmap == null && !uiState.showConfirmDialog) {
+    // Resume live camera when the captured still is cleared.
+    LaunchedEffect(capturedBitmap) {
+        if (capturedBitmap == null) {
             cameraHelper.resumeCamera(previewView)
         }
     }

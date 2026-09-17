@@ -11,8 +11,6 @@ sealed interface PillScanningEvent {
     data object PauseClicked : PillScanningEvent
     data object DoneClicked : PillScanningEvent
     data class FinalDone(val stepType: StepState, val totalCount: Int) : PillScanningEvent
-    data object ConfirmDone : PillScanningEvent
-    data object CancelDone : PillScanningEvent
     data object NoteSkip : PillScanningEvent
     data class NoteSaved(val note: String) : PillScanningEvent
     data class AddVialPhotoInTxn(val filteredCount: Int, val bitmap: Bitmap) : PillScanningEvent

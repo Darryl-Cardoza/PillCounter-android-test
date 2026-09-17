@@ -112,7 +112,7 @@ internal fun ScaffoldTopBar(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = pharmacyName ?: "—",
-                style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                fontSize = responsiveSp(12.sp, boostOnPhone = true),
                 color = extendedColors.textColor,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -527,7 +527,7 @@ private fun ScaffoldTab(
     ) {
         Text(
             text = label,
-            fontSize = responsiveSp(8.sp),
+            fontSize = responsiveSp(8.sp, boostOnPhone = true),
             color = if (isActive) MaterialTheme.colorScheme.secondary else extendedColors.textColor,
             fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
         )

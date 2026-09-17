@@ -136,6 +136,33 @@ class MllpConnectionManager(
         updateState(ConnectionState.Disconnected)
     }
 
+    /**
+     * Drops the current connection so the next [connect] can target a different peer.
+     *
+     * Unlike [shutdown] this leaves the manager usable — `isShutdown` stays false and the
+     * reconnect loop keeps running. `hasEverConnected` is deliberately left set: onFirstConnected
+     * starts the MLLP server, NSD broadcast and image server once per service, and re-running
+     * those here would tear down working components.
+     */
+    suspend fun dropForPeerChange() {
+        logger.block(
+            "HL7-NSD · Dropping PMS connection for a peer change",
+            "Previous peer" to "$ip:$port",
+            "State" to state,
+        )
+        readerJob?.cancel()
+        settleJob?.cancel()
+        certMismatchBlocked = false
+        // Clearing ip stops the reconnect loop racing back to the old peer before discovery
+        // finds the new one — it only retries while ip is non-empty.
+        mutex.withLock {
+            ip = ""
+            port = 0
+        }
+        client.close()
+        updateState(ConnectionState.Disconnected)
+    }
+
     // ── Private ──────────────────────────────────────────────────────────────
 
     // Tracks whether onDisconnected has already fired for the current disconnected

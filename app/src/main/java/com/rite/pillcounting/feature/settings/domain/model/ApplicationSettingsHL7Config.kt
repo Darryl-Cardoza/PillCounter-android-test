@@ -6,12 +6,13 @@ import com.squareup.moshi.JsonClass
 /**
  * HL7 configuration returned by the settings API.
  *
- * pmsHostName and pillCounterHostName have been removed — they are static
- * mDNS protocol constants that do not vary per pharmacy and were unnecessarily
- * exposing internal network topology through the API response.
- * They are now hardcoded in Hl7ServiceConfig.
+ * The two host names are the mDNS service types this device advertises on and discovers
+ * against. Nullable so a response that omits one degrades to the Hl7ServiceConfig default
+ * instead of failing deserialization of the whole settings payload.
  */
 @JsonClass(generateAdapter = true)
 data class ApplicationSettingsHL7Config(
+    @Json(name = "pms_host_name") val pmsHostName: String? = null,
+    @Json(name = "pillcounter_host_name") val pillCounterHostName: String? = null,
     @Json(name = "barcode_format") val barcodeFormat: String,
 )

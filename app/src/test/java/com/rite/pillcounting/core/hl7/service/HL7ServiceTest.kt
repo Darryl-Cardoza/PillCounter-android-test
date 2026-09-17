@@ -442,7 +442,7 @@ class HL7ServiceTest {
         verifyOrder {
             tlsFactory.clearServerPin()
             clientManager.unblockCertMismatch()
-            nsdHelper.discover(any(), any())
+            nsdHelper.discover(any(), any(), any())
         }
     }
 
@@ -458,7 +458,7 @@ class HL7ServiceTest {
 
         service.discoverPmsAndConnect()
 
-        verify(exactly = 1) { nsdHelper.discover(any(), any()) }
+        verify(exactly = 1) { nsdHelper.discover(any(), any(), any()) }
         verify(exactly = 1) { listener.onNsdDiscoveryStarted() }
     }
 
@@ -468,6 +468,9 @@ class HL7ServiceTest {
         coEveryReturns(clientManager, "ACK")
         every { clientManager.isConnected() } returns false
         setField("clientManager", clientManager)
+        // connectToStaticPms() pins the cert by host identifier before it notifies the listener,
+        // so tlsFactory has to be injected or the lateinit field blows up first.
+        setField("tlsFactory", mockk<TlsSocketFactory>(relaxed = true))
         stubStaticPmsPreferences("10.0.0.5", 2575)
         setField("config", HL7Config(useStaticPmsConnection = true, pmsIp = "10.0.0.5", pmsPort = 2575))
         val listener = mockk<Hl7EventListener>(relaxed = true)
@@ -535,5 +538,117 @@ class HL7ServiceTest {
     // launched coroutine a chance to run and complete before asserting on it.
     private fun drainCoroutines() {
         Thread.sleep(300)
+    }
+
+    // ──────────────────────────── peer claim & failover ────────────────────────────
+
+    @Suppress("UNCHECKED_CAST")
+    private fun discoveredPeers() =
+        getField("discoveredPmsPeers") as java.util.concurrent.ConcurrentHashMap<String, String>
+
+    @Suppress("UNCHECKED_CAST")
+    private fun failedPeers() = getField("failedPmsPeers") as MutableSet<String>
+
+    @Suppress("UNCHECKED_CAST")
+    private fun peerClaim() =
+        getField("pmsPeerClaim") as java.util.concurrent.atomic.AtomicReference<String?>
+
+    private fun nextFailoverPeer(peer: String): String? =
+        privateMethod("nextFailoverPeer", String::class.java).invoke(service, peer) as String?
+
+    private fun removeLostPeer(serviceName: String) {
+        privateMethod("removeLostPeer", String::class.java).invoke(service, serviceName)
+    }
+
+    @Test
+    fun `nextFailoverPeer skips the failed peer and returns another candidate`() {
+        discoveredPeers()["10.0.0.1:7000"] = "PMS A"
+        discoveredPeers()["10.0.0.2:7000"] = "PMS B"
+
+        assertEquals("10.0.0.2:7000", nextFailoverPeer("10.0.0.1:7000"))
+    }
+
+    @Test
+    fun `nextFailoverPeer returns null when every other candidate already failed`() {
+        discoveredPeers()["10.0.0.1:7000"] = "PMS A"
+        discoveredPeers()["10.0.0.2:7000"] = "PMS B"
+        failedPeers() += "10.0.0.2:7000"
+
+        assertNull(nextFailoverPeer("10.0.0.1:7000"))
+    }
+
+    @Test
+    fun `nextFailoverPeer returns null when it is the only known peer`() {
+        discoveredPeers()["10.0.0.1:7000"] = "PMS A"
+
+        assertNull(nextFailoverPeer("10.0.0.1:7000"))
+    }
+
+    @Test
+    fun `removeLostPeer drops the peer from candidates and the failed set`() {
+        discoveredPeers()["10.0.0.1:7000"] = "PMS A"
+        discoveredPeers()["10.0.0.2:7000"] = "PMS B"
+        failedPeers() += "10.0.0.1:7000"
+
+        removeLostPeer("PMS A")
+
+        assertNull(discoveredPeers()["10.0.0.1:7000"])
+        assertFalse(failedPeers().contains("10.0.0.1:7000"))
+        assertEquals("PMS B", discoveredPeers()["10.0.0.2:7000"])
+    }
+
+    @Test
+    fun `removeLostPeer leaves the claim alone`() {
+        discoveredPeers()["10.0.0.1:7000"] = "PMS A"
+        peerClaim().set("10.0.0.1:7000")
+
+        removeLostPeer("PMS A")
+
+        assertEquals("10.0.0.1:7000", peerClaim().get())
+    }
+
+    @Test
+    fun `removeLostPeer ignores an unknown instance name`() {
+        discoveredPeers()["10.0.0.1:7000"] = "PMS A"
+
+        removeLostPeer("PMS Z")
+
+        assertEquals("PMS A", discoveredPeers()["10.0.0.1:7000"])
+    }
+
+    // ──────────────────────────── rediscoverPms ────────────────────────────
+
+    @Test
+    fun `rediscoverPms keeps the connection in static PMS mode`() {
+        val clientManager = mockk<MllpConnectionManager>(relaxed = true)
+        setField("clientManager", clientManager)
+        setField("config", HL7Config(useStaticPmsConnection = true))
+        peerClaim().set("10.0.0.1:7000")
+        discoveredPeers()["10.0.0.1:7000"] = "PMS A"
+
+        service.rediscoverPms()
+
+        assertEquals("10.0.0.1:7000", peerClaim().get())
+        assertEquals("PMS A", discoveredPeers()["10.0.0.1:7000"])
+        io.mockk.coVerify(exactly = 0) { clientManager.dropForPeerChange() }
+    }
+
+    @Test
+    fun `rediscoverPms clears the claim and every candidate in discovery mode`() {
+        setField("clientManager", mockk<MllpConnectionManager>(relaxed = true))
+        setField("nsdHelper", mockk<NsdHelper>(relaxed = true))
+        setField("config", HL7Config(useStaticPmsConnection = false))
+        peerClaim().set("10.0.0.1:7000")
+        discoveredPeers()["10.0.0.1:7000"] = "PMS A"
+        discoveredPeers()["10.0.0.2:7000"] = "PMS B"
+        failedPeers() += "10.0.0.2:7000"
+
+        service.rediscoverPms()
+
+        // These four run synchronously, before the coroutine that reconnects.
+        assertNull(peerClaim().get())
+        assertTrue(discoveredPeers().isEmpty())
+        assertTrue(failedPeers().isEmpty())
+        assertNull(getField("lastConnectedHost"))
     }
 }
