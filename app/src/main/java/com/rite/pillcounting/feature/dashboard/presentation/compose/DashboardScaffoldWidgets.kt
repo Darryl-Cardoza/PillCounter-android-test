@@ -334,7 +334,7 @@ internal fun ScaffoldKpiScrollColumn(
     onTap: (KpiFilter) -> Unit,
     modifier: Modifier = Modifier,
     cardWidth: Dp? = null,
-    cardHeight: Dp = 72.dp,
+    cardHeight: Dp = 96.dp,
     disabledFilters: Set<KpiFilter> = emptySet(),
     onDisabledTap: (KpiFilter) -> Unit = {},
 ) {
@@ -357,7 +357,6 @@ internal fun ScaffoldKpiScrollColumn(
                 onClick = { onTap(spec.filter) },
                 onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = cardModifier,
-                singleLabelLine = true,
             )
         }
     }
@@ -398,7 +397,6 @@ internal fun ScaffoldKpiScrollRow(
                 modifier = Modifier
                     .width(cardWidth)
                     .height(cardHeight),
-                singleLabelLine = true,
             )
         }
     }
@@ -413,7 +411,6 @@ internal fun ScaffoldKpiCard(
     isActive: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    singleLabelLine: Boolean = false,
     isDisabled: Boolean = false,
     onDisabledClick: () -> Unit = {},
 ) {
@@ -463,26 +460,20 @@ internal fun ScaffoldKpiCard(
                     color = MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
                 )
-                if (singleLabelLine) {
-                    Text(
-                        text = lineTwo,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = extendedColors.textColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                } else {
-                    Text(
-                        text = lineOne,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = extendedColors.textColor,
-                    )
-                    Text(
-                        text = lineTwo,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = extendedColors.textColor,
-                    )
-                }
+                Text(
+                    text = lineOne,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = extendedColors.textColor,
+                )
+                // Phone cards are the narrowest; ellipsize rather than wrap to a
+                // third row, which the fixed card height has no space for.
+                Text(
+                    text = lineTwo,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = extendedColors.textColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }

@@ -10,6 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -1330,6 +1331,9 @@ fun DispenseFlowScreen(
                     // were swallowing taps on the arrow (system back worked, the
                     // on-screen arrow didn't).
                     .zIndex(1f)
+                    // Camera preview stays full-bleed; only the header chrome is
+                    // inset so the back arrow and title clear the notch.
+                    .displayCutoutPadding()
                     .padding(top = 8.dp, bottom = 8.dp, end = headerEndPadding),
             ) {
                 // During COUNTING the back arrow sits in the left gutter of the
@@ -1454,7 +1458,8 @@ fun DispenseFlowScreen(
         )
 
         // ── RX bottomsheet / inline panel ───────────────────────────────────
-        // Non-dismissible: the user must hit Cancel or Proceed.
+        // Dismissible: swipe-down / outside-tap / back all act as Cancel. No
+        // transaction exists yet at this point, so nothing is orphaned.
         if (dispenseState.showRxDetails) {
             if (!isLandscape) {
                 VerifyRxDetailsSheet(
@@ -1467,7 +1472,7 @@ fun DispenseFlowScreen(
                     drugImage = dispenseState.drugImage,
                     onCancel = { dispenseVm.onRxCancelled() },
                     onProceed = { dispenseVm.onRxConfirmed() },
-                    dismissible = false,
+                    dismissible = true,
                 )
             } else {
                 Box(
