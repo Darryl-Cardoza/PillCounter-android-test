@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.FrontHand
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -44,8 +45,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
@@ -61,6 +65,8 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.core.utils.preference.CountCirclePositionPrefs
+import com.rite.pillcounting.feature.history.presentation.compose.ActionIcon
+import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
 
 /**
@@ -124,7 +130,7 @@ internal fun BoxScope.CountModeTopDetailsBar(
                 Text(
                     text = stringResource(R.string.ndc_value, ndc),
                     color = Color.White.copy(alpha = 0.7f),
-                    fontSize = responsiveSp(8.sp),
+                    fontSize = responsiveSp(8.sp, boostOnPhone = true),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -132,7 +138,7 @@ internal fun BoxScope.CountModeTopDetailsBar(
             Text(
                 text = drugName,
                 color = Color.White,
-                fontSize = responsiveSp(8.sp),
+                fontSize = responsiveSp(8.sp, boostOnPhone = true),
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
@@ -317,18 +323,37 @@ internal fun ResetCountButton(onClick: () -> Unit) {
     }
 }
 
-/** The tappable "View all counts ›" link shown in the bottom bar. */
+/**
+ * The tappable "View all counts ›" link shown in the bottom bar. The caret is its
+ * own Text so it can be sized independently of the label — at one shared font size
+ * it renders far smaller than the letters beside it.
+ */
 @Composable
 internal fun ViewAllCountsLink(onClick: () -> Unit) {
-    Text(
-        text = stringResource(R.string.pill_scanning_view_all_counts) + " ›",
-        color = MaterialTheme.colorScheme.primary,
-        fontSize = responsiveSp(8.sp, boostOnPhone = true),
-        fontWeight = FontWeight.Medium,
-        maxLines = 1,
-        softWrap = false,
-        modifier = Modifier.clickable { onClick() }
-    )
+    val labelSize = responsiveSp(10.sp, boostOnPhone = true)
+    val caretSize = responsiveSp(14.sp, boostOnPhone = true)
+
+    Row(
+        modifier = Modifier.clickable { onClick() },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.pill_scanning_view_all_counts),
+            color = MaterialTheme.colorScheme.primary,
+            fontSize = labelSize,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+        )
+
+        Spacer(Modifier.width(4.dp))
+
+        ActionIcon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = "",
+            onClick = { onClick ()}
+        )
+    }
 }
 
 /**
@@ -378,9 +403,17 @@ internal fun RowScope.BottomProgressAndCount(
     }
 
     Text(
-        text = if (isFixed) "$totalCount/$targetCount" else totalCount.toString(),
-        color = Color.White,
-        fontSize = responsiveSp(10.sp),
+        text = buildAnnotatedString {
+            withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) {
+                append(totalCount.toString())
+            }
+            if (isFixed) {
+                withStyle(SpanStyle(color = Color.White)) {
+                    append("/$targetCount")
+                }
+            }
+        },
+        fontSize = responsiveSp(10.sp, boostOnPhone = true),
         fontWeight = FontWeight.SemiBold,
         maxLines = 1,
         softWrap = false
@@ -562,13 +595,13 @@ internal fun DetailColumn(label: String, value: String) {
         Text(
             text = label,
             color = Color.White.copy(alpha = 0.7f),
-            fontSize = responsiveSp(8.sp),
+            fontSize = responsiveSp(8.sp, boostOnPhone = true),
             maxLines = 1
         )
         Text(
             text = value,
             color = Color.White,
-            fontSize = responsiveSp(8.sp),
+            fontSize = responsiveSp(8.sp, boostOnPhone = true),
             fontWeight = FontWeight.SemiBold,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis

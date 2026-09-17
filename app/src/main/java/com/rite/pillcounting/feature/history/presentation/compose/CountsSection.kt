@@ -3,9 +3,11 @@ package com.rite.pillcounting.feature.history.presentation.compose
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,7 +19,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -28,7 +29,6 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -41,7 +41,8 @@ import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.DateFormats
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForHistoryScreen
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.rite.pillcounting.core.utils.common.formatDateToUSFormat
 import com.rite.pillcounting.core.utils.compose.DrugCountRow
@@ -124,27 +125,23 @@ fun CountsSection(
         if (!isSearchActive) {
             // Main toggle row
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(dimens.small * 2 + responsiveDp(36.dp)),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(
-                    modifier = Modifier
-                        .weight(1f)
-                        .horizontalScroll(rememberScrollState()),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    DispensedStockToggleRow(
-                        dispensedCount = dispensedCount,
-                        stockCount = stockCount,
-                        selectedOption = selectedOption,
-                        onOptionSelected = {
-                            onOptionSelected(it)
-                            statusFilter = StatusFilter.ALL
-                        }
-                    )
-                }
+                DispensedStockToggleRow(
+                    dispensedCount = dispensedCount,
+                    stockCount = stockCount,
+                    selectedOption = selectedOption,
+                    onOptionSelected = {
+                        onOptionSelected(it)
+                        statusFilter = StatusFilter.ALL
+                    },
+                    modifier = Modifier.weight(1f)
+                )
 
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(12.dp))
 
                 if (!isEmpty) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -306,53 +303,76 @@ fun DispensedStockToggleRow(
     dispensedCount: Int,
     stockCount: Int,
     selectedOption: ToggleOption,
-    onOptionSelected: (ToggleOption) -> Unit
+    onOptionSelected: (ToggleOption) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val dispensedLabel = stringResource(R.string.dispensed)
     val stockLabel = stringResource(R.string.stock_count_label)
 
-    val dimens = AppTheme.dimens
-
-    Row(modifier = Modifier.padding(top = 10.dp, bottom = 10.dp)) {
-        ToggleItem(
-            title = stringResource(R.string.toggle_with_count, dispensedLabel, dispensedCount),
-            isSelected = selectedOption == ToggleOption.DISPENSED,
-            onClick = { onOptionSelected(ToggleOption.DISPENSED) },
-            modifier = Modifier.padding(bottom = dimens.toggleVerticalPadding, top = dimens.toggleVerticalPadding, end = dimens.toggleVerticalPadding)
+    // Top padding equals the 4dp gap + 2dp rule sitting below the label, which
+    // puts the label itself on the centre line of the header band.
+    Box(modifier = modifier.padding(top = 6.dp)) {
+        // One continuous rule across the strip; the selected tab paints its own
+        // segment over it in the accent colour.
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth()
+                .height(2.dp)
+                .background(AppTheme.extendedColors.textColor.copy(alpha = 0.1f))
         )
 
-        ToggleItem(
-            title = stringResource(R.string.toggle_with_count, stockLabel, stockCount),
-            isSelected = selectedOption == ToggleOption.STOCK,
-            onClick = { onOptionSelected(ToggleOption.STOCK) },
-            modifier = Modifier.padding(bottom = dimens.toggleVerticalPadding, top = dimens.toggleVerticalPadding)
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            HistoryTab(
+                title = stringResource(R.string.toggle_with_count, dispensedLabel, dispensedCount),
+                isSelected = selectedOption == ToggleOption.DISPENSED,
+                onClick = { onOptionSelected(ToggleOption.DISPENSED) }
+            )
+
+            HistoryTab(
+                title = stringResource(R.string.toggle_with_count, stockLabel, stockCount),
+                isSelected = selectedOption == ToggleOption.STOCK,
+                onClick = { onOptionSelected(ToggleOption.STOCK) }
+            )
+        }
     }
 }
 
+// Line tab matching the dashboard's Today's Queue / Recent Activity strip:
+// label over a 2dp underline, no ripple. IntrinsicSize.Max keeps the tab as
+// wide as its label, so the underline sits under the text and no wider.
 @Composable
-fun ToggleItem(
+private fun HistoryTab(
     title: String,
     isSelected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val dimens = AppTheme.dimens
-    Box(
+    Column(
         modifier = modifier
-            .clip(RoundedCornerShape(50))
-            .background(
-                if (isSelected) MaterialTheme.colorScheme.primary
-                else AppTheme.extendedColors.secondaryBackground
-            )
-            .clickable { onClick() }
-            .padding(horizontal = dimens.medium, vertical = 5.dp)
+            .width(IntrinsicSize.Max)
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
             text = title,
-            color = if (isSelected) Color.White else AppTheme.extendedColors.textColor,
-            fontWeight = FontWeight.Normal,
-            fontSize = responsiveSpForHistoryScreen(12.sp)
+            fontSize = responsiveSp(8.sp, boostOnPhone = true),
+            color = if (isSelected) MaterialTheme.colorScheme.secondary
+            else AppTheme.extendedColors.textColor,
+            fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
+        )
+        Spacer(modifier = Modifier.height(4.dp))
+        Box(
+            modifier = Modifier
+                .height(2.dp)
+                .fillMaxWidth()
+                .background(
+                    if (isSelected) MaterialTheme.colorScheme.secondary else Color.Transparent
+                )
         )
     }
 }

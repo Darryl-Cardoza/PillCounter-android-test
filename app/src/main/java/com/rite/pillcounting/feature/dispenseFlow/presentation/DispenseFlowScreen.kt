@@ -1272,7 +1272,16 @@ fun DispenseFlowScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f)),
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    // this is to disable the user to click the items below this overlay of resume.
+                    // Only the resume button has the touch.
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent().changes.forEach { it.consume() }
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
@@ -1283,8 +1292,8 @@ fun DispenseFlowScreen(
                     Text(
                         text = stringResource(R.string.counting_paused).uppercase(Locale.ROOT),
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = AppTheme.extendedColors.textColor,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
