@@ -26,6 +26,11 @@ import javax.crypto.spec.GCMParameterSpec
  *   val unit = ModelKeyUnit(context)
  *   unit.activateIfNeeded()          // call once on app start (idempotent)
  *   val keyBytes = unit.material()   // call when decrypting a model file
+ *
+ * The fragments below are still reconstructible into the original key material
+ * (obfuscation, not encryption at rest in source). This is a known, accepted
+ * risk -- the key is not being rotated -- see the dated decision note in
+ * .gitleaksignore.
  */
 class ModelKeyUnit(private val context: Context) {
 

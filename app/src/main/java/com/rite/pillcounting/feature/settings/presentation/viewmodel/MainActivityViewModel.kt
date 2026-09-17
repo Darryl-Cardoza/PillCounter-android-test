@@ -27,7 +27,7 @@ import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import dagger.hilt.android.lifecycle.HiltViewModel
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -66,6 +66,7 @@ class MainActivityViewModel @Inject constructor(
     private val hl7EventHandler: Hl7EventHandler,
     private val sessionLockController: SessionLockController,
     private val sessionHealthController: SessionHealthController,
+    private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel(), IApplicationSettingsViewModel {
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
@@ -183,7 +184,7 @@ class MainActivityViewModel @Inject constructor(
 
         _pmsTestConnectionState.value = PmsTestConnectionState.Testing
 
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             try {
                 java.net.Socket().use { socket ->
                     socket.connect(java.net.InetSocketAddress(host, port), PMS_TEST_CONNECTION_TIMEOUT_MS)
@@ -248,7 +249,7 @@ class MainActivityViewModel @Inject constructor(
         // once it lands.
         fetchApplicationSettings()
 
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             deleteOldTransactions()
         }
     }
@@ -430,7 +431,7 @@ class MainActivityViewModel @Inject constructor(
         _selectedHistoryOption.value = optionDays
         preferenceHelper.saveHistoryRetention(optionDays)
 
-        viewModelScope.launch(Dispatchers.IO) {
+        viewModelScope.launch(ioDispatcher) {
             deleteOldTransactions()
         }
     }

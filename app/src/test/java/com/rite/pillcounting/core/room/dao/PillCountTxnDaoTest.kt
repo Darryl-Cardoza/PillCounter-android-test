@@ -959,6 +959,11 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `resetForRecount clears the count state but keeps the order`() = runTest {
+        // drugId = 42L and substitutedDrugId = 7L are both FK-enforced against drug_master —
+        // seed both rows so the insert doesn't hit a constraint violation.
+        drugDao.insertIgnore(DrugMasterEntity(drugId = 42L, ndc = "RECOUNT-42"))
+        drugDao.insertIgnore(DrugMasterEntity(drugId = 7L, ndc = "RECOUNT-7"))
+
         val id = dao.insertIgnore(
             PillCountTxnEntity(
                 localId = 1L,

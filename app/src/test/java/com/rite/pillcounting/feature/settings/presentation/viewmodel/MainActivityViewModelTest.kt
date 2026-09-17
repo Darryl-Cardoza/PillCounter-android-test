@@ -123,10 +123,6 @@ class MainActivityViewModelTest {
         every { android.util.Log.e(any(), any(), any()) } returns 0
 
         Dispatchers.setMain(testDispatcher)
-        // The VM launches its work on a hardcoded Dispatchers.IO; redirect it to the
-        // test scheduler so advanceUntilIdle() drives those coroutines deterministically.
-        mockkStatic(Dispatchers::class)
-        every { Dispatchers.IO } returns testDispatcher
 
         repository = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
@@ -183,6 +179,7 @@ class MainActivityViewModelTest {
         hl7EventHandler,
         sessionLockController,
         sessionHealthController,
+        testDispatcher,
     )
 
     // ─────────────────────────── init / theme loading ───────────────────────────

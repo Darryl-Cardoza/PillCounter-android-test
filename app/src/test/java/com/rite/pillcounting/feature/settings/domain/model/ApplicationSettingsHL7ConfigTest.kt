@@ -48,6 +48,8 @@ class ApplicationSettingsHL7ConfigTest {
     @Test
     fun componentN() {
         val config = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
-        assertEquals("CODE_128", config.component1())
+        assertEquals(config.pmsHostName, config.component1())
+        assertEquals(config.pillCounterHostName, config.component2())
+        assertEquals("CODE_128", config.component3())
     }
 }
