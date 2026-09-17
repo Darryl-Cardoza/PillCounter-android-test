@@ -118,6 +118,11 @@ class SessionLockController @Inject constructor(
         _verifiedFaceProfileId.value = faceProfileId
     }
 
+    /** Drops the verified identity without locking. Call on logout. */
+    fun clearVerifiedFaceUser() {
+        _verifiedFaceProfileId.value = null
+    }
+
     /**
      * Resets the idle clock. Call on every user touch, app-wide.
      *

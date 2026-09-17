@@ -15,8 +15,9 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
+import com.rite.pillcounting.core.room.AppDatabase
+import com.rite.pillcounting.core.models.DISPENSED_QUANTITY_STEP
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
@@ -1715,7 +1716,7 @@ class PillScanningViewModel @Inject constructor(
             // Only the prescribed-count step decides partial vs complete. The pour-out and
             // recount steps count other pills and used to push this past the target.
             val dispensedCount = pillCountTxnDetailsDao
-                .getPillCountForStep(txnId, StepState.TARGET_VERIFICATION.name)
+                .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
             val status =
                 if (txn.isDispense && txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
 

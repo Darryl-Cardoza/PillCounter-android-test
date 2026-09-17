@@ -141,4 +141,12 @@ class OperatorNameProviderTest {
         assertEquals("Bruce", OperatorName("Bruce", null).display())
         assertNull(OperatorName(null, null).display())
     }
+
+    @Test
+    fun `display skips blank parts instead of leaving a stray space`() {
+        // A row can hold "" rather than null — listOfNotNull would keep it and emit " Wayne".
+        assertEquals("Wayne", OperatorName("", "Wayne").display())
+        assertEquals("Bruce", OperatorName("Bruce", "   ").display())
+        assertNull(OperatorName("", "").display())
+    }
 }

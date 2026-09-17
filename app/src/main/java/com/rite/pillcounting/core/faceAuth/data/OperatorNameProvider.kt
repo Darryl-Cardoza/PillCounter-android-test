@@ -25,7 +25,10 @@ data class OperatorName(val firstName: String?, val lastName: String?) {
      * @return "First Last", or null when neither part is set.
      */
     fun display(): String? =
-        listOfNotNull(firstName, lastName).joinToString(" ").ifBlank { null }
+        listOf(firstName, lastName)
+            .filterNot { it.isNullOrBlank() }
+            .joinToString(" ")
+            .ifBlank { null }
 }
 
 /**
@@ -80,8 +83,8 @@ class OperatorNameProvider @Inject constructor(
      *
      * Description:
      * The upstream flows are only change triggers; resolution always goes back through
-     * [invoke] so the rule stays in one place. `localId` is read once when collection
-     * starts, matching `observeUserDetail`.
+     * [invoke] so the rule stays in one place. `localId` is read when `observe()` is called,
+     * before any collector attaches, matching `observeUserDetail`.
      *
      * @return A [Flow] emitting the current operator name on every relevant change.
      *

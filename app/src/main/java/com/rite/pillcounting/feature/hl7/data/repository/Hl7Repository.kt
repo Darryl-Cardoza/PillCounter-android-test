@@ -3,13 +3,13 @@ package com.rite.pillcounting.feature.hl7.data.repository
 import android.annotation.SuppressLint
 import android.content.Context
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
@@ -204,6 +204,12 @@ class Hl7Repository @Inject constructor(
                 logger.w("Dispense HL7 skipped — txn $txnId not found")
                 return
             }
+        // Re-read under the caller's lock: completion triggers both sendDispenseNow and the
+        // observer's resend sweep, so whichever gets here second must not send a second copy.
+        if (txn.isSynced == true) {
+            logger.i("Dispense HL7 skipped — txn $txnId already synced")
+            return
+        }
         val txnDetails = txnDetailsDao.getAllForTxn(txnId.toString())
         //Change this condition because we have transaction status that we are handling from pms
 //        val totalCount = txnDetails.sumOf { it.pillCount ?: 0 }
@@ -354,12 +360,17 @@ class Hl7Repository @Inject constructor(
      * (isComingFromHL7 = 0) never qualified for the resend query at all — the pharmacist
      * finished the count and the PMS never heard about it. This is the primary path; the
      * resend-on-connect sweep remains as retry for sends that fail here.
+     *
+     * Takes [resendMutex]: the same completion also flips the status, which wakes the resend
+     * sweep, and without the lock both paths send the same dispense.
      */
     fun sendDispenseNow(txnId: Long) {
         if (preferenceHelper.isHl7Enabled()) {
             scope.launch {
                 logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
-                buildAndSendSuccessfulDispense(txnId = txnId)
+                resendMutex.withLock {
+                    buildAndSendSuccessfulDispense(txnId = txnId)
+                }
             }
         } else {
             logger.i("HL7 disabled — skipping dispense send, txnId=$txnId")

@@ -2,18 +2,17 @@ package com.rite.pillcounting.feature.hl7.data.repository
 
 import android.content.Context
 import android.util.Log
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
-import com.rite.pillcounting.core.room.models.UserEntity
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
@@ -241,6 +240,7 @@ class Hl7RepositoryTest {
         isDispense: Boolean = true,
         operatorFirstName: String? = null,
         operatorLastName: String? = null,
+        isSynced: Boolean? = null,
     ) = PillCountTxnEntity(
         txnId = txnId,
         localId = 1L,
@@ -250,6 +250,7 @@ class Hl7RepositoryTest {
         rxNo = "RX1",
         operatorFirstName = operatorFirstName,
         operatorLastName = operatorLastName,
+        isSynced = isSynced,
     )
 
     // ─────────────────────────────── init / observe ───────────────────────────────
@@ -366,6 +367,19 @@ class Hl7RepositoryTest {
 
         coVerify(exactly = 0) { hl7MessageSender.send(any()) }
     }
+
+    @Test
+    fun `buildAndSendSuccessfulDispense skips a txn that is already synced`() =
+        runTest(testDispatcher) {
+            // Completion calls sendDispenseNow AND flips the status, which wakes the resend
+            // sweep. Whichever arrives second must not put a second copy on the wire.
+            val repo = createRepo()
+            coEvery { txnDao.getById(1L) } returns txnEntity(drugId = 5L, isSynced = true)
+
+            repo.buildAndSendSuccessfulDispense(1L)
+
+            coVerify(exactly = 0) { hl7MessageSender.send(any()) }
+        }
 
     @Test
     fun `buildAndSendSuccessfulDispense builds and sends`() = runTest(testDispatcher) {

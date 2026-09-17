@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import app.cash.turbine.test
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.hl7.service.Hl7serviceHandler
 import com.rite.pillcounting.core.models.ValidationResult
 import com.rite.pillcounting.core.utils.common.NetworkUtils
@@ -57,6 +58,7 @@ class LoginViewModelTest {
     private lateinit var context: Context
     private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var serviceManager: Hl7serviceHandler
+    private lateinit var sessionLockController: SessionLockController
     private lateinit var viewModel: LoginViewModel
 
     private val email = "user@test.com"
@@ -84,10 +86,13 @@ class LoginViewModelTest {
         context = mockk()
         preferenceHelper = mockk(relaxed = true)
         serviceManager = mockk(relaxed = true)
+        sessionLockController = mockk(relaxed = true)
 
         every { context.getString(any()) } returns "msg"
 
-        viewModel = LoginViewModel(repository, validator, context, preferenceHelper, serviceManager)
+        viewModel = LoginViewModel(
+            repository, validator, context, preferenceHelper, serviceManager, sessionLockController
+        )
     }
 
     @After
@@ -416,6 +421,14 @@ class LoginViewModelTest {
         verify(exactly = 1) { preferenceHelper.setUserLoggedIn(false) }
         verify(exactly = 1) { preferenceHelper.saveLocalId(0) }
     }
+
+    @Test
+    fun `clearSession drops the verified face user so the next account cannot inherit it`() =
+        runTest {
+            viewModel.clearSession()
+
+            verify(exactly = 1) { sessionLockController.clearVerifiedFaceUser() }
+        }
 
     @Test
     fun `clearAllStates resets both states to idle`() = runTest {

@@ -2,6 +2,8 @@ package com.rite.pillcounting.feature.dashboard.presentation.viewmodel
 
 import android.util.Log
 import app.cash.turbine.test
+import com.rite.pillcounting.core.faceAuth.data.OperatorName
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
@@ -26,8 +28,6 @@ import com.rite.pillcounting.feature.dashboard.domain.model.UserSettings
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import com.rite.pillcounting.feature.history.domain.model.TxnWithDrugDto
-import com.rite.pillcounting.core.faceAuth.data.OperatorName
-import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every

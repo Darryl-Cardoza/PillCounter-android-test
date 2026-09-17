@@ -17,8 +17,8 @@ data class DashboardUiState(
     val userDetail: UserDetail? = null,
 
     /**
-     * Who the top bar names beside the terminal: the enabled face user when one is
-     * enrolled, otherwise the logged-in account. Null until the first emission, when
+     * Who the top bar names beside the terminal: the face user who verified into this
+     * session, otherwise the logged-in account. Null until the first emission, when
      * the line falls back to [userDetail]'s own name.
      */
     val operatorName: String? = null,

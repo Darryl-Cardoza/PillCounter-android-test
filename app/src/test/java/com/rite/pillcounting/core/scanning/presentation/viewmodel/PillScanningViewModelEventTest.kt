@@ -1,6 +1,8 @@
 package com.rite.pillcounting.core.scanning.presentation.viewmodel
 
 import android.app.Application
+import com.rite.pillcounting.core.faceAuth.data.OperatorName
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
@@ -8,14 +10,12 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.room.models.enums.CountType
-import com.rite.pillcounting.core.faceAuth.data.OperatorName
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
@@ -273,6 +273,9 @@ class PillScanningViewModelEventTest {
     fun `completing a count stamps the operator name on the txn`() = runTest {
         every { preferenceHelper.getTxnId() } returns 42L
         coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(42L) } returns 5
+        coEvery {
+            pillCountTxnDetailsDao.getPillCountForStep(42L, StepState.TARGET_VERIFICATION.name)
+        } returns 5
         coEvery { pillCountTxnDao.getById(42L) } returns PillCountTxnEntity(
             txnId = 42L,
             isDispense = true,

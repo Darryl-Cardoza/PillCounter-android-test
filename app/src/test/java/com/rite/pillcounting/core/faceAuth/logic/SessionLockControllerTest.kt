@@ -163,4 +163,15 @@ class SessionLockControllerTest {
 
         assertNull(controller.verifiedFaceProfileId.value)
     }
+
+    @Test
+    fun `clearVerifiedFaceUser drops the operator without locking`() {
+        val controller = controller(hasEnabledProfile = true)
+        controller.onFaceVerified(7L)
+
+        controller.clearVerifiedFaceUser()
+
+        assertNull(controller.verifiedFaceProfileId.value)
+        assertFalse(controller.isLocked.value)
+    }
 }

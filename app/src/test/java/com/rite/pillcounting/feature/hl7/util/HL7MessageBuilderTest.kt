@@ -381,6 +381,37 @@ class HL7MessageBuilderTest {
         assertTrue(raw.contains("dispense_recount"))
     }
 
+    @Test
+    fun `buildDispenseMessage falls back to the step sum when no dispensed row is linked to a bottle`() {
+        // linkDetailToActiveBottle no-ops when the txn has no bottle entry yet, so a bottle
+        // scanned after the pills were counted holds only the pour-out row. Summing the
+        // bottle then gives 0 while the prescribed-count rows are sitting right there.
+        val details = listOf(
+            detail(txnDetailsId = 1L, pillCount = 60, type = StepState.CONTAINER_INITIATE.name),
+            detail(txnDetailsId = 2L, pillCount = 30, type = StepState.TARGET_VERIFICATION.name),
+        )
+        val txn = txn(
+            txnId = 901L,
+            rxNo = "RX-UNLINKED",
+            barcodeImage = "/storage/images/barcode_901.png",
+            bottleTxnDetailsIds = listOf(1L),
+            note = null,
+        )
+
+        val raw = HL7MessageBuilder.buildDispenseMessage(
+            txn = txn,
+            txnDetails = details,
+            drugCode = "00054-0244-24",
+            scannedDrugCode = "00054-0244-24",
+            drugName = "codeine sulfate 30mg tablet",
+            pharmacistName = null,
+        )
+
+        // 30 from the prescribed-count step — never 0, and never the 60-pill pour-out.
+        assertEquals("30", raw.lineSequence().first { it.startsWith("RXD|") }.split("|")[4])
+        assertEquals("30", raw.lineSequence().first { it.startsWith("ZSN|") }.split("|")[7])
+    }
+
     // ============================ INVENTORY ============================
 
     @Test

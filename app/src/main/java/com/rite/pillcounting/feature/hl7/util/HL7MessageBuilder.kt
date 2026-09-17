@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.hl7.util
 
 import android.util.Base64
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.models.isDispensedQuantityStep
 import com.rite.pillcounting.core.models.toImageLabel
 import com.rite.pillcounting.core.security.ImageCrypto
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
@@ -162,7 +163,7 @@ object HL7MessageBuilder {
         // Only the prescribed-count step is the dispensed quantity. The pour-out, recount,
         // vial and remainder steps measure other things, and summing them all reported
         // several times the pills actually dispensed.
-        val dispensedDetails = txnDetails.filter { it.type == StepState.TARGET_VERIFICATION.name }
+        val dispensedDetails = txnDetails.filter { it.type.isDispensedQuantityStep() }
         // Each bottle's true pill count is live-summed here from its own txnDetailsIds against
         // the (already non-deleted-filtered) detail rows — there is no stored pill count on
         // BottleInfo itself, so this keeps a bottle's reported count correct even if a detail
@@ -173,8 +174,9 @@ object HL7MessageBuilder {
             bottle.txnDetailsIds.sumOf { id -> pillCountByDetailsId[id] ?: 0 }
         }
 
-        val totalCount = bottleCounts.sum()
-            .takeIf { bottles.isNotEmpty() && dispensedDetails.isNotEmpty() }
+        // Must be > 0, not just "bottles exist": a bottle scanned after its pills were counted
+        // never gets those rows linked, so its sum is 0 while the step rows are right there.
+        val totalCount = bottleCounts.sum().takeIf { it > 0 }
             ?: dispensedDetails.sumOf { it.pillCount ?: 0 }.takeIf { dispensedDetails.isNotEmpty() }
             ?: txn.targetCount
             ?: 0
