@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.dashboard.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.UserDao
@@ -66,6 +67,7 @@ class DashboardViewModel @Inject constructor(
     private val userDetailRepository: IUserDetailRepository,
     private val preferenceHelper: PreferenceHelper,
     private val userDao: UserDao,
+    private val operatorNameProvider: OperatorNameProvider,
     private val batchDao: BatchDao,
     private val pillCountTxnDao: PillCountTxnDao,
     private val hl7EventHandler: Hl7EventHandler,
@@ -107,8 +109,22 @@ class DashboardViewModel @Inject constructor(
             observeQueue()
         }
         observeUserDetail()
+        observeOperatorName()
         publishSelectedTerminal()
         fetchUserDetail()
+    }
+
+    /**
+     * Keeps the top bar's name on the face user who is actually at the device. Live, unlike
+     * the operator stamped on a transaction: toggling every profile off switches the bar back
+     * to the account name immediately.
+     */
+    private fun observeOperatorName() {
+        viewModelScope.launch(Dispatchers.IO) {
+            operatorNameProvider.observe().collect { operator ->
+                _uiState.update { it.copy(operatorName = operator.display()) }
+            }
+        }
     }
 
     /**

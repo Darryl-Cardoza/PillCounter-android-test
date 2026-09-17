@@ -17,6 +17,13 @@ data class DashboardUiState(
     val userDetail: UserDetail? = null,
 
     /**
+     * Who the top bar names beside the terminal: the face user who verified into this
+     * session, otherwise the logged-in account. Null until the first emission, when
+     * the line falls back to [userDetail]'s own name.
+     */
+    val operatorName: String? = null,
+
+    /**
      * Name of the terminal THIS install holds, as persisted by whoever last resolved
      * ownership (auth/me keyed on device_key, or the Profile screen's claim). Null when
      * this device owns no terminal — the top bar then shows no terminal segment.

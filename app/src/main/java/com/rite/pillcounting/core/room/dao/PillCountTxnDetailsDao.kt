@@ -126,6 +126,24 @@ interface PillCountTxnDetailsDao {
     suspend fun getTotalPillCountForTxn(txnId: Long): Int
 
     /**
+     * Pill total for one workflow step only. A dispense's reported quantity is the
+     * prescribed-count step alone — [getTotalPillCountForTxn] spans every step, which
+     * measures several different things.
+     *
+     * @param txnId The parent transaction ID.
+     * @param type The [com.rite.pillcounting.core.models.StepState] name to sum.
+     * @return The step's pill total, or 0 if it has no rows.
+     */
+    @Query(
+        """
+        SELECT COALESCE(SUM(pillCount), 0)
+        FROM pill_count_txn_details
+        WHERE txnId = :txnId AND isDeleted = 0 AND type = :type
+        """
+    )
+    suspend fun getPillCountForStep(txnId: Long, type: String): Int
+
+    /**
      * Live pill total for a specific bottle's detail rows, by id. A bottle's true count is
      * always this — never a stored/snapshotted number — so deleting or redoing a count is
      * automatically reflected. See [com.rite.pillcounting.core.scanning.domain.model.BottleInfo.txnDetailsIds].

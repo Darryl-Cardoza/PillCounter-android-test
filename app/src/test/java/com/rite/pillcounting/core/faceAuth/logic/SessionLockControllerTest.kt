@@ -1,12 +1,18 @@
 package com.rite.pillcounting.core.faceAuth.logic
 
+import android.content.SharedPreferences
 import com.rite.pillcounting.core.faceAuth.data.FaceProfileRepository
 import com.rite.pillcounting.core.room.models.FaceProfileEntity
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
+import io.mockk.Runs
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.flow.flowOf
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -117,5 +123,111 @@ class SessionLockControllerTest {
         assertFalse(controller.onAppLaunch())
 
         assertFalse(controller.isLocked.value)
+    }
+
+    // ───────────────────────── verified face user ─────────────────────────
+
+    @Test
+    fun `onFaceVerified records who verified into this session`() {
+        val controller = controller(hasEnabledProfile = true)
+
+        controller.onFaceVerified(7L)
+
+        assertEquals(7L, controller.verifiedFaceProfileId.value)
+    }
+
+    @Test
+    fun `unlock keeps the verified user - it runs right after a successful verify`() {
+        val controller = controller(hasEnabledProfile = true)
+        controller.onFaceVerified(7L)
+
+        controller.unlock()
+
+        assertEquals(7L, controller.verifiedFaceProfileId.value)
+    }
+
+    @Test
+    fun `lockNow clears the verified user so the next session must verify again`() {
+        val controller = controller(hasEnabledProfile = true)
+        controller.onFaceVerified(7L)
+
+        controller.lockNow()
+
+        assertNull(controller.verifiedFaceProfileId.value)
+    }
+
+    @Test
+    fun `onAppLaunch clears the verified user even when it cannot lock`() {
+        // A foreground service keeps this singleton alive across an app kill, so a relaunch
+        // would otherwise inherit the previous session's operator.
+        val controller = controller(hasEnabledProfile = true, isLoggedIn = false)
+        controller.onFaceVerified(7L)
+
+        assertFalse(controller.onAppLaunch())
+
+        assertNull(controller.verifiedFaceProfileId.value)
+    }
+
+    @Test
+    fun `logging out through any path clears the verified user`() {
+        // Five call sites flip the logged-in pref directly, so the controller watches the pref
+        // rather than each of them.
+        val listener = slot<SharedPreferences.OnSharedPreferenceChangeListener>()
+        val preferenceHelper = mockk<PreferenceHelper>(relaxed = true) {
+            every { isUserLoggedIn() } returns true
+            every { hasEnabledFaceProfile() } returns true
+            every { getFaceLockTimeoutMinutes() } returns 60
+            every { userLoggedInKey } returns LOGGED_IN_KEY
+            every { registerOnChangeListener(capture(listener)) } just Runs
+        }
+        val repository = mockk<FaceProfileRepository> {
+            every { observeProfiles() } returns flowOf(
+                listOf(
+                    FaceProfileEntity(
+                        id = 1L, firstName = "Bruce", lastName = "Wayne",
+                        email = null, createdAt = 0L
+                    )
+                )
+            )
+        }
+        val controller = SessionLockController(preferenceHelper, repository)
+        controller.onFaceVerified(7L)
+
+        every { preferenceHelper.isUserLoggedIn() } returns false
+        listener.captured.onSharedPreferenceChanged(mockk(), LOGGED_IN_KEY)
+
+        assertNull(controller.verifiedFaceProfileId.value)
+    }
+
+    @Test
+    fun `an unrelated pref change leaves the verified user alone`() {
+        val listener = slot<SharedPreferences.OnSharedPreferenceChangeListener>()
+        val preferenceHelper = mockk<PreferenceHelper>(relaxed = true) {
+            every { isUserLoggedIn() } returns true
+            every { hasEnabledFaceProfile() } returns true
+            every { getFaceLockTimeoutMinutes() } returns 60
+            every { userLoggedInKey } returns LOGGED_IN_KEY
+            every { registerOnChangeListener(capture(listener)) } just Runs
+        }
+        val repository = mockk<FaceProfileRepository> {
+            every { observeProfiles() } returns flowOf(
+                listOf(
+                    FaceProfileEntity(
+                        id = 1L, firstName = "Bruce", lastName = "Wayne",
+                        email = null, createdAt = 0L
+                    )
+                )
+            )
+        }
+        val controller = SessionLockController(preferenceHelper, repository)
+        controller.onFaceVerified(7L)
+
+        listener.captured.onSharedPreferenceChanged(mockk(), "some_other_pref")
+
+        assertEquals(7L, controller.verifiedFaceProfileId.value)
+    }
+
+    private companion object {
+        const val LOGGED_IN_KEY = "user_logged_in"
     }
 }

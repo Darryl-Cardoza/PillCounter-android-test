@@ -10,6 +10,7 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
@@ -69,6 +70,7 @@ class PillScanningViewModelCaptureTest {
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
     private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
+    private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
@@ -110,6 +112,7 @@ class PillScanningViewModelCaptureTest {
             bottleInfoDao = bottleInfoDao,
             batchDao = batchDao,
             userDao = userDao,
+            operatorNameProvider = operatorNameProvider,
             pillCountTxnDetailsDao = pillCountTxnDetailsDao,
             locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,

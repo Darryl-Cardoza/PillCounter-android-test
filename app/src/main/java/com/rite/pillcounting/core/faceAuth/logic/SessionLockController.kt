@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.faceAuth.logic
 
+import android.content.SharedPreferences
 import com.rite.pillcounting.core.faceAuth.data.FaceProfileRepository
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import kotlinx.coroutines.CoroutineScope
@@ -66,6 +67,21 @@ class SessionLockController @Inject constructor(
     private val _startOnScan = MutableStateFlow(false)
     val startOnScan: StateFlow<Boolean> = _startOnScan.asStateFlow()
 
+    // Who verified into THIS session. Deliberately not derived from FaceProfileEntity.lastUsedAt:
+    // that column is persistent history, so it would keep naming an operator across restarts and
+    // would promote some other enrolled profile the moment the real one was switched off.
+    private val _verifiedFaceProfileId = MutableStateFlow<Long?>(null)
+    val verifiedFaceProfileId: StateFlow<Long?> = _verifiedFaceProfileId.asStateFlow()
+
+    // Watches the pref, not each logout call site — several flip it directly. Held as a field:
+    // the platform keeps only a weak reference to the listener.
+    private val loggedOutListener =
+        SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
+            if (key == preferenceHelper.userLoggedInKey && !preferenceHelper.isUserLoggedIn()) {
+                _verifiedFaceProfileId.value = null
+            }
+        }
+
     /** Whether at least one enrolled face profile currently participates in verify matching. */
     val hasEnabledProfile: StateFlow<Boolean> = faceProfileRepository.observeProfiles()
         .map { profiles -> profiles.any { it.isEnabled } }
@@ -88,6 +104,7 @@ class SessionLockController @Inject constructor(
                 }
             }
         }
+        preferenceHelper.registerOnChangeListener(loggedOutListener)
     }
 
     private fun tick() {
@@ -98,7 +115,18 @@ class SessionLockController @Inject constructor(
         val timeoutMs = preferenceHelper.getFaceLockTimeoutMinutes() * 60_000L
         if (System.currentTimeMillis() - lastActivityAt.get() >= timeoutMs) {
             _isLocked.value = true
+            _verifiedFaceProfileId.value = null
         }
+    }
+
+    /**
+     * Records which enrolled profile verified into this session. Call on every successful
+     * face match, alongside the profile's `lastUsedAt` stamp.
+     *
+     * @param faceProfileId The matched profile's Room id.
+     */
+    fun onFaceVerified(faceProfileId: Long) {
+        _verifiedFaceProfileId.value = faceProfileId
     }
 
     /**
@@ -125,6 +153,7 @@ class SessionLockController @Inject constructor(
         if (!hasEnabledProfile.value) return false
         _startOnScan.value = startOnScan
         _isLocked.value = true
+        _verifiedFaceProfileId.value = null
         return true
     }
 
@@ -133,6 +162,9 @@ class SessionLockController @Inject constructor(
      * Returns true if the lock engaged.
      */
     fun onAppLaunch(): Boolean {
+        // Cleared unconditionally: a foreground service keeps this singleton alive across an
+        // app kill, so a relaunch would otherwise inherit the previous session's operator.
+        _verifiedFaceProfileId.value = null
         if (!preferenceHelper.isUserLoggedIn()) return false
         return lockNow()
     }
