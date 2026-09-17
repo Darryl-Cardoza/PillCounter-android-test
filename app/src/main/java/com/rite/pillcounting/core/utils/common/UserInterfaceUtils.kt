@@ -1148,7 +1148,7 @@ object UserInterfaceUtils {
      * phones need lifted to stay legible. Tablets scale the same either way.
      */
     @Composable
-    fun responsiveSp(baseSp: TextUnit, boostOnPhone: Boolean = false): TextUnit {
+    fun responsiveSp(baseSp: TextUnit, boostOnPhone: Boolean = true): TextUnit {
         val configuration = LocalConfiguration.current
         val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
         val isTablet = shortestSide >= 600
