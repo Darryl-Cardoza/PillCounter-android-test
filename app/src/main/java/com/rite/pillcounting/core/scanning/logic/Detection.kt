@@ -1,4 +1,4 @@
-package com.rite.pillcounting.core.scanning.logic
+﻿package com.rite.pillcounting.core.scanning.logic
 
 import android.graphics.RectF
 

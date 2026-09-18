@@ -388,6 +388,8 @@ class FaceAuthViewModel @Inject constructor(
             return
         }
         faceProfileRepository.markUsed(matchedId, System.currentTimeMillis())
+        // Who the app reports as the operator until this session locks again.
+        sessionLockController.onFaceVerified(matchedId)
         val matchedProfile = faceProfileRepository.getProfile(matchedId)
         _verifyState.value = if (matchedProfile != null) {
             VerifyState.Matched(matchedProfile.firstName, matchedProfile.lastName)

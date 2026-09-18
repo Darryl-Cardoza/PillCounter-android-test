@@ -35,7 +35,6 @@ class PillScanningUiStateTest {
         isPaused = true,
         isLoading = true,
         restrictAdd = true,
-        showConfirmDialog = true,
         showNoTransaction = true,
         showTargetCountDialog = true,
         showIdleOverlay = true,
@@ -50,7 +49,11 @@ class PillScanningUiStateTest {
         showCountMismatchDialog = true,
         showEndStockCountDialog = true,
         stockCountSessionTotal = 50,
-        pendingTrayColorForClassification = TrayColor.WHITE
+        pendingTrayColorForClassification = TrayColor.WHITE,
+        showAddBottleDialog = true,
+        showReplaceBottleDialog = true,
+        canReset = true,
+        showSkipStepDialog = true
     )
 
     @Test
@@ -68,7 +71,6 @@ class PillScanningUiStateTest {
         assertFalse(s.isPaused)
         assertFalse(s.isLoading)
         assertFalse(s.restrictAdd)
-        assertFalse(s.showConfirmDialog)
         assertFalse(s.showNoTransaction)
         assertFalse(s.showTargetCountDialog)
         assertFalse(s.showIdleOverlay)
@@ -84,6 +86,9 @@ class PillScanningUiStateTest {
         assertFalse(s.showEndStockCountDialog)
         assertEquals(0, s.stockCountSessionTotal)
         assertNull(s.pendingTrayColorForClassification)
+        assertFalse(s.showAddBottleDialog)
+        assertFalse(s.showReplaceBottleDialog)
+        assertFalse(s.showSkipStepDialog)
     }
 
     @Test
@@ -101,7 +106,6 @@ class PillScanningUiStateTest {
         assertTrue(s.isPaused)
         assertTrue(s.isLoading)
         assertTrue(s.restrictAdd)
-        assertTrue(s.showConfirmDialog)
         assertTrue(s.showNoTransaction)
         assertTrue(s.showTargetCountDialog)
         assertTrue(s.showIdleOverlay)
@@ -117,6 +121,9 @@ class PillScanningUiStateTest {
         assertTrue(s.showEndStockCountDialog)
         assertEquals(50, s.stockCountSessionTotal)
         assertEquals(TrayColor.WHITE, s.pendingTrayColorForClassification)
+        assertTrue(s.showAddBottleDialog)
+        assertTrue(s.showReplaceBottleDialog)
+        assertTrue(s.showSkipStepDialog)
     }
 
     @Test
@@ -163,21 +170,24 @@ class PillScanningUiStateTest {
         assertTrue(s.component15())                     // isPaused
         assertTrue(s.component16())                     // isLoading
         assertTrue(s.component17())                     // restrictAdd
-        assertTrue(s.component18())                     // showConfirmDialog
-        assertTrue(s.component19())                     // showNoTransaction
-        assertTrue(s.component20())                     // showTargetCountDialog
-        assertTrue(s.component21())                     // showIdleOverlay
-        assertTrue(s.component22())                     // showNotesDialog
-        assertEquals(640, s.component23())              // imageFrameWidth
-        assertEquals(480, s.component24())              // imageFrameHeight
-        assertTrue(s.component25())                     // isAddCooldown
-        assertEquals(3, s.component26())                // addCount
-        assertTrue(s.component27())                     // showDialogForControl
-        assertEquals("err", s.component28())            // showErrorMessage
-        assertTrue(s.component29())                     // isHl7Txn
-        assertTrue(s.component30())                     // showCountMismatchDialog
-        assertTrue(s.component31())                     // showEndStockCountDialog
-        assertEquals(50, s.component32())               // stockCountSessionTotal
-        assertEquals(TrayColor.WHITE, s.component33())  // pendingTrayColorForClassification
+        assertTrue(s.component18())                     // showNoTransaction
+        assertTrue(s.component19())                     // showTargetCountDialog
+        assertTrue(s.component20())                     // showIdleOverlay
+        assertTrue(s.component21())                     // showNotesDialog
+        assertEquals(640, s.component22())              // imageFrameWidth
+        assertEquals(480, s.component23())              // imageFrameHeight
+        assertTrue(s.component24())                     // isAddCooldown
+        assertEquals(3, s.component25())                // addCount
+        assertTrue(s.component26())                     // showDialogForControl
+        assertEquals("err", s.component27())            // showErrorMessage
+        assertTrue(s.component28())                     // isHl7Txn
+        assertTrue(s.component29())                     // showCountMismatchDialog
+        assertTrue(s.component30())                     // showEndStockCountDialog
+        assertEquals(50, s.component31())               // stockCountSessionTotal
+        assertEquals(TrayColor.WHITE, s.component32())  // pendingTrayColorForClassification
+        assertTrue(s.component33())                     // showAddBottleDialog
+        assertTrue(s.component34())                     // showReplaceBottleDialog
+        assertTrue(s.component35())                     // canReset
+        assertTrue(s.component36())                     // showSkipStepDialog
     }
 }

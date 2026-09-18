@@ -3,13 +3,13 @@ package com.rite.pillcounting.feature.hl7.data.repository
 import android.annotation.SuppressLint
 import android.content.Context
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
-import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.BatchEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
@@ -65,7 +65,7 @@ class Hl7Repository @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
     private val stockTxnDao: StockTxnDao,
     private val bottleInfoDao: BottleInfoDao,
-    private val userDao: UserDao,
+    private val operatorNameProvider: OperatorNameProvider,
     private val batchDao: BatchDao,
     private val hl7MessageSender: Hl7MessageSender,
     private val drugRepository: DrugRepository,
@@ -204,20 +204,18 @@ class Hl7Repository @Inject constructor(
                 logger.w("Dispense HL7 skipped — txn $txnId not found")
                 return
             }
+        // Re-read under the caller's lock: completion triggers both sendDispenseNow and the
+        // observer's resend sweep, so whichever gets here second must not send a second copy.
+        if (txn.isSynced == true) {
+            logger.i("Dispense HL7 skipped — txn $txnId already synced")
+            return
+        }
         val txnDetails = txnDetailsDao.getAllForTxn(txnId.toString())
         //Change this condition because we have transaction status that we are handling from pms
 //        val totalCount = txnDetails.sumOf { it.pillCount ?: 0 }
 //        if (totalCount == 0) {
 //            return
 //        }
-        // txn.localId is a FK to UserEntity.localId, not the business userId. Resolving it with
-        // getByUserId compared a Room row id against a JWT-derived string, so it never matched:
-        // the operator was always null, RXD-10 was omitted, and every dispense arrived at the
-        // Companion with a blank Operator column.
-        val user = txn.localId?.let { userDao.getByLocalId(it) }
-        if (user == null) {
-            logger.w("Dispense $txnId has no resolvable operator (localId=${txn.localId}) — RXD-10 will be empty")
-        }
         val location = locationProvider.getCurrentLocationAsString()
 
         val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
@@ -246,11 +244,10 @@ class Hl7Repository @Inject constructor(
             drugCode = drug.ndc,
             scannedDrugCode = scannedNdc,
             drugName = drug.drugName ?: "",
-            pharmacistId = user?.userId,
-            pharmacistName = listOfNotNull(user?.fName, user?.lName)
+            pharmacistName = listOfNotNull(txn.operatorFirstName, txn.operatorLastName)
                 .joinToString(" "),
-            pharmacistFamilyName = user?.lName,
-            pharmacistGivenName = user?.fName,
+            pharmacistFamilyName = txn.operatorLastName,
+            pharmacistGivenName = txn.operatorFirstName,
             location = location,
             isControlledSubstance = isControlledDrugType(drug.drugType),
             isHazardousDrug = drug.isHazardous,
@@ -363,12 +360,17 @@ class Hl7Repository @Inject constructor(
      * (isComingFromHL7 = 0) never qualified for the resend query at all — the pharmacist
      * finished the count and the PMS never heard about it. This is the primary path; the
      * resend-on-connect sweep remains as retry for sends that fail here.
+     *
+     * Takes [resendMutex]: the same completion also flips the status, which wakes the resend
+     * sweep, and without the lock both paths send the same dispense.
      */
     fun sendDispenseNow(txnId: Long) {
         if (preferenceHelper.isHl7Enabled()) {
             scope.launch {
                 logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
-                buildAndSendSuccessfulDispense(txnId = txnId)
+                resendMutex.withLock {
+                    buildAndSendSuccessfulDispense(txnId = txnId)
+                }
             }
         } else {
             logger.i("HL7 disabled — skipping dispense send, txnId=$txnId")
@@ -377,7 +379,8 @@ class Hl7Repository @Inject constructor(
 
     /**
      * Resends every pending (unsynced, HL7-originated, completed) transaction's HL7
-     * message, one at a time, waiting for each ACK before moving to the next.
+     * message, one at a time, waiting for each ACK — and for the isSynced write that
+     * follows it — before moving to the next.
      * [resendMutex] ensures the Room-flow observer and onClientConnected triggers can
      * never overlap and send the same txn's message twice concurrently.
      */
@@ -425,15 +428,17 @@ class Hl7Repository @Inject constructor(
      * was sent for this txn — never from a shared "last sent" slot, so concurrent
      * in-flight sends can't mark the wrong transaction synced.
      */
-    private fun markTransactionSynced(txnId: Long) {
+    private suspend fun markTransactionSynced(txnId: Long) {
         // A synced txn is never resent, so its cached ZUI-8 image encodings can be dropped now.
         HL7MessageBuilder.evictImageCache(txnId)
-        scope.launch {
-            // Flag the txn synced first, then — when the server disallows local storage —
-            // delete it. The PMS pulls images from the device image server before sending
-            // the success ACK, so the images are already retrieved by the time we delete here.
-            pillCountTxnDao.markTxnSynced(txnId)
-            if (!preferenceHelper.isAllowLocalStorage()) {
+        // Flag the txn synced first, then — when the server disallows local storage —
+        // delete it. The PMS pulls images from the device image server before sending
+        // the success ACK, so the images are already retrieved by the time we delete here.
+        // Awaited, not launched: the caller still holds resendMutex, and releasing it before
+        // this row lands would let a concurrent send read isSynced = 0 and send a second copy.
+        pillCountTxnDao.markTxnSynced(txnId)
+        if (!preferenceHelper.isAllowLocalStorage()) {
+            scope.launch {
                 // Wait before deleting: the PMS pulls the transaction images from the device
                 // image server (ImageNanoServer) *after* the success ACK. Deleting immediately
                 // would remove the image files before that pull completes, leaving the PMS
@@ -934,10 +939,7 @@ class Hl7Repository @Inject constructor(
 
         // Stock txns added → persist the batch's live NDC total and running user.
         stockTxnDao.refreshBatchTotalNdcs(batchId)
-        stockTxnDao.updateBatchUserName(
-            batchId,
-            preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
-        )
+        stockTxnDao.updateBatchUserName(batchId, operatorNameProvider().display())
 
         logger.i("Processed ${resolvedItems.size} inventory items for batchId: $batchId")
 

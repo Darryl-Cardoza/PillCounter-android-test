@@ -7,7 +7,6 @@ import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
 import com.rite.pillcounting.core.room.di.PillCountTxnConverters
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 
 /**
@@ -117,4 +116,12 @@ data class PillCountTxnEntity(
      * See [com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson].
      */
     val bottleInfoListJson: String? = null,
+
+    /**
+     * Operator name stamped when the count completes — the registered face user,
+     * else the logged-in account. Read back at send time so a resend still reports
+     * whoever actually ran this count.
+     */
+    val operatorFirstName: String? = null,
+    val operatorLastName: String? = null,
 )

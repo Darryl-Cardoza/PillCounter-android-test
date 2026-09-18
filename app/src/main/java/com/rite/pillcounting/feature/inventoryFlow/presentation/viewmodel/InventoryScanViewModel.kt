@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
@@ -18,7 +19,6 @@ import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.room.models.dtos.BatchTxnDto
 import com.rite.pillcounting.core.room.models.dtos.RequestedDrugDto
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
@@ -40,7 +40,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.updateAndGet
@@ -79,6 +78,7 @@ class InventoryScanViewModel @Inject constructor(
     private val bottleInfoDao: BottleInfoDao,
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
+    private val operatorNameProvider: OperatorNameProvider,
     private val barcodeDecoder: BarcodeDecoder,
     private val drugRepository: IDrugRepository,
     private val hl7Repository: Hl7Repository,
@@ -98,7 +98,7 @@ class InventoryScanViewModel @Inject constructor(
     /** Route arg used only when [argBatchId] is 0 — seeds the lazily-created batch. */
     private val argBucketId: String? = savedStateHandle.get<String>("bucket_id")?.ifBlank { null }
 
-    private val _resolvedBatchId = MutableStateFlow(argBatchId)
+    private val resolvedBatchId = MutableStateFlow(argBatchId)
 
     /** Bucket label rendered on the active card. Empty until the batch loads. */
     private val _bucketId = MutableStateFlow<String?>(null)
@@ -168,7 +168,7 @@ class InventoryScanViewModel @Inject constructor(
     val batchEnded: StateFlow<Boolean> = _batchEnded.asStateFlow()
 
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val recentRows: StateFlow<List<RecentBatchRow>> = _resolvedBatchId
+    private val recentRows: StateFlow<List<RecentBatchRow>> = resolvedBatchId
         .flatMapLatest { id ->
             if (id == 0L) flowOf(emptyList())
             // Merge the counted bottle lines with the batch's requested-drug headers so a
@@ -207,7 +207,7 @@ class InventoryScanViewModel @Inject constructor(
     init {
         viewModelScope.launch {
             if (argBatchId != 0L) {
-                _resolvedBatchId.value = argBatchId
+                resolvedBatchId.value = argBatchId
                 val batch = batchDao.getById(argBatchId)
                 _bucketId.value = batch?.bucketId
                 // PMS-requested inventory: lock scanning to the requested NDCs.
@@ -241,11 +241,11 @@ class InventoryScanViewModel @Inject constructor(
      * Returns the new batchId on success, or 0 if the insert failed.
      */
     private suspend fun ensureBatchCreated(): Long {
-        val existing = _resolvedBatchId.value
+        val existing = resolvedBatchId.value
         if (existing != 0L) return existing
         return try {
             val newId = batchDao.insertNewInProgressBatch(bucketId = _bucketId.value)
-            _resolvedBatchId.value = newId
+            resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
             logger.e("ensureBatchCreated failed", e)
@@ -259,7 +259,7 @@ class InventoryScanViewModel @Inject constructor(
      * after DispenseFlow publishes the id via NavController's SavedStateHandle.
      *
      * Only takes effect when this VM has no batch bound yet
-     * ([_resolvedBatchId] == 0L). Setting [_resolvedBatchId] re-triggers the
+     * ([resolvedBatchId] == 0L). Setting [resolvedBatchId] re-triggers the
      * `flatMapLatest` in [recentRows], which subscribes to
      * [bottleInfoDao.observeByBatchId] + [stockTxnDao.observeRequestedDrugs]
      * against the real batch so the just-counted bottle appears in the list.
@@ -271,9 +271,9 @@ class InventoryScanViewModel @Inject constructor(
      */
     fun adoptStockCountBatchId(batchId: Long) {
         if (batchId == 0L) return
-        if (_resolvedBatchId.value != 0L) return
+        if (resolvedBatchId.value != 0L) return
         viewModelScope.launch {
-            _resolvedBatchId.value = batchId
+            resolvedBatchId.value = batchId
             val batch = batchDao.getById(batchId)
             // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
             // is already authoritative (set from argBucketId at init). Reading it back
@@ -315,8 +315,8 @@ class InventoryScanViewModel @Inject constructor(
             try {
                 logger.i(
                     "INV_SCAN RAW rawValue='$rawValue' | " +
-                    "length=${rawValue.length} | " +
-                    "bypassCooldown=$bypassCooldown"
+                            "length=${rawValue.length} | " +
+                            "bypassCooldown=$bypassCooldown"
                 )
                 val isGs1 = barcodeDecoder.isGs1Barcode(rawValue)
                 val decoded = if (isGs1) barcodeDecoder.decode(rawValue) else null
@@ -324,13 +324,13 @@ class InventoryScanViewModel @Inject constructor(
                 val gtin14 = extractedGtin?.let { barcodeDecoder.toGtin14(it) }
                 logger.i(
                     "INV_SCAN DECODED isGs1=$isGs1 | " +
-                    "extractedGtin=$extractedGtin | " +
-                    "gtin14=$gtin14 | " +
-                    "lot=${decoded?.lotNumber} | " +
-                    "expiry=${decoded?.expirationDate} | " +
-                    "serial=${decoded?.serialNumber} | " +
-                    "prodDate=${decoded?.productionDate} | " +
-                    "sellBy=${decoded?.sellByDate}"
+                            "extractedGtin=$extractedGtin | " +
+                            "gtin14=$gtin14 | " +
+                            "lot=${decoded?.lotNumber} | " +
+                            "expiry=${decoded?.expirationDate} | " +
+                            "serial=${decoded?.serialNumber} | " +
+                            "prodDate=${decoded?.productionDate} | " +
+                            "sellBy=${decoded?.sellByDate}"
                 )
                 logger.d("INV_SCAN decoded isGs1=$isGs1 extractedGtin=$extractedGtin gtin14=$gtin14")
 
@@ -420,7 +420,7 @@ class InventoryScanViewModel @Inject constructor(
 
                 // First valid scan in a fresh stock-count session: create the
                 // BatchEntity now so abandoned sessions leave no DB row.
-                if (_resolvedBatchId.value == 0L) {
+                if (resolvedBatchId.value == 0L) {
                     val newBatchId = ensureBatchCreated()
                     if (newBatchId == 0L) {
                         _errorMessage.value = LocalizedError(R.string.batch_stock_count_no_active_batch)
@@ -447,7 +447,7 @@ class InventoryScanViewModel @Inject constructor(
 
                 // Look for an existing sealed txn for this (drug, lot, expiry)
                 // in the current batch — same logic ScanBarcodeViewModel uses.
-                val batchId = _resolvedBatchId.value
+                val batchId = resolvedBatchId.value
                 val existingStockTxn = if (batchId != 0L) {
                     stockTxnDao.findByDrugInBatch(batchId, drug.drugId)
                 } else null
@@ -490,7 +490,7 @@ class InventoryScanViewModel @Inject constructor(
                 )
                 _activeNdc.value = newActive
                 lastSameNdcIncrementAtMs = System.currentTimeMillis()
-                logger.d("INV_SCAN activeNdc SET ndc=${drug.ndc} drug=${drug.drugName} bottles=$startBottles hazardous=${drug.isHazardous} batchId=${_resolvedBatchId.value}")
+                logger.d("INV_SCAN activeNdc SET ndc=${drug.ndc} drug=${drug.drugName} bottles=$startBottles hazardous=${drug.isHazardous} batchId=${resolvedBatchId.value}")
 
                 // Persist immediately so the batch is durable from the first scan —
                 // BACK/app-kill before ADD must not drop the count. persistActive
@@ -560,7 +560,7 @@ class InventoryScanViewModel @Inject constructor(
      * just the latest transaction.
      */
     fun onRecentRowTapped(row: RecentBatchRow) {
-        val batchId = _resolvedBatchId.value
+        val batchId = resolvedBatchId.value
         logger.d("INV_SCAN onRecentRowTapped ndc=${row.ndc} batchId=$batchId")
         if (batchId == 0L) return
         viewModelScope.launch {
@@ -611,7 +611,7 @@ class InventoryScanViewModel @Inject constructor(
             logger.d("INV_SCAN persistActive SKIP: aggregated card (multiple sealed txns) ndc=${active.ndc}")
             return
         }
-        val batchId = _resolvedBatchId.value
+        val batchId = resolvedBatchId.value
         logger.d("INV_SCAN persistActive START ndc=${active.ndc} bottles=${active.bottles} batchId=$batchId lot=${active.batchNo} expiry=${active.expiry}")
         if (batchId == 0L) {
             logger.w("INV_SCAN persistActive ABORT: no batchId")
@@ -666,10 +666,7 @@ class InventoryScanViewModel @Inject constructor(
                 logger.d("INV_SCAN persistActive INSERTED new bottle line stockTxnId=$stockTxnId drugId=$drugId bottles=${active.bottles}")
                 // Stock txn added → keep the batch's live totals in sync.
                 stockTxnDao.refreshBatchTotalNdcs(batchId)
-                stockTxnDao.updateBatchUserName(
-                    batchId,
-                    preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
-                )
+                stockTxnDao.updateBatchUserName(batchId, operatorNameProvider().display())
             }
         } catch (e: Exception) {
             logger.e("INV_SCAN persistActive FAILED", e)
@@ -713,7 +710,7 @@ class InventoryScanViewModel @Inject constructor(
      */
     fun openEditDetails() {
         val active = _activeNdc.value ?: return
-        val batchId = _resolvedBatchId.value
+        val batchId = resolvedBatchId.value
         if (batchId == 0L) return
         viewModelScope.launch {
             try {
@@ -792,7 +789,7 @@ class InventoryScanViewModel @Inject constructor(
      */
     fun refreshActiveOpenPills() {
         val active = _activeNdc.value ?: return
-        val batchId = _resolvedBatchId.value
+        val batchId = resolvedBatchId.value
         if (batchId == 0L) return
         viewModelScope.launch {
             try {
@@ -815,7 +812,7 @@ class InventoryScanViewModel @Inject constructor(
      */
     fun saveEditDetails(sealed: List<EditBatchRow>, open: List<EditBatchRow>) {
         val active = _activeNdc.value ?: return
-        val batchId = _resolvedBatchId.value
+        val batchId = resolvedBatchId.value
         if (batchId == 0L) return
         viewModelScope.launch {
             try {
@@ -907,7 +904,7 @@ class InventoryScanViewModel @Inject constructor(
                 // scanning a pill. Pass batchId through as-is (0L when no batch
                 // exists yet); PillScanningViewModel lazily creates it on the first
                 // successful NDC scan in that flow, mirroring onBarcodeDetected above.
-                val batchId = _resolvedBatchId.value
+                val batchId = resolvedBatchId.value
 
                 // Always clear the staged txnId so the dispense flow starts at
                 // PRE_NDC and the user scans the container themselves.
@@ -940,7 +937,7 @@ class InventoryScanViewModel @Inject constructor(
     fun confirmEndCount(note: String? = null) {
         viewModelScope.launch {
             try {
-                val batchId = _resolvedBatchId.value
+                val batchId = resolvedBatchId.value
                 // Guard: never complete a batch that has no committed NDC. Even if
                 // END COUNT is somehow enabled with nothing scanned, leave the DB
                 // untouched. We check committed rows (not just batchId) because a

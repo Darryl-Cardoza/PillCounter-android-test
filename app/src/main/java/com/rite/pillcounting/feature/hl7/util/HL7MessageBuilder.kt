@@ -3,6 +3,7 @@ package com.rite.pillcounting.feature.hl7.util
 
 import android.util.Base64
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.models.isDispensedQuantityStep
 import com.rite.pillcounting.core.models.toImageLabel
 import com.rite.pillcounting.core.security.ImageCrypto
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
@@ -128,9 +129,9 @@ object HL7MessageBuilder {
         drugCode: String,
         scannedDrugCode: String,
         drugName: String,
-        pharmacistId: String?,
         pharmacistName: String?,
-        // RXD-10 carries the operator as ID^Family^Given. The joined [pharmacistName] is kept
+        // RXD-10 carries the operator as ^Family^Given — no id component. The joined
+        // [pharmacistName] is kept
         // for the segments that want one display string (ORC-12, Z-segments); these two feed the
         // structured components a receiver needs to render an operator name.
         pharmacistFamilyName: String? = null,
@@ -159,18 +160,24 @@ object HL7MessageBuilder {
             ?: txn.txnId.toString()
 
         val txnDetails = txnDetails.filter { !it.isDeleted }
+        // Only the prescribed-count step is the dispensed quantity. The pour-out, recount,
+        // vial and remainder steps measure other things, and summing them all reported
+        // several times the pills actually dispensed.
+        val dispensedDetails = txnDetails.filter { it.type.isDispensedQuantityStep() }
         // Each bottle's true pill count is live-summed here from its own txnDetailsIds against
         // the (already non-deleted-filtered) detail rows — there is no stored pill count on
         // BottleInfo itself, so this keeps a bottle's reported count correct even if a detail
         // row was deleted/redone after the bottle was scanned.
-        val pillCountByDetailsId = txnDetails.associate { it.txnDetailsId to (it.pillCount ?: 0) }
+        val pillCountByDetailsId = dispensedDetails.associate { it.txnDetailsId to (it.pillCount ?: 0) }
         val bottles = BottleInfoJson.decode(txn.bottleInfoListJson)
         val bottleCounts = bottles.map { bottle ->
             bottle.txnDetailsIds.sumOf { id -> pillCountByDetailsId[id] ?: 0 }
         }
 
-        val totalCount = bottleCounts.sum().takeIf { bottles.isNotEmpty() }
-            ?: txnDetails.sumOf { it.pillCount ?: 0 }.takeIf { txnDetails.isNotEmpty() }
+        // Must be > 0, not just "bottles exist": a bottle scanned after its pills were counted
+        // never gets those rows linked, so its sum is 0 while the step rows are right there.
+        val totalCount = bottleCounts.sum().takeIf { it > 0 }
+            ?: dispensedDetails.sumOf { it.pillCount ?: 0 }.takeIf { dispensedDetails.isNotEmpty() }
             ?: txn.targetCount
             ?: 0
         val orderId = txn.rxNo ?: txn.txnId.toString()
@@ -259,7 +266,6 @@ object HL7MessageBuilder {
                 rxd.prescriptionNumber = orderId
                 rxd.lotNumber = lotNumber
                 rxd.expirationDate = expirationDate
-                rxd.dispensingProviderId = pharmacistId
                 rxd.dispensingProviderFamilyName = pharmacistFamilyName
                 rxd.dispensingProviderGivenName = pharmacistGivenName
                 rxd.dispenseSubIdCounter = "1"

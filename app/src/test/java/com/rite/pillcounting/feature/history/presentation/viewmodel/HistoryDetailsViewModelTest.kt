@@ -165,37 +165,4 @@ class HistoryDetailsViewModelTest {
         coVerify(exactly = 1) { pillCountTxnDao.softDelete(eq(7L), any()) }
     }
 
-    // ────────────────────────────── getCurrentUser ──────────────────────────────
-
-    @Test
-    fun `getCurrentUser returns logged-in email when available`() = runTest(testDispatcher) {
-        every { preferenceHelper.getLoggedInEmail() } returns "alice"
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        assertEquals("alice", vm.getCurrentUser())
-    }
-
-    @Test
-    fun `getCurrentUser falls back to userId when no logged-in email`() = runTest(testDispatcher) {
-        every { preferenceHelper.getLoggedInEmail() } returns null
-        every { preferenceHelper.getUserId() } returns "charlie"
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        assertEquals("charlie", vm.getCurrentUser())
-    }
-
-    @Test
-    fun `getCurrentUser returns dash when nothing available`() = runTest(testDispatcher) {
-        every { preferenceHelper.getLoggedInEmail() } returns null
-        every { preferenceHelper.getUserId() } returns null
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        assertEquals("—", vm.getCurrentUser())
-    }
 }

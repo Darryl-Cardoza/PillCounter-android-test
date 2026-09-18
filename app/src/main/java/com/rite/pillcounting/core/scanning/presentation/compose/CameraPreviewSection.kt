@@ -17,7 +17,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.Composable
@@ -38,7 +37,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -46,7 +44,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.zIndex
 import androidx.core.content.ContextCompat
-import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.domain.model.DetectedPill
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
@@ -176,13 +173,9 @@ fun CameraPreviewSection(
     // frame of detection updates, and allocating Paint/Rect inside the draw loop
     // is the kind of per-frame churn that wrecks frame budget on weak devices.
     // Paints are immutable per-class so we can share them across frames.
-    // Resume live camera when the captured still is cleared, but NOT while the
-    // confirm-completion dialog is open — processCapturedImage() nulls the bitmap
-    // just before the dialog appears, which would restart the camera underneath it.
-    // When the dialog is dismissed (cancel), showConfirmDialog flips back to false
-    // and this effect re-fires, restoring the live preview correctly.
-    LaunchedEffect(capturedBitmap, uiState.showConfirmDialog) {
-        if (capturedBitmap == null && !uiState.showConfirmDialog) {
+    // Resume live camera when the captured still is cleared.
+    LaunchedEffect(capturedBitmap) {
+        if (capturedBitmap == null) {
             cameraHelper.resumeCamera(previewView)
         }
     }

@@ -1,7 +1,6 @@
 package com.rite.pillcounting.feature.history.domain.model
 
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 
 data class TxnWithDrugDto(
     val txnId: Long,

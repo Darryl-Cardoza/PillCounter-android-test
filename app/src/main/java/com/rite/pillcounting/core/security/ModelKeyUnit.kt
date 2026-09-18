@@ -12,7 +12,6 @@ import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 /**
  * Securely assembles and vends the AES-256 model decryption key.
@@ -27,6 +26,11 @@ import javax.crypto.spec.SecretKeySpec
  *   val unit = ModelKeyUnit(context)
  *   unit.activateIfNeeded()          // call once on app start (idempotent)
  *   val keyBytes = unit.material()   // call when decrypting a model file
+ *
+ * The fragments below are still reconstructible into the original key material
+ * (obfuscation, not encryption at rest in source). This is a known, accepted
+ * risk -- the key is not being rotated -- see the dated decision note in
+ * .gitleaksignore.
  */
 class ModelKeyUnit(private val context: Context) {
 
@@ -53,13 +57,9 @@ class ModelKeyUnit(private val context: Context) {
 
     // MARK: - ASSEMBLY
 
-    private fun compose(): String {
-        return listOf(f1(), f2(), f3(), f4(), f5(), f6()).joinToString("")
-    }
+    private fun compose(): String = listOf(f1(), f2(), f3(), f4(), f5(), f6()).joinToString("")
 
-    private fun refine(value: String): String {
-        return value.filter { it.isLetterOrDigit() }
-    }
+    private fun refine(value: String): String = value.filter { it.isLetterOrDigit() }
 
     private fun destroy(value: String) {
         try {
@@ -74,7 +74,6 @@ class ModelKeyUnit(private val context: Context) {
     }
 
     // MARK: - FRAGMENTS
-    // Model key: 5e81e4694423a0bd3c4890a6aeecf233315418e3d939e1125948157b360d5600
     // Each fragment embeds hex chars with interspersed noise; refine() strips non-alphanumeric.
 
     private fun f1() = "5e8*!(1e4@!#694&^%42"
@@ -97,18 +96,18 @@ class ModelKeyUnit(private val context: Context) {
 
         KeyGenerator.getInstance(
             KeyProperties.KEY_ALGORITHM_AES,
-            "AndroidKeyStore"
+            "AndroidKeyStore",
         ).apply {
             init(
                 KeyGenParameterSpec.Builder(
                     alias,
-                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
+                    KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT,
                 )
                     .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                     .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
                     .setKeySize(256)
                     .setUserAuthenticationRequired(false)
-                    .build()
+                    .build(),
             )
         }.generateKey()
 

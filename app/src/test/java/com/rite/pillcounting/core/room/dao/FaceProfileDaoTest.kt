@@ -7,6 +7,7 @@ import com.rite.pillcounting.core.room.models.FaceProfileEntity
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -65,4 +66,5 @@ class FaceProfileDaoTest {
         dao.delete(saved)
         assertEquals(0, dao.getEnabled().size)
     }
+
 }

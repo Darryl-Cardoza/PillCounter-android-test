@@ -19,6 +19,7 @@ import com.rite.pillcounting.core.scanning.domain.model.BarcodeData
 import com.rite.pillcounting.core.scanning.domain.model.DrugInfo
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
@@ -61,6 +62,7 @@ class InventoryScanViewModelTest {
     private lateinit var bottleInfoDao: BottleInfoDao
     private lateinit var drugMasterDao: DrugMasterDao
     private lateinit var preferenceHelper: PreferenceHelper
+    private lateinit var operatorNameProvider: OperatorNameProvider
     private lateinit var barcodeDecoder: BarcodeDecoder
     private lateinit var drugRepository: IDrugRepository
     private lateinit var hl7Repository: Hl7Repository
@@ -86,6 +88,7 @@ class InventoryScanViewModelTest {
         bottleInfoDao = mockk(relaxed = true)
         drugMasterDao = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
+        operatorNameProvider = mockk(relaxed = true)
         barcodeDecoder = mockk(relaxed = true)
         drugRepository = mockk(relaxed = true)
         hl7Repository = mockk(relaxed = true)
@@ -121,6 +124,7 @@ class InventoryScanViewModelTest {
             bottleInfoDao,
             drugMasterDao,
             preferenceHelper,
+            operatorNameProvider,
             barcodeDecoder,
             drugRepository,
             hl7Repository,

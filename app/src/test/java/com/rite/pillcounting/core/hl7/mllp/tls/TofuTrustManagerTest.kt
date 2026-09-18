@@ -18,6 +18,7 @@ import javax.net.ssl.X509TrustManager
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -270,5 +271,66 @@ class TofuTrustManagerTest {
         val newCert = fakeCert(byteArrayOf(4, 4, 4))
         tm.checkServerTrusted(arrayOf(newCert), "RSA")
         assertEquals(expectedPin(newCert.encoded), tm.currentPin())
+    }
+
+    // ── legacy pin adoption ─────────────────────────────────────────────
+
+    /** Seeds `pin_pms_server` the way a pre-upgrade, single-peer terminal would have. */
+    private fun seedLegacyPin(cert: X509Certificate) {
+        TofuTrustManager(context, "pms_server").checkServerTrusted(arrayOf(cert), "RSA")
+        assertNotNull(pinsMap["pin_pms_server"])
+    }
+
+    @Test
+    fun `adopts the legacy pin when the peer presents the same certificate`() {
+        every { systemTrustManager.checkServerTrusted(any(), any()) } answers { }
+        val cert = fakeCert()
+        seedLegacyPin(cert)
+
+        TofuTrustManager(context, "PMS_A").checkServerTrusted(arrayOf(cert), "RSA")
+
+        assertEquals(
+            expectedPin(cert.encoded),
+            TofuTrustManager(context, "PMS_A").currentPin()
+        )
+    }
+
+    @Test
+    fun `keeps the legacy pin after adopting it`() {
+        every { systemTrustManager.checkServerTrusted(any(), any()) } answers { }
+        val cert = fakeCert()
+        seedLegacyPin(cert)
+
+        TofuTrustManager(context, "PMS_A").checkServerTrusted(arrayOf(cert), "RSA")
+
+        // Static mode still keys off this, so adoption must not delete it.
+        assertNotNull(pinsMap["pin_pms_server"])
+    }
+
+    @Test
+    fun `does not adopt the legacy pin for a peer presenting a different certificate`() {
+        every { systemTrustManager.checkServerTrusted(any(), any()) } answers { }
+        val certA = fakeCert(byteArrayOf(1, 2, 3, 4))
+        val certB = fakeCert(byteArrayOf(9, 9, 9, 9))
+        seedLegacyPin(certA)
+
+        // B is a different box. It must pin its own cert, not inherit A's and be refused.
+        TofuTrustManager(context, "PMS_B").checkServerTrusted(arrayOf(certB), "RSA")
+
+        assertEquals(
+            expectedPin(certB.encoded),
+            TofuTrustManager(context, "PMS_B").currentPin()
+        )
+    }
+
+    @Test
+    fun `constructing the manager writes nothing`() {
+        every { systemTrustManager.checkServerTrusted(any(), any()) } answers { }
+        seedLegacyPin(fakeCert())
+        val before = pinsMap.toMap()
+
+        TofuTrustManager(context, "PMS_A")
+
+        assertEquals(before, pinsMap)
     }
 }

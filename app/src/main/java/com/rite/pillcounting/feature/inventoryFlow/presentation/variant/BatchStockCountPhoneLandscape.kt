@@ -31,7 +31,10 @@ import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.BatchStockCountHeader
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.BatchStockCountUiState
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditBatchRow
+import com.rite.pillcounting.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.rite.pillcounting.feature.inventoryFlow.domain.model.RecentBatchRow
+import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.EditDetailsContent
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.RecentCountsLabelRow
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.RecentCountsList
 import com.rite.pillcounting.feature.inventoryFlow.presentation.compose.ScannedDrugDetailsPhone
@@ -69,6 +72,10 @@ fun BatchStockCountPhoneLandscape(
     endCountEnabled: Boolean,
     modifier: Modifier = Modifier,
     onRowTapped: (RecentBatchRow) -> Unit = {},
+    onEdit: () -> Unit = {},
+    editDetails: EditDrugDetails? = null,
+    onEditDismiss: () -> Unit = {},
+    onEditSave: (sealed: List<EditBatchRow>, open: List<EditBatchRow>) -> Unit = { _, _ -> },
 ) {
     // Grey sheet surface. The DETAILS card is first (left) at a fixed width; the
     // RECENT card fills the slack on the RIGHT when expanded. Because the host
@@ -82,6 +89,40 @@ fun BatchStockCountPhoneLandscape(
             .padding(horizontal = 14.dp, vertical = 14.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
     ) {
+        // Edit mode: header morphs to "Edit Details" + X and one card spans the whole
+        // panel (the host keeps the panel expanded, so the batch rows have room).
+        if (editDetails != null) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+            ) {
+                BatchStockCountHeader(
+                    onScanPills = onScanPills,
+                    editing = true,
+                    onClose = onEditDismiss,
+                )
+                Spacer(modifier = Modifier.height(14.dp))
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(AppTheme.extendedColors.secondaryBackground)
+                        .padding(horizontal = 16.dp, vertical = 14.dp),
+                ) {
+                    EditDetailsContent(
+                        details = editDetails,
+                        onDismiss = onEditDismiss,
+                        onSave = onEditSave,
+                        showTitle = false,
+                        wideDrugDetails = true,
+                    )
+                }
+            }
+            return@Row
+        }
+
         // Details / summary card — fixed width = the collapsed peek width.
         Column(
             modifier = Modifier
@@ -111,6 +152,7 @@ fun BatchStockCountPhoneLandscape(
                         // Compact spacing — landscape panel is short and would
                         // otherwise clip CANCEL/ADD at the bottom edge.
                         dense = true,
+                        onEdit = onEdit,
                     )
                 } else {
                     EmptyScannedDetailsLandscape(

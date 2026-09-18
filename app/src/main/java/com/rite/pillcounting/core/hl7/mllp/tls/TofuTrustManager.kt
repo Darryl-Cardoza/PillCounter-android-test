@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
+import com.rite.pillcounting.core.utils.logger.AppLogger
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.cert.CertificateException
@@ -25,6 +26,8 @@ class TofuTrustManager(
 
     private val pinKey = "pin_${hostIdentifier}"
     private val keystoreAlias = "com.rite.pillcounting.tofu_key"
+
+    private val logger = AppLogger.create<TofuTrustManager>()
 
     private val systemTrustManager: X509TrustManager by lazy {
         val factory = TrustManagerFactory.getInstance(
@@ -98,6 +101,13 @@ class TofuTrustManager(
         plainPrefs.edit { putString(pinKey, encrypt(pin)) }
     }
 
+    /** The old single-peer pin, or null when this peer already is the legacy key. */
+    private fun legacyPin(): String? {
+        if (pinKey == LEGACY_PIN_KEY) return null
+        val stored = plainPrefs.getString(LEGACY_PIN_KEY, null) ?: return null
+        return try { decrypt(stored) } catch (e: Exception) { null }
+    }
+
     // ── X509TrustManager ─────────────────────────────────────────────
 
     override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) {
@@ -113,6 +123,28 @@ class TofuTrustManager(
 
         when (storedPin) {
             null -> {
+                // Same cert as the old single-peer pin means this is the server that was
+                // already trusted, so adopt it instead of re-doing first contact. A different
+                // cert is a different box and takes its own key. The legacy key is left in
+                // place: static mode uses it directly, and deleting it on a guess was what
+                // bricked the second PMS on a multi-server site.
+                if (legacyPin() == incomingPin) {
+                    savePin(incomingPin)
+                    logger.block(
+                        "HL7-NSD · Adopted the legacy TOFU pin for this peer",
+                        "From" to LEGACY_PIN_KEY,
+                        "To" to pinKey,
+                        "Fingerprint" to incomingPin.take(23),
+                    )
+                    return
+                }
+
+                logger.block(
+                    "HL7-NSD · TOFU first contact — pinning this certificate",
+                    "Pin key" to pinKey,
+                    "Peer" to hostIdentifier,
+                    "Fingerprint" to incomingPin.take(23),
+                )
                 runCatching {
                     systemTrustManager.checkServerTrusted(chain, authType)
                     savePin(incomingPin)
@@ -121,9 +153,17 @@ class TofuTrustManager(
                 }
             }
             incomingPin -> {
+                logger.w("HL7-NSD · TOFU pin matched for $pinKey")
                 runCatching { systemTrustManager.checkServerTrusted(chain, authType) }
             }
             else -> {
+                logger.block(
+                    "HL7-NSD · TOFU pin MISMATCH — refusing connection",
+                    "Pin key" to pinKey,
+                    "Peer" to hostIdentifier,
+                    "Stored" to storedPin.take(23),
+                    "Presented" to incomingPin.take(23),
+                )
                 throw CertificateException(
                     "Certificate fingerprint mismatch for $hostIdentifier. " +
                             "If the server certificate was legitimately rotated, " +
@@ -145,7 +185,12 @@ class TofuTrustManager(
 
     fun clearPin() {
         plainPrefs.edit { remove(pinKey) }
+        logger.w("HL7-NSD · Cleared TOFU pin for $pinKey")
     }
 
     fun currentPin(): String? = getPin()
+
+    private companion object {
+        const val LEGACY_PIN_KEY = "pin_pms_server"
+    }
 }

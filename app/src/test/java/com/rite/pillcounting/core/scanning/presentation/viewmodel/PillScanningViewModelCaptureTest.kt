@@ -10,10 +10,13 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
+import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
+import com.rite.pillcounting.core.scanning.domain.model.PillScanningUiState
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
 import com.rite.pillcounting.core.scanning.logic.PillDetectionModelLoader
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
@@ -38,6 +41,7 @@ import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -66,6 +70,7 @@ class PillScanningViewModelCaptureTest {
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
     private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
+    private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
@@ -107,6 +112,7 @@ class PillScanningViewModelCaptureTest {
             bottleInfoDao = bottleInfoDao,
             batchDao = batchDao,
             userDao = userDao,
+            operatorNameProvider = operatorNameProvider,
             pillCountTxnDetailsDao = pillCountTxnDetailsDao,
             locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
@@ -132,6 +138,52 @@ class PillScanningViewModelCaptureTest {
         @Suppress("UNCHECKED_CAST")
         val flow = field.get(viewModel) as MutableStateFlow<StepState>
         flow.value = step
+    }
+
+    private fun setSteps(steps: List<StepState>) {
+        val field = PillScanningViewModel::class.java.getDeclaredField("_steps")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val flow = field.get(viewModel) as MutableStateFlow<List<StepState>>
+        flow.value = steps
+    }
+
+    private fun seedTargetCount(targetCount: Int) {
+        val field = PillScanningViewModel::class.java.getDeclaredField("_txnInfo")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val flow = field.get(viewModel) as MutableStateFlow<TxnWithDetails?>
+        flow.value = TxnWithDetails(
+            txnId = 42L,
+            drugName = null,
+            drugId = 1L,
+            ndc = null,
+            targetCount = targetCount,
+            note = null,
+            createdAt = 0L,
+            bottleInfoListJson = null,
+            totalPillCount = 0,
+            isDispense = true,
+            drugType = null,
+            txnDetails = emptyList(),
+            isComingFromHL7 = false,
+        )
+    }
+
+    /** Raise the skip dialog so a "clears it" assertion is not passing on the default. */
+    private fun seedSkipDialogShown() {
+        val field = PillScanningViewModel::class.java.getDeclaredField("_uiState")
+        field.isAccessible = true
+        @Suppress("UNCHECKED_CAST")
+        val flow = field.get(viewModel) as MutableStateFlow<PillScanningUiState>
+        flow.value = flow.value.copy(showSkipStepDialog = true)
+    }
+
+    /** Stub the CONTAINER_INITIATE rows the back-count gate sums; other steps stay empty. */
+    private fun seedContainerInitiateTotal(total: Int) {
+        every {
+            pillCountTxnDetailsDao.observeAllForTxn(any(), StepState.CONTAINER_INITIATE)
+        } returns flowOf(listOf(PillCountTxnDetailsEntity(pillCount = total, type = StepState.CONTAINER_INITIATE.toString())))
     }
 
     // ─────────────────────────── capture button ───────────────────────────
@@ -338,5 +390,82 @@ class PillScanningViewModelCaptureTest {
         advanceUntilIdle()
 
         coVerify(exactly = 2) { pillCountTxnDetailsDao.insert(any<PillCountTxnDetailsEntity>()) }
+    }
+
+    // ─────────────────────────── back-count skip ───────────────────────────
+
+    /** Drives the real Done path: capture → bitmap delivered → Done. */
+    private fun captureAndDone() {
+        val onCaptured = slot<(Bitmap) -> Unit>()
+        every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
+        every { preferenceHelper.getTxnId() } returns 42L
+        val bitmap: Bitmap = mockk(relaxed = true)
+        every { bitmap.isRecycled } returns true
+
+        viewModel.captureImage()
+        onCaptured.captured.invoke(bitmap)
+        viewModel.saveCaptureImage()
+    }
+
+    @Test
+    fun `vial Done offers the skip dialog when the stock bottle was emptied exactly`() = runTest {
+        setSteps(listOf(StepState.VIAL, StepState.CONTAINER_PENDING))
+        setCurrentStep(StepState.VIAL)
+        seedTargetCount(30)
+        seedContainerInitiateTotal(30)
+
+        captureAndDone()
+        advanceUntilIdle()
+
+        assertTrue(viewModel.uiState.value.showSkipStepDialog)
+        assertEquals(StepState.VIAL, viewModel.currentStep.value)
+    }
+
+    @Test
+    fun `vial Done advances to the back count when pills are left in the bottle`() = runTest {
+        setSteps(listOf(StepState.VIAL, StepState.CONTAINER_PENDING))
+        setCurrentStep(StepState.VIAL)
+        seedTargetCount(30)
+        seedContainerInitiateTotal(50)
+
+        captureAndDone()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.showSkipStepDialog)
+        assertEquals(StepState.CONTAINER_PENDING, viewModel.currentStep.value)
+    }
+
+    @Test
+    fun `vial Done never offers the skip dialog when VIAL is the last step`() = runTest {
+        setSteps(listOf(StepState.TARGET_VERIFICATION, StepState.VIAL))
+        setCurrentStep(StepState.VIAL)
+        seedTargetCount(30)
+        seedContainerInitiateTotal(30)
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 0
+
+        captureAndDone()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.showSkipStepDialog)
+        assertTrue(viewModel.uiState.value.showNoTransaction)
+    }
+
+    @Test
+    fun `skipBackCount clears the dialog and runs the done path`() = runTest {
+        setSteps(listOf(StepState.VIAL, StepState.CONTAINER_PENDING))
+        setCurrentStep(StepState.VIAL)
+        seedTargetCount(30)
+        every { preferenceHelper.getTxnId() } returns 42L
+        every { preferenceHelper.getShowNotesDialogSetting() } returns true
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+        seedSkipDialogShown()
+        assertTrue(viewModel.uiState.value.showSkipStepDialog)
+
+        viewModel.skipBackCount()
+        advanceUntilIdle()
+
+        assertFalse(viewModel.uiState.value.showSkipStepDialog)
+        assertEquals(StepState.VIAL, viewModel.currentStep.value)
+        assertTrue(viewModel.uiState.value.showNotesDialog)
     }
 }

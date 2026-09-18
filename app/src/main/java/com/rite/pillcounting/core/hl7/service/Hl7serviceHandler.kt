@@ -61,9 +61,21 @@ class Hl7serviceHandler @Inject constructor(
             // own startup registration may still be in flight — raced that registration and
             // forced a needless stop/start cycle every launch.
             currentConfig?.let { config ->
+                val previousDiscoveryType = hl7Service?.currentDiscoveryType()
                 val changed = hl7Service?.updateConfig(config) ?: false
                 if (changed) {
                     hl7Service?.rebroadcastNsd()
+                    // Only re-discover when the discovery type itself moved. A terminal rename
+                    // also lands here, and dropping a healthy PMS connection for that is churn.
+                    if (previousDiscoveryType != null &&
+                        previousDiscoveryType != config.nsdDiscoveryType
+                    ) {
+                        logger.w(
+                            "HL7-NSD · Discovery type changed while unbound " +
+                                "($previousDiscoveryType → ${config.nsdDiscoveryType}) — re-discovering"
+                        )
+                        hl7Service?.rediscoverPms()
+                    }
                     logger.i("Applied changed config on bind: ${config.nsdBroadcastServiceName}")
                 } else {
                     logger.i("Config unchanged on bind — skipping rebroadcast")

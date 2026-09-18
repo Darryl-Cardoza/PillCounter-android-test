@@ -9,13 +9,16 @@ import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import androidx.annotation.VisibleForTesting
 import androidx.camera.core.ImageProxy
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.room.AppDatabase
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
+import com.rite.pillcounting.core.models.DISPENSED_QUANTITY_STEP
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
@@ -27,7 +30,6 @@ import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
-import com.rite.pillcounting.core.room.models.PillCountTxnEntity
 import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.room.models.dtos.TxnWithDetails
 import com.rite.pillcounting.core.room.models.enums.CountStatus
@@ -77,6 +79,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.util.ArrayDeque
+import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
 
 /**
@@ -95,6 +98,7 @@ class PillScanningViewModel @Inject constructor(
     private val bottleInfoDao: BottleInfoDao,
     private val batchDao: BatchDao,
     private val userDao: UserDao,
+    private val operatorNameProvider: OperatorNameProvider,
     private val pillCountTxnDetailsDao: PillCountTxnDetailsDao,
     private val locationProvider: LocationProvider,
     private val drugMasterDao: DrugMasterDao,
@@ -114,7 +118,15 @@ class PillScanningViewModel @Inject constructor(
     @Volatile private var isAnalyzingFrame = false
     private var isPaused = false
     private var idleJob: Job? = null
-    private val idleTimeout = 60_000L
+    private var resetAvailabilityJob: Job? = null
+    // Bumped on counting activity. Atomic because the analyzer thread and Main
+    // both bump it.
+    private val activityTicks = AtomicLong(0)
+
+    // Count-confirmation state. See onCountObserved().
+    private var pendingCount = -1
+    private var confirmedCount = -1
+    private var consecutiveSameCount = 0
 
     private val _uiState = MutableStateFlow(PillScanningUiState())
     val uiState: StateFlow<PillScanningUiState> = _uiState.asStateFlow()
@@ -315,6 +327,17 @@ class PillScanningViewModel @Inject constructor(
         // PillAnalyzer's TRAY_HOLD_FRAMES so a brief gate drop doesn't unlock.
         private const val AE_LOCK_RELEASE_DELAY_MS = 1000L
 
+        // Log prefix for the idle watchdog. Filter: logcat -s PillScanningVM.
+        private const val IDLE_TAG = "IDLE_WATCHDOG"
+
+        // Quiet time before the camera pauses.
+        @VisibleForTesting
+        internal const val IDLE_TIMEOUT_MS = 60_000L
+
+        // Watchdog poll step. Sets how close to the timeout the pause lands.
+        @VisibleForTesting
+        internal const val IDLE_STEP_MS = 5_000L
+
         /**
          * How long Add stays disabled after a tap. The Add handler captures the
          * current camera frame, draws the detection overlay, and writes a JPEG to
@@ -332,6 +355,11 @@ class PillScanningViewModel @Inject constructor(
          * feeling slow to the user.
          */
         private const val GLOVE_CONFIRM_FRAMES = 3
+
+        // Frames a count must hold before it counts as activity. Rejects
+        // single-frame flicker on a still tray.
+        @VisibleForTesting
+        internal const val COUNT_CONFIRM_FRAMES = 3
     }
 
     /** Model initialization states */
@@ -559,7 +587,7 @@ class PillScanningViewModel @Inject constructor(
                             stockTxnDao.refreshBatchTotalNdcs(effectiveBatchId)
                             stockTxnDao.updateBatchUserName(
                                 effectiveBatchId,
-                                preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
+                                operatorNameProvider().display()
                             )
                             effectiveBatchId to effectiveStockTxnId
                         }
@@ -968,6 +996,8 @@ class PillScanningViewModel @Inject constructor(
         buffer.addLast(count)
         _lastTenDetections.value = buffer
 
+        onCountObserved(count)
+
         // Map pill centres to normalised [0..1] coordinates
         updateDetectedPills(
             pills = detections.map { det ->
@@ -991,11 +1021,10 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
-    // DISABLED FOR PERFORMANCE MONITORING: Idle timeout functionality disabled
-    // to ensure continuous scanning without interruptions
+    // Fired by the watchdog after a window with no count change.
     private fun pauseAndClearBuffers() {
         _lastTenDetections.value.clear()
-        lastDetectedSnapshot = emptyList()
+        resetCountConfirmation()
         lastCompleteTrayMs = 0L
         _uiState.update { it.copy(showIdleOverlay = true, gloveDetections = emptyList(), pendingTrayColorForClassification = null) }
         _trayDetections.value = emptyList()
@@ -1006,20 +1035,66 @@ class PillScanningViewModel @Inject constructor(
         hazardousTrayToastShown = false
         isPaused = true
         _cameraPaused.value = true
-        logger.w("Camera paused due to idle timeout. Buffers cleared.")
+        logger.w("$IDLE_TAG camera paused due to idle timeout. Buffers cleared.")
     }
 
     fun resetIdleTimer() {
         idleJob?.cancel()
         idleJob = viewModelScope.launch {
-            delay(idleTimeout)
-            pauseAndClearBuffers()
+            val quietStepsNeeded = (IDLE_TIMEOUT_MS / IDLE_STEP_MS).toInt()
+            var seen = activityTicks.get()
+            var quietSteps = 0
+            logger.d("$IDLE_TAG armed | timeout=${IDLE_TIMEOUT_MS}ms step=${IDLE_STEP_MS}ms ticks=$seen")
+            while (true) {
+                delay(IDLE_STEP_MS)
+                val ticks = activityTicks.get()
+                if (ticks != seen) {
+                    logger.d("$IDLE_TAG activity=${ticks - seen} -> deadline pushed")
+                    seen = ticks
+                    quietSteps = 0
+                    continue
+                }
+                quietSteps++
+                if (quietSteps >= quietStepsNeeded) {
+                    logger.d("$IDLE_TAG quiet ${quietSteps * IDLE_STEP_MS}ms -> pausing")
+                    pauseAndClearBuffers()
+                    return@launch
+                }
+            }
         }
+    }
+
+    /** Mark counting activity so the watchdog holds off. */
+    fun noteCountActivity() {
+        activityTicks.incrementAndGet()
+    }
+
+    // A count must repeat for COUNT_CONFIRM_FRAMES frames to count as activity,
+    // so detector flicker can't hold the watchdog open forever.
+    @VisibleForTesting
+    internal fun onCountObserved(count: Int) {
+        if (count == pendingCount) {
+            consecutiveSameCount++
+        } else {
+            pendingCount = count
+            consecutiveSameCount = 1
+        }
+        if (consecutiveSameCount == COUNT_CONFIRM_FRAMES && count != confirmedCount) {
+            confirmedCount = count
+            noteCountActivity()
+        }
+    }
+
+    private fun resetCountConfirmation() {
+        pendingCount = -1
+        confirmedCount = -1
+        consecutiveSameCount = 0
     }
 
     fun pauseIdleTimer() {
         idleJob?.cancel()
         idleJob = null
+        logger.d("$IDLE_TAG cancelled")
     }
 
     /** Process an incoming frame from CameraX. */
@@ -1056,8 +1131,7 @@ class PillScanningViewModel @Inject constructor(
         _uiState.update { it.copy(showIdleOverlay = false, pendingTrayColorForClassification = null) }
 
         _lastTenDetections.value.clear()
-        lastDetectedSnapshot = emptyList()
-        lastChangeTimestamp = System.currentTimeMillis()
+        resetCountConfirmation()
         lastCompleteTrayMs = 0L
         lastAddedScanSignature = null
         _trayDetections.value = emptyList()
@@ -1081,7 +1155,10 @@ class PillScanningViewModel @Inject constructor(
         isPaused = false
         _cameraPaused.value = false
 
-        logger.i("Idle overlay reset -> Analysis resumed.")
+        // The watchdog job ended when it fired, so re-arm it.
+        resetIdleTimer()
+
+        logger.d("$IDLE_TAG overlay reset -> Analysis resumed.")
     }
 
     fun updateFilteredPills(filtered: List<DetectedPill>) {
@@ -1163,6 +1240,73 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Throws away everything collected for the active count so it can restart at the
+     * container scan. Hard deletes only — nothing here is recoverable.
+     *
+     * Runs on viewModelScope rather than the caller's: leaving the screen mid-reset must
+     * not strand a txn whose details are deleted but whose flags are still set. The caller
+     * joins, so the stage flip still happens after the delete.
+     */
+    suspend fun resetTransaction() {
+        viewModelScope.launch { performReset() }.join()
+    }
+
+    private suspend fun performReset() {
+        val txnId = preferenceHelper.getTxnId()
+        if (txnId != 0L) {
+            // Files first: once the rows are gone their paths are unrecoverable.
+            deleteFiles(pillCountTxnDetailsDao.getImagePathsForTxn(txnId))
+            pillCountTxnDetailsDao.deleteAllForTxn(txnId)
+            pillCountTxnDao.resetForRecount(txnId)
+        }
+
+        stagedDetails.clear()
+        stagingActive = false
+        stockCountBaseTotal = -1
+        _capturedBitmap.value = null
+        _txnInfo.value = null
+        _uiState.update {
+            it.copy(
+                detectedPills = emptyList(),
+                txnDetailHistory = emptyList(),
+                stockCountSessionTotal = 0,
+            )
+        }
+        logger.i("Transaction reset. txnId=$txnId")
+    }
+
+    /**
+     * Keeps reset availability live. A count that has reached the pharmacy system can no
+     * longer be thrown away locally, and that can land while the screen is still up.
+     */
+    fun observeResetAvailability(batchId: Long) {
+        resetAvailabilityJob?.cancel()
+        resetAvailabilityJob = viewModelScope.launch {
+            val txnId = preferenceHelper.getTxnId()
+            when {
+                txnId != 0L -> pillCountTxnDao.observeById(txnId).collect { txn ->
+                    _uiState.update { it.copy(canReset = txn?.isSynced != true) }
+                }
+                batchId != 0L -> batchDao.observeById(batchId).collect { batch ->
+                    val available =
+                        batch?.let { b -> !b.isSynced && b.lastAckedChunkIndex == 0 } ?: true
+                    _uiState.update { it.copy(canReset = available) }
+                }
+                // Stock count with no batch has nowhere to have synced to.
+                else -> _uiState.update { it.copy(canReset = true) }
+            }
+        }
+    }
+
+    /** Best-effort file removal; a missing file is already the desired state. */
+    private fun deleteFiles(paths: List<String>) {
+        paths.forEach { path ->
+            runCatching { java.io.File(path).takeIf { it.exists() }?.delete() }
+                .onFailure { logger.w("Reset could not delete $path: ${it.message}") }
+        }
+    }
+
     /** Clear the workflow step list so the WorkflowStepper hides when returning to QUEUE/PRE_RX. */
     fun resetWorkflowSteps() {
         _steps.value = emptyList()
@@ -1220,8 +1364,6 @@ class PillScanningViewModel @Inject constructor(
             PillScanningEvent.DoneClicked -> handleDone()
             is PillScanningEvent.NoteSaved -> handleNoteSaved(event)
             PillScanningEvent.NoteSkip -> handleNoteSkip()
-            is PillScanningEvent.ConfirmDone -> handleConfirmDone()
-            is PillScanningEvent.CancelDone -> handleCancelDone()
             is PillScanningEvent.TransactionDetailDeleted -> handleDeleteTransaction(event)
             is PillScanningEvent.AllTransactionDetailsDeleted -> handleDeleteAllTransactionDetails(
                 event
@@ -1327,6 +1469,7 @@ class PillScanningViewModel @Inject constructor(
 
         lastAddClickTime = currentTime
         lastAddedScanSignature = signature
+        noteCountActivity()
         logger.i("Adding transaction detail. Count=$currentCount")
 
         viewModelScope.launch(Dispatchers.IO) {
@@ -1569,7 +1712,7 @@ class PillScanningViewModel @Inject constructor(
             } else if (remainingCount > 0 && _currentStep.value == StepState.CONTAINER_PENDING) {
                 _uiState.update { it.copy(showNotesDialog = true) }
             } else {
-                showConfirmDialogAfterDone()
+                handleConfirmDone()
             }
         }
     }
@@ -1578,13 +1721,13 @@ class PillScanningViewModel @Inject constructor(
         setNoteDialogShown(false)
         viewModelScope.launch {
             pillCountTxnDao.updateNote(preferenceHelper.getTxnId(), event.note)
-            showConfirmDialogAfterDone()
+            handleConfirmDone()
         }
     }
 
     private fun handleNoteSkip() {
         setNoteDialogShown(false)
-        showConfirmDialogAfterDone()
+        handleConfirmDone()
     }
 
     private fun handleConfirmDone() {
@@ -1597,11 +1740,22 @@ class PillScanningViewModel @Inject constructor(
             val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
             val txn = pillCountTxnDao.getById(txnId) ?: return@launch
             if (total == 0) {
-                _uiState.update { it.copy(showConfirmDialog = false) }
                 return@launch
             }
+            // Only the prescribed-count step decides partial vs complete. The pour-out and
+            // recount steps count other pills and used to push this past the target.
+            val dispensedCount = pillCountTxnDetailsDao
+                .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
             val status =
-                if (txn.isDispense && txn.targetCount != null && total < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+                if (txn.isDispense && txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+
+            // Stamp who ran this count now, not at send time: an unsynced txn resent later
+            // must still report this operator, not whoever is at the device then.
+            // MUST be written before the status flips to COMPLETED — that write wakes
+            // observePendingHl7Txn, whose resend sweep reads this row and would build a
+            // message with a blank operator if it got there first.
+            val operator = operatorNameProvider()
+            pillCountTxnDao.updateOperatorName(txnId, operator.firstName, operator.lastName)
 
             if (txn.isComingFromHL7 == true) {
                 pillCountTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)
@@ -1619,19 +1773,9 @@ class PillScanningViewModel @Inject constructor(
             }
 
             _capturedBitmap.value = null
-            _uiState.update { it.copy(showConfirmDialog = false) }
             _navigationEvent.send(NavigationEvent.NavigateToDashboard)
             logger.i("Transaction completed. Status=$status")
         }
-    }
-
-    private fun handleCancelDone() {
-        // Clear the captured still so the VIAL step returns to the live camera view,
-        // allowing the user to capture a new photo or click Done again.
-        _capturedBitmap.value = null
-        captureCommitted = false
-        _uiState.update { it.copy(showConfirmDialog = false) }
-        logger.i("Confirm dialog cancelled.")
     }
 
     private fun handleDeleteTransaction(event: PillScanningEvent.TransactionDetailDeleted) {
@@ -1715,7 +1859,8 @@ class PillScanningViewModel @Inject constructor(
                     ndc = txnInfo?.ndc.orEmpty(),
                     strength = txnInfo?.strength.orEmpty(),
                     dosageForm = txnInfo?.dosageForm.orEmpty(),
-                    bucket = txnInfo?.bucketId?.takeIf { b -> b.isNotBlank() } ?: "Normal",
+                    bucket = txnInfo?.bucketId?.takeIf { b -> b.isNotBlank() }
+                        ?: context.getString(R.string.default_bucket),
                     targetCount = txnInfo?.targetCount ?: 0,
                     showTargetCountDialog = shouldShowDialog,
                     drugImage = txnInfo?.drugImage.orEmpty()
@@ -1729,44 +1874,10 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch {
             val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
             _txnInfo.value = txnInfo
-            val isDispense = txnInfo?.isDispense
-            val isComingFromHL7 = txnInfo?.isComingFromHL7 ?: false
             val drugId = txnInfo?.drugId
             val drugInfo = drugMasterDao.getDrugById(drugId)
-            val controlledSchedules = setOf(
-                ScheduleCode.CII,
-                ScheduleCode.CIII,
-                ScheduleCode.CIV,
-                ScheduleCode.CV,
-                ScheduleCode.CVI
-            )
 
-            _steps.value = when {
-                isComingFromHL7 && drugInfo?.drugType?.let {
-                    runCatching { ScheduleCode.valueOf(it) }.getOrNull()
-                } in controlledSchedules -> buildWorkflowSteps(
-                    isFromHl7 = true,
-                    simpleFlow = false,
-                    drugType = drugInfo?.drugType.orEmpty(),
-                    isDispense = isDispense
-                )
-
-                isComingFromHL7 && drugInfo?.drugType?.let {
-                    runCatching { ScheduleCode.valueOf(it) }.getOrNull()
-                } !in controlledSchedules -> buildWorkflowSteps(
-                    isFromHl7 = true,
-                    simpleFlow = true,
-                    drugType = drugInfo?.drugType.orEmpty(),
-                    isDispense = isDispense
-                )
-
-                else -> buildWorkflowSteps(
-                    isFromHl7 = false,
-                    simpleFlow = true,
-                    drugType = drugInfo?.drugType.orEmpty(),
-                    isDispense = isDispense
-                )
-            }
+            _steps.value = resolveWorkflowSteps(txnInfo, drugInfo)
 
             val currentSteps = _steps.value
             val savedWorkflowStep = txnInfo?.workflowStep
@@ -1975,8 +2086,9 @@ class PillScanningViewModel @Inject constructor(
                 ndc = drug.ndc,
                 strength = drug.strength.orEmpty(),
                 dosageForm = drug.dosageForm.orEmpty(),
-                bucket = "Normal",
+                bucket = context.getString(R.string.default_bucket),
                 targetCount = 0,
+                drugImage = drug.drugImagePath.orEmpty(),
             )
         }
         _currentStep.value = StepState.TARGET_VERIFICATION
@@ -2008,14 +2120,6 @@ class PillScanningViewModel @Inject constructor(
                 logger.e("Failed to load existing vial photo", e)
             }
         }
-    }
-
-    private fun showConfirmDialogAfterDone() {
-        // Do NOT clear capturedBitmap here. The confirm dialog is shown on top of
-        // the captured still, so the user never sees the live camera underneath.
-        // capturedBitmap is cleared in handleCancelDone (returns user to live VIAL
-        // camera) and is irrelevant on confirm (navigation destroys the screen).
-        _uiState.update { it.copy(showConfirmDialog = true) }
     }
 
     fun triggerAddPop(count: Int) {
@@ -2102,6 +2206,56 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Derives the workflow steps for a transaction. HL7 entries on a controlled drug
+     * run the full flow; everything else runs the simple one.
+     */
+    private fun resolveWorkflowSteps(
+        txnInfo: TxnWithDetails?, drugInfo: DrugMasterEntity?
+    ): List<StepState> {
+        val isComingFromHL7 = txnInfo?.isComingFromHL7 ?: false
+        val controlledSchedules = setOf(
+            ScheduleCode.CII,
+            ScheduleCode.CIII,
+            ScheduleCode.CIV,
+            ScheduleCode.CV,
+            ScheduleCode.CVI
+        )
+        val isControlled = drugInfo?.drugType?.let {
+            runCatching { ScheduleCode.valueOf(it) }.getOrNull()
+        } in controlledSchedules
+
+        return buildWorkflowSteps(
+            isFromHl7 = isComingFromHL7,
+            simpleFlow = !(isComingFromHL7 && isControlled),
+            drugType = drugInfo?.drugType.orEmpty(),
+            isDispense = txnInfo?.isDispense
+        )
+    }
+
+    /**
+     * Lands the workflow on the SCAN step: publishes the steps and marks SCAN as the
+     * current one, so the stepper can be shown there like any other step.
+     * [getDrugInfo] reassigns both when counting starts. The saved workflowStep column
+     * is deliberately not touched — a resume must not come back to SCAN.
+     */
+    fun enterScanStep() {
+        // Set first, so the stepper never renders a stale step while the steps load.
+        _currentStep.value = StepState.SCAN
+        viewModelScope.launch {
+            // Stock counts have no transaction row until the container is scanned,
+            // and their workflow never varies.
+            if (_uiState.value.scanType == CountType.REGULAR.name) {
+                _steps.value = buildWorkflowSteps(
+                    isFromHl7 = false, simpleFlow = true, drugType = "", isDispense = false
+                )
+                return@launch
+            }
+            val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
+            _steps.value = resolveWorkflowSteps(txnInfo, drugMasterDao.getDrugById(txnInfo?.drugId))
+        }
+    }
+
     fun buildWorkflowSteps(
         isFromHl7: Boolean, simpleFlow: Boolean, drugType: String, isDispense: Boolean?
     ): List<StepState> {
@@ -2134,8 +2288,9 @@ class PillScanningViewModel @Inject constructor(
     /**
      * True when VIAL is the final step of the active workflow. The auto-capture
      * path uses this to decide whether scanning the vial should finish the flow
-     * outright (show the "Confirm Done" dialog) or merely capture the still and
-     * wait for the user to tap Done before advancing to the remaining step(s).
+     * outright (complete the transaction, or show the notes prompt when that
+     * setting is on) or merely capture the still and wait for the user to tap Done
+     * before advancing to the remaining step(s).
      */
     fun isVialLastStep(): Boolean = _steps.value.lastOrNull() == StepState.VIAL
 
@@ -2144,9 +2299,9 @@ class PillScanningViewModel @Inject constructor(
      *
      * @param autoConfirm when true (auto-capture path, where the vial's RX matched
      *   the active transaction), immediately commit the photo as if the user tapped
-     *   "Done" once the bitmap lands — this advances the workflow and surfaces the
-     *   "Confirm Done" dialog. When false (manual capture), the still is shown and
-     *   the user confirms via the Done button.
+     *   "Done" once the bitmap lands — this advances the workflow and completes the
+     *   transaction. When false (manual capture), the still is shown and the user
+     *   confirms via the Done button.
      *
      * A second call while a capture is still in flight is a no-op: no sound, no
      * flash, no capture request. See [isCapturing].
@@ -2192,6 +2347,42 @@ class PillScanningViewModel @Inject constructor(
         _capturedBitmap.value?.let { processCapturedImage(it) }
     }
 
+    /**
+     * Advance past VIAL, or offer to skip the back count.
+     *
+     * CONTAINER_PENDING re-counts what is left in the stock bottle. When the bottle was
+     * poured out and fully dispensed there is nothing left, so the step is offered as a
+     * skip instead of being walked into with a target of 0. The CONTAINER_INITIATE total
+     * is read from the DAO because uiState only ever holds the current step's rows.
+     */
+    private fun advanceFromVial() {
+        val steps = _steps.value
+        val next = steps.getOrNull(steps.indexOf(StepState.VIAL) + 1)
+        if (next != StepState.CONTAINER_PENDING) {
+            moveNextStep()
+            return
+        }
+        viewModelScope.launch {
+            val poured = pillCountTxnDetailsDao
+                .observeAllForTxn(preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE)
+                .first().sumOf { it.pillCount ?: 0 }
+            if (poured == (_txnInfo.value?.targetCount ?: 0)) {
+                // No camera frames arrive while the dialog sits on the vial still, so
+                // the watchdog would fire and drop the idle overlay behind it.
+                pauseIdleTimer()
+                _uiState.update { it.copy(showSkipStepDialog = true) }
+            } else {
+                moveNextStep()
+            }
+        }
+    }
+
+    /** Single-button "Skip": finish the txn without entering CONTAINER_PENDING. */
+    fun skipBackCount() {
+        _uiState.update { it.copy(showSkipStepDialog = false) }
+        handleDone()
+    }
+
     private fun processCapturedImage(bitmap: Bitmap) {
         // Guard only the photo write. handleDone has exits that leave the user on VIAL
         // (notes dialog dismissed, total 0), so a Done re-tap must still advance the flow.
@@ -2199,20 +2390,14 @@ class PillScanningViewModel @Inject constructor(
             captureCommitted = true
             onEvent(PillScanningEvent.AddVialPhotoInTxn(0, bitmap))
         }
-        moveNextStep()
+        advanceFromVial()
         isPaused = false
         _cameraPaused.value = false
         _uiState.update { it.copy(showIdleOverlay = false) }
-        // Clear the captured still only when the step has actually advanced beyond
-        // VIAL (i.e. moveNextStep moved to CONTAINER_PENDING or similar). When the
-        // step is still VIAL it means handleDone() was called and its coroutine
-        // will finish with showConfirmDialogAfterDone(), which clears capturedBitmap
-        // and sets showConfirmDialog in the same synchronous dispatch — preventing
-        // CameraPreviewSection from briefly resuming the live camera in the window
-        // between the image disappearing and the dialog appearing.
-        if (_currentStep.value != StepState.VIAL) {
-            _capturedBitmap.value = null
-        }
+        // The still is left up here on purpose. Whichever way advanceFromVial goes it
+        // clears the bitmap itself — redoCaptureImage on the CONTAINER_PENDING entry,
+        // handleConfirmDone on completion — so clearing it here only flashes the live
+        // camera underneath.
         resetIdleTimer()
     }
 

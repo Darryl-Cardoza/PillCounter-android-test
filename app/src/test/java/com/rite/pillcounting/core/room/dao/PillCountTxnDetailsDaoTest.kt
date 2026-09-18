@@ -223,6 +223,36 @@ class PillCountTxnDetailsDaoTest {
         assertEquals(1, dao.getAllForTxn("1").size)
     }
 
+    // ───────────────────────── reset: hard delete ─────────────────────────
+
+    @Test
+    fun `deleteAllForTxn physically removes every detail for that txn only`() = runTest {
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 3, type = StepState.SCAN.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 4, type = StepState.VIAL.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 2L, pillCount = 9, type = StepState.SCAN.name))
+
+        dao.deleteAllForTxn(1L)
+
+        assertEquals(0, dao.getAllForTxn("1").size)
+        assertEquals(1, dao.getAllForTxn("2").size)
+    }
+
+    @Test
+    fun `getImagePathsForTxn returns only the non-null paths`() = runTest {
+        dao.insert(
+            PillCountTxnDetailsEntity(txnId = 1L, imagePath = "/a.jpg", type = StepState.SCAN.name)
+        )
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, imagePath = null, type = StepState.SCAN.name))
+        dao.insert(
+            PillCountTxnDetailsEntity(txnId = 1L, imagePath = "/b.jpg", type = StepState.VIAL.name)
+        )
+        dao.insert(
+            PillCountTxnDetailsEntity(txnId = 2L, imagePath = "/other.jpg", type = StepState.SCAN.name)
+        )
+
+        assertEquals(listOf("/a.jpg", "/b.jpg"), dao.getImagePathsForTxn(1L).sorted())
+    }
+
     // ───────────────────────── getTotalPillCountForTxn ─────────────────────────
 
     @Test
@@ -326,5 +356,38 @@ class PillCountTxnDetailsDaoTest {
     fun `getLatestType returns null when stored type column is null`() = runTest {
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, type = null, createdAt = 100L))
         assertNull(dao.getLatestType(1L))
+    }
+
+    // ───────────────────────── getPillCountForStep ─────────────────────────
+
+    @Test
+    fun `getPillCountForStep sums only rows of that step`() = runTest {
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 60, type = StepState.CONTAINER_INITIATE.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 20, type = StepState.TARGET_VERIFICATION.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 3, type = StepState.TARGET_VERIFICATION.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 23, type = StepState.TARGET_REVERIFICATION.name))
+
+        assertEquals(23, dao.getPillCountForStep(1L, StepState.TARGET_VERIFICATION.name))
+        // The all-steps sum still spans every row — other callers rely on that.
+        assertEquals(106, dao.getTotalPillCountForTxn(1L))
+    }
+
+    @Test
+    fun `getPillCountForStep ignores soft-deleted rows`() = runTest {
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 20, type = StepState.TARGET_VERIFICATION.name))
+        dao.insert(
+            PillCountTxnDetailsEntity(
+                txnId = 1L, pillCount = 5, type = StepState.TARGET_VERIFICATION.name, isDeleted = true
+            )
+        )
+
+        assertEquals(20, dao.getPillCountForStep(1L, StepState.TARGET_VERIFICATION.name))
+    }
+
+    @Test
+    fun `getPillCountForStep returns zero when the step has no rows`() = runTest {
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 60, type = StepState.CONTAINER_INITIATE.name))
+
+        assertEquals(0, dao.getPillCountForStep(1L, StepState.TARGET_VERIFICATION.name))
     }
 }

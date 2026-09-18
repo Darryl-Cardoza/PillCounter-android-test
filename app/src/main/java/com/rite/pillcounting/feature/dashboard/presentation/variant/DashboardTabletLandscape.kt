@@ -8,18 +8,15 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.material3.VerticalDivider
-import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -60,10 +57,14 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .systemBarsPadding()
             .background(extendedColors.primaryBackground)
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .systemBarsPadding()
+                .displayCutoutPadding()
+        ) {
             ScaffoldTopBar(
                 pharmacyName = uiState.userDetail?.profile?.pharmacyName,
                 terminalAndUserLine = buildTerminalUserLine(uiState, includeTerminal = params.isHl7Enabled),
@@ -148,7 +149,7 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                                 .weight(1f),
                         )
                         ScaffoldQuickActionCard(
-                            title = stringResource(R.string.inventory),
+                            title = stringResource(R.string.stock_count),
                             subtitle = stringResource(R.string.start_inventory_count),
                             innerIconRes = R.drawable.fixed_count_inner,
                             onClick = params.onInventoryQuickAction,

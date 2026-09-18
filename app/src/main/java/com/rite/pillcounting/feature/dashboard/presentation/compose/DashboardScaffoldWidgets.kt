@@ -80,7 +80,10 @@ internal fun buildTerminalUserLine(
     val activeTerminalName = uiState.selectedTerminalName?.takeIf { it.isNotBlank() }
     // Terminal is HL7/PMS-driven — omit it from the top bar when HL7 is disabled.
     val terminal = if (includeTerminal) activeTerminalName else null
-    val user = listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
+    // The face user who verified into this session wins over the account name — same rule
+    // HL7 uses for its operator. Falls back to the account only before the first emission.
+    val user = uiState.operatorName?.ifBlank { null }
+        ?: listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }
 
@@ -112,7 +115,7 @@ internal fun ScaffoldTopBar(
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = pharmacyName ?: "—",
-                style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                fontSize = responsiveSp(12.sp, boostOnPhone = true),
                 color = extendedColors.textColor,
                 fontWeight = FontWeight.SemiBold,
                 maxLines = 1,
@@ -527,7 +530,7 @@ private fun ScaffoldTab(
     ) {
         Text(
             text = label,
-            fontSize = responsiveSp(8.sp),
+            fontSize = responsiveSp(8.sp, boostOnPhone = true),
             color = if (isActive) MaterialTheme.colorScheme.secondary else extendedColors.textColor,
             fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
         )
