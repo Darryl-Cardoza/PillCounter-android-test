@@ -1025,7 +1025,7 @@ class PillScanningViewModel @Inject constructor(
     private fun pauseAndClearBuffers() {
         _lastTenDetections.value.clear()
         resetCountConfirmation()
-        lastCompleteTrayMs = 0L
+lastCompleteTrayMs = 0L
         _uiState.update { it.copy(showIdleOverlay = true, gloveDetections = emptyList(), pendingTrayColorForClassification = null) }
         _trayDetections.value = emptyList()
         isTrayColorDetectionEnabled = false
@@ -1132,7 +1132,7 @@ class PillScanningViewModel @Inject constructor(
 
         _lastTenDetections.value.clear()
         resetCountConfirmation()
-        lastCompleteTrayMs = 0L
+ lastCompleteTrayMs = 0L
         lastAddedScanSignature = null
         _trayDetections.value = emptyList()
         _uiState.update { it.copy(gloveDetections = emptyList()) }
