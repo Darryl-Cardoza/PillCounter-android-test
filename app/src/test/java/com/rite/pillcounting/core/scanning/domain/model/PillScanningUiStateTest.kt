@@ -52,6 +52,7 @@ class PillScanningUiStateTest {
         pendingTrayColorForClassification = TrayColor.WHITE,
         showAddBottleDialog = true,
         showReplaceBottleDialog = true,
+        canReset = true,
         showSkipStepDialog = true
     )
 
@@ -186,6 +187,7 @@ class PillScanningUiStateTest {
         assertEquals(TrayColor.WHITE, s.component32())  // pendingTrayColorForClassification
         assertTrue(s.component33())                     // showAddBottleDialog
         assertTrue(s.component34())                     // showReplaceBottleDialog
-        assertTrue(s.component35())                     // showSkipStepDialog
+        assertTrue(s.component35())                     // canReset
+        assertTrue(s.component36())                     // showSkipStepDialog
     }
 }

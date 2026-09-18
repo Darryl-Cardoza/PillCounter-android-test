@@ -12,13 +12,15 @@ plugins {
     id("org.jetbrains.kotlin.plugin.serialization")
     id("com.google.gms.google-services")
     alias(libs.plugins.androidx.room)
+    id("com.autonomousapps.dependency-analysis")
 }
 
 val keystorePropsFile = rootProject.file("keystore.properties")
 val hasKeystore = keystorePropsFile.exists()
-val keystoreProps = Properties().also { props ->
-    if (hasKeystore) keystorePropsFile.inputStream().use { props.load(it) }
-}
+val keystoreProps =
+    Properties().also { props ->
+        if (hasKeystore) keystorePropsFile.inputStream().use { props.load(it) }
+    }
 
 android {
     namespace = "com.rite.pillcounting"
@@ -39,7 +41,7 @@ android {
         buildConfigField(
             "String",
             "BASE_URL",
-            "\"https://api.dispensesure.com/\""
+            "\"https://api.dispensesure.com/\"",
         )
         ndk {
             abiFilters += listOf("arm64-v8a", "armeabi-v7a")
@@ -73,7 +75,7 @@ android {
             if (hasKeystore) signingConfig = signingConfigs.getByName("release")
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro"
+                "proguard-rules.pro",
             )
         }
         debug {
@@ -114,21 +116,21 @@ android {
 
     packaging {
         resources {
-            excludes += setOf(
-                "META-INF/INDEX.LIST",
-                "META-INF/io.netty.versions.properties",
-                "META-INF/*.SF",
-                "META-INF/*.DSA",
-                "META-INF/*.RSA",
-                "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
-            )
+            excludes +=
+                setOf(
+                    "META-INF/INDEX.LIST",
+                    "META-INF/io.netty.versions.properties",
+                    "META-INF/*.SF",
+                    "META-INF/*.DSA",
+                    "META-INF/*.RSA",
+                    "META-INF/versions/9/OSGI-INF/MANIFEST.MF",
+                )
         }
 
         jniLibs {
             useLegacyPackaging = false
         }
     }
-
 }
 
 kotlin {

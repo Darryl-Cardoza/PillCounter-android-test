@@ -23,7 +23,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveBadgeWidth
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 
 /**
  * A small pill-shaped badge that displays an icon and label text,

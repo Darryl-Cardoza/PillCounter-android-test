@@ -3,7 +3,6 @@ package com.rite.pillcounting.feature.history.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.history.data.HistoryRepository
 import com.rite.pillcounting.feature.history.domain.model.HistoryDeleteFilter

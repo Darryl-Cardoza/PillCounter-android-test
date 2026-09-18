@@ -1,0 +1,156 @@
+name: "Android CI + CD (Calling Repo)"
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - '*build*'
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+
+  extract-version:
+    name: Extract App Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      java_version: ${{ steps.java-version.outputs.java_version }}
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Extract versionName from build.gradle
+        id: version
+        run: |
+          # Assumes versionName "1.0.0"
+          version_string=$(grep versionName app/build.gradle.kts | head -1 | sed -E 's/.*"(.*)".*/\1/')
+          echo "version=${version_string}" >> $GITHUB_OUTPUT
+          echo "Extracted version: ${version_string}"
+
+      - name: Extract Java version from build.gradle.kts
+        id: java-version
+        run: |
+          # Assumes sourceCompatibility = JavaVersion.VERSION_17
+          java_version=$(grep sourceCompatibility app/build.gradle.kts | head -1 | sed -E 's/.*VERSION_([0-9]+).*/\1/')
+          echo "java_version=${java_version}" >> $GITHUB_OUTPUT
+          echo "Extracted Java version: ${java_version}"
+
+  # CI for PRs and branch pushes. Builds Release directly (once) for a
+  # release-tag push instead of Debug, so the `cd` job below doesn't need its
+  # own nested CI/build pass -- ops-rite-android-pipeline's release.yml no
+  # longer runs one; it just downloads and signs whatever this job built. See
+  # that pipeline's README "Consolidated CI+CD build" section.
+  ci:
+    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/push.yml@main
+    needs: extract-version
+    with:
+      # ---- core ----
+      java_version: ${{ needs.extract-version.outputs.java_version }}
+      build_variant: ${{ (contains(github.ref_name, 'release') && 'Release') || 'Debug' }}
+      # Kept equal to `cd`'s threshold below until real coverage clears 40%;
+      # bumping this to 40 on release tags would fail ci before cd ever ran.
+      coverage_threshold: "30.00"
+      runner: ubuntu-latest  #options are ubuntu-latest and macos-latest
+
+      run_tests: true
+      run_coverage: true
+      run_static_analysis: false
+      # Checks only on a PR or a plain push to main -- no APK/AAB assembled.
+      # Only a tag push builds, since that's the only case `cd` below needs
+      # an artifact to sign and ship.
+      run_build: ${{ startsWith(github.ref, 'refs/tags/') }}
+
+      # ---- coverage ----
+      coverage_branch_threshold: "0"   # 0 disables the branch gate
+
+      # ---- formatting ----
+      run_formatting: true
+      formatting_ratchet_from: "origin/main"
+
+      # ---- android lint ----
+      run_android_lint: true
+      lint_check_all_warnings: false
+
+      # ---- dead code ----
+      # Both `app` and `hl7Core` apply AGP, and DAGP can't be injected into
+      # Android modules by the pipeline (classloader isolation from AGP). So
+      # DAGP is declared directly for the whole build instead: root
+      # build.gradle.kts (real application, not `apply false` -- DAGP
+      # requires it) + app/build.gradle.kts + hl7Core/build.gradle.kts. Once
+      # any module needs this, the pipeline's init script backs off entirely
+      # for this repo (DAGP is whole-build coordinated, not per-module) --
+      # see ops-rite-android-pipeline README's "Dead code on Android modules".
+      # Report-only for now; flip fail_on_dead_code once buildHealth findings
+      # are triaged.
+      run_dead_code: true
+      run_deep_dead_code: true
+
+      # ---- security ----
+      run_security: true
+      run_dependency_audit: true
+      cyclonedx_skip_projects: "hl7Core"
+
+      # ---- static typing strictness ----
+      kotlin_warnings_as_errors: false
+      kotlin_jsr305_strict: true
+
+      # ---- gates ----
+      fail_on_lint: false
+      fail_on_formatting: false        # warn only while adopting Spotless
+      fail_on_android_lint: false
+      fail_on_security: false
+      fail_on_vulnerabilities: false
+      fail_on_dead_code: false
+    secrets:
+      PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+
+  # CD for version tags. Only fires when the tag also contains "release", the
+  # same condition `ci` above uses to pick build_variant -- so `ci` has
+  # already built Release for this exact push, and `cd` just downloads,
+  # signs and ships that artifact (release.yml runs no CI/build of its own).
+  #
+  # Tag naming: the push trigger only matches tags containing "build", so a
+  # release tag must contain BOTH words to reach this job, e.g.
+  # v1.0.0-build-release. The event_name/ref guards below are load-bearing
+  # now that `on.push` also covers branch pushes to main -- without them a
+  # plain push to main (which also fires this workflow) would try to run cd.
+  cd:
+    uses: Rite-Technologies-23/ops-rite-android-pipeline/.github/workflows/release.yml@main
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, 'release')
+    needs: [ extract-version, ci ]
+    with:
+      version: ${{ needs.extract-version.outputs.version }}
+      java_version: ${{ needs.extract-version.outputs.java_version }}
+      build_variant: "Release"
+      coverage_threshold: "30.00"
+
+      runner: ubuntu-latest  #options are ubuntu-latest and macos-latest
+
+      deploy_to_playstore: false
+      package_name: "com.rite.pillcounting"
+      playstore_track: internal
+      playstore_status: draft
+
+      deploy_to_esper: false
+      esper_org_id: ""
+      esper_app_id: ""
+
+      enable_whats_new: false
+      whats_new_file: ""
+
+    secrets:
+      ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+      KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
+      ESPER_API_KEY: ${{ secrets.ESPER_API_KEY }}
+      PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}

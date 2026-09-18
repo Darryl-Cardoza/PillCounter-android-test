@@ -39,7 +39,6 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.room.models.enums.BatchStatus
 import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.utils.common.DateFormats
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSpForHistoryScreen
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toFormattedDate

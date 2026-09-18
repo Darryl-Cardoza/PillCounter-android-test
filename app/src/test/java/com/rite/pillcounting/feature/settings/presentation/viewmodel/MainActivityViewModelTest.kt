@@ -12,10 +12,10 @@ import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.PillCountTxnEntity
+import com.rite.pillcounting.core.room.models.enums.CountStatus
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
-import com.rite.pillcounting.core.room.models.enums.CountStatus
-import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
 import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsRepository
@@ -24,7 +24,6 @@ import com.rite.pillcounting.feature.settings.domain.model.ApplicationSettingsRe
 import com.rite.pillcounting.feature.settings.domain.model.ColorSettings
 import com.rite.pillcounting.feature.settings.domain.model.SettingsDataDto
 import com.rite.pillcounting.feature.settings.domain.model.ThemeColors
-import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -73,33 +72,33 @@ class MainActivityViewModelTest {
         textColor = "#555555",
         inputBackground = "#666666",
         statusChipBackgroundOnPrimary = "#777777",
-        statusChipBackgroundOnSecondary = "#888888"
+        statusChipBackgroundOnSecondary = "#888888",
     )
 
     private fun colorSettings() = ColorSettings(
         light = themeColors("#aaaaaa"),
-        dark = themeColors("#bbbbbb")
+        dark = themeColors("#bbbbbb"),
     )
 
     private fun settingsResponse(
         colors: ColorSettings = colorSettings(),
-        appLogo: String = "logo_url"
+        appLogo: String = "logo_url",
     ) = ApplicationSettingsResponse(
         colors = colors,
         appLogo = appLogo,
-        placeholderLogo = "placeholder"
+        placeholderLogo = "placeholder",
     )
 
     private fun dto(
         minVersion: String? = null,
         isMaintenanceMode: Boolean = false,
         settings: ApplicationSettingsResponse = settingsResponse(),
-        hl7Config: ApplicationSettingsHL7Config? = null
+        hl7Config: ApplicationSettingsHL7Config? = null,
     ) = SettingsDataDto(
         minVersion = minVersion,
         isMaintenanceMode = isMaintenanceMode,
         settings = settings,
-        hl7Config = hl7Config
+        hl7Config = hl7Config,
     )
 
     private fun apiResponse(data: SettingsDataDto?) = ApiResponse(
@@ -107,7 +106,7 @@ class MainActivityViewModelTest {
         isSuccess = true,
         message = "ok",
         token = null,
-        data = data
+        data = data,
     )
 
     @Before
@@ -169,8 +168,19 @@ class MainActivityViewModelTest {
         unmockkAll()
     }
 
-    private fun createViewModel() =
-        MainActivityViewModel(repository, preferenceHelper, txnDao, batchDao, stockTxnDao, bottleInfoDao, hl7ServiceManager, hl7EventHandler, sessionLockController, sessionHealthController)
+    private fun createViewModel() = MainActivityViewModel(
+        repository,
+        preferenceHelper,
+        txnDao,
+        batchDao,
+        stockTxnDao,
+        bottleInfoDao,
+        hl7ServiceManager,
+        hl7EventHandler,
+        sessionLockController,
+        sessionHealthController,
+        testDispatcher,
+    )
 
     // ─────────────────────────── init / theme loading ───────────────────────────
 
@@ -227,7 +237,7 @@ class MainActivityViewModelTest {
     @Test
     fun `fetch success with theme persists theme and updates state`() = runTest(testDispatcher) {
         coEvery { repository.getApplicationSettings() } returns apiResponse(
-            dto(isMaintenanceMode = true)
+            dto(isMaintenanceMode = true),
         )
 
         val vm = createViewModel()
@@ -257,7 +267,7 @@ class MainActivityViewModelTest {
     @Test
     fun `fetch with non-blank barcode format saves regex`() = runTest(testDispatcher) {
         coEvery { repository.getApplicationSettings() } returns apiResponse(
-            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "REGEX123"))
+            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "REGEX123")),
         )
 
         val vm = createViewModel()
@@ -269,7 +279,7 @@ class MainActivityViewModelTest {
     @Test
     fun `fetch with blank barcode format does not save regex`() = runTest(testDispatcher) {
         coEvery { repository.getApplicationSettings() } returns apiResponse(
-            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "   "))
+            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "   ")),
         )
 
         val vm = createViewModel()
@@ -445,7 +455,7 @@ class MainActivityViewModelTest {
         verify {
             preferenceHelper.saveHl7Config(
                 pmsHost = "_ritepmsserver._tcp",
-                pillCounterHost = "_pillcounting._tcp"
+                pillCounterHost = "_pillcounting._tcp",
             )
         }
     }
@@ -611,7 +621,7 @@ class MainActivityViewModelTest {
             isDispense = true,
             status = CountStatus.COMPLETED,
             bottleInfoListJson = BottleInfoJson.encode(
-                listOf(BottleInfo(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png"))
+                listOf(BottleInfo(txnId = 5L, barcodeImagePath = "C:/nonexistent/barcode.png")),
             ),
         )
         coEvery { txnDao.getTransactionsBefore(any()) } returns listOf(txn)

@@ -3,7 +3,6 @@ package com.rite.pillcounting.core.room.models.dtos
 import androidx.room.Relation
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
-import com.rite.pillcounting.core.room.models.enums.CountType
 
 data class TxnWithDetails(
     val txnId: Long,
