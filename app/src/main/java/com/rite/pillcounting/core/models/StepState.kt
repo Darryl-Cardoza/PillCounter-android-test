@@ -13,6 +13,15 @@ enum class StepState {
     CONTAINER_PENDING
 }
 
+/**
+ * The only step whose pill rows are the dispensed quantity. The `getPillCountForStep` query
+ * and HL7MessageBuilder's filter both read this so they cannot drift apart.
+ */
+val DISPENSED_QUANTITY_STEP = StepState.TARGET_VERIFICATION
+
+/** True when a stored detail `type` is the [DISPENSED_QUANTITY_STEP]. */
+fun String?.isDispensedQuantityStep(): Boolean = this == DISPENSED_QUANTITY_STEP.name
+
 /** Label used for this step in outbound image file names and the HL7 OBX segment. */
 fun StepState.imageLabel(): String {
     return when (this) {

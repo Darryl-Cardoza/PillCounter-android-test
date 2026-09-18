@@ -1004,4 +1004,29 @@ class PillCountTxnDaoTest {
         assertEquals(CountStatus.PARTIAL, txn.status)
         assertEquals("MSG1", txn.hl7MessageControlId)
     }
+
+    // ───────────────────────── updateOperatorName ─────────────────────────
+
+    @Test
+    fun `updateOperatorName persists both name parts`() = runTest {
+        val id = dao.insertIgnore(baseTxn())
+
+        dao.updateOperatorName(id, "Bruce", "Wayne")
+
+        val saved = dao.getById(id)
+        assertEquals("Bruce", saved?.operatorFirstName)
+        assertEquals("Wayne", saved?.operatorLastName)
+    }
+
+    @Test
+    fun `updateOperatorName accepts nulls`() = runTest {
+        val id = dao.insertIgnore(baseTxn())
+
+        dao.updateOperatorName(id, "Bruce", "Wayne")
+        dao.updateOperatorName(id, null, null)
+
+        val saved = dao.getById(id)
+        assertNull(saved?.operatorFirstName)
+        assertNull(saved?.operatorLastName)
+    }
 }

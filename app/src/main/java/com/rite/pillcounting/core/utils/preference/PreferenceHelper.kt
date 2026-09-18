@@ -843,6 +843,9 @@ class PreferenceHelper @Inject constructor(
     /** Key used for [KEY_USE_STATIC_PMS_CONNECTION] change notifications via [registerOnChangeListener]. */
     val useStaticPmsConnectionKey: String get() = KEY_USE_STATIC_PMS_CONNECTION
 
+    /** Key used for [KEY_USER_LOGGED_IN] change notifications via [registerOnChangeListener]. */
+    val userLoggedInKey: String get() = KEY_USER_LOGGED_IN
+
     fun registerOnChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener) {
         prefs.registerOnChangeListener(listener)
     }

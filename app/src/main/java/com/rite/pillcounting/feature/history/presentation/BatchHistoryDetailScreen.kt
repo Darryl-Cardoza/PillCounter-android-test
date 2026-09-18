@@ -115,7 +115,10 @@ fun BatchHistoryDetailScreen(
                         drugGroups = drugGroups,
                         batchStatus = batchEntity?.status?.name ?: "INPROGRESS",
                         startDateTime = batchEntity?.startDateTime,
-                        userName = viewModel.getCurrentUser()
+                        // The operator stored on the batch, not whoever is at the device now —
+                        // exporting an old batch must not stamp the current user on it.
+                        userName = batchEntity?.userName?.takeIf { it.isNotBlank() }
+                            ?: viewModel.getCurrentUser()
                     )
                     file?.let { shareBatchPdf(context, it) }
                 }

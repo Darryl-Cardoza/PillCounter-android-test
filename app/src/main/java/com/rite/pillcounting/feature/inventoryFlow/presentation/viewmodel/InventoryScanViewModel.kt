@@ -4,6 +4,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
@@ -77,6 +78,7 @@ class InventoryScanViewModel @Inject constructor(
     private val bottleInfoDao: BottleInfoDao,
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
+    private val operatorNameProvider: OperatorNameProvider,
     private val barcodeDecoder: BarcodeDecoder,
     private val drugRepository: IDrugRepository,
     private val hl7Repository: Hl7Repository,
@@ -664,10 +666,7 @@ class InventoryScanViewModel @Inject constructor(
                 logger.d("INV_SCAN persistActive INSERTED new bottle line stockTxnId=$stockTxnId drugId=$drugId bottles=${active.bottles}")
                 // Stock txn added → keep the batch's live totals in sync.
                 stockTxnDao.refreshBatchTotalNdcs(batchId)
-                stockTxnDao.updateBatchUserName(
-                    batchId,
-                    preferenceHelper.getLoggedInEmail() ?: preferenceHelper.getUserId()
-                )
+                stockTxnDao.updateBatchUserName(batchId, operatorNameProvider().display())
             }
         } catch (e: Exception) {
             logger.e("INV_SCAN persistActive FAILED", e)
