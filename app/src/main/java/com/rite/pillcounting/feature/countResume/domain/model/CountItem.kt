@@ -1,7 +1,6 @@
 package com.rite.pillcounting.feature.countResume.domain.model
 
 import com.rite.pillcounting.R
-import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.room.models.enums.TxnPriority
 
 /**

@@ -1,6 +1,5 @@
 ﻿package com.rite.pillcounting.feature.dispenseFlow.presentation
 
-import Screen
 import android.Manifest
 import android.util.Log
 import android.content.res.Configuration

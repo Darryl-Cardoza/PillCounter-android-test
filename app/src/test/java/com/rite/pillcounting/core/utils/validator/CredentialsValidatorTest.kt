@@ -161,7 +161,7 @@ class CredentialsValidatorTest {
 
     @Test
     fun `sanitizeName strips special characters`() {
-        assertEquals("Pharmacy", CredentialsValidator.sanitizeName("Ph@rm#acy!*"))
+        assertEquals("Pharmacy", CredentialsValidator.sanitizeName("Ph@arm#acy!*"))
     }
 
     @Test
