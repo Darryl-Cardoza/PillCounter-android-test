@@ -27,6 +27,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -47,6 +48,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -90,6 +92,7 @@ import com.rite.pillcounting.ui.theme.AppTheme.dimens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
+import kotlin.math.roundToInt
 import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
 
 /**
@@ -121,9 +124,9 @@ private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
 
 private const val HAZARDOUS_TAG = "HazardousFlow"
 
-// Rightward drag per pointer event that counts as a dismiss on the landscape
-// Rx panel. High enough that a slow scroll of the panel body won't trigger it.
-private const val INLINE_PANEL_DISMISS_DRAG_PX = 40f
+// Total rightward drag that dismisses the landscape Rx panel. Measured from
+// where the drag started, so a slow pull counts the same as a flick.
+private val INLINE_PANEL_DISMISS_DRAG = 56.dp
 
 @Composable
 fun DispenseFlowScreen(
@@ -1484,19 +1487,32 @@ fun DispenseFlowScreen(
                     dismissible = true,
                 )
             } else {
+                // How far the panel has been dragged toward the right edge.
+                var panelDragPx by remember { mutableFloatStateOf(0f) }
+
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
                         .width(inlinePanelWidth)
+                        .offset { IntOffset(panelDragPx.roundToInt(), 0) }
                         .background(Color.Transparent)
-                        // Swipe the panel toward the right edge to cancel, so
-                        // landscape has the same escape as the portrait sheet.
+                        // The panel tracks the finger; releasing past the
+                        // threshold cancels, anything shorter snaps back. Gives
+                        // landscape the same escape as the portrait sheet.
                         .pointerInput(Unit) {
-                            detectHorizontalDragGestures { _, dragAmount ->
-                                if (dragAmount > INLINE_PANEL_DISMISS_DRAG_PX) {
-                                    dispenseVm.onRxCancelled()
-                                }
+                            val dismissPx = INLINE_PANEL_DISMISS_DRAG.toPx()
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    if (panelDragPx > dismissPx) {
+                                        dispenseVm.onRxCancelled()
+                                    } else {
+                                        panelDragPx = 0f
+                                    }
+                                },
+                                onDragCancel = { panelDragPx = 0f },
+                            ) { _, dragAmount ->
+                                panelDragPx = (panelDragPx + dragAmount).coerceAtLeast(0f)
                             }
                         }
                 ) {

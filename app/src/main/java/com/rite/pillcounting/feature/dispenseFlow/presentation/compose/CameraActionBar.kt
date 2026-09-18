@@ -136,7 +136,7 @@ private fun ActionButtonItems(
             !isTablet()
     val iconSize = responsiveDp(if (isPhoneLandscape) 30.dp else 36.dp)
     val captureSize = responsiveDp(if (isPhoneLandscape) 60.dp else 72.dp)
-    val labelSize = responsiveSp(if (isPhoneLandscape) 10.sp else 12.sp)
+    val labelSize = responsiveSp(if (isPhoneLandscape) 10.sp else 12.sp, boostOnPhone = false)
 
     // REDO
     Column(
