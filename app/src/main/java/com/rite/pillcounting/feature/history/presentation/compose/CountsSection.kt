@@ -306,23 +306,24 @@ fun DispensedStockToggleRow(
     onOptionSelected: (ToggleOption) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val dimens = AppTheme.dimens
     val dispensedLabel = stringResource(R.string.dispensed)
     val stockLabel = stringResource(R.string.stock_count_label)
 
-    // Top padding equals the 4dp gap + 2dp rule sitting below the label, which
-    // puts the label itself on the centre line of the header band.
-    Box(modifier = modifier.padding(top = 6.dp)) {
+    // Top padding equals the gap + rule sitting below the label, which puts the
+    // label itself on the centre line of the header band.
+    Box(modifier = modifier.padding(top = dimens.historyTabLabelGap + dimens.historyTabRuleHeight)) {
         // One continuous rule across the strip; the selected tab paints its own
         // segment over it in the accent colour.
         Box(
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .fillMaxWidth()
-                .height(2.dp)
+                .height(dimens.historyTabRuleHeight)
                 .background(AppTheme.extendedColors.textColor.copy(alpha = 0.1f))
         )
 
-        Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(dimens.historyTabSpacing)) {
             HistoryTab(
                 title = stringResource(R.string.toggle_with_count, dispensedLabel, dispensedCount),
                 isSelected = selectedOption == ToggleOption.DISPENSED,
@@ -348,6 +349,7 @@ private fun HistoryTab(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val dimens = AppTheme.dimens
     Column(
         modifier = modifier
             .width(IntrinsicSize.Max)
@@ -365,10 +367,10 @@ private fun HistoryTab(
             else AppTheme.extendedColors.textColor,
             fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(dimens.historyTabLabelGap))
         Box(
             modifier = Modifier
-                .height(2.dp)
+                .height(dimens.historyTabRuleHeight)
                 .fillMaxWidth()
                 .background(
                     if (isSelected) MaterialTheme.colorScheme.secondary else Color.Transparent

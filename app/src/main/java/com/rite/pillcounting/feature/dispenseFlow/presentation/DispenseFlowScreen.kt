@@ -7,6 +7,7 @@ import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -119,6 +120,10 @@ import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNa
 private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
 
 private const val HAZARDOUS_TAG = "HazardousFlow"
+
+// Rightward drag per pointer event that counts as a dismiss on the landscape
+// Rx panel. High enough that a slow scroll of the panel body won't trigger it.
+private const val INLINE_PANEL_DISMISS_DRAG_PX = 40f
 
 @Composable
 fun DispenseFlowScreen(
@@ -646,12 +651,16 @@ fun DispenseFlowScreen(
     // ── Back handling ───────────────────────────────────────────────────────
     // Device-back priority order:
     //  1. If the history view is open, dismiss it (return to camera + pill panel).
-    //  2. In QUEUE stage: back navigates to Dashboard (queue is the home for dispense).
-    //  3. In non-QUEUE stage with fromQueue=true: cancel current scan, return to QUEUE.
-    //  4. Otherwise: exit the dispense flow to the Dashboard.
+    //  2. If the idle overlay is up, just resume — back must not discard the
+    //     staged count from what the user sees as a paused screen.
+    //  3. In QUEUE stage: back navigates to Dashboard (queue is the home for dispense).
+    //  4. In non-QUEUE stage with fromQueue=true: cancel current scan, return to QUEUE.
+    //  5. Otherwise: exit the dispense flow to the Dashboard.
     BackHandler {
         if (showHistory) {
             showHistory = false
+        } else if (pillState.showIdleOverlay) {
+            pillVm.resetIdleOverlay()
         } else if (dispenseState.stage == DispenseStage.QUEUE) {
             navController.navigate(Screen.Dashboard.route) {
                 popUpTo(0)
@@ -1481,6 +1490,15 @@ fun DispenseFlowScreen(
                         .fillMaxHeight()
                         .width(inlinePanelWidth)
                         .background(Color.Transparent)
+                        // Swipe the panel toward the right edge to cancel, so
+                        // landscape has the same escape as the portrait sheet.
+                        .pointerInput(Unit) {
+                            detectHorizontalDragGestures { _, dragAmount ->
+                                if (dragAmount > INLINE_PANEL_DISMISS_DRAG_PX) {
+                                    dispenseVm.onRxCancelled()
+                                }
+                            }
+                        }
                 ) {
                     VerifyRxDetailsInlinePanel(
                         drugName = dispenseState.drugName,

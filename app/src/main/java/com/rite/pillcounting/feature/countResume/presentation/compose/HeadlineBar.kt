@@ -18,6 +18,7 @@ import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
@@ -69,8 +70,10 @@ fun HeadlineBar(
             val searchFocusRequester = remember { FocusRequester() }
 
             // Opening search puts the caret straight in the field, so typing
-            // works without a second tap.
+            // works without a second tap. Wait one frame first — requesting
+            // focus before the field is placed throws "not initialized".
             LaunchedEffect(Unit) {
+                withFrameNanos { }
                 searchFocusRequester.requestFocus()
             }
 
@@ -79,8 +82,6 @@ fun HeadlineBar(
                     .weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-
-                Spacer(Modifier.width(6.dp))
 
                 TextField(
                     value = searchQuery,

@@ -65,7 +65,6 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.core.utils.preference.CountCirclePositionPrefs
-import com.rite.pillcounting.feature.history.presentation.compose.ActionIcon
 import com.rite.pillcounting.ui.theme.AppTheme
 import java.io.File
 
@@ -324,14 +323,12 @@ internal fun ResetCountButton(onClick: () -> Unit) {
 }
 
 /**
- * The tappable "View all counts ›" link shown in the bottom bar. The caret is its
- * own Text so it can be sized independently of the label — at one shared font size
- * it renders far smaller than the letters beside it.
+ * The tappable "View all counts ›" link shown in the bottom bar. The Row owns the
+ * tap target; the caret is a decorative Icon sized independently of the label.
  */
 @Composable
 internal fun ViewAllCountsLink(onClick: () -> Unit) {
     val labelSize = responsiveSp(10.sp, boostOnPhone = true)
-    val caretSize = responsiveSp(14.sp, boostOnPhone = true)
 
     Row(
         modifier = Modifier.clickable { onClick() },
@@ -348,10 +345,11 @@ internal fun ViewAllCountsLink(onClick: () -> Unit) {
 
         Spacer(Modifier.width(4.dp))
 
-        ActionIcon(
+        Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = "",
-            onClick = { onClick ()}
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(responsiveDp(20.dp)),
         )
     }
 }

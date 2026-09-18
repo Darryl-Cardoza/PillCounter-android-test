@@ -373,7 +373,7 @@ internal fun ScaffoldKpiScrollRow(
     activeFilter: KpiFilter?,
     onTap: (KpiFilter) -> Unit,
     modifier: Modifier = Modifier,
-    cardWidth: Dp = 108.dp,
+    cardWidth: Dp,
     cardHeight: Dp = 96.dp,
     disabledFilters: Set<KpiFilter> = emptySet(),
     onDisabledTap: (KpiFilter) -> Unit = {},

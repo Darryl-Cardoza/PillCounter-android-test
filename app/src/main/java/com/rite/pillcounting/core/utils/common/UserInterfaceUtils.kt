@@ -1144,31 +1144,22 @@ object UserInterfaceUtils {
     }
 
     /**
-     * Pass `boostOnPhone = true` when [baseSp] is a small tablet-tuned size that
-     * phones need lifted to stay legible. Tablets scale the same either way.
+     * Default for [responsiveSp]'s `boostOnPhone`. Base sizes across the app are
+     * tablet-tuned, so phones get the lift unless a call site opts out.
+     */
+    const val DEFAULT_BOOST_ON_PHONE = true
+
+    /**
+     * Pass `boostOnPhone = false` when [baseSp] is already a final phone-ready
+     * size that must not be lifted. Tablets scale the same either way.
      */
     @Composable
-    fun responsiveSp(baseSp: TextUnit, boostOnPhone: Boolean = true): TextUnit {
+    fun responsiveSp(baseSp: TextUnit, boostOnPhone: Boolean = DEFAULT_BOOST_ON_PHONE): TextUnit {
         val configuration = LocalConfiguration.current
         val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
         val isTablet = shortestSide >= 600
         val sw = if (isTablet) configuration.screenWidthDp else shortestSide
         return (baseSp.value * spScale(sw, boostOnPhone)).sp
-    }
-
-    @Composable
-    fun responsiveSpForPillCountingScreen(baseSp: TextUnit): TextUnit {
-        val configuration = LocalConfiguration.current
-        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
-        val isTablet = shortestSide >= 600
-        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
-        val scale = when {
-            sw < 360 -> 0.8f
-            sw < 600 -> 0.8f
-            sw < 840 -> 1f
-            else -> 1.2f
-        }
-        return (baseSp.value * scale).sp
     }
 
     @Composable
@@ -1179,21 +1170,6 @@ object UserInterfaceUtils {
         val sw = if (isTablet) configuration.screenWidthDp else shortestSide
         val scale = when {
             sw < 360 -> 0.8f
-            sw < 600 -> 1f
-            sw < 840 -> 1f
-            else -> 1.1f
-        }
-        return (baseSp.value * scale).sp
-    }
-
-    @Composable
-    fun responsiveSpForHistoryScreen(baseSp: TextUnit): TextUnit {
-        val configuration = LocalConfiguration.current
-        val shortestSide = minOf(configuration.screenWidthDp, configuration.screenHeightDp)
-        val isTablet = shortestSide >= 600
-        val sw = if (isTablet) configuration.screenWidthDp else shortestSide
-        val scale = when {
-            sw < 360 -> 0.9f
             sw < 600 -> 1f
             sw < 840 -> 1f
             else -> 1.1f

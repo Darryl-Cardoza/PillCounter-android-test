@@ -199,9 +199,8 @@ fun VerifyRxDetailsSheet(
     drugImage: String = "",
     // When false (default), the sheet/drawer cannot be dismissed by swipe /
     // outside-tap / back press — only the Cancel and Proceed buttons close it.
-    // The app-wide rule for verification sheets is "explicit commit required",
-    // so the default is the locked-down behavior; pass `true` if you ever want
-    // the legacy easy-dismiss.
+    // The Rx path opts out and passes `true`, so the Rx sheet can be swiped or
+    // tapped away; the NDC sheet keeps the locked-down default.
     dismissible: Boolean = false,
 ) {
     val configuration = LocalConfiguration.current
@@ -1426,7 +1425,8 @@ fun VerifyNdcDetailsInlinePanel(
  * drawer; tablet variants for both.
  *
  * Default is non-dismissible: the user must commit via the Cancel or Proceed
- * button. Pass `dismissible = true` only if you want legacy easy-dismiss.
+ * button, and the NDC call site keeps that default. The Rx sheet opts out by
+ * passing `dismissible = true`.
  */
 @Composable
 fun VerifyNdcDetailsSheet(

@@ -30,7 +30,7 @@ fun ActionIcon(
         painter = painterResource(id = iconRes),
         contentDescription = contentDescription,
         tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier
+        modifier = modifier
             .size(responsiveDp(20.dp))
             .clickable { onClick() }
     )
@@ -55,7 +55,7 @@ fun ActionIcon(
         imageVector = imageVector,
         contentDescription = contentDescription,
         tint = MaterialTheme.colorScheme.primary,
-        modifier = Modifier
+        modifier = modifier
             .size(responsiveDp(20.dp))
             .clickable { onClick() }
     )
