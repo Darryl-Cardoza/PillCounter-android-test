@@ -33,7 +33,7 @@ object NMS {
         return keep
     }
 
-    private fun iou(a: RectF, b: RectF): Float {
+    fun iou(a: RectF, b: RectF): Float {
         val intersectionLeft = max(a.left, b.left)
         val intersectionTop = max(a.top, b.top)
         val intersectionRight = min(a.right, b.right)

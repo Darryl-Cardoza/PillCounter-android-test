@@ -1,17 +1,16 @@
 package com.rite.pillcounting.core.faceAuth.data
 
+import com.rite.pillcounting.core.faceAuth.logic.FaceMatcher
 import com.rite.pillcounting.core.faceAuth.logic.GalleryEntry
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
 import com.rite.pillcounting.core.room.dao.FaceEmbeddingDao
 import com.rite.pillcounting.core.room.dao.FaceProfileDao
 import com.rite.pillcounting.core.room.models.FaceEmbeddingEntity
 import com.rite.pillcounting.core.room.models.FaceProfileEntity
-import com.rite.pillcounting.core.utils.logger.AppLogger
 import kotlinx.coroutines.flow.Flow
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import javax.inject.Inject
-import kotlin.math.sqrt
 
 /**
  * Repository for enrolled face profiles and their embeddings.
@@ -30,11 +29,6 @@ class FaceProfileRepository @Inject constructor(
     private val profileDao: FaceProfileDao,
     private val embeddingDao: FaceEmbeddingDao
 ) {
-    // TEMPORARY diagnostics for the enroll/verify mismatch investigation — remove
-    // once the root cause is found. Filter logcat on this tag to see exactly what
-    // gets written into face_embeddings at registration, and read back for a match.
-    private val storageLogger = AppLogger("FaceStorageIO")
-
     /**
      * Observes every enrolled profile for the Quick Access Users list.
      *
@@ -73,10 +67,6 @@ class FaceProfileRepository @Inject constructor(
         )
     ) { id ->
         embeddingsByAngle.map { (angle, vec) ->
-            storageLogger.i(
-                "WRITE faceProfileId=$id angle=${angle.name} dims=${vec.size} " +
-                    "l2norm=${l2Norm(vec)} first5=${vec.take(5).joinToString(",")}"
-            )
             FaceEmbeddingEntity(faceProfileId = id, angle = angle.name, vec = floatArrayToBytes(vec))
         }
     }
@@ -129,18 +119,28 @@ class FaceProfileRepository @Inject constructor(
      */
     suspend fun loadGallery(): List<GalleryEntry> =
         embeddingDao.getForEnabledProfiles().map {
-            val vec = bytesToFloatArray(it.vec)
-            storageLogger.i(
-                "READ  faceProfileId=${it.faceProfileId} angle=${it.angle} dims=${vec.size} " +
-                    "l2norm=${l2Norm(vec)} first5=${vec.take(5).joinToString(",")}"
-            )
-            GalleryEntry(it.faceProfileId, vec)
+            GalleryEntry(it.faceProfileId, bytesToFloatArray(it.vec))
         }
 
-    private fun l2Norm(vec: FloatArray): Float {
-        var sumSq = 0f
-        for (v in vec) sumSq += v * v
-        return sqrt(sumSq)
+    /**
+     * Finds an already-enrolled profile whose face matches [embedding].
+     *
+     * Description:
+     * Used at the FRONT step of registration, to warn when someone is enrolling
+     * a face that is already on file. This is a frontal-to-frontal comparison —
+     * the same one verify makes — so it reuses [FaceMatcher.MATCH_THRESHOLD].
+     *
+     * @param embedding The FRONT embedding just captured.
+     * @return The matching profile with its cosine score, or null if nothing cleared the threshold.
+     *
+     * Example Usage:
+     * val existing = repository.findExistingMatch(frontEmbedding)
+     */
+    suspend fun findExistingMatch(embedding: FloatArray): Pair<FaceProfileEntity, Float>? {
+        val result = FaceMatcher.identify(embedding, loadGallery())
+        val matchedId = result.faceProfileId ?: return null
+        val profile = profileDao.getById(matchedId) ?: return null
+        return profile to result.bestScore
     }
 
     private fun floatArrayToBytes(vec: FloatArray): ByteArray {

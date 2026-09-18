@@ -8,10 +8,15 @@ sealed interface RegistrationState {
     data object Idle : RegistrationState
     data class Capturing(val angle: FaceCaptureAngle, val capturedCount: Int, val guidance: FaceGuidance? = null) : RegistrationState
     data class Rejected(val angle: FaceCaptureAngle, val reason: FaceGuidance) : RegistrationState
-    data object Enrolled : RegistrationState
 
-    /** Defensive guard state (finish requested before all angles were captured); not rendered. */
-    data object Failed : RegistrationState
+    /** The FRONT capture matched an enrolled profile. Capture is paused until the user chooses. */
+    data class DuplicateWarning(
+        val firstName: String,
+        val lastName: String,
+        val capturedCount: Int
+    ) : RegistrationState
+
+    data object Enrolled : RegistrationState
 }
 
 /** State of an in-progress verify flow. */

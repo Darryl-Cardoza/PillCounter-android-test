@@ -23,6 +23,7 @@ class AutoCaptureControllerTest {
     private val controller = AutoCaptureController(faceEngine, faceQualityGate, headPoseEstimator)
 
     private val bitmap = mockk<Bitmap>(relaxed = true)
+    private val strayBitmap = mockk<Bitmap>(relaxed = true)
     private val faceBox = FaceBox(rect = RectF(0f, 0f, 100f, 100f), landmarks = FloatArray(10), score = 0.9f)
 
     @Test
@@ -52,8 +53,9 @@ class AutoCaptureControllerTest {
         coEvery { faceEngine.detectPrimary(bitmap) } returns faceBox
         every { faceQualityGate.evaluate(bitmap, faceBox) } returns null
         every { headPoseEstimator.estimateYaw(faceBox.landmarks) } returns 0f
-        every { headPoseEstimator.matchesAngle(0f, FaceCaptureAngle.TILT_LEFT, false) } returns false
-        every { headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT) } returns FaceGuidance.TILT_MORE_LEFT
+        every { headPoseEstimator.effectiveYaw(any(), any()) } answers { firstArg() }
+        every { headPoseEstimator.matchesAngle(0f, FaceCaptureAngle.TILT_LEFT, false, 0f) } returns false
+        every { headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT, any()) } returns FaceGuidance.TILT_MORE_LEFT
 
         // Advance past the throttle window before emitting.
         val frames = flow { fakeNow = 200; emit(bitmap) }
@@ -86,24 +88,140 @@ class AutoCaptureControllerTest {
         every { faceQualityGate.sharpnessScore(bitmapWeak, weakFace) } returns 30.0
         every { headPoseEstimator.estimateYaw(strongFace.landmarks) } returns 0f
         every { headPoseEstimator.estimateYaw(weakFace.landmarks) } returns 0f
-        every { headPoseEstimator.matchesAngle(0f, FaceCaptureAngle.FRONT, false) } returns true
-        every { headPoseEstimator.closeness(0f, FaceCaptureAngle.FRONT, false) } returns 0.9f
+        every { headPoseEstimator.effectiveYaw(any(), any()) } answers { firstArg() }
+        every { headPoseEstimator.matchesAngle(0f, FaceCaptureAngle.FRONT, false, 0f) } returns true
+        every { headPoseEstimator.closeness(0f, FaceCaptureAngle.FRONT, false, 0f) } returns 0.9f
         coEvery { faceEngine.embed(bitmapStrong, strongFace) } returns floatArrayOf(1f)
 
-        // Set fakeNow BEFORE each emit so the throttle (MIN_FRAME_INTERVAL_MS=150) doesn't skip frames.
-        // bitmapStrong: processed at 200, best=(strongEmbed, bitmapStrong), deadline=200+900=1100
-        // bitmapWeak:   processed at 500, lower score, best unchanged
-        // tickBitmap:   read at 1100 >= deadline=1100 -> commit before processing the frame
+        // The pose must hold before any frame is eligible, so the strong frame repeats
+        // until the tracker is satisfied; only then does it become the candidate and
+        // start the settle window. The weak frame scores lower and is ignored.
         val frames = flow {
-            fakeNow = 200; emit(bitmapStrong)
-            fakeNow = 500; emit(bitmapWeak)
-            fakeNow = 1100; emit(tickBitmap)
+            repeat(PoseStabilityTracker.REQUIRED_STABLE_FRAMES) { fakeNow += 200; emit(bitmapStrong) }
+            fakeNow += 200; emit(bitmapWeak)
+            fakeNow += AutoCaptureController.SETTLE_WINDOW_MS; emit(tickBitmap)
         }
 
         val events = controller.run(FaceCaptureAngle.FRONT, frames, isFrontCamera = false).toList()
 
-        assertEquals(1, events.size)
-        val committed = events[0] as AutoCaptureController.CaptureEvent.Committed
+        val committed = events.filterIsInstance<AutoCaptureController.CaptureEvent.Committed>().single()
         assertEquals(1f, committed.embedding[0], 1e-4f)
+    }
+
+    @Test
+    fun `the steady yaw averages every passing frame, not just the winner`() = runTest {
+        // The winning frame reads 0.30 but the head actually sat around 0.20. Taking
+        // the winner alone would skew both tilts for the rest of the enrollment.
+        var fakeNow = 0L
+        controller.clock = { fakeNow }
+        val restFace = faceBox.copy(landmarks = FloatArray(10) { 1f })
+        val peakFace = faceBox.copy(landmarks = FloatArray(10) { 2f })
+        val restBitmap = mockk<Bitmap>(relaxed = true)
+        val tickBitmap = mockk<Bitmap>(relaxed = true)
+
+        coEvery { faceEngine.detectPrimary(restBitmap) } returns restFace
+        coEvery { faceEngine.detectPrimary(bitmap) } returns peakFace
+        every { faceQualityGate.evaluate(restBitmap, restFace) } returns null
+        every { faceQualityGate.evaluate(bitmap, peakFace) } returns null
+        every { faceQualityGate.sharpnessScore(restBitmap, restFace) } returns 30.0
+        every { faceQualityGate.sharpnessScore(bitmap, peakFace) } returns 200.0
+        every { headPoseEstimator.estimateYaw(restFace.landmarks) } returns 0.10f
+        every { headPoseEstimator.estimateYaw(peakFace.landmarks) } returns 0.30f
+        every { headPoseEstimator.effectiveYaw(any(), any()) } answers { firstArg() }
+        every { headPoseEstimator.matchesAngle(any(), FaceCaptureAngle.FRONT, false, 0f) } returns true
+        every { headPoseEstimator.closeness(any(), any(), any(), any()) } returns 0.9f
+        coEvery { faceEngine.embed(bitmap, peakFace) } returns floatArrayOf(1f)
+        coEvery { faceEngine.embed(restBitmap, restFace) } returns floatArrayOf(2f)
+
+        // Three frames at 0.10, one at 0.30 (which wins on sharpness): mean 0.15.
+        val frames = flow {
+            repeat(3) { fakeNow += 200; emit(restBitmap) }
+            fakeNow += 200; emit(bitmap)
+            fakeNow += AutoCaptureController.SETTLE_WINDOW_MS; emit(tickBitmap)
+        }
+
+        val events = controller.run(FaceCaptureAngle.FRONT, frames, isFrontCamera = false).toList()
+
+        val committed = events.filterIsInstance<AutoCaptureController.CaptureEvent.Committed>().single()
+        assertEquals(0.15f, committed.steadyYaw, 1e-4f)
+    }
+
+    @Test
+    fun `one stray passing frame among failures never commits`() = runTest {
+        // Bug 1's regression test. Exactly one frame passes the pose check and every
+        // other frame fails; before the stability requirement this committed the step.
+        var fakeNow = 0L
+        controller.clock = { fakeNow }
+        val strayFace = faceBox.copy(landmarks = FloatArray(10) { 7f })
+
+        coEvery { faceEngine.detectPrimary(bitmap) } returns faceBox
+        coEvery { faceEngine.detectPrimary(strayBitmap) } returns strayFace
+        every { faceQualityGate.evaluate(bitmap, faceBox) } returns null
+        every { faceQualityGate.evaluate(strayBitmap, strayFace) } returns null
+        every { faceQualityGate.sharpnessScore(strayBitmap, strayFace) } returns 100.0
+        every { headPoseEstimator.estimateYaw(faceBox.landmarks) } returns 0f
+        every { headPoseEstimator.estimateYaw(strayFace.landmarks) } returns 0.3f
+        every { headPoseEstimator.effectiveYaw(any(), any()) } answers { firstArg() }
+        every { headPoseEstimator.matchesAngle(0f, FaceCaptureAngle.TILT_LEFT, false, 0f) } returns false
+        every { headPoseEstimator.matchesAngle(0.3f, FaceCaptureAngle.TILT_LEFT, false, 0f) } returns true
+        every { headPoseEstimator.closeness(any(), any(), any(), any()) } returns 1f
+        every { headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT, any()) } returns FaceGuidance.TILT_MORE_LEFT
+
+        val frames = flow {
+            repeat(20) { index ->
+                fakeNow += 200
+                emit(if (index == 10) strayBitmap else bitmap)
+            }
+        }
+
+        val events = controller.run(FaceCaptureAngle.TILT_LEFT, frames, isFrontCamera = false).toList()
+
+        assertTrue(events.none { it is AutoCaptureController.CaptureEvent.Committed })
+    }
+
+    @Test
+    fun `guidance gets firmer once the user has been stuck on one angle`() = runTest {
+        var fakeNow = 0L
+        controller.clock = { fakeNow }
+
+        coEvery { faceEngine.detectPrimary(bitmap) } returns faceBox
+        every { faceQualityGate.evaluate(bitmap, faceBox) } returns null
+        every { headPoseEstimator.estimateYaw(faceBox.landmarks) } returns 0f
+        every { headPoseEstimator.effectiveYaw(any(), any()) } answers { firstArg() }
+        every { headPoseEstimator.matchesAngle(0f, FaceCaptureAngle.TILT_LEFT, false, 0f) } returns false
+        every { headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT, false) } returns FaceGuidance.TILT_MORE_LEFT
+        every { headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT, true) } returns FaceGuidance.TILT_FURTHER_LEFT
+
+        val frames = flow {
+            fakeNow = 200; emit(bitmap)
+            fakeNow = 200 + AutoCaptureController.ESCALATE_AFTER_MS; emit(bitmap)
+        }
+
+        val events = controller.run(FaceCaptureAngle.TILT_LEFT, frames, isFrontCamera = false).toList()
+        val hints = events.filterIsInstance<AutoCaptureController.CaptureEvent.Guidance>().map { it.guidance }
+
+        assertEquals(listOf(FaceGuidance.TILT_MORE_LEFT, FaceGuidance.TILT_FURTHER_LEFT), hints)
+    }
+
+    @Test
+    fun `a broken track ends the step so the scan can start over`() = runTest {
+        var fakeNow = 0L
+        controller.clock = { fakeNow }
+        val trackGate = mockk<FaceTrackContinuityGate>()
+        every { trackGate.observe(any()) } returns Unit
+        every { trackGate.isBroken } returns true
+
+        coEvery { faceEngine.detectPrimary(bitmap) } returns faceBox
+
+        val frames = flow {
+            fakeNow = 200; emit(bitmap)
+            fakeNow = 400; emit(bitmap)
+        }
+
+        val events = controller.run(
+            FaceCaptureAngle.TILT_LEFT, frames, isFrontCamera = false, trackGate = trackGate
+        ).toList()
+
+        assertEquals(listOf(AutoCaptureController.CaptureEvent.TrackBroken), events)
     }
 }

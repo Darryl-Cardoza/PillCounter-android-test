@@ -8,6 +8,7 @@ import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.core.faceAuth.data.FaceProfileRepository
 import com.rite.pillcounting.core.faceAuth.logic.AutoCaptureController
 import com.rite.pillcounting.core.faceAuth.logic.FaceEngine
+import com.rite.pillcounting.core.faceAuth.logic.FaceTrackContinuityGate
 import com.rite.pillcounting.core.faceAuth.logic.FaceMatcher
 import com.rite.pillcounting.core.faceAuth.logic.FaceQualityGate
 import com.rite.pillcounting.core.faceAuth.logic.HeadPoseEstimator
@@ -16,7 +17,6 @@ import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
 import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 import com.rite.pillcounting.core.room.dao.UserDao
 import com.rite.pillcounting.core.room.models.FaceProfileEntity
-import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.faceAuth.domain.model.RegistrationState
 import com.rite.pillcounting.feature.faceAuth.domain.model.VerifyState
@@ -69,10 +69,11 @@ class SessionEmailProvider @Inject constructor(
  * - Registration: [startRegistration] resets state, [startAutoCapture] runs the
  *   automatic best-frame-per-angle loop against a live camera stream, [captureFrame]
  *   is the manual-override path racing alongside it for the current step,
- *   [finishRegistration] persists the profile once all 3 angles are captured.
+ *   and the profile is persisted as soon as the last angle commits.
  * - List: [profiles] is a live view of every enrolled profile for the Quick Access
  *   Users screen; [setProfileEnabled] and [deleteProfile] back its toggle/delete actions.
- * - Verify: [startVerify] resets state, [verifyFrame] runs one detect+embed+identify pass.
+ * - Verify: [startVerify] resets state, [startAutoVerify] watches a live stream and
+ *   runs the detect+embed+identify pass on its own.
  */
 @HiltViewModel
 class FaceAuthViewModel @Inject constructor(
@@ -84,7 +85,9 @@ class FaceAuthViewModel @Inject constructor(
     private val headPoseEstimator: HeadPoseEstimator,
     private val autoCaptureController: AutoCaptureController,
     private val sessionLockController: SessionLockController,
-    private val preferenceHelper: PreferenceHelper
+    private val preferenceHelper: PreferenceHelper,
+    // One per enrollment, not per angle.
+    private val trackGate: FaceTrackContinuityGate
 ) : ViewModel() {
 
     /** App-wide session lock state, so flow UI (e.g. the ID-scan sheet) can yield to the overlay. */
@@ -101,11 +104,6 @@ class FaceAuthViewModel @Inject constructor(
      */
     fun onSessionActivity() = sessionLockController.onUserActivity()
 
-    // TEMPORARY diagnostic for the enroll/verify score mismatch investigation —
-    // remove once the root cause is found. Filter logcat on this tag to see the
-    // final cosine score behind every "recognized" / "not recognized" decision.
-    private val matchLogger = AppLogger("FaceMatchIO")
-
     private val _registrationState = MutableStateFlow<RegistrationState>(RegistrationState.Idle)
     val registrationState: StateFlow<RegistrationState> = _registrationState.asStateFlow()
 
@@ -120,6 +118,9 @@ class FaceAuthViewModel @Inject constructor(
     private val capturedEmbeddings = mutableMapOf<FaceCaptureAngle, FloatArray>()
     private var pendingFrontBitmap: Bitmap? = null
 
+    // This user's own "straight" reading, kept for the rest of the enrollment.
+    private var baselineYaw: Float = 0f
+
     private var autoCaptureJob: Job? = null
     private var autoCaptureFrames: Flow<Bitmap>? = null
     private var autoCaptureIsFrontCamera: Boolean = true
@@ -133,8 +134,7 @@ class FaceAuthViewModel @Inject constructor(
     fun startRegistration(firstName: String, lastName: String) {
         pendingFirstName = firstName
         pendingLastName = lastName
-        capturedEmbeddings.clear()
-        pendingFrontBitmap = null
+        clearCaptureProgress()
         autoCaptureJob?.cancel()
         autoCaptureFrames = null
         _registrationState.value = RegistrationState.Capturing(FaceCaptureAngle.FRONT, 0)
@@ -161,28 +161,47 @@ class FaceAuthViewModel @Inject constructor(
         val frames = autoCaptureFrames ?: return
         autoCaptureJob?.cancel()
         autoCaptureJob = viewModelScope.launch {
-            for (angle in FaceCaptureAngle.entries) {
-                if (capturedEmbeddings.containsKey(angle)) continue
-                autoCaptureController.run(angle, frames, autoCaptureIsFrontCamera).collect { event ->
-                    when (event) {
-                        is AutoCaptureController.CaptureEvent.Guidance ->
-                            _registrationState.value =
-                                RegistrationState.Capturing(angle, capturedEmbeddings.size, event.guidance)
+            // Outer loop so a broken track can restart without cancelling this job.
+            scan@ while (true) {
+                for (angle in FaceCaptureAngle.entries) {
+                    if (capturedEmbeddings.containsKey(angle)) continue
+                    autoCaptureController.run(
+                        angle, frames, autoCaptureIsFrontCamera, baselineYaw, trackGate
+                    ).collect { event ->
+                        when (event) {
+                            is AutoCaptureController.CaptureEvent.Guidance ->
+                                _registrationState.value =
+                                    RegistrationState.Capturing(angle, capturedEmbeddings.size, event.guidance)
 
-                        is AutoCaptureController.CaptureEvent.Committed -> {
-                            capturedEmbeddings[angle] = event.embedding
-                            if (angle == FaceCaptureAngle.FRONT) {
-                                pendingFrontBitmap = event.bitmap
-                            }
-                            // Advance the shown angle immediately — staying on the finished
-                            // one left its prompt up until the next angle's first Guidance.
-                            _registrationState.value =
-                                RegistrationState.Capturing(nextPendingAngle() ?: angle, capturedEmbeddings.size)
+                            is AutoCaptureController.CaptureEvent.Committed ->
+                                // Advance the shown angle immediately — staying on the finished
+                                // one left its prompt up until the next angle's first Guidance.
+                                onAngleCaptured(angle, event.embedding, event.bitmap, event.steadyYaw)
+
+                            AutoCaptureController.CaptureEvent.TrackBroken -> Unit // handled below
                         }
                     }
+                    // Already enrolled — wait for the user's answer.
+                    if (_registrationState.value is RegistrationState.DuplicateWarning) return@launch
+                    if (trackGate.isBroken) {
+                        clearCaptureProgress()
+                        _registrationState.value = RegistrationState.Capturing(
+                            FaceCaptureAngle.FRONT, 0, FaceGuidance.SAME_PERSON_REQUIRED
+                        )
+                        continue@scan
+                    }
                 }
+                return@launch
             }
         }
+    }
+
+    /** Drops everything captured so far, so the face scan can start from FRONT. The typed name is kept. */
+    private fun clearCaptureProgress() {
+        capturedEmbeddings.clear()
+        baselineYaw = 0f
+        pendingFrontBitmap = null
+        trackGate.reset()
     }
 
     /**
@@ -207,18 +226,73 @@ class FaceAuthViewModel @Inject constructor(
             // Same pose check the auto loop enforces — without it a manual tap
             // could enroll three frontal embeddings labeled as three angles.
             val yaw = headPoseEstimator.estimateYaw(face.landmarks)
-            if (!headPoseEstimator.matchesAngle(yaw, angle, autoCaptureIsFrontCamera)) {
+            if (!headPoseEstimator.matchesAngle(yaw, angle, autoCaptureIsFrontCamera, baselineYaw)) {
                 _registrationState.value = RegistrationState.Rejected(angle, headPoseEstimator.guidanceFor(angle))
                 return@launch
             }
             if (capturedEmbeddings.containsKey(angle)) return@launch // auto-capture already won this step
-            capturedEmbeddings[angle] = faceEngine.embed(bitmap, face)
-            if (angle == FaceCaptureAngle.FRONT) {
-                pendingFrontBitmap = bitmap
-            }
-            _registrationState.value = RegistrationState.Capturing(nextPendingAngle() ?: angle, capturedEmbeddings.size)
+            onAngleCaptured(
+                angle,
+                faceEngine.embed(bitmap, face),
+                bitmap,
+                headPoseEstimator.effectiveYaw(yaw, autoCaptureIsFrontCamera)
+            )
+            // The warning owns the flow until the user answers it.
+            if (_registrationState.value is RegistrationState.DuplicateWarning) return@launch
             resumeAutoCapture() // cancel the now-stale in-flight angle, advance the loop
         }
+    }
+
+    /**
+     * Records one captured angle. The FRONT step also sets this enrollment's baseline
+     * yaw, which every later pose is measured against, and arms the track gate.
+     *
+     * @param angle Which Scan Face step was just won.
+     * @param embedding That frame's 128-float embedding.
+     * @param bitmap That frame, kept as the profile photo when it is the FRONT step.
+     * @param steadyYaw That step's mirrored yaw, already averaged over its passing frames.
+     */
+    private suspend fun onAngleCaptured(
+        angle: FaceCaptureAngle,
+        embedding: FloatArray,
+        bitmap: Bitmap,
+        steadyYaw: Float
+    ) {
+        capturedEmbeddings[angle] = embedding
+        if (angle == FaceCaptureAngle.FRONT) {
+            pendingFrontBitmap = bitmap
+            // Averaged over the frames that passed, and already mirrored. A single
+            // frame can sit anywhere in FRONT's ±0.12 band, which would then skew
+            // both tilts in opposite directions for the rest of the enrollment.
+            baselineYaw = steadyYaw
+            trackGate.arm()
+
+            val existing = faceProfileRepository.findExistingMatch(embedding)
+            if (existing != null) {
+                _registrationState.value = RegistrationState.DuplicateWarning(
+                    existing.first.firstName, existing.first.lastName, capturedEmbeddings.size
+                )
+                return
+            }
+        }
+        val pending = nextPendingAngle()
+        _registrationState.value = RegistrationState.Capturing(pending ?: angle, capturedEmbeddings.size)
+        // Every angle is in — persist here, not from the UI, so leaving the screen
+        // mid-animation can't strand a finished scan.
+        if (pending == null) finishRegistration()
+    }
+
+    /**
+     * Resumes an enrollment the duplicate warning paused. The user was told this
+     * face is already on file and chose to enroll it again anyway.
+     */
+    fun continueAfterDuplicateWarning() {
+        if (_registrationState.value !is RegistrationState.DuplicateWarning) return
+        _registrationState.value = RegistrationState.Capturing(
+            nextPendingAngle() ?: FaceCaptureAngle.FRONT,
+            capturedEmbeddings.size
+        )
+        resumeAutoCapture()
     }
 
     /** The first angle not yet captured, or null once all are done. */
@@ -228,16 +302,12 @@ class FaceAuthViewModel @Inject constructor(
     /** Guards [finishRegistration] against double-taps while the async insert is still running. */
     private var finishInFlight = false
 
-    /** Persists the profile once all 3 angles have been captured; no-ops (as [RegistrationState.Failed]) otherwise. */
-    fun finishRegistration() {
+    /** Persists the profile; called from [onAngleCaptured] once the last angle commits. */
+    private fun finishRegistration() {
         if (finishInFlight || _registrationState.value is RegistrationState.Enrolled) return
         finishInFlight = true
         viewModelScope.launch {
             try {
-                if (capturedEmbeddings.size < FaceCaptureAngle.entries.size) {
-                    _registrationState.value = RegistrationState.Failed
-                    return@launch
-                }
                 val email = sessionEmailProvider()
                 val faceImagePath = pendingFrontBitmap?.let { saveFaceImage(it) }
                 faceProfileRepository.registerProfile(
@@ -361,26 +431,11 @@ class FaceAuthViewModel @Inject constructor(
         autoVerifyJob = null
     }
 
-    /**
-     * Runs one detect+embed+identify pass against the live gallery — the
-     * manual-override path, fired once per tap.
-     *
-     * @param bitmap The current camera frame.
-     */
-    fun verifyFrame(bitmap: Bitmap) {
-        viewModelScope.launch { runVerify(bitmap) }
-    }
-
     private suspend fun runVerify(bitmap: Bitmap) {
         val face = faceEngine.detectPrimary(bitmap) ?: return // stay in Scanning; mockup keeps showing the placement prompt
 
         val probe = faceEngine.embed(bitmap, face)
-        val gallery = faceProfileRepository.loadGallery()
-        val result = FaceMatcher.identify(probe, gallery)
-        matchLogger.i(
-            "gallerySize=${gallery.size} bestScore=${result.bestScore} " +
-                "threshold=${FaceMatcher.MATCH_THRESHOLD} matchedProfileId=${result.faceProfileId}"
-        )
+        val result = FaceMatcher.identify(probe, faceProfileRepository.loadGallery())
 
         val matchedId = result.faceProfileId
         if (matchedId == null) {

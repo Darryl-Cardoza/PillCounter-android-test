@@ -113,7 +113,6 @@ fun SessionLockOverlayScreen(
             )
 
             else -> ScanCameraStep(
-                onCaptureRequested = { bitmap -> viewModel.verifyFrame(bitmap) },
                 onAutoVerifyReady = { frames -> viewModel.startAutoVerify(frames) },
                 isVoiceoverEnabled = viewModel.isVoiceoverEnabled
             )
@@ -123,7 +122,6 @@ fun SessionLockOverlayScreen(
 
 @Composable
 private fun ScanCameraStep(
-    onCaptureRequested: (android.graphics.Bitmap) -> Unit,
     onAutoVerifyReady: (kotlinx.coroutines.flow.Flow<android.graphics.Bitmap>) -> Unit,
     isVoiceoverEnabled: Boolean
 ) {
@@ -137,7 +135,6 @@ private fun ScanCameraStep(
     }
     Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
         ScanningStep(
-            onCaptureRequested = onCaptureRequested,
             onAutoVerifyReady = onAutoVerifyReady,
             cameraHelper = cameraHelper,
             isVoiceoverEnabled = isVoiceoverEnabled
@@ -281,7 +278,7 @@ private fun LockNotRecognizedStep(onTryAgain: () -> Unit, onCancel: () -> Unit) 
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             HollowButton(
-                text = stringResource(R.string.face_verify_cancel).uppercase(),
+                text = stringResource(R.string.cancel).uppercase(),
                 onClick = onCancel,
                 color = MaterialTheme.colorScheme.primary
             )

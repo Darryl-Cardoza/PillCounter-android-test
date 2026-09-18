@@ -19,16 +19,16 @@ import kotlin.math.abs
  * What it does:
  * - [estimateYaw] reads the nose's horizontal position relative to the two
  *   eyes: centered = frontal, shifted toward one eye = turned that way.
- * - [matchesAngle] / [closeness] compare that yaw against a per-angle target
- *   and tolerance.
+ * - [matchesAngle] / [closeness] compare that yaw against what the step is
+ *   asking for: an absolute tolerance for FRONT, and for the tilts a required
+ *   change from the user's own FRONT reading, so one number means the same
+ *   turn on every face at every camera height.
  *
  * Calibration note:
- * The sign of [estimateYaw] (which way a positive value means "turned") and
- * whether front-camera frames need mirroring correction are not verifiable
- * from source alone — they depend on this device/API's actual `ImageAnalysis`
- * output. Verify by logging [estimateYaw] while manually turning left/right
- * on-device, then adjust [MIRROR_FRONT_CAMERA_YAW] and the target/tolerance
- * constants below to match.
+ * The sign of [estimateYaw] and [MIRROR_FRONT_CAMERA_YAW] were confirmed on
+ * device — a turn the way the prompt asks is the turn that gets accepted. The
+ * three delta constants come from a logged calibration pass; the working and
+ * the numbers are in plans/face-detection-optimisation/.
  */
 class HeadPoseEstimator @Inject constructor() {
 
@@ -38,16 +38,23 @@ class HeadPoseEstimator @Inject constructor() {
         private const val LEFT_EYE_X = 2
         private const val NOSE_X = 4
 
-        /** Target |yaw| for a fully-turned TILT_LEFT/TILT_RIGHT pose. Needs on-device calibration. */
-        const val YAW_TILT_TARGET = 0.35f
-
-        /** Allowed yaw deviation from center for FRONT. Needs on-device calibration. */
+        /** Allowed yaw deviation from center for FRONT. */
         const val YAW_TOLERANCE_FRONT = 0.12f
 
-        /** Allowed yaw deviation from [YAW_TILT_TARGET] for TILT_LEFT/TILT_RIGHT. Needs on-device calibration. */
-        const val YAW_TOLERANCE_TILT = 0.18f
+        /**
+         * Smallest change from the user's own FRONT reading that counts as a real turn.
+         * Measured: failing frames reach 0.135 at the 75th percentile, with 16% of
+         * samples in 0.10-0.17, so the old 0.17 floor sat inside the noise.
+         */
+        const val MIN_TILT_DELTA = 0.20f
 
-        /** Whether a front-camera frame's yaw sign needs flipping. Needs on-device calibration. */
+        /** The turn the frame scoring prefers — a frame at this delta scores 1.0. Median measured turn. */
+        const val IDEAL_TILT_DELTA = 0.34f
+
+        /** Past this the landmarks stop being trustworthy. Largest genuine turn measured was 0.459. */
+        const val MAX_TILT_DELTA = 0.65f
+
+        /** Whether a front-camera frame's yaw sign needs flipping. Confirmed on device. */
         const val MIRROR_FRONT_CAMERA_YAW = true
     }
 
@@ -78,63 +85,114 @@ class HeadPoseEstimator @Inject constructor() {
     }
 
     /**
-     * Checks whether [yaw] is close enough to what [angle] expects.
+     * Checks whether [yaw] is what [angle] is asking for.
      *
      * @param yaw A value from [estimateYaw].
      * @param angle The registration step being captured for.
      * @param isFrontCamera Whether the frame came from the front camera (see [MIRROR_FRONT_CAMERA_YAW]).
-     * @return true if [yaw] falls within that angle's tolerance of its target.
+     * @param baselineYaw The user's own FRONT reading, from [effectiveYaw]; ignored for FRONT itself.
+     * @return true when FRONT is centered enough, or when a tilt has turned far enough the right way without overshooting.
      *
      * Example Usage:
-     * if (headPoseEstimator.matchesAngle(yaw, FaceCaptureAngle.TILT_LEFT, isFrontCamera = true)) { ... }
+     * if (headPoseEstimator.matchesAngle(yaw, FaceCaptureAngle.TILT_LEFT, isFrontCamera = true, baselineYaw = frontYaw)) { ... }
      */
-    fun matchesAngle(yaw: Float, angle: FaceCaptureAngle, isFrontCamera: Boolean): Boolean =
-        deviation(yaw, angle, isFrontCamera) <= toleranceFor(angle)
+    fun matchesAngle(yaw: Float, angle: FaceCaptureAngle, isFrontCamera: Boolean, baselineYaw: Float = 0f): Boolean {
+        if (angle == FaceCaptureAngle.FRONT) {
+            return abs(effectiveYaw(yaw, isFrontCamera)) <= YAW_TOLERANCE_FRONT
+        }
+        val delta = signedDelta(yaw, isFrontCamera, baselineYaw)
+        if (!turnedTowards(delta, angle)) return false
+        return abs(delta) in MIN_TILT_DELTA..MAX_TILT_DELTA
+    }
 
     /**
-     * Scores how close [yaw] is to [angle]'s target, for ranking candidate frames.
+     * Scores how good [yaw] is for [angle], for ranking candidate frames.
      *
      * @param yaw A value from [estimateYaw].
      * @param angle The registration step being captured for.
      * @param isFrontCamera Whether the frame came from the front camera.
-     * @return `1.0` for a perfect match, decreasing to `0.0` at the tolerance boundary or beyond.
+     * @param baselineYaw The user's own FRONT reading, from [effectiveYaw]; ignored for FRONT itself.
+     * @return `1.0` at the ideal pose, falling to `0.0` at either edge of what [matchesAngle] accepts.
      *
      * Example Usage:
-     * val closeness = headPoseEstimator.closeness(yaw, angle, isFrontCamera)
+     * val closeness = headPoseEstimator.closeness(yaw, angle, isFrontCamera, baselineYaw)
      */
-    fun closeness(yaw: Float, angle: FaceCaptureAngle, isFrontCamera: Boolean): Float {
-        val tolerance = toleranceFor(angle)
-        return 1f - (deviation(yaw, angle, isFrontCamera) / tolerance).coerceIn(0f, 1f)
+    fun closeness(yaw: Float, angle: FaceCaptureAngle, isFrontCamera: Boolean, baselineYaw: Float = 0f): Float {
+        if (angle == FaceCaptureAngle.FRONT) {
+            return 1f - (abs(effectiveYaw(yaw, isFrontCamera)) / YAW_TOLERANCE_FRONT).coerceIn(0f, 1f)
+        }
+        val delta = signedDelta(yaw, isFrontCamera, baselineYaw)
+        if (!turnedTowards(delta, angle)) return 0f
+        val magnitude = abs(delta)
+        // Ramps up to the ideal turn then back down — an overshoot is as poor a frame as a shortfall.
+        val ratio = if (magnitude <= IDEAL_TILT_DELTA) {
+            (magnitude - MIN_TILT_DELTA) / (IDEAL_TILT_DELTA - MIN_TILT_DELTA)
+        } else {
+            (MAX_TILT_DELTA - magnitude) / (MAX_TILT_DELTA - IDEAL_TILT_DELTA)
+        }
+        return ratio.coerceIn(0f, 1f)
     }
 
     /**
      * Hint for why [angle]'s pose check is currently failing.
      *
      * @param angle The registration step being captured for.
+     * @param escalated Whether the user has been stuck on this angle long enough to deserve a firmer instruction.
      * @return The [FaceGuidance] the UI should show for that angle.
      *
      * Example Usage:
-     * val hint = headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT)
+     * val hint = headPoseEstimator.guidanceFor(FaceCaptureAngle.TILT_LEFT, escalated = true)
      */
-    fun guidanceFor(angle: FaceCaptureAngle): FaceGuidance = when (angle) {
+    fun guidanceFor(angle: FaceCaptureAngle, escalated: Boolean = false): FaceGuidance = when (angle) {
         FaceCaptureAngle.FRONT -> FaceGuidance.LOOK_STRAIGHT
-        FaceCaptureAngle.TILT_LEFT -> FaceGuidance.TILT_MORE_LEFT
-        FaceCaptureAngle.TILT_RIGHT -> FaceGuidance.TILT_MORE_RIGHT
+        FaceCaptureAngle.TILT_LEFT ->
+            if (escalated) FaceGuidance.TILT_FURTHER_LEFT else FaceGuidance.TILT_MORE_LEFT
+        FaceCaptureAngle.TILT_RIGHT ->
+            if (escalated) FaceGuidance.TILT_FURTHER_RIGHT else FaceGuidance.TILT_MORE_RIGHT
     }
 
-    private fun deviation(yaw: Float, angle: FaceCaptureAngle, isFrontCamera: Boolean): Float {
-        val effectiveYaw = if (isFrontCamera && MIRROR_FRONT_CAMERA_YAW) -yaw else yaw
-        return abs(effectiveYaw - idealYawFor(angle))
+    /** TILT_LEFT is a negative change, TILT_RIGHT a positive one — the convention confirmed on device. */
+    private fun turnedTowards(delta: Float, angle: FaceCaptureAngle): Boolean = when (angle) {
+        FaceCaptureAngle.TILT_LEFT -> delta < 0f
+        FaceCaptureAngle.TILT_RIGHT -> delta > 0f
+        FaceCaptureAngle.FRONT -> true
     }
 
-    private fun idealYawFor(angle: FaceCaptureAngle): Float = when (angle) {
-        FaceCaptureAngle.FRONT -> 0f
-        FaceCaptureAngle.TILT_LEFT -> -YAW_TILT_TARGET
-        FaceCaptureAngle.TILT_RIGHT -> YAW_TILT_TARGET
-    }
+    /**
+     * How far [yaw] has moved from a reference reading, in the frame's own orientation.
+     *
+     * Description:
+     * A fixed yaw target means a different physical turn on every face and at
+     * every camera height. Measuring the change from the user's own FRONT
+     * reading takes that bias out.
+     *
+     * @param yaw A value from [estimateYaw].
+     * @param isFrontCamera Whether the frame came from the front camera (see [MIRROR_FRONT_CAMERA_YAW]).
+     * @param baselineYaw The reference reading — the user's own FRONT yaw.
+     * @return Signed change from [baselineYaw]; negative is a turn toward TILT_LEFT.
+     *
+     * Example Usage:
+     * val delta = headPoseEstimator.signedDelta(yaw, isFrontCamera = true, baselineYaw = frontYaw)
+     */
+    fun signedDelta(yaw: Float, isFrontCamera: Boolean, baselineYaw: Float): Float =
+        effectiveYaw(yaw, isFrontCamera) - baselineYaw
 
-    private fun toleranceFor(angle: FaceCaptureAngle): Float = when (angle) {
-        FaceCaptureAngle.FRONT -> YAW_TOLERANCE_FRONT
-        FaceCaptureAngle.TILT_LEFT, FaceCaptureAngle.TILT_RIGHT -> YAW_TOLERANCE_TILT
-    }
+    /**
+     * Converts a raw [estimateYaw] reading into the frame's own orientation.
+     *
+     * Description:
+     * Public because a baseline stored for later comparison must be stored in
+     * this space, not raw — on the front camera the two have opposite signs, so
+     * mixing them subtracts the baseline the wrong way round.
+     *
+     * @param yaw A value from [estimateYaw].
+     * @param isFrontCamera Whether the frame came from the front camera (see [MIRROR_FRONT_CAMERA_YAW]).
+     * @return The yaw as [signedDelta] and [matchesAngle] compare it.
+     *
+     * Example Usage:
+     * baselineYaw = headPoseEstimator.effectiveYaw(frontCommitYaw, isFrontCamera = true)
+     */
+    fun effectiveYaw(yaw: Float, isFrontCamera: Boolean): Float =
+        if (isFrontCamera && MIRROR_FRONT_CAMERA_YAW) -yaw else yaw
+
 }
