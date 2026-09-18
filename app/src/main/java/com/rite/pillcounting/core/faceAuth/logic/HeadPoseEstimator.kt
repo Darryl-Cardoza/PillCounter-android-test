@@ -27,8 +27,8 @@ import kotlin.math.abs
  * Calibration note:
  * The sign of [estimateYaw] and [MIRROR_FRONT_CAMERA_YAW] were confirmed on
  * device — a turn the way the prompt asks is the turn that gets accepted. The
- * three delta constants come from a logged calibration pass; the working and
- * the numbers are in plans/face-detection-optimisation/.
+ * three delta constants come from a logged calibration pass; each one carries
+ * its measured value below.
  */
 class HeadPoseEstimator @Inject constructor() {
 

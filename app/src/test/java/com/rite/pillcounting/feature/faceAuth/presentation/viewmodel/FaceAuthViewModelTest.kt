@@ -8,7 +8,6 @@ import com.rite.pillcounting.core.faceAuth.logic.FaceEngine
 import com.rite.pillcounting.core.faceAuth.logic.FaceQualityGate
 import com.rite.pillcounting.core.faceAuth.logic.FaceTrackContinuityGate
 import com.rite.pillcounting.core.faceAuth.logic.GalleryEntry
-import com.rite.pillcounting.core.faceAuth.logic.HeadPoseEstimator
 import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.faceAuth.model.FaceBox
 import com.rite.pillcounting.core.faceAuth.model.FaceCaptureAngle
@@ -62,34 +61,28 @@ class FaceAuthViewModelTest {
         repo: FaceProfileRepository = mockk(relaxed = true) { coEvery { findExistingMatch(any()) } returns null },
         sessionEmailProvider: SessionEmailProvider = mockk(relaxed = true),
         faceQualityGate: FaceQualityGate = mockk(),
-        // Pose check passes by default so manual-capture tests exercise the paths they target.
-        headPoseEstimator: HeadPoseEstimator = mockk {
-            every { estimateYaw(any()) } returns 0f
-            every { matchesAngle(any(), any(), any(), any()) } returns true
-            every { effectiveYaw(any(), any()) } answers { if (secondArg()) -firstArg<Float>() else firstArg() }
-        },
         autoCaptureController: AutoCaptureController = mockk(relaxed = true),
         sessionLockController: SessionLockController = mockk(relaxed = true),
         preferenceHelper: PreferenceHelper = mockk(relaxed = true),
         trackGate: FaceTrackContinuityGate = mockk(relaxed = true) { every { isBroken } returns false }
-    ) = FaceAuthViewModel(context, engine, repo, sessionEmailProvider, faceQualityGate, headPoseEstimator, autoCaptureController, sessionLockController, preferenceHelper, trackGate)
+    ) = FaceAuthViewModel(context, engine, repo, sessionEmailProvider, faceQualityGate, autoCaptureController, sessionLockController, preferenceHelper, trackGate)
 
     @Test
     fun `capturing all three angles enrolls the profile without a further call`() = runTest {
-        val engine = mockk<FaceEngine>()
         val repo = mockk<FaceProfileRepository>(relaxed = true)
-        val faceQualityGate = mockk<FaceQualityGate>()
-        coEvery { engine.detectPrimary(fakeBitmap) } returns fakeFace
-        coEvery { engine.embed(fakeBitmap, fakeFace) } returns FloatArray(128) { 1f }
+        val autoCaptureController = mockk<AutoCaptureController>(relaxed = true)
         coEvery { repo.registerProfile(any(), any(), any(), any(), any(), any()) } returns 1L
-        every { faceQualityGate.evaluate(fakeBitmap, fakeFace) } returns null
         coEvery { repo.findExistingMatch(any()) } returns null
+        every { autoCaptureController.run(FaceCaptureAngle.FRONT, any(), true, any(), any()) } returns
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 1f }, fakeBitmap))
+        every { autoCaptureController.run(FaceCaptureAngle.TILT_LEFT, any(), true, any(), any()) } returns
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 2f }, fakeBitmap))
+        every { autoCaptureController.run(FaceCaptureAngle.TILT_RIGHT, any(), true, any(), any()) } returns
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 3f }, fakeBitmap))
 
-        val vm = viewModel(engine = engine, repo = repo, faceQualityGate = faceQualityGate)
+        val vm = viewModel(repo = repo, autoCaptureController = autoCaptureController)
         vm.startRegistration("Bruce", "Wayne")
-        vm.captureFrame(fakeBitmap, FaceCaptureAngle.FRONT)
-        vm.captureFrame(fakeBitmap, FaceCaptureAngle.TILT_LEFT)
-        vm.captureFrame(fakeBitmap, FaceCaptureAngle.TILT_RIGHT)
+        vm.startAutoCapture(flowOf(fakeBitmap), isFrontCamera = true)
 
         assertTrue(vm.registrationState.value is RegistrationState.Enrolled)
         // The last angle is the only trigger — nothing else may write a second profile.
@@ -97,19 +90,28 @@ class FaceAuthViewModelTest {
     }
 
     @Test
-    fun `captureFrame rejects a frame the quality gate flags`() = runTest {
-        val engine = mockk<FaceEngine>()
-        val faceQualityGate = mockk<FaceQualityGate>()
-        coEvery { engine.detectPrimary(fakeBitmap) } returns fakeFace
-        every { faceQualityGate.evaluate(fakeBitmap, fakeFace) } returns FaceGuidance.HOLD_STILL
+    fun `a failed save reports Failed instead of crashing, and retrying saves`() = runTest {
+        val repo = mockk<FaceProfileRepository>(relaxed = true)
+        val autoCaptureController = mockk<AutoCaptureController>(relaxed = true)
+        coEvery { repo.findExistingMatch(any()) } returns null
+        coEvery { repo.registerProfile(any(), any(), any(), any(), any(), any()) } throws
+            RuntimeException("disk full") andThen 1L
+        every { autoCaptureController.run(FaceCaptureAngle.FRONT, any(), true, any(), any()) } returns
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 1f }, fakeBitmap))
+        every { autoCaptureController.run(FaceCaptureAngle.TILT_LEFT, any(), true, any(), any()) } returns
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 2f }, fakeBitmap))
+        every { autoCaptureController.run(FaceCaptureAngle.TILT_RIGHT, any(), true, any(), any()) } returns
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 3f }, fakeBitmap))
 
-        val vm = viewModel(engine = engine, faceQualityGate = faceQualityGate)
+        val vm = viewModel(repo = repo, autoCaptureController = autoCaptureController)
         vm.startRegistration("Bruce", "Wayne")
-        vm.captureFrame(fakeBitmap, FaceCaptureAngle.FRONT)
+        vm.startAutoCapture(flowOf(fakeBitmap), isFrontCamera = true)
 
-        val state = vm.registrationState.value
-        assertTrue(state is RegistrationState.Rejected)
-        assertEquals(FaceGuidance.HOLD_STILL, (state as RegistrationState.Rejected).reason)
+        assertTrue(vm.registrationState.value is RegistrationState.Failed)
+
+        // The captured angles are still held, so the retry needs no re-scan.
+        vm.retryFinishRegistration()
+        assertTrue(vm.registrationState.value is RegistrationState.Enrolled)
     }
 
     @Test
@@ -193,7 +195,7 @@ class FaceAuthViewModelTest {
         val repo = mockk<FaceProfileRepository>(relaxed = true)
         val autoCaptureController = mockk<AutoCaptureController>(relaxed = true)
         coEvery { repo.findExistingMatch(any()) } returns
-            (FaceProfileEntity(id = 7L, firstName = "Bruce", lastName = "Wayne", email = null, createdAt = 0L) to 0.82f)
+            FaceProfileEntity(id = 7L, firstName = "Bruce", lastName = "Wayne", email = null, createdAt = 0L)
         every { autoCaptureController.run(FaceCaptureAngle.FRONT, any(), true, any(), any()) } returns
             flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 1f }, fakeBitmap))
 
@@ -213,7 +215,7 @@ class FaceAuthViewModelTest {
         val repo = mockk<FaceProfileRepository>(relaxed = true)
         val autoCaptureController = mockk<AutoCaptureController>(relaxed = true)
         coEvery { repo.findExistingMatch(any()) } returns
-            (FaceProfileEntity(id = 7L, firstName = "Bruce", lastName = "Wayne", email = null, createdAt = 0L) to 0.82f)
+            FaceProfileEntity(id = 7L, firstName = "Bruce", lastName = "Wayne", email = null, createdAt = 0L)
         every { autoCaptureController.run(FaceCaptureAngle.FRONT, any(), true, any(), any()) } returns
             flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 1f }, fakeBitmap))
         every { autoCaptureController.run(FaceCaptureAngle.TILT_LEFT, any(), true, any(), any()) } returns
@@ -233,7 +235,7 @@ class FaceAuthViewModelTest {
         val repo = mockk<FaceProfileRepository>(relaxed = true)
         val autoCaptureController = mockk<AutoCaptureController>(relaxed = true)
         coEvery { repo.findExistingMatch(any()) } returns
-            (FaceProfileEntity(id = 7L, firstName = "Bruce", lastName = "Wayne", email = null, createdAt = 0L) to 0.82f)
+            FaceProfileEntity(id = 7L, firstName = "Bruce", lastName = "Wayne", email = null, createdAt = 0L)
         every { autoCaptureController.run(FaceCaptureAngle.FRONT, any(), true, any(), any()) } returns
             flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 1f }, fakeBitmap))
         every { autoCaptureController.run(FaceCaptureAngle.TILT_LEFT, any(), true, any(), any()) } returns
@@ -297,49 +299,23 @@ class FaceAuthViewModelTest {
     }
 
     @Test
-    fun `manual capture wins over a still-running auto-capture loop and advances to the next angle`() = runTest {
-        val engine = mockk<FaceEngine>()
-        val faceQualityGate = mockk<FaceQualityGate>()
-        val autoCaptureController = mockk<AutoCaptureController>()
-        coEvery { engine.detectPrimary(fakeBitmap) } returns fakeFace
-        coEvery { engine.embed(fakeBitmap, fakeFace) } returns FloatArray(128) { 1f }
-        every { faceQualityGate.evaluate(fakeBitmap, fakeFace) } returns null
-
-        // FRONT's auto-loop never finds a good frame on its own — manual override must win it.
+    fun `enrolling passes non-null faceImagePath when FRONT bitmap was captured`() = runTest {
+        val tempDir = java.io.File(System.getProperty("java.io.tmpdir"), "face_test_${System.nanoTime()}").also { it.mkdirs() }
+        val context = mockk<Context> { every { filesDir } returns tempDir }
+        val repo = mockk<FaceProfileRepository>(relaxed = true)
+        val autoCaptureController = mockk<AutoCaptureController>(relaxed = true)
+        coEvery { repo.registerProfile(any(), any(), any(), any(), any(), any()) } returns 1L
+        coEvery { repo.findExistingMatch(any()) } returns null
         every { autoCaptureController.run(FaceCaptureAngle.FRONT, any(), true, any(), any()) } returns
-            flow { awaitCancellation() }
+            flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 1f }, fakeBitmap))
         every { autoCaptureController.run(FaceCaptureAngle.TILT_LEFT, any(), true, any(), any()) } returns
             flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 2f }, fakeBitmap))
         every { autoCaptureController.run(FaceCaptureAngle.TILT_RIGHT, any(), true, any(), any()) } returns
             flowOf(AutoCaptureController.CaptureEvent.Committed(FloatArray(128) { 3f }, fakeBitmap))
 
-        val vm = viewModel(engine = engine, faceQualityGate = faceQualityGate, autoCaptureController = autoCaptureController)
+        val vm = viewModel(context = context, repo = repo, autoCaptureController = autoCaptureController)
         vm.startRegistration("Bruce", "Wayne")
         vm.startAutoCapture(flowOf(fakeBitmap), isFrontCamera = true)
-        vm.captureFrame(fakeBitmap, FaceCaptureAngle.FRONT)
-
-        // Manual FRONT lets the loop run the two tilts, so all three land and the profile enrolls.
-        assertTrue(vm.registrationState.value is RegistrationState.Enrolled)
-    }
-
-    @Test
-    fun `enrolling passes non-null faceImagePath when FRONT bitmap was captured`() = runTest {
-        val tempDir = java.io.File(System.getProperty("java.io.tmpdir"), "face_test_${System.nanoTime()}").also { it.mkdirs() }
-        val context = mockk<Context> { every { filesDir } returns tempDir }
-        val engine = mockk<FaceEngine>()
-        val repo = mockk<FaceProfileRepository>(relaxed = true)
-        val faceQualityGate = mockk<FaceQualityGate>()
-        coEvery { engine.detectPrimary(fakeBitmap) } returns fakeFace
-        coEvery { engine.embed(fakeBitmap, fakeFace) } returns FloatArray(128) { 1f }
-        every { faceQualityGate.evaluate(fakeBitmap, fakeFace) } returns null
-        coEvery { repo.registerProfile(any(), any(), any(), any(), any(), any()) } returns 1L
-        coEvery { repo.findExistingMatch(any()) } returns null
-
-        val vm = viewModel(context = context, engine = engine, repo = repo, faceQualityGate = faceQualityGate)
-        vm.startRegistration("Bruce", "Wayne")
-        vm.captureFrame(fakeBitmap, FaceCaptureAngle.FRONT)
-        vm.captureFrame(fakeBitmap, FaceCaptureAngle.TILT_LEFT)
-        vm.captureFrame(fakeBitmap, FaceCaptureAngle.TILT_RIGHT)
 
         coVerify {
             repo.registerProfile(

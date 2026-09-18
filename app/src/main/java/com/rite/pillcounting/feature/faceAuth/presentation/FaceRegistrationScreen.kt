@@ -6,7 +6,6 @@ import androidx.camera.core.CameraSelector
 import androidx.camera.view.PreviewView
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -170,9 +169,6 @@ fun FaceRegistrationScreen(
                 navController = navController,
                 isSessionLocked = isSessionLocked,
                 isVoiceoverEnabled = viewModel.isVoiceoverEnabled,
-                onCaptureRequested = { angle ->
-                    cameraHelper.captureImage(onCaptured = { bitmap -> viewModel.captureFrame(bitmap, angle) })
-                },
                 onCameraReady = { isFrontCamera ->
                     viewModel.startAutoCapture(
                         // frameFlow is raw YUV_420_888 (ImageAnalysis), not JPEG — toBitmap()
@@ -185,7 +181,9 @@ fun FaceRegistrationScreen(
                     )
                 },
                 onDuplicateContinue = viewModel::continueAfterDuplicateWarning,
-                onDuplicateCancel = { navController.popBackStack() }
+                onDuplicateCancel = { navController.popBackStack() },
+                onRetrySave = viewModel::retryFinishRegistration,
+                onCancelSave = { navController.popBackStack() }
             )
         }
     }
@@ -198,18 +196,19 @@ private fun ScanFaceStep(
     navController: NavController,
     isSessionLocked: Boolean,
     isVoiceoverEnabled: Boolean,
-    onCaptureRequested: (FaceCaptureAngle) -> Unit,
     onCameraReady: (isFrontCamera: Boolean) -> Unit,
     onDuplicateContinue: () -> Unit,
-    onDuplicateCancel: () -> Unit
+    onDuplicateCancel: () -> Unit,
+    onRetrySave: () -> Unit,
+    onCancelSave: () -> Unit
 ) {
     val capturing = state as? RegistrationState.Capturing
-    val rejected = state as? RegistrationState.Rejected
     val duplicate = state as? RegistrationState.DuplicateWarning
-    val angle = capturing?.angle ?: rejected?.angle ?: FaceCaptureAngle.FRONT
+    val angle = capturing?.angle ?: FaceCaptureAngle.FRONT
     // Enrolled still renders this card for the reveal beat, with every angle done.
+    // Failed does too: all three angles landed and only the save failed.
     val capturedCount = when {
-        state is RegistrationState.Enrolled -> FaceCaptureAngle.entries.size
+        state is RegistrationState.Enrolled || state is RegistrationState.Failed -> FaceCaptureAngle.entries.size
         else -> capturing?.capturedCount ?: duplicate?.capturedCount ?: 0
     }
     // After the last angle the state still names it, so say done instead of asking for a tilt again.
@@ -227,7 +226,6 @@ private fun ScanFaceStep(
         )
     }
     val guidanceSpeech = capturing?.guidance?.let { Utterance("face_guidance_${it.name}", guidanceText(it)) }
-    val rejectionSpeech = rejected?.let { Utterance("face_reject_${it.reason.name}", guidanceText(it.reason)) }
     val prompt = guidanceSpeech?.text ?: staticPrompt.text
 
     // Speak each angle's prompt once, as the scanning screens' title chip does.
@@ -258,13 +256,6 @@ private fun ScanFaceStep(
         val quietLeft = SPEECH_QUIET_PERIOD_MS - (System.currentTimeMillis() - lastSpeechAt)
         if (quietLeft > 0) delay(quietLeft)
         speakNow(guidanceSpeech)
-    }
-
-    // A rejection answers the user's tap, so it speaks right away.
-    LaunchedEffect(rejectionSpeech?.id, SoundUtils.isTtsReady, isVoiceoverEnabled) {
-        if (rejectionSpeech != null && SoundUtils.isTtsReady && isVoiceoverEnabled) {
-            speakNow(rejectionSpeech)
-        }
     }
 
     var isFrontCamera by remember { mutableStateOf(true) }
@@ -336,14 +327,6 @@ private fun ScanFaceStep(
                     textAlign = TextAlign.Center,
                     modifier = Modifier.fillMaxWidth()
                 )
-                if (state is RegistrationState.Rejected) {
-                    Text(
-                        text = guidanceText(state.reason),
-                        color = MaterialTheme.colorScheme.error,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-                    )
-                }
                 Spacer(modifier = Modifier.height(24.dp))
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
@@ -353,7 +336,6 @@ private fun ScanFaceStep(
                     listOf(FaceCaptureAngle.TILT_LEFT, FaceCaptureAngle.FRONT, FaceCaptureAngle.TILT_RIGHT).forEach { slotAngle ->
                         val sequenceIndex = FaceCaptureAngle.entries.indexOf(slotAngle)
                         val isDone = capturedCount > sequenceIndex
-                        val isCurrent = capturedCount == sequenceIndex
                         val description = when (slotAngle) {
                             FaceCaptureAngle.FRONT -> stringResource(R.string.face_registration_scan_front)
                             FaceCaptureAngle.TILT_LEFT -> stringResource(R.string.face_registration_scan_tilt_left)
@@ -365,8 +347,7 @@ private fun ScanFaceStep(
                                 .background(
                                     color = if (isDone) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.inverseSurface,
                                     shape = CircleShape
-                                )
-                                .clickable(enabled = isCurrent) { onCaptureRequested(slotAngle) },
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
@@ -397,6 +378,16 @@ private fun ScanFaceStep(
                 cancelText = stringResource(R.string.cancel),
                 onConfirm = onDuplicateContinue,
                 onCancel = onDuplicateCancel
+            )
+        }
+        if (state is RegistrationState.Failed) {
+            CommonDialog(
+                title = stringResource(R.string.face_registration_save_failed_title),
+                message = stringResource(R.string.face_registration_save_failed_message),
+                confirmText = stringResource(R.string.face_verify_try_again),
+                cancelText = stringResource(R.string.cancel),
+                onConfirm = onRetrySave,
+                onCancel = onCancelSave
             )
         }
     }

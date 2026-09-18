@@ -104,6 +104,8 @@
     <string name="face_duplicate_warning_title">Face already registered</string>
     <string name="face_duplicate_warning_message">This face looks like %1$s %2$s. Continue anyway?</string>
     <string name="face_duplicate_warning_continue">Continue</string>
+    <string name="face_registration_save_failed_title">Couldn\'t save this face</string>
+    <string name="face_registration_save_failed_message">The scan finished but the profile could not be saved. Try again, or cancel to discard it.</string>
     <string name="face_registration_enrolled_title">Face enrolled</string>
     <string name="face_registration_enrolled_body">You\'re all set. You can now unlock the counter with a glance.</string>
     <string name="face_registration_add_user">+ Add User</string>

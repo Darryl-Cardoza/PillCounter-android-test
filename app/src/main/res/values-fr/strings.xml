@@ -525,6 +525,8 @@
     <string name="face_duplicate_warning_title">Visage déjà enregistré</string>
     <string name="face_duplicate_warning_message">Ce visage ressemble à %1$s %2$s. Continuer quand même ?</string>
     <string name="face_duplicate_warning_continue">Continuer</string>
+    <string name="face_registration_save_failed_title">Impossible d\'enregistrer ce visage</string>
+    <string name="face_registration_save_failed_message">Le scan est terminé, mais le profil n\'a pas pu être enregistré. Réessayez ou annulez pour l\'abandonner.</string>
     <string name="face_registration_enrolled_title">Visage enregistré</string>
     <string name="face_registration_enrolled_body">Tout est prêt. Vous pouvez maintenant déverrouiller le comptoir d\'un simple regard.</string>
     <string name="face_registration_add_user">+ Ajouter un utilisateur</string>

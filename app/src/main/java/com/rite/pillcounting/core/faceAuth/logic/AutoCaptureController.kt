@@ -72,11 +72,7 @@ class AutoCaptureController @Inject constructor(
         data object TrackBroken : CaptureEvent
     }
 
-    private data class Candidate(
-        val embedding: FloatArray,
-        val bitmap: Bitmap,
-        val score: Float
-    )
+    private data class Candidate(val embedding: FloatArray, val bitmap: Bitmap, val score: Float)
 
     /**
      * Samples [frames] for [angle] until a best frame is committed.

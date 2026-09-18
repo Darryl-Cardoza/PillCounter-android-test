@@ -7,28 +7,13 @@ import javax.inject.Inject
 /**
  * Watches the face's box, not the face, so a second person can't take over halfway through.
  *
- * Description:
- * Registration stores one embedding per angle, and nothing used to check the
- * three came from the same person — so one person could do the straight-on
- * capture and another both tilts, all saved under one name. Comparing their
- * embeddings was measured on device and does not work: a genuine single-person
- * enrolment scored 0.140 while a genuine impostor scored 0.254, so no threshold
- * separates them.
+ * Comparing embeddings across angles was measured on device and cannot do this: a
+ * genuine enrolment scored 0.140 against an impostor's 0.254, so no threshold
+ * separates them. A swap instead has to drop detection or jump the box, which is
+ * visible however weak the recognizer is.
  *
- * This takes the other route. To put a second person in a slot, the first has to
- * leave the frame and the second enter, which either drops detection for a
- * moment or makes the box jump. Both are visible without asking the recognizer
- * anything, so this works regardless of how accurate the recognizer is.
- *
- * What it does:
- * - [observe] takes each sampled frame's face box, or null when no face was
- *   detected, and follows the track.
- * - [arm] starts holding the track to account, at the straight-on capture.
- * - [isBroken] latches true once an armed track is lost; only [reset] clears it.
- *
- * Deliberately driven by detection alone, never the quality gate: a blurry or
- * badly-lit face is still the same face, and failing quality must not look like
- * a person swap.
+ * Driven by detection alone, never the quality gate — a blurry face is still the
+ * same face, and failing quality must not look like a person swap.
  *
  * Example Usage:
  * trackGate.observe(face?.rect)
@@ -83,6 +68,16 @@ class FaceTrackContinuityGate @Inject constructor() {
         gapFrames = 0
         // A jump this large between frames 150ms apart is a different face, not movement.
         if (previous != null && NMS.iou(previous, rect) < MIN_TRACK_IOU) loseTrack()
+    }
+
+    /**
+     * Drops the last box without disarming, for a resume after the frame loop was
+     * stopped. Nothing observed the track across that gap, so the next box starts a
+     * fresh comparison instead of being judged against a seconds-old one.
+     */
+    fun dropLastRect() {
+        lastRect = null
+        gapFrames = 0
     }
 
     /** Clears everything, including [isBroken]. Called when the face scan starts over. */

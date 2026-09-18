@@ -127,20 +127,27 @@ class FaceProfileRepository @Inject constructor(
      *
      * Description:
      * Used at the FRONT step of registration, to warn when someone is enrolling
-     * a face that is already on file. This is a frontal-to-frontal comparison —
-     * the same one verify makes — so it reuses [FaceMatcher.MATCH_THRESHOLD].
+     * a face that is already on file. The probe is frontal but the gallery holds
+     * every angle, so this is the same comparison verify makes — hence the same
+     * [FaceMatcher.MATCH_THRESHOLD].
+     *
+     * Reads disabled profiles too, unlike [loadGallery]: disabled means "cannot
+     * unlock", not "not on file", and enrolling a second profile for the same face
+     * leaves [FaceMatcher.identify] picking between them arbitrarily once it is
+     * re-enabled.
      *
      * @param embedding The FRONT embedding just captured.
-     * @return The matching profile with its cosine score, or null if nothing cleared the threshold.
+     * @return The matching profile, or null if nothing cleared the threshold.
      *
      * Example Usage:
      * val existing = repository.findExistingMatch(frontEmbedding)
      */
-    suspend fun findExistingMatch(embedding: FloatArray): Pair<FaceProfileEntity, Float>? {
-        val result = FaceMatcher.identify(embedding, loadGallery())
-        val matchedId = result.faceProfileId ?: return null
-        val profile = profileDao.getById(matchedId) ?: return null
-        return profile to result.bestScore
+    suspend fun findExistingMatch(embedding: FloatArray): FaceProfileEntity? {
+        val gallery = embeddingDao.getAll().map {
+            GalleryEntry(it.faceProfileId, bytesToFloatArray(it.vec))
+        }
+        val matchedId = FaceMatcher.identify(embedding, gallery).faceProfileId ?: return null
+        return profileDao.getById(matchedId)
     }
 
     private fun floatArrayToBytes(vec: FloatArray): ByteArray {

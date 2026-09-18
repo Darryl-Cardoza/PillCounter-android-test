@@ -525,6 +525,8 @@
     <string name="face_duplicate_warning_title">Rostro ya registrado</string>
     <string name="face_duplicate_warning_message">Este rostro se parece a %1$s %2$s. ¿Desea continuar?</string>
     <string name="face_duplicate_warning_continue">Continuar</string>
+    <string name="face_registration_save_failed_title">No se pudo guardar este rostro</string>
+    <string name="face_registration_save_failed_message">El escaneo finalizó, pero no se pudo guardar el perfil. Vuelva a intentarlo o cancele para descartarlo.</string>
     <string name="face_registration_enrolled_title">Rostro registrado</string>
     <string name="face_registration_enrolled_body">Todo listo. Ahora puede desbloquear el mostrador con solo mirar.</string>
     <string name="face_registration_add_user">+ Agregar usuario</string>
