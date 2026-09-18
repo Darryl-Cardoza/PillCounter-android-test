@@ -28,6 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.tourguide.tourTarget
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldKpiColumn
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldQueueList
@@ -53,6 +54,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun DashboardTabletLandscape(params: DashboardVariantParams) {
     val uiState = params.uiState
+    val tourState = params.tourState
 
     Box(
         modifier = Modifier
@@ -71,6 +73,7 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                 showPmsDot = params.isHl7Enabled,
                 isPmsConnected = params.isPmsConnected,
                 navController = params.navController,
+                tourState = tourState,
             )
 
             // Body — three side-by-side columns under one shared sub-header row.
@@ -117,7 +120,9 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                         onSelect = { tab ->
                             scope.launch { pagerState.animateScrollToPage(tab.ordinal) }
                         },
-                        modifier = Modifier.weight(0.48f),
+                        modifier = Modifier
+                            .weight(0.48f)
+                            .tourTarget(tourState, "tabs"),
                     )
                 }
 
@@ -146,7 +151,8 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                             iconSize = 100.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f),
+                                .weight(1f)
+                                .tourTarget(tourState, "dispense"),
                         )
                         ScaffoldQuickActionCard(
                             title = stringResource(R.string.stock_count),
@@ -158,7 +164,8 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                             iconSize = 100.dp,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .weight(1f),
+                                .weight(1f)
+                                .tourTarget(tourState, "stock_count"),
                         )
                     }
 
@@ -175,7 +182,8 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                             .weight(0.16f)
                             .fillMaxHeight(),
                         cardHeight = 115.dp,
-                        cardWidth = 200.dp
+                        cardWidth = 200.dp,
+                        tourState = tourState,
                     )
 
 //                    Spacer(modifier = Modifier.width(1.dp))
@@ -199,6 +207,7 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                                 items = uiState.queue,
                                 onDispenseClick = params.onQueueDispenseClick,
                                 onInventoryClick = params.onQueueInventoryClick,
+                                modifier = Modifier.tourTarget(tourState, "empty_state"),
                             )
                             DashboardTab.RECENT_ACTIVITY -> ScaffoldQueueList(
                                 items = uiState.recentActivity,

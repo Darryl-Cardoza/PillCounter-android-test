@@ -50,6 +50,8 @@ import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
+import com.rite.pillcounting.core.tourguide.TourGuideState
+import com.rite.pillcounting.core.tourguide.tourTarget
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.MenuButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -69,6 +71,16 @@ import java.util.Locale
 // Shared scaffold widgets for the new dashboard. Both DashboardTabletPortrait and
 // DashboardTabletLandscape (and eventually the phone variants) consume these so the
 // "same data, different placement" contract holds without per-variant duplication.
+
+/** The tour-guide target id for a KPI card, keyed by its filter — shared by every KPI layout. */
+private fun kpiTourId(filter: KpiFilter): String = when (filter) {
+    KpiFilter.DISP_HIGH_PRIORITY -> "kpi_high_priority"
+    KpiFilter.DISP_PENDING -> "kpi_pending"
+    KpiFilter.DISP_CONTROLLED -> "kpi_controlled"
+    KpiFilter.DISP_HAZARDOUS -> "kpi_hazardous"
+    KpiFilter.INV_CYCLE_COUNT -> "kpi_cycle_count"
+    KpiFilter.INV_PENDING_BATCH -> "kpi_pending_batch"
+}
 
 internal fun buildTerminalUserLine(
     uiState: DashboardUiState,
@@ -95,6 +107,7 @@ internal fun ScaffoldTopBar(
     isPmsConnected: Boolean,
     navController: NavController,
     compact: Boolean = false,
+    tourState: TourGuideState? = null,
 ) {
     val logoSize = if (compact) 30.dp else 40.dp
     val horizontalPadding = if (compact) 12.dp else 16.dp
@@ -112,7 +125,14 @@ internal fun ScaffoldTopBar(
             modifier = Modifier.size(logoSize),
         )
         Spacer(modifier = Modifier.width(if (compact) 8.dp else 14.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            // fill = false: reserves the same flexible slot for layout (so the PMS dot and
+            // menu button don't move), but sizes the column itself to its text content —
+            // otherwise the tour's spotlight around it stretches into the empty space.
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .tourTarget(tourState, "header"),
+        ) {
             Text(
                 text = pharmacyName ?: "—",
                 fontSize = responsiveSp(12.sp, boostOnPhone = true),
@@ -127,10 +147,14 @@ internal fun ScaffoldTopBar(
                 color = extendedColors.textColor,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.tourTarget(tourState, "terminal"),
             )
         }
         if (showPmsDot) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.tourTarget(tourState, "pms"),
+            ) {
                 Box(
                     modifier = Modifier
                         .size(8.dp)
@@ -151,7 +175,9 @@ internal fun ScaffoldTopBar(
             }
             Spacer(modifier = Modifier.width(if (compact) 8.dp else 12.dp))
         }
-        MenuButton(navController = navController)
+        Box(modifier = Modifier.tourTarget(tourState, "menu")) {
+            MenuButton(navController = navController)
+        }
     }
 }
 
@@ -259,6 +285,7 @@ internal fun ScaffoldKpiRow(
     cardHeight: Dp? = null,
     disabledFilters: Set<KpiFilter> = emptySet(),
     onDisabledTap: (KpiFilter) -> Unit = {},
+    tourState: TourGuideState? = null,
 ) {
     Row(
         modifier = modifier,
@@ -278,7 +305,7 @@ internal fun ScaffoldKpiRow(
                 isDisabled = isDisabled,
                 onClick = { onTap(spec.filter) },
                 onDisabledClick = { onDisabledTap(spec.filter) },
-                modifier = cardModifier,
+                modifier = cardModifier.tourTarget(tourState, kpiTourId(spec.filter)),
             )
         }
     }
@@ -298,6 +325,7 @@ internal fun ScaffoldKpiColumn(
     cardHeight: Dp? = null,
     disabledFilters: Set<KpiFilter> = emptySet(),
     onDisabledTap: (KpiFilter) -> Unit = {},
+    tourState: TourGuideState? = null,
 ) {
     // Each card claims an equal vertical share. This bounds the height every card sees,
     // which is required because ScaffoldKpiCard's inner Box uses fillMaxSize() — without a
@@ -319,7 +347,7 @@ internal fun ScaffoldKpiColumn(
                 isDisabled = isDisabled,
                 onClick = { onTap(spec.filter) },
                 onDisabledClick = { onDisabledTap(spec.filter) },
-                modifier = cardModifier,
+                modifier = cardModifier.tourTarget(tourState, kpiTourId(spec.filter)),
             )
         }
     }
@@ -340,10 +368,12 @@ internal fun ScaffoldKpiScrollColumn(
     cardHeight: Dp = 72.dp,
     disabledFilters: Set<KpiFilter> = emptySet(),
     onDisabledTap: (KpiFilter) -> Unit = {},
+    tourState: TourGuideState? = null,
+    scrollState: androidx.compose.foundation.ScrollState? = null,
 ) {
-    val scrollState = androidx.compose.foundation.rememberScrollState()
+    val effectiveScrollState = scrollState ?: androidx.compose.foundation.rememberScrollState()
     Column(
-        modifier = modifier.verticalScroll(scrollState),
+        modifier = modifier.verticalScroll(effectiveScrollState),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DefaultKpiCards.forEach { spec ->
@@ -359,7 +389,7 @@ internal fun ScaffoldKpiScrollColumn(
                 isDisabled = isDisabled,
                 onClick = { onTap(spec.filter) },
                 onDisabledClick = { onDisabledTap(spec.filter) },
-                modifier = cardModifier,
+                modifier = cardModifier.tourTarget(tourState, kpiTourId(spec.filter)),
                 singleLabelLine = true,
             )
         }
@@ -381,10 +411,12 @@ internal fun ScaffoldKpiScrollRow(
     cardHeight: Dp = 96.dp,
     disabledFilters: Set<KpiFilter> = emptySet(),
     onDisabledTap: (KpiFilter) -> Unit = {},
+    tourState: TourGuideState? = null,
+    scrollState: androidx.compose.foundation.ScrollState? = null,
 ) {
-    val scrollState = androidx.compose.foundation.rememberScrollState()
+    val effectiveScrollState = scrollState ?: androidx.compose.foundation.rememberScrollState()
     Row(
-        modifier = modifier.horizontalScroll(scrollState),
+        modifier = modifier.horizontalScroll(effectiveScrollState),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         DefaultKpiCards.forEach { spec ->
@@ -400,7 +432,8 @@ internal fun ScaffoldKpiScrollRow(
                 onDisabledClick = { onDisabledTap(spec.filter) },
                 modifier = Modifier
                     .width(cardWidth)
-                    .height(cardHeight),
+                    .height(cardHeight)
+                    .tourTarget(tourState, kpiTourId(spec.filter)),
                 singleLabelLine = true,
             )
         }

@@ -1,6 +1,7 @@
 package com.rite.pillcounting.feature.dashboard.presentation.model
 
 import androidx.navigation.NavController
+import com.rite.pillcounting.core.tourguide.TourGuideState
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardUiState
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
@@ -24,6 +25,7 @@ class DashboardVariantParamsTest {
     private val onRecentBatchClick: (Long) -> Unit = {}
     private val onQueueDispenseClick: (Long) -> Unit = {}
     private val onQueueInventoryClick: (Long) -> Unit = {}
+    private val tourState = TourGuideState(emptyList())
 
     private fun sample() = DashboardVariantParams(
         uiState = uiState,
@@ -40,6 +42,7 @@ class DashboardVariantParamsTest {
         onQueueInventoryClick = onQueueInventoryClick,
         disabledKpiFilters = emptySet(),
         onDisabledKpiFilterTapped = {},
+        tourState = tourState,
     )
 
     @Test
@@ -126,6 +129,7 @@ class DashboardVariantParamsTest {
             onQueueInventoryClick = { queueInventoryId = it },
             disabledKpiFilters = emptySet(),
             onDisabledKpiFilterTapped = {},
+            tourState = TourGuideState(emptyList()),
         )
 
         p.onKpiFilterTapped(KpiFilter.DISP_PENDING)

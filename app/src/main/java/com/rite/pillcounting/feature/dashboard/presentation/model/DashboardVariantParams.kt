@@ -2,6 +2,7 @@ package com.rite.pillcounting.feature.dashboard.presentation.model
 
 import androidx.compose.runtime.Immutable
 import androidx.navigation.NavController
+import com.rite.pillcounting.core.tourguide.TourGuideState
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardUiState
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
@@ -46,4 +47,10 @@ data class DashboardVariantParams(
     val disabledKpiFilters: Set<KpiFilter>,
     /** Tap on a disabled KPI card — surfaces why it's unavailable instead of filtering. */
     val onDisabledKpiFilterTapped: (KpiFilter) -> Unit,
+    /**
+     * Hoisted at [com.rite.pillcounting.feature.dashboard.presentation.DashboardScreen] so it
+     * survives the dispatcher swapping between variants — e.g. a portrait/landscape rotation —
+     * instead of restarting the tour from step 1 each time.
+     */
+    val tourState: TourGuideState,
 )

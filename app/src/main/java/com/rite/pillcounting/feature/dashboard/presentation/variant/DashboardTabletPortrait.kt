@@ -26,6 +26,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.tourguide.tourTarget
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldKpiRow
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldQueueList
@@ -45,6 +46,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun DashboardTabletPortrait(params: DashboardVariantParams) {
     val uiState = params.uiState
+    val tourState = params.tourState
 
     Box(
         modifier = Modifier
@@ -63,6 +65,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                 showPmsDot = params.isHl7Enabled,
                 isPmsConnected = params.isPmsConnected,
                 navController = params.navController,
+                tourState = tourState,
             )
 
             Column(
@@ -88,7 +91,8 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                         onClick = params.onDispenseQuickAction,
                         modifier = Modifier
                             .weight(1f)
-                            .height(240.dp),
+                            .height(240.dp)
+                            .tourTarget(tourState, "dispense"),
                         iconSize = 110.dp
                     )
                     ScaffoldQuickActionCard(
@@ -98,7 +102,8 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                         onClick = params.onInventoryQuickAction,
                         modifier = Modifier
                             .weight(1f)
-                            .height(240.dp),
+                            .height(240.dp)
+                            .tourTarget(tourState, "stock_count"),
                         iconSize = 110.dp
                     )
                 }
@@ -110,6 +115,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                     disabledFilters = params.disabledKpiFilters,
                     onDisabledTap = params.onDisabledKpiFilterTapped,
                     cardHeight = 150.dp,
+                    tourState = tourState,
                 )
 
                 HorizontalDivider(
@@ -141,6 +147,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                     onSelect = { tab ->
                         scope.launch { pagerState.animateScrollToPage(tab.ordinal) }
                     },
+                    modifier = Modifier.tourTarget(tourState, "tabs"),
                 )
 
                 HorizontalPager(
@@ -152,6 +159,7 @@ fun DashboardTabletPortrait(params: DashboardVariantParams) {
                             items = uiState.queue,
                             onDispenseClick = params.onQueueDispenseClick,
                             onInventoryClick = params.onQueueInventoryClick,
+                            modifier = Modifier.tourTarget(tourState, "empty_state"),
                         )
                         DashboardTab.RECENT_ACTIVITY -> ScaffoldQueueList(
                             items = uiState.recentActivity,

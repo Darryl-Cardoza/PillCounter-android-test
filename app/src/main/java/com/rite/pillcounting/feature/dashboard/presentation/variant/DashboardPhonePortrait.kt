@@ -1,5 +1,7 @@
 package com.rite.pillcounting.feature.dashboard.presentation.variant
 
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -24,6 +27,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.tourguide.tourTarget
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.feature.dashboard.domain.model.DashboardTab
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldKpiScrollRow
@@ -33,6 +37,7 @@ import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldTabS
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldTopBar
 import com.rite.pillcounting.feature.dashboard.presentation.compose.buildTerminalUserLine
 import com.rite.pillcounting.feature.dashboard.presentation.model.DashboardVariantParams
+import com.rite.pillcounting.feature.dashboard.presentation.tour.KpiTourOrder
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 import kotlinx.coroutines.launch
 
@@ -49,6 +54,22 @@ import kotlinx.coroutines.launch
 @Composable
 fun DashboardPhonePortrait(params: DashboardVariantParams) {
     val uiState = params.uiState
+    val tourState = params.tourState
+    val kpiScrollState = rememberScrollState()
+
+    // The KPI row only shows ~3 of 6 cards at once. Rather than nudging the row over one
+    // card per step, keep it put for the first 3 (High Priority/Pending/Controlled) and do
+    // one full scroll to the end right as the tour moves past them onto Hazardous.
+    LaunchedEffect(tourState.currentIndex) {
+        val kpiIndex = KpiTourOrder.indexOf(tourState.currentStep?.id)
+        if (kpiIndex >= 0) {
+            val target = if (kpiIndex < 3) 0 else kpiScrollState.maxValue
+            kpiScrollState.animateScrollTo(
+                value = target,
+                animationSpec = tween(durationMillis = 550, easing = FastOutSlowInEasing),
+            )
+        }
+    }
 
     Box(
         modifier = Modifier
@@ -70,6 +91,7 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                 isPmsConnected = params.isPmsConnected,
                 navController = params.navController,
                 compact = true,
+                tourState = tourState,
             )
 
             Column(
@@ -94,7 +116,8 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     onClick = params.onDispenseQuickAction,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(96.dp),
+                        .height(96.dp)
+                        .tourTarget(tourState, "dispense"),
                     compact = true,
                 )
                 ScaffoldQuickActionCard(
@@ -104,7 +127,8 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     onClick = params.onInventoryQuickAction,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(96.dp),
+                        .height(96.dp)
+                        .tourTarget(tourState, "stock_count"),
                     compact = true,
                 )
 
@@ -116,6 +140,8 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     cardHeight = 96.dp,
                     disabledFilters = params.disabledKpiFilters,
                     onDisabledTap = params.onDisabledKpiFilterTapped,
+                    tourState = tourState,
+                    scrollState = kpiScrollState,
                 )
 
                 HorizontalDivider(
@@ -147,6 +173,7 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     onSelect = { tab ->
                         scope.launch { pagerState.animateScrollToPage(tab.ordinal) }
                     },
+                    modifier = Modifier.tourTarget(tourState, "tabs"),
                 )
 
                 HorizontalPager(
@@ -159,6 +186,7 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                             items = uiState.queue,
                             onDispenseClick = params.onQueueDispenseClick,
                             onInventoryClick = params.onQueueInventoryClick,
+                            modifier = Modifier.tourTarget(tourState, "empty_state"),
                         )
                         DashboardTab.RECENT_ACTIVITY -> ScaffoldQueueList(
                             items = uiState.recentActivity,

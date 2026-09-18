@@ -3,6 +3,8 @@ package com.rite.pillcounting.feature.dashboard.presentation
 import Screen
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -11,6 +13,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -21,6 +24,9 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.tourguide.TourGuideOverlay
+import com.rite.pillcounting.core.tourguide.TourGuidePrefs
+import com.rite.pillcounting.core.tourguide.rememberTourGuideState
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
@@ -30,6 +36,8 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.presentation.model.DashboardVariantParams
+import com.rite.pillcounting.feature.dashboard.presentation.tour.DASHBOARD_TOUR_SCREEN_ID
+import com.rite.pillcounting.feature.dashboard.presentation.tour.dashboardTourSteps
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhoneLandscape
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhonePortrait
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardTabletLandscape
@@ -68,6 +76,16 @@ fun DashboardScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val preferenceHelper = remember { PreferenceHelper(context) }
+
+    // Hoisted here — above the variant dispatch below — so rotating the device (which swaps
+    // which variant composable is showing) keeps the same tour instance and step index instead
+    // of restarting it from step 1.
+    val tourState = rememberTourGuideState(dashboardTourSteps())
+    LaunchedEffect(Unit) {
+        if (!TourGuidePrefs.hasSeen(context, DASHBOARD_TOUR_SCREEN_ID)) {
+            tourState.start()
+        }
+    }
 
     BackHandler(enabled = true) {
         showLogoutDialog = true
@@ -225,6 +243,7 @@ fun DashboardScreen(
         onRecentBatchClick = onRecentBatchClick,
         onQueueDispenseClick = onQueueDispenseClick,
         onQueueInventoryClick = onQueueInventoryClick,
+        tourState = tourState,
     )
 
     if (showBucketSelectDialog) {
@@ -255,11 +274,18 @@ fun DashboardScreen(
     val isTablet = UserInterfaceUtils.isTablet()
     val isLandscape = UserInterfaceUtils.isLandscape()
 
-    when {
-        isTablet && !isLandscape -> DashboardTabletPortrait(params)
-        isTablet && isLandscape -> DashboardTabletLandscape(params)
-        !isTablet && !isLandscape -> DashboardPhonePortrait(params)
-        else -> DashboardPhoneLandscape(params)
+    Box(modifier = Modifier.fillMaxSize()) {
+        when {
+            isTablet && !isLandscape -> DashboardTabletPortrait(params)
+            isTablet && isLandscape -> DashboardTabletLandscape(params)
+            !isTablet && !isLandscape -> DashboardPhonePortrait(params)
+            else -> DashboardPhoneLandscape(params)
+        }
+
+        TourGuideOverlay(
+            state = tourState,
+            onFinished = { TourGuidePrefs.markSeen(context, DASHBOARD_TOUR_SCREEN_ID) },
+        )
     }
 
     if (showLogoutDialog) {
