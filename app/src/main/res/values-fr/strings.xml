@@ -50,6 +50,34 @@
     <string name="loading_transactions">Chargement des transactions...</string>
     <string name="pms_status_connected">PMS connecté</string>
     <string name="pms_status_disconnected">PMS déconnecté</string>
+
+    <!-- Home screen tour guide -->
+    <string name="tour_title_pms">État de connexion au PMS</string>
+    <string name="tour_desc_pms">Confirme que l\'intégration avec le système de gestion de pharmacie (PMS) est active et synchronisée.</string>
+    <string name="tour_title_dispense">Dispenser</string>
+    <string name="tour_desc_dispense">Appuyez pour scanner les étiquettes Rx et démarrer le flux de dispensation.</string>
+    <string name="tour_title_stock_count">Comptage de Stock</string>
+    <string name="tour_desc_stock_count">Démarre une nouvelle session de comptage d\'inventaire pour rapprocher le stock.</string>
+    <string name="tour_title_kpi_high_priority">Priorité Élevée</string>
+    <string name="tour_desc_kpi_high_priority">Nombre d\'éléments urgents nécessitant une attention immédiate.</string>
+    <string name="tour_title_kpi_pending">En Attente</string>
+    <string name="tour_desc_kpi_pending">Nombre de tâches en attente de finalisation.</string>
+    <string name="tour_title_kpi_controlled">Méd. Contrôlés</string>
+    <string name="tour_desc_kpi_controlled">Nombre d\'éléments de substances contrôlées en attente de révision.</string>
+    <string name="tour_title_kpi_hazardous">Dangereux</string>
+    <string name="tour_desc_kpi_hazardous">Nombre de lignes de dispensation marquées comme médicaments dangereux. Faites défiler la ligne pour la voir.</string>
+    <string name="tour_title_kpi_cycle_count">Comptage Cyclique</string>
+    <string name="tour_desc_kpi_cycle_count">Nombre de lots de comptage cyclique d\'inventaire. Faites défiler la ligne pour la voir.</string>
+    <string name="tour_title_kpi_pending_batch">Lot en Attente</string>
+    <string name="tour_desc_kpi_pending_batch">Nombre de lots d\'inventaire encore en cours. Faites défiler la ligne pour la voir.</string>
+    <string name="tour_title_tabs">File / Activité</string>
+    <string name="tour_desc_tabs">Bascule la liste ci-dessous entre la file d\'attente du jour et l\'historique d\'activité récente.</string>
+    <string name="tour_skip">Passer</string>
+    <string name="tour_back">Retour</string>
+    <string name="tour_next">Suivant</string>
+    <string name="tour_done">Terminé</string>
+    <string name="tour_step_of">Étape %1$d sur %2$d</string>
+
     <string name="kpi_disp_short">Disp.</string>
     <string name="kpi_inv_short">Inv.</string>
     <string name="kpi_high_priority">Priorité élevée</string>

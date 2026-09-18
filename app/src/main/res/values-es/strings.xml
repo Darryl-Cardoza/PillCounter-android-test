@@ -50,6 +50,34 @@
     <string name="loading_transactions">Cargando transacciones...</string>
     <string name="pms_status_connected">PMS conectado</string>
     <string name="pms_status_disconnected">PMS desconectado</string>
+
+    <!-- Home screen tour guide -->
+    <string name="tour_title_pms">Estado de conexión con el PMS</string>
+    <string name="tour_desc_pms">Confirma que la integración con el sistema de gestión de farmacia (PMS) está activa y sincronizando.</string>
+    <string name="tour_title_dispense">Dispensar</string>
+    <string name="tour_desc_dispense">Toca para escanear etiquetas de Rx e iniciar el flujo de dispensación.</string>
+    <string name="tour_title_stock_count">Conteo de Inventario</string>
+    <string name="tour_desc_stock_count">Inicia una nueva sesión de conteo de inventario para conciliar el stock.</string>
+    <string name="tour_title_kpi_high_priority">Alta Prioridad</string>
+    <string name="tour_desc_kpi_high_priority">Cantidad de elementos urgentes que necesitan atención inmediata.</string>
+    <string name="tour_title_kpi_pending">Pendientes</string>
+    <string name="tour_desc_kpi_pending">Cantidad de tareas en espera de finalizar.</string>
+    <string name="tour_title_kpi_controlled">Med. Controlados</string>
+    <string name="tour_desc_kpi_controlled">Cantidad de elementos de sustancias controladas en espera de revisión.</string>
+    <string name="tour_title_kpi_hazardous">Peligrosos</string>
+    <string name="tour_desc_kpi_hazardous">Cantidad de líneas de dispensación marcadas como fármacos peligrosos. Desliza la fila para verla.</string>
+    <string name="tour_title_kpi_cycle_count">Conteo Cíclico</string>
+    <string name="tour_desc_kpi_cycle_count">Cantidad de lotes de conteo cíclico de inventario. Desliza la fila para verla.</string>
+    <string name="tour_title_kpi_pending_batch">Lote Pendiente</string>
+    <string name="tour_desc_kpi_pending_batch">Cantidad de lotes de inventario que aún están en curso. Desliza la fila para verla.</string>
+    <string name="tour_title_tabs">Cola / Actividad</string>
+    <string name="tour_desc_tabs">Cambia la lista de abajo entre la cola pendiente de hoy y el historial de actividad reciente.</string>
+    <string name="tour_skip">Omitir</string>
+    <string name="tour_back">Atrás</string>
+    <string name="tour_next">Siguiente</string>
+    <string name="tour_done">Listo</string>
+    <string name="tour_step_of">Paso %1$d de %2$d</string>
+
     <string name="kpi_disp_short">Disp.</string>
     <string name="kpi_inv_short">Inv.</string>
     <string name="kpi_high_priority">Alta prioridad</string>

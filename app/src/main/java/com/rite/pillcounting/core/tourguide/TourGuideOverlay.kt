@@ -50,7 +50,7 @@ import com.rite.pillcounting.R
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 import kotlin.math.roundToInt
 
-private val SpotlightPadding = 8.dp
+private val SpotlightPadding = 2.dp
 private val SpotlightCornerRadius = 12.dp
 private val TooltipWidth = 300.dp
 private val TooltipMargin = 16.dp
@@ -69,7 +69,7 @@ fun TourGuideOverlay(state: TourGuideState, onFinished: () -> Unit = {}, modifie
 
     val density = LocalDensity.current
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
-    val accentColor = MaterialTheme.colorScheme.secondary
+    val accentColor = MaterialTheme.colorScheme.primary
 
     Box(
         modifier = modifier
@@ -117,7 +117,7 @@ fun TourGuideOverlay(state: TourGuideState, onFinished: () -> Unit = {}, modifie
                     topLeft = Offset(paddedRect.left, paddedRect.top),
                     size = Size(paddedRect.width, paddedRect.height),
                     cornerRadius = CornerRadius(cornerPx, cornerPx),
-                    style = Stroke(width = with(density) { 2.dp.toPx() }),
+                    style = Stroke(width = with(density) { 1.dp.toPx() }),
                 )
             }
         }
@@ -230,14 +230,22 @@ fun TourGuideOverlay(state: TourGuideState, onFinished: () -> Unit = {}, modifie
                         onClick = { state.dismiss(); onFinished() },
                         contentPadding = compactPadding,
                     ) {
-                        Text(text = stringResource(R.string.tour_skip), fontSize = 12.sp)
+                        Text(
+                            text = stringResource(R.string.tour_skip),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
                     if (state.currentIndex > 0) {
                         TextButton(
                             onClick = { state.back() },
                             contentPadding = compactPadding,
                         ) {
-                            Text(text = stringResource(R.string.tour_back), fontSize = 12.sp)
+                            Text(
+                                text = stringResource(R.string.tour_back),
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
                         }
                     }
                     TextButton(
@@ -255,7 +263,7 @@ fun TourGuideOverlay(state: TourGuideState, onFinished: () -> Unit = {}, modifie
                             text = if (state.isLastStep) stringResource(R.string.tour_done) else stringResource(R.string.tour_next),
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
-                            color = accentColor,
+                            color = MaterialTheme.colorScheme.primary,
                         )
                     }
                 }
