@@ -56,6 +56,8 @@ import kotlin.math.roundToInt
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.tourTarget
 import com.rite.pillcounting.core.utils.compose.WorkflowStepper
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
@@ -278,7 +280,8 @@ internal fun BoxWithConstraintsScope.CountModeCenterCircle(
             // (Done) once the target is met. Disabled mid-cooldown.
             .clickable(enabled = !isAddCooldown) {
                 if (isAllDone) onDone() else onAdd()
-            },
+            }
+            .tourTarget(FtueController.state, "count_add_circle"),
         contentAlignment = Alignment.Center
     ) {
         CircularCountIndicator(

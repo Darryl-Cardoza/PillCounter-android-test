@@ -1,5 +1,6 @@
 package com.rite.pillcounting.core.tourguide
 
+import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
@@ -13,11 +14,34 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 
-/** One stop on a screen's tour guide: the target it points at, plus its tooltip copy. */
+/**
+ * How a step behaves and how it advances:
+ * - [INFO]: no real action to take — full-screen block, tooltip with Skip/Back/Next.
+ * - [ACTION_TAP]: blocks everything except the target rect; a tap inside is not consumed
+ *   (the real control underneath still fires), and that same tap-and-release advances the
+ *   step — no Next button, "one click at a time" like a game tutorial.
+ * - [ACTION_WAIT]: pure visual spotlight, blocks nothing at all (the user can freely
+ *   interact, e.g. a live camera scan needs no tap); advancement is driven externally via
+ *   [TourGuideState.advanceIfCurrent] once the real action completes.
+ */
+enum class TourStepMode { INFO, ACTION_TAP, ACTION_WAIT }
+
+/**
+ * Forces the tooltip to one screen edge instead of [TourGuideOverlay]'s automatic
+ * above/below-the-target placement. Needed for a target that fills most of the screen
+ * (e.g. a full-screen camera preview) — the automatic logic finds no room on either side
+ * and stacks the tooltip right against whichever edge the target is closest to, which can
+ * land it on top of real screen content (a header, a title) instead of clear of it.
+ */
+enum class TooltipEdge { TOP, BOTTOM }
+
+/** One stop on a tour: the target it points at, its tooltip copy, and how it advances. */
 data class TourStep(
     val id: String,
-    val title: String,
-    val description: String,
+    @StringRes val titleRes: Int,
+    @StringRes val descriptionRes: Int,
+    val mode: TourStepMode = TourStepMode.INFO,
+    val pinnedEdge: TooltipEdge? = null,
 )
 
 /**
@@ -62,6 +86,11 @@ class TourGuideState(val steps: List<TourStep>) {
 
     fun dismiss() {
         isActive = false
+    }
+
+    /** Advances only if [id] is still the current step — safe to call from business logic. */
+    fun advanceIfCurrent(id: String) {
+        if (isActive && currentStep?.id == id) next()
     }
 }
 

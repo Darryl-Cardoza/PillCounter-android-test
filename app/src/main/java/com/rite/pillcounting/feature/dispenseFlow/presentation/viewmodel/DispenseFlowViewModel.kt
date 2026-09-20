@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.models.StepState
+import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.TutorialEntryRegistry
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
@@ -481,7 +483,13 @@ class DispenseFlowViewModel @Inject constructor(
             transactionOrderId = draft.refillNo?.takeIf { it.isNotBlank() }?.let { "${draft.rxNo}-$it" } ?: draft.rxNo,
             bucketId = draft.bucket,
         )
-        return pillCountTxnDao.upsertPreservingId(newTxn)
+        val txnId = pillCountTxnDao.upsertPreservingId(newTxn)
+        // A dispense created while the guided tour is driving this screen is a practice
+        // run through the real flow, not a real dispense — it must never reach the PMS.
+        if (FtueController.state.isActive) {
+            TutorialEntryRegistry.markTutorialEntry(txnId)
+        }
+        return txnId
     }
 
     /**

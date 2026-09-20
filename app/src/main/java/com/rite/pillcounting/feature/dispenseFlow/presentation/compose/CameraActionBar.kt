@@ -1,4 +1,4 @@
-﻿package com.rite.pillcounting.feature.dispenseFlow.presentation.compose
+package com.rite.pillcounting.feature.dispenseFlow.presentation.compose
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
@@ -29,6 +29,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.tourTarget
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.rite.pillcounting.core.utils.constants.Dimens
@@ -120,6 +122,8 @@ private fun ActionButtonItems(
     onDone: () -> Unit,
     dimens: Dimens
 ) {
+    val tourState = FtueController.state
+
     // REDO
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -148,7 +152,8 @@ private fun ActionButtonItems(
                 color = if (hasCapture || isCapturing) AppTheme.extendedColors.primaryBackground else MaterialTheme.colorScheme.primary,
                 shape = CircleShape
             )
-            .clickable(enabled = !hasCapture && !isCapturing) { onCapture() },
+            .clickable(enabled = !hasCapture && !isCapturing) { onCapture() }
+            .tourTarget(tourState, "vial_capture"),
         contentAlignment = Alignment.Center
     ) {
         Icon(
@@ -162,7 +167,9 @@ private fun ActionButtonItems(
     // DONE
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.clickable(enabled = hasCapture) { onDone() }
+        modifier = Modifier
+            .clickable(enabled = hasCapture) { onDone() }
+            .tourTarget(tourState, "vial_done")
     ) {
         Icon(
             imageVector = Icons.Default.Check,

@@ -24,9 +24,10 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
+import com.rite.pillcounting.core.tourguide.FTUE_ID
+import com.rite.pillcounting.core.tourguide.FtueController
 import com.rite.pillcounting.core.tourguide.TourGuideOverlay
 import com.rite.pillcounting.core.tourguide.TourGuidePrefs
-import com.rite.pillcounting.core.tourguide.rememberTourGuideState
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
@@ -36,8 +37,6 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.model.KpiFilter
 import com.rite.pillcounting.feature.dashboard.presentation.model.DashboardVariantParams
-import com.rite.pillcounting.feature.dashboard.presentation.tour.DASHBOARD_TOUR_SCREEN_ID
-import com.rite.pillcounting.feature.dashboard.presentation.tour.dashboardTourSteps
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhoneLandscape
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardPhonePortrait
 import com.rite.pillcounting.feature.dashboard.presentation.variant.DashboardTabletLandscape
@@ -77,12 +76,11 @@ fun DashboardScreen(
     val activity = context as? Activity
     val preferenceHelper = remember { PreferenceHelper(context) }
 
-    // Hoisted here — above the variant dispatch below — so rotating the device (which swaps
-    // which variant composable is showing) keeps the same tour instance and step index instead
-    // of restarting it from step 1.
-    val tourState = rememberTourGuideState(dashboardTourSteps())
+    // The shared, app-wide FTUE state (not a `remember`ed instance) — it must survive
+    // navigating away to the dispense flow, which disposes this whole composable.
+    val tourState = FtueController.state
     LaunchedEffect(Unit) {
-        if (!TourGuidePrefs.hasSeen(context, DASHBOARD_TOUR_SCREEN_ID)) {
+        if (!TourGuidePrefs.hasSeen(context, FTUE_ID)) {
             tourState.start()
         }
     }
@@ -284,7 +282,8 @@ fun DashboardScreen(
 
         TourGuideOverlay(
             state = tourState,
-            onFinished = { TourGuidePrefs.markSeen(context, DASHBOARD_TOUR_SCREEN_ID) },
+            onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
+            modifier = Modifier.fillMaxSize(),
         )
     }
 

@@ -31,6 +31,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -38,6 +39,11 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.tourguide.FTUE_ID
+import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.TourGuideOverlay
+import com.rite.pillcounting.core.tourguide.TourGuidePrefs
+import com.rite.pillcounting.core.tourguide.tourTarget
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
@@ -55,6 +61,9 @@ fun AddNoteDialog(
     var noteText by rememberSaveable { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val tourState = FtueController.state
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -66,6 +75,7 @@ fun AddNoteDialog(
             usePlatformDefaultWidth = false
         )
     ) {
+        Box {
         Card(
             shape = RoundedCornerShape(dimens.medium),
             modifier = Modifier
@@ -152,7 +162,8 @@ fun AddNoteDialog(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 10.dp),
+                        .padding(horizontal = 10.dp)
+                        .tourTarget(tourState, "add_note_actions"),
                     horizontalArrangement = Arrangement.Center
                 ) {
                     HollowButton(
@@ -172,7 +183,30 @@ fun AddNoteDialog(
                         },
                     )
                 }
+
+                // This dialog wraps tightly to its real content, with the Skip/Save row as
+                // the very last thing in it — leaving no room below for the tour tooltip,
+                // which would otherwise render right on top of those buttons instead of
+                // clear of them. Reserve that room only while this step is actually up.
+                if (tourState.isActive && tourState.currentStep?.id == "add_note_actions") {
+                    Spacer(modifier = Modifier.height(220.dp))
+                }
             }
+        }
+        TourGuideOverlay(
+            state = tourState,
+            onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
+            // matchParentSize, not fillMaxSize: this Box is the Dialog's own content —
+            // fillMaxSize would force the dialog window to expand to fill the whole
+            // screen instead of wrapping tightly around the 300dp-wide Card.
+            modifier = Modifier.matchParentSize(),
+            isScreenRoot = false,
+            // This dialog only ever tags "add_note_actions" — restrict to it explicitly
+            // (see the equivalent comment in VerifyRxDetailsBottomSheet.kt) so a rect
+            // registered by some unrelated composable elsewhere in the same window can
+            // never be mistaken for this dialog's own target.
+            ownedStepIds = setOf("add_note_actions"),
+        )
         }
     }
 }

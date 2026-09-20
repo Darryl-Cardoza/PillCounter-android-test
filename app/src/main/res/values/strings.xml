@@ -78,6 +78,46 @@
     <string name="tour_done">Done</string>
     <string name="tour_step_of">Step %1$d of %2$d</string>
 
+    <!-- Dispense flow tour guide -->
+    <string name="tour_title_scan_rx_back">Back</string>
+    <string name="tour_desc_scan_rx_back">Leaves the dispense flow and returns to the dashboard.</string>
+    <string name="tour_title_scan_rx_camera">Scan the Rx label</string>
+    <string name="tour_desc_scan_rx_camera">Point the camera at the prescription label\'s barcode to start dispensing.</string>
+    <string name="tour_title_scan_rx_bt_scanner">Hardware scanner</string>
+    <string name="tour_desc_scan_rx_bt_scanner">A connected barcode scanner can type the Rx code in here directly.</string>
+    <string name="tour_title_verify_rx_details">Prescription details</string>
+    <string name="tour_desc_verify_rx_details">Confirm the drug, NDC and Rx numbers scanned from the label.</string>
+    <string name="tour_title_verify_rx_tiles">Quantity &amp; drug info</string>
+    <string name="tour_desc_verify_rx_tiles">Review the prescribed quantity, strength and storage bucket.</string>
+    <string name="tour_title_verify_rx_actions">Cancel or proceed</string>
+    <string name="tour_desc_verify_rx_actions">Cancel to rescan, or proceed to start counting this prescription.</string>
+    <string name="tour_title_verify_rx_proceed">Confirm &amp; count</string>
+    <string name="tour_desc_verify_rx_proceed">Tap Proceed to start counting this prescription.</string>
+    <string name="tour_title_scan_container">Scan the container</string>
+    <string name="tour_desc_scan_container">Point the camera at the container\'s QR code or NDC barcode.</string>
+    <string name="tour_title_count_header">Prescription in progress</string>
+    <string name="tour_desc_count_header">Shows the NDC, drug name, strength and bucket you\'re currently counting.</string>
+    <string name="tour_title_count_steps">Workflow steps</string>
+    <string name="tour_desc_count_steps">Tracks progress through scanning, counting and verification.</string>
+    <string name="tour_title_count_view_all">View all counts</string>
+    <string name="tour_desc_count_view_all">See every count captured so far for this prescription.</string>
+    <string name="tour_title_count_add_circle">Add a count</string>
+    <string name="tour_desc_count_add_circle">Tap to add the detected pills to the running count. Long-press to move it.</string>
+    <string name="tour_title_vial_redo">Redo</string>
+    <string name="tour_desc_vial_redo">Retake the vial photo if it didn\'t come out clearly.</string>
+    <string name="tour_title_vial_capture">Capture</string>
+    <string name="tour_desc_vial_capture">Takes a photo of the pill vial for the record.</string>
+    <string name="tour_title_vial_done">Done</string>
+    <string name="tour_desc_vial_done">Confirms the captured vial photo and moves on.</string>
+    <string name="tour_title_add_note_textarea">Add a note</string>
+    <string name="tour_desc_add_note_textarea">Record any observation about this dispense, like a mismatch or damage.</string>
+    <string name="tour_title_add_note_actions">Skip or save</string>
+    <string name="tour_desc_add_note_actions">Skip if there\'s nothing to note, or save your note to the record.</string>
+    <string name="tour_title_queue_tabs">Filter the queue</string>
+    <string name="tour_desc_queue_tabs">Switch between pending, priority, controlled and hazardous transactions.</string>
+    <string name="tour_title_queue_list">Today\'s transactions</string>
+    <string name="tour_desc_queue_list">Tap any transaction to resume or review its dispense.</string>
+
     <string name="kpi_disp_short">Disp.</string>
     <string name="kpi_inv_short">Inv.</string>
     <string name="kpi_high_priority">High Priority</string>

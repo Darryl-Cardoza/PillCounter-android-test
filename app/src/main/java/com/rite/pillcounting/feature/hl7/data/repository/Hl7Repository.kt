@@ -25,6 +25,7 @@ import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.scanning.data.DrugRepository
+import com.rite.pillcounting.core.tourguide.TutorialEntryRegistry
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.feature.hl7.core.Hl7MessageSender
@@ -365,6 +366,10 @@ class Hl7Repository @Inject constructor(
      * sweep, and without the lock both paths send the same dispense.
      */
     fun sendDispenseNow(txnId: Long) {
+        if (TutorialEntryRegistry.isTutorialEntry(txnId)) {
+            logger.i("Tutorial entry — never sending to PMS, txnId=$txnId")
+            return
+        }
         if (preferenceHelper.isHl7Enabled()) {
             scope.launch {
                 logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
@@ -392,7 +397,7 @@ class Hl7Repository @Inject constructor(
             }
             try {
                 val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
-                    .filterNot { it.txnId in rejectedTxnIds }
+                    .filterNot { it.txnId in rejectedTxnIds || TutorialEntryRegistry.isTutorialEntry(it.txnId) }
                 if (pendingTxn.isEmpty()) {
                     logger.i("No pending HL7 transactions to sync")
                     return@launch

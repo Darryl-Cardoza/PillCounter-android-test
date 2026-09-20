@@ -40,7 +40,7 @@ import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldQuic
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldTabStrip
 import com.rite.pillcounting.feature.dashboard.presentation.compose.ScaffoldTopBar
 import com.rite.pillcounting.feature.dashboard.presentation.compose.buildTerminalUserLine
-import com.rite.pillcounting.feature.dashboard.presentation.tour.KpiTourOrder
+import com.rite.pillcounting.core.tourguide.KpiTourOrder
 import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
 import kotlinx.coroutines.launch
 

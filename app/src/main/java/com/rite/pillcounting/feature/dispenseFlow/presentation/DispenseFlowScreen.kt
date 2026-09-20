@@ -58,6 +58,11 @@ import com.rite.pillcounting.core.scanning.domain.model.BottleInfo
 import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.core.scanning.presentation.compose.CameraPreviewSection
 import com.rite.pillcounting.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.rite.pillcounting.core.tourguide.FTUE_ID
+import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.TourGuideOverlay
+import com.rite.pillcounting.core.tourguide.TourGuidePrefs
+import com.rite.pillcounting.core.tourguide.tourTarget
 import com.rite.pillcounting.core.utils.common.BarcodeDecoder
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -140,6 +145,23 @@ fun DispenseFlowScreen(
     val isTabletDevice = configuration.smallestScreenWidthDp >= 600
     val isSoundEnabled by pillVm.isSoundEnabled.collectAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    // ── Dispense-flow FTUE hooks ─────────────────────────────────────────────
+    // The gated tutorial (started on the dashboard, see DashboardScreen.kt) shares one
+    // TourGuideState across screens via FtueController. Its two "scan the barcode" steps
+    // are hands-free (ACTION_WAIT — no tap to gate), so they advance themselves here, right
+    // when the real scan actually succeeds.
+    val ftueState = FtueController.state
+    LaunchedEffect(dispenseState.showRxDetails) {
+        if (dispenseState.showRxDetails) {
+            ftueState.advanceIfCurrent("camera_preview")
+        }
+    }
+    LaunchedEffect(dispenseState.showNdcDetails, dispenseState.stage) {
+        if (dispenseState.showNdcDetails || dispenseState.stage == DispenseStage.COUNTING) {
+            ftueState.advanceIfCurrent("camera_preview")
+        }
+    }
 
     // ── BT scanner input ────────────────────────────────────────────────────
     // Tracks the text typed by a Bluetooth HID barcode scanner into the overlay
@@ -983,7 +1005,9 @@ fun DispenseFlowScreen(
                         pillVm.onFrameCaptured(imageProxy)
                     },
                     onFilteredCountChanged = { filteredPillCount = it },
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .tourTarget(ftueState, "camera_preview"),
                     imageFrameWidth = pillState.imageFrameWidth,
                     imageFrameHeight = pillState.imageFrameHeight,
                     onPreviewSizeKnown = { w, h ->
@@ -1542,6 +1566,22 @@ fun DispenseFlowScreen(
             ) {
                 CircularProgressIndicator(color = Color.White)
             }
+        }
+
+        // Never render the screen-root overlay while the RX/NDC verify surface is up. In
+        // portrait that surface is a ModalBottomSheet — a separate window this instance
+        // can't see into anyway, so this is just a defensive no-op there. In landscape it's
+        // VerifyRxDetailsInlinePanel, rendered inline in THIS SAME window/Box — its own
+        // TourGuideOverlay (isScreenRoot = false, above) and this one would otherwise both
+        // find the same registered "verify_rx_proceed" target and both render: two stacked
+        // scrims and two overlapping tooltip cards. The panel already owns any step whose
+        // target lives inside it, in every orientation.
+        if (!dispenseState.showRxDetails && !dispenseState.showNdcDetails) {
+            TourGuideOverlay(
+                state = ftueState,
+                onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
+                modifier = Modifier.fillMaxSize(),
+            )
         }
     }
 }
