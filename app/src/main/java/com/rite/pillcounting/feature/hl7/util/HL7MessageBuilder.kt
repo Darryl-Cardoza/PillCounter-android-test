@@ -745,14 +745,18 @@ object HL7MessageBuilder {
                 )
             )
         }
+        // No bottle has linked rows, so RXD-4's fallback total carries here too, on the
+        // first row — the ZSN quantities still sum to the dispensed total.
+        val unlinked = bottleCounts.sum() == 0
         return bottles.mapIndexed { index, bottle ->
+            val quantity = if (unlinked && index == 0) totalCount else bottleCounts[index]
             ZsnRow(
                 setId = (index + 1).toString(),
                 nationalDrugCode = drugCode,
                 lotNumber = bottle.lotNumber,
                 expirationDate = bottle.expirationDate,
                 packageSerialNumber = bottle.serialNumber,
-                quantityFromThisStockItem = bottleCounts[index].toString(),
+                quantityFromThisStockItem = quantity.toString(),
                 captureSource = ScanSource.GS1,
                 captureTimestamp = now,
                 transactionType = ZsnTransactionType.DISPENSE

@@ -107,7 +107,7 @@ class PillAnalyzerTest {
     }
 
     @Test
-    fun `resetGloveCadence clears the count stabilizer back to zero`() {
+    fun `resetGloveCadence clears the count stabilizer so the next scene re-acquires`() {
         val analyzer = newAnalyzer()
         val stabilizer = stabilizerOf(analyzer)
         stabilizer.update(6)
@@ -116,7 +116,9 @@ class PillAnalyzerTest {
 
         analyzer.resetGloveCadence()
 
-        assertEquals(0, stabilizer.update(6))
+        // Un-reset, the window still holds the 6s and the median keeps showing 6.
+        // Cleared, 3 is taken straight away off a zero display.
+        assertEquals(3, stabilizer.update(3))
     }
 
     @Test
