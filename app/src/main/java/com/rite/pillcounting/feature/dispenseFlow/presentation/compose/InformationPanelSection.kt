@@ -44,7 +44,17 @@ fun InformationPanelSection(
     val targetCount = uiState.targetCount
     val scanType = uiState.scanType
     val onAdd = { onEvent(PillScanningEvent.AddTransactionDetailClicked(filteredPillCount, stepType)) }
-    val onDone = { onEvent(PillScanningEvent.FinalDone(stepType = stepType, totalCount)) }
+    val onDone = {
+        // FTUE: do NOT advance "count_add_circle" here. This is the real "All Done"
+        // completion tap for whichever StepState is current, but the workflow can
+        // route through this exact same circle for MORE THAN ONE StepState in a row
+        // (CONTAINER_INITIATE → TARGET_VERIFICATION, see buildWorkflowSteps) before
+        // actually reaching VIAL — advancing on the first one would leave the tour
+        // sitting on "vial_capture" while the real screen is still on a second
+        // counting round. DispenseFlowScreen.kt's LaunchedEffect(pillStepType)
+        // advances this step hands-free once the workflow genuinely reaches VIAL.
+        onEvent(PillScanningEvent.FinalDone(stepType = stepType, totalCount))
+    }
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Rotation swaps the CountMode variant below and recreates its

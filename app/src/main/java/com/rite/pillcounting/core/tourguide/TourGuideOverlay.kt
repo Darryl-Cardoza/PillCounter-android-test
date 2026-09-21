@@ -123,6 +123,11 @@ fun TourGuideOverlay(
     // non-modal inline panel) reads as "yes, a rect exists" here too, and this instance would
     // wrongly render a step it has nothing to do with, right on top of its own real content.
     ownedStepIds: Set<String>? = null,
+    // Non-null only for a step whose hands-free advance is waiting on real external
+    // data the demo environment may not have (e.g. an actual Rx label or bottle to
+    // scan) — a "Next" button alongside Skip that lets the caller fake that data and
+    // advance immediately, instead of leaving the user stuck with nothing to scan.
+    onDummyNext: (() -> Unit)? = null,
 ) {
     if (!state.isActive) return
     val step = state.currentStep ?: return
@@ -160,17 +165,26 @@ fun TourGuideOverlay(
     }
     val effectivePinnedEdge = pinnedEdgeOverride ?: step.pinnedEdge
 
-    // An ACTION_TAP/ACTION_WAIT step's target can live in a *different* window from this
-    // overlay instance (e.g. a step gating a button inside a ModalBottomSheet, while this
-    // instance sits at the screen root) — its bounds will then never register here. Only
-    // INFO steps (and any step with an explicit pinnedEdge) are meant to show a tooltip with
-    // no resolved target; otherwise, render nothing at all rather than paint a stray
-    // full-screen scrim over content the *correct* overlay instance (in that other window)
-    // is already gating properly.
+    // An ACTION_TAP step's target can live in a *different* window from this overlay
+    // instance (e.g. a step gating a button inside a ModalBottomSheet, while this
+    // instance sits at the screen root) — its bounds will then never register here. For
+    // ACTION_TAP specifically, render nothing at all rather than paint a stray
+    // full-screen scrim/tap-block over content the *correct* overlay instance (in that
+    // other window) is already gating properly.
+    //
+    // ACTION_WAIT gets the same no-target fallback as INFO/pinnedEdge: it blocks
+    // nothing, so there's no multi-window tap-gating conflict to avoid, and its target
+    // living on a screen with its own continuously-recomposing subtree (e.g. a live
+    // camera preview re-registering bounds every frame) can leave paddedRect
+    // transiently — or, if [tourTarget]'s onGloballyPositioned genuinely never fires
+    // for some layout edge case, permanently — null. Without this, a step like
+    // "count_add_circle" (ACTION_WAIT, no pinnedEdge) would render nothing at all and
+    // never recover, even though its real target is right there on screen.
     val ownsCurrentStep = if (ownedStepIds != null) {
         step.id in ownedStepIds
     } else {
-        paddedRect != null || (isScreenRoot && (step.mode == TourStepMode.INFO || effectivePinnedEdge != null))
+        paddedRect != null ||
+            (isScreenRoot && (step.mode != TourStepMode.ACTION_TAP || effectivePinnedEdge != null))
     }
     if (!ownsCurrentStep) return
 
@@ -263,21 +277,29 @@ fun TourGuideOverlay(
         }
 
         // Scrim with a cutout hole around the target — drawn offscreen so BlendMode.Clear
-        // punches through this layer only, not the content underneath.
-        Canvas(
-            modifier = Modifier
-                .fillMaxSize()
-                .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
-        ) {
-            drawRect(color = Color.Black.copy(alpha = 0.68f))
-            if (localRect != null) {
-                drawRoundRect(
-                    color = Color.Transparent,
-                    topLeft = Offset(localRect.left, localRect.top),
-                    size = Size(localRect.width, localRect.height),
-                    cornerRadius = CornerRadius(cornerPx, cornerPx),
-                    blendMode = BlendMode.Clear,
-                )
+        // punches through this layer only, not the content underneath. Skipped for a
+        // targetless ACTION_WAIT step (e.g. "select_bucket", explaining a real system
+        // AlertDialog we deliberately don't tag): that dialog draws in its own Android
+        // Window, always on top of anything this Compose-level scrim paints, so dimming
+        // everything else just makes the (undimmable) dialog look oddly "hot" against a
+        // darkened background for no benefit — the dialog already dims its own background.
+        val skipScrim = step.mode == TourStepMode.ACTION_WAIT && localRect == null
+        if (!skipScrim) {
+            Canvas(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
+            ) {
+                drawRect(color = Color.Black.copy(alpha = 0.68f))
+                if (localRect != null) {
+                    drawRoundRect(
+                        color = Color.Transparent,
+                        topLeft = Offset(localRect.left, localRect.top),
+                        size = Size(localRect.width, localRect.height),
+                        cornerRadius = CornerRadius(cornerPx, cornerPx),
+                        blendMode = BlendMode.Clear,
+                    )
+                }
             }
         }
 
@@ -417,6 +439,23 @@ fun TourGuideOverlay(
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.primary,
                         )
+                    }
+                    // Escape hatch for a hands-free step blocked on real external data
+                    // the demo environment may not have (a real Rx label, a real bottle
+                    // to scan) — fakes that data via the caller-supplied callback and
+                    // advances immediately, same as the real thing succeeding would.
+                    if (onDummyNext != null) {
+                        TextButton(
+                            onClick = onDummyNext,
+                            contentPadding = compactPadding,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.tour_next),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                            )
+                        }
                     }
                     // Action steps advance from the real tap/callback, not a synthetic
                     // button — only Skip is offered alongside Back/Next for INFO steps.

@@ -691,6 +691,15 @@ interface PillCountTxnDao {
     @Query("DELETE FROM pill_count_txn WHERE txnId = :txnId")
     suspend fun deleteTransaction(txnId: Long)
 
+    /**
+     * All txnIds for a given drug — used by the FTUE tutorial's orphan-data sweep
+     * ([Hl7Repository.deleteTutorialData]) to find dispense txns created against the
+     * fixed tutorial demo drug even when [TutorialEntryRegistry]'s in-memory marker
+     * for them was lost (e.g. the app process was killed mid-tutorial).
+     */
+    @Query("SELECT txnId FROM pill_count_txn WHERE drugId = :drugId")
+    suspend fun getTxnIdsByDrugId(drugId: Long): List<Long>
+
 
     /**
      * Observe dispense transactions that are completed but NOT synced with PMS — exists solely

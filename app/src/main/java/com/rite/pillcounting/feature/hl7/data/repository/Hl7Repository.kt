@@ -7,6 +7,7 @@ import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
+import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDetailsDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
@@ -500,6 +501,21 @@ class Hl7Repository @Inject constructor(
     suspend fun deleteTutorialData() {
         TutorialEntryRegistry.consumeTutorialTxnIds().forEach { deleteSyncedTransaction(it) }
         TutorialEntryRegistry.consumeTutorialBatchIds().forEach { deleteTutorialBatch(it) }
+
+        // Orphan sweep: TutorialEntryRegistry is in-memory only, so a tutorial run that
+        // ends via the app process being killed (rather than a clean Skip/finish while
+        // still running) loses its markers entirely — that data would otherwise linger
+        // in Recent Activity forever. The fixed tutorial demo drug (dummy NDC, seeded by
+        // DispenseFlowViewModel.useDummyRxData/InventoryScanViewModel.useDummyNdcData) is
+        // a durable marker that survives restarts, so sweep by it too on every cleanup
+        // pass — called both at tutorial end and once at app startup (MainActivity.kt),
+        // so orphans from a killed session get caught the next time the app runs even if
+        // no tutorial is active this session.
+        val demoDrugId = drugMasterDao.getDrugByNdc(TUTORIAL_DUMMY_NDC)?.drugId
+        if (demoDrugId != null) {
+            pillCountTxnDao.getTxnIdsByDrugId(demoDrugId).forEach { deleteSyncedTransaction(it) }
+            stockTxnDao.getBatchIdsByDrugId(demoDrugId).forEach { deleteTutorialBatch(it) }
+        }
     }
 
     /**

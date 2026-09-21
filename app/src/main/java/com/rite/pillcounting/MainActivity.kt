@@ -307,6 +307,16 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     }
+                                    // Orphan sweep: the transition-based cleanup above only fires
+                                    // for a tutorial that's still running THIS app process when it
+                                    // finishes — a tutorial run left dangling by the app process
+                                    // being killed mid-tour never gets a true->false transition to
+                                    // react to at all. deleteTutorialData() also sweeps by the fixed
+                                    // tutorial demo drug (a durable DB marker, unlike the in-memory
+                                    // TutorialEntryRegistry), so run it once per cold start too.
+                                    LaunchedEffect(Unit) {
+                                        settingsViewModel.onTutorialFinished()
+                                    }
 
                                     // Bump on every HEALTHY -> OFFLINE transition so the
                                     // OfflineOverlay re-expands its message pill on each

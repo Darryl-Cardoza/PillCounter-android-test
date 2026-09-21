@@ -14,6 +14,7 @@ import com.rite.pillcounting.core.room.dao.DrugMasterDao
 import com.rite.pillcounting.core.room.dao.StockTxnDao
 import com.rite.pillcounting.core.room.models.BottleInfoEntity
 import com.rite.pillcounting.core.room.models.DrugMasterEntity
+import com.rite.pillcounting.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
 import com.rite.pillcounting.core.room.models.StockTxnEntity
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
 import com.rite.pillcounting.core.scanning.domain.data.IDrugRepository
@@ -506,6 +507,55 @@ class InventoryScanViewModel @Inject constructor(
                 logger.e("INV_SCAN onBarcodeDetected failed", e)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
                 _scannerPaused.value = false
+            }
+        }
+    }
+
+    /**
+     * Tour-only escape hatch for the scan-NDC step's dummy "Next" button: when
+     * there's no real bottle to scan, seeds/reuses the same fixed demo drug the
+     * dispense flow's dummy fallback uses and activates it exactly as a real scan
+     * would — skipping barcode decode entirely since there's no real label to decode.
+     */
+    fun useDummyNdcData() {
+        viewModelScope.launch {
+            try {
+                drugMasterDao.upsertPreservingId(
+                    DrugMasterEntity(
+                        ndc = TUTORIAL_DUMMY_NDC,
+                        drugName = "Tutorial Demo Drug",
+                        drugType = "TABLET",
+                    )
+                )
+                val drug = drugMasterDao.getDrugByNdc(TUTORIAL_DUMMY_NDC) ?: return@launch
+
+                if (resolvedBatchId.value == 0L && ensureBatchCreated() == 0L) return@launch
+
+                val currentActive = _activeNdc.value
+                if (currentActive != null && currentActive.ndc != drug.ndc) {
+                    persistActive(currentActive)
+                }
+                val startBottles = if (currentActive != null && currentActive.ndc == drug.ndc) {
+                    currentActive.bottles + 1
+                } else {
+                    1
+                }
+                val newActive = ActiveNdc(
+                    ndc = drug.ndc,
+                    drugName = drug.drugName ?: "",
+                    bucket = _bucketId.value.orEmpty(),
+                    batchNo = "",
+                    expiry = "",
+                    pillsPerBottle = drug.packageQty ?: 0,
+                    bottles = startBottles,
+                    openPills = openPillsTotal(resolvedBatchId.value, drug.ndc),
+                    isHazardous = drug.isHazardous,
+                )
+                _activeNdc.value = newActive
+                persistActive(newActive)
+            } catch (e: Exception) {
+                logger.e("INV_SCAN useDummyNdcData failed", e)
+                _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
             }
         }
     }

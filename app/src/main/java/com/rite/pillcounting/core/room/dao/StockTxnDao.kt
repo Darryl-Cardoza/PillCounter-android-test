@@ -148,6 +148,16 @@ interface StockTxnDao {
     @Query("DELETE FROM stock_txn WHERE batchId IN (:batchIds)")
     suspend fun deleteByBatchIds(batchIds: List<Long>)
 
+    /**
+     * Distinct batchIds that counted a given drug — used by the FTUE tutorial's
+     * orphan-data sweep ([Hl7Repository.deleteTutorialData]) to find stock-count
+     * batches created against the fixed tutorial demo drug even when
+     * [TutorialEntryRegistry]'s in-memory marker for them was lost (e.g. the app
+     * process was killed mid-tutorial).
+     */
+    @Query("SELECT DISTINCT batchId FROM stock_txn WHERE drugId = :drugId AND batchId IS NOT NULL")
+    suspend fun getBatchIdsByDrugId(drugId: Long): List<Long>
+
     @Query("DELETE FROM stock_txn")
     suspend fun deleteAll()
 }

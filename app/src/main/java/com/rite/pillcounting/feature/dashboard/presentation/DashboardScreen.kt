@@ -28,6 +28,7 @@ import com.rite.pillcounting.core.tourguide.FTUE_ID
 import com.rite.pillcounting.core.tourguide.FtueController
 import com.rite.pillcounting.core.tourguide.TourGuideOverlay
 import com.rite.pillcounting.core.tourguide.TourGuidePrefs
+import com.rite.pillcounting.core.tourguide.TourStepMode
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
@@ -160,6 +161,10 @@ fun DashboardScreen(
     // new Batch Stock Count panel (Screen.InventoryScan), NOT the legacy DispenseFlow.
     LaunchedEffect(uiState.pendingStockCountBucketId) {
         uiState.pendingStockCountBucketId?.let { bucketId ->
+            // The tour's "select_bucket" step is hands-free (the real Select Bucket
+            // dialog is a shared, generic AlertDialog we deliberately don't gate/tag) —
+            // advance the instant a bucket is actually chosen and OK is tapped.
+            tourState.advanceIfCurrent("select_bucket")
             navController.navigate(Screen.InventoryScan.createRoute(bucketId = bucketId))
             viewModel.clearPendingStockCountBucketId()
         }
@@ -286,11 +291,47 @@ fun DashboardScreen(
             else -> DashboardPhoneLandscape(params)
         }
 
-        TourGuideOverlay(
-            state = tourState,
-            onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
-            modifier = Modifier.fillMaxSize(),
-        )
+        // The "select_bucket" step explains the real Select Bucket dialog (a shared,
+        // generic AlertDialog we deliberately don't tag/gate) — only show its tooltip
+        // while that dialog is actually up, not before it opens or after it's
+        // cancelled (which leaves the tour still sitting on this step, since only a
+        // real bucket confirmation — not Cancel — advances it; see the
+        // pendingStockCountBucketId effect above).
+        val suppressBucketStep = tourState.currentStep?.id == "select_bucket" && !showBucketSelectDialog
+        if (!suppressBucketStep) {
+            TourGuideOverlay(
+                state = tourState,
+                onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
+                modifier = Modifier.fillMaxSize(),
+                // Every gated step here is a plain tap always available regardless of
+                // real data — dummy Next just performs the exact same action a real tap
+                // would. Only the ACTION_TAP occurrence of "dispense"/"stock_count"
+                // qualifies — both ids are reused earlier for the INFO walkthrough
+                // steps, which already have their own real Next button.
+                onDummyNext = when {
+                    tourState.currentStep?.id == "dispense" && tourState.currentStep?.mode == TourStepMode.ACTION_TAP -> {
+                        { tourState.advanceIfCurrent("dispense"); onDispenseQuickAction() }
+                    }
+                    tourState.currentStep?.id == "stock_count" && tourState.currentStep?.mode == TourStepMode.ACTION_TAP -> {
+                        { tourState.advanceIfCurrent("stock_count"); onInventoryQuickAction() }
+                    }
+                    tourState.currentStep?.id == "select_bucket" && showBucketSelectDialog -> {
+                        {
+                            // Same as tapping OK with the default selection — the
+                            // pendingStockCountBucketId effect above advances the tour
+                            // once createBatch takes effect, exactly as a real OK would.
+                            val bucketList = viewModel.getBucketList()
+                            val defaultIndex = bucketList
+                                .indexOfFirst { it.equals("Normal", ignoreCase = true) }
+                                .let { if (it >= 0) it else 0 }
+                            if (bucketList.isNotEmpty()) viewModel.createBatch(bucketList[defaultIndex])
+                            showBucketSelectDialog = false
+                        }
+                    }
+                    else -> null
+                },
+            )
+        }
     }
 
     if (showLogoutDialog) {

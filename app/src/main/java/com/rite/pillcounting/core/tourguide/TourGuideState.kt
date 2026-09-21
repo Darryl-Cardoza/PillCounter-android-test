@@ -135,6 +135,21 @@ class TourGuideState(val steps: List<TourStep>) {
             scope.launch { next() }
         }
     }
+
+    /**
+     * Skips forward past every step in [ids] the tour currently sits on, in one
+     * deferred pass — for a real action that bypasses one or more *optional*
+     * steps at once (e.g. tapping END COUNT directly, skipping the optional
+     * "inv_scan_pills" step, when the tap-in-target advance for the following
+     * "inv_end_count" step never got a chance to fire because the tour wasn't on
+     * that step yet). Same deferral rationale as [advanceIfCurrent].
+     */
+    fun advanceWhileCurrentIn(ids: Set<String>) {
+        if (!isActive) return
+        scope.launch {
+            while (isActive && ids.contains(currentStep?.id)) next()
+        }
+    }
 }
 
 @Composable

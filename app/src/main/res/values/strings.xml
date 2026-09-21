@@ -121,20 +121,26 @@
     <string name="tour_desc_queue_list">Tap any transaction to resume or review its dispense.</string>
 
     <!-- Stock count (inventory) tour guide -->
+    <string name="tour_title_dispense_tap">Start a dispense</string>
+    <string name="tour_desc_dispense_tap">Tap Dispense to begin scanning a prescription.</string>
     <string name="tour_title_stock_count_tap">Start a stock count</string>
     <string name="tour_desc_stock_count_tap">Tap Stock Count to begin counting inventory.</string>
+    <string name="tour_title_select_bucket">Select a bucket</string>
+    <string name="tour_desc_select_bucket">Choose which storage bucket you\'re counting — then tap OK.</string>
     <string name="tour_title_inv_camera_preview">Scan a drug</string>
     <string name="tour_desc_inv_camera_preview">Point the camera at a bottle\'s NDC barcode to start counting it.</string>
     <string name="tour_title_inv_counter">Adjust the count</string>
     <string name="tour_desc_inv_counter">Tap + to count another bottle, or - to correct a mistake.</string>
-    <string name="tour_title_inv_edit_button">Edit the details</string>
-    <string name="tour_desc_inv_edit_button">Review or fix sealed-bottle and open-pill counts by lot and expiry.</string>
+    <string name="tour_title_inv_edit_button">Edit the details (optional)</string>
+    <string name="tour_desc_inv_edit_button">If you need to fix a sealed-bottle or open-pill count by lot and expiry, tap here — otherwise, just move on.</string>
     <string name="tour_title_inv_edit_actions">Cancel or save</string>
     <string name="tour_desc_inv_edit_actions">Cancel to discard changes, or save to update this NDC\'s counts.</string>
-    <string name="tour_title_inv_scan_pills">Count loose pills</string>
-    <string name="tour_desc_inv_scan_pills">Scan open pills in a container instead of counting sealed bottles.</string>
+    <string name="tour_title_inv_scan_pills">Count loose pills (optional)</string>
+    <string name="tour_desc_inv_scan_pills">Optional: scan more bottles and tap ADD to count them, tap here for an already-opened bottle\'s loose pills, or just tap End Count.</string>
     <string name="tour_title_inv_end_count">Finish the count</string>
     <string name="tour_desc_inv_end_count">Tap End Count once every NDC in this batch has been counted.</string>
+    <string name="tour_title_end_count_confirm">Confirm and finish</string>
+    <string name="tour_desc_end_count_confirm">Tap Yes to close out this batch — that\'s the tutorial complete!</string>
 
     <string name="kpi_disp_short">Disp.</string>
     <string name="kpi_inv_short">Inv.</string>

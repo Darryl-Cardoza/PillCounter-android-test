@@ -324,6 +324,18 @@ fun DispenseFlowScreen(
     val capturedBitmap by pillVm.capturedBitmap.collectAsState()
     val pillSteps by pillVm.steps.collectAsState()
 
+    // FTUE hands-free: "count_add_circle" spotlights the same on-screen circle
+    // across possibly several StepStates in a row (CONTAINER_INITIATE →
+    // TARGET_VERIFICATION, see PillScanningViewModel.buildWorkflowSteps) before the
+    // workflow genuinely leaves it behind — only advance once it actually reaches
+    // VIAL, not on the first round's own completion (InformationPanelSection.kt's
+    // onDone deliberately does NOT advance this step for exactly that reason).
+    LaunchedEffect(pillStepType) {
+        if (ftueState.isActive && pillStepType == StepState.VIAL) {
+            ftueState.advanceIfCurrent("count_add_circle")
+        }
+    }
+
     // The workflow is only built when counting starts, so the SCAN step has no
     // steps to show. Land the VM on SCAN as the user gets here.
     LaunchedEffect(dispenseState.stage) {
@@ -1581,6 +1593,47 @@ fun DispenseFlowScreen(
                 state = ftueState,
                 onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
                 modifier = Modifier.fillMaxSize(),
+                // Escape hatch for every remaining gated step this root overlay owns —
+                // camera-scan steps fake the missing external data (no real Rx label or
+                // bottle to scan in a demo run); the rest just perform the exact same
+                // action their real target would, since those aren't blocked on any
+                // external data in the first place. Manually calls advanceIfCurrent for
+                // every ACTION_TAP id since invoking the callback directly bypasses the
+                // overlay's own tap-in-target gesture detection that would otherwise do it.
+                onDummyNext = when (ftueState.currentStep?.id) {
+                    // Both "camera_preview" occurrences share this one id; the active
+                    // stage disambiguates which real scan is being faked.
+                    "camera_preview" -> when (dispenseState.stage) {
+                        DispenseStage.PRE_RX, DispenseStage.QUEUE -> { { dispenseVm.useDummyRxData() } }
+                        DispenseStage.PRE_NDC -> { { dispenseVm.useDummyNdcData() } }
+                        else -> null
+                    }
+                    "count_add_circle" -> {
+                        // dummyCompleteCount() clears every counting round this circle
+                        // covers (CONTAINER_INITIATE → TARGET_VERIFICATION → …) by seeding
+                        // real manual detail rows and firing the real completion event for
+                        // each, so it holds up under handleConfirmDialog's real per-step-type
+                        // validation instead of just reporting an inflated totalCount. No
+                        // manual advanceIfCurrent here — the LaunchedEffect(pillStepType)
+                        // above advances this FTUE step hands-free once the workflow
+                        // genuinely reaches VIAL, exactly like a real "All Done" tap would.
+                        { pillVm.dummyCompleteCount() }
+                    }
+                    "vial_capture" -> {
+                        // captureImage() is async (the real bitmap lands later via its
+                        // onCaptured callback) — calling saveCaptureImage() from a
+                        // SEPARATE, immediately-following dummy tap on "vial_done" would
+                        // race it and silently no-op (saveCaptureImage reads
+                        // _capturedBitmap.value, which is still null at that point).
+                        // autoConfirm=true has captureImage() call saveCaptureImage()
+                        // itself once the real bitmap is actually ready, avoiding the race.
+                        { FtueController.state.advanceIfCurrent("vial_capture"); pillVm.captureImage(autoConfirm = true) }
+                    }
+                    "vial_done" -> {
+                        { FtueController.state.advanceIfCurrent("vial_done"); pillVm.saveCaptureImage() }
+                    }
+                    else -> null
+                },
             )
         }
     }

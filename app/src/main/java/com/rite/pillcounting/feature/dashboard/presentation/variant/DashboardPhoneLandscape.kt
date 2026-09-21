@@ -75,16 +75,6 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
         }
     }
 
-    // Switch to the Recent Activity tab for its own explanatory step, so the tooltip
-    // points at real content instead of an empty Today's Queue — then back once the
-    // tour moves on to the next (gated) step.
-    LaunchedEffect(tourState.currentStep?.id) {
-        when (tourState.currentStep?.id) {
-            "recent_activity" -> params.onTabSelected(DashboardTab.RECENT_ACTIVITY)
-            "dispense" -> params.onTabSelected(DashboardTab.TODAYS_QUEUE)
-        }
-    }
-
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -127,6 +117,27 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                 }
             }
 
+            // Switch to the Recent Activity tab for its own explanatory step, so the
+            // tooltip points at real content instead of an empty Today's Queue — then
+            // back to Today's Queue once the tour moves past it, either forward into
+            // the gated "dispense" step or backward to "tabs". Drives the pager
+            // directly (now that it's in scope) instead of only nudging it indirectly
+            // through uiState.activeTab, which raced against the pager's own
+            // currentPage → onTabSelected feedback effect above and could leave the
+            // pager settled on the wrong page.
+            LaunchedEffect(tourState.currentStep?.id) {
+                when (tourState.currentStep?.id) {
+                    "recent_activity" -> {
+                        params.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+                        pagerState.animateScrollToPage(DashboardTab.RECENT_ACTIVITY.ordinal)
+                    }
+                    "tabs", "dispense" -> {
+                        params.onTabSelected(DashboardTab.TODAYS_QUEUE)
+                        pagerState.animateScrollToPage(DashboardTab.TODAYS_QUEUE.ordinal)
+                    }
+                }
+            }
+
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -154,7 +165,13 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                         },
                         modifier = Modifier
                             .weight(0.45f)
-                            .tourTarget(tourState, "tabs"),
+                            // "recent_activity" is also tagged here rather than on the
+                            // (possibly empty, tiny) list content below — spotlighting the
+                            // tab strip itself makes it obvious which tab is now active,
+                            // instead of highlighting a small empty-state box while the tab
+                            // strip dims into the background.
+                            .tourTarget(tourState, "tabs")
+                            .tourTarget(tourState, "recent_activity"),
                     )
                 }
 
@@ -230,7 +247,7 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                                 items = uiState.recentActivity,
                                 onDispenseClick = params.onRecentDispenseClick,
                                 onInventoryClick = params.onRecentBatchClick,
-                                modifier = Modifier.tourTarget(tourState, "recent_activity"),
+                                modifier = Modifier,
                             )
                         }
                     }

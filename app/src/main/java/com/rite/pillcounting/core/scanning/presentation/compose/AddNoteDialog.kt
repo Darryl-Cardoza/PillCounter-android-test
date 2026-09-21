@@ -206,6 +206,11 @@ fun AddNoteDialog(
             // registered by some unrelated composable elsewhere in the same window can
             // never be mistaken for this dialog's own target.
             ownedStepIds = setOf("add_note_actions"),
+            // Skip/Save are always available regardless of real data — dummy Next just
+            // performs the same action Skip would.
+            onDummyNext = if (tourState.currentStep?.id == "add_note_actions") {
+                { tourState.advanceIfCurrent("add_note_actions"); onSkip() }
+            } else null,
         )
         }
     }

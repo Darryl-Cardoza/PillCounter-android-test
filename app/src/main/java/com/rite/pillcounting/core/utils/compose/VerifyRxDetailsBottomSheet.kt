@@ -790,6 +790,11 @@ private fun TabletHorizontalBody(
         // instance never mistakes a DIFFERENT step's rect (e.g. the camera preview behind
         // it, registered in the same window-wide target map) for one of its own.
         ownedStepIds = setOf("verify_rx_proceed"),
+        // PROCEED is always tappable regardless of real data — dummy Next just performs
+        // the exact same action a real tap would.
+        onDummyNext = if (tourState.currentStep?.id == "verify_rx_proceed") {
+            { tourState.advanceIfCurrent("verify_rx_proceed"); onProceed() }
+        } else null,
     )
     }
 }
@@ -962,6 +967,9 @@ private fun TabletVerticalBody(
         modifier = Modifier.matchParentSize(),
         isScreenRoot = false,
         ownedStepIds = setOf("verify_rx_proceed"),
+        onDummyNext = if (tourState.currentStep?.id == "verify_rx_proceed") {
+            { tourState.advanceIfCurrent("verify_rx_proceed"); onProceed() }
+        } else null,
     )
     }
 }
@@ -1130,6 +1138,9 @@ private fun SheetBody(
         modifier = Modifier.matchParentSize(),
         isScreenRoot = false,
         ownedStepIds = setOf("verify_rx_proceed"),
+        onDummyNext = if (tourState.currentStep?.id == "verify_rx_proceed") {
+            { tourState.advanceIfCurrent("verify_rx_proceed"); onProceed() }
+        } else null,
     )
     }
 }

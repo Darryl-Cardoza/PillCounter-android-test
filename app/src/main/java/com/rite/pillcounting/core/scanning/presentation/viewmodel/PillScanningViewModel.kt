@@ -1636,6 +1636,81 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Tour-only escape hatch for the "count_add_circle" step's dummy "Next" button:
+     * when there are no real pills to count, seeds a manual transaction-detail row
+     * so the target is actually met, then fires the same real completion event a
+     * genuine "All Done" tap would. Simply reporting an inflated [PillScanningEvent
+     * .FinalDone.totalCount] isn't enough — [handleConfirmDialog] validates
+     * CONTAINER_PENDING/TARGET_VERIFICATION/TARGET_REVERIFICATION against
+     * [PillScanningUiState.txnDetailHistory] (real DB-backed rows), ignoring the
+     * event's own totalCount entirely; only CONTAINER_INITIATE trusts it directly.
+     *
+     * A single tap of "Next" is meant to fully clear this counting circle, but the
+     * FIXED dispense workflow can route through it for MORE than one [StepState] in
+     * a row before reaching VIAL — [buildWorkflowSteps] chains CONTAINER_INITIATE →
+     * TARGET_VERIFICATION (→ TARGET_REVERIFICATION when double-count is required) —
+     * all rendered by the exact same on-screen circle/target. One dummy completion
+     * only clears whichever of those is current, so this loops through each
+     * remaining one until the workflow genuinely leaves this circle behind (i.e.
+     * reaches VIAL, or the end of the workflow's own step list).
+     */
+    fun dummyCompleteCount() {
+        // Hard guard, not just an unreachable-UI assumption: this seeds fabricated
+        // DB rows, so it must never run outside an active tutorial regardless of
+        // what calls it.
+        if (!FtueController.state.isActive) return
+        viewModelScope.launch {
+            val countingCircleSteps = setOf(
+                StepState.CONTAINER_INITIATE,
+                StepState.TARGET_VERIFICATION,
+                StepState.TARGET_REVERIFICATION,
+            )
+            var guard = 0
+            while (_currentStep.value in countingCircleSteps && guard < countingCircleSteps.size + 1) {
+                guard++
+                val stepType = _currentStep.value
+                val target = _uiState.value.targetCount
+                val already = _uiState.value.txnDetailHistory.filter { it.type == stepType }.sumOf { it.count }
+                val shortfall = target - already
+                if (shortfall > 0) {
+                    val txnId = preferenceHelper.getTxnId()
+                    val detail = PillCountTxnDetailsEntity(
+                        txnId = txnId,
+                        pillCount = shortfall,
+                        imagePath = null,
+                        type = stepType.toString(),
+                        isManual = true,
+                    )
+                    val newId = pillCountTxnDetailsDao.insert(detail)
+                    // Update uiState synchronously here rather than waiting on the DB's
+                    // reactive Flow observer (observeTxnDetailsForTxn) to catch up — the
+                    // FinalDone dispatched right below reads _uiState.value.txnDetailHistory
+                    // immediately, before that Flow would have had a chance to re-emit.
+                    _uiState.update { state ->
+                        state.copy(
+                            txnDetailHistory = state.txnDetailHistory + TxnDetail(
+                                txnDetailId = newId,
+                                count = shortfall,
+                                createdAt = detail.createdAt,
+                                image = null,
+                                type = stepType,
+                            )
+                        )
+                    }
+                }
+                val totalCount = _uiState.value.txnDetailHistory.filter { it.type == stepType }.sumOf { it.count }
+                val before = _currentStep.value
+                onEvent(PillScanningEvent.FinalDone(stepType = stepType, totalCount = totalCount))
+                // handleConfirmDialog → moveNextStep() assigns _currentStep.value
+                // synchronously (not suspending), so this is already up to date for the
+                // loop condition above — bail out if it somehow didn't move, rather than
+                // spinning on a step our shortfall calc didn't actually satisfy.
+                if (_currentStep.value == before) break
+            }
+        }
+    }
+
     fun clearErrorMessage() {
         _uiState.update { it.copy(showErrorMessage = null) }
     }
@@ -2299,7 +2374,19 @@ class PillScanningViewModel @Inject constructor(
                     _capturedBitmap.value = bitmap
                     // A fresh still is unsaved, so the flag can never outlive the still it guards.
                     captureCommitted = false
-                    if (autoConfirm) saveCaptureImage()
+                    if (autoConfirm) {
+                        // autoConfirm means "as if Done was tapped" — but the real Done
+                        // tap is also what the FTUE tour's "vial_done" step is waiting on
+                        // (a tourTarget-tagged real tap via CameraActionBar.kt, gated by
+                        // TourGuideOverlay's own gesture detection). Skipping that manual
+                        // tap here would leave the tour stuck on "vial_done" forever —
+                        // both for the tutorial's own dummy "Next" button (which always
+                        // passes autoConfirm=true) and for a real tutorial user who
+                        // triggers the real auto-capture-on-barcode-match path when VIAL
+                        // is the last workflow step. No-ops outside an active tutorial.
+                        FtueController.state.advanceIfCurrent("vial_done")
+                        saveCaptureImage()
+                    }
                 }
             },
             onCaptureError = { _isCapturing.value = false }
@@ -2346,10 +2433,20 @@ class PillScanningViewModel @Inject constructor(
                 .observeAllForTxn(preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE)
                 .first().sumOf { it.pillCount ?: 0 }
             if (poured == (_txnInfo.value?.targetCount ?: 0)) {
-                // No camera frames arrive while the dialog sits on the vial still, so
-                // the watchdog would fire and drop the idle overlay behind it.
-                pauseIdleTimer()
-                _uiState.update { it.copy(showSkipStepDialog = true) }
+                if (FtueController.state.isActive) {
+                    // Tutorial: this dialog is real business UI the tour doesn't
+                    // gate/explain — an extra manual tap here interrupts the guided
+                    // flow for no reason, since skipping the back-count step is
+                    // already the only sensible outcome (there's nothing left to
+                    // scan). Take it automatically instead, same as tapping SKIP
+                    // would, and let the tour continue uninterrupted.
+                    skipBackCount()
+                } else {
+                    // No camera frames arrive while the dialog sits on the vial still,
+                    // so the watchdog would fire and drop the idle overlay behind it.
+                    pauseIdleTimer()
+                    _uiState.update { it.copy(showSkipStepDialog = true) }
+                }
             } else {
                 moveNextStep()
             }

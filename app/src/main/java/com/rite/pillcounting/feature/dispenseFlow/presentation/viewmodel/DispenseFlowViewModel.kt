@@ -466,6 +466,49 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
+     * Tour-only escape hatch for the scan-Rx step's dummy "Next" button: when there's
+     * no real Rx label to scan, seeds/reuses a fixed demo drug and stages a standalone
+     * Rx through the exact same [showStandaloneRxSheet] a real scan would use. The RX
+     * number is timestamped so every use is unique — no existing-txn lookups to race,
+     * and repeat tutorial runs never collide with a prior demo dispense.
+     */
+    fun useDummyRxData() {
+        if (_uiState.value.stage != DispenseStage.PRE_RX && _uiState.value.stage != DispenseStage.QUEUE) return
+        if (_uiState.value.isLoading) return
+        _uiState.update { it.copy(isLoading = true) }
+        viewModelScope.launch {
+            if (_uiState.value.stage == DispenseStage.QUEUE) {
+                _uiState.update { it.copy(stage = DispenseStage.PRE_RX) }
+            }
+            drugMasterDao.upsertPreservingId(
+                DrugMasterEntity(
+                    ndc = TUTORIAL_DUMMY_NDC,
+                    drugName = "Tutorial Demo Drug",
+                    drugType = "TABLET",
+                )
+            )
+            showStandaloneRxSheet(
+                parsedNdc = TUTORIAL_DUMMY_NDC,
+                rxNo = "TUTORIALDEMO${System.currentTimeMillis()}",
+                refillNo = null,
+                bucket = null,
+                targetCount = TUTORIAL_DUMMY_TARGET_COUNT,
+            )
+        }
+    }
+
+    /**
+     * Tour-only escape hatch for the scan-container step's dummy "Next" button: when
+     * there's no real bottle to scan, feeds the same demo NDC [useDummyRxData] just
+     * staged straight through the real [onNdcBarcodeRead] — it already resolves
+     * locally and matches [DispenseFlowUiState.hl7ExpectedNdc] (set to the same demo
+     * NDC), so it succeeds exactly like a real scan would, no server round-trip.
+     */
+    fun useDummyNdcData() {
+        onNdcBarcodeRead(TUTORIAL_DUMMY_NDC, imagePath = null)
+    }
+
+    /**
      * Inserts the PARTIAL dispense txn for a staged standalone Rx label.
      * Called from [onRxConfirmed] only, never from the scan itself.
      *
@@ -1192,7 +1235,12 @@ class DispenseFlowViewModel @Inject constructor(
 
     fun resetToQueueOrNavigateDashboard() {
         viewModelScope.launch {
-            if (hasPendingDispenseItems()) {
+            // Tutorial: the tour's next step lives on the Dashboard (tap Stock
+            // Count), never the Queue — a pending item (real, or a leftover from
+            // earlier testing) routing here to the Queue instead would silently
+            // strand the tour with nothing on screen to spotlight and no way
+            // forward. Always go to the Dashboard while the tour is active.
+            if (!FtueController.state.isActive && hasPendingDispenseItems()) {
                 resetToQueue()
             } else {
                 _uiState.update { it.copy(navigateToDashboard = true) }
@@ -1264,4 +1312,13 @@ class DispenseFlowViewModel @Inject constructor(
 }
 
 private const val VIAL_MISMATCH_TOAST_COOLDOWN_MS = 2000L
+
+/**
+ * Fixed NDC for the tour's "no real Rx/bottle to scan" dummy fallback (see
+ * [DispenseFlowViewModel.useDummyRxData]/[DispenseFlowViewModel.useDummyNdcData]).
+ * Reused/upserted in place every time rather than randomly generated, so a
+ * repeat tutorial run doesn't pile up throwaway `drug_master` rows.
+ */
+internal const val TUTORIAL_DUMMY_NDC = "00000000000"
+private const val TUTORIAL_DUMMY_TARGET_COUNT = 5
 
