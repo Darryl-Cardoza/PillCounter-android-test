@@ -51,33 +51,14 @@ data class TrayDetection(
     }
 
     /**
-     * True if this region contains any point of the square of half-side [radius]
-     * around (x, y) — the deploy contract's "dilate the tray mask by half a pill"
-     * without rewriting the BitSet. Sampled at the centre, the four edge
-     * midpoints and the four corners of that square; a radius of 0 is exactly
-     * [containsPoint].
-     */
-    fun containsPointWithin(x: Float, y: Float, radius: Float): Boolean {
-        if (containsPoint(x.toInt(), y.toInt())) return true
-        if (radius <= 0f) return false
-        for (dy in -1..1) {
-            for (dx in -1..1) {
-                if (dx == 0 && dy == 0) continue
-                if (containsPoint((x + dx * radius).toInt(), (y + dy * radius).toInt())) return true
-            }
-        }
-        return false
-    }
-
-    /**
      * How many of the nine sample points — the centre and the eight points at
      * ±[radius] around it — land on this region's mask. A [radius] of 0 samples
      * the centre alone, so the result is 0 or 1.
      *
-     * [containsPointWithin] answers "does this region reach the point at all",
-     * which is the right question for one region but the wrong one when two
-     * regions abut: at the tray/chute wall both answer yes. The vote count is
-     * the discriminator — see `PillAnalyzer.isOnTray`.
+     * A plain "does this region reach the point at all" test answers the right
+     * question for one region but the wrong one when two regions abut: at the
+     * tray/chute wall both answer yes. The vote count is the discriminator —
+     * see `PillAnalyzer.isOnTray`.
      */
     fun votesWithin(x: Float, y: Float, radius: Float): Int {
         if (radius <= 0f) return if (containsPoint(x.toInt(), y.toInt())) 1 else 0

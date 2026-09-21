@@ -147,7 +147,7 @@ class PillTracker {
                     confidence = det.confidence,
                     classId = det.classId,
                     hitStreak = 1,
-                    confirmed = ENTER_FRAMES <= 1
+                    confirmed = false
                 )
             )
         }

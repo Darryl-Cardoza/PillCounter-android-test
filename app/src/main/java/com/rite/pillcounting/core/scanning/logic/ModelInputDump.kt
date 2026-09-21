@@ -8,8 +8,9 @@ import java.io.FileOutputStream
 /**
  * Debug-only sink for the exact 640×640 image handed to the pill model.
  *
- * Disabled unless [directory] is set; PillCountingApplication sets it to
- * `files/model_input` in debug builds. Every [EVERY_N_FRAMES]th input is written
+ * Disabled unless [enabled] is on and [directory] is set; PillCountingApplication
+ * sets the directory to `files/model_input` in debug builds. Every
+ * [EVERY_N_FRAMES]th input is written
  * as a JPEG named `<frame>_<label>.jpg`, where the label says whether the input
  * was the tray crop (and its size in frame pixels) or the full frame. Only the
  * newest [KEEP_FILES] files are kept.
@@ -23,12 +24,21 @@ object ModelInputDump {
     private const val EVERY_N_FRAMES = 10
     private const val KEEP_FILES = 30
 
+    /**
+     * Master switch, off by default. The JPEG compress below runs on the analyze
+     * coroutine, so a debug build must measure clean unless someone asks for the
+     * images. Flip on from the debugger when collecting.
+     */
+    @Volatile
+    var enabled = false
+
     @Volatile
     var directory: File? = null
 
     private var frame = 0
 
     fun maybeSave(bitmap: Bitmap, label: String) {
+        if (!enabled) return
         val dir = directory ?: return
         val index = frame++
         if (index % EVERY_N_FRAMES != 0) return

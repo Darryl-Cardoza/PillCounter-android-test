@@ -12,25 +12,43 @@ class CountStabilizerTest {
     }
 
     @Test
-    fun `update starts at zero`() {
-        assertEquals(0, CountStabilizer().update(7))
+    fun `update shows the first count immediately instead of latching it`() {
+        assertEquals(7, CountStabilizer().update(7))
     }
 
     @Test
-    fun `update commits a new value after three agreeing medians`() {
+    fun `first acquisition shows on the frame the tracker confirms`() {
         val stabilizer = CountStabilizer()
-        // Window fills with 7s; the median is 7 from the first frame onward.
-        assertEquals(0, stabilizer.update(7))
-        assertEquals(0, stabilizer.update(7))
+        // Frame 1: the tracker has spawned tracks but confirmed none yet.
+        assertEquals(0, stabilizer.update(0))
+        // Frame 2: they confirm, and the number appears straight away.
+        assertEquals(20, stabilizer.update(20))
+    }
+
+    @Test
+    fun `update stays at zero while the raw count is zero`() {
+        val stabilizer = CountStabilizer()
+        // The tracker returns nothing until it has confirmed a pill.
+        assertEquals(0, stabilizer.update(0))
+        assertEquals(0, stabilizer.update(0))
+    }
+
+    @Test
+    fun `update latches a change once a count is already displayed`() {
+        val stabilizer = CountStabilizer()
         assertEquals(7, stabilizer.update(7))
+        // 9 now has to win the median and then three agreeing frames.
+        assertEquals(7, feed(stabilizer, 9, 9))
+        assertEquals(9, stabilizer.update(9))
     }
 
     @Test
-    fun `update holds the displayed value while the median flaps`() {
+    fun `update holds the first acquired value while the median flaps`() {
         val stabilizer = CountStabilizer()
-        // Alternating raw counts keep the median moving, so nothing ever commits.
+        // 5 is taken immediately; the alternation then keeps the median moving,
+        // so the latch never commits 9.
         val displayed = feed(stabilizer, 5, 9, 5, 9, 5, 9, 5, 9)
-        assertEquals(0, displayed)
+        assertEquals(5, displayed)
     }
 
     @Test
@@ -53,11 +71,15 @@ class CountStabilizerTest {
     }
 
     @Test
-    fun `reset returns the displayed value to zero and clears the window`() {
+    fun `reset clears the window so the next scene re-acquires from scratch`() {
         val stabilizer = CountStabilizer()
         feed(stabilizer, 6, 6, 6)
         assertEquals(6, stabilizer.update(6))
+
         stabilizer.reset()
-        assertEquals(0, stabilizer.update(6))
+
+        // 3 is taken straight away: displayed is back to zero, and the window no
+        // longer holds the old 6s that would otherwise dominate the median.
+        assertEquals(3, stabilizer.update(3))
     }
 }

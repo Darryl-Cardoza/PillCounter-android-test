@@ -1,10 +1,12 @@
 package com.rite.pillcounting.core.scanning.logic
 
+import android.graphics.Rect
 import android.graphics.RectF
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -20,9 +22,9 @@ import java.util.BitSet
  * [TraySegmentationDetector], [GloveDetector], [TrayColorDetector] and static
  * [Letterbox] state — none of which can be meaningfully exercised on the plain
  * JVM without an instrumented/Robolectric TFLite stack, so it is out of scope
- * here (see final report). This suite covers every public member that doesn't
- * require running the model pipeline: `hasGloveInterpreter` and
- * `resetGloveCadence()`. The cross-frame pill logic itself lives in
+ * here (see final report). This suite covers the members that don't require
+ * running the model pipeline: `hasGloveInterpreter`, `resetGloveCadence()` and
+ * `trayCropRegion()`. The cross-frame pill logic itself lives in
  * [PillTracker] and [CountStabilizer] and is tested there.
  *
  * Run under Robolectric: the tracker reached through `resetGloveCadence` calls
@@ -199,5 +201,67 @@ class PillAnalyzerTest {
         val trays = trayAndChute()
         assertTrue(PillAnalyzer.isOnTray(6.5f, 3.5f, trays, dilate = 0f))
         assertFalse(PillAnalyzer.isOnTray(20f, 20f, trays, dilate = 1f))
+    }
+
+    // ── trayCropRegion ───────────────────────────────────────────────────
+    // TRAY_CROP_MARGIN is 0.05 per side, TRAY_CROP_MIN_SIDE is 64.
+
+    private fun tray(
+        left: Float, top: Float, right: Float, bottom: Float,
+        cls: TrayClass = TrayClass.TRAY
+    ) = TrayDetection(rect = realRect(left, top, right, bottom), confidence = 1f, cls = cls)
+
+    @Test
+    fun `trayCropRegion grows the tray box by the margin on every side`() {
+        val analyzer = newAnalyzer()
+        val region = analyzer.trayCropRegion(listOf(tray(100f, 100f, 300f, 300f)), 640, 480)
+        assertEquals(Rect(90, 90, 310, 310), region)
+    }
+
+    @Test
+    fun `trayCropRegion clamps the grown box to the frame`() {
+        val analyzer = newAnalyzer()
+        val region = analyzer.trayCropRegion(listOf(tray(-20f, -20f, 100f, 100f)), 640, 480)
+        assertEquals(Rect(0, 0, 106, 106), region)
+    }
+
+    @Test
+    fun `trayCropRegion returns null for a tray too small to be worth upscaling`() {
+        val analyzer = newAnalyzer()
+        assertNull(analyzer.trayCropRegion(listOf(tray(0f, 0f, 50f, 50f)), 640, 480))
+    }
+
+    @Test
+    fun `trayCropRegion picks the largest tray when several are detected`() {
+        val analyzer = newAnalyzer()
+        val region = analyzer.trayCropRegion(
+            listOf(tray(0f, 0f, 120f, 120f), tray(200f, 100f, 400f, 300f)),
+            640, 480
+        )
+        assertEquals(Rect(190, 90, 410, 310), region)
+    }
+
+    @Test
+    fun `trayCropRegion ignores chute detections`() {
+        val analyzer = newAnalyzer()
+        val region = analyzer.trayCropRegion(
+            listOf(
+                tray(100f, 100f, 300f, 300f),
+                tray(400f, 100f, 600f, 300f, cls = TrayClass.CHUTE)
+            ),
+            640, 480
+        )
+        assertEquals(Rect(90, 90, 310, 310), region)
+    }
+
+    @Test
+    fun `trayCropRegion returns null when no tray class detection is present`() {
+        val analyzer = newAnalyzer()
+        assertNull(
+            analyzer.trayCropRegion(
+                listOf(tray(100f, 100f, 300f, 300f, cls = TrayClass.CHUTE)),
+                640, 480
+            )
+        )
     }
 }

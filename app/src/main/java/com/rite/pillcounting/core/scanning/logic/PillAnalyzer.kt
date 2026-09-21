@@ -95,7 +95,7 @@ class PillAnalyzer(
 
         // Decode floor: below the tracker's keep score nothing can hold a track,
         // so anchors under this never need decoding.
-        private const val PRE_NMS_SCORE_FLOOR = 0.35f
+        private const val PRE_NMS_SCORE_FLOOR = PillTracker.KEEP_SCORE
         // Deploy contract nms_iou. Measured in the training repo: no two distinct
         // pills overlap above IoU 0.5, so a second box above it is a duplicate on
         // the same pill — 0.6 let those through and inflated the count.
@@ -117,6 +117,8 @@ class PillAnalyzer(
         // scene, and every such drop used to zero the pill result — that was the
         // on-screen flicker. While the gate is held, the last complete tray set
         // keeps driving the crop and the mask filter.
+        // GATE_CLOSE_FRAMES is measured, not picked: 6 covers the longest chute
+        // dropout seen in the on-device TrayGate logs on a steady scene.
         private const val TRAY_HOLD_FRAMES = 1
         private const val GATE_CLOSE_FRAMES = 6
 
@@ -385,6 +387,9 @@ class PillAnalyzer(
             // Per-frame count = confirmed tracks on the tray, capped by the
             // detections visible on the tray: tracks add hysteresis, never pills.
             val countedPills = countStabilizer.update(min(pillsInTray.size, visibleOnTray))
+            // Markers are what the user counts by eye, so never show more dots
+            // than the number. Highest confidence survives the clip.
+            val markers = pillsInTray.sortedByDescending { it.confidence }.take(countedPills)
 
             val totalMs = System.currentTimeMillis() - overallStart
             // Class breakdown is metadata only — all three classes count as one pill.
@@ -419,7 +424,7 @@ class PillAnalyzer(
             // ── STEP 5: Callback ──────────────────────────────────────────────
             onResult(
                 countedPills,
-                pillsInTray,
+                markers,
                 displayTrayDetections,
                 gloveDetections,
                 originalBitmap,
@@ -472,7 +477,7 @@ class PillAnalyzer(
      * per side and clamped to the frame. Null when there is no tray or the
      * crop is too small to be worth upscaling.
      */
-    private fun trayCropRegion(trays: List<TrayDetection>, frameW: Int, frameH: Int): Rect? {
+    internal fun trayCropRegion(trays: List<TrayDetection>, frameW: Int, frameH: Int): Rect? {
         val tray = trays
             .filter { it.cls == TrayClass.TRAY }
             .maxByOrNull { it.rect.width() * it.rect.height() } ?: return null

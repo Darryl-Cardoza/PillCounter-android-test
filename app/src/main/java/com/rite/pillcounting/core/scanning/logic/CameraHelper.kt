@@ -187,7 +187,7 @@ class CameraHelper(
             }
 
             try {
-                val resolutionSelector = ResolutionSelector.Builder()
+                val analysisResolutionSelector = ResolutionSelector.Builder()
                     .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
                     .setResolutionStrategy(
                         ResolutionStrategy(
@@ -197,8 +197,14 @@ class CameraHelper(
                     )
                     .build()
 
+                // Preview needs the 4:3 shape the overlay maps through, not the
+                // analysis size — sharing one selector put it at 1920x1440 too.
+                val previewResolutionSelector = ResolutionSelector.Builder()
+                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                    .build()
+
                 preview = Preview.Builder()
-                    .setResolutionSelector(resolutionSelector)
+                    .setResolutionSelector(previewResolutionSelector)
                     .build()
                     .also { it.surfaceProvider = previewView.surfaceProvider }
 
@@ -210,7 +216,7 @@ class CameraHelper(
                 val initialRotation = previewView.display?.rotation ?: 0
 
                 imageAnalysis = ImageAnalysis.Builder()
-                    .setResolutionSelector(resolutionSelector)
+                    .setResolutionSelector(analysisResolutionSelector)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .setOutputImageRotationEnabled(true)

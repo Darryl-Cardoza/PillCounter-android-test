@@ -144,10 +144,6 @@ class PillScanningViewModel @Inject constructor(
     // --- Duplicate prevention ---
     private var currentScanId: Long = 0L
 
-    // --- Detection snapshot ---
-    private var lastDetectedSnapshot: List<Int> = emptyList()
-    private var lastChangeTimestamp: Long = System.currentTimeMillis()
-
     // Last frame that showed a complete tray. Drives the AE/AWB lock release
     // delay so a flickering tray gate can't cause lock/unlock churn.
     private var lastCompleteTrayMs: Long = 0L
@@ -1025,7 +1021,8 @@ class PillScanningViewModel @Inject constructor(
     private fun pauseAndClearBuffers() {
         _lastTenDetections.value.clear()
         resetCountConfirmation()
-lastCompleteTrayMs = 0L
+        lastCompleteTrayMs = 0L
+        cameraHelper?.setAeAwbLock(false)
         _uiState.update { it.copy(showIdleOverlay = true, gloveDetections = emptyList(), pendingTrayColorForClassification = null) }
         _trayDetections.value = emptyList()
         isTrayColorDetectionEnabled = false
@@ -1132,7 +1129,8 @@ lastCompleteTrayMs = 0L
 
         _lastTenDetections.value.clear()
         resetCountConfirmation()
- lastCompleteTrayMs = 0L
+        lastCompleteTrayMs = 0L
+        cameraHelper?.setAeAwbLock(false)
         lastAddedScanSignature = null
         _trayDetections.value = emptyList()
         _uiState.update { it.copy(gloveDetections = emptyList()) }
@@ -2405,6 +2403,10 @@ lastCompleteTrayMs = 0L
         isPaused = true
         _uiState.update { it.copy(detectedPills = emptyList()) }
         _trayDetections.value = emptyList()
+        // processDetections early-returns while paused, so the release branch
+        // there can never run. Drop the lock here instead.
+        lastCompleteTrayMs = 0L
+        cameraHelper?.setAeAwbLock(false)
     }
 
     /** Resume pill detection after a [pausePillDetection] call. */

@@ -17,8 +17,6 @@ import java.nio.ByteOrder
  *                    for the pill model. PillAnalyzer hands it the tray crop
  *                    when a tray is in view, else the full-frame letterbox.
  *
- * [preprocess] runs both on the full frame in one call.
- *
  * **All scratch is reused across frames.** Each frame writes into the same
  * FloatArray and direct ByteBuffer (~10 MB total). Every inference on a frame
  * completes before `analyze()` returns, so the next frame cannot start until
@@ -44,12 +42,6 @@ object ImagePreprocessor {
     data class Frame(
         val original: Bitmap,
         val letterboxed: Bitmap
-    )
-
-    data class Preprocessed(
-        val rgbNormalized: ByteBuffer,
-        val letterboxed: Bitmap,
-        val original: Bitmap
     )
 
     /** Decode the frame and letterbox the whole of it to 640×640. */
@@ -92,15 +84,5 @@ object ImagePreprocessor {
         rgbBuf.asFloatBuffer().put(rgb)
         rgbBuf.rewind()
         return rgbBuf
-    }
-
-    /** [prepareFrame] + [pillInput] on the full-frame letterbox. */
-    fun preprocess(image: ImageProxy): Preprocessed {
-        val frame = prepareFrame(image)
-        return Preprocessed(
-            rgbNormalized = pillInput(frame.letterboxed),
-            letterboxed = frame.letterboxed,
-            original = frame.original
-        )
     }
 }

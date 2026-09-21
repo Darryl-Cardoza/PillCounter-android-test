@@ -236,8 +236,6 @@ class TrayDetectionTest {
         assertTrue(a.equals(a))
     }
 
-    // ---- containsPointWithin: dilated mask lookup ----
-
     // ---- votesWithin: the tray-vs-chute discriminator ----
 
     @Test
@@ -278,25 +276,5 @@ class TrayDetectionTest {
         )
         assertEquals(1, det.votesWithin(3.5f, 3.5f, 0f))
         assertEquals(0, det.votesWithin(5.5f, 3.5f, 0f))
-    }
-
-    @Test
-    fun `containsPointWithin accepts a centre just off the mask when a tray pixel lies within the radius`() {
-        val maskSize = 8
-        val mask = BitSet(maskSize * maskSize)
-        mask.set(3 * maskSize + 3) // a single tray pixel at (3, 3)
-        val det = TrayDetection(
-            rect = rectF(0f, 0f, 0f, 0f),
-            confidence = 1f,
-            mask = mask,
-            maskSize = maskSize,
-            scaleInfo = scaleInfo()
-        )
-
-        assertFalse(det.containsPoint(5, 3))
-        assertTrue(det.containsPointWithin(5f, 3f, 2f))   // samples (3, 3), which is tray
-        assertFalse(det.containsPointWithin(5f, 3f, 1f))  // nearest sample is (4, 3): background
-        assertFalse(det.containsPointWithin(5f, 3f, 0f))  // radius 0 == containsPoint
-        assertTrue(det.containsPointWithin(3f, 3f, 0f))   // on the mask itself
     }
 }
