@@ -18,6 +18,7 @@ import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.utils.device.DeviceKeyProvider
 import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.security.DatabaseKeyProvider
+import com.rite.pillcounting.core.tourguide.TutorialEntryRegistry
 import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.dashboard.domain.data.IUserDetailRepository
@@ -254,7 +255,7 @@ class DashboardViewModel @Inject constructor(
                 val inventoryItems = batches.map { b ->
                     QueueItem.Inventory(batch = b)
                 }
-                (dispenseItems + inventoryItems).sortedBy { it.createdAt }
+                (dispenseItems + inventoryItems).excludingTutorialItems().sortedBy { it.createdAt }
             }.collect { combined ->
                 _unfilteredQueue.value = combined
                 val counts = computeKpiCounts(combined)
@@ -351,10 +352,26 @@ class DashboardViewModel @Inject constructor(
                 val inventoryItems = batches
                     .filter { it.status == BatchStatus.COMPLETED.name }
                     .map { QueueItem.Inventory(batch = it) }
-                (dispenseItems + inventoryItems).sortedByDescending { it.createdAt }
+                (dispenseItems + inventoryItems).excludingTutorialItems().sortedByDescending { it.createdAt }
             }.collect { combined ->
                 _uiState.update { it.copy(recentActivity = combined, isLoadingQueue = false) }
             }
+        }
+    }
+
+    /**
+     * Drops any dispense/stock-count item created by the FTUE tutorial's dummy-data
+     * paths — a practice run must never appear alongside real Today's Queue / Recent
+     * Activity entries, even in the window before end-of-tour cleanup
+     * ([Hl7Repository.deleteTutorialData][com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository.deleteTutorialData])
+     * actually deletes the row. [TutorialEntryRegistry] is in-memory only, but that's
+     * fine here: it's populated in this same app process at the moment the tutorial
+     * creates the row, which is exactly the window this filter needs to cover.
+     */
+    private fun List<QueueItem>.excludingTutorialItems(): List<QueueItem> = filterNot { item ->
+        when (item) {
+            is QueueItem.Dispense -> TutorialEntryRegistry.isTutorialEntry(item.txn.txnId)
+            is QueueItem.Inventory -> TutorialEntryRegistry.isTutorialBatch(item.batch.batchId)
         }
     }
 

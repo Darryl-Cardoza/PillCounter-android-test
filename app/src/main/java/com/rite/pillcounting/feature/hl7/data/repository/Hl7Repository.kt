@@ -26,6 +26,7 @@ import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.models.isControlledDrugType
 import com.rite.pillcounting.core.room.models.PillCountTxnDetailsEntity
 import com.rite.pillcounting.core.scanning.data.DrugRepository
+import com.rite.pillcounting.core.tourguide.FtueController
 import com.rite.pillcounting.core.tourguide.TutorialEntryRegistry
 import com.rite.pillcounting.core.scanning.domain.model.GetNdcRequestModel
 import com.rite.pillcounting.core.scanning.data.DrugImageDownloader
@@ -499,6 +500,18 @@ class Hl7Repository @Inject constructor(
      * tidies up local storage afterward.
      */
     suspend fun deleteTutorialData() {
+        // Guard against a real race: this is called both right after the tour ends
+        // (isActive already false by then) AND once at every app startup as an orphan
+        // sweep (MainActivity.kt) — but "app startup" isn't the same as "fresh process
+        // start": an Activity recreation (e.g. a config change/rotation) while a
+        // tutorial is genuinely mid-flight re-runs that startup call too, since
+        // FtueController.state is a singleton that survives the recreation with
+        // isActive still true. Without this guard, that call would consume() (clear)
+        // TutorialEntryRegistry's in-memory markers for a batch/txn the tutorial is
+        // still actively using — silently un-marking it, so it starts showing in
+        // Recent Activity and passing the HL7 send guards immediately, even though
+        // the tutorial hasn't finished with it yet.
+        if (FtueController.state.isActive) return
         TutorialEntryRegistry.consumeTutorialTxnIds().forEach { deleteSyncedTransaction(it) }
         TutorialEntryRegistry.consumeTutorialBatchIds().forEach { deleteTutorialBatch(it) }
 

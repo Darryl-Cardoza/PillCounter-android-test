@@ -29,6 +29,7 @@ import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
 import com.rite.pillcounting.core.tourguide.FTUE_ID
 import com.rite.pillcounting.core.tourguide.FtueController
 import com.rite.pillcounting.core.tourguide.TourGuideOverlay
+import com.rite.pillcounting.core.tourguide.TourGuideTapBlock
 import com.rite.pillcounting.core.tourguide.TourGuidePrefs
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
@@ -288,10 +289,18 @@ fun InventoryScanHost(
         // (a shared, generic CommonDialog we deliberately don't tag/gate) — only show
         // its tooltip while that dialog is actually up, not in the brief moment right
         // after "add_note_actions" advances here but before showEndCountConfirmDialog
-        // has been set. Same treatment as DashboardScreen.kt's "select_bucket".
-        val suppressEndCountConfirmStep =
+        // has been set. Same treatment as DashboardScreen.kt's "select_bucket",
+        // including requiring isActive: dismiss() doesn't reset currentIndex, so a
+        // tour that ended while sitting on this exact (last) step would otherwise
+        // leave this true forever, permanently tap-blocking this real screen after.
+        val suppressEndCountConfirmStep = FtueController.state.isActive &&
             FtueController.state.currentStep?.id == "end_count_confirm" && !showEndCountConfirmDialog
-        if (!suppressEndCountConfirmStep) {
+        if (suppressEndCountConfirmStep) {
+            // Don't leave the real Batch Stock Count screen freely tappable in this
+            // gap — an "outside tap" escape hatch out of the guided flow while the
+            // tutorial is still active.
+            TourGuideTapBlock(modifier = Modifier.fillMaxSize())
+        } else {
             TourGuideOverlay(
                 state = FtueController.state,
                 onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
@@ -318,14 +327,10 @@ fun InventoryScanHost(
                         { FtueController.state.advanceIfCurrent("inv_scan_pills") }
                     }
                     "inv_end_count" -> onEndCount
-                    "end_count_confirm" -> if (showEndCountConfirmDialog) {
-                        {
-                            inventoryVm.confirmEndCount(pendingNote)
-                            showEndCountConfirmDialog = false
-                            pendingNote = null
-                            FtueController.state.advanceIfCurrent("end_count_confirm")
-                        }
-                    } else null
+                    // "end_count_confirm" has no dummy-Next handler: its tooltip never
+                    // renders a button row at all while the real confirmation dialog
+                    // is open (TourGuideOverlay.kt's skipScrim) — that dialog's own
+                    // Yes/No drive the tour instead (wired below).
                     else -> null
                 },
             )
@@ -363,6 +368,13 @@ fun InventoryScanHost(
                 FtueController.state.advanceIfCurrent("end_count_confirm")
             },
             onCancel = {
+                // FTUE: this dialog's own Yes/No are what drive the "end_count_confirm"
+                // step now — its Skip/Next buttons aren't reliably tappable while this
+                // real dialog is also open (see TourGuideOverlay.kt's skipScrim
+                // comment), so No here doubles as ending the tour, same as Skip would.
+                if (FtueController.state.isActive && FtueController.state.currentStep?.id == "end_count_confirm") {
+                    FtueController.state.dismiss()
+                }
                 showEndCountConfirmDialog = false
                 pendingNote = null
             },

@@ -34,6 +34,7 @@ import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.common.navigateSafely
+import com.rite.pillcounting.core.tourguide.FtueController
 import com.rite.pillcounting.feature.history.domain.model.HistoryMode
 import com.rite.pillcounting.feature.login.domain.model.LogoutUiState
 import com.rite.pillcounting.feature.login.presentation.viewmodel.LoginViewModel
@@ -153,6 +154,29 @@ fun MenuScreen(
                     iconTint = MaterialTheme.colorScheme.primary,
                     title = stringResource(R.string.menu_profile),
                     onClick = { navController.navigate(Screen.Profile.route) }
+                )
+                HorizontalDivider(color = extendedColors.primaryBackground)
+
+                // Start Tutorial: force-starts the FTUE tour from the very first step
+                // regardless of TourGuidePrefs' "seen" flag (that flag only gates the
+                // Dashboard's own auto-start-on-first-visit effect — calling start()
+                // directly bypasses it entirely) or whether a run is already active.
+                // Land on the Dashboard first since that's the tour's own starting
+                // screen — same nav pattern the real Dispense/Stock Count Quick
+                // Actions use, clearing the back stack instead of stacking on top of
+                // wherever the user launched this from.
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.tutorial,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_start_tutorial),
+                    onClick = {
+                        FtueController.state.start()
+                        navController.navigate(Screen.Dashboard.route) {
+                            popUpTo(0)
+                            launchSingleTop = true
+                        }
+                    }
                 )
                 HorizontalDivider(color = extendedColors.primaryBackground)
                 // Logout

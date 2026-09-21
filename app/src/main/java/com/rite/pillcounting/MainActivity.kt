@@ -28,7 +28,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
+import com.rite.pillcounting.core.tourguide.FTUE_ID
 import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.TourGuidePrefs
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -290,12 +292,26 @@ class MainActivity : ComponentActivity() {
                                     // itself — see its init block. MainActivity no longer holds an
                                     // Hl7Repository reference.
 
-                                    // Tutorial cleanup: the only place alive for the whole app
-                                    // session regardless of which screen the FTUE tour is
-                                    // currently driving. Fires exactly once per active -> inactive
-                                    // transition (tour finished OR skipped — both just flip
-                                    // isActive to false), never on the initial false before the
-                                    // tour has ever started.
+                                    // Tutorial cleanup + "seen" marking: the only place alive for
+                                    // the whole app session regardless of which screen the FTUE
+                                    // tour is currently driving. Fires exactly once per active ->
+                                    // inactive transition (tour finished OR skipped — both just
+                                    // flip isActive to false), never on the initial false before
+                                    // the tour has ever started.
+                                    //
+                                    // markSeen is done HERE, not left to each TourGuideOverlay
+                                    // instance's own onFinished callback (DisposableEffect {
+                                    // onDispose { if (!isActive) onFinished() } }): the final
+                                    // step's real completion action can navigate away (disposing
+                                    // that overlay instance) in the SAME frame as the deferred
+                                    // advanceIfCurrent() call that flips isActive to false —
+                                    // advanceIfCurrent defers to the next dispatcher tick, so the
+                                    // overlay can be gone by the time isActive actually goes
+                                    // false, and onDispose's `!isActive` check never fires. Without
+                                    // this fallback, "seen" never gets persisted and the tour
+                                    // silently restarts from the beginning next time the user
+                                    // lands on the Dashboard. This effect isn't tied to any
+                                    // screen's composition, so it can't lose that race.
                                     LaunchedEffect(Unit) {
                                         var tutorialWasActive = false
                                         snapshotFlow { FtueController.state.isActive }.collect { active ->
@@ -303,6 +319,7 @@ class MainActivity : ComponentActivity() {
                                                 tutorialWasActive = true
                                             } else if (tutorialWasActive) {
                                                 tutorialWasActive = false
+                                                TourGuidePrefs.markSeen(this@MainActivity, FTUE_ID)
                                                 settingsViewModel.onTutorialFinished()
                                             }
                                         }

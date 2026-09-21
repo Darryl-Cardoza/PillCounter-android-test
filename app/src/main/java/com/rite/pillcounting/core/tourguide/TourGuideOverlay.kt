@@ -70,6 +70,15 @@ private val EstimatedTooltipHeight = 190.dp
 // overlapping and garbling both. This pushes it up clear of that zone instead.
 private val PinnedBottomExtraClearance = 130.dp
 
+// A TOP-pinned tooltip (the targetless-ACTION_WAIT "explaining a real native dialog" case —
+// select_bucket, end_count_confirm) would otherwise sit flush against the screen's own top
+// edge, covering the real app header (pharmacy name, PMS status, hamburger menu) underneath
+// it. This pushes it down clear of that zone. It also happens to keep the tooltip clear of
+// the real dialog itself, which is vertically centered lower on screen — landing the tooltip
+// safely above/below it without needing any cross-window z-order guarantee between our Popup
+// (see below) and the dialog's own separate window, which Compose doesn't expose control over.
+private val PinnedTopExtraClearance = 140.dp
+
 /**
  * Full-screen spotlight tour: dims everything except [TourGuideState]'s current target
  * (cut out of the scrim via [BlendMode.Clear]), rings it, and shows a tooltip. Place this
@@ -165,6 +174,17 @@ fun TourGuideOverlay(
     }
     val effectivePinnedEdge = pinnedEdgeOverride ?: step.pinnedEdge
 
+    // A targetless ACTION_WAIT step (select_bucket, end_count_confirm — explaining a
+    // real native AlertDialog/Dialog we deliberately don't tag/gate) has no camera or
+    // other live interaction to preserve, unlike every OTHER ACTION_WAIT step (which
+    // all DO have a real target once mounted, so this is false for them). Block the
+    // whole screen here exactly like an INFO step does — the real dialog is a
+    // completely separate Android Window, so this can never interfere with it, only
+    // with taps on THIS screen's own content (Quick Action cards, KPI cards, the
+    // hamburger menu) that would otherwise let the user wander off the guided flow
+    // while the tutorial is still active.
+    val skipScrim = step.mode == TourStepMode.ACTION_WAIT && paddedRect == null
+
     // An ACTION_TAP step's target can live in a *different* window from this overlay
     // instance (e.g. a step gating a button inside a ModalBottomSheet, while this
     // instance sits at the screen root) — its bounds will then never register here. For
@@ -256,7 +276,15 @@ fun TourGuideOverlay(
             }
             }
         }
-        TourStepMode.ACTION_WAIT -> Modifier
+        TourStepMode.ACTION_WAIT -> if (skipScrim) {
+            Modifier.clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            )
+        } else {
+            Modifier
+        }
     }
 
     Box(
@@ -278,12 +306,12 @@ fun TourGuideOverlay(
 
         // Scrim with a cutout hole around the target — drawn offscreen so BlendMode.Clear
         // punches through this layer only, not the content underneath. Skipped for a
-        // targetless ACTION_WAIT step (e.g. "select_bucket", explaining a real system
-        // AlertDialog we deliberately don't tag): that dialog draws in its own Android
-        // Window, always on top of anything this Compose-level scrim paints, so dimming
-        // everything else just makes the (undimmable) dialog look oddly "hot" against a
-        // darkened background for no benefit — the dialog already dims its own background.
-        val skipScrim = step.mode == TourStepMode.ACTION_WAIT && localRect == null
+        // targetless ACTION_WAIT step (skipScrim, computed above): the real dialog it's
+        // explaining draws in its own Android Window, always on top of anything this
+        // Compose-level scrim paints, so dimming everything else just makes the
+        // (undimmable) dialog look oddly "hot" against a darkened background for no
+        // benefit — the dialog already dims its own background. The screen behind it is
+        // still fully tap-blocked regardless (interactionModifier above), just not dimmed.
         if (!skipScrim) {
             Canvas(
                 modifier = Modifier
@@ -330,7 +358,10 @@ fun TourGuideOverlay(
             tooltipX = ((containerSize.width - tooltipWidthPx) / 2f)
                 .coerceIn(marginPx, (containerSize.width - tooltipWidthPx - marginPx).coerceAtLeast(marginPx))
             tooltipY = when (effectivePinnedEdge) {
-                TooltipEdge.TOP -> marginPx
+                TooltipEdge.TOP -> {
+                    val extraClearancePx = with(density) { PinnedTopExtraClearance.toPx() }
+                    marginPx + extraClearancePx
+                }
                 TooltipEdge.BOTTOM -> {
                     val extraClearancePx = with(density) { PinnedBottomExtraClearance.toPx() }
                     (containerSize.height - estimatedHeightPx - marginPx - extraClearancePx).coerceAtLeast(marginPx)
@@ -430,31 +461,46 @@ fun TourGuideOverlay(
                         fontSize = 11.sp,
                         modifier = Modifier.weight(1f),
                     )
-                    TextButton(
-                        onClick = { state.dismiss(); onFinished() },
-                        contentPadding = compactPadding,
-                    ) {
-                        Text(
-                            text = stringResource(R.string.tour_skip),
-                            fontSize = 12.sp,
-                            color = MaterialTheme.colorScheme.primary,
-                        )
-                    }
-                    // Escape hatch for a hands-free step blocked on real external data
-                    // the demo environment may not have (a real Rx label, a real bottle
-                    // to scan) — fakes that data via the caller-supplied callback and
-                    // advances immediately, same as the real thing succeeding would.
-                    if (onDummyNext != null) {
+                    // skipScrim: this tooltip is explaining a real native AlertDialog/
+                    // Dialog that's also open right now. That dialog's own window
+                    // captures touches across the WHOLE screen for its own
+                    // outside-tap handling (even with onDismissRequest a no-op) —
+                    // regardless of whether it visually overlaps this tooltip, which
+                    // is rendered via Popup specifically so it isn't torn down by the
+                    // scrim, but still can't win a touch race against the dialog's own
+                    // window. Buttons here would look tappable but silently never
+                    // respond — so instead of Skip/Next, the real dialog's own
+                    // buttons drive the tour: OK/Yes calls advanceIfCurrent, Cancel/No
+                    // calls dismiss() (wired at each call site — DashboardScreen.kt's
+                    // Select Bucket, InventoryScanHost.kt's end-count confirmation).
+                    if (!skipScrim) {
                         TextButton(
-                            onClick = onDummyNext,
+                            onClick = { state.dismiss(); onFinished() },
                             contentPadding = compactPadding,
                         ) {
                             Text(
-                                text = stringResource(R.string.tour_next),
+                                text = stringResource(R.string.tour_skip),
                                 fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
                                 color = MaterialTheme.colorScheme.primary,
                             )
+                        }
+                        // Escape hatch for a hands-free step blocked on real external
+                        // data the demo environment may not have (a real Rx label, a
+                        // real bottle to scan) — fakes that data via the
+                        // caller-supplied callback and advances immediately, same as
+                        // the real thing succeeding would.
+                        if (onDummyNext != null) {
+                            TextButton(
+                                onClick = onDummyNext,
+                                contentPadding = compactPadding,
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.tour_next),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                     }
                     // Action steps advance from the real tap/callback, not a synthetic
@@ -495,4 +541,30 @@ fun TourGuideOverlay(
             }
         }
     }
+}
+
+/**
+ * Invisible full-screen tap sink — no scrim, no tooltip, just swallows every touch.
+ *
+ * For a step that explains a real, untagged dialog (select_bucket, end_count_confirm),
+ * the caller suppresses [TourGuideOverlay] entirely in the brief window where the tour
+ * is already sitting on that step but the real dialog isn't up yet (or just closed) —
+ * rendering its own tooltip there would be misleading (pointing at a dialog that isn't
+ * on screen). But rendering *nothing at all* also leaves the whole real screen behind
+ * it — Quick Action cards, KPI cards, the hamburger menu — freely tappable during an
+ * active tutorial, an "outside tap" escape hatch out of the guided flow. Place this in
+ * that same suppressed branch instead of nothing, so the screen stays locked to
+ * everything except the dialog that's about to appear.
+ */
+@Composable
+fun TourGuideTapBlock(modifier: Modifier = Modifier) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            ),
+    )
 }

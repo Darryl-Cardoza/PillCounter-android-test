@@ -27,6 +27,7 @@ import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.tourguide.FTUE_ID
 import com.rite.pillcounting.core.tourguide.FtueController
 import com.rite.pillcounting.core.tourguide.TourGuideOverlay
+import com.rite.pillcounting.core.tourguide.TourGuideTapBlock
 import com.rite.pillcounting.core.tourguide.TourGuidePrefs
 import com.rite.pillcounting.core.tourguide.TourStepMode
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils
@@ -190,6 +191,12 @@ fun DashboardScreen(
     val onTabSelected = remember(viewModel) { viewModel::onTabSelected }
     val onDispenseQuickAction = remember(viewModel, navController) {
         {
+            // FTUE: also advance synchronously here, not just via the overlay's own
+            // deferred gesture-based advance — this navigates to a brand-new screen
+            // whose own overlay would otherwise render nothing on its first frame(s)
+            // (still seeing "dispense" as current, no matching target there) until
+            // that deferred tick catches up. See TourGuideState.advanceIfCurrentNow.
+            tourState.advanceIfCurrentNow("dispense")
             viewModel.saveTxnId()
             navController.navigate(
                 Screen.DispenseFlow.createRoute(
@@ -200,6 +207,11 @@ fun DashboardScreen(
     }
     val onInventoryQuickAction = remember(viewModel) {
         {
+            // FTUE: same reasoning as onDispenseQuickAction — this opens the Select
+            // Bucket dialog on THIS same screen, but advancing synchronously here
+            // still closes the same one-tick gap for the "select_bucket" step's own
+            // tooltip/tap-block to be in place the instant the dialog appears.
+            tourState.advanceIfCurrentNow("stock_count")
             viewModel.saveTxnId()
             showBucketSelectDialog = true
         }
@@ -268,7 +280,17 @@ fun DashboardScreen(
             title = stringResource(R.string.select_bucket),
             options = bucketList,
             selectedIndex = defaultBucketIndex,
-            onCancel = { showBucketSelectDialog = false },
+            onCancel = {
+                // FTUE: this dialog's own Cancel/OK are what drive the "select_bucket"
+                // step now — its Skip/Next buttons aren't reliably tappable while this
+                // real dialog is also open (see TourGuideOverlay.kt's skipScrim
+                // comment), so Cancel here doubles as ending the tour, same as Skip
+                // would have.
+                if (tourState.isActive && tourState.currentStep?.id == "select_bucket") {
+                    tourState.dismiss()
+                }
+                showBucketSelectDialog = false
+            },
             onOk = { index ->
                 if (index in bucketList.indices) {
                     viewModel.createBatch(bucketList[index])
@@ -296,9 +318,18 @@ fun DashboardScreen(
         // while that dialog is actually up, not before it opens or after it's
         // cancelled (which leaves the tour still sitting on this step, since only a
         // real bucket confirmation — not Cancel — advances it; see the
-        // pendingStockCountBucketId effect above).
-        val suppressBucketStep = tourState.currentStep?.id == "select_bucket" && !showBucketSelectDialog
-        if (!suppressBucketStep) {
+        // pendingStockCountBucketId effect above). isActive is required here, not
+        // just currentStep?.id: dismiss() doesn't reset currentIndex, so a tour that
+        // ended while sitting on this exact step would otherwise leave this true
+        // forever, permanently tap-blocking the real Dashboard afterward.
+        val suppressBucketStep = tourState.isActive &&
+            tourState.currentStep?.id == "select_bucket" && !showBucketSelectDialog
+        if (suppressBucketStep) {
+            // Don't leave the real Dashboard (Quick Action cards, KPI cards, the
+            // hamburger menu) freely tappable in this gap — an "outside tap" escape
+            // hatch out of the guided flow while the tutorial is still active.
+            TourGuideTapBlock(modifier = Modifier.fillMaxSize())
+        } else {
             TourGuideOverlay(
                 state = tourState,
                 onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
@@ -315,19 +346,10 @@ fun DashboardScreen(
                     tourState.currentStep?.id == "stock_count" && tourState.currentStep?.mode == TourStepMode.ACTION_TAP -> {
                         { tourState.advanceIfCurrent("stock_count"); onInventoryQuickAction() }
                     }
-                    tourState.currentStep?.id == "select_bucket" && showBucketSelectDialog -> {
-                        {
-                            // Same as tapping OK with the default selection — the
-                            // pendingStockCountBucketId effect above advances the tour
-                            // once createBatch takes effect, exactly as a real OK would.
-                            val bucketList = viewModel.getBucketList()
-                            val defaultIndex = bucketList
-                                .indexOfFirst { it.equals("Normal", ignoreCase = true) }
-                                .let { if (it >= 0) it else 0 }
-                            if (bucketList.isNotEmpty()) viewModel.createBatch(bucketList[defaultIndex])
-                            showBucketSelectDialog = false
-                        }
-                    }
+                    // "select_bucket" has no dummy-Next handler: its tooltip never
+                    // renders a button row at all while the real Select Bucket dialog
+                    // is open (TourGuideOverlay.kt's skipScrim) — that dialog's own
+                    // OK/Cancel drive the tour instead (wired above).
                     else -> null
                 },
             )
