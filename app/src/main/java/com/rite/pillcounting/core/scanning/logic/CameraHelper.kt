@@ -5,12 +5,16 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.hardware.camera2.CameraCaptureSession
+import android.hardware.camera2.CameraCharacteristics
 import android.hardware.camera2.CaptureRequest
 import android.hardware.camera2.CaptureResult
 import android.hardware.camera2.TotalCaptureResult
 import android.os.SystemClock
 import android.util.Size
+import androidx.camera.camera2.interop.Camera2CameraControl
+import androidx.camera.camera2.interop.Camera2CameraInfo
 import androidx.camera.camera2.interop.Camera2Interop
+import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
@@ -21,6 +25,7 @@ import androidx.camera.core.ImageCaptureException
 import androidx.camera.core.ImageProxy
 import androidx.camera.core.Preview
 import androidx.camera.core.TorchState
+import androidx.camera.core.resolutionselector.AspectRatioStrategy
 import androidx.camera.core.resolutionselector.ResolutionSelector
 import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
@@ -70,6 +75,10 @@ class CameraHelper(
 
     private val isBound = AtomicBoolean(false)
     private val isStreaming = AtomicBoolean(true)
+
+    // Current AE/AWB lock state. Reset on bind and pause — unbinding drops the
+    // capture request options, so the lock does not survive either.
+    private var aeAwbLocked = false
 
     // Focus gate: frames captured while the AF lens is scanning are blurry, so
     // [processImageProxy] drops them before they reach frameFlow. Closes after
@@ -139,6 +148,16 @@ class CameraHelper(
 
         /** Hard cap on how long the focus gate may stay closed. */
         private const val MAX_GATE_CLOSED_MS = 1_000L
+
+        /**
+         * Analysis stream size. 4:3 to match the sensor, and large enough that a
+         * tray filling ~30% of the frame still gives the pill model ~25 px pills
+         * from real pixels. The previous 1280x720 request resolved to 960x720
+         * (CameraX's default 4:3 aspect strategy + CLOSEST_LOWER), which left
+         * pills ~11 px in the source and blurred after the 2x crop upscale.
+         * CLOSEST_LOWER_THEN_HIGHER lands on 1440x1080 on devices without this size.
+         */
+        val ANALYSIS_RESOLUTION = Size(1920, 1440)
     }
 
     // ---------------------------------------------------------
@@ -147,7 +166,7 @@ class CameraHelper(
 
     fun startCamera(
         previewView: PreviewView,
-        targetResolution: Size = Size(1280, 720),
+        targetResolution: Size = ANALYSIS_RESOLUTION,
         cameraSelector: CameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
     ) {
         logger.i("Starting camera | Target=${targetResolution.width}×${targetResolution.height}")
@@ -168,17 +187,24 @@ class CameraHelper(
             }
 
             try {
-                val resolutionSelector = ResolutionSelector.Builder()
+                val analysisResolutionSelector = ResolutionSelector.Builder()
+                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
                     .setResolutionStrategy(
                         ResolutionStrategy(
                             targetResolution,
-                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_LOWER_THEN_HIGHER
                         )
                     )
                     .build()
 
+                // Preview needs the 4:3 shape the overlay maps through, not the
+                // analysis size — sharing one selector put it at 1920x1440 too.
+                val previewResolutionSelector = ResolutionSelector.Builder()
+                    .setAspectRatioStrategy(AspectRatioStrategy.RATIO_4_3_FALLBACK_AUTO_STRATEGY)
+                    .build()
+
                 preview = Preview.Builder()
-                    .setResolutionSelector(resolutionSelector)
+                    .setResolutionSelector(previewResolutionSelector)
                     .build()
                     .also { it.surfaceProvider = previewView.surfaceProvider }
 
@@ -190,7 +216,7 @@ class CameraHelper(
                 val initialRotation = previewView.display?.rotation ?: 0
 
                 imageAnalysis = ImageAnalysis.Builder()
-                    .setResolutionSelector(resolutionSelector)
+                    .setResolutionSelector(analysisResolutionSelector)
                     .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
                     .setOutputImageFormat(ImageAnalysis.OUTPUT_IMAGE_FORMAT_YUV_420_888)
                     .setOutputImageRotationEnabled(true)
@@ -221,8 +247,14 @@ class CameraHelper(
                 observeCameraState()
                 isBound.set(true)
                 isStreaming.set(true)
+                // Fresh bind starts unlocked — the previous options did not survive.
+                aeAwbLocked = false
 
-                logger.i("Camera successfully bound")
+                logger.i(
+                    "Camera successfully bound | analysis=${imageAnalysis?.resolutionInfo?.resolution} " +
+                        "preview=${preview?.resolutionInfo?.resolution} (requested $targetResolution)"
+                )
+                logExposureLockCapability()
 
                 // initial zoom
                 val zoomInit =
@@ -238,6 +270,51 @@ class CameraHelper(
             }
 
         }, ContextCompat.getMainExecutor(context))
+    }
+
+    /**
+     * Logs whether this camera reports AE/AWB lock support. Read-only probe —
+     * the desktop reference locks exposure and white balance during a count, and
+     * this is the device data needed to decide whether Android can do the same.
+     */
+    @OptIn(ExperimentalCamera2Interop::class)
+    private fun logExposureLockCapability() {
+        val info = boundCamera?.cameraInfo ?: return
+        try {
+            val characteristics = Camera2CameraInfo.from(info)
+            val aeLock = characteristics
+                .getCameraCharacteristic(CameraCharacteristics.CONTROL_AE_LOCK_AVAILABLE)
+            val awbLock = characteristics
+                .getCameraCharacteristic(CameraCharacteristics.CONTROL_AWB_LOCK_AVAILABLE)
+            logger.i("CameraCaps — aeLockAvailable=$aeLock awbLockAvailable=$awbLock")
+        } catch (t: Throwable) {
+            logger.w("CameraCaps — capability probe failed: ${t.message}")
+        }
+    }
+
+    /**
+     * Locks or unlocks auto-exposure and auto-white-balance on the bound camera.
+     *
+     * Held while a complete tray is in view so the detector sees a consistent
+     * image instead of one the camera keeps re-metering. Idempotent, so callers
+     * can drive it from the per-frame path. A device that does not support the
+     * keys simply ignores them — no crash and no behaviour change.
+     */
+    @OptIn(ExperimentalCamera2Interop::class)
+    fun setAeAwbLock(locked: Boolean) {
+        val cam = boundCamera ?: return
+        if (aeAwbLocked == locked) return
+        try {
+            val options = CaptureRequestOptions.Builder()
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AE_LOCK, locked)
+                .setCaptureRequestOption(CaptureRequest.CONTROL_AWB_LOCK, locked)
+                .build()
+            Camera2CameraControl.from(cam.cameraControl).setCaptureRequestOptions(options)
+            aeAwbLocked = locked
+            logger.i("CameraCaps — AE/AWB lock=$locked")
+        } catch (t: Throwable) {
+            logger.w("CameraCaps — AE/AWB lock failed: ${t.message}")
+        }
     }
 
     /**
@@ -493,6 +570,7 @@ class CameraHelper(
         logger.i("Pausing camera")
         focusJob?.cancel()
         focusJob = null
+        aeAwbLocked = false
         try {
             val provider = cameraProviderFuture.get()
             provider.unbindAll()
@@ -512,7 +590,7 @@ class CameraHelper(
 
     fun resumeCamera(
         previewView: PreviewView,
-        targetResolution: Size = Size(1280, 720)
+        targetResolution: Size = ANALYSIS_RESOLUTION
     ) {
         startCamera(previewView, targetResolution)
     }

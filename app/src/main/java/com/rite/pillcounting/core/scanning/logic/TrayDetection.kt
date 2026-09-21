@@ -50,6 +50,27 @@ data class TrayDetection(
         return x.toFloat() in rect.left..rect.right && y.toFloat() in rect.top..rect.bottom
     }
 
+    /**
+     * How many of the nine sample points — the centre and the eight points at
+     * ±[radius] around it — land on this region's mask. A [radius] of 0 samples
+     * the centre alone, so the result is 0 or 1.
+     *
+     * A plain "does this region reach the point at all" test answers the right
+     * question for one region but the wrong one when two regions abut: at the
+     * tray/chute wall both answer yes. The vote count is the discriminator —
+     * see `PillAnalyzer.isOnTray`.
+     */
+    fun votesWithin(x: Float, y: Float, radius: Float): Int {
+        if (radius <= 0f) return if (containsPoint(x.toInt(), y.toInt())) 1 else 0
+        var votes = 0
+        for (dy in -1..1) {
+            for (dx in -1..1) {
+                if (containsPoint((x + dx * radius).toInt(), (y + dy * radius).toInt())) votes++
+            }
+        }
+        return votes
+    }
+
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is TrayDetection) return false

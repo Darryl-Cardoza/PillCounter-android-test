@@ -1,17 +1,19 @@
 package com.rite.pillcounting.core.scanning.logic
 
+import android.graphics.Rect
 import android.graphics.RectF
 import com.rite.pillcounting.core.utils.logger.PerformanceLogger
 import io.mockk.mockk
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import org.tensorflow.lite.Interpreter
-import java.lang.reflect.Method
+import java.util.BitSet
 
 /**
  * Unit tests for [PillAnalyzer].
@@ -20,13 +22,13 @@ import java.lang.reflect.Method
  * [TraySegmentationDetector], [GloveDetector], [TrayColorDetector] and static
  * [Letterbox] state — none of which can be meaningfully exercised on the plain
  * JVM without an instrumented/Robolectric TFLite stack, so it is out of scope
- * here (see final report). This suite covers the analyzer's pure, side-effect
- * free private logic (`applyHysteresis`, `iouRect`) via reflection plus every
- * public member that doesn't require running the model pipeline:
- * `hasGloveInterpreter` and `resetGloveCadence()`.
+ * here (see final report). This suite covers the members that don't require
+ * running the model pipeline: `hasGloveInterpreter`, `resetGloveCadence()` and
+ * `trayCropRegion()`. The cross-frame pill logic itself lives in
+ * [PillTracker] and [CountStabilizer] and is tested there.
  *
- * Run under Robolectric: `iouRect`/`applyHysteresis` call real RectF methods
- * (width/height/intersects-style field math) which are stubbed to return
+ * Run under Robolectric: the tracker reached through `resetGloveCadence` calls
+ * real RectF methods (width/height field math) which are stubbed to return
  * default values (0f) under this module's isReturnDefaultValues=true test
  * option on the plain JVM, silently breaking every IoU-based assertion below.
  */
@@ -63,30 +65,16 @@ class PillAnalyzerTest {
     private fun realRect(left: Float, top: Float, right: Float, bottom: Float): RectF =
         RectF(left, top, right, bottom)
 
-    private fun applyHysteresis(analyzer: PillAnalyzer, candidates: List<Detection>): List<Detection> {
-        val m: Method = PillAnalyzer::class.java.getDeclaredMethod(
-            "applyHysteresis",
-            List::class.java
-        )
-        m.isAccessible = true
-        @Suppress("UNCHECKED_CAST")
-        return m.invoke(analyzer, candidates) as List<Detection>
-    }
-
-    private fun setPreviousFrameRects(analyzer: PillAnalyzer, rects: List<RectF>) {
-        val f = PillAnalyzer::class.java.getDeclaredField("previousFramePillRects")
+    private fun trackerOf(analyzer: PillAnalyzer): PillTracker {
+        val f = PillAnalyzer::class.java.getDeclaredField("pillTracker")
         f.isAccessible = true
-        f.set(analyzer, rects)
+        return f.get(analyzer) as PillTracker
     }
 
-    private fun iouRect(analyzer: PillAnalyzer, a: RectF, b: RectF): Float {
-        val m: Method = PillAnalyzer::class.java.getDeclaredMethod(
-            "iouRect",
-            RectF::class.java,
-            RectF::class.java
-        )
-        m.isAccessible = true
-        return m.invoke(analyzer, a, b) as Float
+    private fun stabilizerOf(analyzer: PillAnalyzer): CountStabilizer {
+        val f = PillAnalyzer::class.java.getDeclaredField("countStabilizer")
+        f.isAccessible = true
+        return f.get(analyzer) as CountStabilizer
     }
 
     // ── hasGloveInterpreter ──────────────────────────────────────────────
@@ -106,22 +94,31 @@ class PillAnalyzerTest {
     // ── resetGloveCadence ────────────────────────────────────────────────
 
     @Test
-    fun `resetGloveCadence clears hysteresis history so next hysteresis call requires full confidence`() {
+    fun `resetGloveCadence clears the pill tracker so confirmation starts over`() {
         val analyzer = newAnalyzer()
-        // Seed "previous frame" state as if a pill had been tracked.
-        setPreviousFrameRects(analyzer, listOf(realRect(0f, 0f, 10f, 10f)))
+        val tracker = trackerOf(analyzer)
+        val pill = Detection(rect = realRect(0f, 0f, 10f, 10f), confidence = 0.90f)
 
-        val borderline = Detection(rect = realRect(0f, 0f, 10f, 10f), confidence = 0.40f)
-        // Before reset: borderline candidate overlapping previous frame is kept.
-        val beforeReset = applyHysteresis(analyzer, listOf(borderline))
-        assertEquals(1, beforeReset.size)
+        tracker.update(listOf(pill))
+        // Second consecutive high-confidence frame would normally confirm.
+        analyzer.resetGloveCadence()
+
+        assertTrue(tracker.update(listOf(pill)).isEmpty())
+    }
+
+    @Test
+    fun `resetGloveCadence clears the count stabilizer so the next scene re-acquires`() {
+        val analyzer = newAnalyzer()
+        val stabilizer = stabilizerOf(analyzer)
+        stabilizer.update(6)
+        stabilizer.update(6)
+        assertEquals(6, stabilizer.update(6))
 
         analyzer.resetGloveCadence()
 
-        // After reset, previousFramePillRects is cleared, so the same borderline
-        // candidate (below PILL_CONF_ENTER, no previous overlap) is dropped.
-        val afterReset = applyHysteresis(analyzer, listOf(borderline))
-        assertTrue(afterReset.isEmpty())
+        // Un-reset, the window still holds the 6s and the median keeps showing 6.
+        // Cleared, 3 is taken straight away off a zero display.
+        assertEquals(3, stabilizer.update(3))
     }
 
     @Test
@@ -147,109 +144,126 @@ class PillAnalyzerTest {
         assertTrue((cachedField.get(analyzer) as List<GloveDetection>).isEmpty())
     }
 
-    // ── applyHysteresis ──────────────────────────────────────────────────
+    // ── isOnTray: the deploy-contract mask rule ──────────────────────────
 
-    @Test
-    fun `applyHysteresis returns empty list unchanged for empty candidates`() {
-        val analyzer = newAnalyzer()
-        assertTrue(applyHysteresis(analyzer, emptyList()).isEmpty())
-    }
-
-    @Test
-    fun `applyHysteresis keeps high confidence candidate regardless of overlap`() {
-        val analyzer = newAnalyzer()
-        setPreviousFrameRects(analyzer, emptyList())
-        val highConf = Detection(rect = realRect(0f, 0f, 5f, 5f), confidence = 0.50f)
-        val result = applyHysteresis(analyzer, listOf(highConf))
-        assertEquals(listOf(highConf), result)
-    }
-
-    @Test
-    fun `applyHysteresis drops borderline candidate with no previous-frame overlap`() {
-        val analyzer = newAnalyzer()
-        setPreviousFrameRects(analyzer, emptyList())
-        val borderline = Detection(rect = realRect(0f, 0f, 5f, 5f), confidence = 0.40f)
-        val result = applyHysteresis(analyzer, listOf(borderline))
-        assertTrue(result.isEmpty())
-    }
-
-    @Test
-    fun `applyHysteresis keeps borderline candidate overlapping previous frame pill above IoU threshold`() {
-        val analyzer = newAnalyzer()
-        // Identical rect -> IoU = 1.0, well above HYSTERESIS_IOU (0.40).
-        setPreviousFrameRects(analyzer, listOf(realRect(0f, 0f, 10f, 10f)))
-        val borderline = Detection(rect = realRect(0f, 0f, 10f, 10f), confidence = 0.40f)
-        val result = applyHysteresis(analyzer, listOf(borderline))
-        assertEquals(1, result.size)
-    }
-
-    @Test
-    fun `applyHysteresis drops borderline candidate whose overlap is below IoU threshold`() {
-        val analyzer = newAnalyzer()
-        // Prev rect only slightly overlaps -> IoU well under 0.40.
-        setPreviousFrameRects(analyzer, listOf(realRect(9f, 9f, 20f, 20f)))
-        val borderline = Detection(rect = realRect(0f, 0f, 10f, 10f), confidence = 0.40f)
-        val result = applyHysteresis(analyzer, listOf(borderline))
-        assertTrue(result.isEmpty())
-    }
-
-    @Test
-    fun `applyHysteresis filters mixed candidates keeping only qualifying ones`() {
-        val analyzer = newAnalyzer()
-        setPreviousFrameRects(analyzer, listOf(realRect(0f, 0f, 10f, 10f)))
-        val highConf = Detection(rect = realRect(100f, 100f, 110f, 110f), confidence = 0.9f)
-        val borderlineOverlap = Detection(rect = realRect(0f, 0f, 10f, 10f), confidence = 0.40f)
-        val borderlineNoOverlap = Detection(rect = realRect(200f, 200f, 210f, 210f), confidence = 0.40f)
-        val tooLowEvenWithOverlap = Detection(rect = realRect(0f, 0f, 10f, 10f), confidence = 0.10f)
-
-        val result = applyHysteresis(
-            analyzer,
-            listOf(highConf, borderlineOverlap, borderlineNoOverlap, tooLowEvenWithOverlap)
+    /**
+     * An 8×8 mask in frame pixels (scale 1, no pad): columns 0–3 are CHUTE,
+     * columns 4–7 are TRAY, so the chute wall runs between x=3 and x=4.
+     */
+    private fun trayAndChute(): List<TrayDetection> {
+        val size = 8
+        val tray = BitSet(size * size)
+        val chute = BitSet(size * size)
+        for (y in 0 until size) for (x in 0 until size) {
+            if (x >= 4) tray.set(y * size + x) else chute.set(y * size + x)
+        }
+        val info = Letterbox.ScaleInfo(scale = 1f, padX = 0f, padY = 0f, inputSize = size)
+        return listOf(
+            TrayDetection(realRect(4f, 0f, 8f, 8f), 1f, TrayClass.TRAY, tray, size, info),
+            TrayDetection(realRect(0f, 0f, 4f, 8f), 1f, TrayClass.CHUTE, chute, size, info)
         )
-
-        // tooLowEvenWithOverlap: conf 0.10 is below PILL_CONF_STAY decode threshold in
-        // real pipeline, but applyHysteresis itself only checks ENTER/overlap, so a
-        // low-conf candidate with overlap is still kept by this function in isolation.
-        assertEquals(3, result.size)
-        assertTrue(result.contains(highConf))
-        assertTrue(result.contains(borderlineOverlap))
-        assertFalse(result.contains(borderlineNoOverlap))
-    }
-
-    // ── iouRect ──────────────────────────────────────────────────────────
-
-    @Test
-    fun `iouRect returns 1 for identical rects`() {
-        val analyzer = newAnalyzer()
-        val a = realRect(0f, 0f, 10f, 10f)
-        val b = realRect(0f, 0f, 10f, 10f)
-        assertEquals(1.0f, iouRect(analyzer, a, b), 0.0001f)
     }
 
     @Test
-    fun `iouRect returns 0 for non-overlapping rects`() {
-        val analyzer = newAnalyzer()
-        val a = realRect(0f, 0f, 10f, 10f)
-        val b = realRect(20f, 20f, 30f, 30f)
-        assertEquals(0.0f, iouRect(analyzer, a, b), 0.0001f)
+    fun `isOnTray counts a pill resting on the tray side of the chute wall`() {
+        val trays = trayAndChute()
+        // Centre on tray pixel (4, 3), hard against the wall: six of the nine
+        // samples are tray, three are chute, so it counts — and it keeps counting
+        // however the argmax boundary wanders, because a wander moves one vote.
+        assertTrue(PillAnalyzer.isOnTray(4.5f, 3.5f, trays, dilate = 1f))
     }
 
     @Test
-    fun `iouRect computes partial overlap correctly`() {
-        val analyzer = newAnalyzer()
-        // a: 10x10 = 100 area. b: 10x10 = 100 area, offset by 5 in both axes.
-        // Intersection: 5x5 = 25. Union = 100 + 100 - 25 = 175. IoU = 25/175.
-        val a = realRect(0f, 0f, 10f, 10f)
-        val b = realRect(5f, 5f, 15f, 15f)
-        val expected = 25f / 175f
-        assertEquals(expected, iouRect(analyzer, a, b), 0.0001f)
+    fun `isOnTray rejects a pill sitting in the chute against the wall`() {
+        val trays = trayAndChute()
+        // Centre on chute pixel (3, 3), one pixel the other side of the wall.
+        // The dilation reaches the tray, but six of nine samples are chute, so
+        // the chute wins. This is the pill the old dilation-only rule counted.
+        assertFalse(PillAnalyzer.isOnTray(3.5f, 3.5f, trays, dilate = 1f))
+        assertFalse(PillAnalyzer.isOnTray(3.5f, 3.5f, trays, dilate = 0f))
     }
 
     @Test
-    fun `iouRect returns 0 when rects touch at edge only (zero-area intersection)`() {
+    fun `isOnTray rejects a pill deep in the chute`() {
+        val trays = trayAndChute()
+        assertFalse(PillAnalyzer.isOnTray(1.5f, 3.5f, trays, dilate = 1f))
+    }
+
+    @Test
+    fun `isOnTray keeps the dilation where the tray meets background`() {
+        val trays = trayAndChute()
+        // Centre on the tray's outer column (7, 3): three samples fall off the
+        // mask entirely. No chute votes, so tray still wins and a pill on the
+        // rim is not dropped.
+        assertTrue(PillAnalyzer.isOnTray(7.5f, 3.5f, trays, dilate = 1f))
+    }
+
+    @Test
+    fun `isOnTray accepts a centre on the tray and rejects one off every mask`() {
+        val trays = trayAndChute()
+        assertTrue(PillAnalyzer.isOnTray(6.5f, 3.5f, trays, dilate = 0f))
+        assertFalse(PillAnalyzer.isOnTray(20f, 20f, trays, dilate = 1f))
+    }
+
+    // ── trayCropRegion ───────────────────────────────────────────────────
+    // TRAY_CROP_MARGIN is 0.05 per side, TRAY_CROP_MIN_SIDE is 64.
+
+    private fun tray(
+        left: Float, top: Float, right: Float, bottom: Float,
+        cls: TrayClass = TrayClass.TRAY
+    ) = TrayDetection(rect = realRect(left, top, right, bottom), confidence = 1f, cls = cls)
+
+    @Test
+    fun `trayCropRegion grows the tray box by the margin on every side`() {
         val analyzer = newAnalyzer()
-        val a = realRect(0f, 0f, 10f, 10f)
-        val b = realRect(10f, 0f, 20f, 10f)
-        assertEquals(0.0f, iouRect(analyzer, a, b), 0.0001f)
+        val region = analyzer.trayCropRegion(listOf(tray(100f, 100f, 300f, 300f)), 640, 480)
+        assertEquals(Rect(90, 90, 310, 310), region)
+    }
+
+    @Test
+    fun `trayCropRegion clamps the grown box to the frame`() {
+        val analyzer = newAnalyzer()
+        val region = analyzer.trayCropRegion(listOf(tray(-20f, -20f, 100f, 100f)), 640, 480)
+        assertEquals(Rect(0, 0, 106, 106), region)
+    }
+
+    @Test
+    fun `trayCropRegion returns null for a tray too small to be worth upscaling`() {
+        val analyzer = newAnalyzer()
+        assertNull(analyzer.trayCropRegion(listOf(tray(0f, 0f, 50f, 50f)), 640, 480))
+    }
+
+    @Test
+    fun `trayCropRegion picks the largest tray when several are detected`() {
+        val analyzer = newAnalyzer()
+        val region = analyzer.trayCropRegion(
+            listOf(tray(0f, 0f, 120f, 120f), tray(200f, 100f, 400f, 300f)),
+            640, 480
+        )
+        assertEquals(Rect(190, 90, 410, 310), region)
+    }
+
+    @Test
+    fun `trayCropRegion ignores chute detections`() {
+        val analyzer = newAnalyzer()
+        val region = analyzer.trayCropRegion(
+            listOf(
+                tray(100f, 100f, 300f, 300f),
+                tray(400f, 100f, 600f, 300f, cls = TrayClass.CHUTE)
+            ),
+            640, 480
+        )
+        assertEquals(Rect(90, 90, 310, 310), region)
+    }
+
+    @Test
+    fun `trayCropRegion returns null when no tray class detection is present`() {
+        val analyzer = newAnalyzer()
+        assertNull(
+            analyzer.trayCropRegion(
+                listOf(tray(100f, 100f, 300f, 300f, cls = TrayClass.CHUTE)),
+                640, 480
+            )
+        )
     }
 }

@@ -24,6 +24,11 @@ import kotlin.math.exp
 object Postprocessor {
 
     private const val DFL_BINS = 17
+    // Class channels on the cls head. New detector outputs 3; the previous
+    // single-class model output 1.
+    private const val NUM_CLASSES = 3
+    // Head order from the reference config: 0 pill, 1 broken_pill, 2 half_pill.
+    val PILL_CLASS_NAMES = arrayOf("pill", "broken_pill", "half_pill")
     private const val SIDES = 4
     private const val REG_CHANNELS = SIDES * DFL_BINS   // 68
     private val FPN_STRIDES = intArrayOf(8, 16, 32)
@@ -70,9 +75,9 @@ object Postprocessor {
             if (levelIdx < 0) continue
 
             when (shape[3]) {
-                1 -> {
+                NUM_CLASSES -> {
                     clsIdx[levelIdx] = i
-                    val n = grid * grid * 1
+                    val n = grid * grid * NUM_CLASSES
                     cls[levelIdx] = ByteBuffer.allocateDirect(n * 4).order(ByteOrder.nativeOrder())
                     clsFlat[levelIdx] = FloatArray(n)
                 }
@@ -113,13 +118,18 @@ object Postprocessor {
      * @param scale          letterbox scale (640_pixel = source_pixel * scale).
      * @param padX           letterbox horizontal pad in 640-space.
      * @param padY           letterbox vertical pad in 640-space.
+     * @param offsetX        source-frame x of the letterboxed region's origin
+     *                       (non-zero when the input was a tray crop).
+     * @param offsetY        source-frame y of the letterboxed region's origin.
      */
     fun decode(
         outputs: PillOutputs,
         confThreshold: Float,
         scale: Float,
         padX: Float,
-        padY: Float
+        padY: Float,
+        offsetX: Float = 0f,
+        offsetY: Float = 0f
     ): List<Detection> {
         val results = ArrayList<Detection>(64)
 
@@ -140,7 +150,18 @@ object Postprocessor {
                 val rowBase = row * grid
                 for (col in 0 until grid) {
                     val cellIdx = rowBase + col
-                    val score = clsFlat[cellIdx]   // NHWC, 1 channel → flat index = row*grid+col
+                    // NHWC, NUM_CLASSES channels → cell starts at cellIdx*NUM_CLASSES.
+                    // Take the best class score and keep which class won.
+                    val clsBase = cellIdx * NUM_CLASSES
+                    var score = clsFlat[clsBase]
+                    var classId = 0
+                    for (c in 1 until NUM_CLASSES) {
+                        val s = clsFlat[clsBase + c]
+                        if (s > score) {
+                            score = s
+                            classId = c
+                        }
+                    }
                     if (score < confThreshold) continue
 
                     // NHWC: reg cell (row,col) starts at (row*grid+col)*68; each
@@ -156,13 +177,14 @@ object Postprocessor {
                     val cx = (col + 0.5f) * stride
                     val cy = (row + 0.5f) * stride
 
-                    // 640-space → source-frame: reverse the letterbox transform
-                    val x1 = ((cx - dLeft) - padX) / scale
-                    val y1 = ((cy - dTop) - padY) / scale
-                    val x2 = ((cx + dRight) - padX) / scale
-                    val y2 = ((cy + dBottom) - padY) / scale
+                    // 640-space → source-frame: reverse the letterbox transform,
+                    // then shift by the crop origin so boxes land in full-frame coords.
+                    val x1 = ((cx - dLeft) - padX) / scale + offsetX
+                    val y1 = ((cy - dTop) - padY) / scale + offsetY
+                    val x2 = ((cx + dRight) - padX) / scale + offsetX
+                    val y2 = ((cy + dBottom) - padY) / scale + offsetY
 
-                    results.add(Detection(rect = RectF(x1, y1, x2, y2), confidence = score))
+                    results.add(Detection(rect = RectF(x1, y1, x2, y2), confidence = score, classId = classId))
                 }
             }
         }

@@ -144,6 +144,10 @@ class PillScanningViewModel @Inject constructor(
     // --- Duplicate prevention ---
     private var currentScanId: Long = 0L
 
+    // Last frame that showed a complete tray. Drives the AE/AWB lock release
+    // delay so a flickering tray gate can't cause lock/unlock churn.
+    private var lastCompleteTrayMs: Long = 0L
+
     /** Public read-only flow for observing recent detection counts. */
     val lastTenDetections: StateFlow<ArrayDeque<Int>> = _lastTenDetections
 
@@ -314,6 +318,10 @@ class PillScanningViewModel @Inject constructor(
 
     companion object {
         private const val ZERO_DETECTIONS_THRESHOLD = 25
+
+        // How long the tray must be gone before AE/AWB unlock. Rides on top of
+        // PillAnalyzer's TRAY_HOLD_FRAMES so a brief gate drop doesn't unlock.
+        private const val AE_LOCK_RELEASE_DELAY_MS = 1000L
 
         // Log prefix for the idle watchdog. Filter: logcat -s PillScanningVM.
         private const val IDLE_TAG = "IDLE_WATCHDOG"
@@ -873,6 +881,22 @@ class PillScanningViewModel @Inject constructor(
         _trayDetections.value = trayDets
         _uiState.update { it.copy(gloveDetections = gloveDets) }
 
+        // ── AE/AWB lock ──────────────────────────────────────────────────────
+        // trayDets is only populated when PillAnalyzer saw a COMPLETE tray, so a
+        // non-empty list is the "tray in view" signal. Lock exposure and white
+        // balance while it is, so the detector sees a consistent image instead of
+        // one the camera keeps re-metering. Release is delayed so a flickering
+        // tray gate can't cause lock/unlock churn.
+        if (trayDets.isNotEmpty()) {
+            lastCompleteTrayMs = System.currentTimeMillis()
+            cameraHelper?.setAeAwbLock(true)
+        } else if (lastCompleteTrayMs != 0L &&
+            System.currentTimeMillis() - lastCompleteTrayMs >= AE_LOCK_RELEASE_DELAY_MS
+        ) {
+            cameraHelper?.setAeAwbLock(false)
+            lastCompleteTrayMs = 0L
+        }
+
         // ── Tray color classification + hazardousTrayDetected DB save ────────
         // Runs only for hazardous drug transactions. Saves exactly once per txn.
         //
@@ -997,6 +1021,8 @@ class PillScanningViewModel @Inject constructor(
     private fun pauseAndClearBuffers() {
         _lastTenDetections.value.clear()
         resetCountConfirmation()
+        lastCompleteTrayMs = 0L
+        cameraHelper?.setAeAwbLock(false)
         _uiState.update { it.copy(showIdleOverlay = true, gloveDetections = emptyList(), pendingTrayColorForClassification = null) }
         _trayDetections.value = emptyList()
         isTrayColorDetectionEnabled = false
@@ -1103,6 +1129,8 @@ class PillScanningViewModel @Inject constructor(
 
         _lastTenDetections.value.clear()
         resetCountConfirmation()
+        lastCompleteTrayMs = 0L
+        cameraHelper?.setAeAwbLock(false)
         lastAddedScanSignature = null
         _trayDetections.value = emptyList()
         _uiState.update { it.copy(gloveDetections = emptyList()) }
@@ -2375,6 +2403,10 @@ class PillScanningViewModel @Inject constructor(
         isPaused = true
         _uiState.update { it.copy(detectedPills = emptyList()) }
         _trayDetections.value = emptyList()
+        // processDetections early-returns while paused, so the release branch
+        // there can never run. Drop the lock here instead.
+        lastCompleteTrayMs = 0L
+        cameraHelper?.setAeAwbLock(false)
     }
 
     /** Resume pill detection after a [pausePillDetection] call. */
