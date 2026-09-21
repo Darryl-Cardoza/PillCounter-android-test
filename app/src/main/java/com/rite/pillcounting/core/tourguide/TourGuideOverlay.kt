@@ -3,8 +3,6 @@ package com.rite.pillcounting.core.tourguide
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -29,7 +27,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,9 +39,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalDensity
@@ -74,9 +68,7 @@ private val PinnedBottomExtraClearance = 130.dp
 // select_bucket, end_count_confirm) would otherwise sit flush against the screen's own top
 // edge, covering the real app header (pharmacy name, PMS status, hamburger menu) underneath
 // it. This pushes it down clear of that zone. It also happens to keep the tooltip clear of
-// the real dialog itself, which is vertically centered lower on screen — landing the tooltip
-// safely above/below it without needing any cross-window z-order guarantee between our Popup
-// (see below) and the dialog's own separate window, which Compose doesn't expose control over.
+// the real dialog itself, which is vertically centered lower on screen.
 private val PinnedTopExtraClearance = 140.dp
 
 /**
@@ -86,15 +78,17 @@ private val PinnedTopExtraClearance = 140.dp
  *
  * Behavior branches on the current step's [TourStepMode]:
  * - [TourStepMode.INFO]: blocks every tap, tooltip has Skip/Back/Next.
- * - [TourStepMode.ACTION_TAP]: blocks every tap *except* inside the target rect or the
- *   tooltip card itself (so Skip always stays reachable); a tap inside the target is left
- *   unconsumed (the real control underneath still fires) and is independently detected as
- *   the signal to advance — no Next button. A tap is only ever blocked once the target has
- *   actually registered its bounds — never while it's still null (not yet mounted, or
- *   mounted in a different window this overlay instance can't see), which would otherwise
- *   trap the user behind a full block with nothing tappable.
- * - [TourStepMode.ACTION_WAIT]: blocks nothing; pure visual spotlight. Advancing is driven
- *   externally via [TourGuideState.advanceIfCurrent].
+ * - [TourStepMode.ACTION_TAP]: blocks every tap, same as INFO — the highlighted/spotlighted
+ *   target itself is never tappable. Progress comes only from the tour card's own Next
+ *   button (see [onDummyNext]), which every ACTION_TAP step wires to perform the exact real
+ *   action the target would have. (Earlier this let a tap inside the target pass through
+ *   unconsumed to the real control underneath; that's been removed in favor of guiding the
+ *   user through the tour card exclusively, matching the Dashboard's INFO-step behavior.)
+ * - [TourStepMode.ACTION_WAIT]: blocks nothing (except the two targetless "explaining a real
+ *   dialog" steps, select_bucket/end_count_confirm, which block everything exactly like
+ *   INFO/ACTION_TAP — see `skipScrim` below); pure visual spotlight otherwise, needed for
+ *   live camera interaction. Advancing is driven externally via
+ *   [TourGuideState.advanceIfCurrent].
  *
  * [modifier] must size this overlay to exactly the area it should cover — pass
  * `Modifier.fillMaxSize()` at a screen root, or `Modifier.matchParentSize()` when hosting it
@@ -155,15 +149,12 @@ fun TourGuideOverlay(
     val density = LocalDensity.current
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     // This overlay's own top-left, in the SAME root-relative coordinate space as
-    // [Rect]s pulled from [TourGuideState] (which are captured via `boundsInRoot()`).
-    // A `pointerInput` block only ever sees LOCAL positions (relative to the Box the
-    // modifier is attached to) — comparing those directly against a root-relative rect is
-    // only correct when this Box happens to sit exactly at its window's (0,0), which isn't
-    // true once it's nested inside a ModalBottomSheet/Dialog (or any padded ancestor). Every
-    // position read out of the gesture below is converted to root-relative with this offset
-    // before it's compared against anything.
+    // [Rect]s pulled from [TourGuideState] (which are captured via `boundsInRoot()`) —
+    // this Box only sits exactly at its window's (0,0) at the screen root; nested
+    // inside a ModalBottomSheet/Dialog (or any padded ancestor) it doesn't, so the
+    // root-relative target rect has to be converted to LOCAL coordinates with this
+    // offset before it's used for drawing below.
     var boxOffsetInRoot by remember { mutableStateOf(Offset.Zero) }
-    var tooltipRect by remember { mutableStateOf<Rect?>(null) }
     val accentColor = MaterialTheme.colorScheme.primary
 
     val rawRect = state.currentTargetRect
@@ -214,68 +205,21 @@ fun TourGuideOverlay(
             indication = null,
             onClick = {},
         )
-        TourStepMode.ACTION_TAP -> {
-            // Read these through rememberUpdatedState, NOT as pointerInput keys: the target
-            // rect, tooltip rect and root offset all keep re-measuring for a frame or two
-            // while a screen first settles (images/data loading, the tooltip's own position
-            // adjusting to the just-measured container). Keying pointerInput on them would
-            // cancel-and-restart this whole gesture detector on every such wobble — and if
-            // that happens between a real down and up (a tap already in flight), the
-            // restarted detector never sees that down (awaitFirstDown only fires on a NEW
-            // press), silently dropping the tap. The user's own tap still often reaches the
-            // real control underneath (a separate, unaffected node), so it looked like it
-            // took two taps: the first do nothing, the second — after things had settled —
-            // work. Keying only on step.id (which never changes mid-gesture) avoids this
-            // entirely, while these three still read their latest value every gesture.
-            val latestRect by rememberUpdatedState(paddedRect)
-            val latestTooltip by rememberUpdatedState(tooltipRect)
-            val latestOffset by rememberUpdatedState(boxOffsetInRoot)
-            Modifier.pointerInput(step.id) {
-            awaitEachGesture {
-                // Decide block-or-pass-through as early as possible (Initial pass, before
-                // any descendant's default gesture detector — which requires an
-                // unconsumed down — gets a look at it).
-                val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-                val rect = latestRect
-                val tooltip = latestTooltip
-                val downInRoot = down.position + latestOffset
-                when {
-                    rect != null && rect.contains(downInRoot) -> {
-                        // Inside the target — never consume, so the real control underneath
-                        // processes this gesture completely normally. Advance right away,
-                        // on the down, rather than waiting to observe a release: the real
-                        // control's own action (e.g. navigating to another screen) can run
-                        // and tear this whole composable down as part of the very same
-                        // gesture, before a later "wait for the up, then advance" ever gets
-                        // to execute — which silently ate the first tap (the tour never
-                        // advanced, so the next screen's overlay had no matching step and
-                        // showed nothing) and made it look like it took two taps to work.
-                        state.advanceIfCurrent(step.id)
-                    }
-                    tooltip != null && tooltip.contains(downInRoot) -> {
-                        // Inside the tooltip card itself (e.g. its Skip button) — never
-                        // consume; let the card's own child handle it on the normal pass.
-                    }
-                    rect == null -> {
-                        // The target hasn't registered its bounds — either it hasn't
-                        // mounted yet, or (a real target living in a different window,
-                        // e.g. a ModalBottomSheet) it never will from this overlay
-                        // instance. Either way, blocking here would leave the user with
-                        // nothing tappable and no way out — pass everything through.
-                    }
-                    else -> {
-                        // Outside the one allowed target and the tooltip — block the
-                        // whole gesture so nothing underneath reacts to it.
-                        down.consume()
-                        do {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            event.changes.forEach { it.consume() }
-                        } while (event.changes.any { it.pressed })
-                    }
-                }
-            }
-            }
-        }
+        // Full block, same as INFO — the highlighted/spotlighted target is NOT
+        // tappable. Every ACTION_TAP step already has a working "Next" button (see
+        // onDummyNext below) that performs the exact real action the target would
+        // have, so the user is never trapped: progress comes only from the tour
+        // card itself (Skip or Next), never from tapping the real UI underneath —
+        // matching the Dashboard's INFO-step behavior, extended to the Dispense and
+        // Stock Count flows. (Previously this let a tap inside the target pass
+        // through unconsumed to the real control; that whole mechanism — and the
+        // double-tap race it had to work around — no longer applies now that the
+        // target is never tappable at all.)
+        TourStepMode.ACTION_TAP -> Modifier.clickable(
+            interactionSource = remember { MutableInteractionSource() },
+            indication = null,
+            onClick = {},
+        )
         TourStepMode.ACTION_WAIT -> if (skipScrim) {
             Modifier.clickable(
                 interactionSource = remember { MutableInteractionSource() },
@@ -400,8 +344,7 @@ fun TourGuideOverlay(
         Card(
             modifier = Modifier
                 .offset { IntOffset(tooltipX.roundToInt(), tooltipY.roundToInt()) }
-                .width(TooltipWidth)
-                .onGloballyPositioned { tooltipRect = it.boundsInRoot() },
+                .width(TooltipWidth),
             shape = RoundedCornerShape(14.dp),
             colors = CardDefaults.cardColors(containerColor = extendedColors.secondaryBackground),
             elevation = CardDefaults.cardElevation(defaultElevation = 8.dp),

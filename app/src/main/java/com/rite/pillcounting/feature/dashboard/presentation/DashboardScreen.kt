@@ -191,12 +191,6 @@ fun DashboardScreen(
     val onTabSelected = remember(viewModel) { viewModel::onTabSelected }
     val onDispenseQuickAction = remember(viewModel, navController) {
         {
-            // FTUE: also advance synchronously here, not just via the overlay's own
-            // deferred gesture-based advance — this navigates to a brand-new screen
-            // whose own overlay would otherwise render nothing on its first frame(s)
-            // (still seeing "dispense" as current, no matching target there) until
-            // that deferred tick catches up. See TourGuideState.advanceIfCurrentNow.
-            tourState.advanceIfCurrentNow("dispense")
             viewModel.saveTxnId()
             navController.navigate(
                 Screen.DispenseFlow.createRoute(
@@ -207,11 +201,6 @@ fun DashboardScreen(
     }
     val onInventoryQuickAction = remember(viewModel) {
         {
-            // FTUE: same reasoning as onDispenseQuickAction — this opens the Select
-            // Bucket dialog on THIS same screen, but advancing synchronously here
-            // still closes the same one-tick gap for the "select_bucket" step's own
-            // tooltip/tap-block to be in place the instant the dialog appears.
-            tourState.advanceIfCurrentNow("stock_count")
             viewModel.saveTxnId()
             showBucketSelectDialog = true
         }

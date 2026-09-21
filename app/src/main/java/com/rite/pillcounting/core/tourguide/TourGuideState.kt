@@ -137,27 +137,6 @@ class TourGuideState(val steps: List<TourStep>) {
     }
 
     /**
-     * Same guard as [advanceIfCurrent], but mutates immediately instead of deferring —
-     * for a REAL control's own onClick handler (called after its click has already
-     * fully resolved through Compose's normal down→up detection, not from inside
-     * [TourGuideOverlay]'s own gesture detector), where [advanceIfCurrent]'s one-tick
-     * defer would otherwise leave a real gap: a step whose real action navigates to a
-     * brand-new screen (e.g. "dispense", "stock_count", "verify_rx_proceed") tears
-     * this whole composable tree down and mounts a new one before that deferred tick
-     * ever runs, so the NEW screen's first frame(s) still see the OLD step as current
-     * — its own target doesn't exist there, so its overlay renders nothing at all,
-     * a real "click outside the tour" window until the deferred mutation catches up.
-     * Calling this here — in addition to, not instead of, the overlay's own
-     * gesture-based [advanceIfCurrent] — closes that gap; whichever of the two runs
-     * first wins, the second is a no-op since currentStep no longer matches by then.
-     */
-    fun advanceIfCurrentNow(id: String) {
-        if (isActive && currentStep?.id == id) {
-            next()
-        }
-    }
-
-    /**
      * Skips forward past every step in [ids] the tour currently sits on, in one
      * deferred pass — for a real action that bypasses one or more *optional*
      * steps at once (e.g. tapping END COUNT directly, skipping the optional

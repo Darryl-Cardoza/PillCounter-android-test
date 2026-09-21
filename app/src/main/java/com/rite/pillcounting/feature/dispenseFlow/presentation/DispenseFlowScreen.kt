@@ -1492,14 +1492,7 @@ fun DispenseFlowScreen(
                     strength = dispenseState.ndcStrength.orEmpty(),
                     drugImage = dispenseState.drugImage,
                     onCancel = { dispenseVm.onRxCancelled() },
-                    onProceed = {
-                        // FTUE: advance synchronously too, not just via the sheet's own
-                        // local overlay's deferred gesture-based advance — see
-                        // TourGuideState.advanceIfCurrentNow for why the deferred-only
-                        // path can leave a real gap here once the sheet closes.
-                        ftueState.advanceIfCurrentNow("verify_rx_proceed")
-                        dispenseVm.onRxConfirmed()
-                    },
+                    onProceed = { dispenseVm.onRxConfirmed() },
                     dismissible = false,
                 )
             } else {
@@ -1518,12 +1511,7 @@ fun DispenseFlowScreen(
                         rxNumber = dispenseState.rxNo.orEmpty(),
                         strength = dispenseState.ndcStrength.orEmpty(),
                         onCancel = { dispenseVm.onRxCancelled() },
-                        onProceed = {
-                            // FTUE: see the equivalent comment on VerifyRxDetailsSheet's
-                            // onProceed above.
-                            ftueState.advanceIfCurrentNow("verify_rx_proceed")
-                            dispenseVm.onRxConfirmed()
-                        },
+                        onProceed = { dispenseVm.onRxConfirmed() },
                         modifier = Modifier.fillMaxSize(),
                         drugImage = dispenseState.drugImage
                     )
