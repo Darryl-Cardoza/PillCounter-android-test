@@ -25,10 +25,14 @@ data class Dimens(
     val settingRowVerticalPadding: Dp = 14.dp,
     val menuRowVerticalPadding: Dp = 12.dp,
     val menuRowSpacing: Dp = 10.dp,
-    val toggleVerticalPadding: Dp = 8.dp,
     val profileTextFieldHeight: Dp = 62.dp,
     val cameraActionIconSize: Dp = 32.dp,
     val cameraButtonSize: Dp = 72.dp,
+    // History line-tab strip: gap between tabs, label-to-underline gap, and the
+    // underline thickness. Tablet keeps the phone values for now.
+    val historyTabSpacing: Dp = 16.dp,
+    val historyTabLabelGap: Dp = 4.dp,
+    val historyTabRuleHeight: Dp = 2.dp,
 )
 
 val phoneDimens = Dimens()
@@ -54,7 +58,6 @@ val tabletDimens = Dimens(
     settingRowVerticalPadding = 20.dp,
     menuRowVerticalPadding = 18.dp,
     menuRowSpacing = 14.dp,
-    toggleVerticalPadding = 12.dp,
     profileTextFieldHeight = 70.dp,
     cameraActionIconSize = 64.dp,
     cameraButtonSize = 96.dp,

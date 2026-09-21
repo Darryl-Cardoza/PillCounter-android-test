@@ -6,9 +6,11 @@ import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -24,6 +26,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -44,6 +47,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
@@ -87,6 +91,7 @@ import com.rite.pillcounting.ui.theme.AppTheme.dimens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import java.util.Locale
+import kotlin.math.roundToInt
 import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
 
 /**
@@ -117,6 +122,10 @@ import com.rite.pillcounting.core.scanning.domain.data.NavigationEvent as PillNa
 private const val COUNT_CIRCLE_HIDE_GRACE_MS = 700L
 
 private const val HAZARDOUS_TAG = "HazardousFlow"
+
+// Total rightward drag that dismisses the landscape Rx panel. Measured from
+// where the drag started, so a slow pull counts the same as a flick.
+private val INLINE_PANEL_DISMISS_DRAG = 56.dp
 
 @Composable
 fun DispenseFlowScreen(
@@ -644,12 +653,16 @@ fun DispenseFlowScreen(
     // ── Back handling ───────────────────────────────────────────────────────
     // Device-back priority order:
     //  1. If the history view is open, dismiss it (return to camera + pill panel).
-    //  2. In QUEUE stage: back navigates to Dashboard (queue is the home for dispense).
-    //  3. In non-QUEUE stage with fromQueue=true: cancel current scan, return to QUEUE.
-    //  4. Otherwise: exit the dispense flow to the Dashboard.
+    //  2. If the idle overlay is up, just resume — back must not discard the
+    //     staged count from what the user sees as a paused screen.
+    //  3. In QUEUE stage: back navigates to Dashboard (queue is the home for dispense).
+    //  4. In non-QUEUE stage with fromQueue=true: cancel current scan, return to QUEUE.
+    //  5. Otherwise: exit the dispense flow to the Dashboard.
     BackHandler {
         if (showHistory) {
             showHistory = false
+        } else if (pillState.showIdleOverlay) {
+            pillVm.resetIdleOverlay()
         } else if (dispenseState.stage == DispenseStage.QUEUE) {
             navController.navigate(Screen.Dashboard.route) {
                 popUpTo(0)
@@ -1271,7 +1284,16 @@ fun DispenseFlowScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.5f)),
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    // this is to disable the user to click the items below this overlay of resume.
+                    // Only the resume button has the touch.
+                    .pointerInput(Unit) {
+                        awaitPointerEventScope {
+                            while (true) {
+                                awaitPointerEvent().changes.forEach { it.consume() }
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center,
             ) {
                 Column(
@@ -1282,8 +1304,8 @@ fun DispenseFlowScreen(
                     Text(
                         text = stringResource(R.string.counting_paused).uppercase(Locale.ROOT),
                         fontSize = 14.sp,
-                        fontWeight = FontWeight.Normal,
-                        color = AppTheme.extendedColors.textColor,
+                        fontWeight = FontWeight.SemiBold,
+                        color = Color.White,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
@@ -1320,6 +1342,9 @@ fun DispenseFlowScreen(
                     // were swallowing taps on the arrow (system back worked, the
                     // on-screen arrow didn't).
                     .zIndex(1f)
+                    // Camera preview stays full-bleed; only the header chrome is
+                    // inset so the back arrow and title clear the notch.
+                    .displayCutoutPadding()
                     .padding(top = 8.dp, bottom = 8.dp, end = headerEndPadding),
             ) {
                 // During COUNTING the back arrow sits in the left gutter of the
@@ -1444,7 +1469,8 @@ fun DispenseFlowScreen(
         )
 
         // ── RX bottomsheet / inline panel ───────────────────────────────────
-        // Non-dismissible: the user must hit Cancel or Proceed.
+        // Dismissible: swipe-down / outside-tap / back all act as Cancel. No
+        // transaction exists yet at this point, so nothing is orphaned.
         if (dispenseState.showRxDetails) {
             if (!isLandscape) {
                 VerifyRxDetailsSheet(
@@ -1457,15 +1483,37 @@ fun DispenseFlowScreen(
                     drugImage = dispenseState.drugImage,
                     onCancel = { dispenseVm.onRxCancelled() },
                     onProceed = { dispenseVm.onRxConfirmed() },
-                    dismissible = false,
+                    dismissible = true,
                 )
             } else {
+                // How far the panel has been dragged toward the right edge.
+                var panelDragPx by remember { mutableFloatStateOf(0f) }
+
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .fillMaxHeight()
                         .width(inlinePanelWidth)
+                        .offset { IntOffset(panelDragPx.roundToInt(), 0) }
                         .background(Color.Transparent)
+                        // The panel tracks the finger; releasing past the
+                        // threshold cancels, anything shorter snaps back. Gives
+                        // landscape the same escape as the portrait sheet.
+                        .pointerInput(Unit) {
+                            val dismissPx = INLINE_PANEL_DISMISS_DRAG.toPx()
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    if (panelDragPx > dismissPx) {
+                                        dispenseVm.onRxCancelled()
+                                    } else {
+                                        panelDragPx = 0f
+                                    }
+                                },
+                                onDragCancel = { panelDragPx = 0f },
+                            ) { _, dragAmount ->
+                                panelDragPx = (panelDragPx + dragAmount).coerceAtLeast(0f)
+                            }
+                        }
                 ) {
                     VerifyRxDetailsInlinePanel(
                         drugName = dispenseState.drugName,

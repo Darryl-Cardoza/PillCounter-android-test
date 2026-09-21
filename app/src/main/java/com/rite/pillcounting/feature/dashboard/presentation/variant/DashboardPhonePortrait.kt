@@ -112,7 +112,7 @@ fun DashboardPhonePortrait(params: DashboardVariantParams) {
                     counts = uiState.kpiCounts,
                     activeFilter = uiState.activeKpiFilter,
                     onTap = params.onKpiFilterTapped,
-                    cardWidth = 108.dp,
+                    cardWidth = 132.dp,
                     cardHeight = 96.dp,
                     disabledFilters = params.disabledKpiFilters,
                     onDisabledTap = params.onDisabledKpiFilterTapped,

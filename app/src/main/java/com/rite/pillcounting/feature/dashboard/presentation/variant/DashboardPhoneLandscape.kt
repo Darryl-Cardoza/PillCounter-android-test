@@ -170,8 +170,7 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                         onDisabledTap = params.onDisabledKpiFilterTapped,
                         modifier = Modifier
                             .weight(0.20f)
-                            .fillMaxHeight(),
-                        cardHeight = 72.dp,
+                            .fillMaxHeight()
                     )
 
                     // Column 3 — paged Today's Queue / Recent Activity list.
