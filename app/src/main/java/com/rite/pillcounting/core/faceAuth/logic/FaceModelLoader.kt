@@ -3,7 +3,6 @@ package com.rite.pillcounting.core.faceAuth.logic
 import android.content.Context
 import com.rite.pillcounting.core.security.ModelDecryptor
 import com.rite.pillcounting.core.security.ModelKeyUnit
-import com.rite.pillcounting.core.utils.logger.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
@@ -49,12 +48,6 @@ class FaceModelLoader @Inject constructor(
     private val modelKeyUnit by lazy { ModelKeyUnit(context).also { it.activateIfNeeded() } }
     private var cached: FaceInterpreters? = null
 
-    // TEMPORARY diagnostics for the enroll/verify mismatch investigation — remove
-    // once the root cause is found. Filter logcat on these tags to see exactly
-    // what shape/dtype each loaded model actually declares.
-    private val detectorLogger = AppLogger("FaceDetectorIO")
-    private val recognizerLogger = AppLogger("FaceRecognizerIO")
-
     companion object {
         private const val DETECTOR_FILENAME = "yunet_640x640_float16.tflite"
         private const val RECOGNIZER_FILENAME = "sface_112x112_float16.tflite"
@@ -85,9 +78,6 @@ class FaceModelLoader @Inject constructor(
             detector.allocateTensors()
             recognizer.allocateTensors()
 
-            logTensorSpecs(detectorLogger, "detector", detector)
-            logTensorSpecs(recognizerLogger, "recognizer", recognizer)
-
             FaceInterpreters(detector, recognizer, DETECTOR_INPUT_SIZE, RECOGNIZER_INPUT_SIZE).also { cached = it }
         }
     }
@@ -107,16 +97,4 @@ class FaceModelLoader @Inject constructor(
             put(bytes)
             rewind()
         }
-
-    /** TEMPORARY: dumps every input/output tensor's declared shape + dtype so we can confirm our preprocessing assumptions match the actual model file. */
-    private fun logTensorSpecs(logger: AppLogger, label: String, interpreter: Interpreter) {
-        for (i in 0 until interpreter.inputTensorCount) {
-            val t = interpreter.getInputTensor(i)
-            logger.i("[$label] INPUT[$i] shape=${t.shape().contentToString()} dtype=${t.dataType()}")
-        }
-        for (i in 0 until interpreter.outputTensorCount) {
-            val t = interpreter.getOutputTensor(i)
-            logger.i("[$label] OUTPUT[$i] shape=${t.shape().contentToString()} dtype=${t.dataType()}")
-        }
-    }
 }

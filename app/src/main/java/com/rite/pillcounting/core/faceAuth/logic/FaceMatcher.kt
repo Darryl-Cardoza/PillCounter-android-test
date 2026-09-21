@@ -25,7 +25,7 @@ data class MatchResult(val faceProfileId: Long?, val bestScore: Float)
 object FaceMatcher {
 
     /** Cosine cut-off below which a match is treated as "no match" — same value `standalone_face_tf.py` uses. */
-    const val MATCH_THRESHOLD = 0.38f
+    const val MATCH_THRESHOLD = 0.60f
 
     /**
      * L2-normalizes [vec].
