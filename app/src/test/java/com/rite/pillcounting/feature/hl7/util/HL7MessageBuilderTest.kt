@@ -512,7 +512,7 @@ class HL7MessageBuilderTest {
     }
 
     @Test
-    fun `buildInventoryMessage emits IMG_REF only for groups with photos`() {
+    fun `buildInventoryMessage emits IMG rows only for groups with photos`() {
         val batch = BatchEntity(batchId = 5L, requestIdFromPMS = null, bucketId = "BUCKET-5")
         val txns = listOf(
             BatchTxnDto(
@@ -587,7 +587,8 @@ class HL7MessageBuilderTest {
         assertEquals("365^1", openRow.split("|").getOrNull(5))
 
         // The separator must be a real component delimiter, not an escaped literal.
-        assertTrue("component separator must not be escaped", !raw.contains("\\S\\"))
+        assertTrue("SEALED_QTY separator must not be escaped", !sealedRow.contains("\\S\\"))
+        assertTrue("OPEN_QTY separator must not be escaped", !openRow.contains("\\S\\"))
     }
 
     @Test
@@ -625,5 +626,27 @@ class HL7MessageBuilderTest {
         val openRow = lines.first { it.startsWith("OBX|") && it.contains("OPEN_QTY") }
         assertEquals("400^4", sealedRow.split("|").getOrNull(5))
         assertEquals("365^2", openRow.split("|").getOrNull(5))
+    }
+
+    @Test
+    fun `buildInventoryMessage totals the shape the capture flow actually writes`() {
+        val batch = BatchEntity(batchId = 11L, requestIdFromPMS = null, bucketId = "BUCKET-11")
+        // The real on-disk shape: persistActive writes sealed-only lines, and each
+        // "Scan Pills" session writes its own loose-only line with bottleQty 0.
+        val txns = listOf(
+            BatchTxnDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 0, packageQty = 1000),
+            BatchTxnDto(2L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 200, packageQty = 1000),
+            BatchTxnDto(3L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 100, packageQty = 1000),
+            BatchTxnDto(4L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 0, looseQty = 65, packageQty = 1000),
+        )
+
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val lines = raw.split("\r")
+
+        assertEquals(1, lines.count { it.startsWith("INV|") })
+        val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
+        val openRow = lines.first { it.startsWith("OBX|") && it.contains("OPEN_QTY") }
+        assertEquals("2000^2", sealedRow.split("|").getOrNull(5))
+        assertEquals("365^3", openRow.split("|").getOrNull(5))
     }
 }

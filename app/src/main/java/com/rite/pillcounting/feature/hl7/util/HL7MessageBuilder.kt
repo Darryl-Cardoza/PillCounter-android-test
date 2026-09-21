@@ -400,7 +400,9 @@ object HL7MessageBuilder {
      *
      * Both quantity rows always carry both components, `0^0` included, so PMS parses
      * one fixed shape. Sealed bottles are summed; a line with loose pills counts as
-     * one open bottle (no open-bottle column exists in the stock model).
+     * one open bottle (no open-bottle column exists in the stock model). The
+     * inventory screen derives its bottle count the same way — if an open-bottle
+     * column ever lands, this and `InventoryScanViewModel.toRecentRows` change together.
      *
      * ORC-2 carries this batch's bucketId, and — when this batch answers a
      * PMS-originated INR^U06 request (`batch.requestIdFromPMS` non-blank) — that
@@ -529,8 +531,8 @@ object HL7MessageBuilder {
                         obx.valueType = "NM"
                         obx.observationId = "SEALED_QTY"
                         obx.subId = invSetId
-                        // OBX-5 is `pills^bottles` — set as components so the ^ stays a
-                        // real delimiter instead of being escaped to \S\.
+                        // Two components, not one string: HL7Escaping would turn a
+                        // literal "2000^2" into 2000\S\2.
                         obx.observationValue = value.sealed.toString()
                         obx.observationValueText = value.sealedBottles.toString()
                         obx.resultStatus = "F"
