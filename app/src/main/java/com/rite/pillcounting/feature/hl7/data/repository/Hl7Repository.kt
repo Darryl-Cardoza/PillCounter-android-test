@@ -290,6 +290,10 @@ class Hl7Repository @Inject constructor(
      * synced ([BatchDao.markBatchSynced]) only once every chunk has ACKed.
      */
     suspend fun buildAndSendInventoryResponse(batchId: Long) {
+        if (TutorialEntryRegistry.isTutorialBatch(batchId)) {
+            logger.i("Tutorial batch — never sending to PMS, batchId=$batchId")
+            return
+        }
         try {
             logger.i("buildAndSendInventoryResponse started, batchId=$batchId")
 
@@ -417,6 +421,7 @@ class Hl7Repository @Inject constructor(
     fun resendPendingHl7BatchTransactions() {
         scope.launch {
             val pendingBatches = batchDao.getUnsyncedCompletedBatchesOnce()
+                .filterNot { TutorialEntryRegistry.isTutorialBatch(it.batchId) }
             if (pendingBatches.isEmpty()) {
                 logger.i("No pending HL7 batch transactions to sync")
                 return@launch
@@ -458,8 +463,11 @@ class Hl7Repository @Inject constructor(
      * Removes a synced dispense transaction and its image files from local storage. Row deletion
      * cascades to its detail rows; the barcode and detail images are file-system artifacts and
      * must be deleted explicitly.
+     *
+     * Internal (not private): also reused by [deleteTutorialData] to remove a tutorial-created
+     * txn once the FTUE tour finishes or is skipped.
      */
-    private suspend fun deleteSyncedTransaction(txnId: Long) {
+    internal suspend fun deleteSyncedTransaction(txnId: Long) {
         if (txnId <= 0L) return
         try {
             val txn = pillCountTxnDao.getById(txnId)
@@ -478,6 +486,47 @@ class Hl7Repository @Inject constructor(
             logger.i("Deleted synced txn $txnId from local storage (allowLocalStorage=false)")
         } catch (e: Exception) {
             logger.e("Failed to delete synced txn $txnId", e)
+        }
+    }
+
+    /**
+     * Deletes every dispense txn and stock-count batch created while the FTUE tutorial was
+     * active, once it finishes or is skipped — a practice run must never linger as real local
+     * history. HL7 sends for this data are already prevented unconditionally by the
+     * [TutorialEntryRegistry] checks in [sendDispenseNow]/[resendPendingHl7Transactions] and
+     * [buildAndSendInventoryResponse]/[resendPendingHl7BatchTransactions] above — this only
+     * tidies up local storage afterward.
+     */
+    suspend fun deleteTutorialData() {
+        TutorialEntryRegistry.consumeTutorialTxnIds().forEach { deleteSyncedTransaction(it) }
+        TutorialEntryRegistry.consumeTutorialBatchIds().forEach { deleteTutorialBatch(it) }
+    }
+
+    /**
+     * Removes a tutorial-created stock-count batch and its image files from local storage.
+     * `stock_txn`→`batch` is `onDelete = SET_NULL`, not `CASCADE` — the batch row must be
+     * deleted only *after* its stock_txn rows (which themselves cascade to bottle_info), or
+     * those child rows would be orphaned with a null batchId instead of removed.
+     */
+    private suspend fun deleteTutorialBatch(batchId: Long) {
+        if (batchId <= 0L) return
+        try {
+            // getByBatchId's DTO aliases the controlled-drug image-path column as `imagePaths`
+            // (BottleInfoDao.kt) — collect before the rows go.
+            val filesToDelete = bottleInfoDao.getByBatchId(batchId).flatMap { it.imagePaths.orEmpty() }
+
+            stockTxnDao.deleteByBatchIds(listOf(batchId))
+            batchDao.deleteById(batchId)
+
+            filesToDelete.forEach { path ->
+                val file = java.io.File(path)
+                if (file.exists() && !file.delete()) {
+                    logger.w("Failed to delete file for tutorial batch $batchId: $path")
+                }
+            }
+            logger.i("Deleted tutorial batch $batchId from local storage")
+        } catch (e: Exception) {
+            logger.e("Failed to delete tutorial batch $batchId", e)
         }
     }
 

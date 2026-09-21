@@ -20,6 +20,8 @@ import com.rite.pillcounting.core.models.DISPENSED_QUANTITY_STEP
 import com.rite.pillcounting.core.models.StepState
 import com.rite.pillcounting.core.room.AppDatabase
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.TutorialEntryRegistry
 import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
@@ -549,7 +551,14 @@ class PillScanningViewModel @Inject constructor(
                             val effectiveBatchId = if (stockCountBatchId != 0L) {
                                 stockCountBatchId
                             } else {
-                                batchDao.insertNewInProgressBatch(bucketId = stockBucketId)
+                                batchDao.insertNewInProgressBatch(bucketId = stockBucketId).also { newBatchId ->
+                                    // Only a freshly-minted batch — never mark an existing,
+                                    // pre-tutorial batch the user happens to still be
+                                    // continuing while the tour is active.
+                                    if (FtueController.state.isActive) {
+                                        TutorialEntryRegistry.markTutorialBatch(newBatchId)
+                                    }
+                                }
                             }
                             val existingStockTxn = stockTxnDao.findByDrugInBatch(effectiveBatchId, stockDrugId)
                             val effectiveStockTxnId = existingStockTxn?.txnId

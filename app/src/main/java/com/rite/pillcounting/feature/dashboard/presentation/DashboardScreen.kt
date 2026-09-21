@@ -80,7 +80,13 @@ fun DashboardScreen(
     // navigating away to the dispense flow, which disposes this whole composable.
     val tourState = FtueController.state
     LaunchedEffect(Unit) {
-        if (!TourGuidePrefs.hasSeen(context, FTUE_ID)) {
+        // !isActive too: this LaunchedEffect(Unit) restarts fresh every time
+        // DashboardScreen is recomposed from scratch — including navigating BACK
+        // here mid-tour (e.g. returning from the dispense flow before the whole
+        // tour is done). hasSeen only flips true once the entire tour finishes,
+        // so without the isActive check every such return-trip called start()
+        // again and reset the tour back to step 0.
+        if (!TourGuidePrefs.hasSeen(context, FTUE_ID) && !tourState.isActive) {
             tourState.start()
         }
     }

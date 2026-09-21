@@ -27,6 +27,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import com.rite.pillcounting.core.tourguide.FtueController
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -287,6 +289,24 @@ class MainActivity : ComponentActivity() {
                                     // OFFLINE -> HEALTHY drain lives inside SessionHealthController
                                     // itself — see its init block. MainActivity no longer holds an
                                     // Hl7Repository reference.
+
+                                    // Tutorial cleanup: the only place alive for the whole app
+                                    // session regardless of which screen the FTUE tour is
+                                    // currently driving. Fires exactly once per active -> inactive
+                                    // transition (tour finished OR skipped — both just flip
+                                    // isActive to false), never on the initial false before the
+                                    // tour has ever started.
+                                    LaunchedEffect(Unit) {
+                                        var tutorialWasActive = false
+                                        snapshotFlow { FtueController.state.isActive }.collect { active ->
+                                            if (active) {
+                                                tutorialWasActive = true
+                                            } else if (tutorialWasActive) {
+                                                tutorialWasActive = false
+                                                settingsViewModel.onTutorialFinished()
+                                            }
+                                        }
+                                    }
 
                                     // Bump on every HEALTHY -> OFFLINE transition so the
                                     // OfflineOverlay re-expands its message pill on each

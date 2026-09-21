@@ -26,6 +26,7 @@ import com.rite.pillcounting.core.utils.logger.AppLogger
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
+import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
@@ -64,12 +65,26 @@ class MainActivityViewModel @Inject constructor(
     private val bottleInfoDao: BottleInfoDao,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val hl7EventHandler: Hl7EventHandler,
+    private val hl7Repository: Hl7Repository,
     private val sessionLockController: SessionLockController,
     private val sessionHealthController: SessionHealthController,
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel(), IApplicationSettingsViewModel {
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
+
+    /**
+     * Called once from [com.rite.pillcounting.MainActivity] when the app-wide FTUE tutorial
+     * transitions from active to inactive (finished or skipped) — deletes every dispense txn
+     * and stock-count batch it created along the way, now that they've served their purpose
+     * of driving real UI end-to-end. HL7 sends for this data were already prevented
+     * unconditionally while it existed; see [Hl7Repository.deleteTutorialData].
+     */
+    fun onTutorialFinished() {
+        viewModelScope.launch {
+            hl7Repository.deleteTutorialData()
+        }
+    }
 
     // The full config identity HL7 last started with, so a later settings/auth-me fetch
     // that returns different values (e.g. HL7 was preloaded from stale cached prefs on a

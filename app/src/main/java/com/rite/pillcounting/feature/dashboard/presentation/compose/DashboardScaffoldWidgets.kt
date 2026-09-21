@@ -126,29 +126,32 @@ internal fun ScaffoldTopBar(
         )
         Spacer(modifier = Modifier.width(if (compact) 8.dp else 14.dp))
         Column(
-            // fill = false: reserves the same flexible slot for layout (so the PMS dot and
-            // menu button don't move), but sizes the column itself to its text content —
-            // otherwise the tour's spotlight around it stretches into the empty space.
-            modifier = Modifier
-                .weight(1f, fill = false)
-                .tourTarget(tourState, "header"),
+            // fill = true: actually claims its share of the row's width (rather than
+            // shrinking to the text), which is what pushes the PMS dot and menu button
+            // apart to use the rest of the row instead of collapsing right next to the
+            // name. The spotlight tag lives on the inner Column below instead, so it
+            // still stays tight around just the text rather than stretching into
+            // whatever empty space this outer slot now reserves.
+            modifier = Modifier.weight(1f, fill = true),
         ) {
-            Text(
-                text = pharmacyName ?: "—",
-                fontSize = responsiveSp(12.sp, boostOnPhone = true),
-                color = extendedColors.textColor,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = terminalAndUserLine,
-                style = MaterialTheme.typography.bodySmall,
-                color = extendedColors.textColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.tourTarget(tourState, "terminal"),
-            )
+            Column(modifier = Modifier.tourTarget(tourState, "header")) {
+                Text(
+                    text = pharmacyName ?: "—",
+                    fontSize = responsiveSp(12.sp, boostOnPhone = true),
+                    color = extendedColors.textColor,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = terminalAndUserLine,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = extendedColors.textColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.tourTarget(tourState, "terminal"),
+                )
+            }
         }
         if (showPmsDot) {
             Row(

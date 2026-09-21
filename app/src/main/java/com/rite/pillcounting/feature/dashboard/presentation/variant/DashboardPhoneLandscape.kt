@@ -75,6 +75,16 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
         }
     }
 
+    // Switch to the Recent Activity tab for its own explanatory step, so the tooltip
+    // points at real content instead of an empty Today's Queue — then back once the
+    // tour moves on to the next (gated) step.
+    LaunchedEffect(tourState.currentStep?.id) {
+        when (tourState.currentStep?.id) {
+            "recent_activity" -> params.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+            "dispense" -> params.onTabSelected(DashboardTab.TODAYS_QUEUE)
+        }
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -220,6 +230,7 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                                 items = uiState.recentActivity,
                                 onDispenseClick = params.onRecentDispenseClick,
                                 onInventoryClick = params.onRecentBatchClick,
+                                modifier = Modifier.tourTarget(tourState, "recent_activity"),
                             )
                         }
                     }

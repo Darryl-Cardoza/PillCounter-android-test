@@ -17,6 +17,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.scanning.presentation.compose.CameraPreviewSection
+import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.tourTarget
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -36,7 +38,11 @@ fun InventoryScanScope.CameraPreview(
     val cameraUiState by cameraVm.uiState.collectAsState()
     val frameCounter = remember { AtomicLong(0L) }
 
-    Box(modifier = modifier.background(Color.Black)) {
+    Box(
+        modifier = modifier
+            .background(Color.Black)
+            .tourTarget(FtueController.state, "inv_camera_preview")
+    ) {
         if (hasCameraPermission) {
             CameraPreviewSection(
                 viewModel = cameraVm,

@@ -64,6 +64,12 @@ private val TooltipWidth = 300.dp
 private val TooltipMargin = 16.dp
 private val EstimatedTooltipHeight = 190.dp
 
+// A camera screen's own real UI (the workflow-stepper's step-name bubble, its progress bar,
+// action buttons) already lives right at the bottom edge — the same edge a BOTTOM-pinned
+// tooltip (e.g. a full-screen camera-preview step) would otherwise sit flush against,
+// overlapping and garbling both. This pushes it up clear of that zone instead.
+private val PinnedBottomExtraClearance = 130.dp
+
 /**
  * Full-screen spotlight tour: dims everything except [TourGuideState]'s current target
  * (cut out of the scrim via [BlendMode.Clear]), rings it, and shows a tooltip. Place this
@@ -303,7 +309,10 @@ fun TourGuideOverlay(
                 .coerceIn(marginPx, (containerSize.width - tooltipWidthPx - marginPx).coerceAtLeast(marginPx))
             tooltipY = when (effectivePinnedEdge) {
                 TooltipEdge.TOP -> marginPx
-                TooltipEdge.BOTTOM -> (containerSize.height - estimatedHeightPx - marginPx).coerceAtLeast(marginPx)
+                TooltipEdge.BOTTOM -> {
+                    val extraClearancePx = with(density) { PinnedBottomExtraClearance.toPx() }
+                    (containerSize.height - estimatedHeightPx - marginPx - extraClearancePx).coerceAtLeast(marginPx)
+                }
             }
         } else if (localRect == null) {
             tooltipX = (containerSize.width - tooltipWidthPx) / 2f

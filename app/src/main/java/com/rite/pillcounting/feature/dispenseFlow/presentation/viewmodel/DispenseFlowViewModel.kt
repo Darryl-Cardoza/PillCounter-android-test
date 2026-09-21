@@ -298,7 +298,15 @@ class DispenseFlowViewModel @Inject constructor(
                 } else {
                     pillCountTxnDao.getMostRecentByRxNo(rxNo)
                 }
-                if (mostRecentTxn?.status == CountStatus.COMPLETED || mostRecentTxn?.status == CountStatus.FORCE_COMPLETED) {
+                // A tutorial-created completion doesn't count against a redo of the same
+                // demo Rx — the whole point of a practice run is being able to repeat it,
+                // and its row gets deleted once the tour finishes/is skipped anyway (see
+                // TutorialEntryRegistry). A genuine prior completion (not tutorial-created)
+                // still blocks re-dispensing exactly as before, even mid-tutorial.
+                val blocksRedispense = mostRecentTxn != null &&
+                    (mostRecentTxn.status == CountStatus.COMPLETED || mostRecentTxn.status == CountStatus.FORCE_COMPLETED) &&
+                    !TutorialEntryRegistry.isTutorialEntry(mostRecentTxn.txnId)
+                if (blocksRedispense) {
                     _uiState.update {
                         it.copy(isLoading = false, rxAlreadyCompletedToastTick = it.rxAlreadyCompletedToastTick + 1)
                     }

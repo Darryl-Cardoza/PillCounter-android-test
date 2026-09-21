@@ -18,6 +18,7 @@ import com.rite.pillcounting.core.scanning.domain.model.BottleInfoJson
 import com.rite.pillcounting.core.utils.preference.PreferenceHelper
 import com.rite.pillcounting.feature.hl7.core.Hl7EventHandler
 import com.rite.pillcounting.feature.hl7.core.Hl7ServiceManager
+import com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository
 import com.rite.pillcounting.feature.settings.domain.data.IApplicationSettingsRepository
 import com.rite.pillcounting.feature.settings.domain.model.ApplicationSettingsHL7Config
 import com.rite.pillcounting.feature.settings.domain.model.ApplicationSettingsResponse
@@ -60,6 +61,7 @@ class MainActivityViewModelTest {
     private lateinit var bottleInfoDao: BottleInfoDao
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
+    private lateinit var hl7Repository: Hl7Repository
     private lateinit var sessionLockController: SessionLockController
     private lateinit var sessionHealthController: SessionHealthController
 
@@ -132,6 +134,7 @@ class MainActivityViewModelTest {
         bottleInfoDao = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
+        hl7Repository = mockk(relaxed = true)
         sessionLockController = mockk(relaxed = true)
         sessionHealthController = mockk(relaxed = true)
 
@@ -177,6 +180,7 @@ class MainActivityViewModelTest {
         bottleInfoDao,
         hl7ServiceManager,
         hl7EventHandler,
+        hl7Repository,
         sessionLockController,
         sessionHealthController,
         testDispatcher,

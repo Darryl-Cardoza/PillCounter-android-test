@@ -4,6 +4,8 @@ import Screen
 import android.Manifest
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -12,6 +14,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -23,6 +26,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.room.models.enums.CountType
 import com.rite.pillcounting.core.scanning.presentation.compose.AddNoteDialog
+import com.rite.pillcounting.core.tourguide.FTUE_ID
+import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.TourGuideOverlay
+import com.rite.pillcounting.core.tourguide.TourGuidePrefs
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.showToast
 import com.rite.pillcounting.core.utils.logger.AppLogger
@@ -124,7 +131,12 @@ fun InventoryScanHost(
     // would block frames and make that swap unreachable.
     LaunchedEffect(panelState.activeNdc) {
         logger.d("INV_SCAN activeNdc → ${panelState.activeNdc?.ndc} hazardous=${panelState.activeNdc?.isHazardous}")
-        if (panelState.activeNdc == null) analyzer.resume()
+        if (panelState.activeNdc == null) {
+            analyzer.resume()
+        } else {
+            // Hands-free FTUE step: a scanned bottle just became the active NDC.
+            FtueController.state.advanceIfCurrent("inv_camera_preview")
+        }
     }
 
     // Surface VM errors as toasts. The VM emits a localized resource id + optional
@@ -237,7 +249,18 @@ fun InventoryScanHost(
         onBtBarcode = inventoryVm::onBtBarcodeDetected,
     )
 
-    scope.content()
+    // InventoryScanHost has no root Box of its own — each of the 4 shells builds a
+    // differently-shaped root (Row/Box/Column/BottomSheetScaffold). Wrapping only
+    // this call is the single, minimal place to hang the screen-root tour overlay
+    // without touching any of the shells.
+    Box(modifier = Modifier.fillMaxSize()) {
+        scope.content()
+        TourGuideOverlay(
+            state = FtueController.state,
+            onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
+            modifier = Modifier.fillMaxSize(),
+        )
+    }
 
     if (showNoteDialog) {
         AddNoteDialog(

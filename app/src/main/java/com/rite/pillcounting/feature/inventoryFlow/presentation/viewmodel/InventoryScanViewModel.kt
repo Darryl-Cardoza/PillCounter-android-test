@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.faceAuth.data.OperatorNameProvider
 import com.rite.pillcounting.core.room.dao.BatchDao
+import com.rite.pillcounting.core.tourguide.FtueController
+import com.rite.pillcounting.core.tourguide.TutorialEntryRegistry
 import com.rite.pillcounting.core.room.dao.insertNewInProgressBatch
 import com.rite.pillcounting.core.room.dao.BottleInfoDao
 import com.rite.pillcounting.core.room.dao.DrugMasterDao
@@ -245,6 +247,9 @@ class InventoryScanViewModel @Inject constructor(
         if (existing != 0L) return existing
         return try {
             val newId = batchDao.insertNewInProgressBatch(bucketId = _bucketId.value)
+            if (FtueController.state.isActive) {
+                TutorialEntryRegistry.markTutorialBatch(newId)
+            }
             resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {

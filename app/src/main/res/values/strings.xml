@@ -72,6 +72,8 @@
     <string name="tour_desc_kpi_pending_batch">Count of inventory batches still in progress. Scroll the row to see it.</string>
     <string name="tour_title_tabs">Queue / Activity</string>
     <string name="tour_desc_tabs">Switches the list below between today\'s pending queue and recent activity history.</string>
+    <string name="tour_title_recent_activity">Recent activity</string>
+    <string name="tour_desc_recent_activity">Everything you\'ve dispensed or counted recently — tap any row to reopen it.</string>
     <string name="tour_skip">Skip</string>
     <string name="tour_back">Back</string>
     <string name="tour_next">Next</string>
@@ -117,6 +119,22 @@
     <string name="tour_desc_queue_tabs">Switch between pending, priority, controlled and hazardous transactions.</string>
     <string name="tour_title_queue_list">Today\'s transactions</string>
     <string name="tour_desc_queue_list">Tap any transaction to resume or review its dispense.</string>
+
+    <!-- Stock count (inventory) tour guide -->
+    <string name="tour_title_stock_count_tap">Start a stock count</string>
+    <string name="tour_desc_stock_count_tap">Tap Stock Count to begin counting inventory.</string>
+    <string name="tour_title_inv_camera_preview">Scan a drug</string>
+    <string name="tour_desc_inv_camera_preview">Point the camera at a bottle\'s NDC barcode to start counting it.</string>
+    <string name="tour_title_inv_counter">Adjust the count</string>
+    <string name="tour_desc_inv_counter">Tap + to count another bottle, or - to correct a mistake.</string>
+    <string name="tour_title_inv_edit_button">Edit the details</string>
+    <string name="tour_desc_inv_edit_button">Review or fix sealed-bottle and open-pill counts by lot and expiry.</string>
+    <string name="tour_title_inv_edit_actions">Cancel or save</string>
+    <string name="tour_desc_inv_edit_actions">Cancel to discard changes, or save to update this NDC\'s counts.</string>
+    <string name="tour_title_inv_scan_pills">Count loose pills</string>
+    <string name="tour_desc_inv_scan_pills">Scan open pills in a container instead of counting sealed bottles.</string>
+    <string name="tour_title_inv_end_count">Finish the count</string>
+    <string name="tour_desc_inv_end_count">Tap End Count once every NDC in this batch has been counted.</string>
 
     <string name="kpi_disp_short">Disp.</string>
     <string name="kpi_inv_short">Inv.</string>

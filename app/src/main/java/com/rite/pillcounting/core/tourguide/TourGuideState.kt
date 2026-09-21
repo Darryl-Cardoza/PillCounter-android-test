@@ -2,6 +2,7 @@ package com.rite.pillcounting.core.tourguide
 
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -9,10 +10,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.composed
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * How a step behaves and how it advances:
@@ -61,6 +66,19 @@ class TourGuideState(val steps: List<TourStep>) {
     // into view and onGloballyPositioned reports its new position.
     private val targetBounds = mutableStateMapOf<String, Rect>()
 
+    // Never cancelled — this state outlives every screen (see FtueController). Used only to
+    // defer advanceIfCurrent's mutation by one dispatcher tick; see its doc for why.
+    //
+    // Plain Dispatchers.Main, NOT .immediate: the whole point is to genuinely defer past the
+    // current pointer-event dispatch, which always runs ON the main thread — and .immediate
+    // specifically SKIPS deferring whenever it's already called from the main thread
+    // (isDispatchNeeded returns false there), running the launched block synchronously in
+    // that case. That silently defeated this fix entirely: advanceIfCurrent kept mutating
+    // state inline in the gesture handler exactly as before, so the same-tap race with the
+    // real control underneath was never actually removed. Plain Main always posts to the
+    // next message-queue tick regardless of the calling thread.
+    private val scope = CoroutineScope(Dispatchers.Main)
+
     val currentStep: TourStep? get() = steps.getOrNull(currentIndex)
     val currentTargetRect: Rect? get() = currentStep?.let { targetBounds[it.id] }
     val isLastStep: Boolean get() = currentIndex == steps.lastIndex
@@ -69,6 +87,17 @@ class TourGuideState(val steps: List<TourStep>) {
         if (coordinates.isAttached) {
             targetBounds[id] = coordinates.boundsInRoot()
         }
+    }
+
+    /**
+     * Removes [id]'s registered bounds — called when the tagged composable leaves
+     * composition (see [tourTarget]). Without this, a step whose real target unmounted
+     * (e.g. a bottom sheet dismissed after Proceed) leaves a stale rect behind forever,
+     * which [TourGuideOverlay] would otherwise still find non-null and use to render a
+     * spotlight for a step that no longer has any real content there.
+     */
+    fun clearTarget(id: String) {
+        targetBounds.remove(id)
     }
 
     fun start() {
@@ -88,9 +117,23 @@ class TourGuideState(val steps: List<TourStep>) {
         isActive = false
     }
 
-    /** Advances only if [id] is still the current step — safe to call from business logic. */
+    /**
+     * Advances only if [id] is still the current step — safe to call from business logic.
+     *
+     * Deferred by one dispatcher tick (not mutated synchronously) so a caller inside a
+     * pointer-gesture handler (see [TourGuideOverlay]'s ACTION_TAP branch) can call this the
+     * moment a tap lands inside the target *without* the resulting recomposition (which can
+     * detach/replace that very pointerInput node, since the next step likely has a different
+     * [TourStepMode]) racing the SAME down event's dispatch to the real control underneath —
+     * that race was silently swallowing the real control's own tap, so it looked like it took
+     * two taps to actually navigate/act. Deferring lets the current event finish dispatching
+     * to every node first; it still runs on the very next tick, long before any navigation
+     * the real tap triggers could tear this down.
+     */
     fun advanceIfCurrent(id: String) {
-        if (isActive && currentStep?.id == id) next()
+        if (isActive && currentStep?.id == id) {
+            scope.launch { next() }
+        }
     }
 }
 
@@ -98,8 +141,18 @@ class TourGuideState(val steps: List<TourStep>) {
 fun rememberTourGuideState(steps: List<TourStep>): TourGuideState =
     remember(steps) { TourGuideState(steps) }
 
-/** Registers this composable's laid-out bounds under [id] so a tour guide can spotlight it. */
+/**
+ * Registers this composable's laid-out bounds under [id] so a tour guide can spotlight it,
+ * and clears them again when this composable leaves composition — see [TourGuideState.clearTarget].
+ */
 fun Modifier.tourTarget(state: TourGuideState?, id: String): Modifier {
     if (state == null) return this
-    return this.onGloballyPositioned { coordinates -> state.registerTarget(id, coordinates) }
+    return this
+        .onGloballyPositioned { coordinates -> state.registerTarget(id, coordinates) }
+        .composed {
+            DisposableEffect(state, id) {
+                onDispose { state.clearTarget(id) }
+            }
+            this
+        }
 }
