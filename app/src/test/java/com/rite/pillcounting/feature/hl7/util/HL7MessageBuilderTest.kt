@@ -569,4 +569,61 @@ class HL7MessageBuilderTest {
         assertTrue(sealedQtyRows.any { it.split("|").getOrNull(4) == setIdA })
         assertTrue(sealedQtyRows.any { it.split("|").getOrNull(4) == setIdB })
     }
+
+    @Test
+    fun `buildInventoryMessage carries bottle count as the second component of SEALED_QTY and OPEN_QTY`() {
+        val batch = BatchEntity(batchId = 8L, requestIdFromPMS = null, bucketId = "BUCKET-8")
+        val txns = listOf(
+            // 2 sealed bottles x 1000 = 2000 sealed pills; 365 loose from this one open bottle
+            BatchTxnDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 365, packageQty = 1000),
+        )
+
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val lines = raw.split("\r")
+
+        val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
+        val openRow = lines.first { it.startsWith("OBX|") && it.contains("OPEN_QTY") }
+        assertEquals("2000^2", sealedRow.split("|").getOrNull(5))
+        assertEquals("365^1", openRow.split("|").getOrNull(5))
+
+        // The separator must be a real component delimiter, not an escaped literal.
+        assertTrue("component separator must not be escaped", !raw.contains("\\S\\"))
+    }
+
+    @Test
+    fun `buildInventoryMessage emits zero bottle counts as 0 caret 0`() {
+        val batch = BatchEntity(batchId = 9L, requestIdFromPMS = null, bucketId = "BUCKET-9")
+        val txns = listOf(
+            BatchTxnDto(1L, 1L, "DrugD", "NDC-D", "LOTD", "EXPD", bottleQty = null, looseQty = null, packageQty = null),
+        )
+
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val lines = raw.split("\r")
+
+        val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
+        val openRow = lines.first { it.startsWith("OBX|") && it.contains("OPEN_QTY") }
+        assertEquals("0^0", sealedRow.split("|").getOrNull(5))
+        assertEquals("0^0", openRow.split("|").getOrNull(5))
+    }
+
+    @Test
+    fun `buildInventoryMessage counts one open bottle per line with loose pills in a group`() {
+        val batch = BatchEntity(batchId = 10L, requestIdFromPMS = null, bucketId = "BUCKET-10")
+        // Same drug/lot/expiry across three stock-txn rows, so all three land in one INV group.
+        val txns = listOf(
+            BatchTxnDto(1L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 200, packageQty = 100),
+            BatchTxnDto(2L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 2, looseQty = 165, packageQty = 100),
+            // No loose pills: contributes sealed bottles only, never an open bottle.
+            BatchTxnDto(3L, 1L, "DrugA", "NDC-A", "LOTA", "EXPA", bottleQty = 1, looseQty = 0, packageQty = 100),
+        )
+
+        val raw = HL7MessageBuilder.buildInventoryMessage(batch = batch, txns = txns)
+        val lines = raw.split("\r")
+
+        assertEquals(1, lines.count { it.startsWith("INV|") })
+        val sealedRow = lines.first { it.startsWith("OBX|") && it.contains("SEALED_QTY") }
+        val openRow = lines.first { it.startsWith("OBX|") && it.contains("OPEN_QTY") }
+        assertEquals("400^4", sealedRow.split("|").getOrNull(5))
+        assertEquals("365^2", openRow.split("|").getOrNull(5))
+    }
 }

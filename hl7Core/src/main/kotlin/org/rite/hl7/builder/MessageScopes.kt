@@ -91,7 +91,8 @@ class InrU06Scope : MessageScope() {
  * PMS-initiated INR^U06 request (or unsolicited). One INV per drug/lot group
  * (Set-ID keyed), followed by OBX rows describing that group (SEALED_QTY/
  * OPEN_QTY always, IMG_REF when a photo exists) — OBX-4 on those rows carries
- * the parent INV's Set-ID. A leading OBX (blank sub-id) carries OPERATOR_NAME.
+ * the parent INV's Set-ID. The quantity rows put `pills^bottles` in OBX-5.
+ * A leading OBX (blank sub-id) carries OPERATOR_NAME.
  */
 class InuU05Scope : MessageScope() {
     fun equ(block: (EQUBuilder) -> Unit) = add(EQUBuilder(), block)
