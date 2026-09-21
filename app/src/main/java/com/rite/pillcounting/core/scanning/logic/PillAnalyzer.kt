@@ -323,12 +323,6 @@ class PillAnalyzer(
                 pillBitmap = frame.letterboxed
                 pillScaleInfo = scaleInfo
             }
-            // Debug builds only (no-op otherwise): keep a sample of the exact
-            // images handed to the pill model for inspection off-device.
-            ModelInputDump.maybeSave(
-                pillBitmap,
-                pillRegion?.let { "crop_${it.width()}x${it.height()}" } ?: "full"
-            )
             val pillInferenceStart = System.currentTimeMillis()
             val pillSucceeded = withContext(Dispatchers.Default) {
                 runPillInference(ImagePreprocessor.pillInput(pillBitmap))
@@ -388,8 +382,12 @@ class PillAnalyzer(
             // detections visible on the tray: tracks add hysteresis, never pills.
             val countedPills = countStabilizer.update(min(pillsInTray.size, visibleOnTray))
             // Markers are what the user counts by eye, so never show more dots
-            // than the number. Highest confidence survives the clip.
-            val markers = pillsInTray.sortedByDescending { it.confidence }.take(countedPills)
+            // than the number. Raster order, not confidence: a coasting track
+            // keeps its last score and confidences jitter every frame, so a
+            // confidence clip drops a different dot each frame.
+            val markers = pillsInTray
+                .sortedWith(compareBy({ it.rect.top }, { it.rect.left }))
+                .take(countedPills)
 
             val totalMs = System.currentTimeMillis() - overallStart
             // Class breakdown is metadata only — all three classes count as one pill.

@@ -70,6 +70,31 @@ class CountStabilizerTest {
         assertEquals(8, displayed)
     }
 
+    // The zero bypass re-arms mid-count, so these pin how slow that still is:
+    // it skips the latch, not the median.
+
+    @Test
+    fun `blanking an established count takes five consecutive empty frames`() {
+        val stabilizer = CountStabilizer()
+        feed(stabilizer, 20, 20, 20, 20, 20)
+
+        // The window has to fill with zeros before the median turns over.
+        assertEquals(20, feed(stabilizer, 0, 0, 0, 0))
+        assertEquals(0, stabilizer.update(0))
+    }
+
+    @Test
+    fun `recovering from a blanked count still waits for the median to leave zero`() {
+        val stabilizer = CountStabilizer()
+        feed(stabilizer, 20, 20, 20, 20, 20)
+        assertEquals(0, feed(stabilizer, 0, 0, 0, 0, 0))
+
+        // Frame 1 is the tracker warm-up; the window is still all zeros, so the
+        // median does not move until three 20s are in it.
+        assertEquals(0, feed(stabilizer, 0, 20, 20))
+        assertEquals(20, stabilizer.update(20))
+    }
+
     @Test
     fun `reset clears the window so the next scene re-acquires from scratch`() {
         val stabilizer = CountStabilizer()

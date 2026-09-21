@@ -9,12 +9,18 @@ package com.rite.pillcounting.core.scanning.logic
  * The median kills single-frame outliers; the latch kills a median that is
  * oscillating between two values.
  *
- * The latch is skipped on first acquisition (while the displayed count is still
- * zero). Flicker is a problem between two non-zero counts, not on the way up
- * from nothing, and waiting [AGREEING_FRAMES] there cost ~3 frames before any
- * number appeared — seconds on a slow frame. The raw count is already filtered
- * by PillTracker, which needs ENTER_FRAMES consecutive detections before a pill
- * counts at all, so the first number is not a single frame's guess.
+ * The latch is skipped whenever the displayed count is zero — not only the first
+ * time. Flicker is a problem between two non-zero counts, not on the way up from
+ * nothing, and waiting [AGREEING_FRAMES] there cost ~3 frames before any number
+ * appeared, which is seconds on a slow frame.
+ *
+ * That the bypass re-arms mid-count, after a gate dropout has blanked the number,
+ * is deliberate: recovering quickly from a blank is the same argument as
+ * acquiring quickly. It is not a fast path, because it skips the latch and not
+ * the median — blanking needs 5 consecutive empty frames for the window to turn
+ * over, and recovery needs 4 before the median leaves zero. The raw count is
+ * also already filtered by PillTracker, which needs ENTER_FRAMES consecutive
+ * detections before a pill counts at all.
  */
 class CountStabilizer {
 
@@ -36,7 +42,7 @@ class CountStabilizer {
 
         when {
             median == displayed -> pendingStreak = 0
-            // First acquisition: show it as soon as the tracker confirms pills.
+            // Nothing on screen: adopt the median as soon as it leaves zero.
             displayed == 0 -> {
                 displayed = median
                 pendingValue = median
