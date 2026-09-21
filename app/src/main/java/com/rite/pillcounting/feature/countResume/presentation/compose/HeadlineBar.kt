@@ -16,8 +16,13 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -28,6 +33,7 @@ import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.rite.pillcounting.feature.history.presentation.compose.ActionIcon
 import com.rite.pillcounting.ui.theme.AppTheme
 
 @Composable
@@ -55,33 +61,43 @@ fun HeadlineBar(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(end = 12.dp, bottom = 8.dp),
+            .padding(end = 12.dp, bottom = 8.dp, start = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween
     ) {
         if (showSearch) {
             // Search mode
+            val searchFocusRequester = remember { FocusRequester() }
+
+            // Opening search puts the caret straight in the field, so typing
+            // works without a second tap. Wait one frame first — requesting
+            // focus before the field is placed throws "not initialized".
+            LaunchedEffect(Unit) {
+                withFrameNanos { }
+                searchFocusRequester.requestFocus()
+            }
+
             Row(
                 modifier = Modifier
                     .weight(1f),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                BackButton(navController)
 
-                Spacer(Modifier.width(6.dp))
                 TextField(
                     value = searchQuery,
                     onValueChange = { onSearchChange(it) },
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier
+                        .weight(1f)
+                        .focusRequester(searchFocusRequester),
                     placeholder = { Text(stringResource(R.string.searchWithDots)) },
                     singleLine = true,
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
                         unfocusedContainerColor = Color.Transparent,
-                        cursorColor = AppTheme.extendedColors.textColor,
+                        cursorColor = MaterialTheme.colorScheme.primary,
                         focusedTextColor = AppTheme.extendedColors.textColor,
                         unfocusedTextColor = AppTheme.extendedColors.textColor,
-                        focusedIndicatorColor = MaterialTheme.colorScheme.secondary,
+                        focusedIndicatorColor = MaterialTheme.colorScheme.primary,
                         unfocusedIndicatorColor = Color.Gray
                     )
                 )
@@ -89,14 +105,14 @@ fun HeadlineBar(
 
             Spacer(Modifier.width(8.dp))
 
-            Icon(
+            ActionIcon(
                 imageVector = Icons.Default.Close,
                 contentDescription = stringResource(R.string.close_app),
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier
-                    .size(26.dp)
-                    .clickable { onSearchClick() }
+                onClick = {
+                    onSearchClick()
+                }
             )
+
         } else {
             //  Normal mode
             // when delete mode is on
@@ -125,7 +141,7 @@ fun HeadlineBar(
                             contentDescription = stringResource(R.string.cd_search),
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier
-                                .size(responsiveDp(25.dp))
+                                .size(responsiveDp(20.dp))
                                 .clickable { onSearchClick() }
                         )
                     }

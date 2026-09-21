@@ -224,7 +224,6 @@ fun DashboardPhoneLandscape(params: DashboardVariantParams) {
                         modifier = Modifier
                             .weight(0.20f)
                             .fillMaxHeight(),
-                        cardHeight = 72.dp,
                         tourState = tourState,
                         scrollState = kpiScrollState,
                     )

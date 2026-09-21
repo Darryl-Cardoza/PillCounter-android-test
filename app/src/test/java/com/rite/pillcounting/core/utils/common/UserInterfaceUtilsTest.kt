@@ -3,6 +3,7 @@ package com.rite.pillcounting.core.utils.common
 import androidx.compose.ui.text.AnnotatedString
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.activeOtpIndex
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.sanitizeOtpInput
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.DEFAULT_BOOST_ON_PHONE
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.spScale
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toColor
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.toDateString
@@ -246,5 +247,14 @@ class UserInterfaceUtilsTest {
         // Phone base sizes are tuned smaller than tablet ones, so a boosted phone
         // deliberately scales past the small-tablet factor.
         assertTrue(spScale(599, boostOnPhone = true) > spScale(600, boostOnPhone = true))
+    }
+
+    // responsiveSp is @Composable and unreachable from a JVM test, so pin its
+    // default through the shared constant instead.
+    @Test
+    fun responsiveSp_defaultsToBoostedPhone() {
+        assertTrue(DEFAULT_BOOST_ON_PHONE)
+        assertEquals(1.45f, spScale(359, DEFAULT_BOOST_ON_PHONE), 0f)
+        assertEquals(1.7f, spScale(360, DEFAULT_BOOST_ON_PHONE), 0f)
     }
 }

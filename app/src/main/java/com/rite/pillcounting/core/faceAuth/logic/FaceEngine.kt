@@ -4,13 +4,11 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Matrix
 import com.rite.pillcounting.core.faceAuth.model.FaceBox
-import com.rite.pillcounting.core.utils.logger.AppLogger
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import javax.inject.Inject
 import javax.inject.Singleton
-import kotlin.math.sqrt
 
 /**
  * Detects and embeds faces via the loaded YuNet + SFace TFLite interpreters.
@@ -37,12 +35,6 @@ class FaceEngine @Inject constructor(
         const val DET_NMS_THRESHOLD = 0.3f
     }
 
-    // TEMPORARY diagnostics for the enroll/verify mismatch investigation — remove
-    // once the root cause is found. Filter logcat on these tags to see exactly
-    // what goes into and comes out of each model on every call.
-    private val detectorLogger = AppLogger("FaceDetectorIO")
-    private val recognizerLogger = AppLogger("FaceRecognizerIO")
-
     /**
      * Detects every face in [bitmap].
      *
@@ -56,22 +48,10 @@ class FaceEngine @Inject constructor(
         val interpreters = modelLoader.getOrLoadInterpreters()
         val size = interpreters.detectorInputSize
         val (inputBuffer, scale) = letterbox(bitmap, size, size)
-        detectorLogger.i("IN  frame=${bitmap.width}x${bitmap.height} detectorInput=${size}x$size scale=$scale")
 
         val rawOutputs = runDetector(interpreters.detector, inputBuffer)
-        val faces = YuNetDecoder.decode(rawOutputs, size, size, DET_SCORE_THRESHOLD, DET_NMS_THRESHOLD, scale)
+        return YuNetDecoder.decode(rawOutputs, size, size, DET_SCORE_THRESHOLD, DET_NMS_THRESHOLD, scale)
             .sortedByDescending { it.rect.width() * it.rect.height() }
-
-        if (faces.isEmpty()) {
-            detectorLogger.i("OUT faces=0")
-        } else {
-            val top = faces.first()
-            detectorLogger.i(
-                "OUT faces=${faces.size} top(score=${top.score}, rect=${top.rect}, " +
-                    "landmarks=${top.landmarks.joinToString(",", limit = 10)})"
-            )
-        }
-        return faces
     }
 
     /**
@@ -95,17 +75,7 @@ class FaceEngine @Inject constructor(
     suspend fun embed(bitmap: Bitmap, face: FaceBox): FloatArray {
         val interpreters = modelLoader.getOrLoadInterpreters()
         val aligned = FaceAligner.alignCrop(bitmap, face.landmarks, interpreters.recognizerInputSize)
-        recognizerLogger.i("IN  alignedCrop=${aligned.width}x${aligned.height} fromLandmarks=${face.landmarks.joinToString(",")}")
-
-        val embedding = runRecognizer(interpreters.recognizer, aligned)
-
-        var sumSq = 0f
-        for (v in embedding) sumSq += v * v
-        val norm = sqrt(sumSq)
-        recognizerLogger.i(
-            "OUT dims=${embedding.size} l2norm=$norm first5=${embedding.take(5).joinToString(",")}"
-        )
-        return embedding
+        return runRecognizer(interpreters.recognizer, aligned)
     }
 
     /** Letterboxes [bitmap] into a [w]x[h] canvas; returns the input buffer and the scale factor mapping detector-space back to original-frame-space. */

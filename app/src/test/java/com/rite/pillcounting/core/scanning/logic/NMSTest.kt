@@ -111,6 +111,13 @@ class NMSTest {
     }
 
     @Test
+    fun `run preserves classId on kept detections`() {
+        val a = Detection(rect = rectF(0f, 0f, 10f, 10f), confidence = 0.9f, classId = 2)
+        val result = NMS.run(listOf(a), iouThreshold = 0.5f)
+        assertEquals(2, result[0].classId)
+    }
+
+    @Test
     fun `run with zero area rect produces zero IoU and does not crash on division`() {
         val zeroArea = detection(rectF(5f, 5f, 5f, 5f), 0.9f)
         val normal = detection(rectF(0f, 0f, 10f, 10f), 0.8f)

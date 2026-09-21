@@ -7,10 +7,17 @@ import com.rite.pillcounting.core.faceAuth.model.FaceGuidance
 sealed interface RegistrationState {
     data object Idle : RegistrationState
     data class Capturing(val angle: FaceCaptureAngle, val capturedCount: Int, val guidance: FaceGuidance? = null) : RegistrationState
-    data class Rejected(val angle: FaceCaptureAngle, val reason: FaceGuidance) : RegistrationState
+
+    /** The FRONT capture matched an enrolled profile. Capture is paused until the user chooses. */
+    data class DuplicateWarning(
+        val firstName: String,
+        val lastName: String,
+        val capturedCount: Int
+    ) : RegistrationState
+
     data object Enrolled : RegistrationState
 
-    /** Defensive guard state (finish requested before all angles were captured); not rendered. */
+    /** Saving the profile threw. Every angle is still captured, so the save can be retried. */
     data object Failed : RegistrationState
 }
 

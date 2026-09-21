@@ -14,6 +14,7 @@ import com.rite.pillcounting.core.room.models.FaceEmbeddingEntity
  *
  * What it does:
  * - [getForEnabledProfiles] is the read `FaceMatcher` uses to build its match gallery.
+ * - [getAll] is the read the duplicate-enrollment check uses.
  */
 @Dao
 interface FaceEmbeddingDao {
@@ -29,4 +30,15 @@ interface FaceEmbeddingDao {
            WHERE face_profiles.isEnabled = 1"""
     )
     suspend fun getForEnabledProfiles(): List<FaceEmbeddingEntity>
+
+    /**
+     * Reads every stored embedding, enabled or not.
+     *
+     * A disabled profile is still on file, so the duplicate-enrollment check has to
+     * see it — otherwise the same face is silently enrolled a second time.
+     *
+     * @return Every embedding row.
+     */
+    @Query("SELECT * FROM face_embeddings")
+    suspend fun getAll(): List<FaceEmbeddingEntity>
 }

@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +32,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -80,6 +82,7 @@ fun AddNoteDialog(
             shape = RoundedCornerShape(dimens.medium),
             modifier = Modifier
                 .width(responsiveDpForAddNoteDialog(300.dp))
+                .heightIn(max = LocalConfiguration.current.screenHeightDp.dp * 0.9f)
                 .wrapContentHeight()
         ) {
             Column(
@@ -110,7 +113,14 @@ fun AddNoteDialog(
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(responsiveDpForAddNoteDialog(180.dp))
+                        // Takes what is left after the title and the buttons, up to its
+                        // old fixed height. fill = false so it still shrinks to the
+                        // preferred height when there is room (portrait).
+                        .weight(1f, fill = false)
+                        .heightIn(
+                            min = responsiveDpForAddNoteDialog(60.dp),
+                            max = responsiveDpForAddNoteDialog(180.dp),
+                        )
                         .background(
                             color = AppTheme.extendedColors.inputBackground,
                             shape = RoundedCornerShape(dimens.small)
@@ -160,18 +170,18 @@ fun AddNoteDialog(
 
                 // Buttons Row
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth()
                         .padding(horizontal = 10.dp)
                         .tourTarget(tourState, "add_note_actions"),
-                    horizontalArrangement = Arrangement.Center
+                    horizontalArrangement = Arrangement.spacedBy(dimens.medium)
                 ) {
                     HollowButton(
                         text = stringResource(R.string.skip).uppercase(),
                         onClick = onSkip,
                         color = MaterialTheme.colorScheme.primary,
+                        fixedWidth = false,
+                        modifier = Modifier.weight(1f),
                     )
-                    Spacer(modifier = Modifier.width(dimens.medium))
                     ActionButtonPrimary(
                         text = stringResource(R.string.save).uppercase(),
                         onClick = {
@@ -181,6 +191,8 @@ fun AddNoteDialog(
                                 onSave(noteText.trim())
                             }
                         },
+                        fixedWidth = false,
+                        modifier = Modifier.weight(1f),
                     )
                 }
 

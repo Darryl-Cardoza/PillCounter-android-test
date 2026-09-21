@@ -37,8 +37,13 @@ private class FakeProfileDao : FaceProfileDao {
 }
 
 /** Reads whatever [FakeProfileDao.savedEmbeddings] has accumulated — writes go through the profile DAO now. */
-private class FakeEmbeddingDao(private val embeddings: List<FaceEmbeddingEntity>) : FaceEmbeddingDao {
-    override suspend fun getForEnabledProfiles(): List<FaceEmbeddingEntity> = embeddings
+private class FakeEmbeddingDao(
+    private val embeddings: List<FaceEmbeddingEntity>,
+    private val profiles: List<FaceProfileEntity> = emptyList()
+) : FaceEmbeddingDao {
+    override suspend fun getForEnabledProfiles(): List<FaceEmbeddingEntity> =
+        embeddings.filter { e -> profiles.none { it.id == e.faceProfileId && !it.isEnabled } }
+    override suspend fun getAll(): List<FaceEmbeddingEntity> = embeddings
 }
 
 class FaceProfileRepositoryTest {
@@ -79,5 +84,20 @@ class FaceProfileRepositoryTest {
         assertEquals(1, gallery.size)
         assertEquals(128, gallery[0].vec.size)
         assertEquals(5f, gallery[0].vec[5], 1e-4f)
+    }
+
+    @Test
+    fun `findExistingMatch still sees a profile that loadGallery hides for being disabled`() = runTest {
+        val profileDao = FakeProfileDao()
+        val repo = FaceProfileRepository(profileDao, FakeEmbeddingDao(profileDao.savedEmbeddings, profileDao.saved))
+        val vec = FloatArray(128) { it.toFloat() }
+
+        val id = repo.registerProfile("Bruce", "Wayne", null, mapOf(FaceCaptureAngle.FRONT to vec), now = 0L)
+        repo.setEnabled(profileDao.saved.first { it.id == id }, enabled = false)
+
+        // Disabled means "cannot unlock", not "not on file" — enrolling this face
+        // again must still warn rather than silently create a second profile.
+        assertTrue(repo.loadGallery().isEmpty())
+        assertEquals(id, repo.findExistingMatch(vec)?.id)
     }
 }

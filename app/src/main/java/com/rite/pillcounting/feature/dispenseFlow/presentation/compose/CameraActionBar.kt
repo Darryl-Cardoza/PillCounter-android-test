@@ -29,6 +29,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rite.pillcounting.R
+import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.isTablet
 import com.rite.pillcounting.core.tourguide.FtueController
 import com.rite.pillcounting.core.tourguide.tourTarget
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
@@ -98,7 +99,14 @@ private fun ActionButtons(
         Column(
             modifier = Modifier.fillMaxHeight(),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.SpaceEvenly
+            // SpaceEvenly spreads the three controls over the full column height,
+            // which is too airy on a phone. There, pull them into a tight centred
+            // stack instead.
+            verticalArrangement = if (isTablet()) {
+                Arrangement.SpaceEvenly
+            } else {
+                Arrangement.spacedBy(dimens.medium, Alignment.CenterVertically)
+            }
         ) {
             ActionButtonItems(hasCapture, isCapturing, onRedo, onCapture, onDone, dimens)
         }
@@ -124,6 +132,16 @@ private fun ActionButtonItems(
 ) {
     val tourState = FtueController.state
 
+    // Phone landscape is the tightest of the four layouts — the controls sit in a
+    // column down the right edge, between the details bar and the strip. Trim them
+    // a little there only; every other form factor keeps its sizes.
+    val isPhoneLandscape =
+        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE &&
+            !isTablet()
+    val iconSize = responsiveDp(if (isPhoneLandscape) 30.dp else 36.dp)
+    val captureSize = responsiveDp(if (isPhoneLandscape) 60.dp else 72.dp)
+    val labelSize = responsiveSp(if (isPhoneLandscape) 10.sp else 12.sp, boostOnPhone = false)
+
     // REDO
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -134,19 +152,19 @@ private fun ActionButtonItems(
             painter =  painterResource(id = R.drawable.captureimageredoicon),
             contentDescription = "Redo",
             tint = if (hasCapture) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f),
-            modifier = Modifier.size(responsiveDp(36.dp))
+            modifier = Modifier.size(iconSize)
         )
         Text(
             text = stringResource(R.string.redo),
             color = if (hasCapture) AppTheme.extendedColors.textColor else Color.White.copy(alpha = 0.5f),
-            fontSize = responsiveSp(12.sp),
+            fontSize = labelSize,
         )
     }
 
     // CAMERA BUTTON
     Box(
         modifier = Modifier
-            .size(responsiveDp(72.dp))
+            .size(captureSize)
             .background(
                 // Greyed while a capture is in flight, so the user can see the tap is inert.
                 color = if (hasCapture || isCapturing) AppTheme.extendedColors.primaryBackground else MaterialTheme.colorScheme.primary,
@@ -160,7 +178,7 @@ private fun ActionButtonItems(
             painter =  painterResource(id = R.drawable.capturevialimage),
             contentDescription = "Capture",
             tint = Color.White,
-            modifier = Modifier.size(responsiveDp(36.dp))
+            modifier = Modifier.size(iconSize)
         )
     }
 
@@ -175,12 +193,12 @@ private fun ActionButtonItems(
             imageVector = Icons.Default.Check,
             contentDescription = "Done",
             tint = if (hasCapture) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.5f),
-            modifier = Modifier.size(responsiveDp(36.dp))
+            modifier = Modifier.size(iconSize)
         )
         Text(
             text = stringResource(R.string.done),
             color = if (hasCapture) AppTheme.extendedColors.textColor else Color.White.copy(alpha = 0.5f),
-            fontSize = responsiveSp(12.sp)
+            fontSize = labelSize
         )
     }
 }
