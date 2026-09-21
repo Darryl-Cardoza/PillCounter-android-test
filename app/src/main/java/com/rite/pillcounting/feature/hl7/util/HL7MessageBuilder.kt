@@ -381,22 +381,28 @@ object HL7MessageBuilder {
      * sendable INU^U05 messages so no single message exceeds [maxRowsPerChunk] INV
      * groups — keeping each message safely under PMS's message-size ceiling
      * regardless of how large the overall batch grows. Chunk position is not encoded
-     * on the wire (matches the iOS-produced format exactly); [chunkIndex]/[totalChunks]
+     * on the wire (this is the shared iOS/Android INU^U05 format); [chunkIndex]/[totalChunks]
      * only drive local resume bookkeeping — see [Hl7Repository].
      *
-     * Wire shape per chunk (matches iOS's current INU^U05 output):
+     * Wire shape per chunk (shared iOS/Android INU^U05 format):
      * ```
      * MSH
      * EQU
      * ORC
      * OBX (OPERATOR_NAME, blank sub-id)
      * [ INV (one per ndc/lot/expiry group, Set-ID keyed)
-     *   OBX (SEALED_QTY)
-     *   OBX (OPEN_QTY)
+     *   OBX (SEALED_QTY, OBX-5 = `pills^bottles`)
+     *   OBX (OPEN_QTY, OBX-5 = `pills^bottles`)
      *   OBX (IMG001..IMGnnn, one per photo, only if the group has photos) ]  repeats per group
      * ZAD (batch note, only if the batch has one — always last segment)
      * ```
      * No NTE, no BTS, no ZIN.
+     *
+     * Both quantity rows always carry both components, `0^0` included, so PMS parses
+     * one fixed shape. Sealed bottles are summed; a line with loose pills counts as
+     * one open bottle (no open-bottle column exists in the stock model). The
+     * inventory screen derives its bottle count the same way — if an open-bottle
+     * column ever lands, this and `InventoryScanViewModel.toRecentRows` change together.
      *
      * ORC-2 carries this batch's bucketId, and — when this batch answers a
      * PMS-originated INR^U06 request (`batch.requestIdFromPMS` non-blank) — that
@@ -416,7 +422,13 @@ object HL7MessageBuilder {
         val requestId = batch.requestIdFromPMS?.trim()?.ifEmpty { null }
 
         data class Key(val ndc: String, val name: String, val lot: String, val expiry: String)
-        data class Qty(var opened: Int = 0, var sealed: Int = 0, val imagePaths: MutableList<String> = mutableListOf())
+        data class Qty(
+            var opened: Int = 0,
+            var sealed: Int = 0,
+            var openedBottles: Int = 0,
+            var sealedBottles: Int = 0,
+            val imagePaths: MutableList<String> = mutableListOf()
+        )
 
         val grouped = linkedMapOf<Key, Qty>()
         txns.forEach { txn ->
@@ -430,6 +442,10 @@ object HL7MessageBuilder {
             val e = grouped.getOrPut(key) { Qty() }
             e.opened += txn.looseQty ?: 0
             e.sealed += (txn.bottleQty ?: 0) * packageQty
+            // No open-bottle column exists: a line with loose pills counts as one
+            // open bottle, matching what the inventory screen already shows.
+            e.sealedBottles += txn.bottleQty ?: 0
+            if ((txn.looseQty ?: 0) > 0) e.openedBottles++
             txn.imagePaths?.let { e.imagePaths.addAll(it) }
         }
 
@@ -515,7 +531,10 @@ object HL7MessageBuilder {
                         obx.valueType = "NM"
                         obx.observationId = "SEALED_QTY"
                         obx.subId = invSetId
+                        // Two components, not one string: HL7Escaping would turn a
+                        // literal "2000^2" into 2000\S\2.
                         obx.observationValue = value.sealed.toString()
+                        obx.observationValueText = value.sealedBottles.toString()
                         obx.resultStatus = "F"
                     }
                     obx { obx ->
@@ -524,6 +543,7 @@ object HL7MessageBuilder {
                         obx.observationId = "OPEN_QTY"
                         obx.subId = invSetId
                         obx.observationValue = value.opened.toString()
+                        obx.observationValueText = value.openedBottles.toString()
                         obx.resultStatus = "F"
                     }
                     value.imagePaths.forEach { path ->
