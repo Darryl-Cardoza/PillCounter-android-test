@@ -359,7 +359,12 @@ class ProfileViewModel @Inject constructor(
         pharmacyNameError = validator.validatePharmacyName(pharmacyName).errorMessageResId
         phoneError = validator.validatePhone(phoneNumber).errorMessageResId
         emailError = validator.validateEmail(email).errorMessageResId
-        npiError = validator.validateNpi(npi).errorMessageResId
+        // NPI is optional to the validator but mandatory on this screen.
+        npiError = if (npi.isBlank()) {
+            R.string.error_npi_required
+        } else {
+            validator.validateNpi(npi).errorMessageResId
+        }
         countryError = if (selectedCountry?.code.isNullOrBlank()) {
             R.string.please_select_country
         } else {

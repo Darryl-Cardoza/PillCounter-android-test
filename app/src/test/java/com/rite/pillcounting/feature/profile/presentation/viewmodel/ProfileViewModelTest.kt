@@ -74,6 +74,7 @@ class ProfileViewModelTest {
     private lateinit var context: Context
 
     private val deviceKey = "test-device-key"
+    private val validNpi = "1234567890"
     private val activeTerminal =
         Terminal(terminalId = "t1", terminalName = "Front Desk", isActive = true, deviceKey = deviceKey)
     private val otherTerminal =
@@ -170,10 +171,11 @@ class ProfileViewModelTest {
         return HttpException(Response.error<Any>(code, responseBody))
     }
 
-    /** Selects US/CA so [ProfileViewModel.validateInputs] country/state checks pass. */
-    private fun selectValidLocation(vm: ProfileViewModel) {
+    /** Fills the fields [ProfileViewModel.validateInputs] requires: US/CA plus a 10-digit NPI. */
+    private fun fillRequiredInputs(vm: ProfileViewModel) {
         vm.onCountrySelected(testCountries.first { it.code == "US" })
         vm.onStateSelected(vm.states.first { it.code == "CA" })
+        vm.npi = validNpi
     }
 
     private fun userEntity(country: String? = null, state: String? = null) = UserEntity(
@@ -536,6 +538,72 @@ class ProfileViewModelTest {
     }
 
     @Test
+    fun `updateProfile aborts when npi is blank`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+        fillRequiredInputs(vm)
+        vm.npi = ""
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        assertEquals(ProfileUpdateUiState.Idle, vm.updateUiState.value)
+        assertEquals(R.string.error_npi_required, vm.npiError)
+        coVerify(exactly = 0) { repository.updateProfile(any()) }
+    }
+
+    @Test
+    fun `updateProfile aborts when npi is whitespace only`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+        fillRequiredInputs(vm)
+        vm.npi = "   "
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        assertEquals(R.string.error_npi_required, vm.npiError)
+        coVerify(exactly = 0) { repository.updateProfile(any()) }
+    }
+
+    @Test
+    fun `updateProfile surfaces the validator error for a non-blank npi`() = runTest(testDispatcher) {
+        every { validator.validateNpi(any()) } returns
+            ValidationResult(false, R.string.error_npi_invalid)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        fillRequiredInputs(vm)
+        vm.npi = "12345"
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        assertEquals(R.string.error_npi_invalid, vm.npiError)
+        coVerify(exactly = 0) { repository.updateProfile(any()) }
+    }
+
+    @Test
+    fun `updateProfile clears the npi error once a valid npi is entered`() = runTest(testDispatcher) {
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        fillRequiredInputs(vm)
+        vm.npi = ""
+        vm.updateProfile()
+        advanceUntilIdle()
+        assertEquals(R.string.error_npi_required, vm.npiError)
+
+        vm.npi = validNpi
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        assertNull(vm.npiError)
+        coVerify { repository.updateProfile(match { it.npiId == validNpi }) }
+    }
+
+    @Test
     fun `updateProfile aborts when no country selected`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
@@ -568,7 +636,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
 
         vm.updateProfile()
         advanceUntilIdle()
@@ -584,7 +652,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
 
         vm.updateUiState.test {
             assertEquals(ProfileUpdateUiState.Idle, awaitItem())
@@ -608,7 +676,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
 
         // The field keeps the trailing space left by the stripped "#10423".
         vm.onPharmacyNameChanged("CVS Pharmacy #10423")
@@ -631,6 +699,7 @@ class ProfileViewModelTest {
         val canada = vm.countries.first { it.code == "CA" }
         vm.onCountrySelected(canada)
         vm.onStateSelected(vm.states.first { it.code == "ON" })
+        vm.npi = validNpi
 
         vm.updateProfile()
         advanceUntilIdle()
@@ -649,6 +718,7 @@ class ProfileViewModelTest {
 
         val california = vm.states.first { it.code == "CA" }
         vm.onStateSelected(california)
+        vm.npi = validNpi
 
         vm.updateProfile()
         advanceUntilIdle()
@@ -664,7 +734,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
 
         vm.updateProfile()
         advanceUntilIdle()
@@ -684,7 +754,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
         vm.onTerminalSelected(otherTerminal) // change from t1 (held) to t2
 
         vm.updateProfile()
@@ -710,7 +780,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
         vm.onTerminalSelected(otherTerminal)
 
         vm.updateProfile()
@@ -726,7 +796,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
         vm.onTerminalSelected(otherTerminal) // change from t1 (held) to t2
 
         // Device key resolved during init's loadTerminals(); unavailable now, during the claim.
@@ -750,7 +820,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
         vm.onTerminalSelected(otherTerminal)
 
         vm.updateProfile()
@@ -769,7 +839,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
         vm.onTerminalSelected(otherTerminal)
 
         vm.updateProfile()
@@ -785,7 +855,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
 
         vm.updateProfile()
         advanceUntilIdle()
@@ -1002,7 +1072,7 @@ class ProfileViewModelTest {
 
         val vm = createViewModel()
         advanceUntilIdle()
-        selectValidLocation(vm)
+        fillRequiredInputs(vm)
         vm.updateProfile()
         advanceUntilIdle()
         assertTrue(vm.updateUiState.value is ProfileUpdateUiState.Error)

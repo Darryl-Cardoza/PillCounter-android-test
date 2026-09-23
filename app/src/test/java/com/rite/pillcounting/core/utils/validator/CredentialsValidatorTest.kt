@@ -58,6 +58,17 @@ class CredentialsValidatorTest {
         assertEquals(R.string.error_email_invalid, r.errorMessageResId)
     }
 
+    @Test
+    fun `validateEmail surrounding whitespace failure`() {
+        // The value is never trimmed before the pattern runs.
+        assertFalse(validator.validateEmail(" john@example.com ").isSuccess)
+    }
+
+    @Test
+    fun `validateEmail missing domain failure`() {
+        assertFalse(validator.validateEmail("john@example").isSuccess)
+    }
+
     // ─────────────────────────── validatePhone ───────────────────────────
 
     @Test
@@ -76,6 +87,17 @@ class CredentialsValidatorTest {
         val r = validator.validatePhone("123456")
         assertFalse(r.isSuccess)
         assertEquals(R.string.error_phone_invalid, r.errorMessageResId)
+    }
+
+    @Test
+    fun `validatePhone formatted number success`() {
+        assertTrue(validator.validatePhone("+1 (555) 123-4567").isSuccess)
+    }
+
+    @Test
+    fun `validatePhone length counts formatting characters`() {
+        // "12-3456" is 5 digits but 7 characters, so the length check passes.
+        assertTrue(validator.validatePhone("12-3456").isSuccess)
     }
 
     @Test
@@ -112,6 +134,16 @@ class CredentialsValidatorTest {
     @Test
     fun `validateRequiredName valid success`() {
         assertTrue(validator.validateRequiredName("Mary-Jane O'Neil").isSuccess)
+    }
+
+    @Test
+    fun `validateRequiredName non-ascii letters success`() {
+        assertTrue(validator.validateRequiredName("Zoë Müller").isSuccess)
+    }
+
+    @Test
+    fun `validateRequiredName single letter success`() {
+        assertTrue(validator.validateRequiredName("X").isSuccess)
     }
 
     // ─────────────────────────── validatePharmacyName ───────────────────────────
@@ -211,18 +243,52 @@ class CredentialsValidatorTest {
 
     @Test
     fun `validateNpi too short failure`() {
-        assertFalse(validator.validateNpi("12345").isSuccess) // 5 digits
+        assertFalse(validator.validateNpi("123456789").isSuccess) // 9 digits
     }
 
     @Test
     fun `validateNpi too long failure`() {
-        assertFalse(validator.validateNpi("1234567890123").isSuccess) // 13 digits
+        assertFalse(validator.validateNpi("12345678901").isSuccess) // 11 digits
     }
 
     @Test
-    fun `validateNpi valid boundaries success`() {
-        assertTrue(validator.validateNpi("123456").isSuccess) // 6
-        assertTrue(validator.validateNpi("123456789012").isSuccess) // 12
+    fun `validateNpi ten digits success`() {
+        assertTrue(validator.validateNpi("1234567890").isSuccess)
+    }
+
+    @Test
+    fun `validateNpi whitespace only is optional success`() {
+        // Blank-ish is the validator's "not filled in" case; the Profile screen is what
+        // turns that into a required-field error.
+        assertTrue(validator.validateNpi("   ").isSuccess)
+    }
+
+    @Test
+    fun `validateNpi surrounding whitespace failure`() {
+        assertFalse(validator.validateNpi(" 1234567890 ").isSuccess)
+    }
+
+    @Test
+    fun `validateNpi ten characters with a letter failure`() {
+        val r = validator.validateNpi("123456789O") // letter O, not zero
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_npi_invalid, r.errorMessageResId)
+    }
+
+    @Test
+    fun `validateNpi with separators failure`() {
+        assertFalse(validator.validateNpi("12345-6789").isSuccess)
+    }
+
+    @Test
+    fun `validateNpi non-ascii digits failure`() {
+        // Ten Arabic-Indic digits: Char.isDigit() accepts them, the API does not.
+        assertFalse(validator.validateNpi("١٢٣٤٥٦٧٨٩٠").isSuccess)
+    }
+
+    @Test
+    fun `validateNpi leading zeros success`() {
+        assertTrue(validator.validateNpi("0000000001").isSuccess)
     }
 
     // ─────────────────────────── validatePassword ───────────────────────────
@@ -269,6 +335,24 @@ class CredentialsValidatorTest {
     @Test
     fun `validatePassword valid success`() {
         assertTrue(validator.validatePassword("Abcdefg1!").isSuccess)
+    }
+
+    @Test
+    fun `validatePassword eight char boundary success`() {
+        assertTrue(validator.validatePassword("Abcdef1!").isSuccess)
+    }
+
+    @Test
+    fun `validatePassword blank is too short failure`() {
+        assertEquals(
+            R.string.error_password_too_short,
+            validator.validatePassword("").errorMessageResId,
+        )
+    }
+
+    @Test
+    fun `validatePassword counts a space as the special character`() {
+        assertTrue(validator.validatePassword("Abcdefg1 ").isSuccess)
     }
 
     // ─────────────────────────── helpers ───────────────────────────

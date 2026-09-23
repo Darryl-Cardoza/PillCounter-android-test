@@ -100,8 +100,8 @@ class CredentialsValidator @Inject constructor() {
      *
      * Rules:
      * - Optional (blank passes).
-     * - Must contain only digits.
-     * - Length must be between 6 and 12 digits.
+     * - Must contain only ASCII digits.
+     * - Must be exactly 10 digits long.
      *
      * @param npi The NPI string to validate.
      * @return [ValidationResult] with success if valid,
@@ -109,7 +109,8 @@ class CredentialsValidator @Inject constructor() {
      */
     fun validateNpi(npi: String): ValidationResult {
         if (npi.isBlank()) return ValidationResult(true)
-        if (!npi.all { it.isDigit() } || npi.length !in 6..12) {
+        // isDigit() also accepts non-ASCII digits, which the API will not take.
+        if (!npi.all { it in '0'..'9' } || npi.length != NPI_LENGTH) {
             return ValidationResult(false, R.string.error_npi_invalid)
         }
         return ValidationResult(true)
@@ -149,6 +150,7 @@ class CredentialsValidator @Inject constructor() {
     }
 
     companion object {
+        private const val NPI_LENGTH = 10
         private val DISALLOWED_NAME_CHARS = Regex("[^\\p{L} '-]")
         private val SPACE_RUN = Regex(" {2,}")
 
