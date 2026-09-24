@@ -1,4 +1,4 @@
-
+package com.dispensesure.retail.navigation
 
 import androidx.navigation.NamedNavArgument
 import androidx.navigation.NavType

@@ -156,7 +156,7 @@ class PermissionUtilsTest {
 
     @Test
     fun `openAppSettings starts an intent pointed at this app's details screen`() {
-        every { context.packageName } returns "com.rite.pillcounting"
+        every { context.packageName } returns "com.dispensesure.retail"
         val intentSlot = slot<android.content.Intent>()
         every { context.startActivity(capture(intentSlot)) } returns Unit
 
@@ -165,7 +165,7 @@ class PermissionUtilsTest {
         verify { context.startActivity(any()) }
         val intent = intentSlot.captured
         assertTrue(intent.action == Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
-        assertTrue(intent.data == Uri.fromParts("package", "com.rite.pillcounting", null))
+        assertTrue(intent.data == Uri.fromParts("package", "com.dispensesure.retail", null))
     }
 
     // -------------------- openLocationSettings --------------------

@@ -1,6 +1,5 @@
 package com.dispensesure.retail.feature.settings.presentation
 
-import Screen
 import android.annotation.SuppressLint
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,6 +33,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
+import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.LocalExtendedColors
 

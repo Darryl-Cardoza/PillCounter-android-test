@@ -27,7 +27,7 @@ private val DarkColorScheme = darkColorScheme(
 )
 
 @Composable
-fun PillCountingNewModelsTheme(
+fun DispenseSureRetailTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     lightColors: ColorScheme = LightColorScheme,
     darkColors: ColorScheme = DarkColorScheme,

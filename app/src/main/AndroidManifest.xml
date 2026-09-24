@@ -72,13 +72,13 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
         android:hardwareAccelerated="true"
-        android:theme="@style/Theme.PillCountingNewModels"
+        android:theme="@style/Theme.DispenseSureRetail"
         tools:targetApi="31">
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:configChanges="orientation|screenSize|layoutDirection|keyboardHidden|uiMode"
-            android:theme="@style/Theme.PillCountingNewModels">
+            android:theme="@style/Theme.DispenseSureRetail">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
 

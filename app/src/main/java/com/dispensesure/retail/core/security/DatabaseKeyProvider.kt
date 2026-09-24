@@ -21,14 +21,14 @@ object DatabaseKeyProvider {
 
     const val DATABASE_NAME = "pill_counting_db"
 
-    private const val PREFS_NAME = "pillcounting_db_key_prefs"
+    private const val PREFS_NAME = "dispensesure_db_key_prefs"
     private const val KEY_DEK_WRAPPED = "dek_wrapped"
     private const val KEY_KEK_ID = "dek_kek_id"
     private const val KEY_KEK_VERSION = "dek_kek_version"
 
     private const val BOOTSTRAP_KEK_ID = "local-bootstrap"
-    private const val BOOTSTRAP_KEK_ALIAS = "com.rite.pillcounting.dek_bootstrap_kek"
-    private const val SERVER_KEK_ALIAS_PREFIX = "com.rite.pillcounting.server_kek_"
+    private const val BOOTSTRAP_KEK_ALIAS = "com.dispensesure.retail.dek_bootstrap_kek"
+    private const val SERVER_KEK_ALIAS_PREFIX = "com.dispensesure.retail.server_kek_"
 
     private val logger = AppLogger.create<DatabaseKeyProvider>()
 

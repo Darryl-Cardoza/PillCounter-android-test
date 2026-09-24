@@ -1,6 +1,5 @@
 package com.dispensesure.retail.feature.hl7.notification
 
-import Screen
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -8,6 +7,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
+import com.dispensesure.retail.navigation.Screen
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor

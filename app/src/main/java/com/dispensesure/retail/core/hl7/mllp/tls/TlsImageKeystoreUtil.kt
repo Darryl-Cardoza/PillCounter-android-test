@@ -77,7 +77,7 @@ object TlsImageKeystoreUtil {
 
     private fun getOrCreateKeystorePassword(context: Context): CharArray {
         val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
-        val alias = "com.rite.pillcounting.tls_image_ks_pw"
+        val alias = "com.dispensesure.retail.tls_image_ks_pw"
         val prefs = context.getSharedPreferences("tls_image_ks_prefs", Context.MODE_PRIVATE)
         val prefKey = "ks_pw_encrypted"
 

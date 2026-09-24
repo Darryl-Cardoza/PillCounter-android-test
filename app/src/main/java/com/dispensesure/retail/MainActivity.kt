@@ -61,8 +61,8 @@ import com.dispensesure.retail.core.utils.notification.FCMService
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.navigation.AppNavGraph
+import com.dispensesure.retail.ui.theme.DispenseSureRetailTheme
 import com.dispensesure.retail.ui.theme.ExtendedColors
-import com.dispensesure.retail.ui.theme.PillCountingNewModelsTheme
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 
@@ -241,7 +241,7 @@ class MainActivity : ComponentActivity() {
                         statusChipBackgroundOnSecondary = colorSettings.dark.statusChipBackgroundOnSecondary.toColor()
                     )
 
-                    PillCountingNewModelsTheme(
+                    DispenseSureRetailTheme(
                         lightColors         = lightColorSchemeDynamic,
                         darkColors          = darkColorSchemeDynamic,
                         lightExtendedColors = extendedDynamicLight,

@@ -1,7 +1,7 @@
 package com.dispensesure.retail.feature.verifyPin.di
 
 import com.dispensesure.retail.core.utils.notification.FCMService
-import com.dispensesure.retail.feature.otp.data.VerifyPinRepository
+import com.dispensesure.retail.feature.verifyPin.data.VerifyPinRepository
 import com.dispensesure.retail.feature.verifyPin.data.remote.IVerifyPinAPI
 import com.dispensesure.retail.feature.verifyPin.domain.data.IVerifyPinRepository
 import dagger.Module

@@ -24,7 +24,7 @@ class DatabaseKeyProviderInstrumentedTest {
 
     // Must match DatabaseKeyProvider's private PREFS_NAME — the class has no seam to inject a
     // different prefs file, so tests operate on (and clean up) the same file the app itself uses.
-    private val prefsName = "pillcounting_db_key_prefs"
+    private val prefsName = "dispensesure_db_key_prefs"
 
     @Before
     fun setUp() {
@@ -41,7 +41,7 @@ class DatabaseKeyProviderInstrumentedTest {
     private fun clearTestKeystoreAliases() {
         val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
         keystore.aliases().toList()
-            .filter { it == "com.rite.pillcounting.dek_bootstrap_kek" || it.startsWith("com.rite.pillcounting.server_kek_test_") }
+            .filter { it == "com.dispensesure.retail.dek_bootstrap_kek" || it.startsWith("com.dispensesure.retail.server_kek_test_") }
             .forEach { keystore.deleteEntry(it) }
     }
 
@@ -95,7 +95,7 @@ class DatabaseKeyProviderInstrumentedTest {
 
         // The duplicate-version KEK must never have been imported/used
         val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
-        assertEquals(false, keystore.containsAlias("com.rite.pillcounting.server_kek_test_kek_v1_dup"))
+        assertEquals(false, keystore.containsAlias("com.dispensesure.retail.server_kek_test_kek_v1_dup"))
     }
 
     @Test
@@ -111,9 +111,9 @@ class DatabaseKeyProviderInstrumentedTest {
 
         // Only the latest server KEK alias should remain; earlier ones deleted.
         val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
-        assertEquals(false, keystore.containsAlias("com.rite.pillcounting.server_kek_test_kek_seq_1"))
-        assertEquals(false, keystore.containsAlias("com.rite.pillcounting.server_kek_test_kek_seq_2"))
-        assertEquals(true, keystore.containsAlias("com.rite.pillcounting.server_kek_test_kek_seq_3"))
+        assertEquals(false, keystore.containsAlias("com.dispensesure.retail.server_kek_test_kek_seq_1"))
+        assertEquals(false, keystore.containsAlias("com.dispensesure.retail.server_kek_test_kek_seq_2"))
+        assertEquals(true, keystore.containsAlias("com.dispensesure.retail.server_kek_test_kek_seq_3"))
     }
 
     @Test
@@ -124,8 +124,8 @@ class DatabaseKeyProviderInstrumentedTest {
         DatabaseKeyProvider.rotateKekIfNewer(context, kekInfo)
 
         val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
-        assertEquals(true, keystore.containsAlias("com.rite.pillcounting.server_kek_test_kek_mismatch"))
+        assertEquals(true, keystore.containsAlias("com.dispensesure.retail.server_kek_test_kek_mismatch"))
         // Old bootstrap alias must be gone after successful rotation.
-        assertEquals(false, keystore.containsAlias("com.rite.pillcounting.dek_bootstrap_kek"))
+        assertEquals(false, keystore.containsAlias("com.dispensesure.retail.dek_bootstrap_kek"))
     }
 }

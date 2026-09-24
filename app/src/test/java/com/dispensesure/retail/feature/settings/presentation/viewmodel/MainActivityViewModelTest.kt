@@ -305,7 +305,7 @@ class MainActivityViewModelTest {
         val pm = mockk<PackageManager>(relaxed = true)
         val info = PackageInfo().apply { this.versionName = versionName }
         every { context.packageManager } returns pm
-        every { context.packageName } returns "com.rite.pillcounting"
+        every { context.packageName } returns "com.dispensesure.retail"
         every { pm.getPackageInfo(any<String>(), any<Int>()) } returns info
         every { preferenceHelper.getContext() } returns context
     }

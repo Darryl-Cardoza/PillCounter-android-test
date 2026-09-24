@@ -25,7 +25,7 @@ class TofuTrustManager(
 ) : X509TrustManager {
 
     private val pinKey = "pin_${hostIdentifier}"
-    private val keystoreAlias = "com.rite.pillcounting.tofu_key"
+    private val keystoreAlias = "com.dispensesure.retail.tofu_key"
 
     private val logger = AppLogger.create<TofuTrustManager>()
 

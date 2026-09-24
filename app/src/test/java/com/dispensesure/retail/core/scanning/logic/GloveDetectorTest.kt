@@ -29,7 +29,7 @@ class GloveDetectorTest {
 
     private fun iouMethod(): Method {
         val decodedBoxClass = Class.forName(
-            "com.rite.pillcounting.core.scanning.logic.GloveDetector\$DecodedBox"
+            "com.dispensesure.retail.core.scanning.logic.GloveDetector\$DecodedBox"
         )
         return GloveDetector::class.java.getDeclaredMethod("iou", decodedBoxClass, decodedBoxClass)
             .apply { isAccessible = true }
@@ -41,7 +41,7 @@ class GloveDetectorTest {
         ).apply { isAccessible = true }
 
     private fun decodedBoxClass() =
-        Class.forName("com.rite.pillcounting.core.scanning.logic.GloveDetector\$DecodedBox")
+        Class.forName("com.dispensesure.retail.core.scanning.logic.GloveDetector\$DecodedBox")
 
     private fun newDecodedBox(
         x1: Float, y1: Float, x2: Float, y2: Float, score: Float, classId: Int

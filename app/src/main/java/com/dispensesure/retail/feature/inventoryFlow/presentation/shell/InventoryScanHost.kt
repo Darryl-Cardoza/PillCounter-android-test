@@ -1,6 +1,5 @@
 package com.dispensesure.retail.feature.inventoryFlow.presentation.shell
 
-import Screen
 import android.Manifest
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
@@ -34,6 +33,7 @@ import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditDrugDetail
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.RecentBatchRow
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.feature.inventoryFlow.presentation.viewmodel.InventoryScanViewModel
+import com.dispensesure.retail.navigation.Screen
 
 /**
  * Everything a form-factor shell needs to draw itself. The host bakes the

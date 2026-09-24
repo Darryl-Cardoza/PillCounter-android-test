@@ -1,12 +1,11 @@
 package com.dispensesure.retail.navigation
 
-import Screen
 import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.composable
 import androidx.navigation.navigation
 import com.dispensesure.retail.feature.login.presentation.LoginScreen
-import com.dispensesure.retail.feature.otp.presentation.compose.OTPScreen
+import com.dispensesure.retail.feature.verifyPin.presentation.compose.OTPScreen
 
 /**
  * Builds the **Authentication Navigation Graph** that manages

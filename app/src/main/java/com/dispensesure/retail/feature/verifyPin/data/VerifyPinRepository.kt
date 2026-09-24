@@ -1,4 +1,4 @@
-package com.dispensesure.retail.feature.otp.data
+package com.dispensesure.retail.feature.verifyPin.data
 
 import com.dispensesure.retail.core.utils.constants.AppConstants
 import com.dispensesure.retail.core.utils.notification.FCMService

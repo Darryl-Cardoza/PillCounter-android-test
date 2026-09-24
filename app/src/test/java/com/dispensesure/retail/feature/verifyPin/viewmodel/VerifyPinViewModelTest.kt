@@ -8,7 +8,7 @@ import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.otp.data.VerifyPinRepository
+import com.dispensesure.retail.feature.verifyPin.data.VerifyPinRepository
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifiedUser
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinData
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinResponse

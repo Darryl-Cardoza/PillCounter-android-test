@@ -1,6 +1,5 @@
 package com.dispensesure.retail.feature.dashboard.presentation
 
-import Screen
 import android.app.Activity
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.Composable
@@ -37,6 +36,7 @@ import com.dispensesure.retail.feature.dashboard.presentation.variant.DashboardT
 import com.dispensesure.retail.feature.dashboard.presentation.viewmodel.DashboardViewModel
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
+import com.dispensesure.retail.navigation.Screen
 
 private val logger = AppLogger("DashboardScreen")
 

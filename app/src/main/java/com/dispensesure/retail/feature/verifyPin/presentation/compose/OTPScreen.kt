@@ -1,6 +1,5 @@
-package com.dispensesure.retail.feature.otp.presentation.compose
+package com.dispensesure.retail.feature.verifyPin.presentation.compose
 
-import Screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -45,6 +44,7 @@ import com.dispensesure.retail.core.utils.compose.SplitResponsive
 import com.dispensesure.retail.feature.login.presentation.viewmodel.LoginViewModel
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinUiState
 import com.dispensesure.retail.feature.verifyPin.presentation.viewmodel.VerifyPinViewModel
+import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 

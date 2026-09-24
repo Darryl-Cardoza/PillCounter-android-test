@@ -16,6 +16,8 @@ import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.scanning.domain.model.DrugInfo
+import com.dispensesure.retail.core.utils.common.ParsedScanData
+import com.dispensesure.retail.core.utils.common.parseScanData
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dispenseFlow.domain.model.DispenseStage
@@ -40,8 +42,6 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-import ParsedScanData
-import parseScanData
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DispenseFlowViewModelTest {
@@ -71,9 +71,8 @@ class DispenseFlowViewModelTest {
         every { android.util.Log.e(any(), any()) } returns 0
         every { android.util.Log.e(any(), any(), any()) } returns 0
 
-        // Mock the top-level parseScanData function. ParsedScanData.kt has no package
-        // declaration, so its generated file-class is the root-level "ParsedScanDataKt".
-        mockkStatic("ParsedScanDataKt")
+        // Mock the top-level parseScanData function via its generated file-class.
+        mockkStatic("com.dispensesure.retail.core.utils.common.ParsedScanDataKt")
 
         Dispatchers.setMain(testDispatcher)
 

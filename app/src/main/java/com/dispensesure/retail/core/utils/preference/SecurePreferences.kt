@@ -182,8 +182,8 @@ class SecurePreferences(context: Context,
     }
 
     companion object {
-        private const val PREF_NAME = "pillcounting_secure_prefs"
-        private const val KEYSTORE_ALIAS_PREFIX = "com.rite.pillcounting.prefs_key."
-        private const val LEGACY_SHARED_ALIAS = "com.rite.pillcounting.prefs_key"
+        private const val PREF_NAME = "dispensesure_secure_prefs"
+        private const val KEYSTORE_ALIAS_PREFIX = "com.dispensesure.retail.prefs_key."
+        private const val LEGACY_SHARED_ALIAS = "com.dispensesure.retail.prefs_key"
     }
 }

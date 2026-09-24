@@ -66,7 +66,7 @@ class DatabaseKeyProviderTest {
     fun `first launch generates a 32-byte DEK and wraps it with the bootstrap KEK`() {
         stubPrefs(wrapped = null, kekId = null)
         val wrapSlot = slot<ByteArray>()
-        every { KeystoreAesGcm.wrap("com.rite.pillcounting.dek_bootstrap_kek", capture(wrapSlot)) } answers {
+        every { KeystoreAesGcm.wrap("com.dispensesure.retail.dek_bootstrap_kek", capture(wrapSlot)) } answers {
             wrapSlot.captured
         }
 
@@ -85,7 +85,7 @@ class DatabaseKeyProviderTest {
         val dek = ByteArray(32) { it.toByte() }
         val wrappedB64 = JavaBase64.getEncoder().encodeToString(byteArrayOf(1, 2, 3))
         stubPrefs(wrapped = wrappedB64, kekId = "local-bootstrap")
-        every { KeystoreAesGcm.unwrap("com.rite.pillcounting.dek_bootstrap_kek", any()) } returns dek
+        every { KeystoreAesGcm.unwrap("com.dispensesure.retail.dek_bootstrap_kek", any()) } returns dek
 
         val result = DatabaseKeyProvider.getOrCreateDatabasePassphrase(context)
 
@@ -98,7 +98,7 @@ class DatabaseKeyProviderTest {
         val dek = ByteArray(32) { it.toByte() }
         val wrappedB64 = JavaBase64.getEncoder().encodeToString(byteArrayOf(9, 9))
         stubPrefs(wrapped = wrappedB64, kekId = "kek-abc123")
-        every { KeystoreAesGcm.unwrap("com.rite.pillcounting.server_kek_kek-abc123", any()) } returns dek
+        every { KeystoreAesGcm.unwrap("com.dispensesure.retail.server_kek_kek-abc123", any()) } returns dek
 
         val result = DatabaseKeyProvider.getOrCreateDatabasePassphrase(context)
 
@@ -155,19 +155,19 @@ class DatabaseKeyProviderTest {
             keyMaterial = JavaBase64.getEncoder().encodeToString(rawKekBytes)
         )
 
-        every { KeystoreAesGcm.importKeystoreKey("com.rite.pillcounting.server_kek_kek-4fdbc6fc", any()) } returns Unit
-        every { KeystoreAesGcm.unwrap("com.rite.pillcounting.dek_bootstrap_kek", any()) } returns dek
-        every { KeystoreAesGcm.wrap("com.rite.pillcounting.server_kek_kek-4fdbc6fc", dek) } returns byteArrayOf(7, 7)
+        every { KeystoreAesGcm.importKeystoreKey("com.dispensesure.retail.server_kek_kek-4fdbc6fc", any()) } returns Unit
+        every { KeystoreAesGcm.unwrap("com.dispensesure.retail.dek_bootstrap_kek", any()) } returns dek
+        every { KeystoreAesGcm.wrap("com.dispensesure.retail.server_kek_kek-4fdbc6fc", dek) } returns byteArrayOf(7, 7)
         every { KeystoreAesGcm.deleteKeystoreKey(any()) } returns Unit
 
         DatabaseKeyProvider.rotateKekIfNewer(context, kekInfo)
 
         verify(exactly = 1) {
-            KeystoreAesGcm.importKeystoreKey("com.rite.pillcounting.server_kek_kek-4fdbc6fc", any())
+            KeystoreAesGcm.importKeystoreKey("com.dispensesure.retail.server_kek_kek-4fdbc6fc", any())
         }
-        verify(exactly = 1) { KeystoreAesGcm.unwrap("com.rite.pillcounting.dek_bootstrap_kek", any()) }
-        verify(exactly = 1) { KeystoreAesGcm.wrap("com.rite.pillcounting.server_kek_kek-4fdbc6fc", dek) }
-        verify(exactly = 1) { KeystoreAesGcm.deleteKeystoreKey("com.rite.pillcounting.dek_bootstrap_kek") }
+        verify(exactly = 1) { KeystoreAesGcm.unwrap("com.dispensesure.retail.dek_bootstrap_kek", any()) }
+        verify(exactly = 1) { KeystoreAesGcm.wrap("com.dispensesure.retail.server_kek_kek-4fdbc6fc", dek) }
+        verify(exactly = 1) { KeystoreAesGcm.deleteKeystoreKey("com.dispensesure.retail.dek_bootstrap_kek") }
         verify(exactly = 1) { anyConstructed<SecurePreferences>().putString("dek_kek_id", "kek-4fdbc6fc", true) }
         verify(exactly = 1) { anyConstructed<SecurePreferences>().putInt("dek_kek_version", 1, true) }
     }
@@ -185,14 +185,14 @@ class DatabaseKeyProviderTest {
         )
 
         every { KeystoreAesGcm.importKeystoreKey(any(), any()) } returns Unit
-        every { KeystoreAesGcm.unwrap("com.rite.pillcounting.server_kek_kek-old-id", any()) } returns dek
+        every { KeystoreAesGcm.unwrap("com.dispensesure.retail.server_kek_kek-old-id", any()) } returns dek
         every { KeystoreAesGcm.wrap(any(), dek) } returns byteArrayOf(1)
         every { KeystoreAesGcm.deleteKeystoreKey(any()) } returns Unit
 
         DatabaseKeyProvider.rotateKekIfNewer(context, kekInfo)
 
-        verify(exactly = 1) { KeystoreAesGcm.deleteKeystoreKey("com.rite.pillcounting.server_kek_kek-old-id") }
-        verify(exactly = 0) { KeystoreAesGcm.deleteKeystoreKey("com.rite.pillcounting.dek_bootstrap_kek") }
+        verify(exactly = 1) { KeystoreAesGcm.deleteKeystoreKey("com.dispensesure.retail.server_kek_kek-old-id") }
+        verify(exactly = 0) { KeystoreAesGcm.deleteKeystoreKey("com.dispensesure.retail.dek_bootstrap_kek") }
     }
 
     @Test
@@ -212,7 +212,7 @@ class DatabaseKeyProviderTest {
 
         DatabaseKeyProvider.rotateKekIfNewer(context, kekInfo)
 
-        verify(exactly = 1) { KeystoreAesGcm.deleteKeystoreKey("com.rite.pillcounting.server_kek_kek-broken") }
+        verify(exactly = 1) { KeystoreAesGcm.deleteKeystoreKey("com.dispensesure.retail.server_kek_kek-broken") }
         verify(exactly = 0) { anyConstructed<SecurePreferences>().putString("dek_kek_id", "kek-broken") }
     }
 

@@ -24,7 +24,7 @@ import kotlin.system.measureTimeMillis
  * (e.g. an accidental O(n^2) path) still fails the build, without being a flaky micro-benchmark.
  *
  * Run standalone (not in the same suite run as other DB tests) for stable numbers, e.g.:
- *   ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.rite.pillcounting.core.room.EncryptedDbPerformanceInstrumentedTest
+ *   ./gradlew connectedDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.dispensesure.retail.core.room.EncryptedDbPerformanceInstrumentedTest
  */
 @RunWith(AndroidJUnit4::class)
 class EncryptedDbPerformanceInstrumentedTest {

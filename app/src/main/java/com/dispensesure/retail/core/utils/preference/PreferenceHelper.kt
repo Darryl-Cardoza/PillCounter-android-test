@@ -13,7 +13,7 @@ import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-private const val PREF_NAME = "pillcounting_secure_prefs"
+private const val PREF_NAME = "dispensesure_secure_prefs"
 
 // Auth Tokens
 private const val KEY_ACCESS_TOKEN = "access_token"

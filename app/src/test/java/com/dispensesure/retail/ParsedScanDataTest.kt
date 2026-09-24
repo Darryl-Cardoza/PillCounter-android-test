@@ -1,15 +1,12 @@
 package com.dispensesure.retail
 
-import ParsedScanData
+import com.dispensesure.retail.core.utils.common.ParsedScanData
+import com.dispensesure.retail.core.utils.common.parseScanData
 import org.junit.Assert
 import org.junit.Test
-import parseScanData
 
 /**
- * Unit tests for the root-package [parseScanData] function and [ParsedScanData] data class.
- *
- * NOTE: ParsedScanData.kt declares no package, so these symbols live in the default
- * (root) package and this test must also live in the root package.
+ * Unit tests for the [parseScanData] function and [ParsedScanData] data class.
  *
  * Templates are regexes with named groups (`(?<name>...)`), matched with [Regex.matchEntire]
  * against the raw scanned value — not the earlier `{Key}`-placeholder format.

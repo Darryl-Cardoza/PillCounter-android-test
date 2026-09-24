@@ -2,6 +2,7 @@ package com.dispensesure.retail
 
 import com.dispensesure.retail.core.room.models.enums.ScanType
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
+import com.dispensesure.retail.navigation.Screen
 import org.junit.Assert
 import org.junit.Test
 

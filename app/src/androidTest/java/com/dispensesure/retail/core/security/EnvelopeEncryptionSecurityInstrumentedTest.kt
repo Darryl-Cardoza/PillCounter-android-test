@@ -186,7 +186,7 @@ class EnvelopeEncryptionSecurityInstrumentedTest {
     fun rotation_with_tampered_kek_key_material_does_not_corrupt_existing_dek() {
         // Simulates a rotation attempt where the "server" KEK material is garbage/tampered
         // (e.g. MITM or corrupted response) — the pre-rotation DEK must remain intact and usable.
-        val prefsName = "pillcounting_db_key_prefs"
+        val prefsName = "dispensesure_db_key_prefs"
         context.getSharedPreferences(prefsName, android.content.Context.MODE_PRIVATE).edit().clear().commit()
 
         val dekBefore = DatabaseKeyProvider.getOrCreateDatabasePassphrase(context)
@@ -207,8 +207,8 @@ class EnvelopeEncryptionSecurityInstrumentedTest {
 
         context.getSharedPreferences(prefsName, android.content.Context.MODE_PRIVATE).edit().clear().commit()
         val keystore = KeyStore.getInstance("AndroidKeyStore").also { it.load(null) }
-        if (keystore.containsAlias("com.rite.pillcounting.dek_bootstrap_kek")) {
-            keystore.deleteEntry("com.rite.pillcounting.dek_bootstrap_kek")
+        if (keystore.containsAlias("com.dispensesure.retail.dek_bootstrap_kek")) {
+            keystore.deleteEntry("com.dispensesure.retail.dek_bootstrap_kek")
         }
     }
 

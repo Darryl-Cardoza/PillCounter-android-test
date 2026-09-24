@@ -1,3 +1,5 @@
+package com.dispensesure.retail.core.utils.common
+
 import com.dispensesure.retail.core.utils.logger.AppLogger
 
 private val logger = AppLogger("ParsedScanData")

@@ -218,10 +218,10 @@ class SecurePreferencesTest {
     }
 
     @Test
-    fun `default prefsName constructor targets the pillcounting_secure_prefs file`() {
+    fun `default prefsName constructor targets the dispensesure_secure_prefs file`() {
         val context = ApplicationProvider.getApplicationContext<android.content.Context>()
         val defaultNamedPrefs = SecurePreferences(context)
-        val rawDefaultPrefs = context.getSharedPreferences("pillcounting_secure_prefs", android.content.Context.MODE_PRIVATE)
+        val rawDefaultPrefs = context.getSharedPreferences("dispensesure_secure_prefs",android.content.Context.MODE_PRIVATE)
         rawDefaultPrefs.edit().clear().commit()
         rawDefaultPrefs.edit().putString("key", "value-in-default-file").commit()
         // "value-in-default-file" isn't validly encrypted, so a successful lookup against the

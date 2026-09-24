@@ -1,6 +1,5 @@
 package com.dispensesure.retail.core.utils.common
 
-import Screen
 import android.content.Context
 import android.content.res.Configuration
 import android.widget.Toast
@@ -93,6 +92,7 @@ import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.compose.withReplacedText
+import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat

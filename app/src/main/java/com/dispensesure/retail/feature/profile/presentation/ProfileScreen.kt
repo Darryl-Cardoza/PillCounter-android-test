@@ -1,6 +1,5 @@
 package com.dispensesure.retail.feature.profile.presentation
 
-import Screen
 import android.content.res.Configuration
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -78,6 +77,7 @@ import com.dispensesure.retail.feature.profile.domain.model.ProfileField
 import com.dispensesure.retail.feature.profile.domain.model.ProfileUpdateUiState
 import com.dispensesure.retail.feature.profile.presentation.viewmodel.ProfileViewModel
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
+import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
 import kotlinx.coroutines.delay
 import androidx.compose.foundation.text.BasicTextField

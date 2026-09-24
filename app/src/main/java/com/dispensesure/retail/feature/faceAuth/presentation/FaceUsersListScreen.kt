@@ -1,6 +1,5 @@
 package com.dispensesure.retail.feature.faceAuth.presentation
 
-import Screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.ui.layout.ContentScale
@@ -53,6 +52,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedD
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
 import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
 import com.dispensesure.retail.feature.faceAuth.presentation.viewmodel.FaceAuthViewModel
+import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.AppTheme.dimens
 

@@ -1,6 +1,5 @@
 package com.dispensesure.retail.core.utils.common
 
-import Screen
 import android.app.Activity
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -23,6 +22,7 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.menu.domain.model.CountBuckets
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.core.security.ImageCrypto
+import com.dispensesure.retail.navigation.Screen
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream

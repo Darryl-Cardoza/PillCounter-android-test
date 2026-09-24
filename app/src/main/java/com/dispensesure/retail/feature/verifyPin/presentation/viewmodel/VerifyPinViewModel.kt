@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.verifyPin.presentation.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.feature.verifyPin.data.VerifyPinRepository
 import com.google.gson.Gson
 import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.R
@@ -12,7 +13,6 @@ import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
-import com.dispensesure.retail.feature.otp.data.VerifyPinRepository
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext

@@ -1,6 +1,5 @@
 package com.dispensesure.retail.feature.login.presentation
 
-import Screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -61,6 +60,7 @@ import com.dispensesure.retail.core.utils.compose.SplitResponsive
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.login.domain.model.LoginUiState
 import com.dispensesure.retail.feature.login.presentation.viewmodel.LoginViewModel
+import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
 
 /**

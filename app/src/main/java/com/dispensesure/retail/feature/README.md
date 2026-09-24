@@ -1,7 +1,7 @@
 # Features — MobRite Pill Counter
 
 This module groups the app into **feature-first** packages under
-`com.rite.pillcounting.feature.*`. Each feature generally has
+`com.dispensesure.retail.feature.*`. Each feature generally has
 `presentation/` (Compose `*Screen` + `viewmodel/` + `compose/` widgets +
 `variant/` responsive layouts), `domain/` (models, `I*Repository`, UiState/Events)
 and, where it talks to the backend, `data/` + `data/remote/I*Api` + `di/`.
