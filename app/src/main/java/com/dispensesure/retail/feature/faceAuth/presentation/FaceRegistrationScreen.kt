@@ -66,6 +66,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.TABLET_BREAKPOINT_DP
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
+import com.dispensesure.retail.core.utils.validator.CredentialsValidator
 import com.dispensesure.retail.feature.faceAuth.domain.model.RegistrationState
 import com.dispensesure.retail.feature.faceAuth.presentation.viewmodel.FaceAuthViewModel
 import com.dispensesure.retail.ui.theme.AppTheme

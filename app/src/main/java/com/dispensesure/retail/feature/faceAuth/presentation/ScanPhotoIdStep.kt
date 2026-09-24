@@ -60,7 +60,7 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.scanning.analyzer.IdCardAnalyzer
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
-import com.dispensesure.retail.core.utils.commom.SoundUtils
+import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
