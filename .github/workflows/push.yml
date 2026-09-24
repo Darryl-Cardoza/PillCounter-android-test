@@ -135,7 +135,7 @@ jobs:
       runner: ubuntu-latest  #options are ubuntu-latest and macos-latest
 
       deploy_to_playstore: false
-      package_name: "com.rite.pillcounting"
+      package_name: "com.dispensesure.retail"
       playstore_track: internal
       playstore_status: draft
 

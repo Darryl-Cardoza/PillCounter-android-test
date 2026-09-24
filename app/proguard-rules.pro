@@ -107,7 +107,7 @@
 -keepattributes AnnotationDefault
 
 # Keep Retrofit API interfaces (corrected package path)
--keep interface com.rite.pillcounting.core.scanning.data.remote.** { *; }
+-keep interface com.dispensesure.retail.core.scanning.data.remote.** { *; }
 
 -dontwarn retrofit2.**
 
@@ -133,7 +133,7 @@
 # DrugDataResponse and all nested classes use @Serializable (Kotlinx) but
 # the Retrofit converter is Moshi, so Kotlinx annotations don't protect
 # field names from R8. Same obfuscation risk for the response payload.
--keep class com.rite.pillcounting.core.scanning.domain.model.** { *; }
+-keep class com.dispensesure.retail.core.scanning.domain.model.** { *; }
 
 
 ############################################
@@ -253,7 +253,7 @@
 ############################################
 
 # JNI methods MUST keep exact names
--keepclasseswithmembernames class com.rite.pillcounting.core.security.SecurityUtils {
+-keepclasseswithmembernames class com.dispensesure.retail.core.security.SecurityUtils {
     private native boolean nativeIsRooted();
     private native boolean nativeIsDebuggerAttached();
 }
@@ -263,17 +263,17 @@
 # SECURITY — KEYSTORE / CRYPTO
 ############################################
 
--keep class com.rite.pillcounting.core.security.RuntimeUnit { *; }
+-keep class com.dispensesure.retail.core.security.RuntimeUnit { *; }
 
--keep class com.rite.pillcounting.core.security.DatabaseKeyProvider { *; }
+-keep class com.dispensesure.retail.core.security.DatabaseKeyProvider { *; }
 
--keep class com.rite.pillcounting.core.security.SecurityAuditLogger { *; }
+-keep class com.dispensesure.retail.core.security.SecurityAuditLogger { *; }
 
--keep class com.rite.pillcounting.core.security.AuditEvent { *; }
+-keep class com.dispensesure.retail.core.security.AuditEvent { *; }
 
--keep class com.rite.pillcounting.core.security.SecurityViolationPolicy { *; }
+-keep class com.dispensesure.retail.core.security.SecurityViolationPolicy { *; }
 
--keep class com.rite.pillcounting.core.utils.preference.SecurePreferences { *; }
+-keep class com.dispensesure.retail.core.utils.preference.SecurePreferences { *; }
 
 
 ############################################
@@ -291,7 +291,7 @@
 # API MODELS
 ############################################
 
--keep class com.rite.pillcounting.feature.**.model.** { *; }
+-keep class com.dispensesure.retail.feature.**.model.** { *; }
 
 
 ############################################
@@ -326,7 +326,7 @@
     public static int e(...);
 }
 
--assumenosideeffects class com.rite.pillcounting.core.utils.logger.AppLogger {
+-assumenosideeffects class com.dispensesure.retail.core.utils.logger.AppLogger {
     public void d(...);
     public void i(...);
     public void w(...);

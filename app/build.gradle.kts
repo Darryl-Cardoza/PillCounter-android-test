@@ -23,11 +23,11 @@ val keystoreProps =
     }
 
 android {
-    namespace = "com.rite.pillcounting"
+    namespace = "com.dispensesure.retail"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.rite.pillcounting"
+        applicationId = "com.dispensesure.retail"
         minSdk = 29
         targetSdk = 36
         versionCode = 1

@@ -1,7 +1,7 @@
 # Architecture — MobRite Pill Counter (Android)
 
 > Audience: engineers working on this codebase. This document describes the
-> _actual_ architecture as found in the source (package `com.rite.pillcounting`,
+> _actual_ architecture as found in the source (package `com.dispensesure.retail`,
 > plus the `:hl7Core` library module `org.rite.hl7`), not an idealized version.
 
 ---
