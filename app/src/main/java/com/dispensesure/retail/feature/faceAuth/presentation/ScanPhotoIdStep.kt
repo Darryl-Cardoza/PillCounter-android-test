@@ -363,6 +363,10 @@ internal fun ScanPhotoIdStep(
                     SoundUtils.speak(context = context, text = nameTakenText, utteranceId = "face_name_taken")
                 }
             }
+            // Cut the error off if the sheet is dismissed mid-speech.
+            DisposableEffect(Unit) {
+                onDispose { SoundUtils.stopSpeaking() }
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
