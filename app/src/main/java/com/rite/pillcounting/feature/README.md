@@ -29,7 +29,7 @@ picture see [`/docs/architecture.md`](../../../../../../../docs/architecture.md)
 | `history` | Transaction & batch history, PDF export | `History`, `HistoryDetail`, `BatchHistoryDetail` | `HistoryViewModel`, `HistoryDetailsViewModel` | — (reads DB) |
 | `unsyncedTransaction` | List transactions awaiting sync | `UnsyncedTransactionScreen` | `UnsyncedTransactionViewModel` | — |
 | `profile` | View/update profile, delete account | `Profile` | `ProfileViewModel` | `IProfileApi` |
-| `settings` | App settings (history retention, CS double-count) | `Settings`, `SaveHistoryFor`, `RequireDoubleCount` | (uses `MainActivityViewModel` / settings repo) | settings API in `core/settings` |
+| `settings` | App settings (history retention, CS double-count) | `Settings` | (uses `MainActivityViewModel` / settings repo) | settings API in `core/settings` |
 | `hl7` | HL7 orchestration (send/receive, notifications) | — (service-driven) | — | MLLP via `core/hl7` + `:hl7Core` |
 
 ---

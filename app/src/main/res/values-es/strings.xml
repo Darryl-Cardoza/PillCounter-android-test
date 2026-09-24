@@ -62,6 +62,11 @@
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title">AJUSTES</string>
+    <string name="setting_group_general">GENERAL</string>
+    <string name="setting_group_controlled_drug">DISPENSACIÓN DE SUSTANCIAS CONTROLADAS</string>
+    <string name="setting_group_face_detection">DETECCIÓN FACIAL</string>
+    <string name="setting_group_voice_haptic">RESPUESTA DE VOZ Y HÁPTICA</string>
+    <string name="setting_group_hazardous">CONTEO DE PÍLDORAS PELIGROSAS</string>
     <string name="setting_ask_to_add_notes">Siempre preguntar para añadir notas</string>
     <string name="setting_save_history_for">Guardar historial por</string>
     <string name="pill_counting_sound">Sonido de conteo de pastillas</string>
@@ -180,6 +185,7 @@
     <string name="menu_profile">Perfil</string>
     <string name="menu_history">Historial</string>
     <string name="menu_settings">Configuración</string>
+    <string name="menu_lock_screen">Bloquear pantalla</string>
     <string name="menu_logout">Cerrar sesión</string>
     <string name="menu_completed">%1$d completados</string>
     <string name="menu_partial">%1$d pendientes</string>
@@ -545,7 +551,6 @@
     <string name="session_locked_verify_button">Verificar con el rostro</string>
     <string name="session_locked_resuming_title">Bienvenido de nuevo, %1$s</string>
     <string name="session_locked_resuming_body">Identidad verificada.\nReanudando su sesión...</string>
-    <string name="setting_face_lock_now">Bloquear ahora</string>
     <string name="setting_face_lock_now_disabled_toast">Primero registre un rostro en Reconocimiento facial</string>
     <string name="setting_face_auto_lock_after">Bloqueo automático tras</string>
     <string name="setting_face_auto_lock_minutes">%1$d min</string>

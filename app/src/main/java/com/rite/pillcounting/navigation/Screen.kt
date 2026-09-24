@@ -239,14 +239,6 @@ sealed interface Screen {
         ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}&$ARG_FROM_QUEUE=$fromQueue&$ARG_ALLOWED_NDCS=${allowedNdcs.joinToString(",")}"
     }
 
-    data object SaveHistoryFor : Screen {
-        override val route: String = "save_history_for"
-    }
-
-    data object RequireDoubleCount : Screen {
-        override val route: String = "require_double_count"
-    }
-
     data object FaceIntro : Screen {
         override val route: String = "face_intro"
     }

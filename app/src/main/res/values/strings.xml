@@ -61,6 +61,11 @@
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title">SETTINGS</string>
+    <string name="setting_group_general">GENERAL</string>
+    <string name="setting_group_controlled_drug">DISPENSE CONTROLLED DRUG</string>
+    <string name="setting_group_face_detection">FACE DETECTION</string>
+    <string name="setting_group_voice_haptic">VOICE AND HAPTIC FEEDBACK</string>
+    <string name="setting_group_hazardous">HAZARDOUS PILL COUNTING</string>
     <string name="setting_ask_to_add_notes">Always ask to add Notes</string>
     <string name="setting_face_recognition_users">Face Recognition Users</string>
     <string name="setting_save_history_for">Save history for</string>
@@ -124,7 +129,6 @@
     <string name="session_locked_verify_button">Verify With Face</string>
     <string name="session_locked_resuming_title">Welcome back, %1$s</string>
     <string name="session_locked_resuming_body">Identity verified.\nResuming your session...</string>
-    <string name="setting_face_lock_now">Lock Now</string>
     <string name="setting_face_lock_now_disabled_toast">Register a face in Face Recognition first</string>
     <string name="setting_face_auto_lock_after">Auto-lock after</string>
     <string name="setting_face_auto_lock_minutes">%1$d min</string>
@@ -257,6 +261,7 @@
     <string name="menu_profile">Profile</string>
     <string name="menu_history">History</string>
     <string name="menu_settings">Settings</string>
+    <string name="menu_lock_screen">Lock Screen</string>
     <string name="menu_logout">Logout</string>
     <string name="menu_completed">%1$d Completed</string>
     <string name="menu_partial">%1$d Pending</string>

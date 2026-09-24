@@ -1,5 +1,6 @@
 package com.rite.pillcounting.feature.menu.viewmodel
 
+import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.room.dao.BatchDao
 import com.rite.pillcounting.core.room.dao.PillCountTxnDao
 import com.rite.pillcounting.core.room.models.BatchEntity
@@ -39,6 +40,7 @@ class MenuViewModelTest {
     private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
     private val batchDao: BatchDao = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
+    private val sessionLockController: SessionLockController = mockk(relaxed = true)
 
     private lateinit var viewModel: MenuViewModel
 
@@ -48,6 +50,7 @@ class MenuViewModelTest {
             pillCountTxnDao = pillCountTxnDao,
             batchDao = batchDao,
             preferenceHelper = preferenceHelper,
+            sessionLockController = sessionLockController,
         )
     }
 

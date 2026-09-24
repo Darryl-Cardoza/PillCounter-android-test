@@ -62,6 +62,11 @@
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title">PARAMÈTRES</string>
+    <string name="setting_group_general">GÉNÉRAL</string>
+    <string name="setting_group_controlled_drug">DISTRIBUTION DE SUBSTANCES CONTRÔLÉES</string>
+    <string name="setting_group_face_detection">DÉTECTION FACIALE</string>
+    <string name="setting_group_voice_haptic">RETOUR VOCAL ET HAPTIQUE</string>
+    <string name="setting_group_hazardous">COMPTAGE DE PILULES DANGEREUSES</string>
     <string name="setting_ask_to_add_notes">Toujours demander d\'ajouter des notes</string>
     <string name="setting_save_history_for">Enregistrer l\'historique pendant</string>
     <string name="pill_counting_sound">Son du comptage de pilules</string>
@@ -180,6 +185,7 @@
     <string name="menu_profile">Profil</string>
     <string name="menu_history">Historique</string>
     <string name="menu_settings">Paramètres</string>
+    <string name="menu_lock_screen">Verrouiller l\'écran</string>
     <string name="menu_logout">Déconnexion</string>
     <string name="menu_completed">%1$d terminés</string>
     <string name="menu_partial">%1$d en attente</string>
@@ -545,7 +551,6 @@
     <string name="session_locked_verify_button">Vérifier avec le visage</string>
     <string name="session_locked_resuming_title">Bon retour, %1$s</string>
     <string name="session_locked_resuming_body">Identité vérifiée.\nReprise de votre session...</string>
-    <string name="setting_face_lock_now">Verrouiller maintenant</string>
     <string name="setting_face_lock_now_disabled_toast">Enregistrez d\'abord un visage dans Reconnaissance faciale</string>
     <string name="setting_face_auto_lock_after">Verrouillage automatique après</string>
     <string name="setting_face_auto_lock_minutes">%1$d min</string>

@@ -3,7 +3,6 @@ package com.rite.pillcounting.feature.settings.presentation.viewmodel
 import android.content.Context
 import android.content.pm.PackageInfo
 import android.content.pm.PackageManager
-import com.rite.pillcounting.core.faceAuth.logic.SessionLockController
 import com.rite.pillcounting.core.health.logic.SessionHealthController
 import com.rite.pillcounting.core.models.ApiResponse
 import com.rite.pillcounting.core.models.ScheduleCode
@@ -60,7 +59,6 @@ class MainActivityViewModelTest {
     private lateinit var bottleInfoDao: BottleInfoDao
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
-    private lateinit var sessionLockController: SessionLockController
     private lateinit var sessionHealthController: SessionHealthController
 
     private fun themeColors(primary: String = "#000000") = ThemeColors(
@@ -132,7 +130,6 @@ class MainActivityViewModelTest {
         bottleInfoDao = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
-        sessionLockController = mockk(relaxed = true)
         sessionHealthController = mockk(relaxed = true)
 
         // Defaults so init doesn't crash.
@@ -177,7 +174,6 @@ class MainActivityViewModelTest {
         bottleInfoDao,
         hl7ServiceManager,
         hl7EventHandler,
-        sessionLockController,
         sessionHealthController,
         testDispatcher,
     )
@@ -749,22 +745,30 @@ class MainActivityViewModelTest {
     }
 
     @Test
-    fun `toggleSchedule adds then removes a code`() = runTest(testDispatcher) {
-        // start with empty saved selection
+    fun `updateSchedules writes the chosen set to state and prefs`() = runTest(testDispatcher) {
         every { preferenceHelper.isControlDrugTypesInitialized() } returns true
         every { preferenceHelper.getControlDrugTypes() } returns emptySet()
 
         val vm = createViewModel()
         advanceUntilIdle()
 
-        // add
-        vm.toggleSchedule(ScheduleCode.CII)
-        assertTrue(vm.selectedSchedules.value.contains(ScheduleCode.CII))
-        verify { preferenceHelper.setControlDrugTypes(setOf("CII")) }
+        vm.updateSchedules(setOf(ScheduleCode.CII, ScheduleCode.CIV))
 
-        // remove
-        vm.toggleSchedule(ScheduleCode.CII)
-        assertFalse(vm.selectedSchedules.value.contains(ScheduleCode.CII))
+        assertEquals(setOf(ScheduleCode.CII, ScheduleCode.CIV), vm.selectedSchedules.value)
+        verify { preferenceHelper.setControlDrugTypes(setOf("CII", "CIV")) }
+    }
+
+    @Test
+    fun `updateSchedules allows an empty set`() = runTest(testDispatcher) {
+        every { preferenceHelper.isControlDrugTypesInitialized() } returns true
+        every { preferenceHelper.getControlDrugTypes() } returns setOf("CII")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.updateSchedules(emptySet())
+
+        assertTrue(vm.selectedSchedules.value.isEmpty())
         verify { preferenceHelper.setControlDrugTypes(emptySet()) }
     }
 
