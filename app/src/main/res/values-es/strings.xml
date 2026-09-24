@@ -513,6 +513,7 @@
     <string name="face_registration_first_name">Nombre</string>
     <string name="face_registration_last_name">Apellido</string>
     <string name="face_registration_continue">Continuar</string>
+    <string name="face_registration_name_taken">Este nombre ya está registrado</string>
     <string name="face_registration_scan_front">Coloque su rostro dentro del recuadro</string>
     <string name="face_registration_scan_tilt_left">Incline el rostro hacia su izquierda</string>
     <string name="face_registration_scan_tilt_right">Incline el rostro hacia su derecha</string>

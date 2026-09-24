@@ -91,6 +91,7 @@
     <string name="face_registration_first_name">First Name</string>
     <string name="face_registration_last_name">Last Name</string>
     <string name="face_registration_continue">Continue</string>
+    <string name="face_registration_name_taken">This name is already registered</string>
     <string name="face_registration_scan_front">Place your face inside the square</string>
     <string name="face_registration_scan_tilt_left">Tilt face to your left</string>
     <string name="face_registration_scan_tilt_right">Tilt face to your right</string>

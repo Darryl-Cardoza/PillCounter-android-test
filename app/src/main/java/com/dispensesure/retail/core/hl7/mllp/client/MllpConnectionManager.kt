@@ -1,0 +1,283 @@
+package com.dispensesure.retail.core.hl7.mllp.client
+
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import java.io.IOException
+import java.security.cert.CertificateException
+
+/**
+ * High-level MLLP connection manager.
+ *
+ * Adds:
+ * - Retry logic
+ * - Auto reconnect
+ * - Safe shutdown
+ * - Connection state tracking
+ */
+
+
+class MllpConnectionManager(
+    private val client: MllpClient,
+    private val scope: CoroutineScope,
+    private val onFirstConnected: (() -> Unit)? = null,
+    private val onConnected: (() -> Unit)? = null,
+    private val onDisconnected: (() -> Unit)? = null,
+    private val onCertMismatch: (() -> Unit)? = null,
+) {
+    private val logger = AppLogger("MllpConnectionManager")
+
+    companion object {
+        private const val SEND_RETRIES = 2
+        private const val RETRY_DELAY_MS = 3_000L
+        private const val MAX_RETRY_DELAY_MS = 30_000L  // cap backoff at 30s
+        private const val RECONNECT_CHECK_MS = 15_000L
+
+        // How long a connection must hold before it's treated as "really" connected —
+        // i.e. before onConnected (resend pending + notify) fires. A flapping server
+        // (accept → drop within seconds) never reaches this, so it never spams resend/notify;
+        // only a connection that actually stabilizes does. Raw state/isConnected() still
+        // flips instantly — this only gates the onConnected callback.
+        private const val CONNECT_SETTLE_MS = 10_000L
+    }
+
+    private val mutex = Mutex()
+    // Separate mutex that serializes concurrent connect() / retryConnect() calls.
+    // Without this, two NSD callbacks for different IPs can both enter retryConnect()
+    // simultaneously, leading to closeInternal() races in MllpClient.
+    private val connectMutex = Mutex()
+    private var ip: String = ""
+    private var port: Int = 0
+    private var isShutdown = false
+    private var hasEverConnected = false
+
+    @Volatile private var certMismatchBlocked = false
+
+    private var readerJob: Job? = null       // passive reader — detects disconnect
+    private var reconnectJob: Job? = null
+    private var settleJob: Job? = null       // pending onConnected fire, cancelled if disconnect precedes settle
+
+    @Volatile
+    private var state: ConnectionState = ConnectionState.Disconnected
+
+    fun isConnected(): Boolean = state == ConnectionState.Connected
+
+    suspend fun connect(ip: String, port: Int) {
+        // Skip entirely if already connected to this exact host:port — connecting again
+        // would tear down (closeInternal()) and re-establish a perfectly live socket for
+        // no reason, which looks like a connect/disconnect flap to anything observing
+        // connection state (e.g. the foreground notification, a manual "test connection").
+        if (isConnected() && this.ip == ip && this.port == port) {
+            logger.d("connect() — already connected to $ip:$port, skipping")
+            return
+        }
+        logger.d("connect() called — ip=$ip port=$port")
+        mutex.withLock {
+            this.ip = ip
+            this.port = port
+            isShutdown = false
+        }
+        retryConnect()
+    }
+
+    suspend fun send(message: String): String {
+        if (isShutdown) throw IOException("Shutdown")
+        repeat(SEND_RETRIES) { attempt ->
+            try {
+                if (!isConnected()) {
+                    logger.w("send() attempt $attempt — not connected, retrying connect")
+                    retryConnect()
+                }
+                logger.d("send() attempt $attempt — sending message")
+                val response = client.send(message)
+                logger.d("send() attempt $attempt — received response")
+                return response
+            } catch (e: Exception) {
+                logger.e("send() attempt $attempt failed: ${e.message}", e)
+                handleSendFailure()
+                if (attempt == SEND_RETRIES - 1) throw e
+                retryConnect()
+            }
+        }
+        error("Unreachable")
+    }
+
+    fun startContinuousReconnect() {
+        logger.d("startContinuousReconnect() called")
+        reconnectJob?.cancel()
+        reconnectJob = scope.launch {
+            while (!isShutdown) {
+                if (!certMismatchBlocked && state == ConnectionState.Disconnected && ip.isNotEmpty()) {
+                    logger.d("reconnect loop — disconnected, attempting retryConnect()")
+                    try { retryConnect() } catch (e: Exception) {
+                        logger.e("reconnect loop — retryConnect() threw: ${e.message}", e)
+                    }
+                }
+                delay(RECONNECT_CHECK_MS)
+            }
+            logger.d("reconnect loop — exiting (shutdown)")
+        }
+    }
+
+    fun unblockCertMismatch() {
+        certMismatchBlocked = false
+    }
+
+    fun shutdown() {
+        logger.d("shutdown() called")
+        isShutdown = true
+        readerJob?.cancel()
+        reconnectJob?.cancel()
+        scope.launch { client.close() }
+        updateState(ConnectionState.Disconnected)
+    }
+
+    /**
+     * Drops the current connection so the next [connect] can target a different peer.
+     *
+     * Unlike [shutdown] this leaves the manager usable — `isShutdown` stays false and the
+     * reconnect loop keeps running. `hasEverConnected` is deliberately left set: onFirstConnected
+     * starts the MLLP server, NSD broadcast and image server once per service, and re-running
+     * those here would tear down working components.
+     */
+    suspend fun dropForPeerChange() {
+        logger.block(
+            "HL7-NSD · Dropping PMS connection for a peer change",
+            "Previous peer" to "$ip:$port",
+            "State" to state,
+        )
+        readerJob?.cancel()
+        settleJob?.cancel()
+        certMismatchBlocked = false
+        // Clearing ip stops the reconnect loop racing back to the old peer before discovery
+        // finds the new one — it only retries while ip is non-empty.
+        mutex.withLock {
+            ip = ""
+            port = 0
+        }
+        client.close()
+        updateState(ConnectionState.Disconnected)
+    }
+
+    // ── Private ──────────────────────────────────────────────────────────────
+
+    // Tracks whether onDisconnected has already fired for the current disconnected
+    // stretch, so repeated failed-retry attempts (Disconnected → Connecting →
+    // Disconnected) don't re-invoke the callback — and re-post the foreground
+    // notification — on every single retry/backoff cycle.
+    private var disconnectedNotified = false
+
+    private fun updateState(newState: ConnectionState) {
+        if (state == newState) return
+        logger.i("state: $state → $newState")
+        state = newState
+        when (newState) {
+            ConnectionState.Connected -> {
+                // Don't fire onConnected immediately — a flapping server (accept then drop
+                // within seconds) would otherwise re-trigger resend-pending + notification
+                // on every micro-reconnect. Only fire once the connection has held for
+                // CONNECT_SETTLE_MS; a disconnect before then cancels this and nothing fires.
+                settleJob?.cancel()
+                settleJob = scope.launch {
+                    delay(CONNECT_SETTLE_MS)
+                    // Only a connection that actually settles counts as "recovered" — reset
+                    // here, not on the raw Connected transition above, so a server that keeps
+                    // flapping (accept → drop within CONNECT_SETTLE_MS, repeat) still gets
+                    // exactly one onDisconnected/notification for the whole flapping stretch
+                    // instead of one per failed micro-reconnect.
+                    disconnectedNotified = false
+                    onConnected?.invoke()
+                }
+            }
+            ConnectionState.Disconnected -> {
+                settleJob?.cancel()
+                if (!disconnectedNotified) {
+                    disconnectedNotified = true
+                    onDisconnected?.invoke()
+                }
+            }
+            else -> {}
+        }
+    }
+
+    private suspend fun retryConnect() {
+        if (isShutdown || ip.isEmpty()) return
+        var attempt = 0
+        // Retry loop lives OUTSIDE connectMutex so the delay doesn't hold the lock.
+        // This lets NSD callbacks trigger an immediate reconnect even while we're
+        // waiting between failed attempts.
+        while (!isShutdown) {
+            val delayMs = connectMutex.withLock {
+                if (isShutdown || ip.isEmpty()) return
+                // A concurrent retryConnect() already succeeded — nothing to do.
+                if (state == ConnectionState.Connected && client.isConnected()) {
+                    logger.d("retryConnect() — already connected, skipping duplicate attempt")
+                    return
+                }
+                logger.d("retryConnect() — connecting to $ip:$port")
+                updateState(ConnectionState.Connecting)
+                try {
+                    client.connect(ip, port)
+                    logger.i("retryConnect() — connected to $ip:$port after $attempt attempt(s)")
+                    onConnectionEstablished()
+                    return  // success — exits retryConnect()
+                } catch (e: Exception) {
+                    if (isCertMismatch(e)) {
+                        logger.e("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.")
+                        certMismatchBlocked = true
+                        updateState(ConnectionState.Disconnected)
+                        onCertMismatch?.invoke()
+                        return  // no retry on cert mismatch
+                    }
+                    attempt++
+                    val d = minOf(RETRY_DELAY_MS * attempt, MAX_RETRY_DELAY_MS)
+                    logger.w("retryConnect() — attempt $attempt failed: ${e.message}. Retrying in ${d}ms")
+                    updateState(ConnectionState.Disconnected)
+                    d  // returned from withLock, used for delay below
+                }
+            }
+            delay(delayMs)  // delay OUTSIDE the mutex — lock is free during backoff
+        }
+    }
+
+    private fun isCertMismatch(e: Exception): Boolean =
+        generateSequence<Throwable>(e) { it.cause }
+            .any { it is CertificateException && it.message?.contains("fingerprint mismatch") == true }
+
+    private fun onConnectionEstablished() {
+        updateState(ConnectionState.Connected)
+
+        if (!hasEverConnected) {
+            hasEverConnected = true
+            logger.i("onConnectionEstablished() — first-ever connection")
+            onFirstConnected?.invoke()
+        }
+
+        readerJob?.cancel()
+
+        readerJob = client.startPassiveReader(
+            scope = scope,
+            onMessageReceived = {
+                logger.d("passive reader — unsolicited message received")
+            },
+            onDisconnected = {
+                if (!isShutdown) {
+                    logger.w("passive reader — remote disconnected")
+                    updateState(ConnectionState.Disconnected)
+                    scope.launch { client.close() }
+                }
+            }
+        )
+    }
+
+    private fun handleSendFailure() {
+        logger.w("handleSendFailure() — marking disconnected and closing client")
+        updateState(ConnectionState.Disconnected)
+        readerJob?.cancel()
+        scope.launch { client.close() }
+    }
+}
