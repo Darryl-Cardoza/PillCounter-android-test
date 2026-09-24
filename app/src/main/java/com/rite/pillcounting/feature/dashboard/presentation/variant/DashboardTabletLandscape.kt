@@ -96,14 +96,9 @@ fun DashboardTabletLandscape(params: DashboardVariantParams) {
                 }
             }
 
-            // Switch to the Recent Activity tab for its own explanatory step, so the
-            // tooltip points at real content instead of an empty Today's Queue — then
-            // back to Today's Queue once the tour moves past it, either forward into
-            // the gated "dispense" step or backward to "tabs". Drives the pager
-            // directly (now that it's in scope) instead of only nudging it indirectly
-            // through uiState.activeTab, which raced against the pager's own
-            // currentPage → onTabSelected feedback effect above and could leave the
-            // pager settled on the wrong page.
+            // Drives the pager directly instead of only nudging uiState.activeTab, which
+            // raced against the pager's own feedback effect above and could leave it settled
+            // on the wrong page.
             LaunchedEffect(tourState.currentStep?.id) {
                 when (tourState.currentStep?.id) {
                     "recent_activity" -> {

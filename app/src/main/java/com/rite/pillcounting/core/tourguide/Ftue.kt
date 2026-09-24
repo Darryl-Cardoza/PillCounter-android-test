@@ -59,16 +59,9 @@ val FTUE_STEPS: List<TourStep> = listOf(
     // Picks up right where the dispense flow left off. Re-tap of the same
     // "stock_count" target the dashboard's INFO pass already pointed at earlier.
     TourStep("stock_count", R.string.tour_title_stock_count_tap, R.string.tour_desc_stock_count_tap, mode = TourStepMode.ACTION_TAP),
-    // Hands-free: the real Select Bucket dialog is a shared, generic AlertDialog
-    // (CommonSingleSelectDialog) — deliberately not gated/tagged, so this step blocks
-    // nothing and just explains what's on screen; DashboardScreen.kt advances it the
-    // instant a bucket is actually chosen and OK is tapped. Pinned to the TOP, not
-    // BOTTOM: the dialog itself renders in a real, separate Android Dialog window
-    // that always sits above and dims everything else — including our own tooltip,
-    // which lives in the screen's own window underneath it — no matter where we draw
-    // it. A bottom-pinned tooltip landed directly beneath the (vertically centered)
-    // dialog, visually cramped/"overshadowed" right against its Cancel/OK row;
-    // pinning to the top instead puts clear space between them.
+    // Hands-free: the shared AlertDialog isn't gated/tagged; DashboardScreen.kt advances this
+    // once a bucket is chosen. Pinned to TOP: the dialog's own window always renders above our
+    // tooltip, and bottom-pinned it looked cramped against the dialog's Cancel/OK row.
     TourStep("select_bucket", R.string.tour_title_select_bucket, R.string.tour_desc_select_bucket, mode = TourStepMode.ACTION_WAIT, pinnedEdge = TooltipEdge.TOP),
     // Hands-free: advances itself once a scanned bottle becomes the active NDC
     // (InventoryScanHost.kt). Same "blocks nothing" treatment continues here.

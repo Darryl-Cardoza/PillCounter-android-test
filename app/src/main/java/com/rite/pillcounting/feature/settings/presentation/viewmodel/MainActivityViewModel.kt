@@ -74,11 +74,8 @@ class MainActivityViewModel @Inject constructor(
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
 
     /**
-     * Called once from [com.rite.pillcounting.MainActivity] when the app-wide FTUE tutorial
-     * transitions from active to inactive (finished or skipped) — deletes every dispense txn
-     * and stock-count batch it created along the way, now that they've served their purpose
-     * of driving real UI end-to-end. HL7 sends for this data were already prevented
-     * unconditionally while it existed; see [Hl7Repository.deleteTutorialData].
+     * Called from [com.rite.pillcounting.MainActivity] when the FTUE tutorial finishes or is
+     * skipped, to delete the txns/batches it created. See [Hl7Repository.deleteTutorialData].
      */
     fun onTutorialFinished() {
         viewModelScope.launch {

@@ -466,11 +466,8 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
-     * Tour-only escape hatch for the scan-Rx step's dummy "Next" button: when there's
-     * no real Rx label to scan, seeds/reuses a fixed demo drug and stages a standalone
-     * Rx through the exact same [showStandaloneRxSheet] a real scan would use. The RX
-     * number is timestamped so every use is unique — no existing-txn lookups to race,
-     * and repeat tutorial runs never collide with a prior demo dispense.
+     * Tour-only escape hatch for the scan-Rx dummy "Next" button. The RX number is
+     * timestamped so repeat tutorial runs never collide with a prior demo dispense.
      */
     fun useDummyRxData() {
         if (_uiState.value.stage != DispenseStage.PRE_RX && _uiState.value.stage != DispenseStage.QUEUE) return
@@ -498,11 +495,9 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
-     * Tour-only escape hatch for the scan-container step's dummy "Next" button: when
-     * there's no real bottle to scan, feeds the same demo NDC [useDummyRxData] just
-     * staged straight through the real [onNdcBarcodeRead] — it already resolves
-     * locally and matches [DispenseFlowUiState.hl7ExpectedNdc] (set to the same demo
-     * NDC), so it succeeds exactly like a real scan would, no server round-trip.
+     * Tour-only escape hatch for the scan-container dummy "Next" button: feeds the
+     * demo NDC through the real [onNdcBarcodeRead], which resolves locally with no
+     * server round-trip.
      */
     fun useDummyNdcData() {
         onNdcBarcodeRead(TUTORIAL_DUMMY_NDC, imagePath = null)

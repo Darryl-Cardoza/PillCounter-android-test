@@ -1665,23 +1665,10 @@ class PillScanningViewModel @Inject constructor(
     }
 
     /**
-     * Tour-only escape hatch for the "count_add_circle" step's dummy "Next" button:
-     * when there are no real pills to count, seeds a manual transaction-detail row
-     * so the target is actually met, then fires the same real completion event a
-     * genuine "All Done" tap would. Simply reporting an inflated [PillScanningEvent
-     * .FinalDone.totalCount] isn't enough — [handleConfirmDialog] validates
-     * CONTAINER_PENDING/TARGET_VERIFICATION/TARGET_REVERIFICATION against
-     * [PillScanningUiState.txnDetailHistory] (real DB-backed rows), ignoring the
-     * event's own totalCount entirely; only CONTAINER_INITIATE trusts it directly.
-     *
-     * A single tap of "Next" is meant to fully clear this counting circle, but the
-     * FIXED dispense workflow can route through it for MORE than one [StepState] in
-     * a row before reaching VIAL — [buildWorkflowSteps] chains CONTAINER_INITIATE →
-     * TARGET_VERIFICATION (→ TARGET_REVERIFICATION when double-count is required) —
-     * all rendered by the exact same on-screen circle/target. One dummy completion
-     * only clears whichever of those is current, so this loops through each
-     * remaining one until the workflow genuinely leaves this circle behind (i.e.
-     * reaches VIAL, or the end of the workflow's own step list).
+     * Tour-only escape hatch for "count_add_circle"'s dummy "Next": seeds a manual txn-detail
+     * row since [handleConfirmDialog] validates against real DB-backed
+     * [PillScanningUiState.txnDetailHistory], ignoring the event's own totalCount; loops since
+     * one tap must clear every chained [StepState] sharing this circle, not just the current one.
      */
     fun dummyCompleteCount() {
         // Hard guard, not just an unreachable-UI assumption: this seeds fabricated
@@ -2403,15 +2390,8 @@ class PillScanningViewModel @Inject constructor(
                     // A fresh still is unsaved, so the flag can never outlive the still it guards.
                     captureCommitted = false
                     if (autoConfirm) {
-                        // autoConfirm means "as if Done was tapped" — but the real Done
-                        // tap is also what the FTUE tour's "vial_done" step is waiting on
-                        // (a tourTarget-tagged real tap via CameraActionBar.kt, gated by
-                        // TourGuideOverlay's own gesture detection). Skipping that manual
-                        // tap here would leave the tour stuck on "vial_done" forever —
-                        // both for the tutorial's own dummy "Next" button (which always
-                        // passes autoConfirm=true) and for a real tutorial user who
-                        // triggers the real auto-capture-on-barcode-match path when VIAL
-                        // is the last workflow step. No-ops outside an active tutorial.
+                        // autoConfirm skips the real Done tap the FTUE tour's "vial_done" step
+                        // waits on, so advance it manually here or the tour gets stuck forever.
                         FtueController.state.advanceIfCurrent("vial_done")
                         saveCaptureImage()
                     }

@@ -493,37 +493,19 @@ class Hl7Repository @Inject constructor(
 
     /**
      * Deletes every dispense txn and stock-count batch created while the FTUE tutorial was
-     * active, once it finishes or is skipped — a practice run must never linger as real local
-     * history. HL7 sends for this data are already prevented unconditionally by the
-     * [TutorialEntryRegistry] checks in [sendDispenseNow]/[resendPendingHl7Transactions] and
-     * [buildAndSendInventoryResponse]/[resendPendingHl7BatchTransactions] above — this only
-     * tidies up local storage afterward.
+     * active, once it finishes or is skipped, so a practice run never lingers as real history.
      */
     suspend fun deleteTutorialData() {
-        // Guard against a real race: this is called both right after the tour ends
-        // (isActive already false by then) AND once at every app startup as an orphan
-        // sweep (MainActivity.kt) — but "app startup" isn't the same as "fresh process
-        // start": an Activity recreation (e.g. a config change/rotation) while a
-        // tutorial is genuinely mid-flight re-runs that startup call too, since
-        // FtueController.state is a singleton that survives the recreation with
-        // isActive still true. Without this guard, that call would consume() (clear)
-        // TutorialEntryRegistry's in-memory markers for a batch/txn the tutorial is
-        // still actively using — silently un-marking it, so it starts showing in
-        // Recent Activity and passing the HL7 send guards immediately, even though
-        // the tutorial hasn't finished with it yet.
+        // Guard against a real race: an Activity recreation mid-tutorial re-runs this same
+        // startup orphan-sweep call while FtueController.state.isActive is still true. Without
+        // this guard it would clear TutorialEntryRegistry's markers for a batch/txn the
+        // tutorial is still actively using, before its own DB delete completes.
         if (FtueController.state.isActive) return
         TutorialEntryRegistry.consumeTutorialTxnIds().forEach { deleteSyncedTransaction(it) }
         TutorialEntryRegistry.consumeTutorialBatchIds().forEach { deleteTutorialBatch(it) }
 
-        // Orphan sweep: TutorialEntryRegistry is in-memory only, so a tutorial run that
-        // ends via the app process being killed (rather than a clean Skip/finish while
-        // still running) loses its markers entirely — that data would otherwise linger
-        // in Recent Activity forever. The fixed tutorial demo drug (dummy NDC, seeded by
-        // DispenseFlowViewModel.useDummyRxData/InventoryScanViewModel.useDummyNdcData) is
-        // a durable marker that survives restarts, so sweep by it too on every cleanup
-        // pass — called both at tutorial end and once at app startup (MainActivity.kt),
-        // so orphans from a killed session get caught the next time the app runs even if
-        // no tutorial is active this session.
+        // Orphan sweep: TutorialEntryRegistry is in-memory only, so a run ended by killing the
+        // process loses its markers entirely; sweep by the durable demo-NDC drug id too.
         val demoDrugId = drugMasterDao.getDrugByNdc(TUTORIAL_DUMMY_NDC)?.drugId
         if (demoDrugId != null) {
             pillCountTxnDao.getTxnIdsByDrugId(demoDrugId).forEach { deleteSyncedTransaction(it) }

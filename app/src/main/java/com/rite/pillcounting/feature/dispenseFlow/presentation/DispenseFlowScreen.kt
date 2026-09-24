@@ -1628,26 +1628,18 @@ fun DispenseFlowScreen(
             }
         }
 
-        // Never render the screen-root overlay while the RX/NDC verify surface is up. In
-        // portrait that surface is a ModalBottomSheet — a separate window this instance
-        // can't see into anyway, so this is just a defensive no-op there. In landscape it's
-        // VerifyRxDetailsInlinePanel, rendered inline in THIS SAME window/Box — its own
-        // TourGuideOverlay (isScreenRoot = false, above) and this one would otherwise both
-        // find the same registered "verify_rx_proceed" target and both render: two stacked
-        // scrims and two overlapping tooltip cards. The panel already owns any step whose
-        // target lives inside it, in every orientation.
+        // Skip the screen-root overlay while RX/NDC verify is up: in landscape,
+        // VerifyRxDetailsInlinePanel renders inline in this same window with its own
+        // TourGuideOverlay, and both would otherwise render duplicate scrims/tooltips
+        // for the same "verify_rx_proceed" target.
         if (!dispenseState.showRxDetails && !dispenseState.showNdcDetails) {
             TourGuideOverlay(
                 state = ftueState,
                 onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
                 modifier = Modifier.fillMaxSize(),
-                // Escape hatch for every remaining gated step this root overlay owns —
-                // camera-scan steps fake the missing external data (no real Rx label or
-                // bottle to scan in a demo run); the rest just perform the exact same
-                // action their real target would, since those aren't blocked on any
-                // external data in the first place. Manually calls advanceIfCurrent for
-                // every ACTION_TAP id since invoking the callback directly bypasses the
-                // overlay's own tap-in-target gesture detection that would otherwise do it.
+                // Escape hatch for gated steps: camera-scan steps fake missing external
+                // data; manually calls advanceIfCurrent since invoking the callback
+                // directly bypasses the overlay's own tap-in-target gesture detection.
                 onDummyNext = when (ftueState.currentStep?.id) {
                     // Both "camera_preview" occurrences share this one id; the active
                     // stage disambiguates which real scan is being faked.
@@ -1657,24 +1649,14 @@ fun DispenseFlowScreen(
                         else -> null
                     }
                     "count_add_circle" -> {
-                        // dummyCompleteCount() clears every counting round this circle
-                        // covers (CONTAINER_INITIATE → TARGET_VERIFICATION → …) by seeding
-                        // real manual detail rows and firing the real completion event for
-                        // each, so it holds up under handleConfirmDialog's real per-step-type
-                        // validation instead of just reporting an inflated totalCount. No
-                        // manual advanceIfCurrent here — the LaunchedEffect(pillStepType)
-                        // above advances this FTUE step hands-free once the workflow
-                        // genuinely reaches VIAL, exactly like a real "All Done" tap would.
+                        // No manual advanceIfCurrent here — LaunchedEffect(pillStepType)
+                        // advances this step once the workflow genuinely reaches VIAL.
                         { pillVm.dummyCompleteCount() }
                     }
                     "vial_capture" -> {
-                        // captureImage() is async (the real bitmap lands later via its
-                        // onCaptured callback) — calling saveCaptureImage() from a
-                        // SEPARATE, immediately-following dummy tap on "vial_done" would
-                        // race it and silently no-op (saveCaptureImage reads
-                        // _capturedBitmap.value, which is still null at that point).
-                        // autoConfirm=true has captureImage() call saveCaptureImage()
-                        // itself once the real bitmap is actually ready, avoiding the race.
+                        // captureImage() is async; a separate dummy tap on "vial_done" would
+                        // race saveCaptureImage() before the bitmap lands. autoConfirm=true
+                        // has captureImage() call saveCaptureImage() itself once ready.
                         { FtueController.state.advanceIfCurrent("vial_capture"); pillVm.captureImage(autoConfirm = true) }
                     }
                     "vial_done" -> {

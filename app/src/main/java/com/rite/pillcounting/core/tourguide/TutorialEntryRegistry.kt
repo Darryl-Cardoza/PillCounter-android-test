@@ -3,14 +3,9 @@ package com.rite.pillcounting.core.tourguide
 import java.util.Collections
 
 /**
- * Txn/batch ids created while [FtueController]'s guided tour was driving a real dispense or a
- * real stock count (so its ACTION_TAP/ACTION_WAIT gating could run end-to-end against real
- * buttons and a real scan, not a fake screen) — a practice run, not real work. The backend
- * (the pharmacy's PMS, reached via HL7) must never see it as an official entry, and once the
- * tour finishes or is skipped none of it should linger as real local history either.
- *
- * In-memory only, scoped to this app process — a one-time onboarding tour never needs to
- * survive a process restart, and this keeps the exclusion out of the Room schema entirely.
+ * Txn/batch ids created by a real dispense/stock count driven by the guided tour (a practice
+ * run) — must never reach the PMS backend as a real entry. In-memory only; no need to survive
+ * a process restart, so it's kept out of the Room schema entirely.
  */
 object TutorialEntryRegistry {
     private val txnIds = Collections.synchronizedSet(mutableSetOf<Long>())

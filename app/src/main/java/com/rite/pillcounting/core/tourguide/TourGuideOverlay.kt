@@ -72,44 +72,9 @@ private val PinnedBottomExtraClearance = 130.dp
 private val PinnedTopExtraClearance = 140.dp
 
 /**
- * Full-screen spotlight tour: dims everything except [TourGuideState]'s current target
- * (cut out of the scrim via [BlendMode.Clear]), rings it, and shows a tooltip. Place this
- * as the last child of the screen's root [Box] so it draws above the content it points at.
- *
- * Behavior branches on the current step's [TourStepMode]:
- * - [TourStepMode.INFO]: blocks every tap, tooltip has Skip/Back/Next.
- * - [TourStepMode.ACTION_TAP]: blocks every tap, same as INFO — the highlighted/spotlighted
- *   target itself is never tappable. Progress comes only from the tour card's own Next
- *   button (see [onDummyNext]), which every ACTION_TAP step wires to perform the exact real
- *   action the target would have. (Earlier this let a tap inside the target pass through
- *   unconsumed to the real control underneath; that's been removed in favor of guiding the
- *   user through the tour card exclusively, matching the Dashboard's INFO-step behavior.)
- * - [TourStepMode.ACTION_WAIT]: blocks nothing (except the two targetless "explaining a real
- *   dialog" steps, select_bucket/end_count_confirm, which block everything exactly like
- *   INFO/ACTION_TAP — see `skipScrim` below); pure visual spotlight otherwise, needed for
- *   live camera interaction. Advancing is driven externally via
- *   [TourGuideState.advanceIfCurrent].
- *
- * [modifier] must size this overlay to exactly the area it should cover — pass
- * `Modifier.fillMaxSize()` at a screen root, or `Modifier.matchParentSize()` when hosting it
- * inside a `Box` alongside content whose own size should NOT be forced to expand (a
- * `ModalBottomSheet`/`Dialog`'s content, which otherwise sizes to wrap its real content —
- * `fillMaxSize()` there would inflate the sheet/dialog itself to fill the whole screen).
- *
- * [pinnedEdgeOverride], when non-null, wins over the current step's own [TourStep.pinnedEdge]
- * for this render only. For a step whose target fills most of the screen (a camera preview)
- * a caller may need to flip which edge the tooltip pins to depending on transient live UI
- * state it alone knows about — e.g. a bottom sheet briefly still visible/animating out over
- * the same camera view, which a bottom-pinned tooltip would otherwise overlap.
- *
- * [isScreenRoot]: pass `false` for an instance mounted inside a `ModalBottomSheet`/`Dialog`
- * rather than at a screen's own root. A step whose real target lives in THIS instance's
- * window is always rendered here regardless (its bounds resolve, so ownership is
- * unambiguous) — this flag only decides who renders a step that has *no* discoverable
- * target at all (an `INFO` step before its target mounts, or a `pinnedEdge` step like a
- * full-screen camera preview). Every currently-mounted instance would otherwise satisfy
- * that "no target" case identically and all render the same tooltip on top of each other —
- * only the screen root should win that tie.
+ * Full-screen spotlight tour: dims everything except the current step's target and shows
+ * a tooltip; place as the last child of the screen's root [Box]. ACTION_TAP steps block all
+ * taps on the target — progress comes only from the tour card's own Next button.
  */
 @Composable
 fun TourGuideOverlay(
@@ -118,13 +83,9 @@ fun TourGuideOverlay(
     modifier: Modifier = Modifier,
     pinnedEdgeOverride: TooltipEdge? = null,
     isScreenRoot: Boolean = true,
-    // Non-null for a non-screen-root instance embedded in a sheet/dialog: restricts it to
-    // ONLY the step id(s) it actually tags itself, e.g. setOf("verify_rx_proceed"). Without
-    // this, "does a rect exist for the current step" is the only ownership signal — but
-    // [TourGuideState]'s target map is shared window-wide, so a rect registered by some
-    // completely different composable in the SAME window (e.g. the camera preview behind a
-    // non-modal inline panel) reads as "yes, a rect exists" here too, and this instance would
-    // wrongly render a step it has nothing to do with, right on top of its own real content.
+    // Restricts this instance to the step id(s) it tags itself; without it, any rect
+    // existing in [TourGuideState]'s shared window-wide target map reads as ownership,
+    // even when a different composable in the same window registered it.
     ownedStepIds: Set<String>? = null,
     // Non-null only for a step whose hands-free advance is waiting on real external
     // data the demo environment may not have (e.g. an actual Rx label or bottle to
@@ -135,13 +96,8 @@ fun TourGuideOverlay(
     if (!state.isActive) return
     val step = state.currentStep ?: return
 
-    // Whatever dismisses the tour — Skip, Next/Done on the last INFO step, or a real
-    // ACTION_TAP action silently completing the last step (no button, no explicit
-    // onFinished() call anywhere) — this fires exactly once, right when this instance's
-    // active content is torn down because isActive flipped to false. Reading isActive
-    // *inside* onDispose (rather than relying on the call site) distinguishes "the tour
-    // ended" from "this composable was merely disposed for an unrelated reason (e.g.
-    // navigating away) while the tour is still active" — only the former should mark it seen.
+    // Fires exactly once when the tour truly ends (not on unrelated disposal, e.g.
+    // navigating away) — reading isActive inside onDispose is what distinguishes the two.
     DisposableEffect(state) {
         onDispose { if (!state.isActive) onFinished() }
     }
@@ -165,32 +121,14 @@ fun TourGuideOverlay(
     }
     val effectivePinnedEdge = pinnedEdgeOverride ?: step.pinnedEdge
 
-    // A targetless ACTION_WAIT step (select_bucket, end_count_confirm — explaining a
-    // real native AlertDialog/Dialog we deliberately don't tag/gate) has no camera or
-    // other live interaction to preserve, unlike every OTHER ACTION_WAIT step (which
-    // all DO have a real target once mounted, so this is false for them). Block the
-    // whole screen here exactly like an INFO step does — the real dialog is a
-    // completely separate Android Window, so this can never interfere with it, only
-    // with taps on THIS screen's own content (Quick Action cards, KPI cards, the
-    // hamburger menu) that would otherwise let the user wander off the guided flow
-    // while the tutorial is still active.
+    // A targetless ACTION_WAIT step (explaining a real native dialog we don't tag) has no
+    // live interaction to preserve, so block the whole screen like INFO — this can't
+    // interfere with the dialog itself, which lives in a separate Android Window.
     val skipScrim = step.mode == TourStepMode.ACTION_WAIT && paddedRect == null
 
-    // An ACTION_TAP step's target can live in a *different* window from this overlay
-    // instance (e.g. a step gating a button inside a ModalBottomSheet, while this
-    // instance sits at the screen root) — its bounds will then never register here. For
-    // ACTION_TAP specifically, render nothing at all rather than paint a stray
-    // full-screen scrim/tap-block over content the *correct* overlay instance (in that
-    // other window) is already gating properly.
-    //
-    // ACTION_WAIT gets the same no-target fallback as INFO/pinnedEdge: it blocks
-    // nothing, so there's no multi-window tap-gating conflict to avoid, and its target
-    // living on a screen with its own continuously-recomposing subtree (e.g. a live
-    // camera preview re-registering bounds every frame) can leave paddedRect
-    // transiently — or, if [tourTarget]'s onGloballyPositioned genuinely never fires
-    // for some layout edge case, permanently — null. Without this, a step like
-    // "count_add_circle" (ACTION_WAIT, no pinnedEdge) would render nothing at all and
-    // never recover, even though its real target is right there on screen.
+    // ACTION_TAP's target may live in a different window than this instance; if so, render
+    // nothing rather than paint a stray tap-block over content the correct instance already
+    // gates. ACTION_WAIT falls back the same way when its target hasn't registered yet.
     val ownsCurrentStep = if (ownedStepIds != null) {
         step.id in ownedStepIds
     } else {
@@ -205,16 +143,9 @@ fun TourGuideOverlay(
             indication = null,
             onClick = {},
         )
-        // Full block, same as INFO — the highlighted/spotlighted target is NOT
-        // tappable. Every ACTION_TAP step already has a working "Next" button (see
-        // onDummyNext below) that performs the exact real action the target would
-        // have, so the user is never trapped: progress comes only from the tour
-        // card itself (Skip or Next), never from tapping the real UI underneath —
-        // matching the Dashboard's INFO-step behavior, extended to the Dispense and
-        // Stock Count flows. (Previously this let a tap inside the target pass
-        // through unconsumed to the real control; that whole mechanism — and the
-        // double-tap race it had to work around — no longer applies now that the
-        // target is never tappable at all.)
+        // Full block, same as INFO — the target is never tappable. Every ACTION_TAP step
+        // has a working Next button that performs the real action instead, so progress
+        // never depends on tapping the underlying UI.
         TourStepMode.ACTION_TAP -> Modifier.clickable(
             interactionSource = remember { MutableInteractionSource() },
             indication = null,
@@ -248,14 +179,9 @@ fun TourGuideOverlay(
             )
         }
 
-        // Scrim with a cutout hole around the target — drawn offscreen so BlendMode.Clear
-        // punches through this layer only, not the content underneath. Skipped for a
-        // targetless ACTION_WAIT step (skipScrim, computed above): the real dialog it's
-        // explaining draws in its own Android Window, always on top of anything this
-        // Compose-level scrim paints, so dimming everything else just makes the
-        // (undimmable) dialog look oddly "hot" against a darkened background for no
-        // benefit — the dialog already dims its own background. The screen behind it is
-        // still fully tap-blocked regardless (interactionModifier above), just not dimmed.
+        // Skipped for a targetless ACTION_WAIT step: the real dialog it explains draws in
+        // its own Android Window on top of this scrim regardless and already dims its own
+        // background, so dimming here would just look odd. Tap-blocking still applies.
         if (!skipScrim) {
             Canvas(
                 modifier = Modifier
@@ -404,18 +330,9 @@ fun TourGuideOverlay(
                         fontSize = 11.sp,
                         modifier = Modifier.weight(1f),
                     )
-                    // skipScrim: this tooltip is explaining a real native AlertDialog/
-                    // Dialog that's also open right now. That dialog's own window
-                    // captures touches across the WHOLE screen for its own
-                    // outside-tap handling (even with onDismissRequest a no-op) —
-                    // regardless of whether it visually overlaps this tooltip, which
-                    // is rendered via Popup specifically so it isn't torn down by the
-                    // scrim, but still can't win a touch race against the dialog's own
-                    // window. Buttons here would look tappable but silently never
-                    // respond — so instead of Skip/Next, the real dialog's own
-                    // buttons drive the tour: OK/Yes calls advanceIfCurrent, Cancel/No
-                    // calls dismiss() (wired at each call site — DashboardScreen.kt's
-                    // Select Bucket, InventoryScanHost.kt's end-count confirmation).
+                    // skipScrim: the real dialog's window wins any touch race regardless of
+                    // visual overlap, so Skip/Next buttons here would look tappable but never
+                    // respond — the dialog's own buttons drive the tour instead.
                     if (!skipScrim) {
                         TextButton(
                             onClick = { state.dismiss(); onFinished() },
@@ -487,17 +404,9 @@ fun TourGuideOverlay(
 }
 
 /**
- * Invisible full-screen tap sink — no scrim, no tooltip, just swallows every touch.
- *
- * For a step that explains a real, untagged dialog (select_bucket, end_count_confirm),
- * the caller suppresses [TourGuideOverlay] entirely in the brief window where the tour
- * is already sitting on that step but the real dialog isn't up yet (or just closed) —
- * rendering its own tooltip there would be misleading (pointing at a dialog that isn't
- * on screen). But rendering *nothing at all* also leaves the whole real screen behind
- * it — Quick Action cards, KPI cards, the hamburger menu — freely tappable during an
- * active tutorial, an "outside tap" escape hatch out of the guided flow. Place this in
- * that same suppressed branch instead of nothing, so the screen stays locked to
- * everything except the dialog that's about to appear.
+ * Invisible full-screen tap sink used while a step's real dialog isn't on screen yet (or
+ * just closed) — keeps the screen locked instead of leaving real UI underneath tappable
+ * during that gap.
  */
 @Composable
 fun TourGuideTapBlock(modifier: Modifier = Modifier) {

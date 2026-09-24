@@ -360,13 +360,9 @@ class DashboardViewModel @Inject constructor(
     }
 
     /**
-     * Drops any dispense/stock-count item created by the FTUE tutorial's dummy-data
-     * paths — a practice run must never appear alongside real Today's Queue / Recent
-     * Activity entries, even in the window before end-of-tour cleanup
-     * ([Hl7Repository.deleteTutorialData][com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository.deleteTutorialData])
-     * actually deletes the row. [TutorialEntryRegistry] is in-memory only, but that's
-     * fine here: it's populated in this same app process at the moment the tutorial
-     * creates the row, which is exactly the window this filter needs to cover.
+     * Hides FTUE tutorial dummy-data items before
+     * [Hl7Repository.deleteTutorialData][com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository.deleteTutorialData]
+     * actually removes the row.
      */
     private fun List<QueueItem>.excludingTutorialItems(): List<QueueItem> = filterNot { item ->
         when (item) {

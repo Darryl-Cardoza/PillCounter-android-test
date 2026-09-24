@@ -292,26 +292,10 @@ class MainActivity : ComponentActivity() {
                                     // itself — see its init block. MainActivity no longer holds an
                                     // Hl7Repository reference.
 
-                                    // Tutorial cleanup + "seen" marking: the only place alive for
-                                    // the whole app session regardless of which screen the FTUE
-                                    // tour is currently driving. Fires exactly once per active ->
-                                    // inactive transition (tour finished OR skipped — both just
-                                    // flip isActive to false), never on the initial false before
-                                    // the tour has ever started.
-                                    //
-                                    // markSeen is done HERE, not left to each TourGuideOverlay
-                                    // instance's own onFinished callback (DisposableEffect {
-                                    // onDispose { if (!isActive) onFinished() } }): the final
-                                    // step's real completion action can navigate away (disposing
-                                    // that overlay instance) in the SAME frame as the deferred
-                                    // advanceIfCurrent() call that flips isActive to false —
-                                    // advanceIfCurrent defers to the next dispatcher tick, so the
-                                    // overlay can be gone by the time isActive actually goes
-                                    // false, and onDispose's `!isActive` check never fires. Without
-                                    // this fallback, "seen" never gets persisted and the tour
-                                    // silently restarts from the beginning next time the user
-                                    // lands on the Dashboard. This effect isn't tied to any
-                                    // screen's composition, so it can't lose that race.
+                                    // markSeen is done HERE, not in each TourGuideOverlay's own
+                                    // onDispose, because advanceIfCurrent defers to the next tick —
+                                    // the overlay can be disposed before isActive flips, so its
+                                    // onDispose check never fires and "seen" never persists.
                                     LaunchedEffect(Unit) {
                                         var tutorialWasActive = false
                                         snapshotFlow { FtueController.state.isActive }.collect { active ->
@@ -324,13 +308,8 @@ class MainActivity : ComponentActivity() {
                                             }
                                         }
                                     }
-                                    // Orphan sweep: the transition-based cleanup above only fires
-                                    // for a tutorial that's still running THIS app process when it
-                                    // finishes — a tutorial run left dangling by the app process
-                                    // being killed mid-tour never gets a true->false transition to
-                                    // react to at all. deleteTutorialData() also sweeps by the fixed
-                                    // tutorial demo drug (a durable DB marker, unlike the in-memory
-                                    // TutorialEntryRegistry), so run it once per cold start too.
+                                    // Orphan sweep: catches a tutorial killed mid-tour, which never
+                                    // gets a true->false transition for the effect above to react to.
                                     LaunchedEffect(Unit) {
                                         settingsViewModel.onTutorialFinished()
                                     }

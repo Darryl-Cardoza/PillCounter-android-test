@@ -115,11 +115,8 @@ interface BatchDao {
     suspend fun softDelete(batchId: Long): Int
 
     /**
-     * Hard-deletes a batch row outright — for tutorial-created batches only, which must not
-     * linger as real local history at all. `stock_txn`/`bottle_info` point at `batch` with
-     * `onDelete = SET_NULL`, not `CASCADE`, so callers must delete those first (e.g. via
-     * [com.rite.pillcounting.core.room.dao.StockTxnDao.deleteByBatchIds]) or they'll be
-     * orphaned with a null batchId instead of removed.
+     * Hard-deletes a batch row — tutorial-created batches only. `stock_txn`/`bottle_info` use
+     * `onDelete = SET_NULL`, not `CASCADE`, so callers must delete those first or they orphan.
      */
     @Query("DELETE FROM batch WHERE batchId = :batchId")
     suspend fun deleteById(batchId: Long)

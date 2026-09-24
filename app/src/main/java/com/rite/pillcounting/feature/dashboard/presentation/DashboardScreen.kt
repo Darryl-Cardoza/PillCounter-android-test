@@ -302,15 +302,9 @@ fun DashboardScreen(
             else -> DashboardPhoneLandscape(params)
         }
 
-        // The "select_bucket" step explains the real Select Bucket dialog (a shared,
-        // generic AlertDialog we deliberately don't tag/gate) — only show its tooltip
-        // while that dialog is actually up, not before it opens or after it's
-        // cancelled (which leaves the tour still sitting on this step, since only a
-        // real bucket confirmation — not Cancel — advances it; see the
-        // pendingStockCountBucketId effect above). isActive is required here, not
-        // just currentStep?.id: dismiss() doesn't reset currentIndex, so a tour that
-        // ended while sitting on this exact step would otherwise leave this true
-        // forever, permanently tap-blocking the real Dashboard afterward.
+        // isActive is required here (not just currentStep?.id) because dismiss() doesn't
+        // reset currentIndex — without it, a tour ending on this exact step would leave
+        // this true forever, permanently tap-blocking the real Dashboard.
         val suppressBucketStep = tourState.isActive &&
             tourState.currentStep?.id == "select_bucket" && !showBucketSelectDialog
         if (suppressBucketStep) {

@@ -285,14 +285,9 @@ fun InventoryScanHost(
     // without touching any of the shells.
     Box(modifier = Modifier.fillMaxSize()) {
         scope.content()
-        // The "end_count_confirm" step explains the real Yes/No confirmation dialog
-        // (a shared, generic CommonDialog we deliberately don't tag/gate) — only show
-        // its tooltip while that dialog is actually up, not in the brief moment right
-        // after "add_note_actions" advances here but before showEndCountConfirmDialog
-        // has been set. Same treatment as DashboardScreen.kt's "select_bucket",
-        // including requiring isActive: dismiss() doesn't reset currentIndex, so a
-        // tour that ended while sitting on this exact (last) step would otherwise
-        // leave this true forever, permanently tap-blocking this real screen after.
+        // Only show "end_count_confirm"'s tooltip while the real dialog is actually up.
+        // Requires isActive too: dismiss() doesn't reset currentIndex, so a tour that
+        // ended on this last step would otherwise tap-block this screen forever.
         val suppressEndCountConfirmStep = FtueController.state.isActive &&
             FtueController.state.currentStep?.id == "end_count_confirm" && !showEndCountConfirmDialog
         if (suppressEndCountConfirmStep) {

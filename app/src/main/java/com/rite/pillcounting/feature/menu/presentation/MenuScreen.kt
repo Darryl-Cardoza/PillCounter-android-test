@@ -157,14 +157,9 @@ fun MenuScreen(
                 )
                 HorizontalDivider(color = extendedColors.primaryBackground)
 
-                // Start Tutorial: force-starts the FTUE tour from the very first step
-                // regardless of TourGuidePrefs' "seen" flag (that flag only gates the
-                // Dashboard's own auto-start-on-first-visit effect — calling start()
-                // directly bypasses it entirely) or whether a run is already active.
-                // Land on the Dashboard first since that's the tour's own starting
-                // screen — same nav pattern the real Dispense/Stock Count Quick
-                // Actions use, clearing the back stack instead of stacking on top of
-                // wherever the user launched this from.
+                // Start Tutorial: force-starts the FTUE tour, bypassing TourGuidePrefs'
+                // "seen" flag entirely. Lands on Dashboard (the tour's start screen),
+                // clearing the back stack instead of stacking on top of this screen.
                 SimpleMenuRow(
                     navController = navController,
                     icon = R.drawable.tutorial,

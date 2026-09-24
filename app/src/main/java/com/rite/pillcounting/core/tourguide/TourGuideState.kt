@@ -20,23 +20,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
 /**
- * How a step behaves and how it advances:
- * - [INFO]: no real action to take — full-screen block, tooltip with Skip/Back/Next.
- * - [ACTION_TAP]: blocks everything except the target rect; a tap inside is not consumed
- *   (the real control underneath still fires), and that same tap-and-release advances the
- *   step — no Next button, "one click at a time" like a game tutorial.
- * - [ACTION_WAIT]: pure visual spotlight, blocks nothing at all (the user can freely
- *   interact, e.g. a live camera scan needs no tap); advancement is driven externally via
- *   [TourGuideState.advanceIfCurrent] once the real action completes.
+ * [ACTION_TAP] lets the tap pass through to the real control underneath while that same
+ * tap also advances the step (no Next button); [ACTION_WAIT] blocks nothing and is
+ * advanced externally via [TourGuideState.advanceIfCurrent].
  */
 enum class TourStepMode { INFO, ACTION_TAP, ACTION_WAIT }
 
 /**
- * Forces the tooltip to one screen edge instead of [TourGuideOverlay]'s automatic
- * above/below-the-target placement. Needed for a target that fills most of the screen
- * (e.g. a full-screen camera preview) — the automatic logic finds no room on either side
- * and stacks the tooltip right against whichever edge the target is closest to, which can
- * land it on top of real screen content (a header, a title) instead of clear of it.
+ * Forces the tooltip to a fixed edge instead of automatic placement, for a target that
+ * fills most of the screen where automatic placement would land the tooltip on top of
+ * real content instead of clear of it.
  */
 enum class TooltipEdge { TOP, BOTTOM }
 
@@ -66,17 +59,8 @@ class TourGuideState(val steps: List<TourStep>) {
     // into view and onGloballyPositioned reports its new position.
     private val targetBounds = mutableStateMapOf<String, Rect>()
 
-    // Never cancelled — this state outlives every screen (see FtueController). Used only to
-    // defer advanceIfCurrent's mutation by one dispatcher tick; see its doc for why.
-    //
-    // Plain Dispatchers.Main, NOT .immediate: the whole point is to genuinely defer past the
-    // current pointer-event dispatch, which always runs ON the main thread — and .immediate
-    // specifically SKIPS deferring whenever it's already called from the main thread
-    // (isDispatchNeeded returns false there), running the launched block synchronously in
-    // that case. That silently defeated this fix entirely: advanceIfCurrent kept mutating
-    // state inline in the gesture handler exactly as before, so the same-tap race with the
-    // real control underneath was never actually removed. Plain Main always posts to the
-    // next message-queue tick regardless of the calling thread.
+    // Plain Dispatchers.Main, NOT .immediate: .immediate skips deferring when already called
+    // from the main thread, which would defeat advanceIfCurrent's tap-race fix entirely.
     private val scope = CoroutineScope(Dispatchers.Main)
 
     val currentStep: TourStep? get() = steps.getOrNull(currentIndex)
@@ -90,11 +74,8 @@ class TourGuideState(val steps: List<TourStep>) {
     }
 
     /**
-     * Removes [id]'s registered bounds — called when the tagged composable leaves
-     * composition (see [tourTarget]). Without this, a step whose real target unmounted
-     * (e.g. a bottom sheet dismissed after Proceed) leaves a stale rect behind forever,
-     * which [TourGuideOverlay] would otherwise still find non-null and use to render a
-     * spotlight for a step that no longer has any real content there.
+     * Called when the tagged composable leaves composition (see [tourTarget]); without it
+     * a stale rect would linger and get spotlighted for a step with no real content there.
      */
     fun clearTarget(id: String) {
         targetBounds.remove(id)
@@ -118,17 +99,9 @@ class TourGuideState(val steps: List<TourStep>) {
     }
 
     /**
-     * Advances only if [id] is still the current step — safe to call from business logic.
-     *
-     * Deferred by one dispatcher tick (not mutated synchronously) so a caller inside a
-     * pointer-gesture handler (see [TourGuideOverlay]'s ACTION_TAP branch) can call this the
-     * moment a tap lands inside the target *without* the resulting recomposition (which can
-     * detach/replace that very pointerInput node, since the next step likely has a different
-     * [TourStepMode]) racing the SAME down event's dispatch to the real control underneath —
-     * that race was silently swallowing the real control's own tap, so it looked like it took
-     * two taps to actually navigate/act. Deferring lets the current event finish dispatching
-     * to every node first; it still runs on the very next tick, long before any navigation
-     * the real tap triggers could tear this down.
+     * Advances only if [id] is still the current step. Deferred by one tick so the
+     * recomposition it triggers can't race the same tap's dispatch to the real control
+     * underneath, which used to silently swallow that tap.
      */
     fun advanceIfCurrent(id: String) {
         if (isActive && currentStep?.id == id) {
@@ -137,12 +110,8 @@ class TourGuideState(val steps: List<TourStep>) {
     }
 
     /**
-     * Skips forward past every step in [ids] the tour currently sits on, in one
-     * deferred pass — for a real action that bypasses one or more *optional*
-     * steps at once (e.g. tapping END COUNT directly, skipping the optional
-     * "inv_scan_pills" step, when the tap-in-target advance for the following
-     * "inv_end_count" step never got a chance to fire because the tour wasn't on
-     * that step yet). Same deferral rationale as [advanceIfCurrent].
+     * Skips forward past every step in [ids] in one deferred pass, for a real action that
+     * bypasses one or more optional steps whose own tap-to-advance never got a chance to fire.
      */
     fun advanceWhileCurrentIn(ids: Set<String>) {
         if (!isActive) return
