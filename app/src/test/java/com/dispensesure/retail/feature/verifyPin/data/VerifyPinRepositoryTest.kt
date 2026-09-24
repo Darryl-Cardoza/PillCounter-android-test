@@ -1,7 +1,6 @@
 package com.dispensesure.retail.feature.verifyPin.data
 
 import com.dispensesure.retail.core.utils.notification.FCMService
-import com.dispensesure.retail.feature.verifyPin.data.VerifyPinRepository
 import com.dispensesure.retail.feature.verifyPin.data.remote.IVerifyPinAPI
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinRequest
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinResponse

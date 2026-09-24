@@ -55,13 +55,6 @@ class SecurePreferences(context: Context,
             .getKey(keystoreAlias, null) as SecretKey
     }
 
-    /**
-     * Key used only to decrypt values written before the per-prefsName alias migration,
-     * when every [SecurePreferences] instance shared one legacy alias. Never used to encrypt.
-     */
-    private fun legacySharedKeyOrNull(): SecretKey? =
-        keystore.getKey(LEGACY_SHARED_ALIAS, null) as? SecretKey
-
     // ── Encryption / Decryption ───────────────────────────────────────────
 
     private fun encrypt(value: String): String {
@@ -82,10 +75,7 @@ class SecurePreferences(context: Context,
     }
 
     /**
-     * Decrypts [stored]. Values written before the per-prefsName alias migration were
-     * encrypted under the old shared alias — fall back to that key so existing installs
-     * don't lose data (DB DEK wrapper, auth tokens) on upgrade. Falls through to the
-     * per-prefsName key for anything written after the migration.
+     * Decrypts [stored] with the per-prefsName key.
      */
     private fun decrypt(stored: String): String {
         val parts = stored.split(":")
@@ -93,12 +83,7 @@ class SecurePreferences(context: Context,
         val iv = Base64.decode(parts[0], Base64.NO_WRAP)
         val ciphertext = Base64.decode(parts[1], Base64.NO_WRAP)
 
-        return try {
-            decryptWith(getOrCreateKey(), iv, ciphertext)
-        } catch (e: Exception) {
-            val legacyKey = legacySharedKeyOrNull() ?: throw e
-            decryptWith(legacyKey, iv, ciphertext)
-        }
+        return decryptWith(getOrCreateKey(), iv, ciphertext)
     }
 
     // ── Public API ────────────────────────────────────────────────────────
@@ -184,6 +169,5 @@ class SecurePreferences(context: Context,
     companion object {
         private const val PREF_NAME = "dispensesure_secure_prefs"
         private const val KEYSTORE_ALIAS_PREFIX = "com.dispensesure.retail.prefs_key."
-        private const val LEGACY_SHARED_ALIAS = "com.dispensesure.retail.prefs_key"
     }
 }

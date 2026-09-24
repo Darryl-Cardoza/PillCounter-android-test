@@ -19,7 +19,7 @@ import java.security.SecureRandom
  */
 object DatabaseKeyProvider {
 
-    const val DATABASE_NAME = "pill_counting_db"
+    const val DATABASE_NAME = "dispensesure_db"
 
     private const val PREFS_NAME = "dispensesure_db_key_prefs"
     private const val KEY_DEK_WRAPPED = "dek_wrapped"
