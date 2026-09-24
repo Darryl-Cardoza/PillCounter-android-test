@@ -69,7 +69,7 @@ and instrumented-test source sets.
 
 A from-scratch CLI build (`./gradlew clean :app:assembleDebug`) fails with ~200
 errors of the form `…_Factory.java: cannot find symbol` /
-`package com.rite.pillcounting.core.security does not exist`, in **Hilt-generated**
+`package com.dispensesure.retail.core.security does not exist`, in **Hilt-generated**
 Java stubs. This:
 1. persists after `clean` (so it is not a stale cache),
 2. references **none** of the four removed libraries,

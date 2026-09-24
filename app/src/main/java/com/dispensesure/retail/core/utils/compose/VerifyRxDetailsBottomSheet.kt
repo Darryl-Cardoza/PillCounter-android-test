@@ -809,7 +809,7 @@ private fun TabletButtonRow(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     spacing: Dp,
-    tourState: com.rite.pillcounting.core.tourguide.TourGuideState? = null,
+    tourState: com.dispensesure.retail.core.tourguide.TourGuideState? = null,
 ) {
     // Use the universal HollowButton (outlined) + ActionButtonPrimary (filled).
     // Give the Row a fixed total width and let each child claim weight(1f) of it

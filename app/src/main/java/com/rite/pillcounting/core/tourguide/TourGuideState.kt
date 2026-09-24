@@ -1,4 +1,4 @@
-package com.rite.pillcounting.core.tourguide
+package com.dispensesure.retail.core.tourguide
 
 import androidx.annotation.StringRes
 import androidx.compose.runtime.Composable

@@ -28,9 +28,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import com.rite.pillcounting.core.tourguide.FTUE_ID
-import com.rite.pillcounting.core.tourguide.FtueController
-import com.rite.pillcounting.core.tourguide.TourGuidePrefs
+import com.dispensesure.retail.core.tourguide.FTUE_ID
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourGuidePrefs
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle

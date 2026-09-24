@@ -1,4 +1,4 @@
-package com.rite.pillcounting.core.tourguide
+package com.dispensesure.retail.core.tourguide
 
 import android.content.Context
 import androidx.core.content.edit
@@ -6,7 +6,7 @@ import androidx.core.content.edit
 /**
  * Tracks which screens' tour guide the user has already seen, so it only auto-launches
  * once per screen. Non-sensitive per-device UI state — plain SharedPreferences, same as
- * [com.rite.pillcounting.core.utils.preference.CountCirclePositionPrefs].
+ * [com.dispensesure.retail.core.utils.preference.CountCirclePositionPrefs].
  */
 object TourGuidePrefs {
 

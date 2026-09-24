@@ -74,7 +74,7 @@ class MainActivityViewModel @Inject constructor(
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
 
     /**
-     * Called from [com.rite.pillcounting.MainActivity] when the FTUE tutorial finishes or is
+     * Called from [com.dispensesure.retail.MainActivity] when the FTUE tutorial finishes or is
      * skipped, to delete the txns/batches it created. See [Hl7Repository.deleteTutorialData].
      */
     fun onTutorialFinished() {

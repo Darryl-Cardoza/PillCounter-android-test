@@ -361,7 +361,7 @@ class DashboardViewModel @Inject constructor(
 
     /**
      * Hides FTUE tutorial dummy-data items before
-     * [Hl7Repository.deleteTutorialData][com.rite.pillcounting.feature.hl7.data.repository.Hl7Repository.deleteTutorialData]
+     * [Hl7Repository.deleteTutorialData][com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository.deleteTutorialData]
      * actually removes the row.
      */
     private fun List<QueueItem>.excludingTutorialItems(): List<QueueItem> = filterNot { item ->

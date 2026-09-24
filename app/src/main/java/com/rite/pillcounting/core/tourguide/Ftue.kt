@@ -1,6 +1,6 @@
-package com.rite.pillcounting.core.tourguide
+package com.dispensesure.retail.core.tourguide
 
-import com.rite.pillcounting.R
+import com.dispensesure.retail.R
 
 /** Pref key the whole app-wide first-time-user-experience is tracked under. */
 const val FTUE_ID = "ftue_v1"

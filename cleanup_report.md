@@ -96,7 +96,7 @@ build-verified together.
   (incremental).
 - Dependency removal (see [dependency_cleanup_report.md](dependency_cleanup_report.md))
   is **staged but held**: a CLI **clean** build surfaced a Hilt/KSP
-  annotation-processing failure (`*_Factory.java: package com.rite.pillcounting.core.security
+  annotation-processing failure (`*_Factory.java: package com.dispensesure.retail.core.security
   does not exist`) that persists across `clean` and references **none** of the
   removed items — i.e. an environmental/toolchain issue, not caused by the cleanup.
   Final verification is being done via Android Studio's bundled toolchain before

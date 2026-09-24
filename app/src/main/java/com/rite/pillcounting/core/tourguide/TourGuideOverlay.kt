@@ -1,4 +1,4 @@
-package com.rite.pillcounting.core.tourguide
+package com.dispensesure.retail.core.tourguide
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -48,8 +48,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rite.pillcounting.R
-import com.rite.pillcounting.ui.theme.AppTheme.extendedColors
+import com.dispensesure.retail.R
+import com.dispensesure.retail.ui.theme.AppTheme.extendedColors
 import kotlin.math.roundToInt
 
 private val SpotlightPadding = 2.dp
