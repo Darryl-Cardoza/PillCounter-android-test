@@ -60,6 +60,7 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.scanning.analyzer.IdCardAnalyzer
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
+import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
@@ -106,7 +107,8 @@ private fun chipTargetFieldColors(isTarget: Boolean): TextFieldColors =
  * (OCR). A detection opens a bottom sheet with editable first/last name
  * fields plus tap-to-fill chips of every name-like word seen on the card —
  * the correction path when OCR pairs the wrong words. "Enter Manually" opens
- * the same sheet empty as a fallback.
+ * the same sheet empty as a fallback. A name that is already enrolled is
+ * rejected in the sheet, before any face is captured.
  */
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -115,6 +117,7 @@ internal fun ScanPhotoIdStep(
     navController: NavController,
     firstName: String,
     lastName: String,
+    takenNameKeys: Set<String>,
     isSessionLocked: Boolean,
     isVoiceoverEnabled: Boolean,
     onUserInteraction: () -> Unit,
@@ -350,6 +353,20 @@ internal fun ScanPhotoIdStep(
             // clearFocus/hide are no-ops for fields hosted in this window.
             val sheetFocusManager = LocalFocusManager.current
             val sheetKeyboard = LocalSoftwareKeyboardController.current
+            val nameCheck = CredentialsValidator.validateNameNotTaken(firstName, lastName, takenNameKeys)
+            val isDuplicate = !nameCheck.isSuccess
+            val nameTakenText = nameCheck.errorMessageResId?.let { stringResource(it) }
+            // Voiceover reads the error each time the name becomes a duplicate,
+            // including when the sheet opens already on one.
+            LaunchedEffect(isDuplicate, SoundUtils.isTtsReady, isVoiceoverEnabled) {
+                if (nameTakenText != null && SoundUtils.isTtsReady && isVoiceoverEnabled) {
+                    SoundUtils.speak(context = context, text = nameTakenText, utteranceId = "face_name_taken")
+                }
+            }
+            // Cut the error off if the sheet is dismissed mid-speech.
+            DisposableEffect(Unit) {
+                onDispose { SoundUtils.stopSpeaking() }
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -421,6 +438,7 @@ internal fun ScanPhotoIdStep(
                     },
                     label = { Text(stringResource(R.string.face_registration_first_name)) },
                     singleLine = true,
+                    isError = isDuplicate,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Next),
                     keyboardActions = KeyboardActions(
                         // Direct requester, not moveFocus: it targets the node
@@ -445,6 +463,11 @@ internal fun ScanPhotoIdStep(
                     },
                     label = { Text(stringResource(R.string.face_registration_last_name)) },
                     singleLine = true,
+                    isError = isDuplicate,
+                    // Null when free, so the field adds no height normally.
+                    supportingText = if (nameTakenText != null) {
+                        { Text(nameTakenText) }
+                    } else null,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(
                         onDone = {
@@ -452,7 +475,7 @@ internal fun ScanPhotoIdStep(
                             sheetKeyboard?.hide()
                             // Done submits, same as the CONTINUE button — but only
                             // under the same both-names-filled gate it enforces.
-                            if (firstName.isNotBlank() && lastName.isNotBlank()) {
+                            if (firstName.isNotBlank() && lastName.isNotBlank() && !isDuplicate) {
                                 onContinue()
                             }
                         }
@@ -469,7 +492,7 @@ internal fun ScanPhotoIdStep(
                 ActionButtonPrimary(
                     text = stringResource(R.string.face_registration_continue).uppercase(),
                     onClick = onContinue,
-                    enabled = firstName.isNotBlank() && lastName.isNotBlank(),
+                    enabled = firstName.isNotBlank() && lastName.isNotBlank() && !isDuplicate,
                     color = MaterialTheme.colorScheme.primary
                 )
             }

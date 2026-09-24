@@ -4,6 +4,7 @@ import android.util.Patterns
 import com.dispensesure.retail.R
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -193,6 +194,88 @@ class CredentialsValidatorTest {
     @Test
     fun `sanitizeName blank stays empty`() {
         assertEquals("", CredentialsValidator.sanitizeName("123 #$%"))
+    }
+
+    // ─────────────────────────── normalizedNameKey ───────────────────────────
+
+    @Test
+    fun `normalizedNameKey ignores case`() {
+        assertEquals(
+            CredentialsValidator.normalizedNameKey("John", "Smith"),
+            CredentialsValidator.normalizedNameKey("john", "SMITH"),
+        )
+    }
+
+    @Test
+    fun `normalizedNameKey ignores surrounding and repeated spaces`() {
+        // The field keeps a trailing space while typing, so it must not count.
+        assertEquals(
+            CredentialsValidator.normalizedNameKey("John", "Smith"),
+            CredentialsValidator.normalizedNameKey("  John ", "Smith  "),
+        )
+        assertEquals(
+            CredentialsValidator.normalizedNameKey("Mary Jane", "Smith"),
+            CredentialsValidator.normalizedNameKey("Mary  Jane", "Smith"),
+        )
+    }
+
+    @Test
+    fun `normalizedNameKey keeps different people apart`() {
+        assertNotEquals(
+            CredentialsValidator.normalizedNameKey("John", "Smith"),
+            CredentialsValidator.normalizedNameKey("John", "Smyth"),
+        )
+        assertNotEquals(
+            CredentialsValidator.normalizedNameKey("John", "Smith"),
+            CredentialsValidator.normalizedNameKey("Jane", "Smith"),
+        )
+    }
+
+    @Test
+    fun `normalizedNameKey does not merge the two fields`() {
+        assertNotEquals(
+            CredentialsValidator.normalizedNameKey("John", "Smith"),
+            CredentialsValidator.normalizedNameKey("John Smith", ""),
+        )
+    }
+
+    @Test
+    fun `normalizedNameKey keeps hyphens and apostrophes significant`() {
+        assertNotEquals(
+            CredentialsValidator.normalizedNameKey("Mary-Jane", "O'Neil"),
+            CredentialsValidator.normalizedNameKey("Mary Jane", "ONeil"),
+        )
+    }
+
+    // ───────────────────────── validateNameNotTaken ─────────────────────────
+
+    private val taken = setOf(CredentialsValidator.normalizedNameKey("John", "Smith"))
+
+    @Test
+    fun `validateNameNotTaken enrolled name failure`() {
+        val r = CredentialsValidator.validateNameNotTaken("john", "SMITH ", taken)
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.face_registration_name_taken, r.errorMessageResId)
+    }
+
+    @Test
+    fun `validateNameNotTaken new name success`() {
+        assertTrue(CredentialsValidator.validateNameNotTaken("John", "Smyth", taken).isSuccess)
+        assertTrue(CredentialsValidator.validateNameNotTaken("Jane", "Smith", taken).isSuccess)
+    }
+
+    @Test
+    fun `validateNameNotTaken half-typed name is not judged`() {
+        // A blank half is the presence gate's job, not this rule's — and
+        // "John" + "" must never collide with the enrolled "John Smith".
+        assertTrue(CredentialsValidator.validateNameNotTaken("John", "", taken).isSuccess)
+        assertTrue(CredentialsValidator.validateNameNotTaken("", "Smith", taken).isSuccess)
+        assertTrue(CredentialsValidator.validateNameNotTaken(" ", " ", taken).isSuccess)
+    }
+
+    @Test
+    fun `validateNameNotTaken empty gallery success`() {
+        assertTrue(CredentialsValidator.validateNameNotTaken("John", "Smith", emptySet()).isSuccess)
     }
 
     // ─────────────────────────── validateNpi ───────────────────────────

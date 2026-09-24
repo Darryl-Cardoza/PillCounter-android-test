@@ -64,6 +64,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.TABLET_BREAKPOINT_DP
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
+import com.dispensesure.retail.core.utils.validator.CredentialsValidator
 import com.dispensesure.retail.feature.faceAuth.domain.model.RegistrationState
 import com.dispensesure.retail.feature.faceAuth.presentation.viewmodel.FaceAuthViewModel
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -92,6 +93,12 @@ fun FaceRegistrationScreen(
     val cameraHelper = remember { CameraHelper(context, lifecycleOwner, ContextCompat.getMainExecutor(context)) }
     val state by viewModel.registrationState.collectAsState()
     val isSessionLocked by viewModel.isSessionLocked.collectAsState()
+    // Names already on file, so the ID sheet can refuse a duplicate. Disabled
+    // profiles count too — disabled means "cannot unlock", not "not enrolled".
+    val profiles by viewModel.profiles.collectAsState()
+    val takenNameKeys = remember(profiles) {
+        profiles.map { CredentialsValidator.normalizedNameKey(it.firstName, it.lastName) }.toSet()
+    }
 
     // Camera-based face/ID capture requires portrait framing on phones. Tablets keep
     // free rotation because their landscape layout is intentionally supported.
@@ -137,6 +144,7 @@ fun FaceRegistrationScreen(
                     navController = navController,
                     firstName = firstName,
                     lastName = lastName,
+                    takenNameKeys = takenNameKeys,
                     isSessionLocked = isSessionLocked,
                     isVoiceoverEnabled = viewModel.isVoiceoverEnabled,
                     onUserInteraction = viewModel::onSessionActivity,
