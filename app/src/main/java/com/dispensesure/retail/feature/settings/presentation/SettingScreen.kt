@@ -1,7 +1,5 @@
 package com.dispensesure.retail.feature.settings.presentation
 
-import androidx.annotation.StringRes
-import Screen
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -39,11 +37,17 @@ import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActiv
 import com.dispensesure.retail.core.utils.common.HistoryRetention
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonMultiSelectDialog
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.constants.LocalDimens
 import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.LocalExtendedColors
+import com.rite.pillcounting.feature.settings.presentation.compose.SETTINGS_DISABLED_ALPHA
+import com.rite.pillcounting.feature.settings.presentation.compose.SettingsGroupCard
+import com.rite.pillcounting.feature.settings.presentation.compose.SettingsRow
+import com.rite.pillcounting.feature.settings.presentation.compose.SettingsValueText
 
 @Composable
 fun SettingsScreen(

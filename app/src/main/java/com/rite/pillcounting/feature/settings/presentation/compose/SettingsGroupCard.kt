@@ -32,9 +32,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.responsiveDp
-import com.rite.pillcounting.core.utils.constants.LocalDimens
-import com.rite.pillcounting.ui.theme.LocalExtendedColors
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.dispensesure.retail.core.utils.constants.LocalDimens
+import com.dispensesure.retail.ui.theme.LocalExtendedColors
 
 /**
  * Collapsible Settings group: title + chevron header, then [rows] with a divider above each.

@@ -18,8 +18,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.rite.pillcounting.core.utils.constants.LocalDimens
-import com.rite.pillcounting.ui.theme.LocalExtendedColors
+import com.dispensesure.retail.core.utils.constants.LocalDimens
+import com.dispensesure.retail.ui.theme.LocalExtendedColors
 
 /** Alpha for a dimmed (disabled) setting's text. */
 const val SETTINGS_DISABLED_ALPHA = 0.4f

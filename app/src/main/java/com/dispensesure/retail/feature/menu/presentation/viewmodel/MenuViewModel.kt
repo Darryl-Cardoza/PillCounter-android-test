@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.menu.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.BatchEntity
