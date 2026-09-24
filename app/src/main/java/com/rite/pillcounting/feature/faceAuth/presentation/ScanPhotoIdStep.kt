@@ -60,6 +60,7 @@ import androidx.navigation.NavController
 import com.rite.pillcounting.R
 import com.rite.pillcounting.core.scanning.analyzer.IdCardAnalyzer
 import com.rite.pillcounting.core.scanning.logic.CameraHelper
+import com.rite.pillcounting.core.utils.common.SoundUtils
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.BackButton
 import com.rite.pillcounting.core.utils.common.UserInterfaceUtils.HollowButton
@@ -354,6 +355,14 @@ internal fun ScanPhotoIdStep(
             val sheetKeyboard = LocalSoftwareKeyboardController.current
             val nameCheck = CredentialsValidator.validateNameNotTaken(firstName, lastName, takenNameKeys)
             val isDuplicate = !nameCheck.isSuccess
+            val nameTakenText = nameCheck.errorMessageResId?.let { stringResource(it) }
+            // Voiceover reads the error each time the name becomes a duplicate,
+            // including when the sheet opens already on one.
+            LaunchedEffect(isDuplicate, SoundUtils.isTtsReady, isVoiceoverEnabled) {
+                if (nameTakenText != null && SoundUtils.isTtsReady && isVoiceoverEnabled) {
+                    SoundUtils.speak(context = context, text = nameTakenText, utteranceId = "face_name_taken")
+                }
+            }
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -451,6 +460,10 @@ internal fun ScanPhotoIdStep(
                     label = { Text(stringResource(R.string.face_registration_last_name)) },
                     singleLine = true,
                     isError = isDuplicate,
+                    // Null when free, so the field adds no height normally.
+                    supportingText = if (nameTakenText != null) {
+                        { Text(nameTakenText) }
+                    } else null,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(
                         onDone = {
@@ -471,15 +484,6 @@ internal fun ScanPhotoIdStep(
                         .focusRequester(lastNameFocus)
                         .onFocusChanged { if (it.isFocused) activeField = NameField.LAST }
                 )
-                nameCheck.errorMessageResId?.let { errorRes ->
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(errorRes),
-                        color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall,
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
                 Spacer(modifier = Modifier.height(24.dp))
                 ActionButtonPrimary(
                     text = stringResource(R.string.face_registration_continue).uppercase(),

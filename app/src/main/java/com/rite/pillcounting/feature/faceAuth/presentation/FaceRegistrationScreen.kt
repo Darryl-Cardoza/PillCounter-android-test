@@ -98,9 +98,9 @@ fun FaceRegistrationScreen(
     // Names already on file, so the ID sheet can refuse a duplicate. Disabled
     // profiles count too — disabled means "cannot unlock", not "not enrolled".
     val profiles by viewModel.profiles.collectAsState()
-    val takenNameKeys = profiles
-        .map { CredentialsValidator.normalizedNameKey(it.firstName, it.lastName) }
-        .toSet()
+    val takenNameKeys = remember(profiles) {
+        profiles.map { CredentialsValidator.normalizedNameKey(it.firstName, it.lastName) }.toSet()
+    }
 
     // Camera-based face/ID capture requires portrait framing on phones. Tablets keep
     // free rotation because their landscape layout is intentionally supported.
