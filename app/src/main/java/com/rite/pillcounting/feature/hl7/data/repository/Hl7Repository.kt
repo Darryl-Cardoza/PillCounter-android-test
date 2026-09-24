@@ -501,8 +501,20 @@ class Hl7Repository @Inject constructor(
         // this guard it would clear TutorialEntryRegistry's markers for a batch/txn the
         // tutorial is still actively using, before its own DB delete completes.
         if (FtueController.state.isActive) return
-        TutorialEntryRegistry.consumeTutorialTxnIds().forEach { deleteSyncedTransaction(it) }
-        TutorialEntryRegistry.consumeTutorialBatchIds().forEach { deleteTutorialBatch(it) }
+
+        // The marker is only cleared once its row is confirmed gone (not eagerly up front):
+        // a still-in-flight write from the real action that just finished the tour (e.g.
+        // confirmEndCount's async batchDao.markAsCompleted/resendPendingHl7BatchTransactions)
+        // can otherwise race this cleanup and leave the row behind with nothing left to hide
+        // it from Recent Activity or block it from being sent over HL7.
+        TutorialEntryRegistry.snapshotTutorialTxnIds().forEach { txnId ->
+            deleteSyncedTransaction(txnId)
+            if (pillCountTxnDao.getById(txnId) == null) TutorialEntryRegistry.unmarkTutorialEntry(txnId)
+        }
+        TutorialEntryRegistry.snapshotTutorialBatchIds().forEach { batchId ->
+            deleteTutorialBatch(batchId)
+            if (batchDao.getById(batchId) == null) TutorialEntryRegistry.unmarkTutorialBatch(batchId)
+        }
 
         // Orphan sweep: TutorialEntryRegistry is in-memory only, so a run ended by killing the
         // process loses its markers entirely; sweep by the durable demo-NDC drug id too.

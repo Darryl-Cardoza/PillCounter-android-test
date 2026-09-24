@@ -23,13 +23,21 @@ object TutorialEntryRegistry {
 
     fun isTutorialBatch(id: Long): Boolean = id in batchIds
 
-    /** Snapshots and clears the tracked dispense txn ids — for the one-shot cleanup pass. */
-    fun consumeTutorialTxnIds(): Set<Long> = synchronized(txnIds) {
-        txnIds.toSet().also { txnIds.clear() }
+    fun unmarkTutorialEntry(id: Long) {
+        txnIds.remove(id)
     }
 
-    /** Snapshots and clears the tracked stock-count batch ids — for the one-shot cleanup pass. */
-    fun consumeTutorialBatchIds(): Set<Long> = synchronized(batchIds) {
-        batchIds.toSet().also { batchIds.clear() }
+    fun unmarkTutorialBatch(id: Long) {
+        batchIds.remove(id)
     }
+
+    /**
+     * Snapshot only — does NOT clear. A marker must stay in place (still hiding the row from
+     * Recent Activity and blocking HL7 sends) until the caller confirms the row is actually
+     * deleted; see [unmarkTutorialEntry]/[unmarkTutorialBatch].
+     */
+    fun snapshotTutorialTxnIds(): Set<Long> = synchronized(txnIds) { txnIds.toSet() }
+
+    /** Snapshot only — see [snapshotTutorialTxnIds]. */
+    fun snapshotTutorialBatchIds(): Set<Long> = synchronized(batchIds) { batchIds.toSet() }
 }
