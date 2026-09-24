@@ -145,7 +145,7 @@ class ProfileViewModelTest {
         every { validator.validatePharmacyName(any()) } returns ValidationResult(true, null)
         every { validator.validatePhone(any()) } returns ValidationResult(true, null)
         every { validator.validateEmail(any()) } returns ValidationResult(true, null)
-        every { validator.validateNpi(any()) } returns ValidationResult(true, null)
+        every { validator.validateNpi(any(), any()) } returns ValidationResult(true, null)
     }
 
     @After
@@ -463,9 +463,19 @@ class ProfileViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        vm.onPhoneChanged("ab12-345 6789012345")
+        vm.onPhoneChanged("ab12-345 ٣6789012345")
 
         assertEquals("1234567890", vm.phoneNumber)
+    }
+
+    @Test
+    fun `onNpiChanged filters ascii digits and limits to 10`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onNpiChanged("12a3-4567 ٣89012")
+
+        assertEquals("1234567890", vm.npi)
     }
 
     @Test
@@ -538,7 +548,10 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `updateProfile aborts when npi is blank`() = runTest(testDispatcher) {
+    fun `updateProfile validates npi as required`() = runTest(testDispatcher) {
+        every { validator.validateNpi("", true) } returns
+            ValidationResult(false, R.string.error_npi_required)
+
         val vm = createViewModel()
         advanceUntilIdle()
         fillRequiredInputs(vm)
@@ -549,26 +562,13 @@ class ProfileViewModelTest {
 
         assertEquals(ProfileUpdateUiState.Idle, vm.updateUiState.value)
         assertEquals(R.string.error_npi_required, vm.npiError)
-        coVerify(exactly = 0) { repository.updateProfile(any()) }
-    }
-
-    @Test
-    fun `updateProfile aborts when npi is whitespace only`() = runTest(testDispatcher) {
-        val vm = createViewModel()
-        advanceUntilIdle()
-        fillRequiredInputs(vm)
-        vm.npi = "   "
-
-        vm.updateProfile()
-        advanceUntilIdle()
-
-        assertEquals(R.string.error_npi_required, vm.npiError)
+        verify { validator.validateNpi("", true) }
         coVerify(exactly = 0) { repository.updateProfile(any()) }
     }
 
     @Test
     fun `updateProfile surfaces the validator error for a non-blank npi`() = runTest(testDispatcher) {
-        every { validator.validateNpi(any()) } returns
+        every { validator.validateNpi(any(), any()) } returns
             ValidationResult(false, R.string.error_npi_invalid)
 
         val vm = createViewModel()
@@ -586,6 +586,10 @@ class ProfileViewModelTest {
     @Test
     fun `updateProfile clears the npi error once a valid npi is entered`() = runTest(testDispatcher) {
         coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+        every { validator.validateNpi(any(), any()) } returnsMany listOf(
+            ValidationResult(false, R.string.error_npi_required),
+            ValidationResult(true, null),
+        )
 
         val vm = createViewModel()
         advanceUntilIdle()
