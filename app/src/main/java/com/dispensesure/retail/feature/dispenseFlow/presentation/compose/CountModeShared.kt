@@ -1,0 +1,606 @@
+package com.dispensesure.retail.feature.dispenseFlow.presentation.compose
+
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraintsScope
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.FrontHand
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import coil.compose.rememberAsyncImagePainter
+import coil.request.ImageRequest
+import kotlin.math.roundToInt
+import com.dispensesure.retail.R
+import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.dispensesure.retail.core.utils.compose.WorkflowStepper
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.preference.CountCirclePositionPrefs
+import java.io.File
+
+/**
+ * Shared building blocks for the full-bleed count-mode overlay.
+ *
+ * The overlay is split by form factor into four entry composables so each layout
+ * can be tuned independently:
+ *  - [CountModePhonePortrait] / [CountModeTabletPortrait]
+ *  - [CountModePhoneLandscape] / [CountModeTabletLandscape]
+ *
+ * The pieces that are identical across all four (the top details bar and the
+ * draggable centre count circle) live here so the variants stay small and only
+ * carry their own bottom-bar layout. [InformationPanelSection] routes to the
+ * right variant.
+ */
+
+/** Translucent background shared by the overlay's bars and the centre circle. */
+internal val CountModeBarBackground = Color.Black.copy(alpha = 0.45f)
+
+/**
+ * Top translucent details bar: NDC + drug name on the left, Form / Strength /
+ * Bucket on the right. Identical in every form factor.
+ */
+@Composable
+internal fun BoxScope.CountModeTopDetailsBar(
+    ndc: String,
+    drugName: String,
+    strength: String,
+    bucket: String,
+    drugImage: String? = "",
+    showGloveIcon: Boolean = false,
+    glovesDetected: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .align(Alignment.TopCenter)
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(CountModeBarBackground)
+            // Leave room on the left for the back arrow. The arrow is sized with
+            // responsiveDp, so this gutter has to scale with it — a flat value
+            // either overlaps it on tablet or wastes space on phone.
+            .padding(start = responsiveDp(36.dp) + 16.dp, end = 16.dp, top = 10.dp, bottom = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        if (!drugImage.isNullOrBlank()) {
+            DrugImageTile(
+                imageFile = File(drugImage),
+                drugName = drugName,
+                modifier = Modifier
+                    .width(80.dp)
+                    .height(60.dp)
+            )
+
+            Spacer(modifier = Modifier.width(12.dp))
+        }
+        // Left: NDC + drug name
+        Column(modifier = Modifier.weight(1f)) {
+            if (ndc.isNotBlank()) {
+                Text(
+                    text = stringResource(R.string.ndc_value, ndc),
+                    color = Color.White.copy(alpha = 0.7f),
+                    fontSize = responsiveSp(8.sp, boostOnPhone = true),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Text(
+                text = drugName,
+                color = Color.White,
+                fontSize = responsiveSp(8.sp, boostOnPhone = true),
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(end = 32.dp)
+            )
+        }
+
+        // Keep the (ellipsized) drug name from butting up against the Form column.
+        Spacer(Modifier.width(16.dp))
+
+        if (showGloveIcon) {
+            GloveIndicator(glovesDetected = glovesDetected)
+            Spacer(Modifier.width(16.dp))
+        }
+
+        // Right: Strength / Bucket
+        if (strength.isNotBlank()) {
+            DetailColumn(
+                label = stringResource(R.string.detail_label_strength),
+                value = strength
+            )
+            Spacer(Modifier.width(32.dp))
+        }
+        if (bucket.isNotBlank()) {
+            DetailColumn(
+                label = stringResource(R.string.detail_label_bucket),
+                value = bucket
+            )
+        }
+    }
+}
+
+/**
+ * Drug-image tile used by the details bars. [modifier] supplies the size; the
+ * image is cropped to fill it, falling back to the prescription icon.
+ */
+@Composable
+internal fun DrugImageTile(imageFile: File, drugName: String, modifier: Modifier = Modifier) {
+    Image(
+        painter = rememberAsyncImagePainter(
+            ImageRequest.Builder(LocalContext.current)
+                .data(imageFile)
+                .size(300, 225)
+                .placeholder(R.drawable.prescription_icon)
+                .error(R.drawable.prescription_icon)
+                .build()
+        ),
+        contentDescription = drugName,
+        contentScale = ContentScale.Crop,
+        modifier = modifier.clip(RoundedCornerShape(8.dp))
+    )
+}
+
+/**
+ * Green/red glove indicator, shown in the details bars for hazardous sessions.
+ */
+@Composable
+internal fun GloveIndicator(glovesDetected: Boolean) {
+    val handTint = if (glovesDetected) Color.Green else Color.Red
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(CircleShape)
+            .background(Color.White.copy(alpha = 0.15f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.FrontHand,
+            contentDescription = if (glovesDetected) {
+                stringResource(R.string.cd_gloves_detected)
+            } else {
+                stringResource(R.string.cd_no_gloves_detected)
+            },
+            tint = handTint,
+            modifier = Modifier.size(20.dp)
+        )
+    }
+}
+
+/**
+ * The live count circle, centred over the camera feed. The circle IS the action:
+ * tapping commits the count ([onAdd]) while counting, or finishes ([onDone]) once
+ * a FIXED target is met ([isAllDone]). It can be long-pressed and dragged anywhere
+ * over the feed; the position is persisted to prefs and re-clamped on rotation.
+ *
+ * Identical in every form factor.
+ */
+@Composable
+internal fun BoxWithConstraintsScope.CountModeCenterCircle(
+    detectedCount: Int,
+    viewModel: PillScanningViewModel,
+    isAllDone: Boolean,
+    isAddCooldown: Boolean,
+    onAdd: () -> Unit,
+    onDone: () -> Unit,
+) {
+    val context = LocalContext.current
+    val circleSize = responsiveDpForCircularCountIndicator()
+    var circleOffset by remember {
+        mutableStateOf(CountCirclePositionPrefs.getOffset(context) ?: Offset.Zero)
+    }
+    // The offset is stored in raw pixels relative to the container centre, so a
+    // position that fit in one orientation can land off-screen after a rotation
+    // (different width/height) and the circle "disappears". Clamp the offset to
+    // the current viewport whenever the bounds change: keep the user's custom
+    // position if it still fits, otherwise snap it back just inside the edge.
+    val density = LocalDensity.current
+    val maxOffsetX = with(density) { ((maxWidth - circleSize) / 2).toPx() }.coerceAtLeast(0f)
+    val maxOffsetY = with(density) { ((maxHeight - circleSize) / 2).toPx() }.coerceAtLeast(0f)
+    LaunchedEffect(maxOffsetX, maxOffsetY) {
+        val clamped = Offset(
+            circleOffset.x.coerceIn(-maxOffsetX, maxOffsetX),
+            circleOffset.y.coerceIn(-maxOffsetY, maxOffsetY),
+        )
+        if (clamped != circleOffset) circleOffset = clamped
+    }
+    Box(
+        modifier = Modifier
+            .align(Alignment.Center)
+            .offset { IntOffset(circleOffset.x.roundToInt(), circleOffset.y.roundToInt()) }
+            .size(circleSize)
+            .clip(CircleShape)
+            // Match the bars' translucency so the circle reads as part of the
+            // same overlay.
+            .background(CountModeBarBackground)
+            // Long-press to pick up, then drag the circle anywhere. The final
+            // resting position is saved to prefs so it persists across loads.
+            // Key on the current bounds so the gesture detector restarts after a
+            // rotation; otherwise the drag lambda keeps the stale max offsets
+            // captured at first composition.
+            .pointerInput(maxOffsetX, maxOffsetY) {
+                detectDragGesturesAfterLongPress(
+                    onDrag = { _, dragAmount ->
+                        circleOffset = Offset(
+                            (circleOffset.x + dragAmount.x).coerceIn(-maxOffsetX, maxOffsetX),
+                            (circleOffset.y + dragAmount.y).coerceIn(-maxOffsetY, maxOffsetY),
+                        )
+                    },
+                    onDragEnd = { CountCirclePositionPrefs.setOffset(context, circleOffset) }
+                )
+            }
+            // Whole-circle tap commits the count (Add) while counting, or finishes
+            // (Done) once the target is met. Disabled mid-cooldown.
+            .clickable(enabled = !isAddCooldown) {
+                if (isAllDone) onDone() else onAdd()
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        CircularCountIndicator(
+            count = detectedCount,
+            viewModel = viewModel,
+            label = if (isAllDone) {
+                stringResource(R.string.pill_scanning_all_done)
+            } else {
+                stringResource(R.string.pill_scanning_add_this)
+            },
+            // Target met → play the Ookla-style completion breath + ripple.
+            pulsing = isAllDone,
+        )
+    }
+}
+
+/**
+ * The reset icon shown left of "View all counts" while a count can still be thrown
+ * away. Tinted to match that link so the two read as one control group.
+ */
+@Composable
+internal fun ResetCountButton(onClick: () -> Unit) {
+    // 48dp touch target on a destructive control; the icon itself stays 20dp.
+    Box(
+        modifier = Modifier
+            .size(48.dp)
+            .clickable { onClick() },
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            painter = painterResource(R.drawable.reset),
+            contentDescription = stringResource(R.string.cd_reset_count),
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(responsiveDp(20.dp)),
+        )
+    }
+}
+
+/**
+ * The tappable "View all counts ›" link shown in the bottom bar. The Row owns the
+ * tap target; the caret is a decorative Icon sized independently of the label.
+ */
+@Composable
+internal fun ViewAllCountsLink(onClick: () -> Unit) {
+    val labelSize = responsiveSp(10.sp, boostOnPhone = true)
+
+    Row(
+        modifier = Modifier.clickable { onClick() },
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = stringResource(R.string.pill_scanning_view_all_counts),
+            color = MaterialTheme.colorScheme.primary,
+            fontSize = labelSize,
+            fontWeight = FontWeight.Medium,
+            maxLines = 1,
+            softWrap = false,
+        )
+
+        Spacer(Modifier.width(4.dp))
+
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(responsiveDp(20.dp)),
+        )
+    }
+}
+
+/**
+ * The progress bar (FIXED counts only) + running count + an optional trailing
+ * button. Shared by every bottom-bar layout; the progress bar takes the
+ * remaining width via [RowScope.weight] and shrinks to half-width whenever a
+ * button is present so the button always has room.
+ *
+ * The only button is "Proceed", shown for container steps that have no target
+ * ([showProceed]); every other step relies on the centre count circle to finish.
+ * When present the progress bar shrinks to half-width so the button has room.
+ */
+@Composable
+internal fun RowScope.BottomProgressAndCount(
+    isFixed: Boolean,
+    totalCount: Int,
+    targetCount: Int,
+    showProceed: Boolean,
+    onProceed: () -> Unit,
+    pushCountToEnd: Boolean = false,
+) {
+    val hasProgress = isFixed && targetCount > 0
+    if (hasProgress) {
+        val progress = (totalCount.toFloat() / targetCount.toFloat()).coerceIn(0f, 1f)
+        LinearProgressIndicator(
+            progress = { progress },
+            modifier = Modifier
+                .weight(if (showProceed) 0.5f else 1f)
+                .height(4.dp)
+                .clip(RoundedCornerShape(2.dp)),
+            color = MaterialTheme.colorScheme.primary,
+            trackColor = Color.White.copy(alpha = 0.25f),
+            // Remove the default gap + stop dot so the bar is continuous with no
+            // "cut" between the filled portion and the track.
+            gapSize = 0.dp,
+            drawStopIndicator = {}
+        )
+        Spacer(Modifier.width(12.dp))
+    } else if (pushCountToEnd) {
+        // Portrait only (no inline stepper in this row). A weighted filler
+        // positions the count: centred when a Proceed button follows (the trailing
+        // half is added after the count below), otherwise pushed to the right edge.
+        // Landscape leaves this out — its weighted stepper box already pushes the
+        // count + button to the right, so an extra filler here would squeeze the
+        // steps to the left and strand the count in dead space.
+        Spacer(Modifier.weight(1f))
+    }
+
+    Text(
+        text = buildAnnotatedString {
+            withStyle(SpanStyle(color = MaterialTheme.colorScheme.primary)) {
+                append(totalCount.toString())
+            }
+            if (isFixed) {
+                withStyle(SpanStyle(color = Color.White)) {
+                    append("/$targetCount")
+                }
+            }
+        },
+        fontSize = responsiveSp(10.sp, boostOnPhone = true),
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        softWrap = false
+    )
+
+    if (showProceed) {
+        // Portrait centres the count, so balance it with a trailing weighted
+        // spacer before the button. Landscape's stepper box handles spacing, so
+        // the count sits directly beside the button.
+        if (pushCountToEnd && !hasProgress) Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(12.dp))
+        PillAddButton(
+            text = stringResource(R.string.proceed),
+            // No count added yet → keep Proceed disabled (greyed out).
+            enabled = totalCount > 0,
+            onClick = { onProceed() },
+        )
+    }
+}
+
+/**
+ * The bottom strip, shared by the SCAN step and the counting steps so the two sit
+ * in exactly the same place and nothing jumps when the stage flips.
+ *
+ * Portrait floats the steps above the translucent bar; landscape puts everything
+ * inline in one bar. SCAN switches off the widgets that need a transaction
+ * ([showViewAllCounts], [showProceed]) and keeps the rest.
+ */
+@Composable
+internal fun BoxScope.CountModeBottomStrip(
+    steps: List<StepState>,
+    currentStep: StepState,
+    isVoiceOverEnabled: Boolean,
+    circleSize: Dp,
+    isLandscape: Boolean,
+    autoRevealCurrentStep: Boolean,
+    onAutoRevealed: () -> Unit,
+    isFixed: Boolean,
+    totalCount: Int,
+    targetCount: Int,
+    onShowHistory: () -> Unit,
+    onProceed: () -> Unit,
+    titleOverrides: Map<StepState, Int> = emptyMap(),
+    showViewAllCounts: Boolean = true,
+    // Off on the SCAN step: nothing is counted until a container is scanned.
+    showCount: Boolean = true,
+    showProceed: Boolean = false,
+    // Null hides the reset control — on the SCAN step, and once the count has synced.
+    onReset: (() -> Unit)? = null,
+    // Portrait only: false drops the translucent bar and leaves the steps floating.
+    // The SCAN step has nothing to put in the bar on any device.
+    showBar: Boolean = true,
+    // Rendered directly above the strip, inside the same bottom-aligned column —
+    // the VIAL step puts its capture controls here.
+    leading: (@Composable ColumnScope.() -> Unit)? = null,
+) {
+    val stepper: @Composable (Modifier) -> Unit = { stepperModifier ->
+        WorkflowStepper(
+            steps = steps,
+            currentStep = currentStep,
+            isVoiceOverEnabled = isVoiceOverEnabled,
+            circleSize = circleSize,
+            // Announce every step on entry (and on step change) via the stepper
+            // bubble + voiceover — no step carries a persistent header title.
+            autoRevealCurrentStep = autoRevealCurrentStep,
+            onAutoRevealed = onAutoRevealed,
+            titleOverrides = titleOverrides,
+            modifier = stepperModifier,
+        )
+    }
+
+    // Unstyled outer column so [leading] sits above the bar without inheriting its
+    // background or padding.
+    Column(
+        modifier = Modifier
+            .align(Alignment.BottomCenter)
+            .fillMaxWidth(),
+    ) {
+        leading?.invoke(this)
+
+        if (isLandscape) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(CountModeBarBackground)
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    onReset?.let {
+                        ResetCountButton(onClick = it)
+                        Spacer(Modifier.width(12.dp))
+                    }
+                    if (showViewAllCounts) {
+                        ViewAllCountsLink(onClick = onShowHistory)
+                        Spacer(Modifier.width(8.dp))
+                    }
+
+                    // Workflow steps live inline between "View all counts" and the
+                    // progress bar. Weighted so it shares the leftover space with the
+                    // progress bar instead of taking a fixed footprint.
+                    Box(modifier = Modifier.weight(1f)) { stepper(Modifier) }
+
+                    Spacer(Modifier.width(12.dp))
+
+                    if (showCount) {
+                        BottomProgressAndCount(
+                            isFixed = isFixed,
+                            totalCount = totalCount,
+                            targetCount = targetCount,
+                            showProceed = showProceed,
+                            onProceed = onProceed,
+                        )
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+            ) {
+                // Steps float on the camera feed — no black background behind them.
+                stepper(Modifier.fillMaxWidth())
+
+                if (showBar) {
+                    Spacer(Modifier.height(8.dp))
+
+                    // Translucent row: View all counts | progress | count | button.
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(CountModeBarBackground)
+                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        onReset?.let {
+                            ResetCountButton(onClick = it)
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        if (showViewAllCounts) {
+                            ViewAllCountsLink(onClick = onShowHistory)
+                            Spacer(Modifier.width(12.dp))
+                        }
+                        if (showCount) {
+                            BottomProgressAndCount(
+                                isFixed = isFixed,
+                                totalCount = totalCount,
+                                targetCount = targetCount,
+                                showProceed = showProceed,
+                                onProceed = onProceed,
+                                pushCountToEnd = true,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Step circle diameter for the strip outside the four count-mode variants (the SCAN
+ * and VIAL steps). Mirrors the variants' own per-form-factor constants.
+ */
+@Composable
+internal fun countModeStepSize(isTablet: Boolean, isLandscape: Boolean): Dp = when {
+    isTablet -> 34.dp
+    isLandscape -> 40.dp
+    else -> 32.dp
+}
+
+/** A small label-over-value column used in the top details bar. */
+@Composable
+internal fun DetailColumn(label: String, value: String) {
+    Column(horizontalAlignment = Alignment.End) {
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.7f),
+            fontSize = responsiveSp(8.sp, boostOnPhone = true),
+            maxLines = 1
+        )
+        Text(
+            text = value,
+            color = Color.White,
+            fontSize = responsiveSp(8.sp, boostOnPhone = true),
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}

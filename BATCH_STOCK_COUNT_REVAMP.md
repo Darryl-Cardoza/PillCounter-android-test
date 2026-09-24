@@ -61,28 +61,28 @@ All 4 variants render the same `BatchStockCountUiState`. The shapes/components d
 ## 4. File map
 
 ### New files (this revamp)
-- `app/src/main/java/com/rite/pillcounting/feature/pillCountScan/presentation/compose/BatchStockCountUiState.kt`
+- `app/src/main/java/com/dispensesure/retail/feature/pillCountScan/presentation/compose/BatchStockCountUiState.kt`
   - `BatchStockCountUiState`, `RecentBatchRow`, `ActiveNdc`, `BatchStockCountSampleData` (active + summary samples for previews and UI-only first pass).
-- `app/src/main/java/com/rite/pillcounting/feature/pillCountScan/presentation/compose/BatchStockCountComponents.kt`
+- `app/src/main/java/com/dispensesure/retail/feature/pillCountScan/presentation/compose/BatchStockCountComponents.kt`
   - Shared building blocks (form-factor agnostic): `StockCountCard`, `BatchStockCountHeader` (with SCAN PILLS pill button), `RecentCountsLabelRow`, `RecentCountsList`, `ScannedDrugCard`, `ScannedSummaryCard`, `CounterRow` (with press-and-hold repeating +/−). **All 4 variants will reuse these.**
-- `app/src/main/java/com/rite/pillcounting/feature/pillCountScan/presentation/variant/BatchStockCountTabletLandscape.kt`
+- `app/src/main/java/com/dispensesure/retail/feature/pillCountScan/presentation/variant/BatchStockCountTabletLandscape.kt`
   - The tablet-landscape variant + a stateful `BatchStockCountTabletLandscapePreviewHost` for iteration + two `@Preview`s (Active + Summary states).
 
 ### Modified files (this revamp)
-- `app/src/main/java/com/rite/pillcounting/navigation/Screen.kt`
+- `app/src/main/java/com/dispensesure/retail/navigation/Screen.kt`
   - Added `Screen.InventoryScan` (`inventory_scan?batch_id={batch_id}`).
-- `app/src/main/java/com/rite/pillcounting/navigation/AppNavGraph.kt`
+- `app/src/main/java/com/dispensesure/retail/navigation/AppNavGraph.kt`
   - Registers `Screen.InventoryScan` → `PillScanningScreen(navController, CountType.REGULAR, isInventory = true)`.
-- `app/src/main/java/com/rite/pillcounting/feature/dashboard/presentation/DashboardScreen.kt`
+- `app/src/main/java/com/dispensesure/retail/feature/dashboard/presentation/DashboardScreen.kt`
   - Inventory Quick Action opens **bucket-select directly** (single dialog). The earlier New-batch / Resume-last picker was removed per product decision — Inventory always creates a new batch.
   - `LaunchedEffect(createdBatchId)` navigates to `Screen.InventoryScan` (was: `Screen.DispenseScan` — that was wrong).
-- `app/src/main/java/com/rite/pillcounting/feature/pillCountScan/presentation/PillScanningScreen.kt`
+- `app/src/main/java/com/dispensesure/retail/feature/pillCountScan/presentation/PillScanningScreen.kt`
   - New parameter: `isInventory: Boolean = false`.
   - Early-return into `InventoryTabletLandscapeShell(navController)` when `isInventory && isTablet && isLandscape`. Other 3 form factors fall through to legacy UI until their Figmas land.
   - `InventoryTabletLandscapeShell` (private composable in this file) — grey camera placeholder + new panel driven by `BatchStockCountSampleData.activeState`. +/− / CLEAR / ADD update local sample state in place.
 
 ### Related (incidental fix this session)
-- `app/src/main/java/com/rite/pillcounting/feature/dashboard/presentation/compose/DashboardScaffoldWidgets.kt`
+- `app/src/main/java/com/dispensesure/retail/feature/dashboard/presentation/compose/DashboardScaffoldWidgets.kt`
   - `ScaffoldKpiColumn` regression fix: commit `60e8ff7` changed inner Box to `fillMaxSize()`; without bounded card height the first KPI card consumed the column. Each card now claims `.weight(1f)`.
 
 ### Untouched (legacy, still in use elsewhere)
