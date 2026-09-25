@@ -17,14 +17,14 @@ import kotlinx.coroutines.flow.Flow
  * ---
  * ### Core Responsibilities
  * - Manage creation and modification of pill count line items.
- * - Support soft deletion (marking as deleted without physical removal).
+ * - Hard-delete counts with their image files (callers remove files first).
  * - Provide reactive queries using [Flow] for real-time UI updates.
  * - Compute summary data (e.g., total pill count per transaction).
  *
  * ---
  * ### Design Notes
  * - Uses [OnConflictStrategy.REPLACE] for inserts to support upserts of line items.
- * - Physically deleted rows are avoided in favor of logical deletion (`isDeleted = 1`).
+ * - Rows are physically deleted; `isDeleted` filters stay for rows soft-deleted before.
  * - Optimized for live data observation and background synchronization.
  */
 @Dao
@@ -68,37 +68,50 @@ interface PillCountTxnDetailsDao {
     )
     fun observeAllForTxn(txnId: Long, type: StepState): Flow<List<PillCountTxnDetailsEntity>>
 
-    // ─────────────────────────────── Soft Delete ───────────────────────────────
+    // ─────────────────────────────── Hard Delete ───────────────────────────────
 
-    /**
-     * Performs a **soft delete** of a transaction detail record.
-     *
-     * Instead of removing the record from the database, it marks
-     * the record as deleted (`isDeleted = 1`) while preserving historical data.
-     *
-     * @param id The unique ID of the detail record.
-     * @param now Optional update timestamp (epoch milliseconds). Defaults to the current time.
-     */
-    @Query(
-        "UPDATE pill_count_txn_details SET isDeleted = 1, updatedAt = :now WHERE txnDetailsId = :id"
-    )
-    suspend fun softDelete(id: Long, now: Long = System.currentTimeMillis())
-
+    /** Processed and raw image paths of one detail, so its files go before the row. */
     @Query(
         """
-    UPDATE pill_count_txn_details
-    SET isDeleted = 1, updatedAt = :now
-    WHERE txnId = :id AND type = :type
-    """
+        SELECT imagePath FROM pill_count_txn_details WHERE txnDetailsId = :id AND imagePath IS NOT NULL
+        UNION ALL
+        SELECT rawImagePath FROM pill_count_txn_details WHERE txnDetailsId = :id AND rawImagePath IS NOT NULL
+        """
     )
-    suspend fun softDeleteAllTransaction(id: Long, now: Long = System.currentTimeMillis(),type: StepState)
+    suspend fun getImagePathsForDetail(id: Long): List<String>
+
+    /** Processed and raw image paths of one step's details, so the files go before the rows. */
+    @Query(
+        """
+        SELECT imagePath FROM pill_count_txn_details
+        WHERE txnId = :txnId AND type = :type AND imagePath IS NOT NULL
+        UNION ALL
+        SELECT rawImagePath FROM pill_count_txn_details
+        WHERE txnId = :txnId AND type = :type AND rawImagePath IS NOT NULL
+        """
+    )
+    suspend fun getImagePathsForStep(txnId: Long, type: StepState): List<String>
+
+    /** Physical delete of one detail (View All delete). */
+    @Query("DELETE FROM pill_count_txn_details WHERE txnDetailsId = :id")
+    suspend fun hardDelete(id: Long)
+
+    /** Physical delete of one step's details (View All delete all). */
+    @Query("DELETE FROM pill_count_txn_details WHERE txnId = :txnId AND type = :type")
+    suspend fun hardDeleteAllForStep(txnId: Long, type: StepState)
 
     // Delete method to remove existing VIAL records for a specific txnId
     @Query("DELETE FROM pill_count_txn_details WHERE txnId = :txnId AND type = :type")
     suspend fun deleteVialByTxnId(txnId: Long, type: StepState)
 
     /** Image paths for a transaction, so the files can be removed before the rows go. */
-    @Query("SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId AND imagePath IS NOT NULL")
+    @Query(
+        """
+        SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId AND imagePath IS NOT NULL
+        UNION ALL
+        SELECT rawImagePath FROM pill_count_txn_details WHERE txnId = :txnId AND rawImagePath IS NOT NULL
+        """
+    )
     suspend fun getImagePathsForTxn(txnId: Long): List<String>
 
     /** Physical delete of every detail for a transaction. Used by reset, which keeps nothing. */

@@ -677,7 +677,13 @@ interface PillCountTxnDao {
      * @param txnId The transaction ID.
      * @return A list of image file paths.
      */
-    @Query("SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId")
+    @Query(
+        """
+        SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId
+        UNION ALL
+        SELECT rawImagePath FROM pill_count_txn_details WHERE txnId = :txnId AND rawImagePath IS NOT NULL
+        """
+    )
     suspend fun getTransactionDetailsImages(txnId: Long): List<String>
 
     /**

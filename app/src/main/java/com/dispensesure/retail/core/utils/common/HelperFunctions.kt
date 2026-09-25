@@ -23,6 +23,10 @@ import com.dispensesure.retail.feature.menu.domain.model.CountBuckets
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.navigation.Screen
+import dagger.hilt.EntryPoint
+import dagger.hilt.EntryPoints
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -39,6 +43,13 @@ import kotlin.system.exitProcess
  * - Bitmap saving and Play Store navigation.
  */
 object HelperFunctions {
+
+    /** Reaches the app's [PreferenceHelper] singleton from this non-injected object. */
+    @EntryPoint
+    @InstallIn(SingletonComponent::class)
+    interface PreferenceEntryPoint {
+        fun preferenceHelper(): PreferenceHelper
+    }
 
     /**
      * Masks an email address by keeping part of the local segment visible and replacing the rest with stars.
@@ -211,19 +222,24 @@ object HelperFunctions {
      * @param bitmap The bitmap to save.
      * @param filename Name of the file to create.
      * @param child Optional subdirectory (default: `"barcodes"`).
+     * @param alwaysColor Save in colour whatever the setting (raw images).
      * @return The absolute path of the saved image.
+     *
+     * Saved in colour or grayscale per the backend's colour-image setting.
      */
     fun saveBitmapToFile(
         context: Context,
         bitmap: Bitmap,
         filename: String,
         child: String = "barcodes",
-        grayscale: Boolean = false
+        alwaysColor: Boolean = false,
     ): String {
         val dir = File(context.getExternalFilesDir(Environment.DIRECTORY_PICTURES), child)
         if (!dir.exists()) dir.mkdirs()
 
         val file = File(dir, filename)
+        val grayscale = !alwaysColor && !EntryPoints.get(context.applicationContext, PreferenceEntryPoint::class.java)
+            .preferenceHelper().getIsColorImageEnabled()
         val toSave = if (grayscale) toGrayscaleBitmap(bitmap) else bitmap
         try {
             val baos = ByteArrayOutputStream()

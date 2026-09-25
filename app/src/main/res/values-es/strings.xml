@@ -129,7 +129,7 @@
     <string name="rescane">Reescanear</string>
     <string name="done">Hecho</string>
     <string name="add">Agregar</string>
-    <string name="count">Contar</string>
+    <string name="count">Recuento</string>
     <string name="ok">Aceptar</string>
     <string name="cancel">Cancelar</string>
     <string name="yes">Sí</string>
@@ -246,6 +246,8 @@
 
     <string name="add_button_wait">Espere 2 segundos antes de agregar de nuevo.</string>
     <string name="add_zero_detected">No se puede agregar — no se detectaron pastillas.</string>
+    <string name="add_camera_not_ready">La cámara no está lista, inténtelo de nuevo.</string>
+    <string name="location_unavailable">Ubicación no disponible</string>
     <string name="duplicate_scan_ignored">Escaneo duplicado ignorado — no se detectaron pastillas nuevas.</string>
 
     <!-- For multi-select mode text in PartialListPanel -->
@@ -571,5 +573,13 @@
     <string name="connection_info_title">Información de conexión</string>
     <string name="hl7_notification_title">Servicio en segundo plano HL7</string>
     <string name="rx_already_completed_message">Esta Rx ya ha sido dispensada</string>
+
+    <!-- ================== SAVED PHOTO INFO STRIPS ================== -->
+    <string name="photo_label_requested_ndc">NDC solicitado</string>
+    <string name="photo_label_dispensed_ndc">NDC dispensado</string>
+    <string name="photo_label_rx_refill">N.º Rx-Resurtido</string>
+    <string name="photo_label_step">Paso</string>
+    <string name="photo_label_date_time">Fecha y hora</string>
+    <string name="photo_label_operator">Operador</string>
 
 </resources>

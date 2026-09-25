@@ -241,8 +241,11 @@ class ImageNanoServer(
         }
     }
 
-    /** One image, resolved to bytes, with the naming metadata needed for the zip entry. */
-    private data class ImageEntry(val type: String, val pillCount: Int, val file: File, val createdAt: Long)
+    /** One image, resolved to bytes, with the naming metadata needed for the zip entry.
+     * [isRaw] entries follow their processed image and are named from it. */
+    private data class ImageEntry(
+        val type: String, val pillCount: Int, val file: File, val createdAt: Long, val isRaw: Boolean = false
+    )
 
     private suspend fun collectImageEntries(txn: PillCountTxnEntity): List<ImageEntry> {
         val entries = mutableListOf<ImageEntry>()
@@ -261,6 +264,10 @@ class ImageNanoServer(
             val path = detail.imagePath?.takeIf { it.isNotBlank() } ?: continue
             val file = resolveFile(path) ?: continue
             entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, file, detail.createdAt))
+            // Raw copy right after its processed image; zipResponse names it from that one.
+            detail.rawImagePath?.takeIf { it.isNotBlank() }?.let { resolveFile(it) }?.let {
+                entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, it, detail.createdAt, isRaw = true))
+            }
         }
 
         return entries
@@ -276,6 +283,10 @@ class ImageNanoServer(
         else -> "BWTP"
     }
 
+    /** `name.jpg` → `name_raw.jpg`. */
+    private fun rawName(processed: String): String =
+        processed.substringBeforeLast('.') + "_raw." + processed.substringAfterLast('.')
+
     private fun zipResponse(
         entries: List<ImageEntry>,
         zipFileName: String = "images.zip",
@@ -290,20 +301,24 @@ class ImageNanoServer(
                     // Batch position/total is per label: e.g. two CONTAINER_PENDING images are
                     // 1B2/2B2, while a lone VIAL image is 1B1. Overall sequence is the position
                     // across all entries.
-                    val labels = entries.map { it.type.toImageLabel() }
+                    val labels = entries.filterNot { it.isRaw }.map { it.type.toImageLabel() }
                     val batchTotalsByLabel = labels.groupingBy { it }.eachCount()
                     val batchCounters = mutableMapOf<String, Int>()
+                    var seq = 0
+                    var lastName = ""
 
-                    entries.forEachIndexed { index, entry ->
-                        val seq = index + 1
-                        val label = labels[index]
-                        val batchNum = (batchCounters[label] ?: 0) + 1
-                        batchCounters[label] = batchNum
-                        val batchTotal = batchTotalsByLabel[label] ?: 1
-                        val ext = entry.file.extension.ifBlank { "jpg" }
-                        zip.putNextEntry(
-                            ZipEntry("${seq}_rx_${label}_${batchNum}B${batchTotal}_qty${entry.pillCount}.$ext")
-                        )
+                    entries.forEach { entry ->
+                        val name = if (entry.isRaw) rawName(lastName) else {
+                            seq++
+                            val label = labels[seq - 1]
+                            val batchNum = (batchCounters[label] ?: 0) + 1
+                            batchCounters[label] = batchNum
+                            val batchTotal = batchTotalsByLabel[label] ?: 1
+                            val ext = entry.file.extension.ifBlank { "jpg" }
+                            "${seq}_rx_${label}_${batchNum}B${batchTotal}_qty${entry.pillCount}.$ext"
+                        }
+                        lastName = name
+                        zip.putNextEntry(ZipEntry(name))
                         zip.write(readImageBytes(entry.file))
                         zip.closeEntry()
                     }
@@ -311,19 +326,21 @@ class ImageNanoServer(
 
                 ZipNaming.PMS_FILE_NAMING -> {
                     val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
-                    val codes = entries.map { pmsTypeCode(it.type) }
                     val codeCounters = mutableMapOf<String, Int>()
+                    var lastName = ""
 
-                    entries.forEachIndexed { index, entry ->
-                        val code = codes[index]
-                        val number = (codeCounters[code] ?: 0) + 1
-                        codeCounters[code] = number
-                        val timestamp = dateFormat.format(Date(entry.createdAt))
-                        // `entry.file` is the on-disk (encrypted) file — the zip entry holds
-                        // already-decrypted jpeg bytes, so always name it `.jpg`.
-                        zip.putNextEntry(
-                            ZipEntry("${rxNo}_${orderId}_${timestamp}_${code}${number}.jpg")
-                        )
+                    entries.forEach { entry ->
+                        val name = if (entry.isRaw) rawName(lastName) else {
+                            val code = pmsTypeCode(entry.type)
+                            val number = (codeCounters[code] ?: 0) + 1
+                            codeCounters[code] = number
+                            val timestamp = dateFormat.format(Date(entry.createdAt))
+                            // `entry.file` is the on-disk (encrypted) file — the zip entry holds
+                            // already-decrypted jpeg bytes, so always name it `.jpg`.
+                            "${rxNo}_${orderId}_${timestamp}_${code}${number}.jpg"
+                        }
+                        lastName = name
+                        zip.putNextEntry(ZipEntry(name))
                         zip.write(readImageBytes(entry.file))
                         zip.closeEntry()
                     }

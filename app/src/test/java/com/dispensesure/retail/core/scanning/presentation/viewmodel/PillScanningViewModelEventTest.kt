@@ -166,25 +166,36 @@ class PillScanningViewModelEventTest {
 
     // SCAN_VM_031
     @Test
-    fun `TransactionDetailDeleted calls softDelete with the provided txnDetailId`() = runTest {
-        viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
-        advanceUntilIdle()
+    fun `TransactionDetailDeleted hard-deletes the files then the row`() = runTest {
+        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
 
-        coVerify(exactly = 1) { pillCountTxnDetailsDao.softDelete(eq(5L), any()) }
+        viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
+
+        // Delete runs on real Dispatchers.IO; wait for the last call, then check order.
+        coVerify(timeout = 3000) { pillCountTxnDetailsDao.hardDelete(5L) }
+        coVerifyOrder {
+            pillCountTxnDetailsDao.getImagePathsForDetail(5L)
+            pillCountTxnDetailsDao.hardDelete(5L)
+        }
     }
 
     // ─────────────────────────── AllTransactionDetailsDeleted ───────────────────────────
 
     // SCAN_VM_032
     @Test
-    fun `AllTransactionDetailsDeleted calls softDeleteAllTransaction for the given stepType`() = runTest {
+    fun `AllTransactionDetailsDeleted hard-deletes the step's files then rows`() = runTest {
+        coEvery { pillCountTxnDetailsDao.getImagePathsForStep(any(), any()) } returns emptyList()
+
         viewModel.onEvent(
             PillScanningEvent.AllTransactionDetailsDeleted(stepType = StepState.CONTAINER_INITIATE)
         )
-        advanceUntilIdle()
 
-        coVerify(exactly = 1) {
-            pillCountTxnDetailsDao.softDeleteAllTransaction(any(), any(), eq(StepState.CONTAINER_INITIATE))
+        coVerify(timeout = 3000) {
+            pillCountTxnDetailsDao.hardDeleteAllForStep(any(), eq(StepState.CONTAINER_INITIATE))
+        }
+        coVerifyOrder {
+            pillCountTxnDetailsDao.getImagePathsForStep(any(), eq(StepState.CONTAINER_INITIATE))
+            pillCountTxnDetailsDao.hardDeleteAllForStep(any(), eq(StepState.CONTAINER_INITIATE))
         }
     }
 

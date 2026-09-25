@@ -144,62 +144,69 @@ class PillCountTxnDetailsDaoTest {
         }
     }
 
-    // ───────────────────────── softDelete ─────────────────────────
+    // ───────────────────────── hardDelete ─────────────────────────
 
     @Test
-    fun `softDelete marks row deleted and updates timestamp using provided now`() = runTest {
-        val id = dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 3, updatedAt = 0L))
-        dao.softDelete(id, now = 555L)
-
-        val all = dao.getAllForTxn("1")
-        assertTrue(all.isEmpty()) // getAllForTxn excludes isDeleted rows
-
-        // Verify via total pill count query which also excludes deleted rows.
-        assertEquals(0, dao.getTotalPillCountForTxn(1L))
-    }
-
-    @Test
-    fun `softDelete with default now uses current time and does not throw`() = runTest {
+    fun `hardDelete removes only that row`() = runTest {
         val id = dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 3))
-        dao.softDelete(id)
-        assertEquals(0, dao.getTotalPillCountForTxn(1L))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 4))
+
+        dao.hardDelete(id)
+
+        val remaining = dao.getAllForTxn("1")
+        assertEquals(1, remaining.size)
+        assertEquals(4, remaining[0].pillCount)
     }
 
     @Test
-    fun `softDelete on nonexistent id affects no rows`() = runTest {
+    fun `hardDelete on nonexistent id affects no rows`() = runTest {
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 3))
-        dao.softDelete(id = 999L, now = 1L)
+        dao.hardDelete(999L)
         assertEquals(3, dao.getTotalPillCountForTxn(1L))
     }
 
-    // ───────────────────────── softDeleteAllTransaction ─────────────────────────
+    // ───────────────────────── hardDeleteAllForStep ─────────────────────────
 
     @Test
-    fun `softDeleteAllTransaction marks all rows of matching txn and type as deleted`() = runTest {
+    fun `hardDeleteAllForStep removes only that txn and step`() = runTest {
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5, type = StepState.VIAL.name))
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5, type = StepState.VIAL.name))
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5, type = StepState.SCAN.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 2L, pillCount = 5, type = StepState.VIAL.name))
 
-        dao.softDeleteAllTransaction(id = 1L, now = 111L, type = StepState.VIAL)
+        dao.hardDeleteAllForStep(txnId = 1L, type = StepState.VIAL)
 
-        dao.observeAllForTxn(1L, StepState.VIAL).test {
-            assertTrue(awaitItem().isEmpty())
-        }
-        dao.observeAllForTxn(1L, StepState.SCAN).test {
-            assertEquals(1, awaitItem().size)
-        }
+        val txn1 = dao.getAllForTxn("1")
+        assertEquals(listOf(StepState.SCAN.name), txn1.map { it.type })
+        assertEquals(1, dao.getAllForTxn("2").size)
+    }
+
+    // ───────────────────────── image paths ─────────────────────────
+
+    @Test
+    fun `getImagePathsForDetail returns processed and raw paths of that row only`() = runTest {
+        val id = dao.insert(
+            PillCountTxnDetailsEntity(txnId = 1L, imagePath = "/a.jpg", rawImagePath = "/a_raw.jpg")
+        )
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, imagePath = "/b.jpg"))
+
+        assertEquals(listOf("/a.jpg", "/a_raw.jpg"), dao.getImagePathsForDetail(id).sorted())
     }
 
     @Test
-    fun `softDeleteAllTransaction does not affect a different txnId`() = runTest {
-        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5, type = StepState.VIAL.name))
-        dao.insert(PillCountTxnDetailsEntity(txnId = 2L, pillCount = 5, type = StepState.VIAL.name))
+    fun `getImagePathsForStep returns processed and raw paths of that step only`() = runTest {
+        dao.insert(
+            PillCountTxnDetailsEntity(
+                txnId = 1L, imagePath = "/t.jpg", rawImagePath = "/t_raw.jpg",
+                type = StepState.TARGET_VERIFICATION.name
+            )
+        )
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, imagePath = "/v.jpg", type = StepState.VIAL.name))
 
-        dao.softDeleteAllTransaction(id = 1L, now = 111L, type = StepState.VIAL)
-
-        dao.observeAllForTxn(2L, StepState.VIAL).test {
-            assertEquals(1, awaitItem().size)
-        }
+        assertEquals(
+            listOf("/t.jpg", "/t_raw.jpg"),
+            dao.getImagePathsForStep(1L, StepState.TARGET_VERIFICATION).sorted()
+        )
     }
 
     // ───────────────────────── deleteVialByTxnId ─────────────────────────
@@ -240,7 +247,9 @@ class PillCountTxnDetailsDaoTest {
     @Test
     fun `getImagePathsForTxn returns only the non-null paths`() = runTest {
         dao.insert(
-            PillCountTxnDetailsEntity(txnId = 1L, imagePath = "/a.jpg", type = StepState.SCAN.name)
+            PillCountTxnDetailsEntity(
+                txnId = 1L, imagePath = "/a.jpg", rawImagePath = "/a_raw.jpg", type = StepState.SCAN.name
+            )
         )
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, imagePath = null, type = StepState.SCAN.name))
         dao.insert(
@@ -250,7 +259,7 @@ class PillCountTxnDetailsDaoTest {
             PillCountTxnDetailsEntity(txnId = 2L, imagePath = "/other.jpg", type = StepState.SCAN.name)
         )
 
-        assertEquals(listOf("/a.jpg", "/b.jpg"), dao.getImagePathsForTxn(1L).sorted())
+        assertEquals(listOf("/a.jpg", "/a_raw.jpg", "/b.jpg"), dao.getImagePathsForTxn(1L).sorted())
     }
 
     // ───────────────────────── getTotalPillCountForTxn ─────────────────────────

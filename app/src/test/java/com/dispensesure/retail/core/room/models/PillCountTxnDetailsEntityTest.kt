@@ -14,6 +14,7 @@ class PillCountTxnDetailsEntityTest {
         txnId = 9L,
         pillCount = 15,
         imagePath = "img.png",
+        rawImagePath = "img_raw.png",
         type = "fixed",
         isManual = true,
         isDeleted = true,
@@ -28,6 +29,7 @@ class PillCountTxnDetailsEntityTest {
         assertNull(e.txnId)
         assertNull(e.pillCount)
         assertNull(e.imagePath)
+        assertNull(e.rawImagePath)
         assertNull(e.type)
         assertFalse(e.isManual)
         assertFalse(e.isDeleted)
@@ -42,6 +44,7 @@ class PillCountTxnDetailsEntityTest {
         assertEquals(9L, e.txnId)
         assertEquals(15, e.pillCount)
         assertEquals("img.png", e.imagePath)
+        assertEquals("img_raw.png", e.rawImagePath)
         assertEquals("fixed", e.type)
         assertTrue(e.isManual)
         assertTrue(e.isDeleted)
@@ -73,10 +76,11 @@ class PillCountTxnDetailsEntityTest {
         assertEquals(9L, e.component2())
         assertEquals(15, e.component3())
         assertEquals("img.png", e.component4())
-        assertEquals("fixed", e.component5())
-        assertEquals(true, e.component6())
+        assertEquals("img_raw.png", e.component5())
+        assertEquals("fixed", e.component6())
         assertEquals(true, e.component7())
-        assertEquals(100L, e.component8())
-        assertEquals(200L, e.component9())
+        assertEquals(true, e.component8())
+        assertEquals(100L, e.component9())
+        assertEquals(200L, e.component10())
     }
 }

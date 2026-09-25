@@ -1,6 +1,8 @@
 package com.dispensesure.retail.core.scanning.presentation.viewmodel
 
 import android.app.Application
+import android.graphics.Bitmap
+import androidx.core.content.ContextCompat
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.BottleInfoDao
@@ -26,6 +28,7 @@ import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.SoundUtils
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.util.MainDispatcherRule
@@ -41,6 +44,7 @@ import io.mockk.verify
 import io.mockk.slot
 import io.mockk.unmockkAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -48,6 +52,7 @@ import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -596,6 +601,74 @@ class PillScanningViewModelTest {
         assertTrue(viewModel.trayDetections.value.isEmpty())
     }
 
+    // ─────────────────────────── handleAddTransaction: frame at the tap ───────────────────────────
+
+    private fun tapAdd() = viewModel.onEvent(
+        PillScanningEvent.AddTransactionDetailClicked(
+            filteredCount = 5,
+            stepType = StepState.TARGET_VERIFICATION,
+        )
+    )
+
+    // drugImagePlaceholder() is outside any try; with stubbed Android its toBitmap() hits a
+    // null Bitmap and would kill the save before the insert. No drawable = no placeholder.
+    private fun stubSavePath() {
+        mockkStatic(ContextCompat::class)
+        every { ContextCompat.getDrawable(any(), any()) } returns null
+    }
+
+    @Test
+    fun `Add with no camera frame shows a toast and records nothing`() = runTest {
+        mockkObject(UserInterfaceUtils)
+        every { UserInterfaceUtils.showToast(any(), any<String>(), any()) } returns Unit
+
+        tapAdd()
+        advanceUntilIdle()
+
+        verify(exactly = 1) { UserInterfaceUtils.showToast(any(), any<String>(), any()) }
+        assertFalse(viewModel.uiState.value.isAddCooldown)
+        // Signature unset, so the retry isn't rejected as a duplicate.
+        assertNull(getPrivateField("lastAddedScanSignature"))
+        coVerify(exactly = 0) { pillCountTxnDetailsDao.insert(any()) }
+    }
+
+    @Test
+    fun `Add takes the frame at the tap and a newer frame is left alone`() = runTest {
+        stubSavePath()
+        val tapFrame = mockk<Bitmap>(relaxed = true)
+        setPrivateField("currentFrameBitmap", tapFrame)
+
+        tapAdd()
+        // Taken synchronously on the tap, before the save coroutine runs.
+        assertNull(getPrivateField("currentFrameBitmap"))
+
+        val newerFrame = mockk<Bitmap>(relaxed = true)
+        setPrivateField("currentFrameBitmap", newerFrame)
+
+        coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
+        verify { tapFrame.recycle() }
+        verify(exactly = 0) { newerFrame.recycle() }
+        assertEquals(newerFrame, getPrivateField("currentFrameBitmap"))
+    }
+
+    @Test
+    fun `Add does not wait for a location lookup`() = runTest {
+        stubSavePath()
+        coEvery { locationProvider.getCurrentLocationAsString() } coAnswers { awaitCancellation() }
+        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
+
+        tapAdd()
+
+        coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
+    }
+
+    @Test
+    fun `attachCameraHelper starts a location lookup`() = runTest {
+        viewModel.attachCameraHelper(mockk(relaxed = true))
+
+        coVerify(timeout = 3000) { locationProvider.getCurrentLocationAsString() }
+    }
+
     // ─────────────────────────── flushStagedDetails (deferred stock commit) ───────────────────────────
 
     private fun setPrivateField(name: String, value: Any?) {
@@ -687,6 +760,61 @@ class PillScanningViewModelTest {
         coVerify(exactly = 1) { bottleInfoDao.insert(any()) }
         coVerify(exactly = 1) { stockTxnDao.refreshBatchTotalNdcs(111L) }
         assertEquals(111L, viewModel.stockCountCommittedBatchId.value)
+    }
+
+    @Test
+    fun `flushStagedDetails deferred path stamps the scanned lot expiry and serial on the loose line`() = runTest {
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        val txBlock = slot<suspend () -> Pair<Long, Long>>()
+        coEvery {
+            appDatabase.withTransaction<Pair<Long, Long>>(capture(txBlock))
+        } coAnswers { txBlock.captured.invoke() }
+        coEvery { batchDao.insert(any()) } returns 111L
+        coEvery { stockTxnDao.findByDrugInBatch(111L, 42L) } returns null
+        coEvery { stockTxnDao.upsertPreservingId(any()) } returns 222L
+        coEvery { bottleInfoDao.insert(any()) } returns 333L
+        every { preferenceHelper.getTxnId() } returns 5L
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(5L) } returns 0
+
+        seedDeferredStockSession()
+        setPrivateField("stockLotNo", "10522")
+        setPrivateField("stockExpNo", "04-30-2028")
+        setPrivateField("stockSerialNo", "1000002616")
+        stageDetail(pillCount = 30)
+
+        viewModel.onEvent(PillScanningEvent.DoneClicked)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            bottleInfoDao.insert(match {
+                it.lotNo == "10522" && it.expNo == "04-30-2028" && it.serialNo == "1000002616" &&
+                    it.bottleQty == 0 && it.looseQty == 30
+            })
+        }
+    }
+
+    @Test
+    fun `flushStagedDetails existing-header path stamps the scanned lot expiry and serial on the loose line`() = runTest {
+        coEvery { bottleInfoDao.insert(any()) } returns 333L
+        every { preferenceHelper.getTxnId() } returns 5L
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(5L) } returns 0
+
+        seedDeferredStockSession()
+        setPrivateField("stockTxnId", 9L)
+        setPrivateField("stockLotNo", "10522")
+        setPrivateField("stockExpNo", "04-30-2028")
+        setPrivateField("stockSerialNo", "1000002616")
+        stageDetail(pillCount = 30)
+
+        viewModel.onEvent(PillScanningEvent.DoneClicked)
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) {
+            bottleInfoDao.insert(match {
+                it.stockTxnId == 9L && it.lotNo == "10522" && it.expNo == "04-30-2028" &&
+                    it.serialNo == "1000002616" && it.looseQty == 30
+            })
+        }
     }
 
     @Test

@@ -15,6 +15,7 @@ import androidx.room.PrimaryKey
  * @property txnDetailsNo Sequential number for the detail within a transaction.
  * @property pillCount    Number of pills counted in this detail line.
  * @property imagePath    Path/URI to an associated image, if any.
+ * @property rawImagePath TARGET_VERIFICATION crop with nothing drawn on it, if any.
  * @property type         Optional category/type (e.g., "fixed", "partial").
  * @property isManual     Whether this detail was entered manually (`true`) or automatically (`false`).
  * @property isDeleted    Soft-delete flag.
@@ -43,6 +44,7 @@ data class PillCountTxnDetailsEntity(
     val txnId: Long? = null,
     val pillCount: Int? = null,
     val imagePath: String? = null,
+    val rawImagePath: String? = null,
     val type: String? = null,
 
     val isManual: Boolean = false,

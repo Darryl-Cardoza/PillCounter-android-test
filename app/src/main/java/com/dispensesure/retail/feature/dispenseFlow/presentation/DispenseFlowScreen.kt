@@ -520,6 +520,9 @@ fun DispenseFlowScreen(
                     batchId = dispenseState.batchId,
                     drugId = dispenseState.stockDrugId,
                     bucketId = dispenseState.selectedBucketId.ifBlank { null },
+                    lotNo = dispenseState.pendingFirstBottle?.lotNumber,
+                    expNo = dispenseState.pendingFirstBottle?.expirationDate,
+                    serialNo = dispenseState.pendingFirstBottle?.serialNumber,
                 )
             } else {
                 pillVm.getDrugInfo(forceStartStep = null)

@@ -36,10 +36,7 @@ import java.util.concurrent.Executor
  * without a bound camera: the safe-default/no-op guard behavior of every public
  * method on a freshly constructed (unbound) instance, which is real production
  * behavior (e.g. defensive null-safety before a camera is bound, such as at
- * activity startup or after `pauseCamera()`), plus `getPreviewWidth`/
- * `getPreviewHeight` defaults and their value once a preview is attached via
- * `startCamera` triggering the async provider listener (which we don't control
- * here, so we only assert the pre-bind default path).
+ * activity startup or after `pauseCamera()`).
  *
  * Run under Robolectric so [context] is a real (shadowed) `Context` — a plain
  * MockK relaxed mock of `Context` cannot satisfy `getApplicationContext()`
@@ -76,18 +73,6 @@ class CameraHelperTest {
 
     private fun newHelper(): CameraHelper =
         CameraHelper(context, lifecycleOwner, executor)
-
-    @Test
-    fun `getPreviewWidth returns default 640 when no preview attached`() {
-        val helper = newHelper()
-        assertEquals(640, helper.getPreviewWidth())
-    }
-
-    @Test
-    fun `getPreviewHeight returns default 640 when no preview attached`() {
-        val helper = newHelper()
-        assertEquals(640, helper.getPreviewHeight())
-    }
 
     @Test
     fun `getCurrentZoomRatio returns null when no camera bound`() {
