@@ -190,7 +190,7 @@ class AppLogger(private val tag: String) {
          */
         private fun resolveCallSite(): CallSite {
             val frame = Thread.currentThread().stackTrace.firstOrNull { element ->
-                element.className != "java.lang.Thread" && !isInternalClass(element.className)
+                !isVmInternalClass(element.className) && !isInternalClass(element.className)
             }
             return CallSite(
                 fileName = frame?.fileName ?: "Unknown",
@@ -205,5 +205,15 @@ class AppLogger(private val tag: String) {
          */
         private fun isInternalClass(className: String): Boolean =
             className == INTERNAL_CLASS_NAME || className.startsWith("$INTERNAL_CLASS_NAME$")
+
+        /**
+         * True for VM/runtime frames that sit above the real caller on some ART builds (e.g.
+         * `dalvik.system.VMStack.getThreadStackTrace`, `java.lang.Thread.getStackTrace`) before
+         * [Thread.getStackTrace] settles into application code.
+         */
+        private fun isVmInternalClass(className: String): Boolean =
+            className == "java.lang.Thread" ||
+                className == "dalvik.system.VMStack" ||
+                className.startsWith("java.lang.VMStack")
     }
 }
