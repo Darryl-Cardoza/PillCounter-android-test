@@ -8,12 +8,15 @@ import android.os.Build
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
 import kotlin.coroutines.resume
 
 class LocationProvider(private val context: Context) {
+
+    private val logger = AppLogger.create<LocationProvider>()
 
     @SuppressLint("MissingPermission")
     suspend fun getCurrentLocationAsString(): String {
@@ -48,7 +51,8 @@ class LocationProvider(private val context: Context) {
                 }
                 if (last != null) reverseGeocode(last) else "Location unavailable"
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("Failed to obtain current location", e)
             "Location unavailable"
         }
     }
@@ -78,7 +82,8 @@ class LocationProvider(private val context: Context) {
             } else {
                 "%.5f, %.5f".format(location.latitude, location.longitude)
             }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("Reverse geocoding failed, falling back to raw coordinates", e)
             "%.5f, %.5f".format(location.latitude, location.longitude)
         }
     }

@@ -1,8 +1,11 @@
 package com.dispensesure.retail.core.utils.common
 
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
 import java.util.*
+
+private val logger = AppLogger("formatDateToUSFormat")
 
 fun formatDateToUSFormat(
     input: String,
@@ -29,7 +32,8 @@ fun formatDateToUSFormat(
         }
 
         cleanInput
-    } catch (_: Exception) {
+    } catch (e: Exception) {
+        logger.e("Failed to parse date \"$input\" with pattern $outputPattern", e)
         input
     }
 }

@@ -14,8 +14,11 @@ import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
 import kotlinx.coroutines.flow.Flow
+
+private val logger = AppLogger("PillCountTxnDao")
 
 /**
  * **Pill Count Transaction Data Access Object**
@@ -99,7 +102,7 @@ interface PillCountTxnDao {
                 newId
             }
         } catch (e: android.database.sqlite.SQLiteConstraintException) {
-            // Log the error and rethrow a more descriptive one or handle it
+            logger.e("Foreign key constraint failed during upsertPreservingId(txnId=${txn.txnId})", e)
             throw IllegalArgumentException("Foreign key constraint failed: Ensure User, Drug, and Batch exist before creating a transaction. ${e.message}")
         }
     }

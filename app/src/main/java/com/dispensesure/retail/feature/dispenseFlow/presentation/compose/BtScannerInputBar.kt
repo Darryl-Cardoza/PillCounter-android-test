@@ -17,6 +17,9 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.key.utf16CodePoint
 import androidx.compose.ui.unit.dp
+import com.dispensesure.retail.core.utils.logger.AppLogger
+
+private val logger = AppLogger("BtScannerInputBar")
 
 /**
  * An invisible 1×1 dp focusable element that captures input from a Bluetooth
@@ -54,7 +57,9 @@ fun BtScannerInputBar(
     LaunchedEffect(Unit) {
         try {
             focusRequester.requestFocus()
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            logger.w("Failed to request focus for BT scanner input", e)
+        }
     }
 
     Box(

@@ -1,5 +1,6 @@
 package com.dispensesure.retail.core.security
 
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import java.io.File
 import java.io.FileInputStream
 import javax.crypto.Cipher
@@ -10,6 +11,8 @@ object ModelDecryptor {
     private const val MAGIC = "RITE"
     private const val NONCE_LEN = 12
     private const val TAG_LEN_BITS = 128
+
+    private val logger = AppLogger.create<ModelDecryptor>()
 
     fun decryptToBytes(inFile: File, modelKeyUnit: ModelKeyUnit): ByteArray {
         val keyBytes = modelKeyUnit.material()
@@ -34,6 +37,7 @@ object ModelDecryptor {
             return try {
                 cipher.doFinal(cipherText)
             } catch (e: Exception) {
+                logger.e("Failed to decrypt model file ${inFile.name}", e)
                 throw IllegalStateException("Decryption failed: wrong key or corrupted file", e)
             }
         }
