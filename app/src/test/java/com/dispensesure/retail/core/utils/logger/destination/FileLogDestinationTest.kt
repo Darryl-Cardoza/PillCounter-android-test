@@ -16,9 +16,8 @@ import org.junit.Test
 import java.io.File
 
 /**
- * Unit tests for [FileLogDestination]'s file creation and append behaviour. `context.filesDir`
- * is pointed at a real temp directory so writes exercise real file I/O, following the same
- * approach as `PerformanceLoggerTest`.
+ * Unit tests for [FileLogDestination]'s file creation and append behaviour.
+ * `getExternalFilesDir(null)` is pointed at a real temp directory so writes exercise real I/O.
  */
 class FileLogDestinationTest {
 
@@ -35,7 +34,7 @@ class FileLogDestinationTest {
 
         context = mockk(relaxed = true)
         every { context.applicationContext } returns context
-        every { context.filesDir } returns tempDir
+        every { context.getExternalFilesDir(null) } returns tempDir
     }
 
     @After
@@ -55,7 +54,7 @@ class FileLogDestinationTest {
     )
 
     @Test
-    fun `write creates logs directory and dispensesure_logs-txt file under app-private files dir`() {
+    fun `write creates Logs directory and dispensesure_logs-txt file under app-private external files dir`() {
         val destination = FileLogDestination(context)
 
         destination.write(entry())
@@ -63,8 +62,8 @@ class FileLogDestinationTest {
 
         val logFile = destination.getLogFile()
         assertTrue(logFile.exists())
-        assertEquals("logs", logFile.parentFile?.name)
-        assertEquals(File(tempDir, "logs"), logFile.parentFile)
+        assertEquals("Logs", logFile.parentFile?.name)
+        assertEquals(File(tempDir, "Logs"), logFile.parentFile)
         assertEquals("dispensesure_logs.txt", logFile.name)
     }
 
@@ -103,7 +102,7 @@ class FileLogDestinationTest {
         repeat(5) { i -> destination.write(entry("entry $i")) }
         destination.awaitIdleForTest()
 
-        val logDir = File(tempDir, "logs")
+        val logDir = File(tempDir, "Logs")
         assertEquals(listOf("dispensesure_logs.txt"), logDir.list()?.toList())
 
         val content = destination.getLogFile().readText()
@@ -112,10 +111,10 @@ class FileLogDestinationTest {
 
     @Test
     fun `a write failure is caught and does not throw`() {
-        // Point filesDir at a location that cannot be created (a file, not a directory) so the
-        // logs directory creation fails inside writeInternal.
+        // Point the external files dir at a location that cannot be created (a file, not a
+        // directory) so the Logs directory creation fails inside writeInternal.
         val blockedPath = File(tempDir, "blocked").apply { writeText("not a directory") }
-        every { context.filesDir } returns blockedPath
+        every { context.getExternalFilesDir(null) } returns blockedPath
 
         val destination = FileLogDestination(context)
 

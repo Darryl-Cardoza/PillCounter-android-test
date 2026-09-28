@@ -10,19 +10,12 @@ import java.util.concurrent.Executors
 import java.util.concurrent.RejectedExecutionException
 
 /**
- * Writes every log entry to a single text file, [LOG_FILE_NAME], under the app's private files
- * directory (`filesDir`, not external storage), so no storage permission is needed and no other
- * app can read the log. This is the current, and only, [LogDestination] — see that interface for
- * how a future destination (remote API, Crashlytics, ...) would replace it without touching call
- * sites.
- *
- * Writes are serialized onto a single background thread so concurrent callers never interleave
- * or corrupt a write, and so logging never blocks the caller (including the main thread, since
- * `AppLogger.e/w` are routinely called from catch blocks in UI code).
+ * Writes every log entry to [LOG_FILE_NAME] under `Logs/` in the app's private external files dir.
+ * Writes are serialized on a single background thread so they never interleave or block callers.
  */
 class FileLogDestination(context: Context) : LogDestination {
 
-    private val logDir: File = File(context.applicationContext.filesDir, "logs")
+    private val logDir: File = File(context.applicationContext.getExternalFilesDir(null), "Logs")
     private val activeLogFile: File = File(logDir, LOG_FILE_NAME)
 
     // Single thread: writes are naturally serialized, so rotation and appends never race.
