@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.menu.presentation.viewmodel
 
 import android.util.Log
 import app.cash.turbine.test
+import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.BatchEntity
