@@ -77,6 +77,17 @@ class MenuViewModelTest {
     private fun createViewModel(): MenuViewModel =
         MenuViewModel(pillCountTxnDao, batchDao, preferenceHelper, sessionLockController)
 
+    @Test
+    fun `initial uiState has all counts at zero`() {
+        val state = createViewModel().uiState.value
+
+        assertEquals(0, state.fixedCompleted)
+        assertEquals(0, state.fixedPartial)
+        assertEquals(0, state.regularPartial)
+        assertEquals(0, state.regularCompleted)
+        assertEquals(0, state.unsyncedTransactionCount)
+    }
+
     // ────────────────────────────── init observers (happy path) ──────────────────────────────
 
     @Test

@@ -90,6 +90,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
@@ -582,7 +583,8 @@ object UserInterfaceUtils {
         var currentSelection by remember { mutableStateOf(selectedIndex) }
 
         AlertDialog(
-            onDismissRequest = {},
+            onDismissRequest = onCancel,
+            properties = DialogProperties(dismissOnClickOutside = false),
             modifier = Modifier.widthIn(max = 400.dp),
             shape = RoundedCornerShape(12.dp),
             containerColor = AppTheme.extendedColors.primaryBackground,
@@ -666,7 +668,8 @@ object UserInterfaceUtils {
         }
 
         AlertDialog(
-            onDismissRequest = {},
+            onDismissRequest = onCancel,
+            properties = DialogProperties(dismissOnClickOutside = false),
             modifier = Modifier.widthIn(max = 400.dp),
             shape = RoundedCornerShape(12.dp),
             containerColor = AppTheme.extendedColors.primaryBackground,

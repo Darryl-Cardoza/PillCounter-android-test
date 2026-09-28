@@ -33,7 +33,6 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.ScheduleCode
-import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.core.utils.common.HistoryRetention
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -41,13 +40,14 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonMultiS
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.constants.LocalDimens
+import com.dispensesure.retail.feature.settings.domain.model.SettingsCard
+import com.dispensesure.retail.feature.settings.presentation.compose.SettingsGroupCard
+import com.dispensesure.retail.feature.settings.presentation.compose.SettingsRow
+import com.dispensesure.retail.feature.settings.presentation.compose.SettingsValueText
+import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.navigation.Screen
-import com.dispensesure.retail.ui.theme.AppTheme
+import com.dispensesure.retail.ui.theme.DISABLED_ALPHA
 import com.dispensesure.retail.ui.theme.LocalExtendedColors
-import com.rite.pillcounting.feature.settings.presentation.compose.SETTINGS_DISABLED_ALPHA
-import com.rite.pillcounting.feature.settings.presentation.compose.SettingsGroupCard
-import com.rite.pillcounting.feature.settings.presentation.compose.SettingsRow
-import com.rite.pillcounting.feature.settings.presentation.compose.SettingsValueText
 
 @Composable
 fun SettingsScreen(
@@ -82,10 +82,10 @@ fun SettingsScreen(
     var pendingHistoryDays by remember { mutableStateOf<Int?>(null) }
     var showDoubleCountDialog by remember { mutableStateOf(false) }
 
-    // Index of the open group card, null when all are closed. General starts open;
+    // Open group card, null when all are closed. Controlled Drug starts open;
     // tapping the open card closes it, tapping another swaps to it.
-    var openCard by rememberSaveable { mutableStateOf<Int?>(1) }
-    val onCardClick = { index: Int -> openCard = if (openCard == index) null else index }
+    var openCard by rememberSaveable { mutableStateOf<SettingsCard?>(SettingsCard.CONTROLLED_DRUG) }
+    val onCardClick = { card: SettingsCard -> openCard = if (openCard == card) null else card }
 
     // HL7 disabled from the portal: these settings depend on HL7/PMS, so disable
     // them (dimmed + non-interactive) and surface a toast on tap.
@@ -128,159 +128,128 @@ fun SettingsScreen(
 
                 SettingsGroupCard(
                     titleRes = R.string.setting_group_controlled_drug,
-                    expanded = openCard == 1,
-                    onHeaderClick = { onCardClick(1) },
-                    rows = listOf<@Composable () -> Unit>(
-                        {
-                            SettingsRow(
-                                labelRes = R.string.require_double_count,
-                                onClick = { showDoubleCountDialog = true },
-                                enabled = hl7Enabled,
-                                onDisabledClick = onHl7DisabledTap,
-                                value = {
-                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                        ScheduleCode.entries.forEach { code ->
-                                            val codeColor = if (selectedSchedules.contains(code))
-                                                MaterialTheme.colorScheme.secondary
-                                            else
-                                                Color.Gray
-                                            Text(
-                                                text = code.name,
-                                                fontSize = 14.sp,
-                                                color = if (hl7Enabled) codeColor
-                                                else codeColor.copy(alpha = SETTINGS_DISABLED_ALPHA)
-                                            )
-                                        }
-                                    }
+                    expanded = openCard == SettingsCard.CONTROLLED_DRUG,
+                    onHeaderClick = { onCardClick(SettingsCard.CONTROLLED_DRUG) }
+                ) {
+                    SettingsRow(
+                        labelRes = R.string.require_double_count,
+                        onClick = { showDoubleCountDialog = true },
+                        enabled = hl7Enabled,
+                        onDisabledClick = onHl7DisabledTap,
+                        supporting = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ScheduleCode.entries.forEach { code ->
+                                    val codeColor = if (selectedSchedules.contains(code))
+                                        MaterialTheme.colorScheme.secondary
+                                    else
+                                        Color.Gray
+                                    Text(
+                                        text = code.name,
+                                        fontSize = 14.sp,
+                                        color = if (hl7Enabled) codeColor
+                                        else codeColor.copy(alpha = DISABLED_ALPHA)
+                                    )
                                 }
-                            )
-                        },
-                        {
-                            SettingsRow(
-                                labelRes = R.string.require_back_count,
-                                checked = isRequireBackCountEnable,
-                                onCheckedChange = { viewModel.toggleRequireBackCountOnOff(it) },
-                                enabled = hl7Enabled,
-                                onDisabledClick = onHl7DisabledTap
-                            )
+                            }
                         }
                     )
-                )
+                    SettingsRow(
+                        labelRes = R.string.require_back_count,
+                        checked = isRequireBackCountEnable,
+                        onCheckedChange = { viewModel.toggleRequireBackCountOnOff(it) },
+                        enabled = hl7Enabled,
+                        onDisabledClick = onHl7DisabledTap
+                    )
+                }
 
                 SettingsGroupCard(
                     titleRes = R.string.setting_group_face_detection,
-                    expanded = openCard == 2,
-                    onHeaderClick = { onCardClick(2) },
-                    rows = listOf<@Composable () -> Unit>(
-                        {
-                            SettingsRow(
-                                labelRes = R.string.setting_face_auto_lock_after,
-                                onClick = { showAutoLockDialog = true },
-                                value = {
-                                    SettingsValueText(
-                                        stringResource(R.string.setting_face_auto_lock_minutes, faceLockTimeoutMinutes)
-                                    )
-                                }
-                            )
-                        },
-                        {
-                            SettingsRow(
-                                labelRes = R.string.setting_face_recognition_users,
-                                onClick = { navController.navigate(Screen.FaceRecognitionUsers.route) }
+                    expanded = openCard == SettingsCard.FACE_DETECTION,
+                    onHeaderClick = { onCardClick(SettingsCard.FACE_DETECTION) }
+                ) {
+                    SettingsRow(
+                        labelRes = R.string.setting_face_auto_lock_after,
+                        onClick = { showAutoLockDialog = true },
+                        value = {
+                            SettingsValueText(
+                                stringResource(R.string.setting_face_auto_lock_minutes, faceLockTimeoutMinutes)
                             )
                         }
                     )
-                )
+                    SettingsRow(
+                        labelRes = R.string.setting_face_recognition_users,
+                        onClick = { navController.navigate(Screen.FaceRecognitionUsers.route) }
+                    )
+                }
 
                 SettingsGroupCard(
                     titleRes = R.string.setting_group_voice_haptic,
-                    expanded = openCard == 3,
-                    onHeaderClick = { onCardClick(3) },
-                    rows = listOf<@Composable () -> Unit>(
-                        {
-                            SettingsRow(
-                                labelRes = R.string.voice_feedback,
-                                checked = isSoundOverrideEnable,
-                                onCheckedChange = { viewModel.toggleSoundOverride(it) }
-                            )
-                        },
-                        {
-                            SettingsRow(
-                                labelRes = R.string.pill_counting_sound,
-                                checked = isSoundEnabled,
-                                onCheckedChange = { viewModel.toggleSoundOnOff(it) }
-                            )
-                        },
-                        {
-                            SettingsRow(
-                                labelRes = R.string.haptic_feedback,
-                                checked = isHapticEnable,
-                                onCheckedChange = { viewModel.toggleHapticOnOff(it) }
-                            )
-                        }
+                    expanded = openCard == SettingsCard.VOICE_HAPTIC,
+                    onHeaderClick = { onCardClick(SettingsCard.VOICE_HAPTIC) }
+                ) {
+                    SettingsRow(
+                        labelRes = R.string.voice_feedback,
+                        checked = isSoundOverrideEnable,
+                        onCheckedChange = { viewModel.toggleSoundOverride(it) }
                     )
-                )
+                    SettingsRow(
+                        labelRes = R.string.pill_counting_sound,
+                        checked = isSoundEnabled,
+                        onCheckedChange = { viewModel.toggleSoundOnOff(it) }
+                    )
+                    SettingsRow(
+                        labelRes = R.string.haptic_feedback,
+                        checked = isHapticEnable,
+                        onCheckedChange = { viewModel.toggleHapticOnOff(it) }
+                    )
+                }
 
                 SettingsGroupCard(
                     titleRes = R.string.setting_group_hazardous,
-                    expanded = openCard == 4,
-                    onHeaderClick = { onCardClick(4) },
-                    rows = listOf<@Composable () -> Unit>(
-                        {
-                            SettingsRow(
-                                labelRes = R.string.setting_hazardous_drug,
-                                checked = isHazardousDrug,
-                                onCheckedChange = { viewModel.toggleHazardousDrug(it) },
-                                enabled = hl7Enabled,
-                                onDisabledClick = onHl7DisabledTap
-                            )
-                        },
-                        {
-                            SettingsRow(
-                                labelRes = R.string.clear_tray_color_lists,
-                                onClick = { showClearTrayColorListsDialog = true },
-                                enabled = hl7Enabled,
-                                onDisabledClick = onHl7DisabledTap
-                            )
-                        }
+                    expanded = openCard == SettingsCard.HAZARDOUS,
+                    onHeaderClick = { onCardClick(SettingsCard.HAZARDOUS) }
+                ) {
+                    SettingsRow(
+                        labelRes = R.string.setting_hazardous_drug,
+                        checked = isHazardousDrug,
+                        onCheckedChange = { viewModel.toggleHazardousDrug(it) },
+                        enabled = hl7Enabled,
+                        onDisabledClick = onHl7DisabledTap
                     )
-                )
+                    SettingsRow(
+                        labelRes = R.string.clear_tray_color_lists,
+                        onClick = { showClearTrayColorListsDialog = true },
+                        enabled = hl7Enabled,
+                        onDisabledClick = onHl7DisabledTap
+                    )
+                }
 
                 SettingsGroupCard(
                     titleRes = R.string.setting_group_general,
-                    expanded = openCard == 0,
-                    onHeaderClick = { onCardClick(0) },
-                    rows = buildList<@Composable () -> Unit> {
-                        add {
-                            SettingsRow(
-                                labelRes = R.string.setting_ask_to_add_notes,
-                                checked = isAskToAddNotes,
-                                onCheckedChange = { viewModel.toggleAskToAddNotes(it) }
-                            )
-                        }
-                        add {
-                            SettingsRow(
-                                labelRes = R.string.setting_save_history_for,
-                                onClick = { showHistoryDialog = true },
-                                value = { SettingsValueText(selectedOption) }
-                            )
-                        }
-                        add {
-                            SettingsRow(
-                                labelRes = R.string.clear_all_local_data,
-                                onClick = { showCLearAllDataConfirmDialog = true }
-                            )
-                        }
-                        if (isUseStaticPmsConnection) {
-                            add {
-                                SettingsRow(
-                                    labelRes = R.string.setting_pms_connection,
-                                    onClick = { showConnectionInfo = true }
-                                )
-                            }
-                        }
+                    expanded = openCard == SettingsCard.GENERAL,
+                    onHeaderClick = { onCardClick(SettingsCard.GENERAL) }
+                ) {
+                    SettingsRow(
+                        labelRes = R.string.setting_ask_to_add_notes,
+                        checked = isAskToAddNotes,
+                        onCheckedChange = { viewModel.toggleAskToAddNotes(it) }
+                    )
+                    SettingsRow(
+                        labelRes = R.string.setting_save_history_for,
+                        onClick = { showHistoryDialog = true },
+                        value = { SettingsValueText(selectedOption) }
+                    )
+                    SettingsRow(
+                        labelRes = R.string.clear_all_local_data,
+                        onClick = { showCLearAllDataConfirmDialog = true }
+                    )
+                    if (isUseStaticPmsConnection) {
+                        SettingsRow(
+                            labelRes = R.string.setting_pms_connection,
+                            onClick = { showConnectionInfo = true }
+                        )
                     }
-                )
+                }
             }
         }
 

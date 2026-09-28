@@ -140,8 +140,8 @@
     <string name="non_hazardous_tray_warning">This is not the hazardous tray. Please use the hazardous tray.</string>
     <string name="clear_tray_color_lists">Clear Tray Color Lists</string>
     <string name="clear_tray_color_lists_confirm">Are you sure you want to clear the hazardous tray color classification?</string>
-    <string name="save_history_for_title">SAVE HISTORY FOR</string>
-    <string name="require_double_count_title">REQUIRE DOUBLE COUNTS</string>
+    <string name="save_history_for_title">Save history for</string>
+    <string name="require_double_count_title">Require double counts</string>
     <string name="setting_pms_connection">PMS Connection</string>
     <string name="connection_info_title">CONNECTION INFO</string>
     <string name="this_device_dispenser_server">THIS DEVICE (DISPENSESURE)</string>
