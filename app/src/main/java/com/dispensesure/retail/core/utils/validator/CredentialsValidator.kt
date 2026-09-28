@@ -99,56 +99,29 @@ class CredentialsValidator @Inject constructor() {
      * Validates an NPI (National Provider Identifier) or equivalent ID.
      *
      * Rules:
-     * - Optional (blank passes).
-     * - Must contain only digits.
-     * - Length must be between 6 and 12 digits.
+     * - Blank fails with error_npi_required when [required], passes otherwise.
+     * - Must contain only ASCII digits.
+     * - Must be exactly 10 digits long.
      *
      * @param npi The NPI string to validate.
+     * @param required Whether a blank NPI is an error.
      * @return [ValidationResult] with success if valid,
      * failure otherwise.
      */
-    fun validateNpi(npi: String): ValidationResult {
-        if (npi.isBlank()) return ValidationResult(true)
-        if (!npi.all { it.isDigit() } || npi.length !in 6..12) {
+    fun validateNpi(npi: String, required: Boolean): ValidationResult {
+        if (npi.isBlank()) {
+            return if (required) ValidationResult(false, R.string.error_npi_required)
+            else ValidationResult(true)
+        }
+        // isDigit() also accepts non-ASCII digits, which the API will not take.
+        if (!npi.all { it in '0'..'9' } || npi.length != NPI_LENGTH) {
             return ValidationResult(false, R.string.error_npi_invalid)
         }
         return ValidationResult(true)
     }
 
-    /**
-     * Validates a password for security rules.
-     *
-     * Rules:
-     * - Minimum 8 characters.
-     * - At least one uppercase letter.
-     * - At least one lowercase letter.
-     * - At least one digit.
-     * - At least one special character.
-     *
-     * @param password The password string to validate.
-     * @return [ValidationResult] with success if valid,
-     * failure with the first violated rule otherwise.
-     */
-    fun validatePassword(password: String): ValidationResult {
-        if (password.length < 8) {
-            return ValidationResult(false, R.string.error_password_too_short)
-        }
-        if (!password.any { it.isUpperCase() }) {
-            return ValidationResult(false, R.string.error_password_no_uppercase)
-        }
-        if (!password.any { it.isLowerCase() }) {
-            return ValidationResult(false, R.string.error_password_no_lowercase)
-        }
-        if (!password.any { it.isDigit() }) {
-            return ValidationResult(false, R.string.error_password_no_digit)
-        }
-        if (!password.any { !it.isLetterOrDigit() }) {
-            return ValidationResult(false, R.string.error_password_no_special)
-        }
-        return ValidationResult(true)
-    }
-
     companion object {
+        private const val NPI_LENGTH = 10
         private val DISALLOWED_NAME_CHARS = Regex("[^\\p{L} '-]")
         private val SPACE_RUN = Regex(" {2,}")
 

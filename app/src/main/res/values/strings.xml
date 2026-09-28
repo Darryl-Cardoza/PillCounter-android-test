@@ -173,11 +173,6 @@
     <string name="drug_history_details">Drug History Details</string>
     <!-- ================== VALIDATION ERRORS ================== -->
     <string name="error_email_invalid">Please enter a valid email address.</string>
-    <string name="error_password_too_short">Password must be at least 8 characters long.</string>
-    <string name="error_password_no_uppercase">Password must contain at least one uppercase letter.</string>
-    <string name="error_password_no_lowercase">Password must contain at least one lowercase letter.</string>
-    <string name="error_password_no_digit">Password must contain at least one number.</string>
-    <string name="error_password_no_special">Password must contain at least one special character.</string>
     <string name="error_unknown">Something went wrong.</string>
     <string name="error_invalid_otp">Invalid Pin entered.</string>
     <string name="error_phone_invalid">Invalid phone number</string>
@@ -185,6 +180,7 @@
     <string name="error_name_required">This field is required</string>
     <string name="error_pharmacy_name_invalid">Pharmacy name too short</string>
     <string name="error_npi_invalid">Invalid NPI number</string>
+    <string name="error_npi_required">NPI number is required</string>
     <string name="error_no_internet">No internet connection. Please check your network and try again.</string>
     <string name="error_timeout">The request took too long. Please try again later.</string>
     <string name="error_server_unavailable">Server is temporarily unavailable. Please try again later.</string>

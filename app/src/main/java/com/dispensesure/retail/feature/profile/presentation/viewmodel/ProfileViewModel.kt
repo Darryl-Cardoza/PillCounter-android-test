@@ -362,11 +362,15 @@ class ProfileViewModel @Inject constructor(
     }
 
     fun onPhoneChanged(input: String) {
-        val digits = input.filter { it.isDigit() }
+        val digits = input.filter { it in '0'..'9' }
 
         val limited = digits.take(10)
 
         phoneNumber = limited
+    }
+
+    fun onNpiChanged(input: String) {
+        npi = input.filter { it in '0'..'9' }.take(10)
     }
 
     fun onFirstNameChanged(input: String) {
@@ -387,7 +391,7 @@ class ProfileViewModel @Inject constructor(
         pharmacyNameError = validator.validatePharmacyName(pharmacyName).errorMessageResId
         phoneError = validator.validatePhone(phoneNumber).errorMessageResId
         emailError = validator.validateEmail(email).errorMessageResId
-        npiError = validator.validateNpi(npi).errorMessageResId
+        npiError = validator.validateNpi(npi, required = true).errorMessageResId
         countryError = if (selectedCountry?.code.isNullOrBlank()) {
             R.string.please_select_country
         } else {
