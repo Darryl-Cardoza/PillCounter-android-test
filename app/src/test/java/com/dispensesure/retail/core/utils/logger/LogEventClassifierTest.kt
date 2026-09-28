@@ -70,17 +70,13 @@ class LogEventClassifierTest {
             LogEventClassifier.classify(entry(className = "VerifyPinViewModel", message = "Failed to verify PIN"))
         )
         assertEquals(
-            LogEvent.OTP_VERIFY_FAILED,
+            LogEvent.OTP_VERIFICATION_FAILED,
             LogEventClassifier.classify(entry(className = "VerifyPinViewModel", message = "Failed to verify OTP"))
         )
     }
 
     @Test
     fun `SessionHealthController maps timeout vs expiry based on message`() {
-        assertEquals(
-            LogEvent.SESSION_TIMEOUT,
-            LogEventClassifier.classify(entry(className = "SessionHealthController", message = "Session timeout reached"))
-        )
         assertEquals(
             LogEvent.SESSION_EXPIRED,
             LogEventClassifier.classify(entry(className = "SessionHealthController", message = "Session invalidated by server"))

@@ -131,12 +131,12 @@ class VerifyPinViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to persist session after successful OTP verification for user: $email", e, event = LogEvent.OTP_VERIFY_FAILED)
+                        logger.e("Failed to persist session after successful OTP verification for user: $email", e, event = LogEvent.OTP_VERIFICATION_FAILED)
                         _uiState.value = VerifyPinUiState.Error(context.getString(R.string.error_unknown))
                     }
                 }
                 .onFailure { exception ->
-                    logger.e("OTP verification failed for user: $email", exception, event = LogEvent.OTP_VERIFY_FAILED)
+                    logger.e("OTP verification failed for user: $email", exception, event = LogEvent.OTP_VERIFICATION_FAILED)
                     val message = mapExceptionToUserMessage(exception)
                     _uiState.value = VerifyPinUiState.Error(message)
                 }
@@ -160,7 +160,7 @@ class VerifyPinViewModel @Inject constructor(
                         val errorResponse = Gson().fromJson(it, ErrorResponse::class.java)
                         errorResponse.message
                     } catch (e: Exception) {
-                        logger.e("Error parsing error response", e, event = LogEvent.OTP_VERIFY_FAILED)
+                        logger.e("Error parsing error response", e, event = LogEvent.OTP_VERIFICATION_FAILED)
                         null
                     }
                 }

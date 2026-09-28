@@ -49,7 +49,7 @@ object LogEventClassifier {
             "LoginViewModel", "LoginRepository" -> LogEvent.LOGIN_FAILED
 
             "VerifyPinViewModel", "VerifyPinRepository" ->
-                if ("pin" in message) LogEvent.PIN_VERIFY_FAILED else LogEvent.OTP_VERIFY_FAILED
+                if ("pin" in message) LogEvent.PIN_VERIFY_FAILED else LogEvent.OTP_VERIFICATION_FAILED
 
             "FaceAuthViewModel", "FaceProfileRepository" -> when {
                 "delete" in message -> LogEvent.FACE_DELETE_FAILED
@@ -62,8 +62,7 @@ object LogEventClassifier {
             "SessionLockController" ->
                 if ("timeout" in message) LogEvent.FACE_LOCK_TIMEOUT else LogEvent.FACE_LOCK_SESSION
 
-            "SessionHealthController" ->
-                if ("timeout" in message) LogEvent.SESSION_TIMEOUT else LogEvent.SESSION_EXPIRED
+            "SessionHealthController" -> LogEvent.SESSION_EXPIRED
 
             "AuthEventBus" -> LogEvent.SESSION_EXPIRED
             "TokenAuthenticator" -> LogEvent.TOKEN_REFRESH_FAILED

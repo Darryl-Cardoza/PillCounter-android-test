@@ -90,7 +90,7 @@ class SessionLockController @Inject constructor(
     /** Whether at least one enrolled face profile currently participates in verify matching. */
     val hasEnabledProfile: StateFlow<Boolean> = faceProfileRepository.observeProfiles()
         .map { profiles -> profiles.any { it.isEnabled } }
-        .catch { e -> logger.e("Observing enabled face profiles failed", e, event = LogEvent.FACE_PROFILE_OBSERVE_FAILED) }
+        .catch { e -> logger.e("Observing enabled face profiles failed", e, event = LogEvent.FACE_VERIFY_FAILED) }
         .stateIn(scope, SharingStarted.Eagerly, preferenceHelper.hasEnabledFaceProfile())
 
     init {
@@ -112,7 +112,7 @@ class SessionLockController @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    logger.e("Reacting to hasEnabledProfile change failed", e, event = LogEvent.FACE_PROFILE_OBSERVE_FAILED)
+                    logger.e("Reacting to hasEnabledProfile change failed", e, event = LogEvent.FACE_VERIFY_FAILED)
                 }
             }
         }

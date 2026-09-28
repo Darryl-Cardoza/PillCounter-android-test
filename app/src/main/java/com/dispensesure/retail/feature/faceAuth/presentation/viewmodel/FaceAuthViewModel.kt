@@ -115,7 +115,7 @@ class FaceAuthViewModel @Inject constructor(
     val verifyState: StateFlow<VerifyState> = _verifyState.asStateFlow()
 
     val profiles: StateFlow<List<FaceProfileEntity>> = faceProfileRepository.observeProfiles()
-        .catch { e -> logger.e("Observing face profiles failed", e, event = LogEvent.FACE_PROFILE_OBSERVE_FAILED) }
+        .catch { e -> logger.e("Observing face profiles failed", e, event = LogEvent.FACE_VERIFY_FAILED) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var pendingFirstName: String = ""
@@ -364,7 +364,7 @@ class FaceAuthViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to toggle profile enabled state (profileId=${profile.id})", e, event = LogEvent.FACE_PROFILE_OBSERVE_FAILED)
+                logger.e("Failed to toggle profile enabled state (profileId=${profile.id})", e, event = LogEvent.FACE_VERIFY_FAILED)
             }
         }
     }

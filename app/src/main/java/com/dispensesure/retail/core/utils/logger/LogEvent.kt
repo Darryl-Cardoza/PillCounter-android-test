@@ -18,11 +18,10 @@ enum class LogEvent {
     LOGOUT_SUCCESS,
     LOGOUT_FAILED,
     SESSION_EXPIRED,
-    SESSION_TIMEOUT,
 
     // ── OTP verification (feature.verifyPin) ────────────────────────────────
     OTP_VERIFIED,
-    OTP_VERIFY_FAILED,
+    OTP_VERIFICATION_FAILED,
 
     // ── PIN verification (feature.verifyPin) ────────────────────────────────
     PIN_VERIFIED,
@@ -39,7 +38,6 @@ enum class LogEvent {
     FACE_DELETE_FAILED,
     FACE_LOCK_SESSION,
     FACE_LOCK_TIMEOUT,
-    FACE_PROFILE_OBSERVE_FAILED,
 
     // ── Dashboard (feature.dashboard) ───────────────────────────────────────
     USER_FETCH_FAILED,
