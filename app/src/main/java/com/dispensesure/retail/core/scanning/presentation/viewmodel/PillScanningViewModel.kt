@@ -946,7 +946,7 @@ class PillScanningViewModel @Inject constructor(
                                 hazardousTrayToastShown = true
                                 logger.i("[HAZARDOUS] Tray ${trayColor.label} is NOT the hazardous tray — showing warning toast")
                                 viewModelScope.launch(Dispatchers.Main) {
-                                    showToast(context, context.getString(R.string.non_hazardous_tray_warning))
+                                    showToast(context.getString(R.string.non_hazardous_tray_warning))
                                 }
                             }
                         }
@@ -956,7 +956,7 @@ class PillScanningViewModel @Inject constructor(
                     hazardousTrayToastShown = true
                     logger.i("[HAZARDOUS] Hazardous tray ${trayColor.label} detected in non-hazardous transaction — showing toast")
                     viewModelScope.launch(Dispatchers.Main) {
-                        showToast(context, context.getString(R.string.hazardous_tray_warning))
+                        showToast(context.getString(R.string.hazardous_tray_warning))
                     }
                 }
             }
@@ -1426,7 +1426,7 @@ class PillScanningViewModel @Inject constructor(
         val currentTime = System.currentTimeMillis()
 
         if (_uiState.value.isAddCooldown) {
-            showToast(context, context.getString(R.string.add_button_wait))
+            showToast(context.getString(R.string.add_button_wait))
             logger.w("Add action ignored: cooldown active.")
             return
         }
@@ -1447,7 +1447,7 @@ class PillScanningViewModel @Inject constructor(
             }
         }
         if (currentCount == 0) {
-            showToast(context, context.getString(R.string.add_zero_detected))
+            showToast(context.getString(R.string.add_zero_detected))
             logger.w("Add blocked: detected count is 0.")
             return
         }
@@ -1458,7 +1458,7 @@ class PillScanningViewModel @Inject constructor(
         } + "|count=$currentCount"
 
         if (signature == lastAddedScanSignature) {
-            showToast(context, context.getString(R.string.duplicate_scan_ignored))
+            showToast(context.getString(R.string.duplicate_scan_ignored))
             logger.w("Duplicate add prevented: no change in detection pattern.")
             return
         }

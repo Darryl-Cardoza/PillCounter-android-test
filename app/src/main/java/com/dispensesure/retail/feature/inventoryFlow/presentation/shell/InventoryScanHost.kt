@@ -136,7 +136,7 @@ fun InventoryScanHost(
             } else {
                 context.getString(err.messageResId)
             }
-            showToast(context, text)
+            showToast(text)
             inventoryVm.clearErrorMessage()
         }
     }

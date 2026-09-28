@@ -1,7 +1,6 @@
 package com.dispensesure.retail.feature.profile.presentation
 
 import android.content.res.Configuration
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -213,9 +212,7 @@ fun ProfileScreen(
 
                 is ProfileUpdateUiState.Success -> {
                     showToast(
-                        context = context,
-                        message = stringResource(R.string.profile_updated_successfully),
-                        duration = Toast.LENGTH_SHORT
+                        message = stringResource(R.string.profile_updated_successfully)
                     )
                     LaunchedEffect(updateUiState) {
                         if (cameFromDashboard) {

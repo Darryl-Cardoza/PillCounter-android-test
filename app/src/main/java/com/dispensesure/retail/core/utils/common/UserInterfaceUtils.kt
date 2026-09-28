@@ -172,13 +172,13 @@ object UserInterfaceUtils {
     // ───────────────────────────── Toast Helpers ─────────────────────────────
 
     /** Displays a short Toast with plain text. */
-    fun showToast(context: Context, message: String, duration: Int = Toast.LENGTH_SHORT) {
-        Toast.makeText(context, message, duration).show()
+    fun showToast(message: String, duration: Int = Toast.LENGTH_SHORT) {
+        AppToast.show(message, duration)
     }
 
     /** Displays a short Toast using a string resource ID. */
     fun showToast(context: Context, @StringRes resId: Int, duration: Int = Toast.LENGTH_SHORT) {
-        Toast.makeText(context, context.getString(resId), duration).show()
+        AppToast.show(context.getString(resId), duration)
     }
 
     // ───────────────────────────── Color Extensions ─────────────────────────────
