@@ -655,10 +655,15 @@ class CameraHelper(
                 override fun onCaptureSuccess(image: ImageProxy) {
                     isCapturing.set(false)
 
-                    val bitmap = imageProxyToBitmap(image)
-                    onCaptured(bitmap)
-
-                    image.close()
+                    try {
+                        val bitmap = imageProxyToBitmap(image)
+                        onCaptured(bitmap)
+                    } catch (e: Exception) {
+                        logger.e("Processing captured image failed", e)
+                        onCaptureError(e)
+                    } finally {
+                        image.close()
+                    }
                 }
 
                 // Clear the flag here too, else one failed capture kills the shutter for good.

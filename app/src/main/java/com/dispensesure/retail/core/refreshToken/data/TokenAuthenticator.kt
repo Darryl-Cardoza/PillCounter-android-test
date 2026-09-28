@@ -4,6 +4,7 @@ import com.dispensesure.retail.core.auth.AuthEvent
 import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.refreshToken.data.remote.IRefreshTokenAPI
 import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenRequest
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
@@ -25,6 +26,8 @@ class TokenAuthenticator @Inject constructor(
     private val refreshApi: IRefreshTokenAPI,
     private val authEventBus: AuthEventBus
 ) : Authenticator {
+
+    private val logger = AppLogger.create<TokenAuthenticator>()
 
     /**
      * Called automatically by OkHttp when a request receives a `401 Unauthorized` response.
@@ -52,10 +55,14 @@ class TokenAuthenticator @Inject constructor(
                 refreshApi.refreshToken(RefreshTokenRequest(currentRefreshToken))
             } catch (e: HttpException) {
                 if (e.code() == 401) {
+                    logger.w("Token refresh got 401 — session expired, publishing SessionExpired")
                     authEventBus.tryPublish(AuthEvent.SessionExpired)
+                } else {
+                    logger.e("Token refresh failed with HTTP ${e.code()}", e)
                 }
                 null
             } catch (e: Exception) {
+                logger.e("Token refresh failed", e)
                 null
             }
         } ?: return null

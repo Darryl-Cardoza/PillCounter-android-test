@@ -46,7 +46,16 @@ class TerminalRepository @Inject constructor(
     ): Result<TerminalUpdateResponse> = withContext(ioDispatcher) {
         try {
             logger.i("Updating terminal: $terminalId with name: ${request.terminalName}, active: ${request.isActive}")
-            val token = preferenceHelper.getAccessToken().orEmpty()
+            val storedToken = preferenceHelper.getAccessToken()
+            if (storedToken.isNullOrBlank()) {
+                // Deliberately still makes the call below rather than failing fast: the server
+                // rejects it with 401, which falls into the existing refresh-and-retry path —
+                // a still-valid refresh token can recover even though the access token is
+                // currently missing. This log is what makes that case diagnosable instead of
+                // looking like an ordinary 401.
+                logger.w("Updating terminal $terminalId with no access token in preferences")
+            }
+            val token = storedToken.orEmpty()
             val response = terminalApi.updateTerminal("Bearer $token", terminalId, request)
             logger.i("Terminal update successful.")
             Result.success(response)
@@ -81,7 +90,14 @@ class TerminalRepository @Inject constructor(
     ): Result<TerminalListResponse> = withContext(ioDispatcher) {
         try {
             logger.i("Fetching terminals (availableOnly=$availableOnly)")
-            val token = preferenceHelper.getAccessToken().orEmpty()
+            val storedToken = preferenceHelper.getAccessToken()
+            if (storedToken.isNullOrBlank()) {
+                // See the same note in updateTerminal(): still makes the call so a still-valid
+                // refresh token can recover via the existing 401 retry path; this just makes
+                // the missing-access-token case diagnosable rather than an opaque 401.
+                logger.w("Fetching terminals with no access token in preferences")
+            }
+            val token = storedToken.orEmpty()
             val response = terminalApi.getTerminals("Bearer $token", availableOnly, deviceKey)
             Result.success(response)
         } catch (e: HttpException) {

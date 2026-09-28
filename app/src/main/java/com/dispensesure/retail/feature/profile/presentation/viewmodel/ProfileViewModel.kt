@@ -30,9 +30,11 @@ import com.dispensesure.retail.feature.profile.domain.model.ProfileUpdateUiState
 import com.dispensesure.retail.feature.profile.domain.model.State
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
@@ -157,10 +159,16 @@ class ProfileViewModel @Inject constructor(
             repository.getPharmacyTypes()
                 .onSuccess { response ->
                     val options = response.data?.pharmacyTypes.orEmpty()
-                    preferenceHelper.savePharmacyTypes(options)
-                    pharmacyTypes = options
-                    selectedPharmacyType = options.firstOrNull { it.code == preferenceHelper.getPharmacyType() }
-                    logger.i("Fetched and cached ${options.size} pharmacy types")
+                    try {
+                        preferenceHelper.savePharmacyTypes(options)
+                        pharmacyTypes = options
+                        selectedPharmacyType = options.firstOrNull { it.code == preferenceHelper.getPharmacyType() }
+                        logger.i("Fetched and cached ${options.size} pharmacy types")
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to cache fetched pharmacy types", e)
+                    }
                 }
                 .onFailure { e ->
                     logger.e("Failed to fetch pharmacy types", e)
@@ -181,18 +189,24 @@ class ProfileViewModel @Inject constructor(
                 .onSuccess { fetched ->
                     if (fetched.isEmpty()) return@onSuccess
 
-                    countries = fetched
-                    preferenceHelper.saveCountries(fetched)
+                    try {
+                        countries = fetched
+                        preferenceHelper.saveCountries(fetched)
 
-                    selectedCountry = fetched.firstOrNull {
-                        it.code == (selectedCountry?.code ?: userCountryCode)
-                    }
-                    states = selectedCountry?.states.orEmpty()
-                    selectedState = states.firstOrNull {
-                        it.code == (selectedState?.code ?: userStateCode)
-                    }
+                        selectedCountry = fetched.firstOrNull {
+                            it.code == (selectedCountry?.code ?: userCountryCode)
+                        }
+                        states = selectedCountry?.states.orEmpty()
+                        selectedState = states.firstOrNull {
+                            it.code == (selectedState?.code ?: userStateCode)
+                        }
 
-                    logger.i("Countries refreshed from API (count=${fetched.size})")
+                        logger.i("Countries refreshed from API (count=${fetched.size})")
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to cache refreshed countries", e)
+                    }
                 }
                 .onFailure { e ->
                     logger.w("Failed to refresh countries from API, keeping cached list: ${e.message}")
@@ -211,7 +225,9 @@ class ProfileViewModel @Inject constructor(
 
     private fun observeUser(localId: Long) {
         viewModelScope.launch {
-            userDao.observeByLocalId(localId).collect { user ->
+            userDao.observeByLocalId(localId)
+                .catch { e -> logger.e("Failed to observe user (localId=$localId)", e) }
+                .collect { user ->
                 user?.let {
                     logger.i("Prefilling profile UI with user (localId=$localId, email=${it.email})")
                     firstName = it.fName ?: ""
@@ -251,33 +267,45 @@ class ProfileViewModel @Inject constructor(
             }
             terminalRepository.getTerminals(availableOnly = true, deviceKey = deviceKey)
                 .onSuccess { response ->
-                    terminals = response.data?.terminals.orEmpty()
-                    selectedTerminal = terminals.firstOrNull {
-                        !it.deviceKey.isNullOrBlank() && it.deviceKey == deviceKey
-                    }
-                    initialTerminal = selectedTerminal
+                    try {
+                        terminals = response.data?.terminals.orEmpty()
+                        selectedTerminal = terminals.firstOrNull {
+                            !it.deviceKey.isNullOrBlank() && it.deviceKey == deviceKey
+                        }
+                        initialTerminal = selectedTerminal
 
-                    selectedTerminal?.terminalName?.let { terminalName ->
-                        preferenceHelper.saveSelectedTerminalName(terminalName)
-                    }
-                    selectedTerminal?.terminalId?.let { terminalId ->
-                        preferenceHelper.saveSelectedTerminalId(terminalId)
-                    }
+                        selectedTerminal?.terminalName?.let { terminalName ->
+                            preferenceHelper.saveSelectedTerminalName(terminalName)
+                        }
+                        selectedTerminal?.terminalId?.let { terminalId ->
+                            preferenceHelper.saveSelectedTerminalId(terminalId)
+                        }
 
-                    logger.i("Loaded ${terminals.size} terminals, selected: ${selectedTerminal?.terminalName}")
+                        logger.i("Loaded ${terminals.size} terminals, selected: ${selectedTerminal?.terminalName}")
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to persist loaded terminal selection", e)
+                    }
                 }
                 .onFailure { e ->
                     logger.e("Failed to load terminals, falling back to cached list", e)
 
-                    val cachedTerminals = preferenceHelper.getTerminals()
-                    val savedTerminalId = preferenceHelper.getSelectedTerminalId()
-                    terminals = cachedTerminals
-                    selectedTerminal = cachedTerminals.firstOrNull {
-                        !it.deviceKey.isNullOrBlank() && it.deviceKey == deviceKey
-                    } ?: cachedTerminals.firstOrNull { it.terminalId == savedTerminalId }
-                    initialTerminal = selectedTerminal
+                    try {
+                        val cachedTerminals = preferenceHelper.getTerminals()
+                        val savedTerminalId = preferenceHelper.getSelectedTerminalId()
+                        terminals = cachedTerminals
+                        selectedTerminal = cachedTerminals.firstOrNull {
+                            !it.deviceKey.isNullOrBlank() && it.deviceKey == deviceKey
+                        } ?: cachedTerminals.firstOrNull { it.terminalId == savedTerminalId }
+                        initialTerminal = selectedTerminal
 
-                    logger.i("Loaded ${terminals.size} cached terminals, selected: ${selectedTerminal?.terminalName}")
+                        logger.i("Loaded ${terminals.size} cached terminals, selected: ${selectedTerminal?.terminalName}")
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to load cached terminal fallback", e)
+                    }
                 }
         }
     }
@@ -432,15 +460,27 @@ class ProfileViewModel @Inject constructor(
                                 isProfileCompleted = true,
                                 createdAt = System.currentTimeMillis()
                             )
-                            userDao.update(entity)
-                            logger.i("User entity updated in Room via localId=$localId")
+                            try {
+                                userDao.update(entity)
+                                logger.i("User entity updated in Room via localId=$localId")
+                            } catch (e: CancellationException) {
+                                throw e
+                            } catch (e: Exception) {
+                                logger.e("Failed to persist updated user entity in Room (localId=$localId)", e)
+                            }
                         }
 
-                        preferenceHelper.saveDoNotAskAgain(doNotAskAgain)
+                        try {
+                            preferenceHelper.saveDoNotAskAgain(doNotAskAgain)
 
-                        // Persist selected pharmacy type so it prefills on next visit
-                        selectedPharmacyType?.let {
-                            preferenceHelper.savePharmacyType(it.code)
+                            // Persist selected pharmacy type so it prefills on next visit
+                            selectedPharmacyType?.let {
+                                preferenceHelper.savePharmacyType(it.code)
+                            }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            logger.e("Failed to persist profile preferences after update", e)
                         }
 
                         // Update terminal if the newly selected terminal isn't the one this
@@ -500,30 +540,36 @@ class ProfileViewModel @Inject constructor(
                                             .onSuccess { _ ->
                                                 logger.i("Terminal ${selectedTerminal?.terminalName} updated successfully")
 
-                                                // Update local terminals list - mark selected as active, others as inactive
-                                                terminals = currentTerminals.map { terminal ->
-                                                    when (terminal.terminalId) {
-                                                        terminalId -> terminal.copy(
-                                                            isActive = true,
-                                                            deviceKey = claimDeviceKey
-                                                        )
-                                                        heldTerminal?.terminalId -> terminal.copy(
-                                                            deviceKey = null
-                                                        )
-                                                        else -> terminal
+                                                try {
+                                                    // Update local terminals list - mark selected as active, others as inactive
+                                                    terminals = currentTerminals.map { terminal ->
+                                                        when (terminal.terminalId) {
+                                                            terminalId -> terminal.copy(
+                                                                isActive = true,
+                                                                deviceKey = claimDeviceKey
+                                                            )
+                                                            heldTerminal?.terminalId -> terminal.copy(
+                                                                deviceKey = null
+                                                            )
+                                                            else -> terminal
+                                                        }
                                                     }
+
+                                                    // Save updated terminal selection to preferences
+                                                    preferenceHelper.saveSelectedTerminalId(terminalId)
+                                                    preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
+                                                    preferenceHelper.saveTerminals(terminals)
+
+                                                    // Update initial terminal to current selection
+                                                    initialTerminal = selectedTerminal
+
+                                                    // Update HL7 service with new terminal name and rebroadcast NSD
+                                                    updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
+                                                } catch (e: CancellationException) {
+                                                    throw e
+                                                } catch (e: Exception) {
+                                                    logger.e("Failed to persist terminal claim after successful server update", e)
                                                 }
-
-                                                // Save updated terminal selection to preferences
-                                                preferenceHelper.saveSelectedTerminalId(terminalId)
-                                                preferenceHelper.saveSelectedTerminalName(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
-                                                preferenceHelper.saveTerminals(terminals)
-
-                                                // Update initial terminal to current selection
-                                                initialTerminal = selectedTerminal
-
-                                                // Update HL7 service with new terminal name and rebroadcast NSD
-                                                updateHl7ConfigWithNewTerminal(selectedTerminal?.terminalName ?: AppConstants.UNKNOWN_TERMINAL_NAME)
                                             }
                                             .onFailure { e ->
                                                 logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)

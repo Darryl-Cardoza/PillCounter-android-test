@@ -1,13 +1,29 @@
 package com.dispensesure.retail.core.utils.logger
 
+import android.content.Context
 import android.util.Log
 import com.dispensesure.retail.BuildConfig
+import com.dispensesure.retail.core.utils.logger.destination.FileLogDestination
+// import com.dispensesure.retail.core.utils.logger.destination.CompositeLogDestination
+// import com.dispensesure.retail.core.utils.logger.destination.RemoteLogDestination
 
 /**
- * A standalone logger class to handle logging throughout the application.
- * This wrapper around Android's default Log class provides a consistent
- * logging tag and can be easily extended or replaced with a more advanced
- * logging library like Timber in the future.
+ * A standalone logger class to handle logging throughout the application, and the single hub
+ * every log call in the app eventually flows through.
+ *
+ * Each instance is a lightweight, tag-scoped wrapper around Android's Logcat (unchanged
+ * behaviour from before this class also drove the centralized logger below). In addition to
+ * Logcat, every call is forwarded to the companion object's centralized machinery, which:
+ * applies [LoggerConfig]'s level filter, resolves where in the app the call actually came from
+ * (without misattributing it to AppLogger itself), builds a [LogEntry], and hands it to whichever
+ * [LogDestination] is configured (currently a rotating file — see [FileLogDestination]).
+ *
+ * The centralized side is a plain singleton on the companion object — not Hilt-injected —
+ * because `AppLogger` instances are created via [create]/`AppLogger(tag)` all over the codebase,
+ * including from classes that are never touched by DI (companion objects, plain utilities).
+ * [init] must be called once, as early as possible, from
+ * [com.dispensesure.retail.PillCountingApplication.onCreate]; any log call made before that is a
+ * safe no-op for the file destination (it still reaches Logcat as before).
  *
  * @param tag The logging tag to be used for all messages from this logger instance.
  */
@@ -22,6 +38,7 @@ class AppLogger(private val tag: String) {
      */
     fun d(message: String, throwable: Throwable? = null) {
         if (BuildConfig.DEBUG) Log.d(tag, message, throwable)
+        log(LogLevel.DEBUG, tag, message, throwable)
     }
 
     /**
@@ -33,6 +50,7 @@ class AppLogger(private val tag: String) {
      */
     fun i(message: String, throwable: Throwable? = null) {
         if (BuildConfig.DEBUG) logLong(Log.INFO, message, throwable)
+        log(LogLevel.INFO, tag, message, throwable)
     }
 
     /**
@@ -44,6 +62,7 @@ class AppLogger(private val tag: String) {
      */
     fun w(message: String, throwable: Throwable? = null) {
         Log.w(tag, message, throwable)
+        log(LogLevel.WARN, tag, message, throwable)
     }
 
     /**
@@ -55,6 +74,7 @@ class AppLogger(private val tag: String) {
      */
     fun e(message: String, throwable: Throwable? = null) {
         Log.e(tag, message, throwable)
+        log(LogLevel.ERROR, tag, message, throwable)
     }
 
     /**
@@ -107,5 +127,83 @@ class AppLogger(private val tag: String) {
         inline fun <reified T> create(): AppLogger {
             return AppLogger(T::class.java.simpleName)
         }
+
+        // Only this class itself (instance and companion) — not the whole `logger` package,
+        // which also contains real callers such as PerformanceLogger that must still be
+        // correctly attributed as the log's origin.
+        private const val INTERNAL_CLASS_NAME = "com.dispensesure.retail.core.utils.logger.AppLogger"
+
+        @Volatile
+        private var destination: LogDestination? = null
+
+        /**
+         * Wires up the file-based [LogDestination]. Call once, as early as possible, from
+         * [com.dispensesure.retail.PillCountingApplication.onCreate].
+         */
+        @Synchronized
+        fun init(context: Context) {
+            if (destination != null) return
+            destination = FileLogDestination(context.applicationContext)
+
+            // Single-line ERROR-only feed for a remote log/crash aggregator (Datadog, Sentry,
+            // ...). Uncomment once a provider is chosen and its SDK call is filled in inside
+            // RemoteLogDestination.write() — no other change is needed here or at any call site.
+            // destination = CompositeLogDestination(destination!!, RemoteLogDestination())
+        }
+
+        /**
+         * Lets [com.dispensesure.retail.core.utils.logger.di.LoggerModule] hand out the same
+         * [LogDestination] instance to Hilt-managed classes instead of standing up a second one.
+         */
+        fun currentDestination(): LogDestination? = destination
+
+        /** Test-only: injects a fake destination directly, bypassing [init]'s Context requirement. */
+        internal fun setDestinationForTest(destination: LogDestination?) {
+            this.destination = destination
+        }
+
+        private fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?) {
+            if (level < LoggerConfig.minimumLogLevel) return
+            val dest = destination ?: return
+
+            val callSite = resolveCallSite()
+            dest.write(
+                LogEntry(
+                    timestampMillis = System.currentTimeMillis(),
+                    level = level,
+                    fileName = callSite.fileName,
+                    className = tag,
+                    methodName = callSite.methodName,
+                    message = message,
+                    humanReadableError = throwable?.let(ExceptionTranslator::translate),
+                    throwable = throwable,
+                    operatorName = LoggerConfig.operatorName?.takeIf { it.isNotBlank() }
+                )
+            )
+        }
+
+        private data class CallSite(val fileName: String, val methodName: String)
+
+        /**
+         * Walks the current stack to find the first frame outside this class, so the log entry
+         * reports the real caller (e.g. LoginRepository.loginUser) rather than AppLogger itself.
+         */
+        private fun resolveCallSite(): CallSite {
+            val frame = Thread.currentThread().stackTrace.firstOrNull { element ->
+                element.className != "java.lang.Thread" && !isInternalClass(element.className)
+            }
+            return CallSite(
+                fileName = frame?.fileName ?: "Unknown",
+                methodName = frame?.methodName ?: "unknown"
+            )
+        }
+
+        /**
+         * True for AppLogger itself and its nested/companion classes (e.g. `AppLogger$Companion`)
+         * — but not for unrelated classes that merely share the string prefix, such as a
+         * hypothetical `AppLoggerHelper`.
+         */
+        private fun isInternalClass(className: String): Boolean =
+            className == INTERNAL_CLASS_NAME || className.startsWith("$INTERNAL_CLASS_NAME$")
     }
 }

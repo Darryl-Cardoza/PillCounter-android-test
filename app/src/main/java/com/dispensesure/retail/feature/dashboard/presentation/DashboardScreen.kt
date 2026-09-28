@@ -104,7 +104,11 @@ fun DashboardScreen(
         if (!isProfileChecked) {
             if (uiState.navigateToProfile && !preferenceHelper.isDoNotAskAgain()) {
                 logger.d("Navigating to Profile screen")
-                navController.navigate(Screen.Profile.route)
+                try {
+                    navController.navigate(Screen.Profile.route)
+                } catch (e: Exception) {
+                    logger.e("Navigation to Profile screen failed", e)
+                }
                 viewModel.resetNavigateToProfile()
                 preferenceHelper.setProfileChecked(true)
             }
@@ -115,20 +119,28 @@ fun DashboardScreen(
     LaunchedEffect(uiState.logoutUser) {
         if (uiState.logoutUser) {
             showToast(context, R.string.session_expired)
-            navController.navigate(AUTH_GRAPH_ROUTE) {
-                popUpTo(0) { inclusive = true }
+            try {
+                navController.navigate(AUTH_GRAPH_ROUTE) {
+                    popUpTo(0) { inclusive = true }
+                }
+            } catch (e: Exception) {
+                logger.e("Navigation to auth graph after logout failed", e)
             }
         }
     }
 
     LaunchedEffect(uiState.createdBatchId) {
         uiState.createdBatchId?.let { batchId ->
-            navController.navigate(
-                Screen.DispenseFlow.createRoute(
-                    scanType = CountType.REGULAR.toString(),
-                    batchId = batchId,
+            try {
+                navController.navigate(
+                    Screen.DispenseFlow.createRoute(
+                        scanType = CountType.REGULAR.toString(),
+                        batchId = batchId,
+                    )
                 )
-            )
+            } catch (e: Exception) {
+                logger.e("Navigation to DispenseFlow after batch creation failed", e)
+            }
             viewModel.clearCreatedBatchId()
         }
     }
@@ -138,7 +150,11 @@ fun DashboardScreen(
     // new Batch Stock Count panel (Screen.InventoryScan), NOT the legacy DispenseFlow.
     LaunchedEffect(uiState.pendingStockCountBucketId) {
         uiState.pendingStockCountBucketId?.let { bucketId ->
-            navController.navigate(Screen.InventoryScan.createRoute(bucketId = bucketId))
+            try {
+                navController.navigate(Screen.InventoryScan.createRoute(bucketId = bucketId))
+            } catch (e: Exception) {
+                logger.e("Navigation to InventoryScan (stock count) failed", e)
+            }
             viewModel.clearPendingStockCountBucketId()
         }
     }
@@ -164,11 +180,15 @@ fun DashboardScreen(
     val onDispenseQuickAction = remember(viewModel, navController) {
         {
             viewModel.saveTxnId()
-            navController.navigate(
-                Screen.DispenseFlow.createRoute(
-                    scanType = CountType.FIXED.toString(),
+            try {
+                navController.navigate(
+                    Screen.DispenseFlow.createRoute(
+                        scanType = CountType.FIXED.toString(),
+                    )
                 )
-            )
+            } catch (e: Exception) {
+                logger.e("Navigation to DispenseFlow from dispense quick action failed", e)
+            }
         }
     }
     val onInventoryQuickAction = remember(viewModel) {
@@ -180,12 +200,20 @@ fun DashboardScreen(
     val onRecentDispenseClick = remember(viewModel, navController) {
         { txnId: Long ->
             viewModel.selectCurrentTransaction(txnId)
-            navController.navigate(Screen.HistoryDetail.route)
+            try {
+                navController.navigate(Screen.HistoryDetail.route)
+            } catch (e: Exception) {
+                logger.e("Navigation to HistoryDetail failed", e)
+            }
         }
     }
     val onRecentBatchClick = remember(navController) {
         { batchId: Long ->
-            navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
+            try {
+                navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
+            } catch (e: Exception) {
+                logger.e("Navigation to BatchHistoryDetail failed", e)
+            }
         }
     }
     val onQueueDispenseClick = remember(viewModel, navController) {
@@ -194,19 +222,27 @@ fun DashboardScreen(
                 showEnableHl7Dialog = true
             } else {
                 viewModel.selectCurrentTransaction(txnId)
-                navController.navigate(
-                    Screen.DispenseFlow.createRoute(
-                        scanType = CountType.FIXED.toString(),
-                        fromResume = true,
-                        fromQueue = true,
+                try {
+                    navController.navigate(
+                        Screen.DispenseFlow.createRoute(
+                            scanType = CountType.FIXED.toString(),
+                            fromResume = true,
+                            fromQueue = true,
+                        )
                     )
-                )
+                } catch (e: Exception) {
+                    logger.e("Navigation to DispenseFlow from queue resume failed", e)
+                }
             }
         }
     }
     val onQueueInventoryClick = remember(navController) {
         { batchId: Long ->
-            navController.navigate(Screen.InventoryScan.createRoute(batchId))
+            try {
+                navController.navigate(Screen.InventoryScan.createRoute(batchId))
+            } catch (e: Exception) {
+                logger.e("Navigation to InventoryScan from queue failed", e)
+            }
         }
     }
 

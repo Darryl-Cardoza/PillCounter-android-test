@@ -149,6 +149,35 @@ class SecurePreferencesTest {
         assertNull(prefs.getString("key"))
     }
 
+    // ─────────────────────────── ENCRYPT-FAILURE ON WRITE ───────────────────────────
+    // AndroidKeyStore isn't available under Robolectric (see class doc), so encrypt() genuinely
+    // throws NoSuchAlgorithmException here — this doubles as a real exercise of put*'s
+    // catch-and-log fallback, not just a mocked stand-in for it.
+
+    @Test
+    fun `putString with non-null value does not throw when encryption is unavailable`() {
+        prefs.putString("key", "value")
+        assertFalse("value must not be persisted when encryption failed", prefs.contains("key"))
+    }
+
+    @Test
+    fun `putBoolean does not throw when encryption is unavailable`() {
+        prefs.putBoolean("flag", true)
+        assertFalse("value must not be persisted when encryption failed", prefs.contains("flag"))
+    }
+
+    @Test
+    fun `putInt does not throw when encryption is unavailable`() {
+        prefs.putInt("count", 5)
+        assertFalse("value must not be persisted when encryption failed", prefs.contains("count"))
+    }
+
+    @Test
+    fun `putLong does not throw when encryption is unavailable`() {
+        prefs.putLong("id", 5L)
+        assertFalse("value must not be persisted when encryption failed", prefs.contains("id"))
+    }
+
     // ─────────────────────────── CONTAINS / REMOVE / CLEAR ───────────────────────────
 
     @Test

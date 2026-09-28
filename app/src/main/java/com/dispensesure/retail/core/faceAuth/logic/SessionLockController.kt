@@ -2,7 +2,9 @@ package com.dispensesure.retail.core.faceAuth.logic
 
 import android.content.SharedPreferences
 import com.dispensesure.retail.core.faceAuth.data.FaceProfileRepository
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -11,6 +13,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.isActive
@@ -53,6 +56,7 @@ class SessionLockController @Inject constructor(
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val lastActivityAt = AtomicLong(System.currentTimeMillis())
+    private val logger = AppLogger.create<SessionLockController>()
 
     // Start locked on a cold start with an active session: process death must not
     // bypass the face lock. Only covers a genuinely new process — a fresh launch
@@ -85,6 +89,7 @@ class SessionLockController @Inject constructor(
     /** Whether at least one enrolled face profile currently participates in verify matching. */
     val hasEnabledProfile: StateFlow<Boolean> = faceProfileRepository.observeProfiles()
         .map { profiles -> profiles.any { it.isEnabled } }
+        .catch { e -> logger.e("Observing enabled face profiles failed", e) }
         .stateIn(scope, SharingStarted.Eagerly, preferenceHelper.hasEnabledFaceProfile())
 
     init {
@@ -96,11 +101,17 @@ class SessionLockController @Inject constructor(
         }
         scope.launch {
             hasEnabledProfile.collect { hasEnabled ->
-                preferenceHelper.saveHasEnabledFaceProfile(hasEnabled)
-                // No enabled profile means nothing to verify against — release the lock.
-                if (!hasEnabled && _isLocked.value) {
-                    _isLocked.value = false
-                    _startOnScan.value = false
+                try {
+                    preferenceHelper.saveHasEnabledFaceProfile(hasEnabled)
+                    // No enabled profile means nothing to verify against — release the lock.
+                    if (!hasEnabled && _isLocked.value) {
+                        _isLocked.value = false
+                        _startOnScan.value = false
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("Reacting to hasEnabledProfile change failed", e)
                 }
             }
         }

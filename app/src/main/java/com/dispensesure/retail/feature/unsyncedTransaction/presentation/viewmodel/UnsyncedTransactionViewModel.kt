@@ -8,12 +8,14 @@ import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.feature.countResume.domain.model.CountItem
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.unsyncedTransaction.domain.model.UnsyncedTransactionUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -37,6 +39,8 @@ class UnsyncedTransactionViewModel @Inject constructor(
     val unsyncedTransactionUiState: StateFlow<UnsyncedTransactionUiState> =
         _unsyncedTransactionUiState.asStateFlow()
 
+    private val logger = AppLogger.create<UnsyncedTransactionViewModel>()
+
     init {
         observeUnsyncedDispense()
         observeUnsyncedBatches()
@@ -50,7 +54,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
                 type = StepState.TARGET_VERIFICATION.toString()
             )
                 .map { txns -> txns.map { it.toCountItem() } }
-                .catch { e -> e.printStackTrace() }
+                .catch { e -> logger.e("Failed to observe unsynced dispense transactions", e) }
                 .collect { items ->
                     _unsyncedTransactionUiState.update { it.copy(dispenseList = items) }
                 }
@@ -72,7 +76,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
                         )
                     }
                 }
-                .catch { e -> e.printStackTrace() }
+                .catch { e -> logger.e("Failed to observe unsynced completed batches", e) }
                 .collect { batches ->
                     _unsyncedTransactionUiState.update { it.copy(batchList = batches) }
                 }
@@ -84,7 +88,13 @@ class UnsyncedTransactionViewModel @Inject constructor(
             hl7EventHandler.connectionState
                 .filter { it }
                 .collect {
-                    hl7Repository.resendPendingHl7BatchTransactions()
+                    try {
+                        hl7Repository.resendPendingHl7BatchTransactions()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to resend pending HL7 batch transactions", e)
+                    }
                 }
         }
     }

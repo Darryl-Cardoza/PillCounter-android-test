@@ -16,6 +16,7 @@ import com.google.gson.Gson
 import com.dispensesure.retail.core.hl7.service.Hl7serviceHandler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -84,7 +85,13 @@ class LoginViewModel @Inject constructor(
                 .onSuccess {
                     logger.i("Login successful for user: $email.")
                     _uiState.value = LoginUiState.Success
-                    serviceManager.startService()
+                    try {
+                        serviceManager.startService()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to start HL7 service after login for user: $email", e)
+                    }
                 }
                 .onFailure { exception ->
                     logger.e("Login failed for user: $email", exception)
@@ -112,7 +119,13 @@ class LoginViewModel @Inject constructor(
                 .onSuccess {
                     logger.i("Logout successful")
                     _logoutUiState.value = LogoutUiState.Success
-                    preferenceHelper.clearHl7Config()
+                    try {
+                        preferenceHelper.clearHl7Config()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to clear HL7 config after logout", e)
+                    }
                 }
                 .onFailure { exception ->
                     logger.e("Logout failed", exception)

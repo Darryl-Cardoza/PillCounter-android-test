@@ -220,7 +220,12 @@ class PreferenceHelper @Inject constructor(
             return null
         }
         logger.d("Retrieved theme colors (json length=${json.length})")
-        return gson.fromJson(json, ColorSettings::class.java)
+        return try {
+            gson.fromJson(json, ColorSettings::class.java)
+        } catch (e: Exception) {
+            logger.e("Failed to parse cached theme colors, returning null", e)
+            null
+        }
     }
 
     // ─────────────────────────── USER SETTINGS ───────────────────────────
@@ -272,7 +277,14 @@ class PreferenceHelper @Inject constructor(
 
     fun getRecentLogins(): List<String> {
         val json = prefs.getString(KEY_RECENT_LOGINS) ?: return emptyList()
-        return gson.fromJson(json, Array<String>::class.java).toList()
+        return try {
+            gson.fromJson(json, Array<String>::class.java).toList()
+        } catch (e: Exception) {
+            // Read directly on the Login screen's first composition (LoginScreen.kt) — a
+            // corrupted/stale blob here must degrade to "no recent logins" rather than crash it.
+            logger.e("Failed to parse recent logins, returning empty list", e)
+            emptyList()
+        }
     }
 
     fun removeRecentLogin(email: String) {
@@ -411,7 +423,12 @@ class PreferenceHelper @Inject constructor(
 
     fun getControlDrugTypes(): Set<String> {
         val json = prefs.getString(KEY_CONTROL_DRUG_TYPES) ?: return emptySet()
-        return gson.fromJson(json, Array<String>::class.java).toSet()
+        return try {
+            gson.fromJson(json, Array<String>::class.java).toSet()
+        } catch (e: Exception) {
+            logger.e("Failed to parse control drug types, returning empty set", e)
+            emptySet()
+        }
     }
 
     /** Returns true only after [setControlDrugTypes] has been called at least once. */
@@ -449,7 +466,12 @@ class PreferenceHelper @Inject constructor(
 
     fun getBucketList(): List<String> {
         val json = prefs.getString(KEY_BUCKET_LIST) ?: return emptyList()
-        return gson.fromJson(json, Array<String>::class.java).toList()
+        return try {
+            gson.fromJson(json, Array<String>::class.java).toList()
+        } catch (e: Exception) {
+            logger.e("Failed to parse bucket list, returning empty list", e)
+            emptyList()
+        }
     }
 
     // ─────────────────────────── HL7 CONFIG ───────────────────────────
@@ -484,12 +506,14 @@ class PreferenceHelper @Inject constructor(
      * @return List of Terminal objects, or empty list if none found.
      */
     fun getTerminals(): List<Terminal> {
-        val json = prefs.getString(KEY_TERMINALS, null)
-        return if (json != null) {
-            val array = gson.fromJson(json, Array<Terminal>::class.java)
-            array.toList()
-        } else {
+        val json = prefs.getString(KEY_TERMINALS, null) ?: run {
             logger.d("No terminals found in preferences")
+            return emptyList()
+        }
+        return try {
+            gson.fromJson(json, Array<Terminal>::class.java).toList()
+        } catch (e: Exception) {
+            logger.e("Failed to parse cached terminals, returning empty list", e)
             emptyList()
         }
     }
@@ -567,8 +591,12 @@ class PreferenceHelper @Inject constructor(
      */
     fun getPharmacyTypes(): List<PharmacyTypeOption> {
         val json = prefs.getString(KEY_PHARMACY_TYPES_LIST) ?: return emptyList()
-        val array = gson.fromJson(json, Array<PharmacyTypeOption>::class.java)
-        return array?.toList() ?: emptyList()
+        return try {
+            gson.fromJson(json, Array<PharmacyTypeOption>::class.java)?.toList() ?: emptyList()
+        } catch (e: Exception) {
+            logger.e("Failed to parse cached pharmacy types, returning empty list", e)
+            emptyList()
+        }
     }
 
     // ─────────────────────────── HAZARDOUS DRUG ───────────────────────────
@@ -687,11 +715,14 @@ class PreferenceHelper @Inject constructor(
      * @return List of Country objects, or empty list if none cached yet.
      */
     fun getCountries(): List<Country> {
-        val json = prefs.getString(KEY_COUNTRIES, null)
-        return if (json != null) {
-            gson.fromJson(json, Array<Country>::class.java).toList()
-        } else {
+        val json = prefs.getString(KEY_COUNTRIES, null) ?: run {
             logger.d("No countries found in preferences")
+            return emptyList()
+        }
+        return try {
+            gson.fromJson(json, Array<Country>::class.java).toList()
+        } catch (e: Exception) {
+            logger.e("Failed to parse cached countries, returning empty list", e)
             emptyList()
         }
     }

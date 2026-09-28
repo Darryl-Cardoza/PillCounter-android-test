@@ -684,38 +684,55 @@ class PreferenceHelperTest {
         assertEquals(Hl7Format.DEFAULT, helper.getHl7Format())
     }
 
-    // ─────────────────────────── CORRUPTED JSON (UNGUARDED gson.fromJson CALLS) ───────────────────────────
-    // Unlike getHl7Format, these getters don't wrap gson.fromJson in a try/catch, so malformed
-    // stored JSON is expected to propagate as a JsonSyntaxException rather than fail silently.
+    // ─────────────────────────── CORRUPTED JSON (gson.fromJson CALLS) ───────────────────────────
+    // All of these getters wrap gson.fromJson in a try/catch, so malformed stored JSON degrades
+    // to the getter's documented empty/null fallback instead of crashing the caller.
 
-    @Test(expected = com.google.gson.JsonSyntaxException::class)
-    fun `getThemeColors throws on corrupted json`() {
+    @Test
+    fun `getThemeColors returns null on corrupted json instead of throwing`() {
         store["theme_colors"] = "not-json"
-        helper.getThemeColors()
+        assertEquals(null, helper.getThemeColors())
     }
 
-    @Test(expected = com.google.gson.JsonSyntaxException::class)
-    fun `getRecentLogins throws on corrupted json`() {
+    @Test
+    fun `getRecentLogins returns empty list on corrupted json instead of throwing`() {
+        // Read directly on LoginScreen's first composition — must degrade gracefully rather
+        // than crash the screen (see PreferenceHelper.getRecentLogins).
         store["recent_logins"] = "not-json"
-        helper.getRecentLogins()
+        assertEquals(emptyList<String>(), helper.getRecentLogins())
     }
 
-    @Test(expected = com.google.gson.JsonSyntaxException::class)
-    fun `getControlDrugTypes throws on corrupted json`() {
+    @Test
+    fun `getControlDrugTypes returns empty set on corrupted json instead of throwing`() {
         store["key_control_drug_types"] = "not-json"
-        helper.getControlDrugTypes()
+        assertEquals(emptySet<String>(), helper.getControlDrugTypes())
     }
 
-    @Test(expected = com.google.gson.JsonSyntaxException::class)
-    fun `getBucketList throws on corrupted json`() {
+    @Test
+    fun `getBucketList returns empty list on corrupted json instead of throwing`() {
         store["key_bucket_list"] = "not-json"
-        helper.getBucketList()
+        assertEquals(emptyList<String>(), helper.getBucketList())
     }
 
-    @Test(expected = com.google.gson.JsonSyntaxException::class)
-    fun `getTerminals throws on corrupted json`() {
+    @Test
+    fun `getTerminals returns empty list on corrupted json instead of throwing`() {
         store["key_terminals"] = "not-json"
-        helper.getTerminals()
+        assertEquals(emptyList<com.dispensesure.retail.feature.dashboard.domain.model.Terminal>(), helper.getTerminals())
+    }
+
+    @Test
+    fun `getPharmacyTypes returns empty list on corrupted json instead of throwing`() {
+        store["key_pharmacy_types_list"] = "not-json"
+        assertEquals(
+            emptyList<com.dispensesure.retail.feature.profile.domain.model.PharmacyTypeOption>(),
+            helper.getPharmacyTypes()
+        )
+    }
+
+    @Test
+    fun `getCountries returns empty list on corrupted json instead of throwing`() {
+        store["key_countries"] = "not-json"
+        assertEquals(emptyList<com.dispensesure.retail.feature.profile.domain.model.Country>(), helper.getCountries())
     }
 
     // ─────────────────────────── ADDITIONAL EDGE CASES ───────────────────────────

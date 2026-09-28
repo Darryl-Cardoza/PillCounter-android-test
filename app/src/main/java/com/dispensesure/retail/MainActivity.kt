@@ -43,10 +43,12 @@ import com.dispensesure.retail.core.health.logic.ExpiryWatcher
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.RuntimeUnit
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
 import com.dispensesure.retail.core.utils.common.HelperFunctions.openPlayStore
@@ -78,6 +80,8 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private val logger = AppLogger.create<MainActivity>()
+
     private val settingsViewModel: MainActivityViewModel by viewModels()
 
     @Inject
@@ -183,15 +187,25 @@ class MainActivity : ComponentActivity() {
 //
 //        if (securityViolations.isEmpty()) {
             runtimeUnit.grantClearance()
-            runtimeUnit.activateIfNeeded()
+            try {
+                runtimeUnit.activateIfNeeded()
+            } catch (e: Exception) {
+                logger.e("runtimeUnit.activateIfNeeded() failed", e)
+            }
 //        } else {
 //            runtimeUnit.revokeClearance()
 //        }
 
         lifecycleScope.launch {
-            delay(1500)
-            fcmService.initFCM()
-            fcmService.subscribeToTopic("global_updates")
+            try {
+                delay(1500)
+                fcmService.initFCM()
+                fcmService.subscribeToTopic("global_updates")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("FCM init/subscribe failed", e)
+            }
         }
 
 
@@ -458,6 +472,11 @@ class MainActivity : ComponentActivity() {
                 }
             }
             showToast(this, R.string.session_expired)
+        } catch (e: Exception) {
+            // This runs on session-expiry/refresh-401 — already the worst possible moment for
+            // the app to crash, since the user would be left stuck with an invalidated session
+            // and no way back to Login. Swallow and log rather than propagate.
+            logger.e("Logout teardown failed", e)
         } finally {
             sessionHealthController.endTeardown()
         }

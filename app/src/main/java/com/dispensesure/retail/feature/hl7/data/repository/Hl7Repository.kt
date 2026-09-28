@@ -36,9 +36,11 @@ import com.dispensesure.retail.feature.hl7.util.HL7MessageBuilder
 import com.dispensesure.retail.feature.hl7.util.isRejectAck
 import com.dispensesure.retail.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -98,8 +100,14 @@ class Hl7Repository @Inject constructor(
 
     init {
         scope.launch {
-            if (preferenceHelper.isHl7Enabled()) {
-                observePendingHl7Transactions()
+            try {
+                if (preferenceHelper.isHl7Enabled()) {
+                    observePendingHl7Transactions()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to check HL7-enabled preference on startup — pending-txn observer not started", e)
             }
         }
     }
@@ -146,25 +154,31 @@ class Hl7Repository @Inject constructor(
         }
 
         scope.launch {
-            when (inboundType) {
-                MessageType.DISPENSE_REQUEST -> {
-                    val hasRxe = message.segment<RXESegment>(RXESegment.NAME) != null
-                    val hasZui = message.segment<ZUISegment>(ZUISegment.NAME) != null
-                    when {
-                        hasRxe -> handleRdeDispenseRequest(message)
-                        hasZui -> handleZuiOrderPacketDispenseRequest(message)
-                        else -> handleOrderPacketDispenseRequest(message)
+            try {
+                when (inboundType) {
+                    MessageType.DISPENSE_REQUEST -> {
+                        val hasRxe = message.segment<RXESegment>(RXESegment.NAME) != null
+                        val hasZui = message.segment<ZUISegment>(ZUISegment.NAME) != null
+                        when {
+                            hasRxe -> handleRdeDispenseRequest(message)
+                            hasZui -> handleZuiOrderPacketDispenseRequest(message)
+                            else -> handleOrderPacketDispenseRequest(message)
+                        }
                     }
+
+                    MessageType.EDIT_DISPENSE_REQUEST ->
+                        handleOrderEdit(message)
+
+                    MessageType.INVENTORY_REQUEST ->
+                        handleInrInventoryRequest(message)
+
+                    MessageType.CANCEL_ORDER ->
+                        handleOrderCancellation(message)
                 }
-
-                MessageType.EDIT_DISPENSE_REQUEST ->
-                    handleOrderEdit(message)
-
-                MessageType.INVENTORY_REQUEST ->
-                    handleInrInventoryRequest(message)
-
-                MessageType.CANCEL_ORDER ->
-                    handleOrderCancellation(message)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to process inbound HL7 message (type=$inboundType, msgId=${message.messageControlId})", e)
             }
         }
     }
@@ -197,6 +211,18 @@ class Hl7Repository @Inject constructor(
 
     @SuppressLint("SimpleDateFormat")
     suspend fun buildAndSendSuccessfulDispense(
+        txnId: Long
+    ) {
+        try {
+            buildAndSendSuccessfulDispenseInternal(txnId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Failed to build/send dispense HL7 for txnId=$txnId — leaving unsynced for retry", e)
+        }
+    }
+
+    private suspend fun buildAndSendSuccessfulDispenseInternal(
         txnId: Long
     ) {
         val txn = txnDao.getById(txnId)
@@ -367,9 +393,15 @@ class Hl7Repository @Inject constructor(
     fun sendDispenseNow(txnId: Long) {
         if (preferenceHelper.isHl7Enabled()) {
             scope.launch {
-                logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
-                resendMutex.withLock {
-                    buildAndSendSuccessfulDispense(txnId = txnId)
+                try {
+                    logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
+                    resendMutex.withLock {
+                        buildAndSendSuccessfulDispense(txnId = txnId)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("sendDispenseNow failed for txnId=$txnId", e)
                 }
             }
         } else {
@@ -403,6 +435,10 @@ class Hl7Repository @Inject constructor(
                         buildAndSendSuccessfulDispense(txnId = txn.txnId)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("resendPendingHl7Transactions failed", e)
             } finally {
                 resendMutex.unlock()
             }
@@ -411,14 +447,20 @@ class Hl7Repository @Inject constructor(
 
     fun resendPendingHl7BatchTransactions() {
         scope.launch {
-            val pendingBatches = batchDao.getUnsyncedCompletedBatchesOnce()
-            if (pendingBatches.isEmpty()) {
-                logger.i("No pending HL7 batch transactions to sync")
-                return@launch
-            }
-            logger.i("Resending ${pendingBatches.size} pending HL7 batch transactions")
-            for (batch in pendingBatches) {
-                buildAndSendInventoryResponse(batchId = batch.batchId)
+            try {
+                val pendingBatches = batchDao.getUnsyncedCompletedBatchesOnce()
+                if (pendingBatches.isEmpty()) {
+                    logger.i("No pending HL7 batch transactions to sync")
+                    return@launch
+                }
+                logger.i("Resending ${pendingBatches.size} pending HL7 batch transactions")
+                for (batch in pendingBatches) {
+                    buildAndSendInventoryResponse(batchId = batch.batchId)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("resendPendingHl7BatchTransactions failed", e)
             }
         }
     }
@@ -961,7 +1003,14 @@ class Hl7Repository @Inject constructor(
         expiry: String,
         targetCount: Int
     ): ResolvedInventoryItem? {
-        val existingDrug = drugMasterDao.getDrugByNdc(ndc)
+        val existingDrug = try {
+            drugMasterDao.getDrugByNdc(ndc)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Failed to look up local drug for NDC: $ndc", e)
+            null
+        }
         if (existingDrug != null) {
             val localName = existingDrug.drugName
             if (!localName.isNullOrBlank()) {
@@ -1265,6 +1314,7 @@ class Hl7Repository @Inject constructor(
     private fun observePendingHl7Transactions() {
         scope.launch {
             pillCountTxnDao.observePendingHl7Txn()
+                .catch { e -> logger.e("Pending HL7 txn observer flow failed", e) }
                 .collect { pendingTxn ->
                     logger.i("HL7 observer fired, pending=${pendingTxn.size}")
                     resendPendingHl7Transactions()

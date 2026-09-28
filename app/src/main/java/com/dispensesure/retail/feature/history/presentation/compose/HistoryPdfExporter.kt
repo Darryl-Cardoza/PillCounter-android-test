@@ -209,10 +209,11 @@ class HistoryPdfExporter(private val context: Context) {
             return file
 
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.e("PDF export failed", e)
             try {
                 pdfDocument.close()
-            } catch (ex: Exception) { /* ignore */
+            } catch (ex: Exception) {
+                logger.w("pdfDocument.close() cleanup after export failure also failed: ${ex.message}")
             }
             return null
         } finally {

@@ -139,7 +139,7 @@ class Hl7serviceHandler @Inject constructor(
             bindService()
 
         } catch (e: Exception) {
-            logger.i("Failed to start HL7 Service", e)
+            logger.e("Failed to start HL7 Service", e)
             serviceStarted = false
         }
     }
@@ -158,7 +158,7 @@ class Hl7serviceHandler @Inject constructor(
             context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
             logger.i("Binding to HL7 Service...")
         } catch (e: Exception) {
-            logger.i("Failed to bind to HL7 Service", e)
+            logger.e("Failed to bind to HL7 Service", e)
         }
     }
 
@@ -178,7 +178,7 @@ class Hl7serviceHandler @Inject constructor(
             bound = false
             logger.i("Unbound from HL7 Service")
         } catch (e: Exception) {
-            logger.i("Error unbinding service", e)
+            logger.e("Error unbinding service", e)
         }
     }
 
@@ -199,7 +199,7 @@ class Hl7serviceHandler @Inject constructor(
             logger.i("HL7 Service stopped")
 
         } catch (e: Exception) {
-            logger.i("Failed to stop HL7 Service", e)
+            logger.e("Failed to stop HL7 Service", e)
         }
     }
 

@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.security
 import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import java.io.File
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -30,6 +31,8 @@ object SecurityAuditLogger {
     private const val ROTATED_FILE_NAME  = "security_audit_prev.log"
     private const val MAX_LOG_SIZE_BYTES = 512 * 1024 // 512 KB
 
+    private val logger = AppLogger.create<SecurityAuditLogger>()
+
     // ─── Public API ───────────────────────────────────────────────────────────
 
     fun log(context: Context, event: AuditEvent) {
@@ -37,7 +40,9 @@ object SecurityAuditLogger {
             rotateIfNeeded(context)
             val existing = readDecrypted(context) ?: ""
             writeEncrypted(context, existing + event.toLogLine())
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            logger.e("log() failed to write security audit event '${event.checkName}'", e)
+        }
     }
 
     fun logAll(context: Context, events: List<AuditEvent>) {
@@ -46,7 +51,9 @@ object SecurityAuditLogger {
             val existing = readDecrypted(context) ?: ""
             val appended = existing + events.joinToString("") { it.toLogLine() }
             writeEncrypted(context, appended)
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            logger.e("logAll() failed to write ${events.size} security audit event(s)", e)
+        }
     }
 
     fun readAll(context: Context): List<AuditEvent> {
@@ -55,7 +62,8 @@ object SecurityAuditLogger {
                 .lines()
                 .filter { it.isNotBlank() }
                 .mapNotNull { AuditEvent.fromLogLine(it) }
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("readAll() failed to read security audit log", e)
             emptyList()
         }
     }

@@ -6,10 +6,12 @@ import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.utils.common.HelperFunctions.mapCounts
 import com.dispensesure.retail.feature.menu.domain.model.MenuUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -45,6 +47,8 @@ class MenuViewModel @Inject constructor(
     /** Public immutable UI state exposed to the UI layer. */
     val uiState: StateFlow<MenuUiState> = _uiState.asStateFlow()
 
+    private val logger = AppLogger.create<MenuViewModel>()
+
     init {
         observeDashboardCounts()
         observeBatchCount()
@@ -64,7 +68,7 @@ class MenuViewModel @Inject constructor(
             pillCountTxnDao.observeDashboardCountsGrouped(preferenceHelper.getLocalId())
                 .map { rows -> mapCounts(rows) }
                 .catch { e ->
-                    e.printStackTrace()
+                    logger.e("Failed to observe dashboard counts", e)
                 }
                 .collect { counts ->
                     _uiState.update { current ->
@@ -80,7 +84,7 @@ class MenuViewModel @Inject constructor(
     private fun observeBatchCount() {
         viewModelScope.launch {
             batchDao.observeActiveInProgressCount()
-                .catch { e -> e.printStackTrace() }
+                .catch { e -> logger.e("Failed to observe active in-progress batch count", e) }
                 .collect { count ->
                     _uiState.update { current ->
                         current.copy(regularPartial = count)
@@ -92,7 +96,7 @@ class MenuViewModel @Inject constructor(
     private fun observeCompletedBatchCount() {
         viewModelScope.launch {
             batchDao.observeCompletedBatchCount()
-                .catch { e -> e.printStackTrace() }
+                .catch { e -> logger.e("Failed to observe completed batch count", e) }
                 .collect { count ->
                     _uiState.update { current ->
                         current.copy(regularCompleted = count)
@@ -124,7 +128,10 @@ class MenuViewModel @Inject constructor(
                 bucketId = bucketId
             )
             batchDao.insert(batch)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
+            logger.e("Failed to create batch", e)
             null
         }
     }
@@ -135,7 +142,7 @@ class MenuViewModel @Inject constructor(
                 pillCountTxnDao.getTotalCompletedTransactionCount(),
                 batchDao.getUnsyncedCompletedBatchCount()
             ) { dispenseCount, batchCount -> dispenseCount + batchCount }
-                .catch { e -> e.printStackTrace() }
+                .catch { e -> logger.e("Failed to observe unsynced transaction count", e) }
                 .collect { count ->
                     _uiState.update { current ->
                         current.copy(unsyncedTransactionCount = count)

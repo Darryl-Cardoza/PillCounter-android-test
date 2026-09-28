@@ -38,6 +38,7 @@ import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -333,6 +334,18 @@ class DashboardViewModelTest {
             assertEquals("Jane Doe", vm.uiState.value.operatorName)
         }
 
+    @Test
+    fun `operatorName observation failure is caught and does not crash the ViewModel`() =
+        runTest(testDispatcher) {
+            every { operatorNameProvider.observe() } returns flow { throw RuntimeException("boom") }
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            // Must not propagate — operatorName just stays at its default.
+            assertNull(vm.uiState.value.operatorName)
+        }
+
     // ─────────────────────────────── observeUserDetail / toUserDetail ───────────────────────────────
 
     @Test
@@ -359,6 +372,17 @@ class DashboardViewModelTest {
         advanceUntilIdle()
 
         // fetchUserDetail's token is null so userDetail stays null too.
+        assertNull(vm.uiState.value.userDetail)
+    }
+
+    @Test
+    fun `observeUserDetail failure is caught and does not crash the ViewModel`() = runTest(testDispatcher) {
+        every { userDao.observeByLocalId(1L) } returns flow { throw RuntimeException("db boom") }
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        // Must not propagate — userDetail just stays at its default (no cached entity).
         assertNull(vm.uiState.value.userDetail)
     }
 
@@ -441,6 +465,20 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `observeQueue failure is caught, does not crash, and clears the loading flag`() =
+        runTest(testDispatcher) {
+            every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns
+                flow { throw RuntimeException("db boom") }
+            every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(emptyList())
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            assertFalse(vm.uiState.value.isLoadingQueue)
+            assertTrue(vm.uiState.value.queue.isEmpty())
+        }
+
+    @Test
     fun `onKpiFilterTapped toggles filter and applies all branches`() = runTest(testDispatcher) {
         val dispense = listOf(
             dispenseTxn(txnId = 1, createdAt = 1, priority = TxnPriority.High, drugType = "CIII", isHazardous = true),
@@ -515,6 +553,24 @@ class DashboardViewModelTest {
         // 1 completed dispense + 1 completed batch (INPROGRESS filtered out).
         assertEquals(2, vm.uiState.value.recentActivity.size)
     }
+
+    @Test
+    fun `loadRecentActivity failure is caught, does not crash, and clears the loading flag`() =
+        runTest(testDispatcher) {
+            every {
+                pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
+            } returns flow { throw RuntimeException("db boom") }
+            every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+            advanceUntilIdle()
+
+            assertFalse(vm.uiState.value.isLoadingQueue)
+            assertTrue(vm.uiState.value.recentActivity.isEmpty())
+        }
 
     @Test
     fun `recent activity rows carry drug image strength and dosage form`() = runTest(testDispatcher) {

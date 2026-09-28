@@ -253,14 +253,15 @@ class PDFHelperExporter(private val context: Context) {
             return file
 
         } catch (e: IOException) {
-            e.printStackTrace()
+            logger.e("PDF export failed while writing file", e)
             try {
                 pdfDocument.finishPage(page)
             } catch (ignored: Exception) {
+                logger.w("finishPage() cleanup after IOException also failed: ${ignored.message}")
             }
             return null
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.e("PDF export failed", e)
             return null
         } finally {
             pdfDocument.close()

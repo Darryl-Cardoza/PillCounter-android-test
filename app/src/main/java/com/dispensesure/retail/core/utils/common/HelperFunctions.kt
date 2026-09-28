@@ -22,6 +22,7 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.menu.domain.model.CountBuckets
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.core.security.ImageCrypto
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.navigation.Screen
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -39,6 +40,8 @@ import kotlin.system.exitProcess
  * - Bitmap saving and Play Store navigation.
  */
 object HelperFunctions {
+
+    private val logger = AppLogger.create<HelperFunctions>()
 
     /**
      * Masks an email address by keeping part of the local segment visible and replacing the rest with stars.
@@ -230,6 +233,9 @@ object HelperFunctions {
             toSave.compress(Bitmap.CompressFormat.JPEG, 90, baos)
             val encryptedBytes = ImageCrypto.encrypt(baos.toByteArray())
             FileOutputStream(file).use { out -> out.write(encryptedBytes) }
+        } catch (e: Exception) {
+            logger.e("saveBitmapToFile() failed for ${file.absolutePath}", e)
+            throw e
         } finally {
             if (grayscale) toSave.recycle()
         }

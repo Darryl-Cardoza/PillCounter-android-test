@@ -8,6 +8,7 @@ import com.dispensesure.retail.core.room.dao.BottleInfoDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchLotEntry
@@ -18,6 +19,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
@@ -45,17 +47,25 @@ class BatchViewModel @Inject constructor(
     private val _uniqueNdcCount = MutableStateFlow(0)
     val uniqueNdcCount: StateFlow<Int> = _uniqueNdcCount.asStateFlow()
 
+    private val logger = AppLogger.create<BatchViewModel>()
+
     init {
         viewModelScope.launch {
-            val batchId = if (argBatchId == 0L) {
-                batchDao.getLatest()?.batchId?.also { _resolvedBatchId.value = it } ?: 0L
-            } else {
-                argBatchId
-            }
-            if (batchId != 0L) {
-                val entity = batchDao.getById(batchId)
-                _batchEntity.value = entity
-                _uniqueNdcCount.value = stockTxnDao.getUniqueNdcCountForBatch(batchId)
+            try {
+                val batchId = if (argBatchId == 0L) {
+                    batchDao.getLatest()?.batchId?.also { _resolvedBatchId.value = it } ?: 0L
+                } else {
+                    argBatchId
+                }
+                if (batchId != 0L) {
+                    val entity = batchDao.getById(batchId)
+                    _batchEntity.value = entity
+                    _uniqueNdcCount.value = stockTxnDao.getUniqueNdcCountForBatch(batchId)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to load initial batch data", e)
             }
         }
     }
@@ -66,6 +76,7 @@ class BatchViewModel @Inject constructor(
             if (id == 0L) flowOf(emptyList())
             else bottleInfoDao.observeByBatchId(id).map { it.groupAndMap() }
         }
+        .catch { e -> logger.e("Failed to build batch drug groups", e) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     fun deleteBatch(onDone: () -> Unit) {
@@ -76,8 +87,10 @@ class BatchViewModel @Inject constructor(
                     batchDao.softDelete(id)
                     stockTxnDao.deleteByBatchIds(listOf(id))
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e !is CancellationException) e.printStackTrace()
+                logger.e("Failed to delete batch", e)
             } finally {
                 onDone()
             }

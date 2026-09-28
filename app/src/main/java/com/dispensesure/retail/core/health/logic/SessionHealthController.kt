@@ -8,6 +8,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import dagger.Lazy
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Deferred
@@ -150,11 +151,15 @@ class SessionHealthController @Inject constructor(
         // state machine that fires it.
         scope.launch {
             syncTrigger.collect {
-                runCatching {
+                try {
                     val repo = hl7Repository.get()
                     repo.resendPendingHl7Transactions()
                     repo.resendPendingHl7BatchTransactions()
-                }.onFailure { logger.w("HL7 drain failed", it) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.w("HL7 drain failed", e)
+                }
             }
         }
     }

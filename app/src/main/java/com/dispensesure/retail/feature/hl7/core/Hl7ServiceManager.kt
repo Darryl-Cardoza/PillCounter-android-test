@@ -67,8 +67,8 @@ class Hl7ServiceManager @Inject constructor(
                 serviceManager.bindService()
             }
 
-        } catch (_: Exception) {
-            logger.i("Failed to start HL7 service")
+        } catch (e: Exception) {
+            logger.e("Failed to start HL7 service", e)
         }
     }
 
@@ -79,8 +79,8 @@ class Hl7ServiceManager @Inject constructor(
     private fun stopService() {
         try {
             serviceManager.stopService()
-        } catch (_: Exception) {
-            logger.i("Failed to stop HL7 service")
+        } catch (e: Exception) {
+            logger.e("Failed to stop HL7 service", e)
         }
     }
 
@@ -114,7 +114,7 @@ class Hl7ServiceManager @Inject constructor(
             Result.success(Unit)
 
         } catch (e: Exception) {
-            logger.i("Failed sending HL7 message", e)
+            logger.e("Failed sending HL7 message", e)
             Result.failure(e)
         }
     }
@@ -153,7 +153,7 @@ class Hl7ServiceManager @Inject constructor(
             Result.success(ack)
 
         } catch (e: Exception) {
-            logger.i("Failed sending raw HL7 message", e)
+            logger.e("Failed sending raw HL7 message", e)
             Result.failure(e)
         }
     }

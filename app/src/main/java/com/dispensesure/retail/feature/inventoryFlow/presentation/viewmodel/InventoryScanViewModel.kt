@@ -30,6 +30,7 @@ import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.RecentBatchRow
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -206,28 +207,35 @@ class InventoryScanViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            if (argBatchId != 0L) {
-                resolvedBatchId.value = argBatchId
-                val batch = batchDao.getById(argBatchId)
-                _bucketId.value = batch?.bucketId
-                // PMS-requested inventory: lock scanning to the requested NDCs.
-                // The batch was pre-populated with a txn per requested drug, so
-                // those NDCs are the allowed set. Manually started batches
-                // (requestIdFromPMS == null) stay unrestricted.
-                if (!batch?.requestIdFromPMS.isNullOrBlank()) {
-                    // Source the allowlist from the stock-txn headers, NOT bottle_info: a
-                    // freshly received PMS batch has one header per requested drug but no
-                    // bottle lines yet, so reading bottle_info would yield an empty set and
-                    // reject every scan — including the requested NDCs.
-                    expectedNdcs = stockTxnDao.getNdcsForBatch(argBatchId)
-                        .filter { it.isNotBlank() }
-                        .toSet()
-                    logger.i("INV_SCAN PMS batch=$argBatchId expectedNdcs=$expectedNdcs")
+            try {
+                if (argBatchId != 0L) {
+                    resolvedBatchId.value = argBatchId
+                    val batch = batchDao.getById(argBatchId)
+                    _bucketId.value = batch?.bucketId
+                    // PMS-requested inventory: lock scanning to the requested NDCs.
+                    // The batch was pre-populated with a txn per requested drug, so
+                    // those NDCs are the allowed set. Manually started batches
+                    // (requestIdFromPMS == null) stay unrestricted.
+                    if (!batch?.requestIdFromPMS.isNullOrBlank()) {
+                        // Source the allowlist from the stock-txn headers, NOT bottle_info: a
+                        // freshly received PMS batch has one header per requested drug but no
+                        // bottle lines yet, so reading bottle_info would yield an empty set and
+                        // reject every scan — including the requested NDCs.
+                        expectedNdcs = stockTxnDao.getNdcsForBatch(argBatchId)
+                            .filter { it.isNotBlank() }
+                            .toSet()
+                        logger.i("INV_SCAN PMS batch=$argBatchId expectedNdcs=$expectedNdcs")
+                    }
+                } else {
+                    // No batch yet — the user selected a bucket on the dashboard but the
+                    // batch row will be created on the first successful NDC scan.
+                    _bucketId.value = argBucketId
                 }
-            } else {
-                // No batch yet — the user selected a bucket on the dashboard but the
-                // batch row will be created on the first successful NDC scan.
-                _bucketId.value = argBucketId
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("INV_SCAN init failed for batchId=$argBatchId", e)
+                _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
             }
         }
     }
@@ -273,18 +281,24 @@ class InventoryScanViewModel @Inject constructor(
         if (batchId == 0L) return
         if (resolvedBatchId.value != 0L) return
         viewModelScope.launch {
-            resolvedBatchId.value = batchId
-            val batch = batchDao.getById(batchId)
-            // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
-            // is already authoritative (set from argBucketId at init). Reading it back
-            // from a lazily-created batch would clobber the selection with a stale/null
-            // value if the commit hadn't populated bucketId at insert time.
-            if (!batch?.requestIdFromPMS.isNullOrBlank()) {
-                expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
-                    .filter { it.isNotBlank() }
-                    .toSet()
+            try {
+                resolvedBatchId.value = batchId
+                val batch = batchDao.getById(batchId)
+                // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
+                // is already authoritative (set from argBucketId at init). Reading it back
+                // from a lazily-created batch would clobber the selection with a stale/null
+                // value if the commit hadn't populated bucketId at insert time.
+                if (!batch?.requestIdFromPMS.isNullOrBlank()) {
+                    expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
+                        .filter { it.isNotBlank() }
+                        .toSet()
+                }
+                logger.i("INV_SCAN adopted lazily-created batchId=$batchId bucketId=${batch?.bucketId}")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("INV_SCAN adoptStockCountBatchId failed for batchId=$batchId", e)
             }
-            logger.i("INV_SCAN adopted lazily-created batchId=$batchId bucketId=${batch?.bucketId}")
         }
     }
 

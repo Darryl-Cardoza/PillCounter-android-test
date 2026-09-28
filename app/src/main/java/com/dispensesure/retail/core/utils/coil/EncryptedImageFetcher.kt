@@ -8,6 +8,7 @@ import coil.fetch.Fetcher
 import coil.fetch.SourceResult
 import coil.request.Options
 import com.dispensesure.retail.core.security.ImageCrypto
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import okio.Buffer
 import java.io.File
 
@@ -25,12 +26,15 @@ class EncryptedImageFetcher(
     private val options: Options,
 ) : Fetcher {
 
+    private val logger = AppLogger.create<EncryptedImageFetcher>()
+
     override suspend fun fetch(): FetchResult {
         val raw = file.readBytes()
         val bytes = if (ImageCrypto.isEncrypted(raw)) {
             try {
                 ImageCrypto.decrypt(raw)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                logger.e("Failed to decrypt image ${file.name} — falling back to raw bytes", e)
                 raw
             }
         } else {

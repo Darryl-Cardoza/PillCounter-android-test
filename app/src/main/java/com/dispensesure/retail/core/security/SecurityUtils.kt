@@ -6,6 +6,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.provider.Settings
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import java.io.File
 import java.security.MessageDigest
 
@@ -16,6 +17,8 @@ import java.security.MessageDigest
  * Used to prevent debugging, rooting, emulator, and signature tampering.
  */
 object SecurityUtils {
+
+    private val logger = AppLogger.create<SecurityUtils>()
 
     /**
      * Checks the device and app environment for known violations.
@@ -125,7 +128,9 @@ object SecurityUtils {
                     ))
                     return true
                 }
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                logger.e("isScreenOverlayActive() check failed", e)
+            }
         }
         return false
     }
@@ -142,7 +147,10 @@ object SecurityUtils {
                 context.packageManager
                     .getInstallerPackageName(context.packageName) ?: "unknown"
             }
-        } catch (_: Exception) { "unknown" }
+        } catch (e: Exception) {
+            logger.e("getInstallerName() failed", e)
+            "unknown"
+        }
     }
 
     /** Developer options or ADB enabled. */
@@ -152,7 +160,8 @@ object SecurityUtils {
                 context.contentResolver,
                 Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0
             ) == 1
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("isAdbEnabled() check failed", e)
             false
         }
     }
@@ -230,7 +239,9 @@ object SecurityUtils {
             val reportedX86 = cpuInfo.contains("GenuineIntel") ||
                     cpuInfo.contains("AuthenticAMD")
             if (declaredArm && reportedX86) score++
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            logger.e("isRunningOnEmulator() CPU ABI check failed", e)
+        }
 
         // ─── Layer 5: MAC address prefix ──────────────────────────────────────────
         // Android emulator default ethernet MAC starts with 02:00:00
@@ -247,7 +258,9 @@ object SecurityUtils {
                     break
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            logger.e("isRunningOnEmulator() MAC address check failed", e)
+        }
 
         // Require 2+ signals to flag as emulator — reduces false positives
         // on legitimate devices that might trip one check incidentally
@@ -304,7 +317,8 @@ object SecurityUtils {
                 MessageDigest.isEqual(actual.toByteArray(), EXPECTED_SHA256.toByteArray())
             } ?: false
 
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("isSignatureValid() check failed", e)
             false
         }
     }
@@ -319,7 +333,8 @@ object SecurityUtils {
                 context.packageManager.getInstallerPackageName(context.packageName)
             }
             installer == "com.android.vending"
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("isFromPlayStore() check failed", e)
             false
         }
     }

@@ -16,6 +16,7 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -101,26 +102,37 @@ class VerifyPinViewModel @Inject constructor(
 //                    val isHL7Enabled = data?.user?.isHl7Enabled ?:false
                     val user = data?.user
 
-                    if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
-                        prefs.saveTokens(accessToken, refreshToken)
-//                        prefs.setHl7Enabled(isHL7Enabled)
-                        // Anchor the offline-expiry clock at login-success so the first-launch
-                        // scenario (fresh install + immediate network loss) still expires cleanly
-                        // even though /health has not yet succeeded.
-                        sessionHealthController.markLoggedIn()
-                        logger.i("Access and refresh tokens saved securely.")
-                    } else {
-                        logger.w("Missing access or refresh token in response.")
+                    // The API call already succeeded at this point — everything below is local
+                    // persistence (SecurePreferences/AndroidKeyStore). A failure here (e.g. a
+                    // KeyStore error) must not crash past a successful login uncaught; fall back
+                    // to an error state instead so the user can retry rather than see a crash.
+                    try {
+                        if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
+                            prefs.saveTokens(accessToken, refreshToken)
+//                            prefs.setHl7Enabled(isHL7Enabled)
+                            // Anchor the offline-expiry clock at login-success so the first-launch
+                            // scenario (fresh install + immediate network loss) still expires cleanly
+                            // even though /health has not yet succeeded.
+                            sessionHealthController.markLoggedIn()
+                            logger.i("Access and refresh tokens saved securely.")
+                        } else {
+                            logger.w("Missing access or refresh token in response.")
+                        }
+
+                        prefs.setLoggedInEmail(user?.email ?: email)
+
+                        // Log user info (safely)
+                        user?.let {
+                            logger.i("User verified: email=${it.email}, verified=${it.isVerified}, role=${it.role}")
+                        } ?: logger.w("User object is null in response.")
+
+                        _uiState.value = VerifyPinUiState.Success
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to persist session after successful OTP verification for user: $email", e)
+                        _uiState.value = VerifyPinUiState.Error(context.getString(R.string.error_unknown))
                     }
-
-                    prefs.setLoggedInEmail(user?.email ?: email)
-
-                    // Log user info (safely)
-                    user?.let {
-                        logger.i("User verified: email=${it.email}, verified=${it.isVerified}, role=${it.role}")
-                    } ?: logger.w("User object is null in response.")
-
-                    _uiState.value = VerifyPinUiState.Success
                 }
                 .onFailure { exception ->
                     logger.e("OTP verification failed for user: $email", exception)

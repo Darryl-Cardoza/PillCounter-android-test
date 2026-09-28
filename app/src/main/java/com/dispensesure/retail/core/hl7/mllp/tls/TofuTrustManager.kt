@@ -94,7 +94,12 @@ class TofuTrustManager(
 
     private fun getPin(): String? {
         val stored = plainPrefs.getString(pinKey, null) ?: return null
-        return try { decrypt(stored) } catch (e: Exception) { null }
+        return try {
+            decrypt(stored)
+        } catch (e: Exception) {
+            logger.e("Failed to decrypt stored TOFU pin for $pinKey — treating as unpinned", e)
+            null
+        }
     }
 
     private fun savePin(pin: String) {
@@ -105,7 +110,12 @@ class TofuTrustManager(
     private fun legacyPin(): String? {
         if (pinKey == LEGACY_PIN_KEY) return null
         val stored = plainPrefs.getString(LEGACY_PIN_KEY, null) ?: return null
-        return try { decrypt(stored) } catch (e: Exception) { null }
+        return try {
+            decrypt(stored)
+        } catch (e: Exception) {
+            logger.e("Failed to decrypt legacy TOFU pin — treating as unpinned", e)
+            null
+        }
     }
 
     // ── X509TrustManager ─────────────────────────────────────────────

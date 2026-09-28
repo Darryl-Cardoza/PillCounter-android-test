@@ -22,6 +22,7 @@ import com.dispensesure.retail.core.hl7.mllp.tls.TlsSocketFactory
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.settings.domain.model.Hl7ServiceConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -155,7 +156,13 @@ class HL7Service : Service() {
         startForeground(NOTIFICATION_ID, buildNotification())
 
         serviceScope.launch {
-            startServiceInternal()
+            try {
+                startServiceInternal()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("HL7 service startup failed", e)
+            }
         }
 
         return START_STICKY
@@ -340,7 +347,13 @@ class HL7Service : Service() {
 
             onFirstConnected = {
                 serviceScope.launch(Dispatchers.Main) {
-                    onPmsFirstConnected()
+                    try {
+                        onPmsFirstConnected()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("onPmsFirstConnected() failed", e)
+                    }
                 }
             },
 
@@ -512,10 +525,18 @@ class HL7Service : Service() {
         serviceScope.launch {
             try {
                 clientManager.dropForPeerChange()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger.e("rediscoverPms() — failed to close the previous connection", e)
             }
-            discoverPmsAndConnect()
+            try {
+                discoverPmsAndConnect()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("rediscoverPms() — discoverPmsAndConnect() failed", e)
+            }
         }
     }
 
@@ -524,9 +545,13 @@ class HL7Service : Service() {
 
     fun clearPmsCertPin() {
         logger.i("clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")
-        tlsFactory.clearServerPin()
-        clientManager.unblockCertMismatch()
-        discoverPmsAndConnect()
+        try {
+            tlsFactory.clearServerPin()
+            clientManager.unblockCertMismatch()
+            discoverPmsAndConnect()
+        } catch (e: Exception) {
+            logger.e("clearPmsCertPin() failed", e)
+        }
     }
 
     fun discoverPmsAndConnect() {
@@ -542,40 +567,45 @@ class HL7Service : Service() {
             onLost = { info -> removeLostPeer(info.serviceName) },
         ) { info ->
             serviceScope.launch {
+                try {
+                    // Prefer IPv4 — IPv6 link-local addresses (fe80::) cause TCP
+                    // connection failures on Android when the scope ID is present.
+                    val rawHost = info.host.hostAddress ?: return@launch
+                    val host = rawHost.substringBefore('%')  // strip scope id from fe80::1%wlan0
+                    val port = info.port
 
-                // Prefer IPv4 — IPv6 link-local addresses (fe80::) cause TCP
-                // connection failures on Android when the scope ID is present.
-                val rawHost = info.host.hostAddress ?: return@launch
-                val host = rawHost.substringBefore('%')  // strip scope id from fe80::1%wlan0
-                val port = info.port
+                    if (host.isBlank()) return@launch
 
-                if (host.isBlank()) return@launch
+                    logger.d("NSD resolved: serviceName=${info.serviceName} host=$host port=$port")
 
-                logger.d("NSD resolved: serviceName=${info.serviceName} host=$host port=$port")
+                    val peer = "$host:$port"
 
-                val peer = "$host:$port"
+                    // Remember every instance, not just the one we connect to — a peer that never
+                    // comes up has to be able to hand the terminal to one of the others.
+                    discoveredPmsPeers[peer] = info.serviceName
 
-                // Remember every instance, not just the one we connect to — a peer that never
-                // comes up has to be able to hand the terminal to one of the others.
-                discoveredPmsPeers[peer] = info.serviceName
-
-                // One peer owns the terminal at a time. Without this, several servers
-                // advertising the same type all reached connect() and overwrote each
-                // other's ip/port.
-                if (!pmsPeerClaim.compareAndSet(null, peer)) {
-                    val owner = pmsPeerClaim.get()
-                    if (owner != peer) {
-                        logger.w(
-                            "HL7-NSD · '${info.serviceName}' at $peer kept as a fallback — " +
-                                "this terminal is currently using $owner"
-                        )
-                        return@launch
+                    // One peer owns the terminal at a time. Without this, several servers
+                    // advertising the same type all reached connect() and overwrote each
+                    // other's ip/port.
+                    if (!pmsPeerClaim.compareAndSet(null, peer)) {
+                        val owner = pmsPeerClaim.get()
+                        if (owner != peer) {
+                            logger.w(
+                                "HL7-NSD · '${info.serviceName}' at $peer kept as a fallback — " +
+                                    "this terminal is currently using $owner"
+                            )
+                            return@launch
+                        }
+                        // Same peer resolving again — only reconnect if the link actually dropped.
+                        if (clientManager.isConnected()) return@launch
                     }
-                    // Same peer resolving again — only reconnect if the link actually dropped.
-                    if (clientManager.isConnected()) return@launch
-                }
 
-                connectToPeer(peer, info.serviceName)
+                    connectToPeer(peer, info.serviceName)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("NSD resolution handling failed for '${info.serviceName}'", e)
+                }
             }
         }
     }
@@ -632,41 +662,47 @@ class HL7Service : Service() {
     private fun startPeerWatchdog(peer: String) {
         peerWatchdogJob?.cancel()
         peerWatchdogJob = serviceScope.launch {
-            delay(PEER_CONNECT_TIMEOUT_MS)
-
-            if (clientManager.isConnected()) return@launch
-            if (pmsPeerClaim.get() != peer) return@launch
-
-            failedPmsPeers += peer
-            val next = nextFailoverPeer(peer)
-
-            if (next == null) {
-                // Nothing else known. Keep the claim and keep retrying, but clear the failure
-                // list and re-arm so a server appearing later can still be picked up.
-                logger.w(
-                    "HL7-NSD · $peer still not connected after ${PEER_CONNECT_TIMEOUT_MS}ms " +
-                        "and no other PMS is known — continuing to retry it"
-                )
-                failedPmsPeers.clear()
-                startPeerWatchdog(peer)
-                return@launch
-            }
-
-            logger.block(
-                "HL7-NSD · Failing over to another PMS",
-                "Gave up on" to "${discoveredPmsPeers[peer]} at $peer",
-                "Waited" to "${PEER_CONNECT_TIMEOUT_MS}ms",
-                "Trying" to "${discoveredPmsPeers[next]} at $next",
-            )
-
-            pmsPeerClaim.set(next)
-            peerConnectJob?.cancel()
             try {
-                clientManager.dropForPeerChange()
+                delay(PEER_CONNECT_TIMEOUT_MS)
+
+                if (clientManager.isConnected()) return@launch
+                if (pmsPeerClaim.get() != peer) return@launch
+
+                failedPmsPeers += peer
+                val next = nextFailoverPeer(peer)
+
+                if (next == null) {
+                    // Nothing else known. Keep the claim and keep retrying, but clear the failure
+                    // list and re-arm so a server appearing later can still be picked up.
+                    logger.w(
+                        "HL7-NSD · $peer still not connected after ${PEER_CONNECT_TIMEOUT_MS}ms " +
+                            "and no other PMS is known — continuing to retry it"
+                    )
+                    failedPmsPeers.clear()
+                    startPeerWatchdog(peer)
+                    return@launch
+                }
+
+                logger.block(
+                    "HL7-NSD · Failing over to another PMS",
+                    "Gave up on" to "${discoveredPmsPeers[peer]} at $peer",
+                    "Waited" to "${PEER_CONNECT_TIMEOUT_MS}ms",
+                    "Trying" to "${discoveredPmsPeers[next]} at $next",
+                )
+
+                pmsPeerClaim.set(next)
+                peerConnectJob?.cancel()
+                try {
+                    clientManager.dropForPeerChange()
+                } catch (e: Exception) {
+                    logger.e("Failover — failed to close the previous connection", e)
+                }
+                connectToPeer(next, discoveredPmsPeers[next] ?: "PMS")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logger.e("Failover — failed to close the previous connection", e)
+                logger.e("startPeerWatchdog() failed for $peer", e)
             }
-            connectToPeer(next, discoveredPmsPeers[next] ?: "PMS")
         }
     }
 
@@ -696,42 +732,46 @@ class HL7Service : Service() {
      * indefinitely rather than failing once and stopping.
      */
     private fun connectToStaticPms() {
-        // Re-read straight from preferences, not config.pmsIp/pmsPort — auth/me can save the
-        // real IP to preferences well after this service (and its in-memory config) started,
-        // and nothing else pushes that update into config. Without re-reading here, a retry
-        // loop started before the IP was known would keep retrying the same stale/blank value
-        // forever even after preferences have the real address.
-        val preferenceHelper = PreferenceHelper(applicationContext)
-        val host = preferenceHelper.getPmsIP()
-        val port = preferenceHelper.getPmsPort()
+        try {
+            // Re-read straight from preferences, not config.pmsIp/pmsPort — auth/me can save the
+            // real IP to preferences well after this service (and its in-memory config) started,
+            // and nothing else pushes that update into config. Without re-reading here, a retry
+            // loop started before the IP was known would keep retrying the same stale/blank value
+            // forever even after preferences have the real address.
+            val preferenceHelper = PreferenceHelper(applicationContext)
+            val host = preferenceHelper.getPmsIP()
+            val port = preferenceHelper.getPmsPort()
 
-        if (host.isNullOrBlank() || port <= 0) {
-            logger.e("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry")
-            scheduleStaticPmsRetry()
-            return
-        }
-
-        staticPmsRetryJob?.cancel()
-
-        logger.i("Static PMS connection enabled — connecting directly to $host:$port")
-
-        if (lastConnectedHost == "$host:$port" && clientManager.isConnected()) {
-            return
-        }
-
-        lastConnectedHost = "$host:$port"
-        lastDiscoveredServiceName = "PMS"
-        // One PMS in static mode, so the pin must not move when the address does.
-        tlsFactory.peerIdentifier = TlsSocketFactory.LEGACY_HOST_IDENTIFIER
-
-        listener?.onNsdServiceFound("PMS", host, port)
-
-        serviceScope.launch {
-            try {
-                clientManager.connect(host, port)
-            } catch (e: Exception) {
-                logger.e("Static PMS connect failed", e)
+            if (host.isNullOrBlank() || port <= 0) {
+                logger.e("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry")
+                scheduleStaticPmsRetry()
+                return
             }
+
+            staticPmsRetryJob?.cancel()
+
+            logger.i("Static PMS connection enabled — connecting directly to $host:$port")
+
+            if (lastConnectedHost == "$host:$port" && clientManager.isConnected()) {
+                return
+            }
+
+            lastConnectedHost = "$host:$port"
+            lastDiscoveredServiceName = "PMS"
+            // One PMS in static mode, so the pin must not move when the address does.
+            tlsFactory.peerIdentifier = TlsSocketFactory.LEGACY_HOST_IDENTIFIER
+
+            listener?.onNsdServiceFound("PMS", host, port)
+
+            serviceScope.launch {
+                try {
+                    clientManager.connect(host, port)
+                } catch (e: Exception) {
+                    logger.e("Static PMS connect failed", e)
+                }
+            }
+        } catch (e: Exception) {
+            logger.e("connectToStaticPms() failed", e)
         }
     }
 
@@ -747,10 +787,16 @@ class HL7Service : Service() {
     private fun scheduleStaticPmsRetry() {
         if (staticPmsRetryJob?.isActive == true) return
         staticPmsRetryJob = serviceScope.launch {
-            delay(STATIC_PMS_CONFIG_RETRY_MS)
-            if (config.useStaticPmsConnection) {
-                staticPmsRetryJob = null
-                serviceScope.launch { connectToStaticPms() }
+            try {
+                delay(STATIC_PMS_CONFIG_RETRY_MS)
+                if (config.useStaticPmsConnection) {
+                    staticPmsRetryJob = null
+                    connectToStaticPms()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("scheduleStaticPmsRetry() failed", e)
             }
         }
     }

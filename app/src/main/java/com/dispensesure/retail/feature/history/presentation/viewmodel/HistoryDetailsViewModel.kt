@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.history.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.history.domain.model.HistoryDetailsUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -24,6 +25,8 @@ class HistoryDetailsViewModel @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao
 ) : ViewModel() {
 
+    private val logger = AppLogger.create<HistoryDetailsViewModel>()
+
     private val _uiState = MutableStateFlow(HistoryDetailsUiState())
     val uiState = _uiState.asStateFlow()
 
@@ -33,16 +36,22 @@ class HistoryDetailsViewModel @Inject constructor(
 
     private fun getTransactionDetails() {
         viewModelScope.launch {
-            val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
-                ?.let { txn ->
-                    // @Relation auto-query has no isDeleted filter — strip soft-deleted
-                    // details here so they never reach the UI.
-                    txn.copy(txnDetails = txn.txnDetails.filter { !it.isDeleted })
+            try {
+                val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
+                    ?.let { txn ->
+                        // @Relation auto-query has no isDeleted filter — strip soft-deleted
+                        // details here so they never reach the UI.
+                        txn.copy(txnDetails = txn.txnDetails.filter { !it.isDeleted })
+                    }
+                _uiState.update { currentState ->
+                    currentState.copy(
+                        txnInfo = txnInfo,
+                    )
                 }
-            _uiState.update { currentState ->
-                currentState.copy(
-                    txnInfo = txnInfo,
-                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to load transaction details", e)
             }
         }
     }
@@ -51,8 +60,10 @@ class HistoryDetailsViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 pillCountTxnDao.softDelete(preferenceHelper.getTxnId())
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                if (e !is CancellationException) e.printStackTrace()
+                logger.e("Failed to delete transaction", e)
             }
         }
     }

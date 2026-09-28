@@ -22,9 +22,12 @@ import com.dispensesure.retail.feature.settings.presentation.SaveCsDoubleCountSc
 import com.dispensesure.retail.feature.settings.presentation.SaveHistoryForScreen
 import com.dispensesure.retail.feature.settings.presentation.SettingsScreen
 import com.dispensesure.retail.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
+import com.dispensesure.retail.core.utils.logger.AppLogger
 
 // Define constants for nested graph routes for better organization
 const val AUTH_GRAPH_ROUTE = "auth"
+
+private val logger = AppLogger("AppNavGraph")
 
 @Composable
 fun AppNavGraph(
@@ -121,9 +124,13 @@ fun AppNavGraph(
             arguments = Screen.History.navArguments
         ) { backStackEntry ->
 
-            val historyMode = backStackEntry.arguments
-                ?.getString(Screen.History.ARG_TYPE)
-                ?.let { runCatching { HistoryMode.valueOf(it) }.getOrNull() }
+            val historyModeArg = backStackEntry.arguments?.getString(Screen.History.ARG_TYPE)
+            val historyMode = historyModeArg
+                ?.let {
+                    runCatching { HistoryMode.valueOf(it) }
+                        .onFailure { e -> logger.e("Invalid History nav arg '$it' — defaulting to NORMAL", e) }
+                        .getOrNull()
+                }
                 ?: HistoryMode.NORMAL
 
             HistoryScreen(

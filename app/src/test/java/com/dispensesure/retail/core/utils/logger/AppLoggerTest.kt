@@ -8,15 +8,19 @@ import io.mockk.unmockkAll
 import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
 /**
- * Unit tests for [AppLogger].
+ * Unit tests for [AppLogger] — both the thin Logcat wrapper (instance methods) and the
+ * centralized logging hub it also owns via its companion object (level filtering, call-site
+ * resolution, dispatch to a [LogDestination]).
  *
- * [AppLogger] is a thin wrapper around android.util.Log, which is not implemented in the
- * Android stub JAR used for JVM unit tests. We mock it statically with mockk so the wrapped
- * calls execute (and can be verified) instead of throwing.
+ * [AppLogger] wraps android.util.Log, which is not implemented in the Android stub JAR used for
+ * JVM unit tests. We mock it statically with mockk so the wrapped calls execute (and can be
+ * verified) instead of throwing.
  *
  * Note: d() and i() are gated by BuildConfig.DEBUG. These tests run for both the debug and
  * release unit-test variants, so those calls are expected exactly once under debug and never
@@ -31,6 +35,17 @@ class AppLoggerTest {
 
     private lateinit var logger: AppLogger
 
+    private class RecordingDestination : LogDestination {
+        val entries = mutableListOf<LogEntry>()
+        override fun write(entry: LogEntry) {
+            entries += entry
+        }
+    }
+
+    private lateinit var destination: RecordingDestination
+    private val originalMinimumLevel = LoggerConfig.minimumLogLevel
+    private val originalOperatorName = LoggerConfig.operatorName
+
     @Before
     fun setup() {
         mockkStatic(Log::class)
@@ -42,11 +57,17 @@ class AppLoggerTest {
         every { Log.getStackTraceString(any()) } returns "stack trace"
 
         logger = AppLogger(tag)
+
+        destination = RecordingDestination()
+        AppLogger.setDestinationForTest(destination)
     }
 
     @After
     fun tearDown() {
         unmockkAll()
+        AppLogger.setDestinationForTest(null)
+        LoggerConfig.minimumLogLevel = originalMinimumLevel
+        LoggerConfig.operatorName = originalOperatorName
     }
 
     // -------------------------------------------------------------------------
@@ -138,5 +159,122 @@ class AppLoggerTest {
         assertEquals(AppLogger::class.java, created::class.java)
         created.d("string tagged")
         verify(exactly = debugCalls) { Log.d("String", "string tagged", null) }
+    }
+
+    // -------------------------------------------------------------------------
+    // Centralized logging (companion object): level filtering, call-site resolution,
+    // dispatch to whichever LogDestination is configured.
+    // -------------------------------------------------------------------------
+
+    @Test
+    fun `log below minimum level is filtered out of the destination`() {
+        LoggerConfig.minimumLogLevel = LogLevel.ERROR
+
+        logger.w("a warning")
+
+        assertTrue(destination.entries.isEmpty())
+    }
+
+    @Test
+    fun `log at or above minimum level reaches the destination`() {
+        LoggerConfig.minimumLogLevel = LogLevel.WARN
+
+        logger.w("a warning")
+        logger.e("an error")
+
+        assertEquals(2, destination.entries.size)
+    }
+
+    @Test
+    fun `no destination configured is a safe no-op`() {
+        AppLogger.setDestinationForTest(null)
+
+        // Must not throw even though nothing is configured.
+        logger.e("an error")
+    }
+
+    @Test
+    fun `entry carries the message, tag as class, and translated throwable`() {
+        LoggerConfig.minimumLogLevel = LogLevel.VERBOSE
+        val throwable = java.net.SocketTimeoutException("timeout")
+
+        AppLogger("LoginRepository").e("login failed", throwable)
+
+        val entry = destination.entries.single()
+        assertEquals(LogLevel.ERROR, entry.level)
+        assertEquals("LoginRepository", entry.className)
+        assertEquals("login failed", entry.message)
+        assertEquals(throwable, entry.throwable)
+        assertEquals(
+            "The request timed out while communicating with the server.",
+            entry.humanReadableError
+        )
+    }
+
+    @Test
+    fun `entry carries the operator name when LoggerConfig has one set`() {
+        LoggerConfig.minimumLogLevel = LogLevel.VERBOSE
+        LoggerConfig.operatorName = "Jane Doe"
+
+        logger.e("boom")
+
+        assertEquals("Jane Doe", destination.entries.single().operatorName)
+    }
+
+    @Test
+    fun `entry has a null operator name when LoggerConfig's is null`() {
+        LoggerConfig.minimumLogLevel = LogLevel.VERBOSE
+        LoggerConfig.operatorName = null
+
+        logger.e("boom")
+
+        assertNull(destination.entries.single().operatorName)
+    }
+
+    @Test
+    fun `entry has a null operator name when LoggerConfig's is blank`() {
+        LoggerConfig.minimumLogLevel = LogLevel.VERBOSE
+        LoggerConfig.operatorName = "   "
+
+        logger.e("boom")
+
+        assertNull(destination.entries.single().operatorName)
+    }
+
+    @Test
+    fun `entry without a throwable has no human readable error`() {
+        LoggerConfig.minimumLogLevel = LogLevel.VERBOSE
+
+        logger.w("just a warning")
+
+        val entry = destination.entries.single()
+        assertNull(entry.throwable)
+        assertNull(entry.humanReadableError)
+    }
+
+    @Test
+    fun `call site resolution reports this test class and method, not AppLogger itself`() {
+        LoggerConfig.minimumLogLevel = LogLevel.VERBOSE
+
+        logger.e("boom")
+
+        val entry = destination.entries.single()
+        assertEquals("AppLoggerTest.kt", entry.fileName)
+        assertTrue(
+            "methodName should be the calling test method, was: ${entry.methodName}",
+            entry.methodName.contains("call site resolution")
+        )
+    }
+
+    @Test
+    fun `d and i also reach the destination when the configured level allows it`() {
+        LoggerConfig.minimumLogLevel = LogLevel.VERBOSE
+
+        logger.d("debug")
+        logger.i("info")
+
+        assertEquals(2, destination.entries.size)
+        assertEquals(LogLevel.DEBUG, destination.entries[0].level)
+        assertEquals(LogLevel.INFO, destination.entries[1].level)
     }
 }

@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.history.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.room.models.enums.CountStatus
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.history.data.HistoryRepository
 import com.dispensesure.retail.feature.history.domain.model.HistoryDeleteFilter
@@ -11,10 +12,12 @@ import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.history.domain.model.ToggleOption
 import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.stateIn
@@ -32,6 +35,8 @@ class HistoryViewModel @Inject constructor(
     private val repository: HistoryRepository,
     private val preferenceHelper: PreferenceHelper
 ) : ViewModel() {
+    private val logger = AppLogger.create<HistoryViewModel>()
+
     private val _selectedDate = MutableStateFlow(LocalDate.now())
     val selectedDate: StateFlow<LocalDate> = _selectedDate
 
@@ -84,6 +89,7 @@ class HistoryViewModel @Inject constructor(
                     userLocalId = preferenceHelper.getLocalId()
                 )
             }
+            .catch { e -> logger.e("Observing transactions for date range failed", e) }
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(5_000),
@@ -126,6 +132,7 @@ class HistoryViewModel @Inject constructor(
                     userLocalId = preferenceHelper.getLocalId()
                 )
             }
+            .catch { e -> logger.e("Observing batch summaries failed", e) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val batchGroups: StateFlow<List<BatchSummary>> =
@@ -156,27 +163,33 @@ class HistoryViewModel @Inject constructor(
 
     fun deleteCountsForSelectedDate(option: ToggleOption, filter: HistoryDeleteFilter) {
         viewModelScope.launch {
-            val isCompleted: Boolean? = when (filter) {
-                HistoryDeleteFilter.ALL -> null
-                HistoryDeleteFilter.COMPLETED -> true
-                HistoryDeleteFilter.PENDING -> false
-            }
-            if (option == ToggleOption.STOCK) {
-                repository.deleteBatchesForDateRange(
-                    startDate = _startDate.value,
-                    endDate = _endDate.value,
-                    isCompleted = isCompleted,
-                    userLocalId = preferenceHelper.getLocalId()
-                )
-            } else {
-                val (isDispense, _) = currentMode.value.toQueryParams()
-                repository.deleteTransactionsForDate(
-                    startDate = _startDate.value,
-                    endDate = _endDate.value,
-                    isDispense = isDispense,
-                    isCompleted = isCompleted,
-                    userLocalId = preferenceHelper.getLocalId()
-                )
+            try {
+                val isCompleted: Boolean? = when (filter) {
+                    HistoryDeleteFilter.ALL -> null
+                    HistoryDeleteFilter.COMPLETED -> true
+                    HistoryDeleteFilter.PENDING -> false
+                }
+                if (option == ToggleOption.STOCK) {
+                    repository.deleteBatchesForDateRange(
+                        startDate = _startDate.value,
+                        endDate = _endDate.value,
+                        isCompleted = isCompleted,
+                        userLocalId = preferenceHelper.getLocalId()
+                    )
+                } else {
+                    val (isDispense, _) = currentMode.value.toQueryParams()
+                    repository.deleteTransactionsForDate(
+                        startDate = _startDate.value,
+                        endDate = _endDate.value,
+                        isDispense = isDispense,
+                        isCompleted = isCompleted,
+                        userLocalId = preferenceHelper.getLocalId()
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to delete counts for selected date/mode", e)
             }
         }
     }

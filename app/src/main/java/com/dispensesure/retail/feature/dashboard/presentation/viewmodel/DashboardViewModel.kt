@@ -33,10 +33,12 @@ import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
@@ -121,9 +123,11 @@ class DashboardViewModel @Inject constructor(
      */
     private fun observeOperatorName() {
         viewModelScope.launch(Dispatchers.IO) {
-            operatorNameProvider.observe().collect { operator ->
-                _uiState.update { it.copy(operatorName = operator.display()) }
-            }
+            operatorNameProvider.observe()
+                .catch { e -> logger.e("Observing operator name failed", e) }
+                .collect { operator ->
+                    _uiState.update { it.copy(operatorName = operator.display()) }
+                }
         }
     }
 
@@ -161,10 +165,12 @@ class DashboardViewModel @Inject constructor(
     private fun observeUserDetail(localId: Long = preferenceHelper.getLocalId()) {
         if (localId == 0L) return
         viewModelScope.launch(Dispatchers.IO) {
-            userDao.observeByLocalId(localId).collect { entity ->
-                val detail = entity?.toUserDetail(preferenceHelper.getTerminals()) ?: return@collect
-                _uiState.update { it.copy(userDetail = detail) }
-            }
+            userDao.observeByLocalId(localId)
+                .catch { e -> logger.e("Observing user detail failed (localId=$localId)", e) }
+                .collect { entity ->
+                    val detail = entity?.toUserDetail(preferenceHelper.getTerminals()) ?: return@collect
+                    _uiState.update { it.copy(userDetail = detail) }
+                }
         }
     }
 
@@ -255,6 +261,9 @@ class DashboardViewModel @Inject constructor(
                     QueueItem.Inventory(batch = b)
                 }
                 (dispenseItems + inventoryItems).sortedBy { it.createdAt }
+            }.catch { e ->
+                logger.e("Observing today's queue failed", e)
+                _uiState.update { it.copy(isLoadingQueue = false) }
             }.collect { combined ->
                 _unfilteredQueue.value = combined
                 val counts = computeKpiCounts(combined)
@@ -352,6 +361,9 @@ class DashboardViewModel @Inject constructor(
                     .filter { it.status == BatchStatus.COMPLETED.name }
                     .map { QueueItem.Inventory(batch = it) }
                 (dispenseItems + inventoryItems).sortedByDescending { it.createdAt }
+            }.catch { e ->
+                logger.e("Observing recent activity failed", e)
+                _uiState.update { it.copy(isLoadingQueue = false) }
             }.collect { combined ->
                 _uiState.update { it.copy(recentActivity = combined, isLoadingQueue = false) }
             }
@@ -570,6 +582,8 @@ class DashboardViewModel @Inject constructor(
                                 navigateToProfile = isProfileIncomplete
                             )
                         }
+                    } catch (dbErr: CancellationException) {
+                        throw dbErr
                     } catch (dbErr: Throwable) {
                         logger.e("Persisting user detail failed.", dbErr)
                         _uiState.update {
@@ -638,6 +652,8 @@ class DashboardViewModel @Inject constructor(
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.e("Error cleaning up synced transactions", e)
         }

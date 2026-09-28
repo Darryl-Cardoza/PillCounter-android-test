@@ -14,6 +14,7 @@ import com.dispensesure.retail.core.scanning.logic.IdNameParser
 import com.dispensesure.retail.core.scanning.logic.IdTextLine
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -253,7 +254,13 @@ class IdCardAnalyzer(private val appContext: Context) {
         SoundUtils.playBarcodeSound(appContext)
         isPaused.set(true)
         ioScope.launch {
-            withContext(Dispatchers.Main) { onDetected(result) }
+            try {
+                withContext(Dispatchers.Main) { onDetected(result) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("onDetected() dispatch failed", e)
+            }
         }
     }
 

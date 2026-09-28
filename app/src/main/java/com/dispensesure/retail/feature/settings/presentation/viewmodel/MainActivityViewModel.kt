@@ -36,6 +36,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Calendar
@@ -395,7 +396,8 @@ class MainActivityViewModel @Inject constructor(
         return try {
             val current = getCurrentAppVersion()
             compareVersions(remoteVersion, current) > 0
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("isUpdateRequired() version comparison failed (remoteVersion=$remoteVersion)", e)
             false
         }
     }
@@ -405,7 +407,8 @@ class MainActivityViewModel @Inject constructor(
         return try {
             val ctx = preferenceHelper.getContext()
             ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "0.0.0"
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("getCurrentAppVersion() failed — falling back to 0.0.0", e)
             "0.0.0"
         }
     }
@@ -688,10 +691,16 @@ class MainActivityViewModel @Inject constructor(
 
     fun deleteAllTransaction() {
         viewModelScope.launch {
-            txnDao.deleteAllTransactions()
-            bottleInfoDao.deleteAll()
-            stockTxnDao.deleteAll()
-            batchDao.deleteAll()
+            try {
+                txnDao.deleteAllTransactions()
+                bottleInfoDao.deleteAll()
+                stockTxnDao.deleteAll()
+                batchDao.deleteAll()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to delete all transaction data", e)
+            }
         }
     }
 

@@ -48,36 +48,48 @@ class NetworkIpMonitor(
     private val callback = object : ConnectivityManager.NetworkCallback() {
 
         override fun onAvailable(network: Network) {
-            // registerNetworkCallback replays the already-connected network the moment it is
-            // registered, and the framework repeats onAvailable across capability changes.
-            // Reporting each one restarted the broadcast on top of the live registration.
-            if (currentNetwork == network) {
-                logger.d("Wi-Fi available for a network already tracked — ignoring")
-                return
+            try {
+                // registerNetworkCallback replays the already-connected network the moment it is
+                // registered, and the framework repeats onAvailable across capability changes.
+                // Reporting each one restarted the broadcast on top of the live registration.
+                if (currentNetwork == network) {
+                    logger.d("Wi-Fi available for a network already tracked — ignoring")
+                    return
+                }
+                logger.i("Wi-Fi available")
+                currentNetwork = network
+                onWifiAvailable()
+                checkIp()
+            } catch (e: Exception) {
+                logger.e("onAvailable() handling failed", e)
             }
-            logger.i("Wi-Fi available")
-            currentNetwork = network
-            onWifiAvailable()
-            checkIp()
         }
 
         override fun onLost(network: Network) {
-            if (currentNetwork != null && currentNetwork != network) {
-                logger.d("Lost a Wi-Fi network other than the tracked one — keeping the broadcast up")
-                return
+            try {
+                if (currentNetwork != null && currentNetwork != network) {
+                    logger.d("Lost a Wi-Fi network other than the tracked one — keeping the broadcast up")
+                    return
+                }
+                logger.w("Wi-Fi lost")
+                currentNetwork = null
+                lastIp = null
+                onWifiLost()
+            } catch (e: Exception) {
+                logger.e("onLost() handling failed", e)
             }
-            logger.w("Wi-Fi lost")
-            currentNetwork = null
-            lastIp = null
-            onWifiLost()
         }
 
         override fun onCapabilitiesChanged(
             network: Network,
             networkCapabilities: NetworkCapabilities
         ) {
-            if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
-                checkIp()
+            try {
+                if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
+                    checkIp()
+                }
+            } catch (e: Exception) {
+                logger.e("onCapabilitiesChanged() handling failed", e)
             }
         }
     }

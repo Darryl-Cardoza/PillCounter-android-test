@@ -234,6 +234,25 @@ class VerifyPinViewModelTest {
         coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
     }
 
+    @Test
+    fun `verifyPin success with token persistence failure sets Error instead of crashing`() = runTest {
+        // The API call already succeeded here — a local SecurePreferences/KeyStore failure
+        // while saving the session must not propagate uncaught out of the coroutine.
+        val user = VerifiedUser(email = email, isVerified = true)
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
+            Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
+        every { prefs.saveTokens(any(), any()) } throws RuntimeException("keystore unavailable")
+        every { context.getString(R.string.error_unknown) } returns "unknown"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state is VerifyPinUiState.Error)
+        assertEquals("unknown", (state as VerifyPinUiState.Error).message)
+    }
+
     // ───────────────────────────── device key fetch failure ─────────────────────────────
 
     @Test

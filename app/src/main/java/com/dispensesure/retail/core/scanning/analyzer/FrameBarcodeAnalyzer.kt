@@ -12,6 +12,7 @@ import com.google.mlkit.vision.common.InputImage
 import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFile
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -384,6 +385,10 @@ class FrameBarcodeAnalyzer(
                             withContext(Dispatchers.Main) {
                                 onBarcodeDetected(rawValue.orEmpty(), filePath)
                             }
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (e: Exception) {
+                            logger.e("onBarcodeDetected() dispatch failed for raw='$rawValue'", e)
                         } finally {
                             if (!bitmapCopy.isRecycled) bitmapCopy.recycle()
                         }

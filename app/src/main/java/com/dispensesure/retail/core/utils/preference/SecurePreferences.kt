@@ -91,8 +91,13 @@ class SecurePreferences(context: Context,
     fun putString(key: String, value: String?, commit: Boolean = false) {
         if (value == null) {
             prefs.edit(commit) { remove(key) }
-        } else {
-            prefs.edit(commit) { putString(key, encrypt(value)) }
+            return
+        }
+        try {
+            val encrypted = encrypt(value)
+            prefs.edit(commit) { putString(key, encrypted) }
+        } catch (e: Exception) {
+            logger.e("Failed to encrypt pref '$key', value not persisted", e)
         }
     }
 
@@ -107,7 +112,12 @@ class SecurePreferences(context: Context,
     }
 
     fun putBoolean(key: String, value: Boolean) {
-        prefs.edit { putString(key, encrypt(value.toString())) }
+        try {
+            val encrypted = encrypt(value.toString())
+            prefs.edit { putString(key, encrypted) }
+        } catch (e: Exception) {
+            logger.e("Failed to encrypt pref '$key', value not persisted", e)
+        }
     }
 
     fun getBoolean(key: String, default: Boolean = false): Boolean {
@@ -121,7 +131,12 @@ class SecurePreferences(context: Context,
     }
 
     fun putInt(key: String, value: Int, commit: Boolean = false) {
-        prefs.edit(commit) { putString(key, encrypt(value.toString())) }
+        try {
+            val encrypted = encrypt(value.toString())
+            prefs.edit(commit) { putString(key, encrypted) }
+        } catch (e: Exception) {
+            logger.e("Failed to encrypt pref '$key', value not persisted", e)
+        }
     }
 
     fun getInt(key: String, default: Int = 0): Int {
@@ -135,7 +150,12 @@ class SecurePreferences(context: Context,
     }
 
     fun putLong(key: String, value: Long) {
-        prefs.edit { putString(key, encrypt(value.toString())) }
+        try {
+            val encrypted = encrypt(value.toString())
+            prefs.edit { putString(key, encrypted) }
+        } catch (e: Exception) {
+            logger.e("Failed to encrypt pref '$key', value not persisted", e)
+        }
     }
 
     fun getLong(key: String, default: Long = 0L): Long {

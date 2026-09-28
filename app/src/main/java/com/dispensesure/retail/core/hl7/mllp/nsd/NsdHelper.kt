@@ -219,7 +219,11 @@ class NsdHelper(context: Context) {
                     } else {
                         logger.i("Service registered: ${info.serviceName}")
                     }
-                    registeredCallback?.invoke(info.serviceName)
+                    try {
+                        registeredCallback?.invoke(info.serviceName)
+                    } catch (e: Exception) {
+                        logger.e("onServiceRegistered() callback failed", e)
+                    }
                 }
 
                 override fun onServiceUnregistered(info: NsdServiceInfo) {
@@ -368,11 +372,15 @@ class NsdHelper(context: Context) {
                 }
 
                 override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                    if (serviceInfo.serviceType != normalizedType) return
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                        resolveWithAddressList(serviceInfo, onResolved)
-                    } else {
-                        resolveWithIpv4Preference(serviceInfo, attempt = 1, onResolved)
+                    try {
+                        if (serviceInfo.serviceType != normalizedType) return
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                            resolveWithAddressList(serviceInfo, onResolved)
+                        } else {
+                            resolveWithIpv4Preference(serviceInfo, attempt = 1, onResolved)
+                        }
+                    } catch (e: Exception) {
+                        logger.e("onServiceFound() handling failed for ${serviceInfo.serviceName}", e)
                     }
                 }
 
@@ -441,27 +449,31 @@ class NsdHelper(context: Context) {
             }
 
             override fun onServiceUpdated(resolved: NsdServiceInfo) {
-                nsdManager.unregisterServiceInfoCallback(this)
+                try {
+                    nsdManager.unregisterServiceInfoCallback(this)
 
-                val addresses: List<InetAddress> = resolved.hostAddresses
-                val chosen = addresses.filterIsInstance<Inet4Address>()
-                    .firstOrNull { isOnLocalWifiSubnet(it) }
-                    ?: addresses.filterIsInstance<Inet4Address>().firstOrNull()
+                    val addresses: List<InetAddress> = resolved.hostAddresses
+                    val chosen = addresses.filterIsInstance<Inet4Address>()
+                        .firstOrNull { isOnLocalWifiSubnet(it) }
+                        ?: addresses.filterIsInstance<Inet4Address>().firstOrNull()
 
-                if (chosen == null) {
-                    logger.w("hostAddresses list empty/no IPv4 — falling back to resolved.host=${resolved.host}")
-                    mainHandler.post { onResolved(resolved) }
-                    return
+                    if (chosen == null) {
+                        logger.w("hostAddresses list empty/no IPv4 — falling back to resolved.host=${resolved.host}")
+                        mainHandler.post { onResolved(resolved) }
+                        return
+                    }
+
+                    logger.d("hostAddresses=$addresses — chose $chosen (subnet-matched=${isOnLocalWifiSubnet(chosen)})")
+                    val patched = NsdServiceInfo().apply {
+                        serviceName = resolved.serviceName
+                        serviceType = resolved.serviceType
+                        host = chosen
+                        port = resolved.port
+                    }
+                    mainHandler.post { onResolved(patched) }
+                } catch (e: Exception) {
+                    logger.e("onServiceUpdated() handling failed for ${resolved.serviceName}", e)
                 }
-
-                logger.d("hostAddresses=$addresses — chose $chosen (subnet-matched=${isOnLocalWifiSubnet(chosen)})")
-                val patched = NsdServiceInfo().apply {
-                    serviceName = resolved.serviceName
-                    serviceType = resolved.serviceType
-                    host = chosen
-                    port = resolved.port
-                }
-                mainHandler.post { onResolved(patched) }
             }
 
             override fun onServiceLost() {

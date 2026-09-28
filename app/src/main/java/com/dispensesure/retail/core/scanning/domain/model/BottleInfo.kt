@@ -1,5 +1,6 @@
 package com.dispensesure.retail.core.scanning.domain.model
 
+import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.google.gson.Gson
 
 /**
@@ -30,6 +31,7 @@ data class BottleInfo(
 /** (De)serializes a [PillCountTxnEntity.bottleInfoListJson] column value. */
 object BottleInfoJson {
     private val gson = Gson()
+    private val logger = AppLogger.create<BottleInfo>()
 
     fun encode(list: List<BottleInfo>): String = gson.toJson(list)
 
@@ -37,5 +39,7 @@ object BottleInfoJson {
         if (json.isNullOrBlank()) emptyList()
         else runCatching {
             gson.fromJson(json, Array<BottleInfo>::class.java).toList()
+        }.onFailure { e ->
+            logger.e("Failed to parse bottleInfoListJson, returning empty list", e)
         }.getOrDefault(emptyList())
 }
