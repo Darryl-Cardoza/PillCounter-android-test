@@ -7,6 +7,7 @@ import androidx.room.Query
 import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
+import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -299,12 +300,20 @@ interface BatchDao {
     WHERE b.isDeleted = 0
       AND b.status = :completedStatus
       AND b.isSynced = 0
+      AND NOT EXISTS (
+        SELECT 1 FROM stock_txn st
+        JOIN drug_master dm ON st.drugId = dm.drugId
+        WHERE st.batchId = b.batchId
+          AND st.isDeleted = 0
+          AND dm.ndc = :excludeNdc
+      )
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """
     )
     suspend fun getUnsyncedCompletedBatchesOnce(
-        completedStatus: BatchStatus = BatchStatus.COMPLETED
+        completedStatus: BatchStatus = BatchStatus.COMPLETED,
+        excludeNdc: String = TUTORIAL_DUMMY_NDC
     ): List<BatchSummaryDto>
 
     @Query("UPDATE batch SET isSynced = 1 WHERE batchId = :batchId")

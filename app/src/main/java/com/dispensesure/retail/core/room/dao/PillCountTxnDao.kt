@@ -14,6 +14,7 @@ import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
+import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
 import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
 import kotlinx.coroutines.flow.Flow
 
@@ -603,6 +604,7 @@ interface PillCountTxnDao {
       AND txn.localId = :userLocalId
       AND (:isDispense IS NULL OR txn.isDispense = :isDispense)
       AND (:status IS NULL OR txn.status = :status)
+      AND (drug.ndc IS NULL OR drug.ndc != :excludeNdc)
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
@@ -613,7 +615,8 @@ interface PillCountTxnDao {
         stepType: StepState?,
         isDispense: Boolean?,
         status: CountStatus?,
-        userLocalId: Long
+        userLocalId: Long,
+        excludeNdc: String = TUTORIAL_DUMMY_NDC
     ): Flow<List<TxnWithDrugDto>>
 
 
@@ -724,11 +727,13 @@ interface PillCountTxnDao {
       AND isDispense = 1
       AND status = :completedStatus
       AND (isSynced IS NULL OR isSynced = 0)
+      AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = :excludeNdc))
     ORDER BY updatedAt ASC
     """
     )
     fun observePendingHl7Txn(
-        completedStatus: CountStatus = CountStatus.COMPLETED
+        completedStatus: CountStatus = CountStatus.COMPLETED,
+        excludeNdc: String = TUTORIAL_DUMMY_NDC
     ): Flow<List<PillCountTxnEntity>>
 
 
@@ -748,11 +753,13 @@ interface PillCountTxnDao {
           AND isDispense = 1
           AND status = :completedStatus
           AND (isSynced IS NULL OR isSynced = 0)
+          AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = :excludeNdc))
         ORDER BY updatedAt ASC
         """
     )
     suspend fun getPendingHl7TxnOnce(
-        completedStatus: CountStatus = CountStatus.COMPLETED
+        completedStatus: CountStatus = CountStatus.COMPLETED,
+        excludeNdc: String = TUTORIAL_DUMMY_NDC
     ): List<PillCountTxnEntity>
 
 

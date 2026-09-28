@@ -8,6 +8,7 @@ import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
+import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -24,6 +25,8 @@ class BatchDaoTest {
 
     private lateinit var db: AppDatabase
     private lateinit var dao: BatchDao
+    private lateinit var stockTxnDao: StockTxnDao
+    private lateinit var drugDao: DrugMasterDao
 
     @Before
     fun setUp() {
@@ -32,6 +35,8 @@ class BatchDaoTest {
             AppDatabase::class.java
         ).allowMainThreadQueries().build()
         dao = db.batchDao()
+        stockTxnDao = db.stockTxnDao()
+        drugDao = db.drugMasterDao()
     }
 
     @After
@@ -366,6 +371,16 @@ class BatchDaoTest {
         val result = dao.getUnsyncedCompletedBatchesOnce()
         assertEquals(1, result.size)
         assertEquals(1L, result.first().batchId)
+    }
+
+    @Test
+    fun `getUnsyncedCompletedBatchesOnce excludes batches for tutorial demo drug`() = runTest {
+        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TUTORIAL_DUMMY_NDC, drugName = "Tutorial Demo Drug"))
+        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
+        stockTxnDao.insertIgnore(StockTxnEntity(batchId = 1L, drugId = tutorialDrugId))
+
+        val result = dao.getUnsyncedCompletedBatchesOnce()
+        assertTrue(result.isEmpty())
     }
 
     @Test

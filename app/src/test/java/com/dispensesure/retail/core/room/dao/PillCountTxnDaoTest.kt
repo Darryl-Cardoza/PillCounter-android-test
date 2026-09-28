@@ -11,6 +11,7 @@ import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
+import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -576,6 +577,16 @@ class PillCountTxnDaoTest {
     }
 
     @Test
+    fun `getPendingHl7TxnOnce excludes tutorial demo drug transactions`() = runTest {
+        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TUTORIAL_DUMMY_NDC, drugName = "Tutorial Demo Drug"))
+        dao.insertIgnore(
+            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isSynced = null, drugId = tutorialDrugId)
+        )
+        val result = dao.getPendingHl7TxnOnce()
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
     fun `markTxnSynced sets isSynced true`() = runTest {
         val id = dao.insertIgnore(baseTxn(isSynced = false))
         dao.markTxnSynced(id)
@@ -864,6 +875,31 @@ class PillCountTxnDaoTest {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(10, list.first().pillCount)
+        }
+    }
+
+    @Test
+    fun `getTransactionsForDateRange excludes tutorial demo drug transactions`() = runTest {
+        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TUTORIAL_DUMMY_NDC, drugName = "Tutorial Demo Drug"))
+        dao.insertIgnore(
+            baseTxn(
+                localId = 1L,
+                drugId = tutorialDrugId,
+                isDispense = true,
+                status = CountStatus.COMPLETED,
+                createdAt = 150L,
+            )
+        )
+
+        dao.getTransactionsForDateRange(
+            startDate = 100L,
+            endDate = 200L,
+            stepType = null,
+            isDispense = null,
+            status = null,
+            userLocalId = 1L
+        ).test {
+            assertTrue(awaitItem().isEmpty())
         }
     }
 
