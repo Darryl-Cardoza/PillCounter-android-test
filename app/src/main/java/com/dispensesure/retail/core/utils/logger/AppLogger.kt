@@ -3,9 +3,9 @@ package com.dispensesure.retail.core.utils.logger
 import android.content.Context
 import android.util.Log
 import com.dispensesure.retail.BuildConfig
+import com.dispensesure.retail.core.utils.logger.destination.CompositeLogDestination
 import com.dispensesure.retail.core.utils.logger.destination.FileLogDestination
-// import com.dispensesure.retail.core.utils.logger.destination.CompositeLogDestination
-// import com.dispensesure.retail.core.utils.logger.destination.RemoteLogDestination
+import com.dispensesure.retail.core.utils.logger.destination.RemoteLogDestination
 
 /**
  * A standalone logger class to handle logging throughout the application, and the single hub
@@ -35,10 +35,11 @@ class AppLogger(private val tag: String) {
      *
      * @param message The message to be logged.
      * @param throwable An optional throwable to log with the message.
+     * @param event What the process was doing, for a remote aggregator's `event` field — see [LogEvent].
      */
-    fun d(message: String, throwable: Throwable? = null) {
+    fun d(message: String, throwable: Throwable? = null, event: LogEvent? = null) {
         if (BuildConfig.DEBUG) Log.d(tag, message, throwable)
-        log(LogLevel.DEBUG, tag, message, throwable)
+        log(LogLevel.DEBUG, tag, message, throwable, event)
     }
 
     /**
@@ -47,10 +48,11 @@ class AppLogger(private val tag: String) {
      *
      * @param message The message to be logged.
      * @param throwable An optional throwable to log with the message.
+     * @param event What the process was doing, for a remote aggregator's `event` field — see [LogEvent].
      */
-    fun i(message: String, throwable: Throwable? = null) {
+    fun i(message: String, throwable: Throwable? = null, event: LogEvent? = null) {
         if (BuildConfig.DEBUG) logLong(Log.INFO, message, throwable)
-        log(LogLevel.INFO, tag, message, throwable)
+        log(LogLevel.INFO, tag, message, throwable, event)
     }
 
     /**
@@ -59,10 +61,11 @@ class AppLogger(private val tag: String) {
      *
      * @param message The message to be logged.
      * @param throwable An optional throwable to log with the message.
+     * @param event What the process was doing, for a remote aggregator's `event` field — see [LogEvent].
      */
-    fun w(message: String, throwable: Throwable? = null) {
+    fun w(message: String, throwable: Throwable? = null, event: LogEvent? = null) {
         Log.w(tag, message, throwable)
-        log(LogLevel.WARN, tag, message, throwable)
+        log(LogLevel.WARN, tag, message, throwable, event)
     }
 
     /**
@@ -71,10 +74,11 @@ class AppLogger(private val tag: String) {
      *
      * @param message The message to be logged.
      * @param throwable An optional throwable to log with the message.
+     * @param event What the process was doing, for a remote aggregator's `event` field — see [LogEvent].
      */
-    fun e(message: String, throwable: Throwable? = null) {
+    fun e(message: String, throwable: Throwable? = null, event: LogEvent? = null) {
         Log.e(tag, message, throwable)
-        log(LogLevel.ERROR, tag, message, throwable)
+        log(LogLevel.ERROR, tag, message, throwable, event)
     }
 
     /**
@@ -143,12 +147,10 @@ class AppLogger(private val tag: String) {
         @Synchronized
         fun init(context: Context) {
             if (destination != null) return
-            destination = FileLogDestination(context.applicationContext)
-
-            // Single-line ERROR-only feed for a remote log/crash aggregator (Datadog, Sentry,
-            // ...). Uncomment once a provider is chosen and its SDK call is filled in inside
-            // RemoteLogDestination.write() — no other change is needed here or at any call site.
-            // destination = CompositeLogDestination(destination!!, RemoteLogDestination())
+            destination = CompositeLogDestination(
+                FileLogDestination(context.applicationContext),
+                RemoteLogDestination(context.applicationContext)
+            )
         }
 
         /**
@@ -162,7 +164,7 @@ class AppLogger(private val tag: String) {
             this.destination = destination
         }
 
-        private fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?) {
+        private fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?, event: LogEvent?) {
             if (level < LoggerConfig.minimumLogLevel) return
             val dest = destination ?: return
 
@@ -177,7 +179,8 @@ class AppLogger(private val tag: String) {
                     message = message,
                     humanReadableError = throwable?.let(ExceptionTranslator::translate),
                     throwable = throwable,
-                    operatorName = LoggerConfig.operatorName?.takeIf { it.isNotBlank() }
+                    operatorName = LoggerConfig.operatorName?.takeIf { it.isNotBlank() },
+                    event = event
                 )
             )
         }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.history.domain.model.HistoryDetailsUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -51,7 +52,7 @@ class HistoryDetailsViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to load transaction details", e)
+                logger.e("Failed to load transaction details", e, event = LogEvent.HISTORY_LOAD_FAILED)
             }
         }
     }
@@ -63,7 +64,7 @@ class HistoryDetailsViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to delete transaction", e)
+                logger.e("Failed to delete transaction", e, event = LogEvent.HISTORY_DELETE_FAILED)
             }
         }
     }

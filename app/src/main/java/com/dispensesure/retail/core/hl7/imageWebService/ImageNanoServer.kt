@@ -11,6 +11,7 @@ import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import dagger.hilt.EntryPoint
 import dagger.hilt.EntryPoints
 import dagger.hilt.InstallIn
@@ -197,7 +198,7 @@ class ImageNanoServer(
                     .toString()
             )
         } catch (e: Exception) {
-            logger.e("Failed to read image: $fileName", e)
+            logger.e("Failed to read image: $fileName", e, event = LogEvent.FILE_READ_ERROR)
             errorResponse(
                 status = Response.Status.INTERNAL_ERROR,
                 message = "Failed to read image"
@@ -236,7 +237,7 @@ class ImageNanoServer(
                 orderId = txn.transactionOrderId.orEmpty()
             )
         } catch (e: Exception) {
-            logger.e("Transaction image lookup failed", e)
+            logger.e("Transaction image lookup failed", e, event = LogEvent.FILE_READ_ERROR)
             errorResponse(Response.Status.INTERNAL_ERROR, "Failed to build image archive")
         }
     }

@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.utils.common
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.text.ParsePosition
 import java.text.SimpleDateFormat
 import java.util.*
@@ -33,7 +34,7 @@ fun formatDateToUSFormat(
 
         cleanInput
     } catch (e: Exception) {
-        logger.e("Failed to parse date \"$input\" with pattern $outputPattern", e)
+        logger.e("Failed to parse date \"$input\" with pattern $outputPattern", e, event = LogEvent.UNKNOWN_ERROR)
         input
     }
 }

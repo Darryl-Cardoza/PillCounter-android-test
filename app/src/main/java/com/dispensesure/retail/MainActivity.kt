@@ -49,6 +49,7 @@ import kotlinx.coroutines.launch
 import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
 import com.dispensesure.retail.core.utils.common.HelperFunctions.openPlayStore
@@ -190,7 +191,7 @@ class MainActivity : ComponentActivity() {
             try {
                 runtimeUnit.activateIfNeeded()
             } catch (e: Exception) {
-                logger.e("runtimeUnit.activateIfNeeded() failed", e)
+                logger.e("runtimeUnit.activateIfNeeded() failed", e, event = LogEvent.KEK_ROTATE_FAILED)
             }
 //        } else {
 //            runtimeUnit.revokeClearance()
@@ -204,7 +205,7 @@ class MainActivity : ComponentActivity() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("FCM init/subscribe failed", e)
+                logger.e("FCM init/subscribe failed", e, event = LogEvent.NETWORK_ERROR)
             }
         }
 
@@ -476,7 +477,7 @@ class MainActivity : ComponentActivity() {
             // This runs on session-expiry/refresh-401 — already the worst possible moment for
             // the app to crash, since the user would be left stuck with an invalidated session
             // and no way back to Login. Swallow and log rather than propagate.
-            logger.e("Logout teardown failed", e)
+            logger.e("Logout teardown failed", e, event = LogEvent.LOGOUT_FAILED)
         } finally {
             sessionHealthController.endTeardown()
         }

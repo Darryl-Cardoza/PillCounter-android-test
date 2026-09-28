@@ -20,6 +20,7 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
@@ -107,7 +108,7 @@ class Hl7Repository @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to check HL7-enabled preference on startup — pending-txn observer not started", e)
+                logger.e("Failed to check HL7-enabled preference on startup — pending-txn observer not started", e, event = LogEvent.HL7_RESEND_FAILED)
             }
         }
     }
@@ -134,7 +135,7 @@ class Hl7Repository @Inject constructor(
             val parsedCount = dispenseStr?.toDoubleOrNull()?.toInt()
 
             if (parsedCount == null || parsedCount <= 0) {
-                logger.e("Invalid or missing dispense count: '$dispenseStr' in ${inboundType.name}. Rejecting message.")
+                logger.e("Invalid or missing dispense count: '$dispenseStr' in ${inboundType.name}. Rejecting message.", event = LogEvent.HL7_RECEIVE_FAILED)
                 throw IllegalArgumentException("Invalid or missing dispense count: $dispenseStr")
             }
 
@@ -148,7 +149,7 @@ class Hl7Repository @Inject constructor(
                 ?: zui?.ndc?.trim()
 
             if (ndcStr.isNullOrBlank()) {
-                logger.e("Missing NDC in ${inboundType.name}. Rejecting message.")
+                logger.e("Missing NDC in ${inboundType.name}. Rejecting message.", event = LogEvent.HL7_RECEIVE_FAILED)
                 throw IllegalArgumentException("Missing NDC")
             }
         }
@@ -178,7 +179,7 @@ class Hl7Repository @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to process inbound HL7 message (type=$inboundType, msgId=${message.messageControlId})", e)
+                logger.e("Failed to process inbound HL7 message (type=$inboundType, msgId=${message.messageControlId})", e, event = LogEvent.HL7_RECEIVE_FAILED)
             }
         }
     }
@@ -218,7 +219,7 @@ class Hl7Repository @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logger.e("Failed to build/send dispense HL7 for txnId=$txnId — leaving unsynced for retry", e)
+            logger.e("Failed to build/send dispense HL7 for txnId=$txnId — leaving unsynced for retry", e, event = LogEvent.HL7_SEND_FAILED)
         }
     }
 
@@ -362,7 +363,8 @@ class Hl7Repository @Inject constructor(
                     // stays unsynced and will resume at this exact chunk next time.
                     logger.e(
                         "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed/NAKed for batchId=$batchId: " +
-                            "${result.exceptionOrNull()?.message ?: "non-success ACK"}"
+                            "${result.exceptionOrNull()?.message ?: "non-success ACK"}",
+                        event = LogEvent.HL7_SEND_FAILED
                     )
                     return
                 }
@@ -372,7 +374,7 @@ class Hl7Repository @Inject constructor(
             logger.i("All chunks sent — inventory HL7 sync complete for batchId=$batchId")
 
         } catch (e: Exception) {
-            logger.e("buildAndSendInventoryResponse failed for batchId=$batchId", e)
+            logger.e("buildAndSendInventoryResponse failed for batchId=$batchId", e, event = LogEvent.HL7_SEND_FAILED)
         }
     }
 
@@ -401,7 +403,7 @@ class Hl7Repository @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    logger.e("sendDispenseNow failed for txnId=$txnId", e)
+                    logger.e("sendDispenseNow failed for txnId=$txnId", e, event = LogEvent.HL7_SEND_FAILED)
                 }
             }
         } else {
@@ -438,7 +440,7 @@ class Hl7Repository @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("resendPendingHl7Transactions failed", e)
+                logger.e("resendPendingHl7Transactions failed", e, event = LogEvent.HL7_RESEND_FAILED)
             } finally {
                 resendMutex.unlock()
             }
@@ -460,7 +462,7 @@ class Hl7Repository @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("resendPendingHl7BatchTransactions failed", e)
+                logger.e("resendPendingHl7BatchTransactions failed", e, event = LogEvent.HL7_RESEND_FAILED)
             }
         }
     }
@@ -514,7 +516,7 @@ class Hl7Repository @Inject constructor(
             }
             logger.i("Deleted synced txn $txnId from local storage (allowLocalStorage=false)")
         } catch (e: Exception) {
-            logger.e("Failed to delete synced txn $txnId", e)
+            logger.e("Failed to delete synced txn $txnId", e, event = LogEvent.DATABASE_ERROR)
         }
     }
 
@@ -553,7 +555,7 @@ class Hl7Repository @Inject constructor(
             val drugInfo = try {
                 drugRepository.getDrugInfoByNdc(request)
             } catch (e: Exception) {
-                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
+                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
                     message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
@@ -682,7 +684,7 @@ class Hl7Repository @Inject constructor(
             val drugInfo = try {
                 drugRepository.getDrugInfoByNdc(request)
             } catch (e: Exception) {
-                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
+                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
                     message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
@@ -803,7 +805,7 @@ class Hl7Repository @Inject constructor(
             val drugInfo = try {
                 drugRepository.getDrugInfoByNdc(request)
             } catch (e: Exception) {
-                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
+                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
                     message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
@@ -1008,7 +1010,7 @@ class Hl7Repository @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logger.e("Failed to look up local drug for NDC: $ndc", e)
+            logger.e("Failed to look up local drug for NDC: $ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
             null
         }
         if (existingDrug != null) {
@@ -1069,7 +1071,7 @@ class Hl7Repository @Inject constructor(
                 targetCount = targetCount
             )
         } catch (e: Exception) {
-            logger.e("Failed to fetch drug info from API for NDC: $ndc", e)
+            logger.e("Failed to fetch drug info from API for NDC: $ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
             null
         }
     }
@@ -1236,7 +1238,7 @@ class Hl7Repository @Inject constructor(
                     drugImagePath = imagePath,
                 )
             } catch (e: Exception) {
-                logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e)
+                logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_edit_rx_title),
                     message = context.getString(
@@ -1314,7 +1316,7 @@ class Hl7Repository @Inject constructor(
     private fun observePendingHl7Transactions() {
         scope.launch {
             pillCountTxnDao.observePendingHl7Txn()
-                .catch { e -> logger.e("Pending HL7 txn observer flow failed", e) }
+                .catch { e -> logger.e("Pending HL7 txn observer flow failed", e, event = LogEvent.HL7_RESEND_FAILED) }
                 .collect { pendingTxn ->
                     logger.i("HL7 observer fired, pending=${pendingTxn.size}")
                     resendPendingHl7Transactions()

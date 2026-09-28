@@ -5,6 +5,7 @@ import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.refreshToken.data.remote.IRefreshTokenAPI
 import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenRequest
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
@@ -58,11 +59,11 @@ class TokenAuthenticator @Inject constructor(
                     logger.w("Token refresh got 401 — session expired, publishing SessionExpired")
                     authEventBus.tryPublish(AuthEvent.SessionExpired)
                 } else {
-                    logger.e("Token refresh failed with HTTP ${e.code()}", e)
+                    logger.e("Token refresh failed with HTTP ${e.code()}", e, event = LogEvent.TOKEN_REFRESH_FAILED)
                 }
                 null
             } catch (e: Exception) {
-                logger.e("Token refresh failed", e)
+                logger.e("Token refresh failed", e, event = LogEvent.TOKEN_REFRESH_FAILED)
                 null
             }
         } ?: return null

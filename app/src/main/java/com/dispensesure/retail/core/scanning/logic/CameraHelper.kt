@@ -34,6 +34,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.LifecycleOwner
 import com.google.common.util.concurrent.ListenableFuture
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
@@ -177,7 +178,7 @@ class CameraHelper(
             val cameraProvider = try {
                 cameraProviderFuture.get()
             } catch (e: Exception) {
-                logger.e("Failed to get CameraProvider", e)
+                logger.e("Failed to get CameraProvider", e, event = LogEvent.SCAN_FAILED)
                 return@addListener
             }
 
@@ -265,7 +266,7 @@ class CameraHelper(
                 startPeriodicFocus(previewView)
 
             } catch (e: Exception) {
-                logger.e("Failed binding camera", e)
+                logger.e("Failed binding camera", e, event = LogEvent.SCAN_FAILED)
                 isBound.set(false)
             }
 
@@ -409,7 +410,7 @@ class CameraHelper(
             } else image.close()
 
         } catch (t: Throwable) {
-            logger.e("Analyzer error", t)
+            logger.e("Analyzer error", t, event = LogEvent.SCAN_FAILED)
             image.close()
         }
     }
@@ -459,7 +460,7 @@ class CameraHelper(
             logger.i("Zoom set → $newZoom")
 
         } catch (e: Exception) {
-            logger.e("Zoom failed", e)
+            logger.e("Zoom failed", e, event = LogEvent.SCAN_FAILED)
         }
     }
 
@@ -540,7 +541,7 @@ class CameraHelper(
             cam.cameraControl.startFocusAndMetering(action)
 
         } catch (e: Exception) {
-            logger.e("Autofocus failed", e)
+            logger.e("Autofocus failed", e, event = LogEvent.SCAN_FAILED)
         }
     }
 
@@ -659,7 +660,7 @@ class CameraHelper(
                         val bitmap = imageProxyToBitmap(image)
                         onCaptured(bitmap)
                     } catch (e: Exception) {
-                        logger.e("Processing captured image failed", e)
+                        logger.e("Processing captured image failed", e, event = LogEvent.SCAN_FAILED)
                         onCaptureError(e)
                     } finally {
                         image.close()
@@ -669,7 +670,7 @@ class CameraHelper(
                 // Clear the flag here too, else one failed capture kills the shutter for good.
                 override fun onError(exception: ImageCaptureException) {
                     isCapturing.set(false)
-                    logger.e("Capture failed", exception)
+                    logger.e("Capture failed", exception, event = LogEvent.SCAN_FAILED)
                     onCaptureError(exception)
                 }
             }

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.history.data.HistoryRepository
 import com.dispensesure.retail.feature.history.domain.model.HistoryDeleteFilter
@@ -89,7 +90,7 @@ class HistoryViewModel @Inject constructor(
                     userLocalId = preferenceHelper.getLocalId()
                 )
             }
-            .catch { e -> logger.e("Observing transactions for date range failed", e) }
+            .catch { e -> logger.e("Observing transactions for date range failed", e, event = LogEvent.HISTORY_LOAD_FAILED) }
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(5_000),
@@ -132,7 +133,7 @@ class HistoryViewModel @Inject constructor(
                     userLocalId = preferenceHelper.getLocalId()
                 )
             }
-            .catch { e -> logger.e("Observing batch summaries failed", e) }
+            .catch { e -> logger.e("Observing batch summaries failed", e, event = LogEvent.HISTORY_LOAD_FAILED) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val batchGroups: StateFlow<List<BatchSummary>> =
@@ -189,7 +190,7 @@ class HistoryViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to delete counts for selected date/mode", e)
+                logger.e("Failed to delete counts for selected date/mode", e, event = LogEvent.HISTORY_DELETE_FAILED)
             }
         }
     }

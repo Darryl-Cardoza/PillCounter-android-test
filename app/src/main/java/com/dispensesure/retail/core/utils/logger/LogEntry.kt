@@ -14,5 +14,7 @@ data class LogEntry(
     val humanReadableError: String? = null,
     val throwable: Throwable? = null,
     /** Whoever was operating the device when this was logged, or null when unknown — see [LoggerConfig.operatorName]. */
-    val operatorName: String? = null
+    val operatorName: String? = null,
+    /** What the process was doing, for a remote aggregator's `event` field — see [LogEvent]. Null when the call site didn't specify one. */
+    val event: LogEvent? = null
 )

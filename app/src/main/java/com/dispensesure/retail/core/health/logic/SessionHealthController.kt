@@ -5,6 +5,7 @@ import com.dispensesure.retail.core.health.domain.data.IHealthRepository
 import com.dispensesure.retail.core.health.domain.model.HealthState
 import com.dispensesure.retail.core.utils.common.DateUtils
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import dagger.Lazy
@@ -251,7 +252,7 @@ class SessionHealthController @Inject constructor(
                 }
             )
         }
-        logger.e("checkHealth exhausted $MAX_ATTEMPTS attempts, flipping OFFLINE", lastFailure)
+        logger.e("checkHealth exhausted $MAX_ATTEMPTS attempts, flipping OFFLINE", lastFailure, event = LogEvent.HEALTH_CHECK_FAILED)
         if (_state.value != HealthState.EXPIRED) {
             _state.value = HealthState.OFFLINE
         }

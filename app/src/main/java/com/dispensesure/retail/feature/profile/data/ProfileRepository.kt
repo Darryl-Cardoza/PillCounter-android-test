@@ -6,6 +6,7 @@ import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenReques
 import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenResponse
 import com.dispensesure.retail.feature.settings.data.remote.IApplicationSettingInterface
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.profile.data.remote.IProfileApi
 import com.dispensesure.retail.feature.profile.domain.data.IProfileRepository
@@ -61,10 +62,10 @@ class ProfileRepository @Inject constructor(
                     profileApi.updateProfile("Bearer $newToken", request)
                 }
             }
-            logger.e("Profile update failed with HttpException", e)
+            logger.e("Profile update failed with HttpException", e, event = LogEvent.PROFILE_UPDATE_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Profile update failed", e)
+            logger.e("Profile update failed", e, event = LogEvent.PROFILE_UPDATE_FAILED)
             Result.failure(e)
         }
     }
@@ -91,10 +92,10 @@ class ProfileRepository @Inject constructor(
                     profileApi.deleteProfile("Bearer $newToken")
                 }
             }
-            logger.e("Profile delete failed with HttpException", e)
+            logger.e("Profile delete failed with HttpException", e, event = LogEvent.PROFILE_DELETE_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Profile deletion failed", e)
+            logger.e("Profile deletion failed", e, event = LogEvent.PROFILE_DELETE_FAILED)
             Result.failure(e)
         }
     }
@@ -110,7 +111,7 @@ class ProfileRepository @Inject constructor(
             val response = profileApi.getCountries()
             Result.success(response.data?.countries.orEmpty())
         } catch (e: Exception) {
-            logger.e("Failed to fetch countries reference list", e)
+            logger.e("Failed to fetch countries reference list", e, event = LogEvent.CACHE_READ_FAILED)
             Result.failure(e)
         }
     }
@@ -137,10 +138,10 @@ class ProfileRepository @Inject constructor(
                     profileApi.getPharmacyTypes("Bearer $newToken")
                 }
             }
-            logger.e("Fetching pharmacy types failed with HttpException", e)
+            logger.e("Fetching pharmacy types failed with HttpException", e, event = LogEvent.CACHE_READ_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Fetching pharmacy types failed", e)
+            logger.e("Fetching pharmacy types failed", e, event = LogEvent.CACHE_READ_FAILED)
             Result.failure(e)
         }
     }
@@ -158,7 +159,7 @@ class ProfileRepository @Inject constructor(
             if (refreshResponse.code() == 401) {
                 // Refresh itself was rejected — session is truly expired. Broadcast so
                 // MainActivity performs the standard logout teardown + Login nav.
-                logger.e("Refresh token rejected (401) — publishing SessionExpired")
+                logger.e("Refresh token rejected (401) — publishing SessionExpired", event = LogEvent.TOKEN_REFRESH_FAILED)
                 authEventBus.tryPublish(AuthEvent.SessionExpired)
                 return Result.failure(Exception("Refresh returned 401"))
             }
@@ -175,11 +176,11 @@ class ProfileRepository @Inject constructor(
                 logger.i("API retried successfully after token refresh.")
                 Result.success(retryResponse)
             } else {
-                logger.e("Token refresh failed: ${refreshResponseBody?.message}")
+                logger.e("Token refresh failed: ${refreshResponseBody?.message}", event = LogEvent.TOKEN_REFRESH_FAILED)
                 Result.failure(Exception("Failed to refresh token: ${refreshResponseBody?.message}"))
             }
         } catch (ex: Exception) {
-            logger.e("Token refresh or retry failed", ex)
+            logger.e("Token refresh or retry failed", ex, event = LogEvent.TOKEN_REFRESH_FAILED)
             Result.failure(ex)
         }
     }

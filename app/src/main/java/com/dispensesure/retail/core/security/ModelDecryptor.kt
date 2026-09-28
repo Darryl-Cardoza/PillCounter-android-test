@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.security
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.io.File
 import java.io.FileInputStream
 import javax.crypto.Cipher
@@ -37,7 +38,7 @@ object ModelDecryptor {
             return try {
                 cipher.doFinal(cipherText)
             } catch (e: Exception) {
-                logger.e("Failed to decrypt model file ${inFile.name}", e)
+                logger.e("Failed to decrypt model file ${inFile.name}", e, event = LogEvent.MODEL_LOAD_FAILED)
                 throw IllegalStateException("Decryption failed: wrong key or corrupted file", e)
             }
         }

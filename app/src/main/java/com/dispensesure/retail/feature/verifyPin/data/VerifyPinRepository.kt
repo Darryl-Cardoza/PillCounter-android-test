@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.verifyPin.data
 
 import com.dispensesure.retail.core.utils.constants.AppConstants
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.notification.FCMService
 import com.dispensesure.retail.feature.verifyPin.data.remote.IVerifyPinAPI
 import com.dispensesure.retail.feature.verifyPin.domain.data.IVerifyPinRepository
@@ -61,7 +62,7 @@ class VerifyPinRepository @Inject constructor(
 
                 Result.success(response)
             } catch (e: Exception) {
-                logger.e("OTP verification failed for user: $email", e)
+                logger.e("OTP verification failed for user: $email", e, event = LogEvent.OTP_VERIFY_FAILED)
                 Result.failure(e)
             }
         }

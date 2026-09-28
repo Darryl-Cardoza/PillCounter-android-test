@@ -23,6 +23,7 @@ import com.dispensesure.retail.feature.menu.domain.model.CountBuckets
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.navigation.Screen
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -234,7 +235,7 @@ object HelperFunctions {
             val encryptedBytes = ImageCrypto.encrypt(baos.toByteArray())
             FileOutputStream(file).use { out -> out.write(encryptedBytes) }
         } catch (e: Exception) {
-            logger.e("saveBitmapToFile() failed for ${file.absolutePath}", e)
+            logger.e("saveBitmapToFile() failed for ${file.absolutePath}", e, event = LogEvent.FILE_WRITE_ERROR)
             throw e
         } finally {
             if (grayscale) toSave.recycle()

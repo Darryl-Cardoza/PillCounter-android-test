@@ -14,6 +14,7 @@ import com.dispensesure.retail.core.scanning.logic.IdNameParser
 import com.dispensesure.retail.core.scanning.logic.IdTextLine
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -164,7 +165,7 @@ class IdCardAnalyzer(private val appContext: Context) {
         try {
             processFrame(input = InputImage.fromBitmap(bitmap, rotation), bitmap, token, onDetected)
         } catch (t: Throwable) {
-            logger.e("ID_SCAN dispatch failed token=$token", t)
+            logger.e("ID_SCAN dispatch failed token=$token", t, event = LogEvent.SCAN_FAILED)
             finishFrame(bitmap, token)
         }
     }
@@ -192,7 +193,7 @@ class IdCardAnalyzer(private val appContext: Context) {
                 }
             }
             .addOnFailureListener { ex ->
-                logger.e("ID_SCAN barcode failure token=$token", ex)
+                logger.e("ID_SCAN barcode failure token=$token", ex, event = LogEvent.SCAN_FAILED)
                 runOcr(input, bitmap, token, onDetected)
             }
     }
@@ -212,7 +213,7 @@ class IdCardAnalyzer(private val appContext: Context) {
         val task = try {
             textRecognizer.process(input)
         } catch (t: Throwable) {
-            logger.e("ID_SCAN OCR dispatch failed token=$token", t)
+            logger.e("ID_SCAN OCR dispatch failed token=$token", t, event = LogEvent.SCAN_FAILED)
             finishFrame(bitmap, token)
             return
         }
@@ -243,7 +244,7 @@ class IdCardAnalyzer(private val appContext: Context) {
                 }
             }
             .addOnFailureListener { ex ->
-                logger.e("ID_SCAN OCR failure token=$token", ex)
+                logger.e("ID_SCAN OCR failure token=$token", ex, event = LogEvent.SCAN_FAILED)
             }
             .addOnCompleteListener {
                 finishFrame(bitmap, token)
@@ -259,7 +260,7 @@ class IdCardAnalyzer(private val appContext: Context) {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("onDetected() dispatch failed", e)
+                logger.e("onDetected() dispatch failed", e, event = LogEvent.SCAN_FAILED)
             }
         }
     }

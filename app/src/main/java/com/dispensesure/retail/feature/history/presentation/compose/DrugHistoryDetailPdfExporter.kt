@@ -15,6 +15,7 @@ import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.dtos.TxnDetailInfo
 import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -194,7 +195,7 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
             FileOutputStream(file).use { pdf.writeTo(it) }
             file
         } catch (e: Exception) {
-            logger.e("Failed to generate PDF for txn ${txn.txnId}", e)
+            logger.e("Failed to generate PDF for txn ${txn.txnId}", e, event = LogEvent.FILE_WRITE_ERROR)
             null
         } finally {
             pdf.close()

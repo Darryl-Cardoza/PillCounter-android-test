@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
 import java.io.File
 import java.io.FileOutputStream
@@ -72,7 +73,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
     ): File? {
         val dir = File(context.getExternalFilesDir(null), "PillReports/StockCountReports")
         if (!dir.exists() && !dir.mkdirs()) {
-            logger.e("Failed to create stock count report directory: ${dir.absolutePath}")
+            logger.e("Failed to create stock count report directory: ${dir.absolutePath}", event = LogEvent.FILE_WRITE_ERROR)
             return null
         }
         val file = File(dir, "StockCount_Batch${batchId}_${System.currentTimeMillis()}.pdf")
@@ -120,7 +121,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
             FileOutputStream(file).use { pdf.writeTo(it) }
             file
         } catch (e: Exception) {
-            logger.e("Failed to generate stock count PDF for batchId=$batchId", e)
+            logger.e("Failed to generate stock count PDF for batchId=$batchId", e, event = LogEvent.FILE_WRITE_ERROR)
             null
         } finally {
             pdf.close()

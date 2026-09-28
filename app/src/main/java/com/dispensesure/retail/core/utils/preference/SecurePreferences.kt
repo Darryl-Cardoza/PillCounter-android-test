@@ -7,6 +7,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -97,7 +98,7 @@ class SecurePreferences(context: Context,
             val encrypted = encrypt(value)
             prefs.edit(commit) { putString(key, encrypted) }
         } catch (e: Exception) {
-            logger.e("Failed to encrypt pref '$key', value not persisted", e)
+            logger.e("Failed to encrypt pref '$key', value not persisted", e, event = LogEvent.FILE_WRITE_ERROR)
         }
     }
 
@@ -106,7 +107,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored)
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e)
+            logger.e("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -116,7 +117,7 @@ class SecurePreferences(context: Context,
             val encrypted = encrypt(value.toString())
             prefs.edit { putString(key, encrypted) }
         } catch (e: Exception) {
-            logger.e("Failed to encrypt pref '$key', value not persisted", e)
+            logger.e("Failed to encrypt pref '$key', value not persisted", e, event = LogEvent.FILE_WRITE_ERROR)
         }
     }
 
@@ -125,7 +126,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toBoolean()
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e)
+            logger.e("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -135,7 +136,7 @@ class SecurePreferences(context: Context,
             val encrypted = encrypt(value.toString())
             prefs.edit(commit) { putString(key, encrypted) }
         } catch (e: Exception) {
-            logger.e("Failed to encrypt pref '$key', value not persisted", e)
+            logger.e("Failed to encrypt pref '$key', value not persisted", e, event = LogEvent.FILE_WRITE_ERROR)
         }
     }
 
@@ -144,7 +145,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toInt()
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e)
+            logger.e("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -154,7 +155,7 @@ class SecurePreferences(context: Context,
             val encrypted = encrypt(value.toString())
             prefs.edit { putString(key, encrypted) }
         } catch (e: Exception) {
-            logger.e("Failed to encrypt pref '$key', value not persisted", e)
+            logger.e("Failed to encrypt pref '$key', value not persisted", e, event = LogEvent.FILE_WRITE_ERROR)
         }
     }
 
@@ -163,7 +164,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toLong()
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e)
+            logger.e("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }

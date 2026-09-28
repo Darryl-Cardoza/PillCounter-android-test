@@ -4,6 +4,7 @@ import com.dispensesure.retail.core.health.data.remote.IHealthApi
 import com.dispensesure.retail.core.health.domain.data.IHealthRepository
 import com.dispensesure.retail.core.health.data.remote.dto.HealthCheckData
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -54,7 +55,7 @@ class HealthRepository @Inject constructor(
             logger.i("/health healthy at ${body.checkedAt}")
             Result.success(body)
         } catch (e: Exception) {
-            logger.e("/health call failed", e)
+            logger.e("/health call failed", e, event = LogEvent.HEALTH_CHECK_FAILED)
             Result.failure(e)
         }
     }

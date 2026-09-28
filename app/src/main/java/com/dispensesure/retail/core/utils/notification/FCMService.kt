@@ -10,6 +10,7 @@ import androidx.core.app.NotificationCompat
 import com.dispensesure.retail.MainActivity
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.google.firebase.messaging.FirebaseMessaging
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -32,7 +33,7 @@ class FCMService @Inject constructor(
     fun initFCM() {
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
-                logger.e("Failed to fetch FCM token", task.exception)
+                logger.e("Failed to fetch FCM token", task.exception, event = LogEvent.NETWORK_ERROR)
                 return@addOnCompleteListener
             }
 
@@ -49,7 +50,7 @@ class FCMService @Inject constructor(
             if (task.isSuccessful) {
                 continuation.resume(task.result)
             } else {
-                logger.e("Failed to fetch FCM token", task.exception)
+                logger.e("Failed to fetch FCM token", task.exception, event = LogEvent.NETWORK_ERROR)
                 continuation.resume(null)
             }
         }

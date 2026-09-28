@@ -19,6 +19,7 @@ import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.data.IUserDetailRepository
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
@@ -124,7 +125,7 @@ class DashboardViewModel @Inject constructor(
     private fun observeOperatorName() {
         viewModelScope.launch(Dispatchers.IO) {
             operatorNameProvider.observe()
-                .catch { e -> logger.e("Observing operator name failed", e) }
+                .catch { e -> logger.e("Observing operator name failed", e, event = LogEvent.DASHBOARD_LOAD_FAILED) }
                 .collect { operator ->
                     _uiState.update { it.copy(operatorName = operator.display()) }
                 }
@@ -166,7 +167,7 @@ class DashboardViewModel @Inject constructor(
         if (localId == 0L) return
         viewModelScope.launch(Dispatchers.IO) {
             userDao.observeByLocalId(localId)
-                .catch { e -> logger.e("Observing user detail failed (localId=$localId)", e) }
+                .catch { e -> logger.e("Observing user detail failed (localId=$localId)", e, event = LogEvent.USER_FETCH_FAILED) }
                 .collect { entity ->
                     val detail = entity?.toUserDetail(preferenceHelper.getTerminals()) ?: return@collect
                     _uiState.update { it.copy(userDetail = detail) }
@@ -262,7 +263,7 @@ class DashboardViewModel @Inject constructor(
                 }
                 (dispenseItems + inventoryItems).sortedBy { it.createdAt }
             }.catch { e ->
-                logger.e("Observing today's queue failed", e)
+                logger.e("Observing today's queue failed", e, event = LogEvent.DASHBOARD_LOAD_FAILED)
                 _uiState.update { it.copy(isLoadingQueue = false) }
             }.collect { combined ->
                 _unfilteredQueue.value = combined
@@ -362,7 +363,7 @@ class DashboardViewModel @Inject constructor(
                     .map { QueueItem.Inventory(batch = it) }
                 (dispenseItems + inventoryItems).sortedByDescending { it.createdAt }
             }.catch { e ->
-                logger.e("Observing recent activity failed", e)
+                logger.e("Observing recent activity failed", e, event = LogEvent.DASHBOARD_LOAD_FAILED)
                 _uiState.update { it.copy(isLoadingQueue = false) }
             }.collect { combined ->
                 _uiState.update { it.copy(recentActivity = combined, isLoadingQueue = false) }
@@ -418,7 +419,7 @@ class DashboardViewModel @Inject constructor(
 
             val token = preferenceHelper.getAccessToken()
             if (token.isNullOrBlank()) {
-                logger.e("Access token not found in preferences.")
+                logger.e("Access token not found in preferences.", event = LogEvent.USER_FETCH_FAILED)
                 _uiState.update {
                     it.copy(
                         isLoadingUserDetail = false,
@@ -585,7 +586,7 @@ class DashboardViewModel @Inject constructor(
                     } catch (dbErr: CancellationException) {
                         throw dbErr
                     } catch (dbErr: Throwable) {
-                        logger.e("Persisting user detail failed.", dbErr)
+                        logger.e("Persisting user detail failed.", dbErr, event = LogEvent.USER_FETCH_FAILED)
                         _uiState.update {
                             it.copy(
                                 isLoadingUserDetail = false,
@@ -595,7 +596,7 @@ class DashboardViewModel @Inject constructor(
                     }
                 },
                 onFailure = { error ->
-                    logger.e("Failed to fetch user details.", error)
+                    logger.e("Failed to fetch user details.", error, event = LogEvent.USER_FETCH_FAILED)
                     if (error.message == "LOGOUT") {
                         _uiState.update {
                             it.copy(
@@ -655,7 +656,7 @@ class DashboardViewModel @Inject constructor(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            logger.e("Error cleaning up synced transactions", e)
+            logger.e("Error cleaning up synced transactions", e, event = LogEvent.TRANSACTION_PURGE_FAILED)
         }
     }
 

@@ -4,6 +4,7 @@ package com.dispensesure.retail.core.hl7.mllp.tls
 import android.content.Context
 import com.dispensesure.retail.BuildConfig
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import java.net.Socket
 import java.util.concurrent.ConcurrentHashMap
@@ -61,7 +62,7 @@ class TlsSocketFactory(
             sslSocket.startHandshake()
             sslSocket
         } catch (e: Exception) {
-            logger.e("TLS handshake failed while connecting to $ip:$port", e)
+            logger.e("TLS handshake failed while connecting to $ip:$port", e, event = LogEvent.NETWORK_ERROR)
             sslSocket.close()
             throw e
         }

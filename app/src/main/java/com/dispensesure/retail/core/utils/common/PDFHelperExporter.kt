@@ -11,6 +11,7 @@ import android.text.StaticLayout
 import android.text.TextPaint
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -253,7 +254,7 @@ class PDFHelperExporter(private val context: Context) {
             return file
 
         } catch (e: IOException) {
-            logger.e("PDF export failed while writing file", e)
+            logger.e("PDF export failed while writing file", e, event = LogEvent.FILE_WRITE_ERROR)
             try {
                 pdfDocument.finishPage(page)
             } catch (ignored: Exception) {
@@ -261,7 +262,7 @@ class PDFHelperExporter(private val context: Context) {
             }
             return null
         } catch (e: Exception) {
-            logger.e("PDF export failed", e)
+            logger.e("PDF export failed", e, event = LogEvent.FILE_WRITE_ERROR)
             return null
         } finally {
             pdfDocument.close()

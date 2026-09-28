@@ -8,6 +8,7 @@ import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenReques
 import com.dispensesure.retail.core.refreshToken.domain.model.UserDetailRequest
 import com.dispensesure.retail.feature.settings.data.remote.IApplicationSettingInterface
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.data.remote.IUserDetailAPI
 import com.dispensesure.retail.feature.dashboard.domain.data.IUserDetailRepository
@@ -60,7 +61,7 @@ class UserDetailRepository @Inject constructor(
                             logger.i("User detail fetched successfully.")
                             Result.success(it)
                         } ?: run {
-                            logger.e("Empty response body while fetching user detail.")
+                            logger.e("Empty response body while fetching user detail.", event = LogEvent.USER_FETCH_FAILED)
                             Result.failure(Exception("Empty response body"))
                         }
                     }
@@ -94,17 +95,17 @@ class UserDetailRepository @Inject constructor(
                     }
 
                     else -> {
-                        logger.e("Error fetching user detail. HTTP code: ${response.code()}")
+                        logger.e("Error fetching user detail. HTTP code: ${response.code()}", event = LogEvent.USER_FETCH_FAILED)
                         Result.failure(Exception("Server returned ${response.code()}"))
                     }
                 }
 
                 result //
             } catch (e: HttpException) {
-                logger.e("HttpException during getUserDetail()", e)
+                logger.e("HttpException during getUserDetail()", e, event = LogEvent.USER_FETCH_FAILED)
                 Result.failure(e)
             } catch (e: Exception) {
-                logger.e("Unexpected error fetching user detail", e)
+                logger.e("Unexpected error fetching user detail", e, event = LogEvent.USER_FETCH_FAILED)
                 Result.failure(e)
             }
         }
@@ -129,7 +130,7 @@ class UserDetailRepository @Inject constructor(
 
 
             if (refreshResponse.code() == 401) {
-                logger.e("Refresh token expired or invalid — logging out user.")
+                logger.e("Refresh token expired or invalid — logging out user.", event = LogEvent.TOKEN_REFRESH_FAILED)
                 onLogout()
                 return Result.failure(Exception("LOGOUT"))
             }
@@ -144,11 +145,11 @@ class UserDetailRepository @Inject constructor(
                 // Retry API call with new access token
                 apiCall()
             } else {
-                logger.e("Token refresh failed: ${refreshResponseBody?.message}")
+                logger.e("Token refresh failed: ${refreshResponseBody?.message}", event = LogEvent.TOKEN_REFRESH_FAILED)
                 Result.failure(Exception("Failed to refresh token: ${refreshResponseBody?.message}"))
             }
         } catch (ex: Exception) {
-            logger.e("Token refresh or retry failed", ex)
+            logger.e("Token refresh or retry failed", ex, event = LogEvent.TOKEN_REFRESH_FAILED)
             Result.failure(ex)
         }
     }

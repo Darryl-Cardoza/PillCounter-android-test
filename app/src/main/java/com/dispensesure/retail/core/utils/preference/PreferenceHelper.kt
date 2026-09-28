@@ -5,6 +5,7 @@ import android.content.SharedPreferences
 import com.google.gson.Gson
 import com.dispensesure.retail.feature.settings.domain.model.ColorSettings
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
 import com.dispensesure.retail.feature.profile.domain.model.PharmacyTypeOption
@@ -223,7 +224,7 @@ class PreferenceHelper @Inject constructor(
         return try {
             gson.fromJson(json, ColorSettings::class.java)
         } catch (e: Exception) {
-            logger.e("Failed to parse cached theme colors, returning null", e)
+            logger.e("Failed to parse cached theme colors, returning null", e, event = LogEvent.CACHE_READ_FAILED)
             null
         }
     }
@@ -282,7 +283,7 @@ class PreferenceHelper @Inject constructor(
         } catch (e: Exception) {
             // Read directly on the Login screen's first composition (LoginScreen.kt) — a
             // corrupted/stale blob here must degrade to "no recent logins" rather than crash it.
-            logger.e("Failed to parse recent logins, returning empty list", e)
+            logger.e("Failed to parse recent logins, returning empty list", e, event = LogEvent.CACHE_READ_FAILED)
             emptyList()
         }
     }
@@ -426,7 +427,7 @@ class PreferenceHelper @Inject constructor(
         return try {
             gson.fromJson(json, Array<String>::class.java).toSet()
         } catch (e: Exception) {
-            logger.e("Failed to parse control drug types, returning empty set", e)
+            logger.e("Failed to parse control drug types, returning empty set", e, event = LogEvent.CACHE_READ_FAILED)
             emptySet()
         }
     }
@@ -469,7 +470,7 @@ class PreferenceHelper @Inject constructor(
         return try {
             gson.fromJson(json, Array<String>::class.java).toList()
         } catch (e: Exception) {
-            logger.e("Failed to parse bucket list, returning empty list", e)
+            logger.e("Failed to parse bucket list, returning empty list", e, event = LogEvent.CACHE_READ_FAILED)
             emptyList()
         }
     }
@@ -513,7 +514,7 @@ class PreferenceHelper @Inject constructor(
         return try {
             gson.fromJson(json, Array<Terminal>::class.java).toList()
         } catch (e: Exception) {
-            logger.e("Failed to parse cached terminals, returning empty list", e)
+            logger.e("Failed to parse cached terminals, returning empty list", e, event = LogEvent.CACHE_READ_FAILED)
             emptyList()
         }
     }
@@ -594,7 +595,7 @@ class PreferenceHelper @Inject constructor(
         return try {
             gson.fromJson(json, Array<PharmacyTypeOption>::class.java)?.toList() ?: emptyList()
         } catch (e: Exception) {
-            logger.e("Failed to parse cached pharmacy types, returning empty list", e)
+            logger.e("Failed to parse cached pharmacy types, returning empty list", e, event = LogEvent.CACHE_READ_FAILED)
             emptyList()
         }
     }
@@ -722,7 +723,7 @@ class PreferenceHelper @Inject constructor(
         return try {
             gson.fromJson(json, Array<Country>::class.java).toList()
         } catch (e: Exception) {
-            logger.e("Failed to parse cached countries, returning empty list", e)
+            logger.e("Failed to parse cached countries, returning empty list", e, event = LogEvent.CACHE_READ_FAILED)
             emptyList()
         }
     }

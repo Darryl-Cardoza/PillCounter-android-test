@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.scanning.data
 
 import android.content.Context
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -83,7 +84,7 @@ class DrugImageDownloader @Inject constructor(
                 logger.i("DrugImage saved: ${targetFile.absolutePath}")
                 targetFile.absolutePath
             } catch (e: Exception) {
-                logger.e("DrugImage download exception for url=$url drugName=$drugName", e)
+                logger.e("DrugImage download exception for url=$url drugName=$drugName", e, event = LogEvent.DRUG_IMAGE_FAILED)
                 null
             }
         }

@@ -4,6 +4,7 @@ import android.content.Context
 import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.io.File
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -41,7 +42,7 @@ object SecurityAuditLogger {
             val existing = readDecrypted(context) ?: ""
             writeEncrypted(context, existing + event.toLogLine())
         } catch (e: Exception) {
-            logger.e("log() failed to write security audit event '${event.checkName}'", e)
+            logger.e("log() failed to write security audit event '${event.checkName}'", e, event = LogEvent.AUDIT_LOG_FAILED)
         }
     }
 
@@ -52,7 +53,7 @@ object SecurityAuditLogger {
             val appended = existing + events.joinToString("") { it.toLogLine() }
             writeEncrypted(context, appended)
         } catch (e: Exception) {
-            logger.e("logAll() failed to write ${events.size} security audit event(s)", e)
+            logger.e("logAll() failed to write ${events.size} security audit event(s)", e, event = LogEvent.AUDIT_LOG_FAILED)
         }
     }
 
@@ -63,7 +64,7 @@ object SecurityAuditLogger {
                 .filter { it.isNotBlank() }
                 .mapNotNull { AuditEvent.fromLogLine(it) }
         } catch (e: Exception) {
-            logger.e("readAll() failed to read security audit log", e)
+            logger.e("readAll() failed to read security audit log", e, event = LogEvent.AUDIT_LOG_FAILED)
             emptyList()
         }
     }

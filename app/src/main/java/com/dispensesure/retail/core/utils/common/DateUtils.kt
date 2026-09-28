@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.utils.common
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -39,7 +40,7 @@ object DateUtils {
 
             val date: Date? = utcFormat.parse(timestamp)
             if (date == null) {
-                logger.e("Failed to parse UTC timestamp: $timestamp")
+                logger.e("Failed to parse UTC timestamp: $timestamp", event = LogEvent.UNKNOWN_ERROR)
                 return ""
             }
 
@@ -51,7 +52,7 @@ object DateUtils {
             logger.d("Converted UTC timestamp: $timestamp → $formatted")
             formatted
         } catch (e: Exception) {
-            logger.e("Error converting UTC timestamp: $timestamp", e)
+            logger.e("Error converting UTC timestamp: $timestamp", e, event = LogEvent.UNKNOWN_ERROR)
             ""
         }
     }
@@ -76,7 +77,7 @@ object DateUtils {
             logger.d("Formatted GS1 date: $dateString → $formattedDate")
             formattedDate
         } catch (e: Exception) {
-            logger.e("Error converting GS1 date: $dateString", e)
+            logger.e("Error converting GS1 date: $dateString", e, event = LogEvent.UNKNOWN_ERROR)
             ""
         }
     }
@@ -116,7 +117,7 @@ object DateUtils {
             }
             parser.parse(cleaned)?.time
         } catch (e: Exception) {
-            logger.e("Error parsing ISO UTC timestamp: $raw", e)
+            logger.e("Error parsing ISO UTC timestamp: $raw", e, event = LogEvent.UNKNOWN_ERROR)
             null
         }
     }
@@ -131,7 +132,7 @@ object DateUtils {
             val parser = DateTimeFormatter.ofPattern("yyMMdd")
             LocalDate.parse(dateString, parser)
         } catch (e: Exception) {
-            logger.e("Error parsing GS1 date to LocalDate: $dateString", e)
+            logger.e("Error parsing GS1 date to LocalDate: $dateString", e, event = LogEvent.UNKNOWN_ERROR)
             null
         }
     }

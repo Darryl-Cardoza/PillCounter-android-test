@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.login.data
 
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.login.data.remote.ILoginApi
 import com.dispensesure.retail.feature.login.domain.data.ILoginRepository
 import com.dispensesure.retail.feature.login.domain.model.LoginRequest
@@ -44,7 +45,7 @@ class LoginRepository @Inject constructor(
                 logger.i("Login successful for user: $username")
                 Result.success(response)
             } catch (e: Exception) {
-                logger.e("Login failed for user: $username", e)
+                logger.e("Login failed for user: $username", e, event = LogEvent.LOGIN_FAILED)
                 Result.failure(e)
             }
         }
@@ -65,7 +66,7 @@ class LoginRepository @Inject constructor(
                 logger.i("Logout successful.")
                 Result.success(response)
             } catch (e: Exception) {
-                logger.e("Logout failed.", e)
+                logger.e("Logout failed.", e, event = LogEvent.LOGOUT_FAILED)
                 Result.failure(e)
             }
         }

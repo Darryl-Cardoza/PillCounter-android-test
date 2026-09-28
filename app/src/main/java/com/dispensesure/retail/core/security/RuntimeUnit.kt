@@ -7,6 +7,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -52,7 +53,7 @@ class RuntimeUnit(private val context: Context) {
             persist(seal(refined))
             destroy(refined)
         } catch (e: Exception) {
-            logger.e("RuntimeUnit: activateIfNeeded() failed", e)
+            logger.e("RuntimeUnit: activateIfNeeded() failed", e, event = LogEvent.UNKNOWN_ERROR)
             throw e
         }
     }
@@ -66,7 +67,7 @@ class RuntimeUnit(private val context: Context) {
             val sealed = retrieve()
             return open(sealed)
         } catch (e: Exception) {
-            logger.e("RuntimeUnit: material() retrieval failed", e)
+            logger.e("RuntimeUnit: material() retrieval failed", e, event = LogEvent.UNKNOWN_ERROR)
             throw e
         }
     }

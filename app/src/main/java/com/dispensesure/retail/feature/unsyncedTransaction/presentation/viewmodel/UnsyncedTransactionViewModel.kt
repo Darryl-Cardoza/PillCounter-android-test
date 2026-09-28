@@ -9,6 +9,7 @@ import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.countResume.domain.model.CountItem
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
@@ -54,7 +55,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
                 type = StepState.TARGET_VERIFICATION.toString()
             )
                 .map { txns -> txns.map { it.toCountItem() } }
-                .catch { e -> logger.e("Failed to observe unsynced dispense transactions", e) }
+                .catch { e -> logger.e("Failed to observe unsynced dispense transactions", e, event = LogEvent.TRANSACTION_SYNC_FAILED) }
                 .collect { items ->
                     _unsyncedTransactionUiState.update { it.copy(dispenseList = items) }
                 }
@@ -76,7 +77,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
                         )
                     }
                 }
-                .catch { e -> logger.e("Failed to observe unsynced completed batches", e) }
+                .catch { e -> logger.e("Failed to observe unsynced completed batches", e, event = LogEvent.TRANSACTION_SYNC_FAILED) }
                 .collect { batches ->
                     _unsyncedTransactionUiState.update { it.copy(batchList = batches) }
                 }
@@ -93,7 +94,7 @@ class UnsyncedTransactionViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to resend pending HL7 batch transactions", e)
+                        logger.e("Failed to resend pending HL7 batch transactions", e, event = LogEvent.HL7_RESEND_FAILED)
                     }
                 }
         }

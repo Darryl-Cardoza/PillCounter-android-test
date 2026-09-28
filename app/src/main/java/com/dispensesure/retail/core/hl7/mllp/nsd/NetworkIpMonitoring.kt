@@ -7,6 +7,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -61,7 +62,7 @@ class NetworkIpMonitor(
                 onWifiAvailable()
                 checkIp()
             } catch (e: Exception) {
-                logger.e("onAvailable() handling failed", e)
+                logger.e("onAvailable() handling failed", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
 
@@ -76,7 +77,7 @@ class NetworkIpMonitor(
                 lastIp = null
                 onWifiLost()
             } catch (e: Exception) {
-                logger.e("onLost() handling failed", e)
+                logger.e("onLost() handling failed", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
 
@@ -89,7 +90,7 @@ class NetworkIpMonitor(
                     checkIp()
                 }
             } catch (e: Exception) {
-                logger.e("onCapabilitiesChanged() handling failed", e)
+                logger.e("onCapabilitiesChanged() handling failed", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
     }

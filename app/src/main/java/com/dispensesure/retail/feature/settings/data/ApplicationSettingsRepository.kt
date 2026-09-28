@@ -5,6 +5,7 @@ import com.dispensesure.retail.feature.settings.data.remote.IApplicationSettingI
 import com.dispensesure.retail.feature.settings.domain.data.IApplicationSettingsRepository
 import com.dispensesure.retail.feature.settings.domain.model.SettingsDataDto
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import retrofit2.HttpException
 import javax.inject.Inject
@@ -27,10 +28,10 @@ class ApplicationSettingsRepository @Inject constructor(
 
             return apiService.getApplicationSettings(androidVersion = "android")
         } catch (e: HttpException) {
-            logger.e("Http error when fetching settings", e)
+            logger.e("Http error when fetching settings", e, event = LogEvent.SETTINGS_FETCH_FAILED)
             throw e
         } catch (e: Exception) {
-            logger.e("Unexpected error when fetching settings", e)
+            logger.e("Unexpected error when fetching settings", e, event = LogEvent.SETTINGS_FETCH_FAILED)
             throw e
         }
     }

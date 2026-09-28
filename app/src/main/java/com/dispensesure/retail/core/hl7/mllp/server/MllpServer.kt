@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.hl7.mllp.server
 
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsKeystoreUtil
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -90,7 +91,7 @@ class MllpServer(
                 }
             }catch (e: Exception) {
                 if (running.get()) {
-                    logger.e("acceptLoop() error", e)
+                    logger.e("acceptLoop() error", e, event = LogEvent.HL7_CONNECT_FAILED)
                 }
             }
         }
@@ -113,7 +114,7 @@ class MllpServer(
                     // read loop with no trace — previously this was swallowed by the outer
                     // catch below, so a message could arrive, fail to parse/process, and
                     // look exactly like "the server never received anything."
-                    logger.e("onHl7Message() threw while handling received message — no ACK will be sent", e)
+                    logger.e("onHl7Message() threw while handling received message — no ACK will be sent", e, event = LogEvent.HL7_RECEIVE_FAILED)
                     throw e
                 }
                 if (ack.isNotEmpty()) {
@@ -124,7 +125,7 @@ class MllpServer(
         } catch (e: EOFException) {
             logger.d("Client closed connection: ${socket.inetAddress?.hostAddress}")
         } catch (e: Exception) {
-            logger.e("handleClient() error for ${socket.inetAddress?.hostAddress}", e)
+            logger.e("handleClient() error for ${socket.inetAddress?.hostAddress}", e, event = LogEvent.HL7_RECEIVE_FAILED)
         } finally {
             socket.close()
         }

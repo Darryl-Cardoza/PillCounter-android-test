@@ -12,6 +12,7 @@ import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -130,12 +131,12 @@ class VerifyPinViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to persist session after successful OTP verification for user: $email", e)
+                        logger.e("Failed to persist session after successful OTP verification for user: $email", e, event = LogEvent.OTP_VERIFY_FAILED)
                         _uiState.value = VerifyPinUiState.Error(context.getString(R.string.error_unknown))
                     }
                 }
                 .onFailure { exception ->
-                    logger.e("OTP verification failed for user: $email", exception)
+                    logger.e("OTP verification failed for user: $email", exception, event = LogEvent.OTP_VERIFY_FAILED)
                     val message = mapExceptionToUserMessage(exception)
                     _uiState.value = VerifyPinUiState.Error(message)
                 }
@@ -159,7 +160,7 @@ class VerifyPinViewModel @Inject constructor(
                         val errorResponse = Gson().fromJson(it, ErrorResponse::class.java)
                         errorResponse.message
                     } catch (e: Exception) {
-                        logger.e("Error parsing error response", e)
+                        logger.e("Error parsing error response", e, event = LogEvent.OTP_VERIFY_FAILED)
                         null
                     }
                 }

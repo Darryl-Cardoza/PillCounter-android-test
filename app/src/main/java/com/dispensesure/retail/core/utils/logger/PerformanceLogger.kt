@@ -286,7 +286,7 @@ class PerformanceLogger @Inject constructor(
                 writer.newLine()
             }
         } catch (e: Exception) {
-            logger.e("Failed to write to log file", e)
+            logger.e("Failed to write to log file", e, event = LogEvent.FILE_WRITE_ERROR)
         }
 
         // Also log to Logcat for debugging
@@ -565,7 +565,7 @@ class PerformanceLogger @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            logger.e("Failed to clear old logs", e)
+            logger.e("Failed to clear old logs", e, event = LogEvent.UNKNOWN_ERROR)
         }
     }
 }

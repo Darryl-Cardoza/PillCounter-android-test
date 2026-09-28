@@ -20,6 +20,7 @@ import com.dispensesure.retail.core.hl7.mllp.nsd.NsdHelper
 import com.dispensesure.retail.core.hl7.mllp.server.MllpServer
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsSocketFactory
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.settings.domain.model.Hl7ServiceConfig
 import kotlinx.coroutines.CancellationException
@@ -161,7 +162,7 @@ class HL7Service : Service() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("HL7 service startup failed", e)
+                logger.e("HL7 service startup failed", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
 
@@ -202,7 +203,7 @@ class HL7Service : Service() {
                 logger.w("onDestroy() — nsdHelper was never initialized; nothing to unregister here")
             }
         } catch (e: Exception) {
-            logger.e("onDestroy() — nsdHelper.shutdown() failed; NSD may stay advertised", e)
+            logger.e("onDestroy() — nsdHelper.shutdown() failed; NSD may stay advertised", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
         serviceScope.launch { cleanup() }
         super.onDestroy()
@@ -279,7 +280,7 @@ class HL7Service : Service() {
             prefs.saveNsdBroadcastType(config.nsdBroadcastType)
             prefs.saveNsdDiscoveryType(config.nsdDiscoveryType)
         } catch (e: Exception) {
-            logger.e("Could not persist NSD identity — a restart will fall back to defaults", e)
+            logger.e("Could not persist NSD identity — a restart will fall back to defaults", e, event = LogEvent.HL7_CONNECT_FAILED)
         }
     }
 
@@ -311,7 +312,7 @@ class HL7Service : Service() {
             // A SecurePreferences/keystore failure here must not crash-loop the service on
             // every START_STICKY restart — fall back to an unconfigured default config
             // instead; the next normal app-driven start still rebuilds it properly.
-            logger.e("loadConfigFromPreferences() failed — falling back to default config", e)
+            logger.e("loadConfigFromPreferences() failed — falling back to default config", e, event = LogEvent.HL7_CONNECT_FAILED)
             HL7Config()
         }
     }
@@ -352,7 +353,7 @@ class HL7Service : Service() {
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("onPmsFirstConnected() failed", e)
+                        logger.e("onPmsFirstConnected() failed", e, event = LogEvent.HL7_CONNECT_FAILED)
                     }
                 }
             },
@@ -373,7 +374,7 @@ class HL7Service : Service() {
             },
 
             onCertMismatch = {
-                logger.e("PMS certificate mismatch — notifying listener")
+                logger.e("PMS certificate mismatch — notifying listener", event = LogEvent.HL7_CONNECT_FAILED)
                 listener?.onPmsCertMismatch()
             },
         )
@@ -424,7 +425,7 @@ class HL7Service : Service() {
                 // or TLS keystore/context creation failing) previously left the server
                 // looking "started" in the logs while never actually listening — so PMS
                 // could never connect in to send HL7 messages. Surface it loudly instead.
-                logger.e("MLLP server failed to start on port ${config.serverPort} — PMS cannot send HL7 messages until this is fixed", e)
+                logger.e("MLLP server failed to start on port ${config.serverPort} — PMS cannot send HL7 messages until this is fixed", e, event = LogEvent.HL7_CONNECT_FAILED)
                 serverStarted = false
             }
         }
@@ -528,14 +529,14 @@ class HL7Service : Service() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("rediscoverPms() — failed to close the previous connection", e)
+                logger.e("rediscoverPms() — failed to close the previous connection", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
             try {
                 discoverPmsAndConnect()
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("rediscoverPms() — discoverPmsAndConnect() failed", e)
+                logger.e("rediscoverPms() — discoverPmsAndConnect() failed", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
     }
@@ -550,7 +551,7 @@ class HL7Service : Service() {
             clientManager.unblockCertMismatch()
             discoverPmsAndConnect()
         } catch (e: Exception) {
-            logger.e("clearPmsCertPin() failed", e)
+            logger.e("clearPmsCertPin() failed", e, event = LogEvent.HL7_CONNECT_FAILED)
         }
     }
 
@@ -604,7 +605,7 @@ class HL7Service : Service() {
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    logger.e("NSD resolution handling failed for '${info.serviceName}'", e)
+                    logger.e("NSD resolution handling failed for '${info.serviceName}'", e, event = LogEvent.HL7_CONNECT_FAILED)
                 }
             }
         }
@@ -643,7 +644,7 @@ class HL7Service : Service() {
             try {
                 clientManager.connect(host, port)
             } catch (e: Exception) {
-                logger.e("Connect failed for $peer", e)
+                logger.e("Connect failed for $peer", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
         startPeerWatchdog(peer)
@@ -695,13 +696,13 @@ class HL7Service : Service() {
                 try {
                     clientManager.dropForPeerChange()
                 } catch (e: Exception) {
-                    logger.e("Failover — failed to close the previous connection", e)
+                    logger.e("Failover — failed to close the previous connection", e, event = LogEvent.HL7_CONNECT_FAILED)
                 }
                 connectToPeer(next, discoveredPmsPeers[next] ?: "PMS")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("startPeerWatchdog() failed for $peer", e)
+                logger.e("startPeerWatchdog() failed for $peer", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
     }
@@ -743,7 +744,7 @@ class HL7Service : Service() {
             val port = preferenceHelper.getPmsPort()
 
             if (host.isNullOrBlank() || port <= 0) {
-                logger.e("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry")
+                logger.e("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry", event = LogEvent.HL7_CONNECT_FAILED)
                 scheduleStaticPmsRetry()
                 return
             }
@@ -767,11 +768,11 @@ class HL7Service : Service() {
                 try {
                     clientManager.connect(host, port)
                 } catch (e: Exception) {
-                    logger.e("Static PMS connect failed", e)
+                    logger.e("Static PMS connect failed", e, event = LogEvent.HL7_CONNECT_FAILED)
                 }
             }
         } catch (e: Exception) {
-            logger.e("connectToStaticPms() failed", e)
+            logger.e("connectToStaticPms() failed", e, event = LogEvent.HL7_CONNECT_FAILED)
         }
     }
 
@@ -796,7 +797,7 @@ class HL7Service : Service() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("scheduleStaticPmsRetry() failed", e)
+                logger.e("scheduleStaticPmsRetry() failed", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
     }
@@ -822,7 +823,7 @@ class HL7Service : Service() {
 
             if (message == null) {
                 val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
-                logger.e("HL7 parse failed, no partial message: $errors")
+                logger.e("HL7 parse failed, no partial message: $errors", event = LogEvent.HL7_RECEIVE_FAILED)
                 return buildFallbackAck(raw, "Parse Failed")
             }
 
@@ -841,7 +842,7 @@ class HL7Service : Service() {
 
         } catch (e: Exception) {
             listener?.onError("HL7_PARSE", e)
-            logger.e("HL7 processing failed", e)
+            logger.e("HL7 processing failed", e, event = LogEvent.HL7_RECEIVE_FAILED)
             buildFallbackAck(raw, e.message ?: "Unknown Error")
         }
     }
@@ -926,7 +927,7 @@ class HL7Service : Service() {
             getSystemService(NotificationManager::class.java)
                 .notify(NOTIFICATION_ID, buildNotification(contentText))
         } catch (e: Exception) {
-            logger.e("updateNotification() failed — ignoring, does not affect PMS connection", e)
+            logger.e("updateNotification() failed — ignoring, does not affect PMS connection", e, event = LogEvent.HL7_SERVICE_ERROR)
         }
     }
 

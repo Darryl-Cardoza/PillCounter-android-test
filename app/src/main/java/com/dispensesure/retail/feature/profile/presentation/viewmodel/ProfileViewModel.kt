@@ -15,6 +15,7 @@ import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.utils.constants.AppConstants
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.utils.validator.CredentialsValidator
 import com.dispensesure.retail.feature.dashboard.data.TerminalRepository
@@ -167,11 +168,11 @@ class ProfileViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to cache fetched pharmacy types", e)
+                        logger.e("Failed to cache fetched pharmacy types", e, event = LogEvent.CACHE_READ_FAILED)
                     }
                 }
                 .onFailure { e ->
-                    logger.e("Failed to fetch pharmacy types", e)
+                    logger.e("Failed to fetch pharmacy types", e, event = LogEvent.CACHE_READ_FAILED)
                 }
         }
     }
@@ -205,7 +206,7 @@ class ProfileViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to cache refreshed countries", e)
+                        logger.e("Failed to cache refreshed countries", e, event = LogEvent.CACHE_READ_FAILED)
                     }
                 }
                 .onFailure { e ->
@@ -226,7 +227,7 @@ class ProfileViewModel @Inject constructor(
     private fun observeUser(localId: Long) {
         viewModelScope.launch {
             userDao.observeByLocalId(localId)
-                .catch { e -> logger.e("Failed to observe user (localId=$localId)", e) }
+                .catch { e -> logger.e("Failed to observe user (localId=$localId)", e, event = LogEvent.USER_FETCH_FAILED) }
                 .collect { user ->
                 user?.let {
                     logger.i("Prefilling profile UI with user (localId=$localId, email=${it.email})")
@@ -285,11 +286,11 @@ class ProfileViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to persist loaded terminal selection", e)
+                        logger.e("Failed to persist loaded terminal selection", e, event = LogEvent.TERMINAL_LOAD_FAILED)
                     }
                 }
                 .onFailure { e ->
-                    logger.e("Failed to load terminals, falling back to cached list", e)
+                    logger.e("Failed to load terminals, falling back to cached list", e, event = LogEvent.TERMINAL_LOAD_FAILED)
 
                     try {
                         val cachedTerminals = preferenceHelper.getTerminals()
@@ -304,7 +305,7 @@ class ProfileViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to load cached terminal fallback", e)
+                        logger.e("Failed to load cached terminal fallback", e, event = LogEvent.TERMINAL_LOAD_FAILED)
                     }
                 }
         }
@@ -470,7 +471,7 @@ class ProfileViewModel @Inject constructor(
                             } catch (e: CancellationException) {
                                 throw e
                             } catch (e: Exception) {
-                                logger.e("Failed to persist updated user entity in Room (localId=$localId)", e)
+                                logger.e("Failed to persist updated user entity in Room (localId=$localId)", e, event = LogEvent.PROFILE_UPDATE_FAILED)
                             }
                         }
 
@@ -484,7 +485,7 @@ class ProfileViewModel @Inject constructor(
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            logger.e("Failed to persist profile preferences after update", e)
+                            logger.e("Failed to persist profile preferences after update", e, event = LogEvent.PROFILE_UPDATE_FAILED)
                         }
 
                         // Update terminal if the newly selected terminal isn't the one this
@@ -572,11 +573,11 @@ class ProfileViewModel @Inject constructor(
                                                 } catch (e: CancellationException) {
                                                     throw e
                                                 } catch (e: Exception) {
-                                                    logger.e("Failed to persist terminal claim after successful server update", e)
+                                                    logger.e("Failed to persist terminal claim after successful server update", e, event = LogEvent.TERMINAL_UPDATE_FAILED)
                                                 }
                                             }
                                             .onFailure { e ->
-                                                logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e)
+                                                logger.e("Failed to update terminal ${selectedTerminal?.terminalName}", e, event = LogEvent.TERMINAL_UPDATE_FAILED)
                                                 // Don't fail the entire profile update if terminal update fails
                                             }
                                     }
@@ -591,7 +592,7 @@ class ProfileViewModel @Inject constructor(
                         _updateUiState.value = ProfileUpdateUiState.Success
                     }
                     .onFailure { e ->
-                        logger.e("Profile update failed", e)
+                        logger.e("Profile update failed", e, event = LogEvent.PROFILE_UPDATE_FAILED)
                         _updateUiState.value =
                             ProfileUpdateUiState.Error(getFriendlyErrorMessage(e))
                     }
@@ -615,7 +616,7 @@ class ProfileViewModel @Inject constructor(
                         _deleteUiState.value = ProfileDeleteUiState.Success
                     }
                     .onFailure { e ->
-                        logger.e("Profile delete failed", e)
+                        logger.e("Profile delete failed", e, event = LogEvent.PROFILE_DELETE_FAILED)
                         _deleteUiState.value =
                             ProfileDeleteUiState.Error(getFriendlyErrorMessage(e))
                     }
@@ -632,7 +633,7 @@ class ProfileViewModel @Inject constructor(
                         val errorResponse = Gson().fromJson(it, ErrorResponse::class.java)
                         errorResponse.message
                     } catch (e: Exception) {
-                        logger.e("Failed to parse error response", e)
+                        logger.e("Failed to parse error response", e, event = LogEvent.UNKNOWN_ERROR)
                         null
                     }
                 }

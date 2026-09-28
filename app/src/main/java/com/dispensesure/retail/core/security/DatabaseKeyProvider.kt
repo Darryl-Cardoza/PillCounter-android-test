@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Base64
 import com.dispensesure.retail.core.utils.preference.SecurePreferences
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.security.SecureRandom
 
 /**
@@ -58,7 +59,7 @@ object DatabaseKeyProvider {
                 // disposable/synced to PMS, so recover by re-keying rather than failing to open the DB.
                 // The old DB file is encrypted under the now-unrecoverable DEK, so it must be
                 // deleted too — otherwise SQLCipher would fail to open it with the new passphrase.
-                logger.e("Failed to unwrap DEK, re-keying database", e)
+                logger.e("Failed to unwrap DEK, re-keying database", e, event = LogEvent.DB_KEY_ROTATE_FAILED)
                 prefs.clear()
                 context.deleteDatabase(DATABASE_NAME)
                 generateAndBootstrapWrapDek(prefs)
@@ -91,7 +92,7 @@ object DatabaseKeyProvider {
         val oldKekId = prefs.getString(KEY_KEK_ID)
         val oldWrappedB64 = prefs.getString(KEY_DEK_WRAPPED)
         if (oldKekId == null || oldWrappedB64 == null) {
-            logger.e("Cannot rotate KEK: no existing wrapped DEK found")
+            logger.e("Cannot rotate KEK: no existing wrapped DEK found", event = LogEvent.KEK_ROTATE_FAILED)
             return
         }
 
@@ -112,7 +113,7 @@ object DatabaseKeyProvider {
             prefs.putInt(KEY_KEK_VERSION, kekInfo.version, commit = true)
             logger.d("Rotated DB KEK to ${kekInfo.keyId} (version ${kekInfo.version})")
         } catch (e: Exception) {
-            logger.e("KEK rotation failed, keeping previous key", e)
+            logger.e("KEK rotation failed, keeping previous key", e, event = LogEvent.KEK_ROTATE_FAILED)
             // Roll back the newly imported Keystore alias so a failed rotation doesn't leave an
             // orphaned key behind — the old alias (and its wrapped DEK in prefs) is still intact,
             // since prefs are only committed above after every prior step succeeds.
@@ -125,7 +126,7 @@ object DatabaseKeyProvider {
         try {
             KeystoreAesGcm.deleteKeystoreKey(aliasFor(oldKekId))
         } catch (e: Exception) {
-            logger.e("Failed to delete old KEK alias after successful rotation", e)
+            logger.e("Failed to delete old KEK alias after successful rotation", e, event = LogEvent.KEK_ROTATE_FAILED)
         }
     }
 }

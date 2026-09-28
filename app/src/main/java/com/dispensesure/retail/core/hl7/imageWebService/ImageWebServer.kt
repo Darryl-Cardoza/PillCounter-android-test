@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.hl7.imageWebService
 import android.content.Context
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsImageKeystoreUtil
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import fi.iki.elonen.NanoHTTPD
 import java.security.SecureRandom
@@ -44,7 +45,7 @@ class ImageWebServer(private val context: Context) {
             logger.i("HTTPS Image Server started on port $PORT")
             logger.i("Cert fingerprint: ${TlsImageKeystoreUtil.fingerprint(context)}")
         } catch (e: Exception) {
-            logger.e("ImageWebServer.start() failed", e)
+            logger.e("ImageWebServer.start() failed", e, event = LogEvent.NETWORK_ERROR)
             server = null
             throw e
         }

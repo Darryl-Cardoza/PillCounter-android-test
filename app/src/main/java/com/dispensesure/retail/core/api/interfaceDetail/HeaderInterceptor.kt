@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.api.interfaceDetail
 import com.dispensesure.retail.core.security.RuntimeUnit
 import com.dispensesure.retail.core.utils.constants.URLConstant
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import okhttp3.Interceptor
 import okhttp3.Response
 
@@ -36,7 +37,7 @@ class HeaderInterceptor(
         val serverKey = try {
             runtimeUnit.material()
         } catch (e: Exception) {
-            logger.e("Failed to retrieve server key — request will be sent without X-Server-Key", e)
+            logger.e("Failed to retrieve server key — request will be sent without X-Server-Key", e, event = LogEvent.NETWORK_ERROR)
             ""
         }
         val modifiedRequest = originalRequest.newBuilder()

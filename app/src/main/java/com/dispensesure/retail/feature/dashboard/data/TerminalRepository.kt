@@ -6,6 +6,7 @@ import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenReques
 import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenResponse
 import com.dispensesure.retail.feature.settings.data.remote.IApplicationSettingInterface
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.data.remote.ITerminalApi
 import com.dispensesure.retail.feature.dashboard.domain.model.TerminalListResponse
@@ -69,10 +70,10 @@ class TerminalRepository @Inject constructor(
                     terminalApi.updateTerminal("Bearer $newToken", terminalId, request)
                 }
             }
-            logger.e("Terminal update failed with HttpException", e)
+            logger.e("Terminal update failed with HttpException", e, event = LogEvent.TERMINAL_UPDATE_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Terminal update failed", e)
+            logger.e("Terminal update failed", e, event = LogEvent.TERMINAL_UPDATE_FAILED)
             Result.failure(e)
         }
     }
@@ -109,10 +110,10 @@ class TerminalRepository @Inject constructor(
                     terminalApi.getTerminals("Bearer $newToken", availableOnly, deviceKey)
                 }
             }
-            logger.e("Fetching terminals failed with HttpException", e)
+            logger.e("Fetching terminals failed with HttpException", e, event = LogEvent.TERMINAL_LOAD_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Fetching terminals failed", e)
+            logger.e("Fetching terminals failed", e, event = LogEvent.TERMINAL_LOAD_FAILED)
             Result.failure(e)
         }
     }
@@ -130,7 +131,7 @@ class TerminalRepository @Inject constructor(
             if (refreshResponse.code() == 401) {
                 // Refresh itself was rejected — session is truly expired. Broadcast so
                 // MainActivity performs the standard logout teardown + Login nav.
-                logger.e("Refresh token rejected (401) — publishing SessionExpired")
+                logger.e("Refresh token rejected (401) — publishing SessionExpired", event = LogEvent.TOKEN_REFRESH_FAILED)
                 authEventBus.tryPublish(AuthEvent.SessionExpired)
                 return Result.failure(Exception("Refresh returned 401"))
             }
@@ -147,11 +148,11 @@ class TerminalRepository @Inject constructor(
                 logger.i("API retried successfully after token refresh.")
                 Result.success(retryResponse)
             } else {
-                logger.e("Token refresh failed: ${refreshResponseBody?.message}")
+                logger.e("Token refresh failed: ${refreshResponseBody?.message}", event = LogEvent.TOKEN_REFRESH_FAILED)
                 Result.failure(Exception("Failed to refresh token: ${refreshResponseBody?.message}"))
             }
         } catch (ex: Exception) {
-            logger.e("Token refresh or retry failed", ex)
+            logger.e("Token refresh or retry failed", ex, event = LogEvent.TOKEN_REFRESH_FAILED)
             Result.failure(ex)
         }
     }

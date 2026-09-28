@@ -4,6 +4,7 @@ import android.content.Context
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.hl7.core.Hl7EventListener
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.util.isSuccessAck
@@ -214,11 +215,11 @@ class Hl7EventHandler @Inject constructor(
      * Called for any error inside HL7 runtime.
      */
     override fun onError(source: String, throwable: Throwable) {
-        logger.e("HL7 error | source=$source | message=${throwable.message}")
+        logger.e("HL7 error | source=$source | message=${throwable.message}", event = LogEvent.UNKNOWN_ERROR)
     }
 
     override fun onPmsCertMismatch() {
-        logger.e("PMS certificate mismatch — blocking reconnects until admin clears the pin")
+        logger.e("PMS certificate mismatch — blocking reconnects until admin clears the pin", event = LogEvent.HL7_CONNECT_FAILED)
         _pmsCertMismatch.value = true
     }
 }

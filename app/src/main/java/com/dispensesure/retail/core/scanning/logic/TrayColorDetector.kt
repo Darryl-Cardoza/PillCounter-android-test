@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.scanning.logic
 import android.graphics.Bitmap
 import android.graphics.RectF
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import org.opencv.android.Utils
 import org.opencv.core.Core
 import org.opencv.core.Mat
@@ -36,8 +37,8 @@ object TrayColorDetector {
             logger.d("TrayColorDetector.detect(): rect=$trayRect → result=${result.label}")
             result
         } catch (e: Exception) {
-            logger.e("Color detection error", e)
-            logger.e("TrayColorDetector.detect() FAILED: ${e.message}")
+            logger.e("Color detection error", e, event = LogEvent.TRAY_CLASSIFY_FAILED)
+            logger.e("TrayColorDetector.detect() FAILED: ${e.message}", event = LogEvent.TRAY_CLASSIFY_FAILED)
             TrayColor.UNKNOWN
         }
     }

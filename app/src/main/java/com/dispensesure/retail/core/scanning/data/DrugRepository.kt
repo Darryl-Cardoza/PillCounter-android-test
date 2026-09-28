@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.scanning.data
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.scanning.data.remote.IDrugAPI
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
@@ -59,7 +60,7 @@ class DrugRepository @Inject constructor(
         return try {
             val token = preferenceHelper.getAccessToken()
             if (token.isNullOrBlank()) {
-                logger.e("No access token found. Aborting API call.")
+                logger.e("No access token found. Aborting API call.", event = LogEvent.DRUG_LOOKUP_FAILED)
                 return null
             }
 
@@ -100,14 +101,15 @@ class DrugRepository @Inject constructor(
         } catch (e: HttpException) {
             logger.e(
                 "HTTP error while fetching drug info (code=${e.code()}, message=${e.message()})",
-                e
+                e,
+                event = LogEvent.DRUG_LOOKUP_FAILED
             )
             null
         } catch (e: IOException) {
-            logger.e("Network error while fetching drug info", e)
+            logger.e("Network error while fetching drug info", e, event = LogEvent.DRUG_LOOKUP_FAILED)
             null
         } catch (e: Exception) {
-            logger.e("Unexpected error while fetching drug info", e)
+            logger.e("Unexpected error while fetching drug info", e, event = LogEvent.DRUG_LOOKUP_FAILED)
             null
         }
     }

@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.Settings
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.io.File
 import java.security.MessageDigest
 
@@ -129,7 +130,7 @@ object SecurityUtils {
                     return true
                 }
             } catch (e: Exception) {
-                logger.e("isScreenOverlayActive() check failed", e)
+                logger.e("isScreenOverlayActive() check failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
             }
         }
         return false
@@ -148,7 +149,7 @@ object SecurityUtils {
                     .getInstallerPackageName(context.packageName) ?: "unknown"
             }
         } catch (e: Exception) {
-            logger.e("getInstallerName() failed", e)
+            logger.e("getInstallerName() failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
             "unknown"
         }
     }
@@ -161,7 +162,7 @@ object SecurityUtils {
                 Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0
             ) == 1
         } catch (e: Exception) {
-            logger.e("isAdbEnabled() check failed", e)
+            logger.e("isAdbEnabled() check failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
             false
         }
     }
@@ -240,7 +241,7 @@ object SecurityUtils {
                     cpuInfo.contains("AuthenticAMD")
             if (declaredArm && reportedX86) score++
         } catch (e: Exception) {
-            logger.e("isRunningOnEmulator() CPU ABI check failed", e)
+            logger.e("isRunningOnEmulator() CPU ABI check failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
         }
 
         // ─── Layer 5: MAC address prefix ──────────────────────────────────────────
@@ -259,7 +260,7 @@ object SecurityUtils {
                 }
             }
         } catch (e: Exception) {
-            logger.e("isRunningOnEmulator() MAC address check failed", e)
+            logger.e("isRunningOnEmulator() MAC address check failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
         }
 
         // Require 2+ signals to flag as emulator — reduces false positives
@@ -318,7 +319,7 @@ object SecurityUtils {
             } ?: false
 
         } catch (e: Exception) {
-            logger.e("isSignatureValid() check failed", e)
+            logger.e("isSignatureValid() check failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
             false
         }
     }
@@ -334,7 +335,7 @@ object SecurityUtils {
             }
             installer == "com.android.vending"
         } catch (e: Exception) {
-            logger.e("isFromPlayStore() check failed", e)
+            logger.e("isFromPlayStore() check failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
             false
         }
     }

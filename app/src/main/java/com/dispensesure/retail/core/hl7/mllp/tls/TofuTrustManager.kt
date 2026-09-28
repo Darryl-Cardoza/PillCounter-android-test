@@ -6,6 +6,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.cert.CertificateException
@@ -97,7 +98,7 @@ class TofuTrustManager(
         return try {
             decrypt(stored)
         } catch (e: Exception) {
-            logger.e("Failed to decrypt stored TOFU pin for $pinKey — treating as unpinned", e)
+            logger.e("Failed to decrypt stored TOFU pin for $pinKey — treating as unpinned", e, event = LogEvent.NETWORK_ERROR)
             null
         }
     }
@@ -113,7 +114,7 @@ class TofuTrustManager(
         return try {
             decrypt(stored)
         } catch (e: Exception) {
-            logger.e("Failed to decrypt legacy TOFU pin — treating as unpinned", e)
+            logger.e("Failed to decrypt legacy TOFU pin — treating as unpinned", e, event = LogEvent.NETWORK_ERROR)
             null
         }
     }

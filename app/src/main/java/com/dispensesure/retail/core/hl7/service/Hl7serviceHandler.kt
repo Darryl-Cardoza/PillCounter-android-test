@@ -7,6 +7,7 @@ import android.content.ServiceConnection
 import android.os.IBinder
 import com.dispensesure.retail.core.hl7.core.Hl7EventListener
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -139,7 +140,7 @@ class Hl7serviceHandler @Inject constructor(
             bindService()
 
         } catch (e: Exception) {
-            logger.e("Failed to start HL7 Service", e)
+            logger.e("Failed to start HL7 Service", e, event = LogEvent.HL7_CONNECT_FAILED)
             serviceStarted = false
         }
     }
@@ -158,7 +159,7 @@ class Hl7serviceHandler @Inject constructor(
             context.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
             logger.i("Binding to HL7 Service...")
         } catch (e: Exception) {
-            logger.e("Failed to bind to HL7 Service", e)
+            logger.e("Failed to bind to HL7 Service", e, event = LogEvent.HL7_CONNECT_FAILED)
         }
     }
 
@@ -178,7 +179,7 @@ class Hl7serviceHandler @Inject constructor(
             bound = false
             logger.i("Unbound from HL7 Service")
         } catch (e: Exception) {
-            logger.e("Error unbinding service", e)
+            logger.e("Error unbinding service", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
     }
 
@@ -199,7 +200,7 @@ class Hl7serviceHandler @Inject constructor(
             logger.i("HL7 Service stopped")
 
         } catch (e: Exception) {
-            logger.e("Failed to stop HL7 Service", e)
+            logger.e("Failed to stop HL7 Service", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
     }
 

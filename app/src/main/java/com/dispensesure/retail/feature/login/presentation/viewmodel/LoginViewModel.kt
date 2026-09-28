@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.ErrorResponse
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.login.data.LoginRepository
@@ -90,11 +91,11 @@ class LoginViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to start HL7 service after login for user: $email", e)
+                        logger.e("Failed to start HL7 service after login for user: $email", e, event = LogEvent.HL7_CONNECT_FAILED)
                     }
                 }
                 .onFailure { exception ->
-                    logger.e("Login failed for user: $email", exception)
+                    logger.e("Login failed for user: $email", exception, event = LogEvent.LOGIN_FAILED)
                     _uiState.value = LoginUiState.Error(getFriendlyErrorMessage(exception))
                 }
         }
@@ -124,11 +125,11 @@ class LoginViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to clear HL7 config after logout", e)
+                        logger.e("Failed to clear HL7 config after logout", e, event = LogEvent.HL7_SERVICE_STOPPED)
                     }
                 }
                 .onFailure { exception ->
-                    logger.e("Logout failed", exception)
+                    logger.e("Logout failed", exception, event = LogEvent.LOGOUT_FAILED)
                     _logoutUiState.value = LogoutUiState.Error(getFriendlyErrorMessage(exception))
                 }
         }
@@ -167,7 +168,7 @@ class LoginViewModel @Inject constructor(
                         val errorResponse = Gson().fromJson(it, ErrorResponse::class.java)
                         errorResponse.message
                     } catch (e: Exception) {
-                        logger.e("Error parsing error response", e)
+                        logger.e("Error parsing error response", e, event = LogEvent.LOGIN_FAILED)
                         null
                     }
                 }

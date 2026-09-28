@@ -26,6 +26,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingle
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.compose.GlobalLoadingOverlay
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.presentation.model.DashboardVariantParams
@@ -107,7 +108,7 @@ fun DashboardScreen(
                 try {
                     navController.navigate(Screen.Profile.route)
                 } catch (e: Exception) {
-                    logger.e("Navigation to Profile screen failed", e)
+                    logger.e("Navigation to Profile screen failed", e, event = LogEvent.NAVIGATION_FAILED)
                 }
                 viewModel.resetNavigateToProfile()
                 preferenceHelper.setProfileChecked(true)
@@ -124,7 +125,7 @@ fun DashboardScreen(
                     popUpTo(0) { inclusive = true }
                 }
             } catch (e: Exception) {
-                logger.e("Navigation to auth graph after logout failed", e)
+                logger.e("Navigation to auth graph after logout failed", e, event = LogEvent.NAVIGATION_FAILED)
             }
         }
     }
@@ -139,7 +140,7 @@ fun DashboardScreen(
                     )
                 )
             } catch (e: Exception) {
-                logger.e("Navigation to DispenseFlow after batch creation failed", e)
+                logger.e("Navigation to DispenseFlow after batch creation failed", e, event = LogEvent.NAVIGATION_FAILED)
             }
             viewModel.clearCreatedBatchId()
         }
@@ -153,7 +154,7 @@ fun DashboardScreen(
             try {
                 navController.navigate(Screen.InventoryScan.createRoute(bucketId = bucketId))
             } catch (e: Exception) {
-                logger.e("Navigation to InventoryScan (stock count) failed", e)
+                logger.e("Navigation to InventoryScan (stock count) failed", e, event = LogEvent.NAVIGATION_FAILED)
             }
             viewModel.clearPendingStockCountBucketId()
         }
@@ -187,7 +188,7 @@ fun DashboardScreen(
                     )
                 )
             } catch (e: Exception) {
-                logger.e("Navigation to DispenseFlow from dispense quick action failed", e)
+                logger.e("Navigation to DispenseFlow from dispense quick action failed", e, event = LogEvent.NAVIGATION_FAILED)
             }
         }
     }
@@ -203,7 +204,7 @@ fun DashboardScreen(
             try {
                 navController.navigate(Screen.HistoryDetail.route)
             } catch (e: Exception) {
-                logger.e("Navigation to HistoryDetail failed", e)
+                logger.e("Navigation to HistoryDetail failed", e, event = LogEvent.NAVIGATION_FAILED)
             }
         }
     }
@@ -212,7 +213,7 @@ fun DashboardScreen(
             try {
                 navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
             } catch (e: Exception) {
-                logger.e("Navigation to BatchHistoryDetail failed", e)
+                logger.e("Navigation to BatchHistoryDetail failed", e, event = LogEvent.NAVIGATION_FAILED)
             }
         }
     }
@@ -231,7 +232,7 @@ fun DashboardScreen(
                         )
                     )
                 } catch (e: Exception) {
-                    logger.e("Navigation to DispenseFlow from queue resume failed", e)
+                    logger.e("Navigation to DispenseFlow from queue resume failed", e, event = LogEvent.NAVIGATION_FAILED)
                 }
             }
         }
@@ -241,7 +242,7 @@ fun DashboardScreen(
             try {
                 navController.navigate(Screen.InventoryScan.createRoute(batchId))
             } catch (e: Exception) {
-                logger.e("Navigation to InventoryScan from queue failed", e)
+                logger.e("Navigation to InventoryScan from queue failed", e, event = LogEvent.NAVIGATION_FAILED)
             }
         }
     }

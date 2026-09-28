@@ -1,6 +1,7 @@
 ﻿package com.dispensesure.retail.core.utils.common
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.scanning.domain.model.BarcodeData
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -50,7 +51,7 @@ class BarcodeDecoder @Inject constructor() {
         val fields = try {
             parseGs1Fields(cleaned)
         } catch (e: Exception) {
-            logger.e("Failed to decode GS1: ${e.message}")
+            logger.e("Failed to decode GS1: ${e.message}", event = LogEvent.SCAN_FAILED)
             emptyMap()
         }
 

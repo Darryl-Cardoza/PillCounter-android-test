@@ -6,6 +6,7 @@ import android.graphics.PointF
 import android.graphics.Rect
 import androidx.camera.core.ImageProxy
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -434,7 +435,7 @@ class PillAnalyzer(
             // frame.letterboxed is owned and reused by Letterbox — do NOT recycle.
 
         } catch (e: Exception) {
-            logger.e("[PillAnalyzer] Frame failed", e)
+            logger.e("[PillAnalyzer] Frame failed", e, event = LogEvent.PILL_COUNT_FAILED)
             trackingBitmap?.recycle()
         } finally {
             imageProxy.close()
@@ -509,7 +510,7 @@ class PillAnalyzer(
             pillInterpreter.runForMultipleInputsOutputs(arrayOf(buf), outMap)
             true
         } catch (e: Exception) {
-            logger.e("Pill inference failed", e)
+            logger.e("Pill inference failed", e, event = LogEvent.PILL_COUNT_FAILED)
             false
         }
     }

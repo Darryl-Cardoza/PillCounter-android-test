@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.utils.common
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 
 private val logger = AppLogger("ParsedScanData")
 
@@ -21,7 +22,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
 
         val match = regex.matchEntire(actualValue.trim())
             ?: run {
-                logger.e("Scan data does not match label format: $actualValue")
+                logger.e("Scan data does not match label format: $actualValue", event = LogEvent.SCAN_FAILED)
                 return ParsedScanData()
             }
 
@@ -42,7 +43,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
             rawMap = rawMap
         )
     } catch (e: Exception) {
-        logger.e("Error parsing scan data: ${e.message}")
+        logger.e("Error parsing scan data: ${e.message}", event = LogEvent.SCAN_FAILED)
         ParsedScanData()
     }
 }

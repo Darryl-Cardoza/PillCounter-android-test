@@ -17,6 +17,7 @@ import com.dispensesure.retail.core.faceAuth.model.FaceGuidance
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.FaceProfileEntity
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.faceAuth.domain.model.RegistrationState
 import com.dispensesure.retail.feature.faceAuth.domain.model.VerifyState
@@ -114,7 +115,7 @@ class FaceAuthViewModel @Inject constructor(
     val verifyState: StateFlow<VerifyState> = _verifyState.asStateFlow()
 
     val profiles: StateFlow<List<FaceProfileEntity>> = faceProfileRepository.observeProfiles()
-        .catch { e -> logger.e("Observing face profiles failed", e) }
+        .catch { e -> logger.e("Observing face profiles failed", e, event = LogEvent.FACE_PROFILE_OBSERVE_FAILED) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var pendingFirstName: String = ""
@@ -208,7 +209,7 @@ class FaceAuthViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Auto-capture loop failed", e)
+                logger.e("Auto-capture loop failed", e, event = LogEvent.FACE_CAPTURE_FAILED)
                 _registrationState.value = RegistrationState.Failed
             }
         }
@@ -303,7 +304,7 @@ class FaceAuthViewModel @Inject constructor(
             } catch (e: Exception) {
                 // Persisting is automatic now, so without this a throw would take the app
                 // down with every angle captured and nothing saved.
-                logger.e("Failed to persist face profile registration", e)
+                logger.e("Failed to persist face profile registration", e, event = LogEvent.FACE_REGISTER_FAILED)
                 _registrationState.value = RegistrationState.Failed
             } finally {
                 finishInFlight = false
@@ -345,7 +346,7 @@ class FaceAuthViewModel @Inject constructor(
             }
             file.absolutePath
         } catch (e: Exception) {
-            logger.e("saveFaceImage() failed to write face capture to disk", e)
+            logger.e("saveFaceImage() failed to write face capture to disk", e, event = LogEvent.FACE_CAPTURE_FAILED)
             null
         }
     }
@@ -363,7 +364,7 @@ class FaceAuthViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to toggle profile enabled state (profileId=${profile.id})", e)
+                logger.e("Failed to toggle profile enabled state (profileId=${profile.id})", e, event = LogEvent.FACE_PROFILE_OBSERVE_FAILED)
             }
         }
     }
@@ -381,7 +382,7 @@ class FaceAuthViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to delete profile (profileId=${profile.id})", e)
+                logger.e("Failed to delete profile (profileId=${profile.id})", e, event = LogEvent.FACE_DELETE_FAILED)
             }
         }
     }
@@ -432,7 +433,7 @@ class FaceAuthViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Auto-verify loop failed", e)
+                logger.e("Auto-verify loop failed", e, event = LogEvent.FACE_VERIFY_FAILED)
             }
         }
     }

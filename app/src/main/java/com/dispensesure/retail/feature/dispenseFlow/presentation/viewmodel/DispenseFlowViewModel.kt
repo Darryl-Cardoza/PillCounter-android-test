@@ -19,6 +19,7 @@ import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
 import com.dispensesure.retail.core.utils.common.parseScanData
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
@@ -177,7 +178,7 @@ class DispenseFlowViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("HL7 init failed — falling back to PRE_RX", e)
+                logger.e("HL7 init failed — falling back to PRE_RX", e, event = LogEvent.DISPENSE_FAILED)
                 _uiState.update { it.copy(initResolved = true) }
             }
         }
@@ -196,7 +197,7 @@ class DispenseFlowViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Resume init failed — falling back to PRE_RX", e)
+                logger.e("Resume init failed — falling back to PRE_RX", e, event = LogEvent.DISPENSE_FAILED)
                 _uiState.update { it.copy(initResolved = true) }
             }
         }
@@ -412,7 +413,7 @@ class DispenseFlowViewModel @Inject constructor(
                     }
                 }
             } catch (e: Exception) {
-                logger.e("RX barcode processing failed", e)
+                logger.e("RX barcode processing failed", e, event = LogEvent.RX_SCAN_FAILED)
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }
@@ -526,7 +527,7 @@ class DispenseFlowViewModel @Inject constructor(
                 GetNdcRequestModel(target_ndc = "", scanned_ndc = gtin14)
             )
         } catch (e: Exception) {
-            logger.e("allowlist NDC resolve failed for gtin=$gtin14", e)
+            logger.e("allowlist NDC resolve failed for gtin=$gtin14", e, event = LogEvent.NDC_SCAN_FAILED)
             null
         } ?: return null
 
@@ -723,7 +724,7 @@ class DispenseFlowViewModel @Inject constructor(
                 logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}")
                 advanceToCountingStage()
             } catch (e: Exception) {
-                logger.e("NDC barcode processing failed", e)
+                logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
         }
@@ -762,7 +763,7 @@ class DispenseFlowViewModel @Inject constructor(
                     logger.i("[HAZARDOUS] Standalone RX confirmed: rx=${draft.rxNo} drugId=${draft.drugId} isHazardous=${state.isHazardous} txn=$txnId → PRE_NDC")
                 } catch (e: Exception) {
                     // Surface the failure the way the scan-time path used to.
-                    logger.e("Standalone dispense txn creation failed", e)
+                    logger.e("Standalone dispense txn creation failed", e, event = LogEvent.DISPENSE_FAILED)
                     _uiState.update { it.copy(error = e.message) }
                 }
             }
@@ -814,7 +815,7 @@ class DispenseFlowViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Advance to counting stage failed after substitute confirm", e)
+                logger.e("Advance to counting stage failed after substitute confirm", e, event = LogEvent.NDC_SCAN_FAILED)
                 _uiState.update { it.copy(error = e.message) }
             }
         }
@@ -943,7 +944,7 @@ class DispenseFlowViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Return to container scan failed", e)
+                logger.e("Return to container scan failed", e, event = LogEvent.NDC_SCAN_FAILED)
             }
         }
     }
@@ -986,7 +987,7 @@ class DispenseFlowViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Continue RX failed for txn=$txnId", e)
+                logger.e("Continue RX failed for txn=$txnId", e, event = LogEvent.DISPENSE_RESUME_FAILED)
                 _uiState.update { it.copy(showContinueRxDialog = false) }
             }
         }
@@ -1071,7 +1072,7 @@ class DispenseFlowViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("NDC confirm (sheet) failed for txn=$txnId", e)
+                logger.e("NDC confirm (sheet) failed for txn=$txnId", e, event = LogEvent.NDC_SCAN_FAILED)
                 _uiState.update { it.copy(error = e.message) }
             }
         }
@@ -1233,7 +1234,7 @@ class DispenseFlowViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Queue/dashboard routing check failed — defaulting to Dashboard", e)
+                logger.e("Queue/dashboard routing check failed — defaulting to Dashboard", e, event = LogEvent.DISPENSE_FAILED)
                 _uiState.update { it.copy(navigateToDashboard = true) }
             }
         }
@@ -1279,7 +1280,7 @@ class DispenseFlowViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Resume from queue failed for txn=$txnId", e)
+                logger.e("Resume from queue failed for txn=$txnId", e, event = LogEvent.DISPENSE_RESUME_FAILED)
             }
         }
     }
@@ -1294,7 +1295,7 @@ class DispenseFlowViewModel @Inject constructor(
                 userLocalId = localId,
                 type = StepState.TARGET_VERIFICATION,
             ).catch { e ->
-                logger.e("Dispense queue observation failed", e)
+                logger.e("Dispense queue observation failed", e, event = LogEvent.DISPENSE_FAILED)
             }.collect { txns ->
                 val items = txns.map { txn ->
                     QueueItem.Dispense(

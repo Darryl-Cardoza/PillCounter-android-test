@@ -44,6 +44,7 @@ import com.dispensesure.retail.core.utils.common.OverlayUtils
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
@@ -237,7 +238,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to enter stock count session for drugId=$drugId", e)
+                logger.e("Failed to enter stock count session for drugId=$drugId", e, event = LogEvent.INVENTORY_COUNT_FAILED)
             }
         }
     }
@@ -390,7 +391,7 @@ class PillScanningViewModel @Inject constructor(
                 try {
                     performanceLogger.logPerformanceSnapshot("PERIODIC_MONITORING")
                 } catch (e: Exception) {
-                    logger.e("Performance monitoring failed", e)
+                    logger.e("Performance monitoring failed", e, event = LogEvent.UNKNOWN_ERROR)
                 }
             }
         }
@@ -413,7 +414,7 @@ class PillScanningViewModel @Inject constructor(
 
         observeTxnDetailsJob = viewModelScope.launch {
             pillCountTxnDetailsDao.observeAllForTxn(preferenceHelper.getTxnId(), step)
-                .catch { e -> logger.e("Failed observing txn details for step=$step", e) }
+                .catch { e -> logger.e("Failed observing txn details for step=$step", e, event = LogEvent.PILL_COUNT_FAILED) }
                 .collectLatest { entities ->
                     // While a counting session is staging in memory, the DB observer
                     // must NOT overwrite uiState — staging owns the running total and
@@ -605,7 +606,7 @@ class PillScanningViewModel @Inject constructor(
                         _stockCountCommittedBatchId.value = committed.first
                         logger.i("Committed deferred stock session. stagedSum=$stagedSum drugId=$stockDrugId batchId=$stockCountBatchId stockTxnId=$stockTxnId controlledPaths=${controlledPaths?.size ?: 0}")
                     } catch (e: Exception) {
-                        logger.e("Deferred stock session commit failed — staging preserved for retry", e)
+                        logger.e("Deferred stock session commit failed — staging preserved for retry", e, event = LogEvent.INVENTORY_COUNT_FAILED)
                         _uiState.update {
                             it.copy(showErrorMessage = context.getString(R.string.batch_stock_count_save_failed))
                         }
@@ -707,7 +708,7 @@ class PillScanningViewModel @Inject constructor(
                     logger.w("Failed to delete staged image file: $path")
                 }
             } catch (e: Exception) {
-                logger.e("Error deleting staged image file: $path", e)
+                logger.e("Error deleting staged image file: $path", e, event = LogEvent.FILE_WRITE_ERROR)
             }
         }
     }
@@ -763,7 +764,7 @@ class PillScanningViewModel @Inject constructor(
                 logger.i("Pill + tray interpreters initialized (glove deferred).")
 
             } catch (e: Exception) {
-                logger.e("Interpreter init failed", e)
+                logger.e("Interpreter init failed", e, event = LogEvent.MODEL_LOAD_FAILED)
                 _modelState.value = ModelState.Error("Interpreter initialization failed", e)
             }
         }
@@ -813,7 +814,7 @@ class PillScanningViewModel @Inject constructor(
                 _modelState.value = ModelState.Ready(analyzer)
                 logger.i("Glove model loaded — analyzer rebuilt for hazardous drug.")
             } catch (e: Exception) {
-                logger.e("Glove model load failed", e)
+                logger.e("Glove model load failed", e, event = LogEvent.MODEL_LOAD_FAILED)
             }
         }
     }
@@ -995,7 +996,7 @@ class PillScanningViewModel @Inject constructor(
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to unload glove model / save glovesPresent flag", e)
+                        logger.e("Failed to unload glove model / save glovesPresent flag", e, event = LogEvent.GLOVE_DETECT_FAILED)
                     }
                 }
             }
@@ -1130,7 +1131,7 @@ class PillScanningViewModel @Inject constructor(
             try {
                 currentState.analyzer.analyze(image)
             } catch (e: Exception) {
-                logger.e("Frame analysis failed.", e)
+                logger.e("Frame analysis failed.", e, event = LogEvent.PILL_COUNT_FAILED)
                 image.close()
             } finally {
                 isAnalyzingFrame = false
@@ -1268,7 +1269,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to reset transaction", e)
+                logger.e("Failed to reset transaction", e, event = LogEvent.PILL_COUNT_RESET)
             }
         }.join()
     }
@@ -1307,12 +1308,12 @@ class PillScanningViewModel @Inject constructor(
             val txnId = preferenceHelper.getTxnId()
             when {
                 txnId != 0L -> pillCountTxnDao.observeById(txnId)
-                    .catch { e -> logger.e("Failed observing txn reset availability. txnId=$txnId", e) }
+                    .catch { e -> logger.e("Failed observing txn reset availability. txnId=$txnId", e, event = LogEvent.PILL_COUNT_RESET) }
                     .collect { txn ->
                     _uiState.update { it.copy(canReset = txn?.isSynced != true) }
                 }
                 batchId != 0L -> batchDao.observeById(batchId)
-                    .catch { e -> logger.e("Failed observing batch reset availability. batchId=$batchId", e) }
+                    .catch { e -> logger.e("Failed observing batch reset availability. batchId=$batchId", e, event = LogEvent.PILL_COUNT_RESET) }
                     .collect { batch ->
                     val available =
                         batch?.let { b -> !b.isSynced && b.lastAckedChunkIndex == 0 } ?: true
@@ -1363,7 +1364,7 @@ class PillScanningViewModel @Inject constructor(
             performanceLogger.generateSummaryReport()
             logger.i("Performance summary generated: ${performanceLogger.getLogFile().absolutePath}")
         } catch (e: Exception) {
-            logger.e("Failed to generate performance summary", e)
+            logger.e("Failed to generate performance summary", e, event = LogEvent.UNKNOWN_ERROR)
         }
 
         try {
@@ -1432,7 +1433,7 @@ class PillScanningViewModel @Inject constructor(
                         )
                     } else null
                 } catch (e: Exception) {
-                    logger.e("Failed saving bitmap", e)
+                    logger.e("Failed saving bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
                     null
                 }
                 pillCountTxnDetailsDao.deleteVialByTxnId(txnId, StepState.VIAL)
@@ -1449,7 +1450,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to save vial photo transaction detail", e)
+                logger.e("Failed to save vial photo transaction detail", e, event = LogEvent.VIAL_SCAN_FAILED)
             }
         }
     }
@@ -1511,18 +1512,18 @@ class PillScanningViewModel @Inject constructor(
 
                 val base = currentFrameBitmap
                 if (base == null || base.isRecycled) {
-                    logger.e("Base frame bitmap is null or recycled, skipping save")
+                    logger.e("Base frame bitmap is null or recycled, skipping save", event = LogEvent.PILL_COUNT_FAILED)
                     return@launch
                 }
 
                 val workingBitmap = try {
                     base.copy(Bitmap.Config.ARGB_8888, true)
                 } catch (e: Exception) {
-                    logger.e("Failed to copy base bitmap", e)
+                    logger.e("Failed to copy base bitmap", e, event = LogEvent.PILL_COUNT_FAILED)
                     return@launch
                 }
                 if (workingBitmap == null) {
-                    logger.e("Bitmap.copy() returned null, skipping save")
+                    logger.e("Bitmap.copy() returned null, skipping save", event = LogEvent.PILL_COUNT_FAILED)
                     return@launch
                 }
 
@@ -1556,7 +1557,7 @@ class PillScanningViewModel @Inject constructor(
                             serialNumber = activeBottle?.serialNumber,
                         )
                     } catch (e: Exception) {
-                        logger.e("Overlay drawing failed, using bitmap without overlay", e)
+                        logger.e("Overlay drawing failed, using bitmap without overlay", e, event = LogEvent.PILL_COUNT_FAILED)
                         workingBitmap
                     }
                 } else {
@@ -1574,7 +1575,7 @@ class PillScanningViewModel @Inject constructor(
                         )
                     } else null
                 } catch (e: Exception) {
-                    logger.e("Failed saving bitmap", e)
+                    logger.e("Failed saving bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
                     null
                 }
 
@@ -1621,7 +1622,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to add transaction detail", e)
+                logger.e("Failed to add transaction detail", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -1755,7 +1756,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to finalize Done for current step", e)
+                logger.e("Failed to finalize Done for current step", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -1769,7 +1770,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to save note and confirm done", e)
+                logger.e("Failed to save note and confirm done", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -1828,7 +1829,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to confirm/complete transaction", e)
+                logger.e("Failed to confirm/complete transaction", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -1857,7 +1858,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to delete transaction detail. Id=${event.txnDetailId}", e)
+                logger.e("Failed to delete transaction detail. Id=${event.txnDetailId}", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -1881,7 +1882,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to delete all transaction details for step=${event.stepType}", e)
+                logger.e("Failed to delete all transaction details for step=${event.stepType}", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -1913,7 +1914,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to update target count to $target", e)
+                logger.e("Failed to update target count to $target", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -1944,7 +1945,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to load txn info", e)
+                logger.e("Failed to load txn info", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -1999,7 +2000,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to load drug info / resolve workflow step", e)
+                logger.e("Failed to load drug info / resolve workflow step", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -2079,7 +2080,7 @@ class PillScanningViewModel @Inject constructor(
                     _uiState.update { it.copy(showReplaceBottleDialog = true) }
                 }
             } catch (e: Exception) {
-                logger.e("BOTTLE_SCAN onNdcRescannedDuringCount failed", e)
+                logger.e("BOTTLE_SCAN onNdcRescannedDuringCount failed", e, event = LogEvent.NDC_SCAN_FAILED)
             } finally {
                 isProcessingBottleScan = false
             }
@@ -2102,7 +2103,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("BOTTLE_SCAN failed to add new bottle", e)
+                logger.e("BOTTLE_SCAN failed to add new bottle", e, event = LogEvent.NDC_SCAN_FAILED)
             }
         }
     }
@@ -2127,7 +2128,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("BOTTLE_SCAN failed to replace last bottle", e)
+                logger.e("BOTTLE_SCAN failed to replace last bottle", e, event = LogEvent.NDC_SCAN_FAILED)
             }
         }
     }
@@ -2216,7 +2217,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to load existing vial photo", e)
+                logger.e("Failed to load existing vial photo", e, event = LogEvent.VIAL_SCAN_FAILED)
             }
         }
     }
@@ -2306,7 +2307,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to persist workflow step=$next", e)
+                logger.e("Failed to persist workflow step=$next", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -2362,7 +2363,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to resolve workflow steps entering SCAN step", e)
+                logger.e("Failed to resolve workflow steps entering SCAN step", e, event = LogEvent.PILL_COUNT_FAILED)
             }
         }
     }
@@ -2489,7 +2490,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to advance from VIAL step", e)
+                logger.e("Failed to advance from VIAL step", e, event = LogEvent.VIAL_SCAN_FAILED)
             }
         }
     }

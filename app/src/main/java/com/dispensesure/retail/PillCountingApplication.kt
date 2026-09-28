@@ -8,6 +8,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import coil.ImageLoader
 import com.dispensesure.retail.core.utils.coil.EncryptedImageFetcher
 import com.dispensesure.retail.core.utils.common.SoundUtils
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import dagger.hilt.android.HiltAndroidApp
@@ -45,12 +46,12 @@ class PillCountingApplication : Application() {
         // caught rather than crashing app start; the operator line just stays absent/stale.
         applicationScope.launch {
             operatorNameProvider.observe()
-                .catch { e -> logger.e("Operator name observation failed", e) }
+                .catch { e -> logger.e("Operator name observation failed", e, event = LogEvent.USER_FETCH_FAILED) }
                 .collect { operatorName -> LoggerConfig.operatorName = operatorName.display() }
         }
 
         if (!OpenCVLoader.initLocal()) {
-            logger.e("OpenCV initialization failed")
+            logger.e("OpenCV initialization failed", event = LogEvent.MODEL_LOAD_FAILED)
         } else {
             logger.i("OpenCV initialized successfully")
         }
@@ -71,7 +72,7 @@ class PillCountingApplication : Application() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("App start: model pre-load failed", e)
+                logger.e("App start: model pre-load failed", e, event = LogEvent.MODEL_LOAD_FAILED)
             }
         }
 

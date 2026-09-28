@@ -13,6 +13,7 @@ import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import org.rite.hl7.HL7
 import org.rite.hl7.builder.ScanSource
@@ -640,7 +641,7 @@ object HL7MessageBuilder {
 
         val encoded = runCatching { file.readBytes() }
             .mapCatching { bytes -> if (ImageCrypto.isEncrypted(bytes)) ImageCrypto.decrypt(bytes) else bytes }
-            .onFailure { e -> logger.e("Failed to read/decrypt image for HL7 encoding: $path", e) }
+            .onFailure { e -> logger.e("Failed to read/decrypt image for HL7 encoding: $path", e, event = LogEvent.FILE_READ_ERROR) }
             .getOrNull()
             ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
             ?: return null

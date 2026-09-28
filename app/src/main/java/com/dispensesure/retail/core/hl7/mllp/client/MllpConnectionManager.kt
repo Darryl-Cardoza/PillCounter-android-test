@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.hl7.mllp.client
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -97,7 +98,7 @@ class MllpConnectionManager(
                 logger.d("send() attempt $attempt — received response")
                 return response
             } catch (e: Exception) {
-                logger.e("send() attempt $attempt failed: ${e.message}", e)
+                logger.e("send() attempt $attempt failed: ${e.message}", e, event = LogEvent.HL7_SEND_FAILED)
                 handleSendFailure()
                 if (attempt == SEND_RETRIES - 1) throw e
                 retryConnect()
@@ -114,7 +115,7 @@ class MllpConnectionManager(
                 if (!certMismatchBlocked && state == ConnectionState.Disconnected && ip.isNotEmpty()) {
                     logger.d("reconnect loop — disconnected, attempting retryConnect()")
                     try { retryConnect() } catch (e: Exception) {
-                        logger.e("reconnect loop — retryConnect() threw: ${e.message}", e)
+                        logger.e("reconnect loop — retryConnect() threw: ${e.message}", e, event = LogEvent.HL7_CONNECT_FAILED)
                     }
                 }
                 delay(RECONNECT_CHECK_MS)
@@ -227,7 +228,7 @@ class MllpConnectionManager(
                     return  // success — exits retryConnect()
                 } catch (e: Exception) {
                     if (isCertMismatch(e)) {
-                        logger.e("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.")
+                        logger.e("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.", event = LogEvent.HL7_CONNECT_FAILED)
                         certMismatchBlocked = true
                         updateState(ConnectionState.Disconnected)
                         onCertMismatch?.invoke()

@@ -9,6 +9,7 @@ import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.google.android.gms.tasks.CancellationTokenSource
 import kotlinx.coroutines.suspendCancellableCoroutine
 import java.util.Locale
@@ -52,7 +53,7 @@ class LocationProvider(private val context: Context) {
                 if (last != null) reverseGeocode(last) else "Location unavailable"
             }
         } catch (e: Exception) {
-            logger.e("Failed to obtain current location", e)
+            logger.e("Failed to obtain current location", e, event = LogEvent.PERMISSION_DENIED)
             "Location unavailable"
         }
     }
@@ -83,7 +84,7 @@ class LocationProvider(private val context: Context) {
                 "%.5f, %.5f".format(location.latitude, location.longitude)
             }
         } catch (e: Exception) {
-            logger.e("Reverse geocoding failed, falling back to raw coordinates", e)
+            logger.e("Reverse geocoding failed, falling back to raw coordinates", e, event = LogEvent.UNKNOWN_ERROR)
             "%.5f, %.5f".format(location.latitude, location.longitude)
         }
     }

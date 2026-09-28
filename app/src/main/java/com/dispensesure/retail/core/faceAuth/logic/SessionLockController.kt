@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.faceAuth.logic
 import android.content.SharedPreferences
 import com.dispensesure.retail.core.faceAuth.data.FaceProfileRepository
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -89,7 +90,7 @@ class SessionLockController @Inject constructor(
     /** Whether at least one enrolled face profile currently participates in verify matching. */
     val hasEnabledProfile: StateFlow<Boolean> = faceProfileRepository.observeProfiles()
         .map { profiles -> profiles.any { it.isEnabled } }
-        .catch { e -> logger.e("Observing enabled face profiles failed", e) }
+        .catch { e -> logger.e("Observing enabled face profiles failed", e, event = LogEvent.FACE_PROFILE_OBSERVE_FAILED) }
         .stateIn(scope, SharingStarted.Eagerly, preferenceHelper.hasEnabledFaceProfile())
 
     init {
@@ -111,7 +112,7 @@ class SessionLockController @Inject constructor(
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    logger.e("Reacting to hasEnabledProfile change failed", e)
+                    logger.e("Reacting to hasEnabledProfile change failed", e, event = LogEvent.FACE_PROFILE_OBSERVE_FAILED)
                 }
             }
         }

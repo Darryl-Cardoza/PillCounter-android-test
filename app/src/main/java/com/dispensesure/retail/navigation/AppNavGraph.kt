@@ -23,6 +23,7 @@ import com.dispensesure.retail.feature.settings.presentation.SaveHistoryForScree
 import com.dispensesure.retail.feature.settings.presentation.SettingsScreen
 import com.dispensesure.retail.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 
 // Define constants for nested graph routes for better organization
 const val AUTH_GRAPH_ROUTE = "auth"
@@ -128,7 +129,7 @@ fun AppNavGraph(
             val historyMode = historyModeArg
                 ?.let {
                     runCatching { HistoryMode.valueOf(it) }
-                        .onFailure { e -> logger.e("Invalid History nav arg '$it' — defaulting to NORMAL", e) }
+                        .onFailure { e -> logger.e("Invalid History nav arg '$it' — defaulting to NORMAL", e, event = LogEvent.HISTORY_LOAD_FAILED) }
                         .getOrNull()
                 }
                 ?: HistoryMode.NORMAL

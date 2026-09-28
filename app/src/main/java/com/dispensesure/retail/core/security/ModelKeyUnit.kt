@@ -7,6 +7,7 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -47,7 +48,7 @@ class ModelKeyUnit(private val context: Context) {
             persist(seal(refined))
             destroy(refined)
         } catch (e: Exception) {
-            logger.e("ModelKeyUnit: activateIfNeeded() failed", e)
+            logger.e("ModelKeyUnit: activateIfNeeded() failed", e, event = LogEvent.MODEL_LOAD_FAILED)
             throw e
         }
     }
@@ -63,7 +64,7 @@ class ModelKeyUnit(private val context: Context) {
             val hex = open(sealed)
             return hexToBytes(hex)
         } catch (e: Exception) {
-            logger.e("ModelKeyUnit: material() retrieval failed", e)
+            logger.e("ModelKeyUnit: material() retrieval failed", e, event = LogEvent.MODEL_LOAD_FAILED)
             throw e
         }
     }

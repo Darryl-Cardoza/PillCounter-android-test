@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.scanning.domain.model
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.google.gson.Gson
 
 /**
@@ -40,6 +41,6 @@ object BottleInfoJson {
         else runCatching {
             gson.fromJson(json, Array<BottleInfo>::class.java).toList()
         }.onFailure { e ->
-            logger.e("Failed to parse bottleInfoListJson, returning empty list", e)
+            logger.e("Failed to parse bottleInfoListJson, returning empty list", e, event = LogEvent.UNKNOWN_ERROR)
         }.getOrDefault(emptyList())
 }

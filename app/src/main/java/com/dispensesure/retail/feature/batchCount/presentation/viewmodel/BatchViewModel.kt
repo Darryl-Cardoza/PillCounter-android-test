@@ -9,6 +9,7 @@ import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchLotEntry
@@ -65,7 +66,7 @@ class BatchViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to load initial batch data", e)
+                logger.e("Failed to load initial batch data", e, event = LogEvent.BATCH_CREATE_FAILED)
             }
         }
     }
@@ -76,7 +77,7 @@ class BatchViewModel @Inject constructor(
             if (id == 0L) flowOf(emptyList())
             else bottleInfoDao.observeByBatchId(id).map { it.groupAndMap() }
         }
-        .catch { e -> logger.e("Failed to build batch drug groups", e) }
+        .catch { e -> logger.e("Failed to build batch drug groups", e, event = LogEvent.UNKNOWN_ERROR) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     fun deleteBatch(onDone: () -> Unit) {
@@ -90,7 +91,7 @@ class BatchViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to delete batch", e)
+                logger.e("Failed to delete batch", e, event = LogEvent.BATCH_DELETE_FAILED)
             } finally {
                 onDone()
             }

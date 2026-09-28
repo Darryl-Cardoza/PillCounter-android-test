@@ -6,6 +6,7 @@ import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RectF
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import org.tensorflow.lite.Interpreter
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
@@ -185,7 +186,7 @@ object GloveDetector {
             }
             result
         } catch (e: Exception) {
-            logger.e("Glove detector inference failed", e)
+            logger.e("Glove detector inference failed", e, event = LogEvent.GLOVE_DETECT_FAILED)
             emptyList()
         }
     }

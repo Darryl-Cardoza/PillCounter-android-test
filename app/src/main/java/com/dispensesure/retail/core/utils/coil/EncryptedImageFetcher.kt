@@ -9,6 +9,7 @@ import coil.fetch.SourceResult
 import coil.request.Options
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import okio.Buffer
 import java.io.File
 
@@ -34,7 +35,7 @@ class EncryptedImageFetcher(
             try {
                 ImageCrypto.decrypt(raw)
             } catch (e: Exception) {
-                logger.e("Failed to decrypt image ${file.name} — falling back to raw bytes", e)
+                logger.e("Failed to decrypt image ${file.name} — falling back to raw bytes", e, event = LogEvent.UNKNOWN_ERROR)
                 raw
             }
         } else {

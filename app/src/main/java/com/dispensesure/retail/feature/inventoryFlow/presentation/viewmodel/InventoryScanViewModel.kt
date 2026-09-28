@@ -21,6 +21,7 @@ import com.dispensesure.retail.core.room.models.dtos.RequestedDrugDto
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
@@ -234,7 +235,7 @@ class InventoryScanViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("INV_SCAN init failed for batchId=$argBatchId", e)
+                logger.e("INV_SCAN init failed for batchId=$argBatchId", e, event = LogEvent.INVENTORY_SCAN_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
             }
         }
@@ -256,7 +257,7 @@ class InventoryScanViewModel @Inject constructor(
             resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
-            logger.e("ensureBatchCreated failed", e)
+            logger.e("ensureBatchCreated failed", e, event = LogEvent.BATCH_CREATE_FAILED)
             0L
         }
     }
@@ -297,7 +298,7 @@ class InventoryScanViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("INV_SCAN adoptStockCountBatchId failed for batchId=$batchId", e)
+                logger.e("INV_SCAN adoptStockCountBatchId failed for batchId=$batchId", e, event = LogEvent.INVENTORY_SCAN_FAILED)
             }
         }
     }
@@ -382,7 +383,7 @@ class InventoryScanViewModel @Inject constructor(
                             GetNdcRequestModel(target_ndc = "", scanned_ndc = scanKey)
                         )
                     } catch (e: Exception) {
-                        logger.e("server drug lookup failed for scanKey=$scanKey", e)
+                        logger.e("server drug lookup failed for scanKey=$scanKey", e, event = LogEvent.DRUG_LOOKUP_FAILED)
                         null
                     }
                     logger.d("INV_SCAN server lookup scanKey=$scanKey → drugInfo=${drugInfo?.ndc} (${drugInfo?.genericName}) hazardous=${drugInfo?.isHazardous}")
@@ -512,7 +513,7 @@ class InventoryScanViewModel @Inject constructor(
                 // batch, UPDATEs on subsequent rescans (same-NDC +1 path).
                 persistActive(newActive)
             } catch (e: Exception) {
-                logger.e("INV_SCAN onBarcodeDetected failed", e)
+                logger.e("INV_SCAN onBarcodeDetected failed", e, event = LogEvent.INVENTORY_SCAN_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
                 _scannerPaused.value = false
             }
@@ -591,7 +592,7 @@ class InventoryScanViewModel @Inject constructor(
                 _activeNdc.value = active
                 lastSameNdcIncrementAtMs = System.currentTimeMillis()
             } catch (e: Exception) {
-                logger.e("INV_SCAN onRecentRowTapped failed", e)
+                logger.e("INV_SCAN onRecentRowTapped failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
             }
         }
     }
@@ -683,7 +684,7 @@ class InventoryScanViewModel @Inject constructor(
                 stockTxnDao.updateBatchUserName(batchId, operatorNameProvider().display())
             }
         } catch (e: Exception) {
-            logger.e("INV_SCAN persistActive FAILED", e)
+            logger.e("INV_SCAN persistActive FAILED", e, event = LogEvent.INVENTORY_COUNT_FAILED)
             _errorMessage.value = LocalizedError(R.string.batch_stock_count_save_failed)
         }
     }
@@ -746,7 +747,7 @@ class InventoryScanViewModel @Inject constructor(
                     openPills = open,
                 )
             } catch (e: Exception) {
-                logger.e("INV_SCAN openEditDetails failed", e)
+                logger.e("INV_SCAN openEditDetails failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
             }
         }
@@ -810,7 +811,7 @@ class InventoryScanViewModel @Inject constructor(
                 val open = openPillsTotal(batchId, active.ndc)
                 _activeNdc.update { it?.copy(openPills = open) }
             } catch (e: Exception) {
-                logger.e("INV_SCAN refreshActiveOpenPills failed", e)
+                logger.e("INV_SCAN refreshActiveOpenPills failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
             }
         }
     }
@@ -872,7 +873,7 @@ class InventoryScanViewModel @Inject constructor(
                 _activeNdc.value = buildActiveTotals(batchId, active.ndc)
                     ?.copy(serialNo = active.serialNo)
             } catch (e: Exception) {
-                logger.e("INV_SCAN saveEditDetails failed", e)
+                logger.e("INV_SCAN saveEditDetails failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_save_failed)
             } finally {
                 _editDetails.value = null
@@ -932,7 +933,7 @@ class InventoryScanViewModel @Inject constructor(
                 logger.d("INV_SCAN onScanPillsForActive active=${active?.ndc} batchId=$batchId allowedNdcs=$allowedNdcs")
                 onReady(batchId, allowedNdcs)
             } catch (e: Exception) {
-                logger.e("INV_SCAN onScanPillsForActive failed", e)
+                logger.e("INV_SCAN onScanPillsForActive failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
             }
         }
@@ -969,7 +970,7 @@ class InventoryScanViewModel @Inject constructor(
                     logger.d("INV_SCAN confirmEndCount: no committed NDC — nothing to persist")
                 }
             } catch (e: Exception) {
-                logger.e("confirmEndCount failed", e)
+                logger.e("confirmEndCount failed", e, event = LogEvent.STOCK_COUNT_COMPLETE)
             } finally {
                 _showEndCountDialog.value = false
                 _batchEnded.value = true

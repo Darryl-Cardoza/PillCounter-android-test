@@ -93,6 +93,7 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.compose.withReplacedText
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme
 import kotlinx.coroutines.delay
@@ -200,7 +201,7 @@ object UserInterfaceUtils {
                     .withZone(ZoneId.systemDefault())
                 formatter.format(Instant.ofEpochMilli(this))
             } catch (e: Exception) {
-                logger.e("Failed to format timestamp $this as date", e)
+                logger.e("Failed to format timestamp $this as date", e, event = LogEvent.UNKNOWN_ERROR)
                 "-"
             }
         } else "-"

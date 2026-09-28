@@ -6,6 +6,7 @@ import android.util.Log
 import com.dispensesure.retail.core.security.ModelDecryptor
 import com.dispensesure.retail.core.security.ModelKeyUnit
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
@@ -426,7 +427,7 @@ class PillDetectionModelLoader @Inject constructor(
                 logger.i("$modelName output[$i] shape=${tensor.shape().contentToString()} type=${tensor.dataType()}")
             }
         } catch (e: Exception) {
-            logger.e("$modelName — failed to log tensor info", e)
+            logger.e("$modelName — failed to log tensor info", e, event = LogEvent.MODEL_LOAD_FAILED)
         }
     }
 
@@ -481,7 +482,7 @@ class PillDetectionModelLoader @Inject constructor(
         try {
             gloveInterpreter?.close()
         } catch (e: Exception) {
-            logger.e("Failed to close gloveInterpreter during unload", e)
+            logger.e("Failed to close gloveInterpreter during unload", e, event = LogEvent.MODEL_LOAD_FAILED)
         }
         safelyCloseDelegate(gloveGpuDelegate, "gloveGpuDelegate")
         gloveInterpreter = null
