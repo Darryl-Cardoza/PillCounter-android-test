@@ -282,76 +282,71 @@ class CredentialsValidatorTest {
 
     @Test
     fun `validateNpi blank is optional success`() {
-        assertTrue(validator.validateNpi("").isSuccess)
+        assertTrue(validator.validateNpi("", required = false).isSuccess)
     }
 
     @Test
     fun `validateNpi with letters failure`() {
-        val r = validator.validateNpi("12a456")
+        val r = validator.validateNpi("12a456", required = true)
         assertFalse(r.isSuccess)
         assertEquals(R.string.error_npi_invalid, r.errorMessageResId)
     }
 
     @Test
     fun `validateNpi too short failure`() {
-        assertFalse(validator.validateNpi("12345").isSuccess) // 5 digits
+        assertFalse(validator.validateNpi("123456789", required = true).isSuccess) // 9 digits
     }
 
     @Test
     fun `validateNpi too long failure`() {
-        assertFalse(validator.validateNpi("1234567890123").isSuccess) // 13 digits
+        assertFalse(validator.validateNpi("12345678901", required = true).isSuccess) // 11 digits
     }
 
     @Test
-    fun `validateNpi valid boundaries success`() {
-        assertTrue(validator.validateNpi("123456").isSuccess) // 6
-        assertTrue(validator.validateNpi("123456789012").isSuccess) // 12
+    fun `validateNpi ten digits success`() {
+        assertTrue(validator.validateNpi("1234567890", required = true).isSuccess)
     }
 
-    // ─────────────────────────── validatePassword ───────────────────────────
-
     @Test
-    fun `validatePassword too short failure`() {
-        val r = validator.validatePassword("Aa1!")
+    fun `validateNpi blank required failure`() {
+        val r = validator.validateNpi("", required = true)
         assertFalse(r.isSuccess)
-        assertEquals(R.string.error_password_too_short, r.errorMessageResId)
+        assertEquals(R.string.error_npi_required, r.errorMessageResId)
     }
 
     @Test
-    fun `validatePassword no uppercase failure`() {
-        assertEquals(
-            R.string.error_password_no_uppercase,
-            validator.validatePassword("abcdefg1!").errorMessageResId,
-        )
+    fun `validateNpi whitespace only required failure`() {
+        val r = validator.validateNpi("   ", required = true)
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_npi_required, r.errorMessageResId)
     }
 
     @Test
-    fun `validatePassword no lowercase failure`() {
-        assertEquals(
-            R.string.error_password_no_lowercase,
-            validator.validatePassword("ABCDEFG1!").errorMessageResId,
-        )
+    fun `validateNpi surrounding whitespace failure`() {
+        assertFalse(validator.validateNpi(" 1234567890 ", required = true).isSuccess)
     }
 
     @Test
-    fun `validatePassword no digit failure`() {
-        assertEquals(
-            R.string.error_password_no_digit,
-            validator.validatePassword("Abcdefg!").errorMessageResId,
-        )
+    fun `validateNpi ten characters with a letter failure`() {
+        val r = validator.validateNpi("123456789O", required = true) // letter O, not zero
+        assertFalse(r.isSuccess)
+        assertEquals(R.string.error_npi_invalid, r.errorMessageResId)
     }
 
     @Test
-    fun `validatePassword no special failure`() {
-        assertEquals(
-            R.string.error_password_no_special,
-            validator.validatePassword("Abcdefg1").errorMessageResId,
-        )
+    fun `validateNpi with separators failure`() {
+        assertFalse(validator.validateNpi("12345-6789", required = true).isSuccess)
     }
 
     @Test
-    fun `validatePassword valid success`() {
-        assertTrue(validator.validatePassword("Abcdefg1!").isSuccess)
+    fun `validateNpi non-ascii digits failure`() {
+        // Ten Arabic-Indic digits: Char.isDigit() accepts them, the API does not.
+        assertFalse(validator.validateNpi("١٢٣٤٥٦٧٨٩٠", required = true).isSuccess)
+    }
+
+    @Test
+    fun `validateNpi leading zeros success`() {
+        assertTrue(validator.validateNpi("0000000001", required = true).isSuccess)
     }
 
     // ─────────────────────────── helpers ───────────────────────────

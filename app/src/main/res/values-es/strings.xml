@@ -95,11 +95,6 @@
     <string name="drug_history_details">Detalles del historial del medicamento</string>
     <!-- ================== VALIDATION ERRORS ================== -->
     <string name="error_email_invalid">Por favor, introduce una dirección de correo válida.</string>
-    <string name="error_password_too_short">La contraseña debe tener al menos 8 caracteres.</string>
-    <string name="error_password_no_uppercase">La contraseña debe contener al menos una letra mayúscula.</string>
-    <string name="error_password_no_lowercase">La contraseña debe contener al menos una letra minúscula.</string>
-    <string name="error_password_no_digit">La contraseña debe contener al menos un número.</string>
-    <string name="error_password_no_special">La contraseña debe contener al menos un carácter especial.</string>
     <string name="error_unknown">Algo salió mal.</string>
     <string name="error_invalid_otp">PIN inválido.</string>
     <string name="error_phone_invalid">Número de teléfono inválido</string>
@@ -107,6 +102,7 @@
     <string name="error_name_required">Este campo es obligatorio</string>
     <string name="error_pharmacy_name_invalid">El nombre de la farmacia es demasiado corto</string>
     <string name="error_npi_invalid">Número NPI inválido</string>
+    <string name="error_npi_required">El número NPI es obligatorio</string>
     <string name="error_no_internet">Sin conexión a internet. Verifique su red e intente de nuevo.</string>
     <string name="error_timeout">La solicitud tardó demasiado. Inténtelo de nuevo más tarde.</string>
     <string name="error_server_unavailable">El servidor no está disponible temporalmente. Inténtelo de nuevo más tarde.</string>
