@@ -77,7 +77,7 @@ class BatchViewModel @Inject constructor(
             if (id == 0L) flowOf(emptyList())
             else bottleInfoDao.observeByBatchId(id).map { it.groupAndMap() }
         }
-        .catch { e -> logger.e("Failed to build batch drug groups", e, event = LogEvent.UNKNOWN_ERROR) }
+        .catch { e -> logger.e("Failed to build batch drug groups", e, event = LogEvent.BATCH_PROCESS_FAILED) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000L), emptyList())
 
     fun deleteBatch(onDone: () -> Unit) {

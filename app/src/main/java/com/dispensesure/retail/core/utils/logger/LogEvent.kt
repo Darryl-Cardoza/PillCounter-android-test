@@ -65,6 +65,7 @@ enum class LogEvent {
     BATCH_COUNT,
     BATCH_CREATE_FAILED,
     BATCH_DELETE_SUCCESS,
+    BATCH_PROCESS_FAILED,
     BATCH_DELETE_FAILED,
     INVENTORY_SCAN_FAILED,
     INVENTORY_COUNT_SAVED,
@@ -123,6 +124,7 @@ enum class LogEvent {
     // ── Token / health (core.refreshToken, core.health) ──────────────────────
     TOKEN_REFRESH_SUCCESS,
     TOKEN_REFRESH_FAILED,
+    TOKEN_FETCH_FAILED,
     HEALTH_CHECK_FAILED,
 
     // ── Security (core.security, core.room) ──────────────────────────────────

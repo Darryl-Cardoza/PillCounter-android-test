@@ -125,7 +125,7 @@ class DashboardViewModel @Inject constructor(
     private fun observeOperatorName() {
         viewModelScope.launch(Dispatchers.IO) {
             operatorNameProvider.observe()
-                .catch { e -> logger.e("Observing operator name failed", e, event = LogEvent.DASHBOARD_LOAD_FAILED) }
+                .catch { e -> logger.e("Observing operator name failed", e, event = LogEvent.USER_FETCH_FAILED) }
                 .collect { operator ->
                     _uiState.update { it.copy(operatorName = operator.display()) }
                 }
@@ -419,7 +419,7 @@ class DashboardViewModel @Inject constructor(
 
             val token = preferenceHelper.getAccessToken()
             if (token.isNullOrBlank()) {
-                logger.e("Access token not found in preferences.", event = LogEvent.USER_FETCH_FAILED)
+                logger.e("Access token not found in preferences.", event = LogEvent.TOKEN_FETCH_FAILED)
                 _uiState.update {
                     it.copy(
                         isLoadingUserDetail = false,
