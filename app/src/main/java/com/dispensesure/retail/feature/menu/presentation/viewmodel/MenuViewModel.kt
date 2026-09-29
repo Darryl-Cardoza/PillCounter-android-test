@@ -85,7 +85,7 @@ class MenuViewModel @Inject constructor(
     private fun observeBatchCount() {
         viewModelScope.launch {
             batchDao.observeActiveInProgressCount()
-                .catch { e -> logger.e("Failed to observe active in-progress batch count", e, event = LogEvent.UNKNOWN_ERROR) }
+                .catch { e -> logger.e("Failed to observe active in-progress batch count", e, event = LogEvent.FUNCTIONALITY_ERROR) }
                 .collect { count ->
                     _uiState.update { current ->
                         current.copy(regularPartial = count)
@@ -97,7 +97,7 @@ class MenuViewModel @Inject constructor(
     private fun observeCompletedBatchCount() {
         viewModelScope.launch {
             batchDao.observeCompletedBatchCount()
-                .catch { e -> logger.e("Failed to observe completed batch count", e, event = LogEvent.UNKNOWN_ERROR) }
+                .catch { e -> logger.e("Failed to observe completed batch count", e, event = LogEvent.FUNCTIONALITY_ERROR) }
                 .collect { count ->
                     _uiState.update { current ->
                         current.copy(regularCompleted = count)
@@ -143,7 +143,7 @@ class MenuViewModel @Inject constructor(
                 pillCountTxnDao.getTotalCompletedTransactionCount(),
                 batchDao.getUnsyncedCompletedBatchCount()
             ) { dispenseCount, batchCount -> dispenseCount + batchCount }
-                .catch { e -> logger.e("Failed to observe unsynced transaction count", e, event = LogEvent.UNKNOWN_ERROR) }
+                .catch { e -> logger.e("Failed to observe unsynced transaction count", e, event = LogEvent.FUNCTIONALITY_ERROR) }
                 .collect { count ->
                     _uiState.update { current ->
                         current.copy(unsyncedTransactionCount = count)

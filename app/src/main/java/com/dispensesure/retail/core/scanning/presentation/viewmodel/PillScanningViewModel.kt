@@ -391,7 +391,7 @@ class PillScanningViewModel @Inject constructor(
                 try {
                     performanceLogger.logPerformanceSnapshot("PERIODIC_MONITORING")
                 } catch (e: Exception) {
-                    logger.e("Performance monitoring failed", e, event = LogEvent.UNKNOWN_ERROR)
+                    logger.e("Performance monitoring failed", e, event = LogEvent.FUNCTIONALITY_ERROR)
                 }
             }
         }
@@ -1364,7 +1364,7 @@ class PillScanningViewModel @Inject constructor(
             performanceLogger.generateSummaryReport()
             logger.i("Performance summary generated: ${performanceLogger.getLogFile().absolutePath}")
         } catch (e: Exception) {
-            logger.e("Failed to generate performance summary", e, event = LogEvent.UNKNOWN_ERROR)
+            logger.e("Failed to generate performance summary", e, event = LogEvent.FUNCTIONALITY_ERROR)
         }
 
         try {

@@ -35,7 +35,7 @@ class EncryptedImageFetcher(
             try {
                 ImageCrypto.decrypt(raw)
             } catch (e: Exception) {
-                logger.e("Failed to decrypt image ${file.name} — falling back to raw bytes", e, event = LogEvent.UNKNOWN_ERROR)
+                logger.e("Failed to decrypt image ${file.name} — falling back to raw bytes", e, event = LogEvent.FUNCTIONALITY_ERROR)
                 raw
             }
         } else {

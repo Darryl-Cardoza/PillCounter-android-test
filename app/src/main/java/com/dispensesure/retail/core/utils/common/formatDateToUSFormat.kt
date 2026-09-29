@@ -34,7 +34,7 @@ fun formatDateToUSFormat(
 
         cleanInput
     } catch (e: Exception) {
-        logger.e("Failed to parse date \"$input\" with pattern $outputPattern", e, event = LogEvent.UNKNOWN_ERROR)
+        logger.e("Failed to parse date \"$input\" with pattern $outputPattern", e, event = LogEvent.PARSING_ERROR)
         input
     }
 }

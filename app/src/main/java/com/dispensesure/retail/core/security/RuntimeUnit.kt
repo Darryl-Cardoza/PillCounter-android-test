@@ -53,7 +53,7 @@ class RuntimeUnit(private val context: Context) {
             persist(seal(refined))
             destroy(refined)
         } catch (e: Exception) {
-            logger.e("RuntimeUnit: activateIfNeeded() failed", e, event = LogEvent.UNKNOWN_ERROR)
+            logger.e("RuntimeUnit: activateIfNeeded() failed", e, event = LogEvent.RUNTIME_ERROR)
             throw e
         }
     }
@@ -67,7 +67,7 @@ class RuntimeUnit(private val context: Context) {
             val sealed = retrieve()
             return open(sealed)
         } catch (e: Exception) {
-            logger.e("RuntimeUnit: material() retrieval failed", e, event = LogEvent.UNKNOWN_ERROR)
+            logger.e("RuntimeUnit: material() retrieval failed", e, event = LogEvent.RUNTIME_ERROR)
             throw e
         }
     }

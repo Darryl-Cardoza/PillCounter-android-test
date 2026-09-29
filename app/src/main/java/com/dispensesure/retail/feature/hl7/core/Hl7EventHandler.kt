@@ -215,7 +215,7 @@ class Hl7EventHandler @Inject constructor(
      * Called for any error inside HL7 runtime.
      */
     override fun onError(source: String, throwable: Throwable) {
-        logger.e("HL7 error | source=$source | message=${throwable.message}", event = LogEvent.UNKNOWN_ERROR)
+        logger.e("HL7 error | source=$source | message=${throwable.message}", event = LogEvent.HL7_SERVICE_ERROR)
     }
 
     override fun onPmsCertMismatch() {

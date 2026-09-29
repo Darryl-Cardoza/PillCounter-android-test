@@ -41,6 +41,6 @@ object BottleInfoJson {
         else runCatching {
             gson.fromJson(json, Array<BottleInfo>::class.java).toList()
         }.onFailure { e ->
-            logger.e("Failed to parse bottleInfoListJson, returning empty list", e, event = LogEvent.UNKNOWN_ERROR)
+            logger.e("Failed to parse bottleInfoListJson, returning empty list", e, event = LogEvent.PARSING_ERROR)
         }.getOrDefault(emptyList())
 }

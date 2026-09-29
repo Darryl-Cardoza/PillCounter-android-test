@@ -84,7 +84,7 @@ class LocationProvider(private val context: Context) {
                 "%.5f, %.5f".format(location.latitude, location.longitude)
             }
         } catch (e: Exception) {
-            logger.e("Reverse geocoding failed, falling back to raw coordinates", e, event = LogEvent.UNKNOWN_ERROR)
+            logger.e("Reverse geocoding failed, falling back to raw coordinates", e, event = LogEvent.PARSING_ERROR)
             "%.5f, %.5f".format(location.latitude, location.longitude)
         }
     }

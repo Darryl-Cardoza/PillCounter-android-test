@@ -565,7 +565,7 @@ class PerformanceLogger @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            logger.e("Failed to clear old logs", e, event = LogEvent.UNKNOWN_ERROR)
+            logger.e("Failed to clear old logs", e, event = LogEvent.FUNCTIONALITY_ERROR)
         }
     }
 }

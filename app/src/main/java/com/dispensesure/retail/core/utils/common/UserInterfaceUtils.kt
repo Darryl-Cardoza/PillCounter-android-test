@@ -201,7 +201,7 @@ object UserInterfaceUtils {
                     .withZone(ZoneId.systemDefault())
                 formatter.format(Instant.ofEpochMilli(this))
             } catch (e: Exception) {
-                logger.e("Failed to format timestamp $this as date", e, event = LogEvent.UNKNOWN_ERROR)
+                logger.e("Failed to format timestamp $this as date", e, event = LogEvent.PARSING_ERROR)
                 "-"
             }
         } else "-"

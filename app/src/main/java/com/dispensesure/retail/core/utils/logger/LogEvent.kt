@@ -147,5 +147,8 @@ enum class LogEvent {
 
     // ── Fallbacks (used by RemoteLogDestination when a call site omits event) ──
     APP_CRASH,
+    PARSING_ERROR,
+    FUNCTIONALITY_ERROR,
+    RUNTIME_ERROR,
     UNKNOWN_ERROR
 }
