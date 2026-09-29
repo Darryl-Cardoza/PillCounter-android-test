@@ -15,6 +15,7 @@ import com.dispensesure.retail.core.utils.logger.LogDestination
 import com.dispensesure.retail.core.utils.logger.LogEntry
 import com.dispensesure.retail.core.utils.logger.LogEventClassifier
 import com.dispensesure.retail.core.utils.logger.LogLevel
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.logger.PhiRedactor
 import com.dispensesure.retail.core.utils.logger.destination.dto.RemoteLogError
 import com.dispensesure.retail.core.utils.logger.destination.dto.RemoteLogNetwork
@@ -80,9 +81,6 @@ class RemoteLogDestination internal constructor(
         pendingLogFileOverride ?: File(File(appContext.getExternalFilesDir(null), "Logs"), PENDING_LOG_FILE_NAME)
     }
     private val pendingLock = Any()
-
-    /** One id per app process, not per login session — there is no app-wide login-session id today. */
-    private val sessionId = UUID.randomUUID().toString()
 
     private val timestampFormat: ThreadLocal<SimpleDateFormat> = ThreadLocal.withInitial {
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US)
@@ -209,7 +207,7 @@ class RemoteLogDestination internal constructor(
             platform = PLATFORM,
             osVersion = Build.VERSION.RELEASE ?: "unknown",
             deviceModel = Build.MODEL ?: "unknown",
-            sessionId = sessionId,
+            sessionId = LoggerConfig.sessionId,
             logId = UUID.randomUUID().toString(),
             severity = severityOf(entry.level),
             timestamp = timestampFormat.get()!!.format(Date(entry.timestampMillis)),
@@ -296,6 +294,6 @@ class RemoteLogDestination internal constructor(
         private const val TAG = "RemoteLogDestination"
         private const val APP_NAME = "dispensesure"
         private const val PLATFORM = "android"
-        private const val PENDING_LOG_FILE_NAME = "pending_remote_logs.jsonl"
+        private const val PENDING_LOG_FILE_NAME = "dispensesure_logs.txt"
     }
 }
