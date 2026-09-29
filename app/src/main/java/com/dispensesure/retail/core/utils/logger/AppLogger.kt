@@ -3,8 +3,6 @@ package com.dispensesure.retail.core.utils.logger
 import android.content.Context
 import android.util.Log
 import com.dispensesure.retail.BuildConfig
-import com.dispensesure.retail.core.utils.logger.destination.CompositeLogDestination
-import com.dispensesure.retail.core.utils.logger.destination.FileLogDestination
 import com.dispensesure.retail.core.utils.logger.destination.RemoteLogDestination
 
 /**
@@ -16,7 +14,7 @@ import com.dispensesure.retail.core.utils.logger.destination.RemoteLogDestinatio
  * Logcat, every call is forwarded to the companion object's centralized machinery, which:
  * applies [LoggerConfig]'s level filter, resolves where in the app the call actually came from
  * (without misattributing it to AppLogger itself), builds a [LogEntry], and hands it to whichever
- * [LogDestination] is configured (currently a rotating file — see [FileLogDestination]).
+ * [LogDestination] is configured (currently [RemoteLogDestination]).
  *
  * The centralized side is a plain singleton on the companion object — not Hilt-injected —
  * because `AppLogger` instances are created via [create]/`AppLogger(tag)` all over the codebase,
@@ -141,16 +139,17 @@ class AppLogger(private val tag: String) {
         private var destination: LogDestination? = null
 
         /**
-         * Wires up the file-based [LogDestination]. Call once, as early as possible, from
+         * Wires up the [LogDestination]. Call once, as early as possible, from
          * [com.dispensesure.retail.PillCountingApplication.onCreate].
+         *
+         * [RemoteLogDestination] is the only destination — it ships ERROR logs to the API when
+         * online, and only falls back to on-disk storage while offline, replaying it once
+         * connectivity returns.
          */
         @Synchronized
         fun init(context: Context) {
             if (destination != null) return
-            destination = CompositeLogDestination(
-                FileLogDestination(context.applicationContext),
-                RemoteLogDestination(context.applicationContext)
-            )
+            destination = RemoteLogDestination(context.applicationContext)
         }
 
         /**

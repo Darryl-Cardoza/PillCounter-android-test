@@ -7,9 +7,8 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * Renders a [LogEntry] into the structured, human-readable block used by [FileLogDestination].
- * Kept separate from the destination so the format can be unit-tested without touching the
- * filesystem, and so a future non-file destination can choose not to use it at all.
+ * Renders a [LogEntry] into a structured, human-readable block. Kept separate from any
+ * destination so the format can be unit-tested without touching the filesystem or network.
  */
 object LogFormatter {
 
