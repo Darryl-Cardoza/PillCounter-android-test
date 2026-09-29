@@ -68,6 +68,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
+import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import com.dispensesure.retail.core.utils.compose.StepTitleWithSpeech
 import com.dispensesure.retail.core.utils.compose.VerifyNdcDetailsInlinePanel
 import com.dispensesure.retail.core.utils.compose.VerifyNdcDetailsSheet
@@ -181,10 +182,7 @@ fun DispenseFlowScreen(
             !cameraPermissionState.showingSettingsDialog
         ) {
             showToast(context, "Camera permission is required for this action")
-            navController.navigate(Screen.Dashboard.route) {
-                popUpTo(0)
-                launchSingleTop = true
-            }
+            navController.navigateBackToDashboard()
         }
     }
 
@@ -259,10 +257,7 @@ fun DispenseFlowScreen(
                     // If nothing can be popped (root entry), fall back to Dashboard.
                     val popped = navController.popBackStack()
                     if (!popped) {
-                        navController.navigate(Screen.Dashboard.route) {
-                            popUpTo(0)
-                            launchSingleTop = true
-                        }
+                        navController.navigateBackToDashboard()
                     }
                 }
             }
@@ -393,9 +388,7 @@ fun DispenseFlowScreen(
                     pillVm.resetWorkflowSteps()
                     dispenseVm.resetToQueue()
                 } else {
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo(Screen.Dashboard.route) { inclusive = true }
-                    }
+                    navController.navigateBackToDashboard()
                 }
             },
             onOkay = { count ->
@@ -665,10 +658,7 @@ fun DispenseFlowScreen(
         } else if (pillState.showIdleOverlay) {
             pillVm.resetIdleOverlay()
         } else if (dispenseState.stage == DispenseStage.QUEUE) {
-            navController.navigate(Screen.Dashboard.route) {
-                popUpTo(0)
-                launchSingleTop = true
-            }
+            navController.navigateBackToDashboard()
         } else if (fromQueue && dispenseState.stage == DispenseStage.PRE_RX) {
             // Cancel RX scan before any transaction is created → return to queue list.
             pillVm.discardStagedCount()
@@ -682,10 +672,7 @@ fun DispenseFlowScreen(
             // hand-off). Fall back to Dashboard only if the back-stack is empty.
             val popped = navController.popBackStack()
             if (!popped) {
-                navController.navigate(Screen.Dashboard.route) {
-                    popUpTo(0)
-                    launchSingleTop = true
-                }
+                navController.navigateBackToDashboard()
             }
         }
     }
@@ -700,10 +687,7 @@ fun DispenseFlowScreen(
     LaunchedEffect(dispenseState.navigateToDashboard) {
         if (dispenseState.navigateToDashboard) {
             dispenseVm.clearNavigateToDashboard()
-            navController.navigate(Screen.Dashboard.route) {
-                popUpTo(0)
-                launchSingleTop = true
-            }
+            navController.navigateBackToDashboard()
         }
     }
 
@@ -738,10 +722,7 @@ fun DispenseFlowScreen(
                     pillVm.resetWorkflowSteps()
                     dispenseVm.resetToQueue()
                 } else {
-                    navController.navigate(Screen.Dashboard.route) {
-                        popUpTo(0)
-                        launchSingleTop = true
-                    }
+                    navController.navigateBackToDashboard()
                 }
             },
         )
@@ -1179,11 +1160,7 @@ fun DispenseFlowScreen(
                         selectedFilter = dispenseState.selectedQueueFilter,
                         onFilterSelected = { dispenseVm.setQueueFilter(it) },
                         onItemClick = { txnId -> dispenseVm.resumeFromQueue(txnId) },
-                        onHomeClick = {
-                            navController.navigate(Screen.Dashboard.route) {
-                                popUpTo(0); launchSingleTop = true
-                            }
-                        },
+                        onHomeClick = { navController.navigateBackToDashboard() },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -1202,11 +1179,7 @@ fun DispenseFlowScreen(
                         selectedFilter = dispenseState.selectedQueueFilter,
                         onFilterSelected = { dispenseVm.setQueueFilter(it) },
                         onItemClick = { txnId -> dispenseVm.resumeFromQueue(txnId) },
-                        onHomeClick = {
-                            navController.navigate(Screen.Dashboard.route) {
-                                popUpTo(0); launchSingleTop = true
-                            }
-                        },
+                        onHomeClick = { navController.navigateBackToDashboard() },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -1225,11 +1198,7 @@ fun DispenseFlowScreen(
                         selectedFilter = dispenseState.selectedQueueFilter,
                         onFilterSelected = { dispenseVm.setQueueFilter(it) },
                         onItemClick = { txnId -> dispenseVm.resumeFromQueue(txnId) },
-                        onHomeClick = {
-                            navController.navigate(Screen.Dashboard.route) {
-                                popUpTo(0); launchSingleTop = true
-                            }
-                        },
+                        onHomeClick = { navController.navigateBackToDashboard() },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -1377,16 +1346,10 @@ fun DispenseFlowScreen(
                         } else if (batchId > 0L) {
                             val popped = navController.popBackStack()
                             if (!popped) {
-                                navController.navigate(Screen.Dashboard.route) {
-                                    popUpTo(0)
-                                    launchSingleTop = true
-                                }
+                                navController.navigateBackToDashboard()
                             }
                         } else {
-                            navController.navigate(Screen.Dashboard.route) {
-                                popUpTo(0)
-                                launchSingleTop = true
-                            }
+                            navController.navigateBackToDashboard()
                         }
                     },
                 )

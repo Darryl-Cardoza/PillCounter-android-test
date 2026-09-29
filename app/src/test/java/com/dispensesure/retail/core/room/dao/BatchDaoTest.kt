@@ -7,6 +7,7 @@ import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -355,6 +356,27 @@ class BatchDaoTest {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(1L, list.first().batchId)
+        }
+    }
+
+    @Test
+    fun `observeInProgressBatchKpiCounts splits pms and manual in progress batches`() = runTest {
+        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "pms-1"))
+        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.INPROGRESS, requestIdFromPMS = null))
+        dao.insert(BatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "  "))
+        dao.insert(BatchEntity(batchId = 4L, status = BatchStatus.COMPLETED, requestIdFromPMS = "pms-2"))
+        dao.insert(BatchEntity(batchId = 5L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "pms-3"))
+        dao.softDelete(5L)
+
+        dao.observeInProgressBatchKpiCounts().test {
+            assertEquals(InventoryKpiCountsDto(cycleCount = 1, pendingBatchCount = 2), awaitItem())
+        }
+    }
+
+    @Test
+    fun `observeInProgressBatchKpiCounts emits zeros when there are no batches`() = runTest {
+        dao.observeInProgressBatchKpiCounts().test {
+            assertEquals(InventoryKpiCountsDto(cycleCount = 0, pendingBatchCount = 0), awaitItem())
         }
     }
 

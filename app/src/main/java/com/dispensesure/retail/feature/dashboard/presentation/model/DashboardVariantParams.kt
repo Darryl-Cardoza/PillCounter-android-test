@@ -7,18 +7,18 @@ import com.dispensesure.retail.feature.dashboard.domain.model.DashboardUiState
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 
 /**
- * Parameter bag shared by every dashboard variant composable.
+ * Parameter bag shared by both dashboard layouts.
  *
- * The 4 variants (phone P/L + tablet P/L) **must** consume the same data — only UI placement
+ * Both layouts (landscape, portrait — each used by phone and tablet) **must** consume the same data — only UI placement
  * differs. Centralizing the parameter list here enforces that contract at compile time: a
- * variant that needs different inputs would have to introduce a new type, which the dispatcher
+ * layout that needs different inputs would have to introduce a new type, which the dispatcher
  * would refuse to construct.
  *
  * The bag carries:
  *  - [uiState] the rendered state
  *  - [isPmsConnected] live HL7 connection status (separate flow on the VM)
  *  - [isHl7Enabled] static config flag
- *  - [navController] for navigation actions handled inside the variant
+ *  - [navController] for navigation actions handled inside the layout
  *  - callbacks for dashboard-local interactions ([onKpiFilterTapped], [onTabSelected])
  *  - [onDispenseQuickAction] / [onInventoryQuickAction] for the two Quick Action cards. The
  *    dispatcher wires these to the existing Fixed / Regular entry flows (including the

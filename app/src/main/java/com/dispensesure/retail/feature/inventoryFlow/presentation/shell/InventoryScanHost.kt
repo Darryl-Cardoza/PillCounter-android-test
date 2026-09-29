@@ -24,6 +24,7 @@ import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
+import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.permission.rememberPermissionState
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
@@ -283,9 +284,6 @@ fun InventoryScanHost(
 internal fun inventoryBack(navController: NavController) {
     val popped = navController.popBackStack()
     if (!popped) {
-        navController.navigate(Screen.Dashboard.route) {
-            popUpTo(0)
-            launchSingleTop = true
-        }
+        navController.navigateBackToDashboard()
     }
 }
