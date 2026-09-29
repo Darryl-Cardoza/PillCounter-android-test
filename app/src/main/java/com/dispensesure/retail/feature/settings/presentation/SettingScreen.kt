@@ -28,7 +28,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
@@ -38,9 +37,12 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonMultiSelectDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.constants.LocalDimens
-import com.dispensesure.retail.feature.settings.domain.model.SettingsCard
+import com.dispensesure.retail.feature.settings.presentation.compose.SETTINGS_LABEL_BASE_SP
+import com.dispensesure.retail.feature.settings.presentation.compose.SETTINGS_VALUE_BASE_SP
+import com.dispensesure.retail.feature.settings.presentation.compose.SettingsCard
 import com.dispensesure.retail.feature.settings.presentation.compose.SettingsGroupCard
 import com.dispensesure.retail.feature.settings.presentation.compose.SettingsRow
 import com.dispensesure.retail.feature.settings.presentation.compose.SettingsValueText
@@ -113,7 +115,7 @@ fun SettingsScreen(
 
                 Text(
                     text = stringResource(R.string.settings_title),
-                    fontSize = 16.sp,
+                    fontSize = responsiveSp(SETTINGS_LABEL_BASE_SP),
                     color = extendedColors.textColor
                 )
             }
@@ -145,7 +147,7 @@ fun SettingsScreen(
                                         Color.Gray
                                     Text(
                                         text = code.name,
-                                        fontSize = 14.sp,
+                                        fontSize = responsiveSp(SETTINGS_VALUE_BASE_SP),
                                         color = if (hl7Enabled) codeColor
                                         else codeColor.copy(alpha = DISABLED_ALPHA)
                                     )

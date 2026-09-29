@@ -33,6 +33,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.constants.LocalDimens
 import com.dispensesure.retail.ui.theme.LocalExtendedColors
 
@@ -72,9 +73,9 @@ fun SettingsGroupCard(
             Text(
                 text = stringResource(titleRes),
                 color = extendedColors.textColor,
-                fontSize = 14.sp,
+                fontSize = responsiveSp(SETTINGS_VALUE_BASE_SP),
                 fontWeight = FontWeight.SemiBold,
-                letterSpacing = 0.8.sp,
+                letterSpacing = responsiveSp(0.47.sp),
                 modifier = Modifier.weight(1f)
             )
             Icon(

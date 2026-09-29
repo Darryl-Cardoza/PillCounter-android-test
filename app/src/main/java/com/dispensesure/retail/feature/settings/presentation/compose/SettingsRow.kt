@@ -21,9 +21,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.constants.LocalDimens
 import com.dispensesure.retail.ui.theme.DISABLED_ALPHA
 import com.dispensesure.retail.ui.theme.LocalExtendedColors
+
+// Base sizes for responsiveSp, shared by every Settings screen text.
+val SETTINGS_LABEL_BASE_SP = 9.5.sp
+val SETTINGS_VALUE_BASE_SP = 8.25.sp
 
 /**
  * One Settings row: label, optional [supporting] content under the label, optional trailing
@@ -69,7 +74,7 @@ fun SettingsRow(
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = stringResource(labelRes),
-                    fontSize = 16.sp,
+                    fontSize = responsiveSp(SETTINGS_LABEL_BASE_SP),
                     color = textColor
                 )
                 if (supporting != null) {
@@ -108,7 +113,7 @@ fun SettingsValueText(text: String, enabled: Boolean = true) {
     val color = MaterialTheme.colorScheme.secondary
     Text(
         text = text,
-        fontSize = 14.sp,
+        fontSize = responsiveSp(SETTINGS_VALUE_BASE_SP),
         color = if (enabled) color else color.copy(alpha = DISABLED_ALPHA)
     )
 }

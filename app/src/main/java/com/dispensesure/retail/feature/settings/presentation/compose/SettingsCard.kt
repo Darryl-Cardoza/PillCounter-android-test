@@ -1,4 +1,4 @@
-package com.dispensesure.retail.feature.settings.domain.model
+package com.dispensesure.retail.feature.settings.presentation.compose
 
 enum class SettingsCard {
     CONTROLLED_DRUG,
