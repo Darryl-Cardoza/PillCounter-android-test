@@ -110,6 +110,12 @@ class PillDetectionModelLoader @Inject constructor(
 
             performanceLogger.logPerformanceSnapshot("PRE_MODEL_LOAD")
 
+            // FramePathWarmUp reuses the shared Letterbox / ImagePreprocessor scratch, which a
+            // live analyzer reads on every frame. Only the first load is safe for that: no
+            // analyzer can exist before it. A later reload (glove added for a hazardous drug)
+            // runs while the old analyzer is still analysing.
+            val firstLoad = pillInterpreter == null
+
             withContext(Dispatchers.IO) {
                 coroutineScope {
                     val pillLoadStart = System.currentTimeMillis()
@@ -242,7 +248,8 @@ class PillDetectionModelLoader @Inject constructor(
                     warmUp(
                         pill = pillHolder.interpreter,
                         glove = gloveHolder?.interpreter,
-                        tray = trayDetector
+                        tray = trayDetector,
+                        frameWarmUp = firstLoad
                     )
 
                     LoadedModels(
@@ -330,13 +337,25 @@ class PillDetectionModelLoader @Inject constructor(
     private fun warmUp(
         pill: Interpreter,
         glove: Interpreter?,
-        tray: TraySegmentationDetector?
+        tray: TraySegmentationDetector?,
+        frameWarmUp: Boolean
     ) {
         val tStart = System.currentTimeMillis()
         try {
-            warmUpTfliteInterpreter(pill, "Pill")
+            if (frameWarmUp) {
+                // Drives the pill model and the rest of the frame pipeline the way the
+                // analyzer does (see FramePathWarmUp), which also compiles the shaders.
+                FramePathWarmUp.run(pill)
+            } else {
+                warmUpTfliteInterpreter(pill, "Pill")
+            }
         } catch (t: Throwable) {
-            Log.w(TAG, "Pill warm-up failed (continuing): ${t.message}")
+            Log.w(TAG, "Frame-path warm-up failed, using interpreter-only warm-up: ${t.message}")
+            try {
+                warmUpTfliteInterpreter(pill, "Pill")
+            } catch (t2: Throwable) {
+                Log.w(TAG, "Pill warm-up failed (continuing): ${t2.message}")
+            }
         }
         if (glove != null) {
             try {
