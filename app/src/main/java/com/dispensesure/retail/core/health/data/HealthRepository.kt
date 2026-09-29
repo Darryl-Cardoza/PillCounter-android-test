@@ -43,14 +43,20 @@ class HealthRepository @Inject constructor(
             logger.i("Calling /health")
             val response = api.getHealth()
             if (!response.isSuccessful) {
-                logger.w("/health returned HTTP ${response.code()}")
-                return@withContext Result.failure(Exception("HTTP ${response.code()}"))
+                val failure = Exception("HTTP ${response.code()}")
+                logger.e("/health returned HTTP ${response.code()}", failure, event = LogEvent.HEALTH_CHECK_FAILED)
+                return@withContext Result.failure(failure)
             }
             val body = response.body()?.data
-                ?: return@withContext Result.failure(Exception("Empty /health body"))
+            if (body == null) {
+                val failure = Exception("Empty /health body")
+                logger.e("/health returned an empty body", failure, event = LogEvent.HEALTH_CHECK_FAILED)
+                return@withContext Result.failure(failure)
+            }
             if (!body.isHealthy) {
-                logger.w("/health reported is_healthy=false")
-                return@withContext Result.failure(Exception("is_healthy=false"))
+                val failure = Exception("is_healthy=false")
+                logger.e("/health reported is_healthy=false", failure, event = LogEvent.HEALTH_CHECK_FAILED)
+                return@withContext Result.failure(failure)
             }
             logger.i("/health healthy at ${body.checkedAt}")
             Result.success(body)
