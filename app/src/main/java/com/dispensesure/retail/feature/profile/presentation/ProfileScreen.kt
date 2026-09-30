@@ -110,7 +110,6 @@ fun ProfileScreen(
     // Determine navigation type
     val cameFromDashboard =
         fromRoute?.contains(Screen.Dashboard.route, ignoreCase = true) == true
-    val context = LocalContext.current
     // First-login flow (came from the dashboard prompt): whether the profile is
     // saved or skipped, offer face enrollment next. Profile is popped so the
     // intro sits directly above the dashboard.
@@ -211,10 +210,9 @@ fun ProfileScreen(
                 }
 
                 is ProfileUpdateUiState.Success -> {
-                    showToast(
-                        message = stringResource(R.string.profile_updated_successfully)
-                    )
+                    val profileUpdatedToastText = stringResource(R.string.profile_updated_successfully)
                     LaunchedEffect(updateUiState) {
+                        showToast(profileUpdatedToastText)
                         if (cameFromDashboard) {
                             navigateToFaceIntro()
                         } else {

@@ -62,7 +62,6 @@ import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -179,7 +178,7 @@ fun DispenseFlowScreen(
             !cameraPermissionState.granted &&
             !cameraPermissionState.showingSettingsDialog
         ) {
-            showToast("Camera permission is required for this action")
+            showToast(context, R.string.camera_permission_required)
             navController.navigate(Screen.Dashboard.route) {
                 popUpTo(0)
                 launchSingleTop = true
@@ -368,13 +367,19 @@ fun DispenseFlowScreen(
     }
 
     // === Pill-VM toasts ===
-    if (pillState.restrictAdd) {
-        showToast(stringResource(id = R.string.max_count_reached))
-        pillVm.resetRestrictAdd()
+    val maxCountReachedToastText = stringResource(id = R.string.max_count_reached)
+    LaunchedEffect(pillState.restrictAdd) {
+        if (pillState.restrictAdd) {
+            showToast(maxCountReachedToastText)
+            pillVm.resetRestrictAdd()
+        }
     }
-    if (pillState.showNoTransaction) {
-        showToast(stringResource(id = R.string.no_transaction_found))
-        pillVm.resetNoTransaction()
+    val noTransactionFoundToastText = stringResource(id = R.string.no_transaction_found)
+    LaunchedEffect(pillState.showNoTransaction) {
+        if (pillState.showNoTransaction) {
+            showToast(noTransactionFoundToastText)
+            pillVm.resetNoTransaction()
+        }
     }
     LaunchedEffect(pillState.showErrorMessage) {
         pillState.showErrorMessage?.let { message ->
