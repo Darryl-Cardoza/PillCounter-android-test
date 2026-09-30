@@ -14,13 +14,13 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityManager
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.annotation.VisibleForTesting
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -28,15 +28,16 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.setViewTreeLifecycleOwner
 import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.ui.theme.ToastBackground
+import com.dispensesure.retail.ui.theme.ToastText
 import java.lang.ref.WeakReference
 
 /**
- * Toast drawn by the app, so Android 12+ can't add the app icon to it.
- * It is its own window added on top of the current activity, so it shows over open dialogs.
+ * Toast drawn by the app, so Android 12+ can't add the app icon to it. It is its own window
+ * on top of the current activity, so it shows over open dialogs, and is removed when that
+ * activity stops, so the window never outlives it.
  */
-// The shown view and its WindowManager are only held while a toast is up;
-// hide() clears them and runs on every activity pause, so nothing outlives the activity.
 @SuppressLint("StaticFieldLeak")
 object AppToast {
 
@@ -49,33 +50,53 @@ object AppToast {
 
     private var resumedActivity: WeakReference<ComponentActivity>? = null
     private var shownView: View? = null
-    private var shownIn: WindowManager? = null
+    private var shownOn: Activity? = null
+    private var pendingToast: PendingToast? = null
+
+    /** Message on screen right now, or null. Read by tests. */
+    @VisibleForTesting
+    internal var shownMessage: String? = null
+        private set
+
+    private class PendingToast(val message: String, val duration: Int)
 
     /** Call once from Application.onCreate so the toast knows which activity is on screen. */
     fun register(app: Application) {
         app.registerActivityLifecycleCallbacks(object : Application.ActivityLifecycleCallbacks {
             override fun onActivityResumed(activity: Activity) {
-                if (activity is ComponentActivity) resumedActivity = WeakReference(activity)
+                if (activity !is ComponentActivity) return
+                resumedActivity = WeakReference(activity)
+                // A toast asked for while nothing was on screen shows now.
+                pendingToast?.let {
+                    pendingToast = null
+                    show(it.message, it.duration)
+                }
             }
 
-            // Pause always comes before destroy, so hiding here means no window is leaked.
             override fun onActivityPaused(activity: Activity) {
                 if (resumedActivity?.get() === activity) resumedActivity = null
-                hide()
+            }
+
+            // Stop always comes before destroy, so hiding here means no window is leaked.
+            override fun onActivityStopped(activity: Activity) {
+                if (shownOn === activity) hide()
             }
 
             override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
             override fun onActivityStarted(activity: Activity) {}
-            override fun onActivityStopped(activity: Activity) {}
             override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
             override fun onActivityDestroyed(activity: Activity) {}
         })
     }
 
-    /** Shows [message], replacing any toast already on screen. Dropped if no activity is resumed. */
+    /** Shows [message], replacing any toast already on screen. Kept for the next resume if no activity is resumed. */
     fun show(message: String, duration: Int) {
         hide()
-        val activity = resumedActivity?.get() ?: return
+        val activity = resumedActivity?.get()
+        if (activity == null) {
+            pendingToast = PendingToast(message, duration)
+            return
+        }
 
         val view = ComposeView(activity).apply {
             // A separate window has no owners of its own; borrow the activity's so Compose can run.
@@ -86,7 +107,8 @@ object AppToast {
         }
         activity.windowManager.addView(view, layoutParams(activity))
         shownView = view
-        shownIn = activity.windowManager
+        shownOn = activity
+        shownMessage = message
 
         announce(activity, message)
         handler.postDelayed(hideRunnable, if (duration == Toast.LENGTH_LONG) LONG_MS else SHORT_MS)
@@ -95,9 +117,10 @@ object AppToast {
     private fun hide() {
         handler.removeCallbacks(hideRunnable)
         val view = shownView ?: return
-        shownIn?.removeView(view)
+        shownOn?.windowManager?.removeView(view)
         shownView = null
-        shownIn = null
+        shownOn = null
+        shownMessage = null
     }
 
     // Added after any open dialog, so it sits on top; taps pass straight through it.
@@ -133,8 +156,8 @@ object AppToast {
 private fun ToastPill(message: String) {
     Text(
         text = message,
-        color = Color.White,
-        fontSize = 14.sp,
+        color = ToastText,
+        fontSize = responsiveSp(8.sp),
         textAlign = TextAlign.Center,
         modifier = Modifier
             .padding(horizontal = 16.dp)

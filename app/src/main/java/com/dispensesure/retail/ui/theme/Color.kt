@@ -11,4 +11,5 @@ val inputBackground = Color(0xFFFFFFFF)
 val statusChipBackgroundOnPrimary = Color(0xFFFFFFFF)
 val statusChipBackgroundOnSecondary = Color(0xFFFFFFFF)
 val ToastBackground = Color(0xE6323232)
+val ToastText = Color(0xFFFFFFFF)
 
