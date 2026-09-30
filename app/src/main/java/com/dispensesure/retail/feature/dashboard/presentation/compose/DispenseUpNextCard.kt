@@ -32,11 +32,12 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.compose.DrugThumbnail
 import com.dispensesure.retail.core.utils.compose.identifierLine
+import com.dispensesure.retail.core.utils.compose.sideBorder
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
+import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.PlayfairDisplay
 
 // Everything on the card is white, drawn over the runtime primary colour.
-private val UpNextContentColor = Color.White
 
 // Playfair's default line box is tall; 0.8x the font size keeps the one-line name compact.
 private const val UpNextDrugNameLineHeightRatio = 0.8f
@@ -55,9 +56,14 @@ internal fun DispenseUpNextCard(
     Card(
         modifier = modifier
             .fillMaxWidth()
+            .sideBorder(
+                color = MaterialTheme.colorScheme.primary,
+                width = 3.dp,
+                cornerRadius = DashboardBaseSizes.UpNextCardCornerRadius,
+            )
             .clickable(onClick = onClick),
         shape = RoundedCornerShape(DashboardBaseSizes.UpNextCardCornerRadius),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primary),
+        colors = CardDefaults.cardColors(containerColor = AppTheme.extendedColors.secondaryBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
         Column(
@@ -83,7 +89,7 @@ internal fun DispenseUpNextCard(
                         fontWeight = FontWeight.SemiBold,
                         fontSize = drugNameSize,
                         lineHeight = drugNameSize * UpNextDrugNameLineHeightRatio,
-                        color = UpNextContentColor,
+                        color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -94,7 +100,7 @@ internal fun DispenseUpNextCard(
                         Text(
                             text = idLine,
                             fontSize = detailSize,
-                            color = UpNextContentColor,
+                            color = MaterialTheme.colorScheme.primary,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -125,7 +131,7 @@ private fun UpNextDate(date: String, fontSize: TextUnit, modifier: Modifier = Mo
     Text(
         text = date,
         fontSize = fontSize,
-        color = UpNextContentColor,
+        color = AppTheme.extendedColors.textColor,
         maxLines = 1,
         modifier = modifier,
     )
@@ -137,7 +143,7 @@ private fun UpNextCount(count: Int) {
         text = count.toString(),
         fontSize = responsiveSp(DashboardBaseSizes.UpNextCountText),
         fontWeight = FontWeight.SemiBold,
-        color = UpNextContentColor,
+        color = MaterialTheme.colorScheme.secondary,
         maxLines = 1,
     )
 }
@@ -157,7 +163,7 @@ private fun UpNextHeader(isHighPriority: Boolean) {
             Icon(
                 painter = painterResource(R.drawable.priorityhigh),
                 contentDescription = null,
-                tint = UpNextContentColor,
+                tint = AppTheme.extendedColors.textColor,
                 modifier = Modifier.size(responsiveDp(DashboardBaseSizes.UpNextHeaderIconSize)),
             )
             Spacer(modifier = Modifier.width(responsiveDp(DashboardBaseSizes.UpNextHeaderIconToLabelGap)))
@@ -165,7 +171,7 @@ private fun UpNextHeader(isHighPriority: Boolean) {
                 text = stringResource(R.string.kpi_high_priority).uppercase(),
                 fontSize = labelSize,
                 fontWeight = FontWeight.SemiBold,
-                color = UpNextContentColor,
+                color = AppTheme.extendedColors.textColor,
                 maxLines = 1,
             )
         }
@@ -174,7 +180,7 @@ private fun UpNextHeader(isHighPriority: Boolean) {
             text = stringResource(R.string.up_next),
             fontSize = labelSize,
             fontWeight = FontWeight.SemiBold,
-            color = UpNextContentColor,
+            color = AppTheme.extendedColors.textColor,
             maxLines = 1,
         )
     }

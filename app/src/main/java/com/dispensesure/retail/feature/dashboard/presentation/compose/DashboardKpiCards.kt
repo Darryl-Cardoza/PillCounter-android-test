@@ -28,13 +28,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.clipRect
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.disabled
@@ -42,11 +35,11 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
+import com.dispensesure.retail.core.utils.compose.sideBorder
 import com.dispensesure.retail.feature.dashboard.presentation.model.KpiCardItem
 import com.dispensesure.retail.feature.dashboard.presentation.model.KpiSectionState
 import com.dispensesure.retail.feature.dashboard.presentation.model.toCardItems
@@ -198,26 +191,6 @@ private fun SelectableKpiCard(
             contentAlignment = Alignment.Center,
         ) {
             content()
-        }
-    }
-}
-
-// Primary stroke on the left and right edges, curving into the four corners.
-// Drawn over the card; the middle of the top and bottom edges stays open.
-private fun Modifier.sideBorder(color: Color, width: Dp, cornerRadius: Dp): Modifier = drawWithContent {
-    drawContent()
-    val strokeWidth = width.toPx()
-    val inset = strokeWidth / 2
-    val radius = cornerRadius.toPx()
-    listOf(0f, size.width - radius).forEach { stripLeft ->
-        clipRect(left = stripLeft, top = 0f, right = stripLeft + radius, bottom = size.height) {
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(inset, inset),
-                size = Size(size.width - strokeWidth, size.height - strokeWidth),
-                cornerRadius = CornerRadius(radius - inset),
-                style = Stroke(width = strokeWidth),
-            )
         }
     }
 }

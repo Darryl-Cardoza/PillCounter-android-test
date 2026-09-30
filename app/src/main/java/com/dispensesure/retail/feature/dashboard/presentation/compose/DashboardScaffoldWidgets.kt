@@ -320,7 +320,7 @@ private fun ScaffoldTab(
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         Box(
             modifier = Modifier
                 .height(2.dp)
