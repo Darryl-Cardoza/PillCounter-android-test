@@ -42,7 +42,7 @@ class UserDetailRepository @Inject constructor(
     override suspend fun getUserDetail(token: String): Result<ApiResponse<UserDetail>> =
         withContext(ioDispatcher) {
             try {
-                logger.i("Fetching user detail with token: ${token.take(10)}...")
+                logger.i("Fetching user detail")
                 // Fetch the latest FCM token asynchronously
 //                val fcmToken =
 //                    com.google.firebase.messaging.FirebaseMessaging.getInstance().token.await()

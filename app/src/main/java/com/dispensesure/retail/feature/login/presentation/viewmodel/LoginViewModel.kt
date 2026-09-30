@@ -80,24 +80,23 @@ class LoginViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            logger.i("Login attempt for user: $email")
+            logger.i("Login attempt")
             _uiState.value = LoginUiState.Loading
 
             repository.login(email)
                 .onSuccess {
                     LoggerConfig.newSession()
-                    logger.i("Login successful for user: $email.")
+                    logger.i("Login successful.")
                     _uiState.value = LoginUiState.Success
                     try {
                         serviceManager.startService()
                     } catch (e: CancellationException) {
                         throw e
                     } catch (e: Exception) {
-                        logger.e("Failed to start HL7 service after login for user: $email", e, event = LogEvent.HL7_CONNECT_FAILED)
+                        logger.e("Failed to start HL7 service after login", e, event = LogEvent.HL7_CONNECT_FAILED)
                     }
                 }
                 .onFailure { exception ->
-                    logger.e("Login failed for user: $email", exception, event = LogEvent.LOGIN_FAILED)
                     _uiState.value = LoginUiState.Error(getFriendlyErrorMessage(exception))
                 }
         }
@@ -118,6 +117,9 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             _logoutUiState.value = LogoutUiState.Loading
 
+            // Best effort (5s cap): queued logs go out under this user's token before it is cleared;
+            // anything that doesn't make it stays in the file and ships after the next login.
+            AppLogger.flushBeforeLogout()
             repository.logout(refreshToken)
                 .onSuccess {
                     LoggerConfig.newSession()
@@ -132,7 +134,6 @@ class LoginViewModel @Inject constructor(
                     }
                 }
                 .onFailure { exception ->
-                    logger.e("Logout failed", exception, event = LogEvent.LOGOUT_FAILED)
                     _logoutUiState.value = LogoutUiState.Error(getFriendlyErrorMessage(exception))
                 }
         }

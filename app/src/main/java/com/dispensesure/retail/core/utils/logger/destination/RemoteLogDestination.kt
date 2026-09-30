@@ -24,6 +24,7 @@ import com.dispensesure.retail.core.utils.logger.destination.remote.IRemoteLogAp
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -31,6 +32,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -198,6 +200,8 @@ class RemoteLogDestination internal constructor(
                 code in 400..499 && code != 403 && code != 408 && code != 429 -> SendResult.DROP
                 else -> SendResult.RETRY_COUNTED
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             SendResult.RETRY_FREE
         }
@@ -245,57 +249,85 @@ class RemoteLogDestination internal constructor(
         launchTracked { persistNow(request) }
     }
 
-    /** Queue lines are `<attempts>	<json>`; an un-prefixed line (older format) means 0 attempts. */
+    /** Queue lines are `<attempts>\t<json>`; an un-prefixed line (older format) means 0 attempts. */
     private fun persistNow(request: RemoteLogRequest, attempts: Int = 0) {
         try {
             val json = requestAdapter.toJson(request)
             synchronized(pendingLock) {
                 pendingLogFile.parentFile?.mkdirs()
-                pendingLogFile.appendText("$attempts	$json" + System.lineSeparator())
+                pendingLogFile.appendText("$attempts\t$json" + System.lineSeparator())
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to queue log entry for later delivery", e)
         }
     }
 
-    // ponytail: re-queues on failure with no retry cap/backoff — fine for low-volume ERROR-only
-    // traffic; add a max-attempts/backoff if queued logs start piling up in practice.
     /** Ships anything queued while logged out/offline. Also called right after login succeeds. */
     fun flushPending() {
-        launchTracked {
-            if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) return@launchTracked
-            val queued = synchronized(pendingLock) {
-                if (!pendingLogFile.exists()) return@launchTracked
-                pendingLogFile.readLines().also { pendingLogFile.writeText("") }
+        launchTracked { flushPendingNow() }
+    }
+
+    /**
+     * Best-effort flush before logout clears the token, so queued entries go out under the
+     * logging-out user's own credentials. On timeout or failure the entries simply stay queued
+     * in the file (see [flushPendingNow]) and ship after the next login.
+     */
+    suspend fun flushBeforeLogout(timeoutMs: Long = LOGOUT_FLUSH_TIMEOUT_MS) {
+        withTimeoutOrNull(timeoutMs) { flushPendingNow() }
+    }
+
+    /**
+     * Reads and empties the queue, sends each line once, and writes back whatever is left.
+     * Cancellation-safe: in `finally` the unsent remainder (including a line interrupted
+     * mid-send) is always re-appended, so a timeout can't lose entries.
+     */
+    private suspend fun flushPendingNow() {
+        if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) return
+        val queued = synchronized(pendingLock) {
+            if (!pendingLogFile.exists()) return
+            pendingLogFile.readLines().also { pendingLogFile.writeText("") }
+        }
+        val keep = mutableListOf<String>()
+        var index = 0
+        try {
+            while (index < queued.size) {
+                processQueuedLine(queued[index])?.let { keep += it }
+                index++
             }
-            val stillPending = queued.mapNotNull { line ->
-                if (line.isBlank()) return@mapNotNull null
-                val (attempts, json) = parseQueued(line)
-                try {
-                    val request = requestAdapter.fromJson(json) ?: return@mapNotNull null
-                    when (trySend(request)) {
-                        SendResult.OK, SendResult.DROP -> null
-                        SendResult.RETRY_FREE -> "$attempts	$json"
-                        SendResult.RETRY_COUNTED ->
-                            if (attempts + 1 >= MAX_QUEUE_ATTEMPTS) {
-                                Log.w(TAG, "Queued log entry rejected $MAX_QUEUE_ATTEMPTS times — dropped")
-                                null
-                            } else "${attempts + 1}	$json"
-                    }
-                } catch (e: Exception) {
-                    line // unparseable or unexpected: keep for the next flush
-                }
-            }
-            if (stillPending.isNotEmpty()) {
+        } finally {
+            keep += queued.drop(index)
+            if (keep.isNotEmpty()) {
                 synchronized(pendingLock) {
-                    pendingLogFile.appendText(stillPending.joinToString(separator = "") { it + System.lineSeparator() })
+                    pendingLogFile.appendText(keep.joinToString(separator = "") { it + System.lineSeparator() })
                 }
             }
         }
     }
 
+    /** Sends one queued line; returns the line to keep (with updated attempts) or null when done with it. */
+    private suspend fun processQueuedLine(line: String): String? {
+        if (line.isBlank()) return null
+        val (attempts, json) = parseQueued(line)
+        return try {
+            val request = requestAdapter.fromJson(json) ?: return null
+            when (trySend(request)) {
+                SendResult.OK, SendResult.DROP -> null
+                SendResult.RETRY_FREE -> "$attempts\t$json"
+                SendResult.RETRY_COUNTED ->
+                    if (attempts + 1 >= MAX_QUEUE_ATTEMPTS) {
+                        Log.w(TAG, "Queued log entry rejected $MAX_QUEUE_ATTEMPTS times — dropped")
+                        null
+                    } else "${attempts + 1}\t$json"
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            line // unparseable or unexpected: keep for the next flush
+        }
+    }
+
     private fun parseQueued(line: String): Pair<Int, String> {
-        val tab = line.indexOf('	')
+        val tab = line.indexOf('\t')
         val attempts = if (tab > 0) line.substring(0, tab).toIntOrNull() else null
         return if (attempts != null) attempts to line.substring(tab + 1) else 0 to line
     }
@@ -399,6 +431,7 @@ class RemoteLogDestination internal constructor(
         private const val PLATFORM = "android"
         private const val MAX_ATTEMPTS = 3
         private const val MAX_QUEUE_ATTEMPTS = 5
+        private const val LOGOUT_FLUSH_TIMEOUT_MS = 5_000L
         private const val REFRESH_COOLDOWN_MS = 60_000L
         private const val RETRY_DELAY_MS = 2_000L
         private const val PENDING_LOG_FILE_NAME = "dispensesure_logs.txt"

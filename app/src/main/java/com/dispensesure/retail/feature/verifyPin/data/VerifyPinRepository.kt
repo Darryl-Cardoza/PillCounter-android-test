@@ -62,7 +62,7 @@ class VerifyPinRepository @Inject constructor(
 
                 Result.success(response)
             } catch (e: Exception) {
-                logger.e("OTP verification failed for user: $email", e, event = LogEvent.OTP_VERIFICATION_FAILED)
+                logger.e("OTP verification failed", e, event = LogEvent.OTP_VERIFICATION_FAILED)
                 Result.failure(e)
             }
         }

@@ -163,6 +163,11 @@ class AppLogger(private val tag: String) {
             (destination as? RemoteLogDestination)?.tokenAuthenticator = authenticator
         }
 
+        /** Call before logout clears the tokens: tries to ship queued logs under the current user's token. */
+        suspend fun flushBeforeLogout() {
+            (destination as? RemoteLogDestination)?.flushBeforeLogout()
+        }
+
         /** Call after login stores the access token, so logs queued while logged out get shipped. */
         fun onUserLoggedIn() {
             (destination as? RemoteLogDestination)?.flushPending()

@@ -39,13 +39,13 @@ class LoginRepository @Inject constructor(
     override suspend fun login(username: String): Result<LoginResponse> =
         withContext(ioDispatcher) {
             try {
-                logger.i("Starting login for user: $username")
+                logger.i("Starting login")
                 val request = LoginRequest(email = username)
                 val response = loginApi.login(request)
-                logger.i("Login successful for user: $username")
+                logger.i("Login successful")
                 Result.success(response)
             } catch (e: Exception) {
-                logger.e("Login failed for user: $username", e, event = LogEvent.LOGIN_FAILED)
+                logger.e("Login failed", e, event = LogEvent.LOGIN_FAILED)
                 Result.failure(e)
             }
         }

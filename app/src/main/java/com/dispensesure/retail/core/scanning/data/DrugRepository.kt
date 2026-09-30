@@ -55,7 +55,7 @@ class DrugRepository @Inject constructor(
      * @return A [DrugInfo] object if the request is successful, otherwise `null`.
      */
     override suspend fun getDrugInfoByNdc(getNdcRequestModel: GetNdcRequestModel): DrugInfo? {
-        logger.i("Fetching drug info for NDC: '$getNdcRequestModel'")
+        logger.i("Fetching drug info")
 
         return try {
             val token = preferenceHelper.getAccessToken()
@@ -76,7 +76,7 @@ class DrugRepository @Inject constructor(
                         result.is_ndc_same == false &&
                         result.is_ndc_equivalent == false)
             ) {
-                logger.w("No result found in API response for NDC: '$getNdcRequestModel'")
+                logger.w("No result found in API response for drug lookup")
                 null
             } else {
                 logger.i("Returning mapped DrugInfo Result -> $response")

@@ -319,4 +319,38 @@ class RemoteLogDestinationTest {
 
         assertTrue(pendingFile.readText().contains("auth-marker"))
     }
+
+    @Test
+    fun `flushBeforeLogout ships queued entries under the current token`() {
+        online(false)
+        val destination = destination()
+        destination.write(entry(message = "pre-logout-marker"))
+        destination.awaitIdleForTest()
+
+        online(true)
+        kotlinx.coroutines.runBlocking { destination.flushBeforeLogout(5_000L) }
+
+        coVerify(exactly = 1) { api.sendLog(match { it.message.contains("pre-logout-marker") }) }
+        assertFalse(pendingFile.readText().contains("pre-logout-marker"))
+    }
+
+    @Test
+    fun `flushBeforeLogout timing out keeps every queued entry in the file`() {
+        online(false)
+        val destination = destination()
+        destination.write(entry(message = "slow-1"))
+        destination.write(entry(message = "slow-2"))
+        destination.awaitIdleForTest()
+
+        online(true)
+        coEvery { api.sendLog(any()) } coAnswers {
+            kotlinx.coroutines.delay(10_000L)
+            Response.success("".toResponseBody(null))
+        }
+        kotlinx.coroutines.runBlocking { destination.flushBeforeLogout(100L) }
+
+        val remaining = pendingFile.readText()
+        assertTrue(remaining.contains("slow-1"))
+        assertTrue(remaining.contains("slow-2"))
+    }
 }
