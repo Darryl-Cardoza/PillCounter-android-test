@@ -631,7 +631,11 @@ class InventoryScanViewModel @Inject constructor(
             val stockTxn = stockTxnDao.findByDrugInBatch(batchId, drugId)
             val existing = stockTxn?.let { bottleInfoDao.findSealedLine(it.txnId, lotNo, expNo) }
             logger.d("INV_SCAN persistActive existing-line lookup → existing=${existing?.bottleId} prevBottles=${existing?.bottleQty}")
-            if (existing != null) {
+            if (existing != null && active.bottles <= 0 && (existing.looseQty ?: 0) == 0) {
+                // Card dropped to 0 bottles: an empty line would never be found again, so remove it.
+                bottleInfoDao.delete(existing.bottleId)
+                logger.d("INV_SCAN persistActive DELETED empty bottleId=${existing.bottleId}")
+            } else if (existing != null) {
                 bottleInfoDao.update(
                     existing.copy(
                         bottleQty = active.bottles,

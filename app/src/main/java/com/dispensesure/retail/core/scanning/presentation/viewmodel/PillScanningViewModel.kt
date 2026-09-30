@@ -1678,8 +1678,11 @@ class PillScanningViewModel @Inject constructor(
                 // DB observer (observeTxnDetailsForTxn) drives uiState because
                 // stagingActive stays false. looseQty for REGULAR is incremented
                 // per-ADD here to match the per-row insert.
-                val newDetailsId = pillCountTxnDetailsDao.insert(detail)
-                linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+                // One transaction so a View All delete can't overwrite the bottle list mid-link.
+                appDatabase.withTransaction {
+                    val newDetailsId = pillCountTxnDetailsDao.insert(detail)
+                    linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+                }
 
                 if (!workingBitmap.isRecycled) workingBitmap.recycle()
 
@@ -1901,8 +1904,11 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             // Files first: once the row is gone its paths are unrecoverable.
             deleteFiles(pillCountTxnDetailsDao.getImagePathsForDetail(event.txnDetailId))
-            pillCountTxnDetailsDao.hardDelete(event.txnDetailId)
-            unlinkDetailsFromBottles(preferenceHelper.getTxnId(), setOf(event.txnDetailId))
+            // One transaction so an Add can't overwrite the bottle list mid-unlink.
+            appDatabase.withTransaction {
+                pillCountTxnDetailsDao.hardDelete(event.txnDetailId)
+                unlinkDetailsFromBottles(preferenceHelper.getTxnId(), setOf(event.txnDetailId))
+            }
             logger.i("Transaction detail deleted. Id=${event.txnDetailId}")
         }
     }
@@ -1924,9 +1930,12 @@ class PillScanningViewModel @Inject constructor(
             val txnId = preferenceHelper.getTxnId()
             // Files first: once the rows are gone their paths are unrecoverable.
             deleteFiles(pillCountTxnDetailsDao.getImagePathsForStep(txnId, event.stepType))
-            val deletedIds = pillCountTxnDetailsDao.getIdsForStep(txnId, event.stepType).toSet()
-            pillCountTxnDetailsDao.hardDeleteAllForStep(txnId, event.stepType)
-            unlinkDetailsFromBottles(txnId, deletedIds)
+            // One transaction so an Add can't overwrite the bottle list mid-unlink.
+            appDatabase.withTransaction {
+                val deletedIds = pillCountTxnDetailsDao.getIdsForStep(txnId, event.stepType).toSet()
+                pillCountTxnDetailsDao.hardDeleteAllForStep(txnId, event.stepType)
+                unlinkDetailsFromBottles(txnId, deletedIds)
+            }
             logger.i("All transaction details deleted for txnId=$txnId")
         }
     }

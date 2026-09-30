@@ -24,6 +24,8 @@ import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
+import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
+import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
@@ -93,8 +95,18 @@ class PillScanningViewModelTest {
 
     private lateinit var viewModel: PillScanningViewModel
 
+    // True while a withTransaction block runs, so tests can check a write happened inside one.
+    @Volatile private var inTransaction = false
+
     @Before
     fun setup() {
+        // Run withTransaction blocks inline; a relaxed AppDatabase never runs them.
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        val txBlock = slot<suspend () -> Any?>()
+        coEvery { appDatabase.withTransaction(capture(txBlock)) } coAnswers {
+            inTransaction = true
+            try { txBlock.captured.invoke() } finally { inTransaction = false }
+        }
         every { application.applicationContext } returns application
         every { application.getString(any<Int>()) } returns "test error"
         every { application.getString(any<Int>(), any()) } returns "test error"
@@ -699,6 +711,28 @@ class PillScanningViewModelTest {
 
         coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
         coVerify { drugMasterDao.getDrugById(2L) }
+    }
+
+    @Test
+    fun `Add inserts the count and links it to the bottle in one transaction`() = runTest {
+        stubSavePath()
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDao.getById(9L) } returns PillCountTxnEntity(
+            txnId = 9L, drugId = 1L, isDispense = true, status = CountStatus.PARTIAL,
+            bottleInfoListJson = BottleInfoJson.encode(listOf(BottleInfo(txnId = 9L, txnDetailsIds = listOf(5L)))),
+        )
+        var insertInTx = false
+        var linkInTx = false
+        coEvery { pillCountTxnDetailsDao.insert(any()) } coAnswers { insertInTx = inTransaction; 6L }
+        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers { linkInTx = inTransaction }
+        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
+
+        tapAdd()
+
+        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) }
+        assertTrue(insertInTx)
+        assertTrue(linkInTx)
+        coVerify(exactly = 1) { appDatabase.withTransaction<Any?>(any()) }
     }
 
     // ─────────────────────────── flushStagedDetails (deferred stock commit) ───────────────────────────

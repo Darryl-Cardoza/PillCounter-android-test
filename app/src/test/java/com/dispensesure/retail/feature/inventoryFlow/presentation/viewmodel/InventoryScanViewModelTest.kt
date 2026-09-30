@@ -746,6 +746,55 @@ class InventoryScanViewModelTest {
         job.cancel()
     }
 
+    // Scan inserts a 1-bottle sealed line; the NDC has 40 open pills, so decrement may reach 0.
+    private fun stubSealedLineWithOpenPills(sealedLine: BottleInfoEntity) {
+        stubGs1Decode()
+        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns stockTxn()
+        coEvery { bottleInfoDao.getByBatchId(7L) } returns listOf(
+            BatchTxnDto(2, 10L, "Aspirin", "00093-0058", null, null, 0, 40, 100)
+        )
+        // Scan lookup and scan persist find nothing; the decrement persist finds the new line.
+        coEvery { bottleInfoDao.findSealedLine(any(), any(), any()) } returnsMany listOf(null, null, sealedLine)
+    }
+
+    @Test
+    fun `decrement to 0 bottles deletes the sealed line when it has no loose pills`() = runTest(testDispatcher) {
+        stubSealedLineWithOpenPills(bottleLine(bottleId = 1L, bottleQty = 1))
+
+        val vm = createViewModel(batchId = 7L)
+        val job = launch { vm.uiState.collect {} }
+        advanceUntilIdle()
+
+        vm.onBarcodeDetected("raw")
+        advanceUntilIdle()
+        vm.decrement() // 1 -> 0 (open pills allow 0)
+        advanceUntilIdle()
+
+        coVerify { bottleInfoDao.delete(1L) }
+        coVerify(exactly = 0) { bottleInfoDao.update(any()) }
+        job.cancel()
+    }
+
+    @Test
+    fun `decrement to 0 bottles keeps a line that still has loose pills`() = runTest(testDispatcher) {
+        stubSealedLineWithOpenPills(bottleLine(bottleId = 1L, bottleQty = 1).copy(looseQty = 10))
+
+        val vm = createViewModel(batchId = 7L)
+        val job = launch { vm.uiState.collect {} }
+        advanceUntilIdle()
+
+        vm.onBarcodeDetected("raw")
+        advanceUntilIdle()
+        vm.decrement()
+        advanceUntilIdle()
+
+        coVerify { bottleInfoDao.update(match { it.bottleId == 1L && it.bottleQty == 0 }) }
+        coVerify(exactly = 0) { bottleInfoDao.delete(any()) }
+        job.cancel()
+    }
+
     // ─────────────────────────  onRecentRowTapped  ─────────────────────────
 
     @Test
