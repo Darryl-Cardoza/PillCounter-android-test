@@ -44,6 +44,8 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -88,6 +90,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.toColorInt
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
@@ -579,12 +582,14 @@ object UserInterfaceUtils {
         onCancel: () -> Unit,
         onOk: (Int) -> Unit,
         distanceBetweenOptions: Dp = 8.dp,
+        confirmText: String = stringResource(R.string.ok),
     ) {
         val dimens = AppTheme.dimens
         var currentSelection by remember { mutableStateOf(selectedIndex) }
 
         AlertDialog(
-            onDismissRequest = {},
+            onDismissRequest = onCancel,
+            properties = DialogProperties(dismissOnClickOutside = false),
             modifier = Modifier.widthIn(max = 400.dp),
             shape = RoundedCornerShape(12.dp),
             containerColor = AppTheme.extendedColors.primaryBackground,
@@ -636,11 +641,96 @@ object UserInterfaceUtils {
                     )
                     Spacer(modifier = Modifier.width(16.dp))
                     ActionButtonPrimary(
-                        text = stringResource(R.string.ok).uppercase(),
+                        text = confirmText.uppercase(),
                         onClick = { currentSelection?.let { onOk(it) } },
                         // Disabled until the user makes a deliberate selection.
                         // Callers that want a preselected option pass selectedIndex.
                         enabled = currentSelection != null,
+                        fixedWidth = false,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                    )
+                }
+            }
+        )
+    }
+
+    /** Displays a multi-selection dialog with checkboxes and confirm/cancel actions. */
+    @Composable
+    fun CommonMultiSelectDialog(
+        title: String,
+        options: List<String>,
+        selectedIndices: Set<Int>,
+        onCancel: () -> Unit,
+        onConfirm: (Set<Int>) -> Unit,
+        confirmText: String = stringResource(R.string.ok),
+        distanceBetweenOptions: Dp = 8.dp,
+    ) {
+        val dimens = AppTheme.dimens
+        var currentSelection by remember { mutableStateOf(selectedIndices) }
+        val toggle = { index: Int ->
+            currentSelection =
+                if (index in currentSelection) currentSelection - index else currentSelection + index
+        }
+
+        AlertDialog(
+            onDismissRequest = onCancel,
+            properties = DialogProperties(dismissOnClickOutside = false),
+            modifier = Modifier.widthIn(max = 400.dp),
+            shape = RoundedCornerShape(12.dp),
+            containerColor = AppTheme.extendedColors.primaryBackground,
+            text = {
+                Column {
+                    Text(
+                        text = title,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = AppTheme.extendedColors.textColor,
+                        modifier = Modifier.padding(bottom = 16.dp)
+                    )
+                    options.forEachIndexed { index, option ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { toggle(index) }
+                                .padding(vertical = distanceBetweenOptions)
+                        ) {
+                            Checkbox(
+                                checked = index in currentSelection,
+                                onCheckedChange = { toggle(index) },
+                                colors = CheckboxDefaults.colors(
+                                    checkedColor = MaterialTheme.colorScheme.primary,
+                                    uncheckedColor = AppTheme.extendedColors.textColor,
+                                    checkmarkColor = Color.White
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(dimens.small))
+                            Text(
+                                text = option,
+                                fontSize = 16.sp,
+                                color = AppTheme.extendedColors.textColor
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    HollowButton(
+                        text = stringResource(R.string.cancel).uppercase(),
+                        onClick = onCancel,
+                        color = MaterialTheme.colorScheme.primary,
+                        fixedWidth = false,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    // Always enabled: an empty selection is a valid choice.
+                    ActionButtonPrimary(
+                        text = confirmText.uppercase(),
+                        onClick = { onConfirm(currentSelection) },
                         fixedWidth = false,
                         modifier = Modifier.width(dimens.dialogButtonWidth)
                     )

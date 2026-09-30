@@ -66,7 +66,6 @@ class MainActivityViewModel @Inject constructor(
     private val bottleInfoDao: BottleInfoDao,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val hl7EventHandler: Hl7EventHandler,
-    private val sessionLockController: SessionLockController,
     private val sessionHealthController: SessionHealthController,
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel(), IApplicationSettingsViewModel {
@@ -232,9 +231,6 @@ class MainActivityViewModel @Inject constructor(
 
     private val _faceLockTimeoutMinutes = MutableStateFlow(preferenceHelper.getFaceLockTimeoutMinutes())
     val faceLockTimeoutMinutes: StateFlow<Int> = _faceLockTimeoutMinutes
-
-    /** Whether the Settings "Lock Now" row should be enabled — mirrors [SessionLockController.hasEnabledProfile]. */
-    val hasEnabledFaceProfile: StateFlow<Boolean> = sessionLockController.hasEnabledProfile
 
     init {
         // Load cached/fallback theme instantly
@@ -705,16 +701,10 @@ class MainActivityViewModel @Inject constructor(
         }
     }
 
-    fun toggleSchedule(code: ScheduleCode) {
-        val updated = _selectedSchedules.value.toMutableSet().apply {
-            if (contains(code)) remove(code) else add(code)
-        }
-
-        _selectedSchedules.value = updated
-
-        preferenceHelper.setControlDrugTypes(
-            updated.map { it.name }.toSet()
-        )
+    /** Replaces the controlled-drug schedules that require a double count. */
+    fun updateSchedules(codes: Set<ScheduleCode>) {
+        _selectedSchedules.value = codes
+        preferenceHelper.setControlDrugTypes(codes.map { it.name }.toSet())
     }
 
     private fun loadSchedulesFromPrefs(): Set<ScheduleCode> {
@@ -752,13 +742,6 @@ class MainActivityViewModel @Inject constructor(
         preferenceHelper.saveFaceLockTimeoutMinutes(minutes)
         _faceLockTimeoutMinutes.value = minutes
     }
-
-    /**
-     * Manually triggers the session-lock overlay.
-     *
-     * @return true if the lock engaged, false if there's no enabled face profile to verify against.
-     */
-    fun lockSessionNow(): Boolean = sessionLockController.lockNow()
 
 }
 

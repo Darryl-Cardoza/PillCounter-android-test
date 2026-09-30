@@ -1,33 +1,25 @@
 package com.dispensesure.retail.feature.settings.presentation
 
-import androidx.annotation.StringRes
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,21 +27,28 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.ScheduleCode
-import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.core.utils.common.HistoryRetention
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonMultiSelectDialog
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.constants.LocalDimens
+import com.dispensesure.retail.feature.settings.presentation.compose.SETTINGS_LABEL_BASE_SP
+import com.dispensesure.retail.feature.settings.presentation.compose.SETTINGS_VALUE_BASE_SP
+import com.dispensesure.retail.feature.settings.presentation.compose.SettingsCard
+import com.dispensesure.retail.feature.settings.presentation.compose.SettingsGroupCard
+import com.dispensesure.retail.feature.settings.presentation.compose.SettingsRow
+import com.dispensesure.retail.feature.settings.presentation.compose.SettingsValueText
+import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.navigation.Screen
-import com.dispensesure.retail.ui.theme.AppTheme
+import com.dispensesure.retail.ui.theme.DISABLED_ALPHA
 import com.dispensesure.retail.ui.theme.LocalExtendedColors
 
 @Composable
@@ -75,17 +74,24 @@ fun SettingsScreen(
     val isHazardousDrug by viewModel.isHazardousDrug.collectAsState()
     val isUseStaticPmsConnection by viewModel.isUseStaticPmsConnection.collectAsState()
     val faceLockTimeoutMinutes by viewModel.faceLockTimeoutMinutes.collectAsState()
-    val hasEnabledFaceProfile by viewModel.hasEnabledFaceProfile.collectAsState()
     var showAutoLockDialog by remember { mutableStateOf(false) }
     val autoLockMinuteOptions = listOf(1, 2, 5, 10)
     val dimens = LocalDimens.current
     val context = LocalContext.current
     var showConnectionInfo by remember { mutableStateOf(false) }
+    var showHistoryDialog by remember { mutableStateOf(false) }
+    // History option picked in the dialog, waiting on the delete-old-data confirm.
+    var pendingHistoryDays by remember { mutableStateOf<Int?>(null) }
+    var showDoubleCountDialog by remember { mutableStateOf(false) }
+
+    // Open group card, null when all are closed. Controlled Drug starts open;
+    // tapping the open card closes it, tapping another swaps to it.
+    var openCard by rememberSaveable { mutableStateOf<SettingsCard?>(SettingsCard.CONTROLLED_DRUG) }
+    val onCardClick = { card: SettingsCard -> openCard = if (openCard == card) null else card }
 
     // HL7 disabled from the portal: these settings depend on HL7/PMS, so disable
     // them (dimmed + non-interactive) and surface a toast on tap.
     val hl7Enabled = viewModel.isHl7Enabled()
-    val disabledAlpha = 0.4f
     val onHl7DisabledTap = { showToast(context, R.string.enable_hl7_from_portal_toast) }
 
     Box(
@@ -109,235 +115,143 @@ fun SettingsScreen(
 
                 Text(
                     text = stringResource(R.string.settings_title),
-                    fontSize = 16.sp,
+                    fontSize = responsiveSp(SETTINGS_LABEL_BASE_SP),
                     color = extendedColors.textColor
                 )
             }
 
             Column(
+                verticalArrangement = Arrangement.spacedBy(dimens.settingsCardSpacing),
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(start = 16.dp, end = 16.dp, bottom = 16.dp)
+                    .padding(start = dimens.pagePadding, end = dimens.pagePadding, bottom = dimens.pagePadding)
                     .verticalScroll(rememberScrollState())
             ) {
-                SettingSwitch(
-                    labelRes = R.string.setting_ask_to_add_notes,
-                    checked = isAskToAddNotes,
-                    onCheckedChange = { newValue ->
-                        viewModel.toggleAskToAddNotes(newValue)
-                    },
-                    checkedTrackColor = MaterialTheme.colorScheme.primary
-                )
 
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                Text(
-                    text = stringResource(R.string.setting_face_recognition_users),
-                    fontSize = 16.sp,
-                    color = extendedColors.textColor,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { navController.navigate(Screen.FaceRecognitionUsers.route) }
-                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-                )
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showAutoLockDialog = true }
-                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
+                SettingsGroupCard(
+                    titleRes = R.string.setting_group_controlled_drug,
+                    expanded = openCard == SettingsCard.CONTROLLED_DRUG,
+                    onHeaderClick = { onCardClick(SettingsCard.CONTROLLED_DRUG) }
                 ) {
-                    Text(
-                        text = stringResource(R.string.setting_face_auto_lock_after),
-                        fontSize = 16.sp,
-                        color = extendedColors.textColor
+                    SettingsRow(
+                        labelRes = R.string.require_double_count,
+                        onClick = { showDoubleCountDialog = true },
+                        enabled = hl7Enabled,
+                        onDisabledClick = onHl7DisabledTap,
+                        supporting = {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                ScheduleCode.entries.forEach { code ->
+                                    val codeColor = if (selectedSchedules.contains(code))
+                                        MaterialTheme.colorScheme.secondary
+                                    else
+                                        Color.Gray
+                                    Text(
+                                        text = code.name,
+                                        fontSize = responsiveSp(SETTINGS_VALUE_BASE_SP),
+                                        color = if (hl7Enabled) codeColor
+                                        else codeColor.copy(alpha = DISABLED_ALPHA)
+                                    )
+                                }
+                            }
+                        }
                     )
-                    Text(
-                        text = stringResource(R.string.setting_face_auto_lock_minutes, faceLockTimeoutMinutes),
-                        fontSize = 14.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.padding(top = 4.dp)
+                    SettingsRow(
+                        labelRes = R.string.require_back_count,
+                        checked = isRequireBackCountEnable,
+                        onCheckedChange = { viewModel.toggleRequireBackCountOnOff(it) },
+                        enabled = hl7Enabled,
+                        onDisabledClick = onHl7DisabledTap
                     )
                 }
 
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                Text(
-                    text = stringResource(R.string.setting_face_lock_now),
-                    fontSize = 16.sp,
-                    color = if (hasEnabledFaceProfile) extendedColors.textColor
-                    else extendedColors.textColor.copy(alpha = disabledAlpha),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            if (hasEnabledFaceProfile) viewModel.lockSessionNow()
-                            else showToast(context, R.string.setting_face_lock_now_disabled_toast)
-                        }
-                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-                )
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            if (hl7Enabled) navController.navigate(Screen.RequireDoubleCount.route)
-                            else onHl7DisabledTap()
-                        }
-                        .padding(vertical = 12.dp, horizontal = 16.dp)
+                SettingsGroupCard(
+                    titleRes = R.string.setting_group_face_detection,
+                    expanded = openCard == SettingsCard.FACE_DETECTION,
+                    onHeaderClick = { onCardClick(SettingsCard.FACE_DETECTION) }
                 ) {
-                    Text(
-                        text = stringResource(R.string.require_double_count),
-                        fontSize = 16.sp,
-                        color = if (hl7Enabled) extendedColors.textColor
-                        else extendedColors.textColor.copy(alpha = disabledAlpha)
-                    )
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        modifier = Modifier.padding(top = 10.dp)
-                    ) {
-                        ScheduleCode.entries.forEach { code ->
-                            val codeColor = if (selectedSchedules.contains(code))
-                                MaterialTheme.colorScheme.secondary
-                            else
-                                Color.Gray
-                            Text(
-                                text = code.name,
-                                fontSize = 16.sp,
-                                color = if (hl7Enabled) codeColor else codeColor.copy(alpha = disabledAlpha)
+                    SettingsRow(
+                        labelRes = R.string.setting_face_auto_lock_after,
+                        onClick = { showAutoLockDialog = true },
+                        value = {
+                            SettingsValueText(
+                                stringResource(R.string.setting_face_auto_lock_minutes, faceLockTimeoutMinutes)
                             )
                         }
+                    )
+                    SettingsRow(
+                        labelRes = R.string.setting_face_recognition_users,
+                        onClick = { navController.navigate(Screen.FaceRecognitionUsers.route) }
+                    )
+                }
+
+                SettingsGroupCard(
+                    titleRes = R.string.setting_group_voice_haptic,
+                    expanded = openCard == SettingsCard.VOICE_HAPTIC,
+                    onHeaderClick = { onCardClick(SettingsCard.VOICE_HAPTIC) }
+                ) {
+                    SettingsRow(
+                        labelRes = R.string.voice_feedback,
+                        checked = isSoundOverrideEnable,
+                        onCheckedChange = { viewModel.toggleSoundOverride(it) }
+                    )
+                    SettingsRow(
+                        labelRes = R.string.pill_counting_sound,
+                        checked = isSoundEnabled,
+                        onCheckedChange = { viewModel.toggleSoundOnOff(it) }
+                    )
+                    SettingsRow(
+                        labelRes = R.string.haptic_feedback,
+                        checked = isHapticEnable,
+                        onCheckedChange = { viewModel.toggleHapticOnOff(it) }
+                    )
+                }
+
+                SettingsGroupCard(
+                    titleRes = R.string.setting_group_hazardous,
+                    expanded = openCard == SettingsCard.HAZARDOUS,
+                    onHeaderClick = { onCardClick(SettingsCard.HAZARDOUS) }
+                ) {
+                    SettingsRow(
+                        labelRes = R.string.setting_hazardous_drug,
+                        checked = isHazardousDrug,
+                        onCheckedChange = { viewModel.toggleHazardousDrug(it) },
+                        enabled = hl7Enabled,
+                        onDisabledClick = onHl7DisabledTap
+                    )
+                    SettingsRow(
+                        labelRes = R.string.clear_tray_color_lists,
+                        onClick = { showClearTrayColorListsDialog = true },
+                        enabled = hl7Enabled,
+                        onDisabledClick = onHl7DisabledTap
+                    )
+                }
+
+                SettingsGroupCard(
+                    titleRes = R.string.setting_group_general,
+                    expanded = openCard == SettingsCard.GENERAL,
+                    onHeaderClick = { onCardClick(SettingsCard.GENERAL) }
+                ) {
+                    SettingsRow(
+                        labelRes = R.string.setting_ask_to_add_notes,
+                        checked = isAskToAddNotes,
+                        onCheckedChange = { viewModel.toggleAskToAddNotes(it) }
+                    )
+                    SettingsRow(
+                        labelRes = R.string.setting_save_history_for,
+                        onClick = { showHistoryDialog = true },
+                        value = { SettingsValueText(selectedOption) }
+                    )
+                    SettingsRow(
+                        labelRes = R.string.clear_all_local_data,
+                        onClick = { showCLearAllDataConfirmDialog = true }
+                    )
+                    if (isUseStaticPmsConnection) {
+                        SettingsRow(
+                            labelRes = R.string.setting_pms_connection,
+                            onClick = { showConnectionInfo = true }
+                        )
                     }
                 }
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                SettingSwitch(
-                    labelRes = R.string.require_back_count,
-                    checked = isRequireBackCountEnable,
-                    onCheckedChange = { newValue ->
-                        viewModel.toggleRequireBackCountOnOff(newValue)
-                    },
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    enabled = hl7Enabled,
-                    onDisabledClick = onHl7DisabledTap
-                )
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { navController.navigate(Screen.SaveHistoryFor.route) }
-                        .padding(vertical = 12.dp, horizontal = 16.dp)
-                ) {
-                    Text(
-                        text = stringResource(R.string.setting_save_history_for),
-                        fontSize = 16.sp,
-                        color = extendedColors.textColor
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Text(
-                        text = selectedOption,
-                        fontSize = 16.sp,
-                        color = MaterialTheme.colorScheme.secondary,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                }
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                SettingSwitch(
-                    labelRes = R.string.pill_counting_sound,
-                    checked = isSoundEnabled,
-                    onCheckedChange = { newValue ->
-                        viewModel.toggleSoundOnOff(newValue)
-                    },
-                    checkedTrackColor = MaterialTheme.colorScheme.primary
-                )
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                SettingSwitch(
-                    labelRes = R.string.haptic_feedback,
-                    checked = isHapticEnable,
-                    onCheckedChange = { newValue ->
-                        viewModel.toggleHapticOnOff(newValue)
-                    },
-                    checkedTrackColor = MaterialTheme.colorScheme.primary
-                )
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                SettingSwitch(
-                    labelRes = R.string.voice_feedback,
-                    checked = isSoundOverrideEnable,
-                    onCheckedChange = { newValue ->
-                        viewModel.toggleSoundOverride(newValue)
-                    },
-                    checkedTrackColor = MaterialTheme.colorScheme.primary
-                )
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                SettingSwitch(
-                    labelRes = R.string.setting_hazardous_drug,
-                    checked = isHazardousDrug,
-                    onCheckedChange = { newValue ->
-                        viewModel.toggleHazardousDrug(newValue)
-                    },
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    enabled = hl7Enabled,
-                    onDisabledClick = onHl7DisabledTap
-                )
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                Text(
-                    text = stringResource(R.string.clear_tray_color_lists),
-                    fontSize = 16.sp,
-                    color = if (hl7Enabled) extendedColors.textColor
-                    else extendedColors.textColor.copy(alpha = disabledAlpha),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            if (hl7Enabled) showClearTrayColorListsDialog = true
-                            else onHl7DisabledTap()
-                        }
-                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-                )
-
-                if (isUseStaticPmsConnection) {
-                    HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                    Text(
-                        text = stringResource(R.string.setting_pms_connection),
-                        fontSize = 16.sp,
-                        color = extendedColors.textColor,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showConnectionInfo = true }
-                            .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-                    )
-                }
-
-                HorizontalDivider(color = AppTheme.extendedColors.primaryBackground)
-
-                Text(
-                    text = stringResource(R.string.clear_all_local_data),
-                    fontSize = 16.sp,
-                    color = extendedColors.textColor,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            showCLearAllDataConfirmDialog = true
-                        }
-                        .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-                )
-
             }
         }
 
@@ -373,81 +287,62 @@ fun SettingsScreen(
         }
 
         if (showAutoLockDialog) {
-            AlertDialog(
-                onDismissRequest = { showAutoLockDialog = false },
-                title = { Text(stringResource(R.string.setting_face_auto_lock_after)) },
-                text = {
-                    Column {
-                        autoLockMinuteOptions.forEach { minutes ->
-                            Text(
-                                text = stringResource(R.string.setting_face_auto_lock_minutes, minutes),
-                                fontWeight = if (minutes == faceLockTimeoutMinutes) FontWeight.Bold else FontWeight.Normal,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clickable {
-                                        viewModel.updateFaceLockTimeoutMinutes(minutes)
-                                        showAutoLockDialog = false
-                                    }
-                                    .padding(vertical = 12.dp)
-                            )
-                        }
-                    }
-                },
-                confirmButton = {
-                    TextButton(onClick = { showAutoLockDialog = false }) { Text(stringResource(R.string.cancel)) }
+            CommonSingleSelectDialog(
+                title = stringResource(R.string.setting_face_auto_lock_after),
+                options = autoLockMinuteOptions.map { stringResource(R.string.setting_face_auto_lock_minutes, it) },
+                selectedIndex = autoLockMinuteOptions.indexOf(faceLockTimeoutMinutes).takeIf { it >= 0 },
+                confirmText = stringResource(R.string.save),
+                onCancel = { showAutoLockDialog = false },
+                onOk = { index ->
+                    viewModel.updateFaceLockTimeoutMinutes(autoLockMinuteOptions[index])
+                    showAutoLockDialog = false
                 }
             )
         }
-    }
-}
 
-@Composable
-fun SettingSwitch(
-    @StringRes labelRes: Int,
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit,
-    checkedTrackColor: Color = MaterialTheme.colorScheme.secondary,
-    enabled: Boolean = true,
-    onDisabledClick: (() -> Unit)? = null
-) {
-    val extendedColors = LocalExtendedColors.current
-    val dimens = LocalDimens.current
-
-    val textColor =
-        if (enabled) extendedColors.textColor else extendedColors.textColor.copy(alpha = 0.4f)
-
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            // When disabled, the switch is non-interactive; let the whole row be
-            // tapped so the caller can surface a toast.
-            .then(
-                if (!enabled && onDisabledClick != null)
-                    Modifier.clickable { onDisabledClick() }
-                else Modifier
+        if (showHistoryDialog) {
+            CommonSingleSelectDialog(
+                title = stringResource(R.string.save_history_for_title),
+                options = historyOptions,
+                selectedIndex = historyOptionDays.indexOf(selectedDays).takeIf { it >= 0 },
+                confirmText = stringResource(R.string.save),
+                onCancel = { showHistoryDialog = false },
+                onOk = { index ->
+                    showHistoryDialog = false
+                    val days = historyOptionDays[index]
+                    // Same option: nothing to confirm or purge.
+                    if (days != selectedDays) pendingHistoryDays = days
+                }
             )
-            .padding(vertical = dimens.settingRowVerticalPadding, horizontal = 16.dp)
-    ) {
-        Text(
-            text = stringResource(labelRes),
-            fontSize = 16.sp,
-            color = textColor,
-            modifier = Modifier.weight(1f)
-        )
+        }
 
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = Color.White,
-                checkedTrackColor = checkedTrackColor,
-                uncheckedThumbColor = Color.White,
-                uncheckedBorderColor = Color.Transparent,
-                checkedBorderColor = Color.Transparent
-            ),
-            thumbContent = null
-        )
+        pendingHistoryDays?.let { days ->
+            CommonDialog(
+                message = stringResource(R.string.save_history_note),
+                title = "${stringResource(R.string.save_history_confirmation)} ${historyOptions[historyOptionDays.indexOf(days)]}?",
+                confirmText = stringResource(R.string.yes),
+                cancelText = stringResource(R.string.no),
+                onConfirm = {
+                    viewModel.updateHistoryOption(days)
+                    pendingHistoryDays = null
+                },
+                onCancel = { pendingHistoryDays = null }
+            )
+        }
+
+        if (showDoubleCountDialog) {
+            val schedules = ScheduleCode.entries
+            CommonMultiSelectDialog(
+                title = stringResource(R.string.require_double_count_title),
+                options = schedules.map { it.name },
+                selectedIndices = schedules.indices.filter { schedules[it] in selectedSchedules }.toSet(),
+                confirmText = stringResource(R.string.save),
+                onCancel = { showDoubleCountDialog = false },
+                onConfirm = { indices ->
+                    viewModel.updateSchedules(indices.map { schedules[it] }.toSet())
+                    showDoubleCountDialog = false
+                }
+            )
+        }
     }
 }
