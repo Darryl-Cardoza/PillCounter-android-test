@@ -407,9 +407,9 @@ class RemoteLogDestination internal constructor(
 
     private fun severityOf(level: LogLevel): Int = when (level) {
         LogLevel.ERROR -> 3
-        LogLevel.WARN -> 4
-        LogLevel.INFO -> 6
-        LogLevel.DEBUG, LogLevel.VERBOSE -> 7
+        LogLevel.WARN -> 2
+        LogLevel.INFO -> 1
+        LogLevel.DEBUG, LogLevel.VERBOSE -> 0
     }
 
     private fun stackTraceOf(throwable: Throwable): String {
