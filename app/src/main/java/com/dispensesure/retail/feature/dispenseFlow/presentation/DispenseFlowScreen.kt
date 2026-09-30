@@ -575,7 +575,9 @@ fun DispenseFlowScreen(
         else pillVm.resumePillDetection()
     }
 
-    val barcodeAnalyzer = remember { FrameBarcodeAnalyzer(context.applicationContext) }
+    val barcodeAnalyzer = remember {
+        FrameBarcodeAnalyzer(context.applicationContext, isGrayscale = pillVm::isGrayscaleImage)
+    }
     DisposableEffect(Unit) {
         onDispose { barcodeAnalyzer.pause() }
     }

@@ -109,12 +109,6 @@ class PillCountTxnDetailsDaoTest {
         dao.insert(
             PillCountTxnDetailsEntity(txnId = 2L, pillCount = 4, type = StepState.VIAL.name)
         )
-        // soft-deleted - excluded
-        dao.insert(
-            PillCountTxnDetailsEntity(
-                txnId = 1L, pillCount = 5, type = StepState.VIAL.name, isDeleted = true
-            )
-        )
 
         dao.observeAllForTxn(1L, StepState.VIAL).test {
             val list = awaitItem()
@@ -209,6 +203,16 @@ class PillCountTxnDetailsDaoTest {
         )
     }
 
+    @Test
+    fun `getIdsForStep returns only that step's ids`() = runTest {
+        val id1 = dao.insert(PillCountTxnDetailsEntity(txnId = 1L, type = StepState.TARGET_VERIFICATION.name))
+        val id2 = dao.insert(PillCountTxnDetailsEntity(txnId = 1L, type = StepState.TARGET_VERIFICATION.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, type = StepState.VIAL.name))
+        dao.insert(PillCountTxnDetailsEntity(txnId = 2L, type = StepState.TARGET_VERIFICATION.name))
+
+        assertEquals(setOf(id1, id2), dao.getIdsForStep(1L, StepState.TARGET_VERIFICATION).toSet())
+    }
+
     // ───────────────────────── deleteVialByTxnId ─────────────────────────
 
     @Test
@@ -270,10 +274,9 @@ class PillCountTxnDetailsDaoTest {
     }
 
     @Test
-    fun `getTotalPillCountForTxn sums pillCount across non-deleted rows only`() = runTest {
+    fun `getTotalPillCountForTxn sums pillCount for that txn only`() = runTest {
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 10))
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 20))
-        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 5, isDeleted = true))
         dao.insert(PillCountTxnDetailsEntity(txnId = 2L, pillCount = 1000))
 
         assertEquals(30, dao.getTotalPillCountForTxn(1L))
@@ -295,14 +298,14 @@ class PillCountTxnDetailsDaoTest {
     }
 
     @Test
-    fun `getPillCountForDetailIds sums only the requested ids excluding deleted`() = runTest {
+    fun `getPillCountForDetailIds sums only the requested ids`() = runTest {
         val id1 = dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 10))
         val id2 = dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 20))
-        val id3 = dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 30, isDeleted = true))
+        val id3 = dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 30))
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 999)) // not in list
 
         val total = dao.getPillCountForDetailIds(listOf(id1, id2, id3))
-        assertEquals(30, total) // id3 excluded because isDeleted
+        assertEquals(60, total)
     }
 
     @Test
@@ -314,11 +317,10 @@ class PillCountTxnDetailsDaoTest {
     // ───────────────────────── getAllForTxn ─────────────────────────
 
     @Test
-    fun `getAllForTxn returns non-deleted rows ordered by createdAt descending`() = runTest {
+    fun `getAllForTxn returns the txn's rows ordered by createdAt descending`() = runTest {
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 1, createdAt = 100L))
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 2, createdAt = 300L))
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 3, createdAt = 200L))
-        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 4, isDeleted = true))
         dao.insert(PillCountTxnDetailsEntity(txnId = 2L, pillCount = 5))
 
         val result = dao.getAllForTxn("1")
@@ -341,24 +343,12 @@ class PillCountTxnDetailsDaoTest {
     }
 
     @Test
-    fun `getLatestType returns type of the most recently created non-deleted row`() = runTest {
+    fun `getLatestType returns type of the most recently created row`() = runTest {
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, type = StepState.SCAN.name, createdAt = 100L))
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, type = StepState.VIAL.name, createdAt = 300L))
         dao.insert(PillCountTxnDetailsEntity(txnId = 1L, type = StepState.RX_LABEL.name, createdAt = 200L))
 
         assertEquals(StepState.VIAL, dao.getLatestType(1L))
-    }
-
-    @Test
-    fun `getLatestType ignores soft-deleted rows even if most recent`() = runTest {
-        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, type = StepState.SCAN.name, createdAt = 100L))
-        dao.insert(
-            PillCountTxnDetailsEntity(
-                txnId = 1L, type = StepState.VIAL.name, createdAt = 500L, isDeleted = true
-            )
-        )
-
-        assertEquals(StepState.SCAN, dao.getLatestType(1L))
     }
 
     @Test
@@ -379,18 +369,6 @@ class PillCountTxnDetailsDaoTest {
         assertEquals(23, dao.getPillCountForStep(1L, StepState.TARGET_VERIFICATION.name))
         // The all-steps sum still spans every row — other callers rely on that.
         assertEquals(106, dao.getTotalPillCountForTxn(1L))
-    }
-
-    @Test
-    fun `getPillCountForStep ignores soft-deleted rows`() = runTest {
-        dao.insert(PillCountTxnDetailsEntity(txnId = 1L, pillCount = 20, type = StepState.TARGET_VERIFICATION.name))
-        dao.insert(
-            PillCountTxnDetailsEntity(
-                txnId = 1L, pillCount = 5, type = StepState.TARGET_VERIFICATION.name, isDeleted = true
-            )
-        )
-
-        assertEquals(20, dao.getPillCountForStep(1L, StepState.TARGET_VERIFICATION.name))
     }
 
     @Test

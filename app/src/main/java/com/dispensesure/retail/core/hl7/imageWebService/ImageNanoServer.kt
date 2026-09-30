@@ -257,7 +257,6 @@ class ImageNanoServer(
             }
 
         val details = txnDetailsDao.getAllForTxn(txn.txnId.toString())
-            .filter { !it.isDeleted }
             .sortedBy { it.createdAt }
 
         for (detail: PillCountTxnDetailsEntity in details) {

@@ -118,8 +118,6 @@ class PillScanningViewModel @Inject constructor(
 ) : AndroidViewModel(app) {
 
     private val logger = AppLogger("PillScanningVM")
-    // Add tap-to-saved timing; filter logcat by this tag.
-    private val timingLogger = AppLogger("DEBUG_IN_TIME")
     val context: Context = getApplication<Application>().applicationContext
     private var currentFrameBitmap: Bitmap? = null
     // Frames are swapped on Dispatchers.Default and taken on Main; guards both.
@@ -672,6 +670,15 @@ class PillScanningViewModel @Inject constructor(
             txnDetailsIds = current[lastIndex].txnDetailsIds + newDetailsId
         )
         pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(current))
+    }
+
+    /** Removes deleted detail ids from the txn's bottle list so it holds no dead ids. */
+    private suspend fun unlinkDetailsFromBottles(txnId: Long, deletedIds: Set<Long>) {
+        val txn = pillCountTxnDao.getById(txnId) ?: return
+        val bottles = BottleInfoJson.decode(txn.bottleInfoListJson)
+        if (bottles.none { bottle -> bottle.txnDetailsIds.any { it in deletedIds } }) return
+        val cleaned = bottles.map { it.copy(txnDetailsIds = it.txnDetailsIds - deletedIds) }
+        pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(cleaned))
     }
 
     /**
@@ -1434,6 +1441,7 @@ class PillScanningViewModel @Inject constructor(
                         bitmap,
                         "txn_detail_${System.currentTimeMillis()}.jpg",
                         "transaction_details",
+                        grayscale = isGrayscaleImage(),
                     )
                 } else null
             } catch (e: Exception) {
@@ -1508,7 +1516,6 @@ class PillScanningViewModel @Inject constructor(
         }
         val filteredPills = _uiState.value.filteredPills
         val trays = _trayDetections.value
-        timingLogger.d("Add tapped: frame=${frame.width}x${frame.height} count=$currentCount step=$stepType")
         triggerAddPop(currentCount)
 
         val signature = _uiState.value.detectedPills.joinToString(separator = "|") {
@@ -1552,7 +1559,7 @@ class PillScanningViewModel @Inject constructor(
 
             // Name, image and dispensed NDC follow the substitute when there is one.
             val dispensedDrug = if (isStockCountSession) drug
-                else txn?.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } ?: drug
+                else txn?.takeIf { it.isSubstitute }?.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } ?: drug
             val drugImage = dispensedDrug?.drugImagePath?.takeIf { it.isNotBlank() }
                 ?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
                 ?: drugImagePlaceholder()
@@ -1567,7 +1574,6 @@ class PillScanningViewModel @Inject constructor(
             val photoPills = if (crop != null) {
                 OverlayUtils.pillsInCrop(filteredPills, crop, frameW, frameH)
             } else filteredPills
-            logger.d("Saved photo crop=$crop frame=${frameW}x$frameH")
 
             val info = PhotoInfo(
                 drugName = dispensedDrug?.drugName,
@@ -1613,6 +1619,7 @@ class PillScanningViewModel @Inject constructor(
                         overlayBitmap,
                         "txn_detail_$stamp.jpg",
                         "transaction_details",
+                        grayscale = isGrayscaleImage(),
                     )
                 } else null
             } catch (e: Exception) {
@@ -1629,7 +1636,6 @@ class PillScanningViewModel @Inject constructor(
                             photoBitmap,
                             "txn_detail_${stamp}_raw.jpg",
                             "transaction_details",
-                            alwaysColor = true,
                         )
                     } else null
                 } catch (e: Exception) {
@@ -1679,7 +1685,6 @@ class PillScanningViewModel @Inject constructor(
 
                 logger.i("Transaction detail INSERTED (immediate). Count=$currentCount, File=$filePath")
             }
-            timingLogger.d("Add saved in ${System.currentTimeMillis() - currentTime} ms (count=$currentCount, step=$stepType)")
             refreshLocation()
         }
     }
@@ -1897,6 +1902,7 @@ class PillScanningViewModel @Inject constructor(
             // Files first: once the row is gone its paths are unrecoverable.
             deleteFiles(pillCountTxnDetailsDao.getImagePathsForDetail(event.txnDetailId))
             pillCountTxnDetailsDao.hardDelete(event.txnDetailId)
+            unlinkDetailsFromBottles(preferenceHelper.getTxnId(), setOf(event.txnDetailId))
             logger.i("Transaction detail deleted. Id=${event.txnDetailId}")
         }
     }
@@ -1918,7 +1924,9 @@ class PillScanningViewModel @Inject constructor(
             val txnId = preferenceHelper.getTxnId()
             // Files first: once the rows are gone their paths are unrecoverable.
             deleteFiles(pillCountTxnDetailsDao.getImagePathsForStep(txnId, event.stepType))
+            val deletedIds = pillCountTxnDetailsDao.getIdsForStep(txnId, event.stepType).toSet()
             pillCountTxnDetailsDao.hardDeleteAllForStep(txnId, event.stepType)
+            unlinkDetailsFromBottles(txnId, deletedIds)
             logger.i("All transaction details deleted for txnId=$txnId")
         }
     }
@@ -1926,6 +1934,9 @@ class PillScanningViewModel @Inject constructor(
     // ------------------------------------------------------------------------
     // UI Utility Functions
     // ------------------------------------------------------------------------
+
+    /** True when the backend's colour-image setting is off, so saved photos go grayscale. */
+    fun isGrayscaleImage(): Boolean = !preferenceHelper.getIsColorImageEnabled()
 
     fun resetRestrictAdd() = _uiState.update { it.copy(restrictAdd = false) }
 

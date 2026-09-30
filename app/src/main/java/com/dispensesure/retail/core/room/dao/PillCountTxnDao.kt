@@ -166,7 +166,6 @@ interface PillCountTxnDao {
            ON txn.substitutedDrugId = subDrug.drugId
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
-          AND details.isDeleted = 0
           AND details.type = :type
     WHERE txn.isDeleted = 0
       AND txn.status = :partialStatus
@@ -425,7 +424,7 @@ interface PillCountTxnDao {
     LEFT JOIN drug_master AS subDrug
         ON pct.substitutedDrugId = subDrug.drugId
     LEFT JOIN pill_count_txn_details AS pcd
-        ON pct.txnId = pcd.txnId AND pcd.isDeleted = 0
+        ON pct.txnId = pcd.txnId
     WHERE pct.txnId = :transactionId AND pct.isDeleted = 0
     GROUP BY pct.txnId
     """
@@ -544,7 +543,7 @@ interface PillCountTxnDao {
              THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
-           ON txn.txnId = details.txnId AND details.isDeleted = 0
+           ON txn.txnId = details.txnId
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
     LEFT JOIN drug_master AS subDrug
@@ -592,7 +591,6 @@ interface PillCountTxnDao {
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
-           AND details.isDeleted = 0
            AND (:stepType IS NULL OR details.type = :stepType)
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
@@ -818,7 +816,6 @@ interface PillCountTxnDao {
            ON txn.substitutedDrugId = subDrug.drugId
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
-          AND details.isDeleted = 0
           AND details.type = :type
     WHERE txn.isDeleted = 0
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)

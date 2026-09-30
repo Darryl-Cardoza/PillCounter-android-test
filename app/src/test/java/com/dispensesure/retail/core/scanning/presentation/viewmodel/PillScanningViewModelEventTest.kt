@@ -20,6 +20,8 @@ import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
+import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
+import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
@@ -33,12 +35,14 @@ import io.mockk.coVerify
 import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.unmockkAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -197,6 +201,58 @@ class PillScanningViewModelEventTest {
             pillCountTxnDetailsDao.getImagePathsForStep(any(), eq(StepState.CONTAINER_INITIATE))
             pillCountTxnDetailsDao.hardDeleteAllForStep(any(), eq(StepState.CONTAINER_INITIATE))
         }
+    }
+
+    // ─────────────────────────── Delete: bottle links ───────────────────────────
+
+    private fun txnWithBottleIds(vararg ids: Long) = PillCountTxnEntity(
+        txnId = 9L, isDispense = true, status = CountStatus.PARTIAL,
+        bottleInfoListJson = BottleInfoJson.encode(listOf(BottleInfo(txnId = 9L, txnDetailsIds = ids.toList()))),
+    )
+
+    private fun bottleIdsWritten(json: String) = BottleInfoJson.decode(json).single().txnDetailsIds
+
+    @Test
+    fun `TransactionDetailDeleted removes the id from its bottle`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
+        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L)
+        val json = slot<String>()
+
+        viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
+
+        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, capture(json), any()) }
+        assertEquals(listOf(6L), bottleIdsWritten(json.captured))
+        coVerifyOrder {
+            pillCountTxnDetailsDao.hardDelete(5L)
+            pillCountTxnDao.updateBottleInfoList(9L, any(), any())
+        }
+    }
+
+    @Test
+    fun `AllTransactionDetailsDeleted removes the step's ids from bottles`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForStep(any(), any()) } returns emptyList()
+        coEvery { pillCountTxnDetailsDao.getIdsForStep(9L, StepState.TARGET_VERIFICATION) } returns listOf(5L, 6L)
+        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L, 7L)
+        val json = slot<String>()
+
+        viewModel.onEvent(PillScanningEvent.AllTransactionDetailsDeleted(stepType = StepState.TARGET_VERIFICATION))
+
+        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, capture(json), any()) }
+        assertEquals(listOf(7L), bottleIdsWritten(json.captured))
+    }
+
+    @Test
+    fun `TransactionDetailDeleted leaves bottles alone when the id isn't linked`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
+        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(6L)
+
+        viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
+
+        coVerify(timeout = 3000) { pillCountTxnDao.getById(9L) }
+        coVerify(exactly = 0) { pillCountTxnDao.updateBottleInfoList(any(), any(), any()) }
     }
 
     // ─────────────────────────── NoteSaved ───────────────────────────

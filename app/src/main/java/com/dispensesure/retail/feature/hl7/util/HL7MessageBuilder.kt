@@ -159,13 +159,12 @@ object HL7MessageBuilder {
         val messageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
             ?: txn.txnId.toString()
 
-        val txnDetails = txnDetails.filter { !it.isDeleted }
         // Only the prescribed-count step is the dispensed quantity. The pour-out, recount,
         // vial and remainder steps measure other things, and summing them all reported
         // several times the pills actually dispensed.
         val dispensedDetails = txnDetails.filter { it.type.isDispensedQuantityStep() }
         // Each bottle's true pill count is live-summed here from its own txnDetailsIds against
-        // the (already non-deleted-filtered) detail rows — there is no stored pill count on
+        // the detail rows — there is no stored pill count on
         // BottleInfo itself, so this keeps a bottle's reported count correct even if a detail
         // row was deleted/redone after the bottle was scanned.
         val pillCountByDetailsId = dispensedDetails.associate { it.txnDetailsId to (it.pillCount ?: 0) }

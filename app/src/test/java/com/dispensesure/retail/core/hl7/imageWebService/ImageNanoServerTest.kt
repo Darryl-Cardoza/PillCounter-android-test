@@ -70,7 +70,6 @@ class ImageNanoServerTest {
         imagePath: String? = null,
         rawImagePath: String? = null,
         type: String? = "VIAL",
-        isDeleted: Boolean = false,
         createdAt: Long = System.currentTimeMillis(),
     ) = PillCountTxnDetailsEntity(
         txnDetailsId = txnDetailsId,
@@ -79,7 +78,6 @@ class ImageNanoServerTest {
         imagePath = imagePath,
         rawImagePath = rawImagePath,
         type = type,
-        isDeleted = isDeleted,
         createdAt = createdAt,
     )
 
@@ -244,20 +242,6 @@ class ImageNanoServerTest {
         assertEquals(1, names.size)
         assertTrue(names[0].contains("barcode"))
         assertTrue(names[0].startsWith("1_rx_"))
-    }
-
-    @Test
-    fun `zip skips soft-deleted detail images`() {
-        val kept = newDetail(txnDetailsId = 1, imagePath = writeTempImage("kept.jpg").absolutePath, isDeleted = false)
-        val deleted = newDetail(txnDetailsId = 2, imagePath = writeTempImage("deleted.jpg").absolutePath, isDeleted = true)
-        val txn = newTxn()
-        coEvery { txnDao.getBySequenceNumber("SEQ-1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(kept, deleted)
-
-        val response = serve("/images/getbysequencenumber/SEQ-1")
-
-        assertEquals(NanoHTTPD.Response.Status.OK, response.status)
-        assertEquals(1, zipEntryNames(response).size)
     }
 
     @Test

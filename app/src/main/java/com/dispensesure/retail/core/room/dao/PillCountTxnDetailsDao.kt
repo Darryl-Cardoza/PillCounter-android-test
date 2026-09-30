@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.Flow
  * ---
  * ### Design Notes
  * - Uses [OnConflictStrategy.REPLACE] for inserts to support upserts of line items.
- * - Rows are physically deleted; `isDeleted` filters stay for rows soft-deleted before.
+ * - Rows are physically deleted (callers remove the image files first).
  * - Optimized for live data observation and background synchronization.
  */
 @Dao
@@ -50,9 +50,9 @@ interface PillCountTxnDetailsDao {
     // ──────────────────────────────── Reads ────────────────────────────────
 
     /**
-     * Observes all **non-deleted** detail records associated with a given transaction.
+     * Observes all detail records associated with a given transaction.
      *
-     * - Automatically emits updates whenever records are inserted, updated, or soft-deleted.
+     * - Automatically emits updates whenever records are inserted, updated, or deleted.
      * - Results are ordered by [PillCountTxnDetailsEntity.createdAt] descending
      *   (newest first).
      *
@@ -62,7 +62,7 @@ interface PillCountTxnDetailsDao {
     @Query(
         """
         SELECT * FROM pill_count_txn_details
-        WHERE txnId = :txnId AND type = :type AND isDeleted = 0
+        WHERE txnId = :txnId AND type = :type
         ORDER BY createdAt DESC
         """
     )
@@ -91,6 +91,10 @@ interface PillCountTxnDetailsDao {
         """
     )
     suspend fun getImagePathsForStep(txnId: Long, type: StepState): List<String>
+
+    /** Ids of one step's details, so they can be unlinked from bottles after the delete. */
+    @Query("SELECT txnDetailsId FROM pill_count_txn_details WHERE txnId = :txnId AND type = :type")
+    suspend fun getIdsForStep(txnId: Long, type: StepState): List<Long>
 
     /** Physical delete of one detail (View All delete). */
     @Query("DELETE FROM pill_count_txn_details WHERE txnDetailsId = :id")
@@ -123,7 +127,6 @@ interface PillCountTxnDetailsDao {
     /**
      * Computes the **total pill count** for a given transaction.
      *
-     * - Ignores soft-deleted detail lines.
      * - Returns `0` if no details exist.
      *
      * @param txnId The parent transaction ID.
@@ -133,7 +136,7 @@ interface PillCountTxnDetailsDao {
         """
         SELECT COALESCE(SUM(pillCount), 0)
         FROM pill_count_txn_details
-        WHERE txnId = :txnId AND isDeleted = 0
+        WHERE txnId = :txnId
         """
     )
     suspend fun getTotalPillCountForTxn(txnId: Long): Int
@@ -151,7 +154,7 @@ interface PillCountTxnDetailsDao {
         """
         SELECT COALESCE(SUM(pillCount), 0)
         FROM pill_count_txn_details
-        WHERE txnId = :txnId AND isDeleted = 0 AND type = :type
+        WHERE txnId = :txnId AND type = :type
         """
     )
     suspend fun getPillCountForStep(txnId: Long, type: String): Int
@@ -161,13 +164,13 @@ interface PillCountTxnDetailsDao {
      * always this — never a stored/snapshotted number — so deleting or redoing a count is
      * automatically reflected. See [com.dispensesure.retail.core.scanning.domain.model.BottleInfo.txnDetailsIds].
      *
-     * @return 0 if [txnDetailsIds] is empty or every matching row is deleted.
+     * @return 0 if [txnDetailsIds] is empty or no row matches.
      */
     @Query(
         """
         SELECT COALESCE(SUM(pillCount), 0)
         FROM pill_count_txn_details
-        WHERE txnDetailsId IN (:txnDetailsIds) AND isDeleted = 0
+        WHERE txnDetailsId IN (:txnDetailsIds)
         """
     )
     suspend fun getPillCountForDetailIds(txnDetailsIds: List<Long>): Int
@@ -175,7 +178,7 @@ interface PillCountTxnDetailsDao {
     @Query(
         """
         SELECT * FROM pill_count_txn_details
-        WHERE txnId = :txnId AND isDeleted = 0
+        WHERE txnId = :txnId
         ORDER BY createdAt DESC
         """
     )
@@ -185,7 +188,7 @@ interface PillCountTxnDetailsDao {
         """
     SELECT type
     FROM pill_count_txn_details
-    WHERE txnId = :txnId AND isDeleted = 0
+    WHERE txnId = :txnId
     ORDER BY createdAt DESC
     LIMIT 1
     """

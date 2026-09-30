@@ -71,6 +71,8 @@ class FrameBarcodeAnalyzer(
      * the conservative default to leave headroom for the pill model.
      */
     private val minIntervalMs: Long = DEFAULT_MIN_INTERVAL_MS,
+    /** Read at each barcode-image save, so a settings change applies straight away. */
+    private val isGrayscale: () -> Boolean = { false },
 ) {
     private val logger = AppLogger("FrameBarcodeAnalyzer")
     private val scannerDelegate = lazy {
@@ -375,7 +377,8 @@ class FrameBarcodeAnalyzer(
                                 saveBitmapToFile(
                                     appContext,
                                     bitmapCopy,
-                                    "barcode_${System.currentTimeMillis()}.jpg"
+                                    "barcode_${System.currentTimeMillis()}.jpg",
+                                    grayscale = isGrayscale(),
                                 )
                             } catch (e: Exception) {
                                 logger.w("Could not save barcode image: ${e.message}")

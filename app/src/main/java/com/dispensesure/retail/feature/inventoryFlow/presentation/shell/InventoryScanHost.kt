@@ -105,6 +105,7 @@ fun InventoryScanHost(
             // Inventory is barcode-only (no parallel pill detection), so we can
             // run more decode attempts/sec to cut time-to-detect on a steadied label.
             minIntervalMs = 100L,
+            isGrayscale = cameraVm::isGrayscaleImage,
         )
     }
     DisposableEffect(Unit) { onDispose { analyzer.close() } }

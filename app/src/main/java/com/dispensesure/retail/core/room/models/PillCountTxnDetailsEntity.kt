@@ -18,7 +18,6 @@ import androidx.room.PrimaryKey
  * @property rawImagePath TARGET_VERIFICATION crop with nothing drawn on it, if any.
  * @property type         Optional category/type (e.g., "fixed", "partial").
  * @property isManual     Whether this detail was entered manually (`true`) or automatically (`false`).
- * @property isDeleted    Soft-delete flag.
  * @property createdAt    Creation timestamp (epoch millis).
  * @property updatedAt    Last update timestamp (epoch millis).
  */
@@ -48,7 +47,6 @@ data class PillCountTxnDetailsEntity(
     val type: String? = null,
 
     val isManual: Boolean = false,
-    val isDeleted: Boolean = false,
 
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),

@@ -669,6 +669,38 @@ class PillScanningViewModelTest {
         coVerify(timeout = 3000) { locationProvider.getCurrentLocationAsString() }
     }
 
+    private fun stubTxn(isSubstitute: Boolean) {
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDao.getById(9L) } returns PillCountTxnEntity(
+            txnId = 9L, drugId = 1L, isDispense = true, status = CountStatus.PARTIAL,
+            isSubstitute = isSubstitute, substitutedDrugId = 2L,
+        )
+    }
+
+    @Test
+    fun `Add ignores substitutedDrugId when isSubstitute is false`() = runTest {
+        stubSavePath()
+        stubTxn(isSubstitute = false)
+        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
+
+        tapAdd()
+
+        coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
+        coVerify(exactly = 0) { drugMasterDao.getDrugById(2L) }
+    }
+
+    @Test
+    fun `Add uses the substitute drug when isSubstitute is true`() = runTest {
+        stubSavePath()
+        stubTxn(isSubstitute = true)
+        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
+
+        tapAdd()
+
+        coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
+        coVerify { drugMasterDao.getDrugById(2L) }
+    }
+
     // ─────────────────────────── flushStagedDetails (deferred stock commit) ───────────────────────────
 
     private fun setPrivateField(name: String, value: Any?) {

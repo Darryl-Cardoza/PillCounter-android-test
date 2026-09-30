@@ -17,7 +17,6 @@ class PillCountTxnDetailsEntityTest {
         rawImagePath = "img_raw.png",
         type = "fixed",
         isManual = true,
-        isDeleted = true,
         createdAt = 100L,
         updatedAt = 200L
     )
@@ -32,7 +31,6 @@ class PillCountTxnDetailsEntityTest {
         assertNull(e.rawImagePath)
         assertNull(e.type)
         assertFalse(e.isManual)
-        assertFalse(e.isDeleted)
         assertTrue(e.createdAt > 0L)
         assertTrue(e.updatedAt > 0L)
     }
@@ -47,7 +45,6 @@ class PillCountTxnDetailsEntityTest {
         assertEquals("img_raw.png", e.rawImagePath)
         assertEquals("fixed", e.type)
         assertTrue(e.isManual)
-        assertTrue(e.isDeleted)
         assertEquals(100L, e.createdAt)
         assertEquals(200L, e.updatedAt)
     }
@@ -79,8 +76,7 @@ class PillCountTxnDetailsEntityTest {
         assertEquals("img_raw.png", e.component5())
         assertEquals("fixed", e.component6())
         assertEquals(true, e.component7())
-        assertEquals(true, e.component8())
-        assertEquals(100L, e.component9())
-        assertEquals(200L, e.component10())
+        assertEquals(100L, e.component8())
+        assertEquals(200L, e.component9())
     }
 }

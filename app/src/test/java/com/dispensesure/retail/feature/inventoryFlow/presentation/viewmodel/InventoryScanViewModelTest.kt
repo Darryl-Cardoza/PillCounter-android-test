@@ -593,7 +593,7 @@ class InventoryScanViewModelTest {
         coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns stockTxn()
         coEvery {
-            bottleInfoDao.findLine(any(), any(), any())
+            bottleInfoDao.findSealedLine(any(), any(), any())
         } returns bottleLine(bottleQty = 4)
 
         val vm = createViewModel(batchId = 7L)
@@ -630,7 +630,7 @@ class InventoryScanViewModelTest {
         // No bottle line on scan (insert), then an existing line on onAdd flush (update).
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returnsMany listOf(null, stockTxn())
         coEvery {
-            bottleInfoDao.findLine(any(), any(), any())
+            bottleInfoDao.findSealedLine(any(), any(), any())
         } returnsMany listOf(null, bottleLine())
 
         val vm = createViewModel(batchId = 7L)
