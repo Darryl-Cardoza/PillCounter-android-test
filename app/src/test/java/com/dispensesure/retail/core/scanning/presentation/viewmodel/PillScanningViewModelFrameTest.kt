@@ -1,7 +1,9 @@
 package com.dispensesure.retail.core.scanning.presentation.viewmodel
 
 import android.app.Application
+import android.graphics.Bitmap
 import androidx.camera.core.ImageProxy
+import androidx.core.content.ContextCompat
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.BottleInfoDao
@@ -29,6 +31,7 @@ import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -214,7 +217,14 @@ class PillScanningViewModelFrameTest {
     // SCAN_VM_043
     @Test
     fun `add tap re-arms the watchdog`() = runTest {
+        // Add needs a frame now; stub the placeholder so the background save doesn't throw.
+        mockkStatic(ContextCompat::class)
+        every { ContextCompat.getDrawable(any(), any()) } returns null
         advanceTimeBy(IDLE_TIMEOUT_MS / 2)
+        PillScanningViewModel::class.java.getDeclaredField("currentFrameBitmap").apply {
+            isAccessible = true
+            set(viewModel, mockk<Bitmap>(relaxed = true))
+        }
         viewModel.onEvent(
             PillScanningEvent.AddTransactionDetailClicked(
                 filteredCount = 5,

@@ -64,13 +64,11 @@ class HistoryDetailsViewModelTest {
     private fun detail(
         txnId: Long = 1L,
         pillCount: Int = 5,
-        isDeleted: Boolean = false
     ) = TxnDetailInfo(
         txnId = txnId,
         pillCount = pillCount,
         imagePath = null,
         type = null,
-        isDeleted = isDeleted
     )
 
     private fun txnWithDetails(
@@ -95,13 +93,13 @@ class HistoryDetailsViewModelTest {
     // ────────────────────────────── init / getTransactionDetails ──────────────────────────────
 
     @Test
-    fun `init loads txn and filters out soft-deleted details`() = runTest(testDispatcher) {
+    fun `init loads txn with its details`() = runTest(testDispatcher) {
         val txn = txnWithDetails(
             txnId = 1L,
             details = listOf(
-                detail(txnId = 1L, isDeleted = false),
-                detail(txnId = 2L, isDeleted = true),
-                detail(txnId = 3L, isDeleted = false)
+                detail(txnId = 1L),
+                detail(txnId = 2L),
+                detail(txnId = 3L)
             )
         )
         every { preferenceHelper.getTxnId() } returns 1L
@@ -114,9 +112,8 @@ class HistoryDetailsViewModelTest {
             val state = awaitItem()
             val info = state.txnInfo!!
             assertEquals(1L, info.txnId)
-            // Only the two non-deleted details survive.
-            assertEquals(2, info.txnDetails.size)
-            assertEquals(listOf(1L, 3L), info.txnDetails.map { it.txnId })
+            assertEquals(3, info.txnDetails.size)
+            assertEquals(listOf(1L, 2L, 3L), info.txnDetails.map { it.txnId })
         }
         coVerify(exactly = 1) { pillCountTxnDao.getTxnWithDetails(1L) }
     }

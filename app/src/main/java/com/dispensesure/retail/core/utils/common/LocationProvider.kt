@@ -5,6 +5,7 @@ import android.content.Context
 import android.location.Geocoder
 import android.location.Location
 import android.os.Build
+import com.dispensesure.retail.R
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
@@ -46,10 +47,10 @@ class LocationProvider(private val context: Context) {
                         .addOnSuccessListener { cont.resume(it) }
                         .addOnFailureListener { cont.resume(null) }
                 }
-                if (last != null) reverseGeocode(last) else "Location unavailable"
+                if (last != null) reverseGeocode(last) else context.getString(R.string.location_unavailable)
             }
         } catch (_: Exception) {
-            "Location unavailable"
+            context.getString(R.string.location_unavailable)
         }
     }
 

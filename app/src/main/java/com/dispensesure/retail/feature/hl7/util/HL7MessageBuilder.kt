@@ -159,13 +159,12 @@ object HL7MessageBuilder {
         val messageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
             ?: txn.txnId.toString()
 
-        val txnDetails = txnDetails.filter { !it.isDeleted }
         // Only the prescribed-count step is the dispensed quantity. The pour-out, recount,
         // vial and remainder steps measure other things, and summing them all reported
         // several times the pills actually dispensed.
         val dispensedDetails = txnDetails.filter { it.type.isDispensedQuantityStep() }
         // Each bottle's true pill count is live-summed here from its own txnDetailsIds against
-        // the (already non-deleted-filtered) detail rows — there is no stored pill count on
+        // the detail rows — there is no stored pill count on
         // BottleInfo itself, so this keeps a bottle's reported count correct even if a detail
         // row was deleted/redone after the bottle was scanned.
         val pillCountByDetailsId = dispensedDetails.associate { it.txnDetailsId to (it.pillCount ?: 0) }
@@ -599,6 +598,7 @@ object HL7MessageBuilder {
      * Builds ZUI-8's tray-photo payload: one [batchInfo, countInfo, base64Data] group
      * per image (`&`-joined on the wire, images `^`-joined). Sourced from the barcode
      * image plus the target-verification (dispense count) and vial-step images —
+     * each followed by its raw (unannotated) image when present —
      * not the full detail set (no before/after stock-bottle or recount images).
      *
      * Batch/count numbering: the app has no batching (multi-tray split) or
@@ -612,7 +612,7 @@ object HL7MessageBuilder {
     ): List<List<String>>? {
         val stepImages = details
             .filter { it.type == StepState.TARGET_VERIFICATION.name || it.type == StepState.VIAL.name }
-            .mapNotNull { it.imagePath }
+            .flatMap { listOfNotNull(it.imagePath, it.rawImagePath) }
         val barcodeImages = bottles.mapNotNull { it.barcodeImagePath }
         val imagePaths = stepImages + barcodeImages
         if (imagePaths.isEmpty()) return null
@@ -652,16 +652,21 @@ object HL7MessageBuilder {
         details: List<PillCountTxnDetailsEntity>
     ): List<ObxRow> {
 
-        val detailRows = details.mapIndexed { index, detail ->
+        // Each detail's raw (unannotated) image gets its own row right after it.
+        val detailImages = details.flatMap { detail ->
             val type = detail.type.toImageLabel()
-            val imagePath = detail.imagePath?.let { "images/${File(it).name}" } ?: ""
-
+            listOfNotNull(
+                type to (detail.imagePath?.let { "images/${File(it).name}" } ?: ""),
+                detail.rawImagePath?.let { "${type}_raw" to "images/${File(it).name}" }
+            )
+        }
+        val detailRows = detailImages.mapIndexed { index, (text, value) ->
             ObxRow(
                 setId = (index + 1).toString(),
                 valueType = "RP",
                 observationId = "IMG${(index + 1).toString().padStart(3, '0')}",
-                observationText = type,
-                observationValue = imagePath,
+                observationText = text,
+                observationValue = value,
                 resultStatus = "F",
                 units = null
             )

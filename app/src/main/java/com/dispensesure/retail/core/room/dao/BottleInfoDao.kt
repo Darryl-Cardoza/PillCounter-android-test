@@ -33,19 +33,20 @@ interface BottleInfoDao {
     suspend fun getById(bottleId: Long): BottleInfoEntity?
 
     /**
-     * Existing bottle line for a `(stockTxn, lot, expiry)` tuple — null-tolerant matching so a
-     * missing lot/expiry on the label still merges onto the same line.
+     * Existing sealed-bottle line for a `(stockTxn, lot, expiry)` tuple — null-tolerant matching so a
+     * missing lot/expiry on the label still merges onto the same line. Loose lines (bottleQty 0) never match.
      */
     @Query(
         """
         SELECT * FROM bottle_info
         WHERE stockTxnId = :stockTxnId
+          AND bottleQty > 0
           AND (lotNo = :lotNo OR (lotNo IS NULL AND :lotNo IS NULL))
           AND (expNo = :expNo OR (expNo IS NULL AND :expNo IS NULL))
         LIMIT 1
         """
     )
-    suspend fun findLine(stockTxnId: Long, lotNo: String?, expNo: String?): BottleInfoEntity?
+    suspend fun findSealedLine(stockTxnId: Long, lotNo: String?, expNo: String?): BottleInfoEntity?
 
     /** Internal — increments looseQty AND overwrites controlledImagePaths in one SQL statement. */
     @Query(
