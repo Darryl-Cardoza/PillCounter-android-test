@@ -49,6 +49,7 @@ import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayS
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
+import com.dispensesure.retail.core.utils.common.HelperFunctions.clearSessionIfNotRemembered
 import com.dispensesure.retail.core.utils.common.HelperFunctions.openPlayStore
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.SecurityErrorDialog
@@ -153,6 +154,11 @@ class MainActivity : ComponentActivity() {
         // overlay is up on the first frame. Null state only: a config-change or
         // process-death restore must not lock a session the user is mid-way through.
         if (savedInstanceState == null) {
+            // Runs first so the face lock and permission chain see the logged-out state.
+            // Skipped for notification taps, which keep the user in the app.
+            if (!intent.getBooleanExtra(EXTRA_OPENED_FROM_NOTIFICATION, false)) {
+                clearSessionIfNotRemembered(preferenceHelper)
+            }
             sessionLockController.onAppLaunch()
         }
 
@@ -626,6 +632,11 @@ class MainActivity : ComponentActivity() {
         }
 
         intent.removeExtra("navigate_route")
+    }
+
+    companion object {
+        // Set on every notification tap intent, so a notification never logs out a user without Remember me.
+        const val EXTRA_OPENED_FROM_NOTIFICATION = "opened_from_notification"
     }
 
 }

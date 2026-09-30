@@ -1,7 +1,6 @@
 <resources>
     <!-- ================== APP INFO ================== -->
     <string name="app_name">DispenseSure</string>
-    <string name="rite_title">RITE TECHNOLOGIES</string>
     <string name="version">Version</string>
 
     <!--    Common   -->
@@ -21,9 +20,18 @@
     <string name="email">Email</string>
     <string name="remember_me">Remember me</string>
     <string name="code_sent_to">Security code has been sent to</string>
-    <string name="pre_resend_code">Resend code in %1$d s</string>
+    <string name="pre_resend_code">Resend code in %1$ds</string>
     <string name="resend_code">Resend code</string>
     <string name="verify">Verify</string>
+    <string name="welcome_back">Welcome Back</string>
+    <string name="sign_in_to_continue_to">Sign in to continue to %1$s</string>
+    <string name="email_address">Email Address</string>
+    <string name="email_placeholder">you@example.com</string>
+    <string name="log_in">Log In</string>
+    <string name="contact_administrator_for_access">Contact your administrator if you need access</string>
+    <string name="contact_support_for_code">Didn\'t receive the code? Contact support</string>
+    <string name="wordmark_dispense" translatable="false">DISPENSE</string>
+    <string name="wordmark_sure" translatable="false">SURE</string>
     <string name="login_button_text">LOGIN</string>
     <string name="update_button_text">UPDATE</string>
 

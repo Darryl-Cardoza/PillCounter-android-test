@@ -1,7 +1,6 @@
 <resources>
     <!-- ================== APP INFO ================== -->
     <string name="app_name">DispenseSure</string>
-    <string name="rite_title">RITE TECHNOLOGIES</string>
     <string name="version">Versión</string>
 
     <!--    Common   -->
@@ -18,9 +17,16 @@
     <string name="email">Correo electrónico</string>
     <string name="remember_me">Recuérdame</string>
     <string name="code_sent_to">Se ha enviado un código de seguridad a</string>
-    <string name="pre_resend_code">Reenviar código en %1$d s</string>
+    <string name="pre_resend_code">Reenviar código en %1$ds</string>
     <string name="resend_code">Reenviar código</string>
     <string name="verify">Verificar</string>
+    <string name="welcome_back">Bienvenido de nuevo</string>
+    <string name="sign_in_to_continue_to">Inicia sesión para continuar en %1$s</string>
+    <string name="email_address">Correo electrónico</string>
+    <string name="email_placeholder">tu@ejemplo.com</string>
+    <string name="log_in">Iniciar sesión</string>
+    <string name="contact_administrator_for_access">Contacta con tu administrador si necesitas acceso</string>
+    <string name="contact_support_for_code">¿No recibiste el código? Contacta con soporte</string>
     <string name="login_button_text">INICIAR SESIÓN</string>
     <string name="update_button_text">ACTUALIZAR</string>
     <string name="camera">Cámara</string>
