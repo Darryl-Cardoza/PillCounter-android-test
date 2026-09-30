@@ -153,7 +153,9 @@ class ProfileRepository @Inject constructor(
     private suspend fun <T> handleTokenRefreshAndRetry(apiCall: suspend () -> T): Result<T> {
         return try {
             val refreshToken = preferenceHelper.getRefreshToken()
-                ?: return Result.failure(Exception("No refresh token available"))
+                ?: return Result.failure<T>(Exception("No refresh token available")).also {
+                    logger.e("Token refresh skipped: no refresh token available", it.exceptionOrNull(), event = LogEvent.TOKEN_REFRESH_FAILED)
+                }
 
             val refreshResponse = applicationSettingApi.refreshToken(RefreshTokenRequest(refreshToken))
             if (refreshResponse.code() == 401) {

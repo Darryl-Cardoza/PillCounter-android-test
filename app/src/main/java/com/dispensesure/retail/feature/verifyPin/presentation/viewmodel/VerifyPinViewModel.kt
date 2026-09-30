@@ -110,6 +110,7 @@ class VerifyPinViewModel @Inject constructor(
                     try {
                         if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
                             prefs.saveTokens(accessToken, refreshToken)
+                            AppLogger.onUserLoggedIn()
 //                            prefs.setHl7Enabled(isHL7Enabled)
                             // Anchor the offline-expiry clock at login-success so the first-launch
                             // scenario (fresh install + immediate network loss) still expires cleanly

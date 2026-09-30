@@ -79,9 +79,9 @@ class UserDetailRepository @Inject constructor(
                                     }
                                         ?: Result.failure(Exception("Empty response body after retry"))
                                 } else {
-                                    Result.failure(
-                                        Exception("Failed after token refresh: HTTP ${retryResponse.code()}")
-                                    )
+                                    val failure = Exception("Failed after token refresh: HTTP ${retryResponse.code()}")
+                                    logger.e("User detail retry after token refresh failed", failure, event = LogEvent.USER_FETCH_FAILED)
+                                    Result.failure(failure)
                                 }
                             },
                             onLogout = {
@@ -124,7 +124,9 @@ class UserDetailRepository @Inject constructor(
     ): Result<T> {
         return try {
             val refreshToken = preferenceHelper.getRefreshToken()
-                ?: return Result.failure(Exception("No refresh token available"))
+                ?: return Result.failure<T>(Exception("No refresh token available")).also {
+                    logger.e("Token refresh skipped: no refresh token available", it.exceptionOrNull(), event = LogEvent.TOKEN_REFRESH_FAILED)
+                }
 
             val refreshResponse = applicationSettingApi.refreshToken(RefreshTokenRequest(refreshToken))
 

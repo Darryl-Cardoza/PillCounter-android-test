@@ -158,6 +158,16 @@ class AppLogger(private val tag: String) {
          */
         fun currentDestination(): LogDestination? = destination
 
+        /** Lets the log client refresh an expired access token; call once Hilt is ready. */
+        fun setTokenAuthenticator(authenticator: okhttp3.Authenticator) {
+            (destination as? RemoteLogDestination)?.tokenAuthenticator = authenticator
+        }
+
+        /** Call after login stores the access token, so logs queued while logged out get shipped. */
+        fun onUserLoggedIn() {
+            (destination as? RemoteLogDestination)?.flushPending()
+        }
+
         /** Test-only: injects a fake destination directly, bypassing [init]'s Context requirement. */
         internal fun setDestinationForTest(destination: LogDestination?) {
             this.destination = destination

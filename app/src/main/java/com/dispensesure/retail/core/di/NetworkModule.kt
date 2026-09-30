@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.chuckerteam.chucker.api.ChuckerInterceptor
 import com.dispensesure.retail.BuildConfig
+import com.dispensesure.retail.core.api.interfaceDetail.ApiFailureLogInterceptor
 import com.dispensesure.retail.core.api.interfaceDetail.HeaderInterceptor
 import com.dispensesure.retail.core.health.logic.HealthGateInterceptor
 import com.dispensesure.retail.core.refreshToken.data.TokenAuthenticator
@@ -97,6 +98,7 @@ object NetworkModule {
             // requests that still go through, and BEFORE the authenticator so a synthetic
             // offline 599 never triggers a spurious token refresh.
             .addInterceptor(healthGateInterceptor)
+            .addInterceptor(ApiFailureLogInterceptor())
             .addInterceptor(loggingInterceptor)
             .addInterceptor(ChuckerInterceptor(context))
             .authenticator(tokenAuthenticator)

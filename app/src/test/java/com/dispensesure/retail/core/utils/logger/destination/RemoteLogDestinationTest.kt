@@ -41,6 +41,7 @@ class RemoteLogDestinationTest {
     private lateinit var context: Context
     private lateinit var connectivityManager: ConnectivityManager
     private lateinit var api: IRemoteLogApi
+    private var token: String? = "test-token"
     private val networkCallbackSlot: CapturingSlot<ConnectivityManager.NetworkCallback> = slot()
 
     @Before
@@ -76,7 +77,8 @@ class RemoteLogDestinationTest {
         every { NetworkUtils.isNetworkAvailable(any()) } returns available
     }
 
-    private fun destination() = RemoteLogDestination(context, apiOverride = api, pendingLogFileOverride = pendingFile)
+    private fun destination() = RemoteLogDestination(context, apiOverride = api, pendingLogFileOverride = pendingFile, retryDelayMs = 0L,
+        accessTokenOverride = { token })
 
     private fun entry(level: LogLevel = LogLevel.ERROR, message: String = "something failed", throwable: Throwable? = null) =
         LogEntry(
@@ -127,6 +129,23 @@ class RemoteLogDestinationTest {
     }
 
     @Test
+    fun `entries are queued, not sent, until a user is logged in`() {
+        online(true)
+        token = null
+        val destination = destination()
+
+        destination.write(entry(message = "pre-login-marker"))
+        destination.awaitIdleForTest()
+        coVerify(exactly = 0) { api.sendLog(any()) }
+        assertTrue(pendingFile.readText().contains("pre-login-marker"))
+
+        token = "test-token"
+        destination.flushPending()
+        destination.awaitIdleForTest()
+        coVerify(exactly = 1) { api.sendLog(match { it.message.contains("pre-login-marker") }) }
+    }
+
+    @Test
     fun `a non-ERROR entry is not queued while offline`() {
         online(false)
         val destination = destination()
@@ -153,7 +172,7 @@ class RemoteLogDestinationTest {
     }
 
     @Test
-    fun `an online send failure is swallowed and not queued for retry`() {
+    fun `an online send failure is retried then queued for the next connectivity`() {
         online(true)
         coEvery { api.sendLog(any()) } throws RuntimeException("boom")
         val destination = destination()
@@ -161,7 +180,33 @@ class RemoteLogDestinationTest {
         destination.write(entry(message = "send-failure-marker"))
         destination.awaitIdleForTest()
 
-        assertFalse("Connectivity-only fallback: an actual send failure while online must not be queued", pendingFile.exists())
+        coVerify(atLeast = 3) { api.sendLog(match { it.message.contains("send-failure-marker") }) }
+        assertTrue(pendingFile.readText().contains("send-failure-marker"))
+    }
+
+    @Test
+    fun `a non-2xx response is treated as a failure and queued`() {
+        online(true)
+        coEvery { api.sendLog(any()) } returns Response.error(500, "".toResponseBody(null))
+        val destination = destination()
+
+        destination.write(entry(message = "http-500-marker"))
+        destination.awaitIdleForTest()
+
+        assertTrue(pendingFile.readText().contains("http-500-marker"))
+    }
+
+    @Test
+    fun `a send that succeeds on retry is not queued`() {
+        online(true)
+        coEvery { api.sendLog(any()) } throws RuntimeException("flaky") andThen Response.success("".toResponseBody(null))
+        val destination = destination()
+
+        destination.write(entry(message = "retry-ok-marker"))
+        destination.awaitIdleForTest()
+
+        coVerify(exactly = 2) { api.sendLog(match { it.message.contains("retry-ok-marker") }) }
+        assertFalse(pendingFile.exists())
     }
 
     @Test
@@ -226,5 +271,52 @@ class RemoteLogDestinationTest {
         val remaining = pendingFile.readText()
         assertFalse("The entry that sent successfully must be removed from the queue", remaining.contains("will-succeed"))
         assertTrue("The entry that still fails must remain queued for the next flush", remaining.contains("will-keep-failing"))
+    }
+
+    @Test
+    fun `a permanently rejected entry (400) is dropped, not queued`() {
+        online(true)
+        coEvery { api.sendLog(any()) } returns Response.error(400, "".toResponseBody(null))
+        val destination = destination()
+
+        destination.write(entry(message = "bad-payload-marker"))
+        destination.awaitIdleForTest()
+
+        coVerify(exactly = 1) { api.sendLog(any()) }
+        assertFalse(pendingFile.exists())
+    }
+
+    @Test
+    fun `a queued entry the server keeps failing with 500 is dropped after the attempt cap`() {
+        online(false)
+        val destination = destination()
+        destination.write(entry(message = "poison-marker"))
+        destination.awaitIdleForTest()
+
+        online(true)
+        coEvery { api.sendLog(any()) } returns Response.error(500, "".toResponseBody(null))
+        repeat(5) {
+            destination.flushPending()
+            destination.awaitIdleForTest()
+        }
+
+        assertFalse(pendingFile.readText().contains("poison-marker"))
+    }
+
+    @Test
+    fun `401 or network failures during flush never use up an entry's attempts`() {
+        online(false)
+        val destination = destination()
+        destination.write(entry(message = "auth-marker"))
+        destination.awaitIdleForTest()
+
+        online(true)
+        coEvery { api.sendLog(any()) } returns Response.error(401, "".toResponseBody(null))
+        repeat(8) {
+            destination.flushPending()
+            destination.awaitIdleForTest()
+        }
+
+        assertTrue(pendingFile.readText().contains("auth-marker"))
     }
 }

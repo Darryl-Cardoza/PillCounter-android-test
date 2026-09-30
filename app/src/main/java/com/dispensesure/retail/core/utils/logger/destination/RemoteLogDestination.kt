@@ -21,14 +21,17 @@ import com.dispensesure.retail.core.utils.logger.destination.dto.RemoteLogError
 import com.dispensesure.retail.core.utils.logger.destination.dto.RemoteLogNetwork
 import com.dispensesure.retail.core.utils.logger.destination.dto.RemoteLogRequest
 import com.dispensesure.retail.core.utils.logger.destination.remote.IRemoteLogApi
+import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.squareup.moshi.Moshi
 import com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import okhttp3.Authenticator
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import retrofit2.Retrofit
@@ -68,19 +71,58 @@ class RemoteLogDestination internal constructor(
     context: Context,
     private val apiOverride: IRemoteLogApi?,
     private val pendingLogFileOverride: File?,
-    private val isNetworkAvailable: (Context) -> Boolean = NetworkUtils::isNetworkAvailable
+    private val isNetworkAvailable: (Context) -> Boolean = NetworkUtils::isNetworkAvailable,
+    private val retryDelayMs: Long = RETRY_DELAY_MS,
+    accessTokenOverride: (() -> String?)? = null
 ) : LogDestination {
 
     constructor(context: Context) : this(context, apiOverride = null, pendingLogFileOverride = null)
 
     private val appContext = context.applicationContext
     private val runtimeUnit = RuntimeUnit(appContext)
+    // Lazy: AppLogger.init() builds this before the rest of the app is ready.
+    private val preferenceHelper by lazy { PreferenceHelper(appContext) }
+    private val accessToken: () -> String? = accessTokenOverride ?: {
+        try { preferenceHelper.getAccessToken() } catch (e: Exception) { null }
+    }
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val activeJobs = CopyOnWriteArrayList<Job>()
     private val pendingLogFile by lazy {
         pendingLogFileOverride ?: File(File(appContext.getExternalFilesDir(null), "Logs"), PENDING_LOG_FILE_NAME)
     }
     private val pendingLock = Any()
+
+    /**
+     * Refreshes an expired access token for log sends. Set by the app once Hilt is up
+     * (see [com.dispensesure.retail.core.utils.logger.AppLogger.setTokenAuthenticator]).
+     */
+    @Volatile
+    var tokenAuthenticator: Authenticator? = null
+    @Volatile
+    private var refreshBlockedUntil = 0L
+    private val refreshLock = Any()
+
+    /**
+     * On 401: reuse a token another caller already refreshed, else delegate to [tokenAuthenticator].
+     * A failed refresh blocks further attempts for [REFRESH_COOLDOWN_MS], because the refresh
+     * failure is itself logged at ERROR and would otherwise loop send -> 401 -> refresh -> log.
+     */
+    private val logAuthenticator = Authenticator { route, response ->
+        if (response.priorResponse != null) return@Authenticator null
+        synchronized(refreshLock) {
+            val used = response.request.header("Authorization")?.removePrefix("Bearer ")
+            val current = accessToken()
+            if (!current.isNullOrBlank() && current != used) {
+                return@synchronized response.request.newBuilder()
+                    .header("Authorization", "Bearer $current").build()
+            }
+            if (System.currentTimeMillis() < refreshBlockedUntil) return@synchronized null
+            val delegate = tokenAuthenticator ?: return@synchronized null
+            delegate.authenticate(route, response).also {
+                if (it == null) refreshBlockedUntil = System.currentTimeMillis() + REFRESH_COOLDOWN_MS
+            }
+        }
+    }
 
     private val timestampFormat: ThreadLocal<SimpleDateFormat> = ThreadLocal.withInitial {
         SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSXXX", Locale.US)
@@ -93,6 +135,7 @@ class RemoteLogDestination internal constructor(
         apiOverride ?: run {
             val okHttpClient = OkHttpClient.Builder()
                 .addInterceptor(headerInterceptor())
+                .authenticator(logAuthenticator)
                 .connectTimeout(10, TimeUnit.SECONDS)
                 .readTimeout(10, TimeUnit.SECONDS)
                 .writeTimeout(10, TimeUnit.SECONDS)
@@ -114,19 +157,60 @@ class RemoteLogDestination internal constructor(
         if (entry.level != LogLevel.ERROR) return
 
         val request = buildRequest(entry)
-        if (!isNetworkAvailable(appContext)) {
+        // /mobile/logs needs the user's bearer token, so until login (or while offline) queue
+        // to file; the backlog is flushed by connectivity, the next send, or onUserLoggedIn().
+        if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) {
             persistPending(request)
             return
         }
 
         launchTracked {
-            try {
-                api.sendLog(request)
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to ship log entry to remote log endpoint", e)
+            when (sendWithRetry(request)) {
+                SendResult.OK -> Unit
+                SendResult.DROP -> Log.w(TAG, "Log entry permanently rejected by the server — dropped")
+                else -> {
+                    Log.w(TAG, "Log entry not delivered after $MAX_ATTEMPTS attempts — queuing for next connectivity")
+                    persistNow(request)
+                }
             }
         }
         flushPending()
+    }
+
+    private enum class SendResult {
+        OK,
+        /** Permanent rejection (e.g. 400/413/422): retrying can never succeed, so drop it. */
+        DROP,
+        /** Network exception or 401 (token couldn't be refreshed): not the entry's fault, doesn't use up its attempts. */
+        RETRY_FREE,
+        /** Server answered with another failure (5xx, 408, 429, 403...): counts toward [MAX_QUEUE_ATTEMPTS]. */
+        RETRY_COUNTED
+    }
+
+    /** One POST. A 401 is first handled by [logAuthenticator] (token refresh + replay). */
+    private suspend fun trySend(request: RemoteLogRequest): SendResult =
+        try {
+            val response = api.sendLog(request)
+            val code = response.code()
+            when {
+                response.isSuccessful -> SendResult.OK
+                code == 401 -> SendResult.RETRY_FREE
+                code in 400..499 && code != 403 && code != 408 && code != 429 -> SendResult.DROP
+                else -> SendResult.RETRY_COUNTED
+            }
+        } catch (e: Exception) {
+            SendResult.RETRY_FREE
+        }
+
+    /** Up to [MAX_ATTEMPTS] tries with linear backoff ([retryDelayMs] * attempt); stops early on OK/DROP. */
+    private suspend fun sendWithRetry(request: RemoteLogRequest): SendResult {
+        var result = SendResult.RETRY_FREE
+        for (attempt in 1..MAX_ATTEMPTS) {
+            result = trySend(request)
+            if (result == SendResult.OK || result == SendResult.DROP) return result
+            if (attempt < MAX_ATTEMPTS) delay(retryDelayMs * attempt)
+        }
+        return result
     }
 
     private fun launchTracked(block: suspend () -> Unit) {
@@ -158,36 +242,48 @@ class RemoteLogDestination internal constructor(
     }
 
     private fun persistPending(request: RemoteLogRequest) {
-        launchTracked {
-            try {
-                val json = requestAdapter.toJson(request)
-                synchronized(pendingLock) {
-                    pendingLogFile.parentFile?.mkdirs()
-                    pendingLogFile.appendText(json + System.lineSeparator())
-                }
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to queue log entry for later delivery", e)
+        launchTracked { persistNow(request) }
+    }
+
+    /** Queue lines are `<attempts>	<json>`; an un-prefixed line (older format) means 0 attempts. */
+    private fun persistNow(request: RemoteLogRequest, attempts: Int = 0) {
+        try {
+            val json = requestAdapter.toJson(request)
+            synchronized(pendingLock) {
+                pendingLogFile.parentFile?.mkdirs()
+                pendingLogFile.appendText("$attempts	$json" + System.lineSeparator())
             }
+        } catch (e: Exception) {
+            Log.w(TAG, "Failed to queue log entry for later delivery", e)
         }
     }
 
     // ponytail: re-queues on failure with no retry cap/backoff — fine for low-volume ERROR-only
     // traffic; add a max-attempts/backoff if queued logs start piling up in practice.
-    private fun flushPending() {
+    /** Ships anything queued while logged out/offline. Also called right after login succeeds. */
+    fun flushPending() {
         launchTracked {
-            if (!isNetworkAvailable(appContext)) return@launchTracked
+            if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) return@launchTracked
             val queued = synchronized(pendingLock) {
                 if (!pendingLogFile.exists()) return@launchTracked
                 pendingLogFile.readLines().also { pendingLogFile.writeText("") }
             }
-            val stillPending = queued.filter { line ->
-                if (line.isBlank()) return@filter false
+            val stillPending = queued.mapNotNull { line ->
+                if (line.isBlank()) return@mapNotNull null
+                val (attempts, json) = parseQueued(line)
                 try {
-                    val request = requestAdapter.fromJson(line) ?: return@filter false
-                    api.sendLog(request)
-                    false
+                    val request = requestAdapter.fromJson(json) ?: return@mapNotNull null
+                    when (trySend(request)) {
+                        SendResult.OK, SendResult.DROP -> null
+                        SendResult.RETRY_FREE -> "$attempts	$json"
+                        SendResult.RETRY_COUNTED ->
+                            if (attempts + 1 >= MAX_QUEUE_ATTEMPTS) {
+                                Log.w(TAG, "Queued log entry rejected $MAX_QUEUE_ATTEMPTS times — dropped")
+                                null
+                            } else "${attempts + 1}	$json"
+                    }
                 } catch (e: Exception) {
-                    true
+                    line // unparseable or unexpected: keep for the next flush
                 }
             }
             if (stillPending.isNotEmpty()) {
@@ -196,6 +292,12 @@ class RemoteLogDestination internal constructor(
                 }
             }
         }
+    }
+
+    private fun parseQueued(line: String): Pair<Int, String> {
+        val tab = line.indexOf('	')
+        val attempts = if (tab > 0) line.substring(0, tab).toIntOrNull() else null
+        return if (attempts != null) attempts to line.substring(tab + 1) else 0 to line
     }
 
     private fun buildRequest(entry: LogEntry): RemoteLogRequest {
@@ -271,7 +373,7 @@ class RemoteLogDestination internal constructor(
     }
 
     /**
-     * Attaches `X-Server-Key`/`Content-Type` like the shared
+     * Attaches `X-Server-Key`/`Content-Type` (plus the bearer token) like the shared
      * [com.dispensesure.retail.core.api.interfaceDetail.HeaderInterceptor], but never logs
      * through `AppLogger` on failure — see the class doc for why.
      */
@@ -283,10 +385,11 @@ class RemoteLogDestination internal constructor(
             Log.w(TAG, "Failed to retrieve server key — remote log request sent without it", e)
             ""
         }
-        val request = original.newBuilder()
+        val builder = original.newBuilder()
             .addHeader("X-Server-Key", serverKey)
             .addHeader("Content-Type", URLConstant.CONTENT_TYPE)
-            .build()
+        accessToken()?.takeIf { it.isNotBlank() }?.let { builder.addHeader("Authorization", "Bearer $it") }
+        val request = builder.build()
         chain.proceed(request)
     }
 
@@ -294,6 +397,10 @@ class RemoteLogDestination internal constructor(
         private const val TAG = "RemoteLogDestination"
         private const val APP_NAME = "dispensesure"
         private const val PLATFORM = "android"
+        private const val MAX_ATTEMPTS = 3
+        private const val MAX_QUEUE_ATTEMPTS = 5
+        private const val REFRESH_COOLDOWN_MS = 60_000L
+        private const val RETRY_DELAY_MS = 2_000L
         private const val PENDING_LOG_FILE_NAME = "dispensesure_logs.txt"
     }
 }
