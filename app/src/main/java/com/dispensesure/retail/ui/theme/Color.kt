@@ -11,3 +11,6 @@ val inputBackground = Color(0xFFFFFFFF)
 val statusChipBackgroundOnPrimary = Color(0xFFFFFFFF)
 val statusChipBackgroundOnSecondary = Color(0xFFFFFFFF)
 
+
+const val DISABLED_ALPHA = 0.4f
+
