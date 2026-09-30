@@ -5,6 +5,7 @@ import androidx.camera.lifecycle.ProcessCameraProvider
 import coil.Coil
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.refreshToken.data.TokenAuthenticator
+import com.dispensesure.retail.core.security.RuntimeUnit
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import coil.ImageLoader
 import com.dispensesure.retail.core.utils.coil.EncryptedImageFetcher
@@ -32,6 +33,9 @@ class PillCountingApplication : Application() {
     lateinit var tokenAuthenticator: TokenAuthenticator
 
     @Inject
+    lateinit var runtimeUnit: RuntimeUnit
+
+    @Inject
     lateinit var operatorNameProvider: OperatorNameProvider
 
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -43,6 +47,7 @@ class PillCountingApplication : Application() {
         // singleton/DI-managed class has a chance to log during its own init.
         AppLogger.init(this)
         AppLogger.setTokenAuthenticator(tokenAuthenticator)
+        AppLogger.setRuntimeUnit(runtimeUnit)
 //        FirebaseApp.initializeApp(this)
 
         // Keeps LoggerConfig.operatorName current so every subsequent log entry can be

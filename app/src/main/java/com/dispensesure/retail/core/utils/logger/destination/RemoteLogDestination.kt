@@ -14,6 +14,7 @@ import com.dispensesure.retail.core.utils.constants.URLConstant
 import com.dispensesure.retail.core.utils.logger.LogDestination
 import com.dispensesure.retail.core.utils.logger.LogEntry
 import com.dispensesure.retail.core.utils.logger.LogEventClassifier
+import com.dispensesure.retail.core.utils.logger.LogFormatter
 import com.dispensesure.retail.core.utils.logger.LogLevel
 import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.logger.PhiRedactor
@@ -39,6 +40,7 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.moshi.MoshiConverterFactory
 import java.io.File
+import java.io.IOException
 import java.io.PrintWriter
 import java.io.StringWriter
 import java.text.SimpleDateFormat
@@ -81,7 +83,18 @@ class RemoteLogDestination internal constructor(
     constructor(context: Context) : this(context, apiOverride = null, pendingLogFileOverride = null)
 
     private val appContext = context.applicationContext
-    private val runtimeUnit = RuntimeUnit(appContext)
+
+    /**
+     * The app's shared [RuntimeUnit] (the Hilt singleton that MainActivity clears after its
+     * security check). Set once Hilt is up via
+     * [com.dispensesure.retail.core.utils.logger.AppLogger.setRuntimeUnit]; a private copy would
+     * never be cleared and could never return the key. Until it is set the key is unavailable and
+     * ERROR entries queue to file.
+     */
+    @Volatile
+    var runtimeUnit: RuntimeUnit? = null
+    @Volatile
+    private var keyBlockedUntil = 0L
     // Lazy: AppLogger.init() builds this before the rest of the app is ready.
     private val preferenceHelper by lazy { PreferenceHelper(appContext) }
     private val accessToken: () -> String? = accessTokenOverride ?: {
@@ -345,7 +358,8 @@ class RemoteLogDestination internal constructor(
             logId = UUID.randomUUID().toString(),
             severity = severityOf(entry.level),
             timestamp = timestampFormat.get()!!.format(Date(entry.timestampMillis)),
-            message = PhiRedactor.redact(entry.message),
+            // "File -> Class -> Method -> error", see LogFormatter.formatSingleLine.
+            message = PhiRedactor.redact(LogFormatter.formatSingleLine(entry)),
             tag = entry.className,
             event = LogEventClassifier.classify(entry).name,
             context = buildMap {
@@ -409,14 +423,27 @@ class RemoteLogDestination internal constructor(
      * [com.dispensesure.retail.core.api.interfaceDetail.HeaderInterceptor], but never logs
      * through `AppLogger` on failure — see the class doc for why.
      */
+    /**
+     * The key, or an [IOException] so the send fails and the entry is queued instead of going out
+     * keyless. [RuntimeUnit.material] logs its own retrieval failures at ERROR, which would feed
+     * straight back into this destination, so a failure blocks retrieval for [KEY_COOLDOWN_MS].
+     */
+    private fun serverKey(): String {
+        val now = System.currentTimeMillis()
+        if (now < keyBlockedUntil) throw IOException("Server key unavailable (cooling down)")
+        val unit = runtimeUnit ?: throw IOException("Server key unavailable: RuntimeUnit not attached yet")
+        return try {
+            unit.material()
+        } catch (e: Exception) {
+            keyBlockedUntil = now + KEY_COOLDOWN_MS
+            Log.w(TAG, "Failed to retrieve server key — remote log request not sent", e)
+            throw IOException("Server key unavailable", e)
+        }
+    }
+
     private fun headerInterceptor() = Interceptor { chain ->
         val original = chain.request()
-        val serverKey = try {
-            runtimeUnit.material()
-        } catch (e: Exception) {
-            Log.w(TAG, "Failed to retrieve server key — remote log request sent without it", e)
-            ""
-        }
+        val serverKey = serverKey()
         val builder = original.newBuilder()
             .addHeader("X-Server-Key", serverKey)
             .addHeader("Content-Type", URLConstant.CONTENT_TYPE)
@@ -433,6 +460,7 @@ class RemoteLogDestination internal constructor(
         private const val MAX_QUEUE_ATTEMPTS = 5
         private const val LOGOUT_FLUSH_TIMEOUT_MS = 5_000L
         private const val REFRESH_COOLDOWN_MS = 60_000L
+        private const val KEY_COOLDOWN_MS = 30_000L
         private const val RETRY_DELAY_MS = 2_000L
         private const val PENDING_LOG_FILE_NAME = "dispensesure_logs.txt"
     }

@@ -158,6 +158,11 @@ class AppLogger(private val tag: String) {
          */
         fun currentDestination(): LogDestination? = destination
 
+        /** Hands the log client the app's shared RuntimeUnit (the one MainActivity clears). Call once Hilt is ready. */
+        fun setRuntimeUnit(runtimeUnit: com.dispensesure.retail.core.security.RuntimeUnit) {
+            (destination as? RemoteLogDestination)?.runtimeUnit = runtimeUnit
+        }
+
         /** Lets the log client refresh an expired access token; call once Hilt is ready. */
         fun setTokenAuthenticator(authenticator: okhttp3.Authenticator) {
             (destination as? RemoteLogDestination)?.tokenAuthenticator = authenticator
