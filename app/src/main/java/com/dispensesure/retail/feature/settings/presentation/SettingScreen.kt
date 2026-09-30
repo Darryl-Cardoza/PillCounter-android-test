@@ -56,7 +56,7 @@ import com.dispensesure.retail.ui.theme.LocalExtendedColors
 fun SettingsScreen(
     navController: NavController,
     viewModel: MainActivityViewModel = hiltViewModel()
-) {1
+) {
     val isAskToAddNotes by viewModel.isAskToAddNotes.collectAsState()
 
     val historyOptions = stringArrayResource(R.array.history_options).toList()
