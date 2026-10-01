@@ -262,7 +262,7 @@ fun MenuScreen(
 
             // App version, pinned below the scrolling list.
             Text(
-                text = "${stringResource(R.string.version)} ${stringResource(R.string.app_version_name)}",
+                text = stringResource(R.string.version_label, stringResource(R.string.app_version_name)),
                 style = MaterialTheme.typography.bodySmall,
                 color = extendedColors.textColor.copy(alpha = 0.6f),
                 modifier = Modifier

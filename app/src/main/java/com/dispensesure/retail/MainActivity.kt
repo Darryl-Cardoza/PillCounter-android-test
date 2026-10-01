@@ -256,6 +256,11 @@ class MainActivity : ComponentActivity() {
                         navController = rememberNavController()
                         val preferenceHelper = remember { PreferenceHelper(this) }
                         val startDestination = remember { resolveStartDestinationAndClearIfExpired(preferenceHelper) }
+                        // A local logout (Remember me off, offline expiry) doesn't stop HL7, and the
+                        // settings fetch only stops it when online. Stop it here, with no network needed.
+                        LaunchedEffect(Unit) {
+                            if (!preferenceHelper.isUserLoggedIn()) settingsViewModel.onUserLoginOrLogOut()
+                        }
 
                         // ── Security dialog shown once over all other content ──
                         if (securityViolations.isNotEmpty()) {

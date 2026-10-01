@@ -1,7 +1,7 @@
 <resources>
     <!-- ================== APP INFO ================== -->
     <string name="app_name">DispenseSure</string>
-    <string name="version">Versión</string>
+    <string name="version_label">Versión %1$s</string>
 
     <!--    Common   -->
     <string name="pms">PMS</string>
