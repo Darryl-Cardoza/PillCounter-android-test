@@ -3,7 +3,6 @@ package com.dispensesure.retail.core.utils.common
 import android.content.Context
 import android.content.res.Configuration
 import android.widget.Toast
-import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.RepeatMode
@@ -24,7 +23,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -175,13 +173,18 @@ object UserInterfaceUtils {
     // ───────────────────────────── Toast Helpers ─────────────────────────────
 
     /** Displays a short Toast with plain text. */
-    fun showToast(context: Context, message: String, duration: Int = Toast.LENGTH_SHORT) {
-        Toast.makeText(context, message, duration).show()
+    fun showToast(message: String, duration: Int = Toast.LENGTH_SHORT) {
+        AppToast.show(message, duration)
     }
 
     /** Displays a short Toast using a string resource ID. */
-    fun showToast(context: Context, @StringRes resId: Int, duration: Int = Toast.LENGTH_SHORT) {
-        Toast.makeText(context, context.getString(resId), duration).show()
+    fun showToast(
+        context: Context,
+        @StringRes resId: Int,
+        duration: Int = Toast.LENGTH_SHORT,
+        keepUntilShown: Boolean = false
+    ) {
+        AppToast.show(context.getString(resId), duration, keepUntilShown)
     }
 
     // ───────────────────────────── Color Extensions ─────────────────────────────
@@ -245,59 +248,6 @@ object UserInterfaceUtils {
         )
     }
 
-    // ───────────────────────────── Static Info Blocks ─────────────────────────────
-
-    /** Displays app logo, title, and version in a vertically centered column. */
-    @Composable
-    fun AppInfo() {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.weight(1f))
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-
-                Icon(
-                    painter = painterResource(id = R.drawable.logo),
-                    contentDescription = stringResource(R.string.app_name),
-                    tint = MaterialTheme.colorScheme.secondary,
-                    modifier = Modifier.size(responsiveDp(100.dp))
-                )
-
-                Spacer(modifier = Modifier.height(responsiveDp(20.dp)))
-
-                Text(
-                    text = stringResource(R.string.pill_count_app_title),
-                    style = MaterialTheme.typography.displayMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-
-            Spacer(modifier = Modifier.weight(1f))
-
-
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = stringResource(R.string.rite_title),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.extendedColors.textColor
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = "${stringResource(R.string.version)} ${stringResource(R.string.app_version_name)}",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = AppTheme.extendedColors.textColor
-                )
-            }
-        }
-    }
-
-
     // ───────────────────────────── Text Fields ─────────────────────────────
 
     /** A simple text input with rounded corners and adaptive background. */
@@ -338,103 +288,6 @@ object UserInterfaceUtils {
                 textStyle = LocalTextStyle.current.copy(color = AppTheme.extendedColors.textColor),
                 visualTransformation = visualTransformation
             )
-        }
-    }
-
-    /**
-     * Text field with an embedded icon, optional password toggle, and trailing action.
-     */
-    @Composable
-    fun DrawableIconTextField(
-        value: String,
-        onValueChange: (String) -> Unit,
-        placeholder: String,
-        @DrawableRes iconRes: Int,
-        iconColor: Color = MaterialTheme.colorScheme.primary,
-        modifier: Modifier = Modifier,
-        cornerRadius: Dp = 8.dp,
-        height: Dp = 56.dp,
-        cursorColor: Color = AppTheme.extendedColors.textColor,
-        isPassword: Boolean = false,
-        keyboardType: KeyboardType = KeyboardType.Text,
-        imeAction: ImeAction = ImeAction.Done,
-        trailingIcon: (@Composable (() -> Unit))? = null
-    ) {
-        var passwordVisible by remember { mutableStateOf(!isPassword) }
-
-        Box(
-            modifier = modifier
-                .fillMaxWidth()
-                .height(responsiveDp(height))
-                .background(
-                    AppTheme.extendedColors.inputBackground,
-                    RoundedCornerShape(cornerRadius)
-                )
-                .padding(horizontal = responsiveDp(15.dp)),
-            contentAlignment = Alignment.CenterStart
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Icon(
-                    painter = painterResource(id = iconRes),
-                    contentDescription = null,
-                    tint = iconColor,
-                    modifier = Modifier.size(responsiveDp(30.dp))
-                )
-
-                Spacer(modifier = Modifier.width(15.dp))
-                Box(
-                    modifier = Modifier
-                        .width(0.5.dp)
-                        .fillMaxHeight()
-                        .background(Color.Gray)
-                )
-                Spacer(modifier = Modifier.width(15.dp))
-
-                BasicTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    modifier = Modifier.weight(1f),
-                    cursorBrush = SolidColor(cursorColor),
-                    singleLine = true,
-                    visualTransformation = if (isPassword && !passwordVisible)
-                        PasswordVisualTransformation() else VisualTransformation.None,
-                    keyboardOptions = KeyboardOptions(
-                        keyboardType = keyboardType,
-                        imeAction = imeAction
-                    ),
-                    textStyle = LocalTextStyle.current.copy(color = AppTheme.extendedColors.textColor),
-                    decorationBox = { inner ->
-                        Box(
-                            modifier = Modifier.fillMaxHeight(),
-                            contentAlignment = Alignment.CenterStart
-                        ) {
-                            if (value.isEmpty()) {
-                                Text(
-                                    text = placeholder,
-                                    color = AppTheme.extendedColors.textColor.copy(alpha = 0.6f)
-                                )
-                            }
-                            inner()
-                        }
-                    }
-                )
-
-                if (isPassword) {
-                    IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                        Icon(
-                            imageVector = if (passwordVisible)
-                                Icons.Filled.Visibility else Icons.Filled.VisibilityOff,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
-                    }
-                }
-
-                trailingIcon?.invoke()
-            }
         }
     }
 
@@ -1111,6 +964,7 @@ object UserInterfaceUtils {
         modifier: Modifier = Modifier
     ) {
         val focusRequester = remember { FocusRequester() }
+        val borderColor = AppTheme.extendedColors.textColor.copy(alpha = 0.25f)
 
         // Initial focus on mount only
         LaunchedEffect(Unit) {
@@ -1138,19 +992,16 @@ object UserInterfaceUtils {
                     val activeIndex = activeOtpIndex(otp, boxCount)
                     Row(horizontalArrangement = Arrangement.spacedBy(spacing)) {
                         for (i in 0 until boxCount) {
-                            val cell = Modifier
-                                .size(boxSize)
-                                .background(boxBackground, RoundedCornerShape(cornerRadius))
+                            val isActive = i == activeIndex
                             Box(
-                                modifier = if (i == activeIndex) {
-                                    cell.border(
-                                        2.dp,
-                                        MaterialTheme.colorScheme.secondary,
+                                modifier = Modifier
+                                    .size(boxSize)
+                                    .background(boxBackground, RoundedCornerShape(cornerRadius))
+                                    .border(
+                                        if (isActive) 2.dp else 1.dp,
+                                        if (isActive) MaterialTheme.colorScheme.primary else borderColor,
                                         RoundedCornerShape(cornerRadius)
-                                    )
-                                } else {
-                                    cell
-                                },
+                                    ),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(

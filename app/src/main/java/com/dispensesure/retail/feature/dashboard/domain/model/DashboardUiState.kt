@@ -53,13 +53,20 @@ data class DashboardUiState(
 
     // ────────────────────────────────── New dashboard ──────────────────────────────────
 
-    /**
-     * Merged queue of pending dispense transactions + in-progress inventory batches,
-     * already filtered by [activeKpiFilter] when non-null, sorted ascending by date.
-     */
-    val queue: List<QueueItem> = emptyList(),
+    /** Pending dispense transactions for the Dispense Queue, narrowed by a dispense KPI filter. */
+    val dispenseQueue: List<QueueItem.Dispense> = emptyList(),
 
-    /** Counts displayed on the 6 KPI shortcut cards. Computed from the unfiltered queue. */
+    /** In-progress batches for the Inventory Queue, oldest first, narrowed by an inventory KPI filter. */
+    val inventoryQueue: List<QueueItem.Inventory> = emptyList(),
+
+    /** Counts in the Dispense / Inventory tab headers; they follow the active KPI filter. */
+    val dispenseTabCount: Int = 0,
+    val inventoryTabCount: Int = 0,
+
+    /**
+     * Counts displayed on the 5 KPI shortcut cards. Dispense counts from the unfiltered
+     * dispense list, inventory counts from a count query.
+     */
     val kpiCounts: Map<KpiFilter, Int> = emptyMap(),
 
     /**
@@ -71,8 +78,8 @@ data class DashboardUiState(
     /** Currently active KPI filter, or null when "all" is selected. */
     val activeKpiFilter: KpiFilter? = null,
 
-    /** Which tab is showing — Today's Queue or Recent Activity. */
-    val activeTab: DashboardTab = DashboardTab.TODAYS_QUEUE,
+    /** Which of the three tabs is showing. */
+    val activeTab: DashboardTab = DashboardTab.DISPENSE_QUEUE,
 
     /**
      * Recent Activity list (completed dispense txns + completed batches),
@@ -81,6 +88,10 @@ data class DashboardUiState(
      */
     val recentActivity: List<QueueItem> = emptyList(),
 
-    /** Loading state for queue/transaction fetches from database. */
-    val isLoadingQueue: Boolean = false,
-)
+    /** Tabs whose list has been written, and tabs still waiting for their first list. */
+    val loadedTabs: Set<DashboardTab> = emptySet(),
+    val loadingTabs: Set<DashboardTab> = emptySet(),
+) {
+    /** Loading overlay: only while the tab on screen is still loading. */
+    val isLoadingQueue: Boolean get() = activeTab in loadingTabs
+}

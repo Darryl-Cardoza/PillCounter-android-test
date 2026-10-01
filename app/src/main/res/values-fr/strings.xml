@@ -1,8 +1,7 @@
 <resources>
     <!-- ================== APP INFO ================== -->
     <string name="app_name">DispenseSure</string>
-    <string name="rite_title">RITE TECHNOLOGIES</string>
-    <string name="version">Version</string>
+    <string name="version_label">Version %1$s</string>
 
     <!--    Common   -->
     <string name="pms">PMS</string>
@@ -21,23 +20,34 @@
     <string name="email">Email</string>
     <string name="remember_me">Se souvenir de moi</string>
     <string name="code_sent_to">Le code de sécurité a été envoyé à</string>
-    <string name="pre_resend_code">Renvoyer le code dans %1$d s</string>
+    <string name="pre_resend_code">Renvoyer le code dans %1$ds</string>
     <string name="resend_code">Renvoyer le code</string>
     <string name="verify">Vérifier</string>
+    <string name="welcome_back">Bon retour</string>
+    <string name="sign_in_to_continue_to">Connectez-vous pour continuer vers %1$s</string>
+    <string name="email_address">Adresse e-mail</string>
+    <string name="email_placeholder">vous@exemple.com</string>
+    <string name="log_in">Se connecter</string>
+    <string name="contact_administrator_for_access">Contactez votre administrateur si vous avez besoin d\'un accès</string>
+    <string name="contact_support_for_code">Vous n\'avez pas reçu le code ? Contactez le support</string>
     <string name="login_button_text">CONNEXION</string>
     <string name="update_button_text">METTRE À JOUR</string>
 
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispenser</string>
-    <string name="tap_to_scan_rx_labels">Appuyez pour scanner les étiquettes Rx</string>
-    <string name="stock_count">Comptage de Stock</string>
+    <string name="tap_to_scan_rx_labels">Scanner les étiquettes Rx</string>
+    <string name="stock_count">Inventaire</string>
     <string name="start_a_new_inventory_count">Démarrer un nouveau comptage d\'inventaire</string>
     <string name="start_inventory_count">Démarrer le comptage d\'inventaire</string>
     <string name="completed">Terminé</string>
     <string name="partial">En attente</string>
     <string name="quick_actions">ACTIONS RAPIDES</string>
     <string name="todays_queue">FILE D\'AUJOURD\'HUI</string>
+    <string name="dispense_queue">FILE DE DISPENSATION</string>
+    <string name="inventory_queue">FILE D\'INVENTAIRE</string>
+    <string name="tab_label_with_count">%1$s (%2$d)</string>
+    <string name="up_next">SUIVANT</string>
     <string name="queue_tab_pending">EN ATTENTE</string>
     <string name="queue_tab_priority">PRIORITÉ</string>
     <string name="queue_tab_controlled">CONTRÔLÉ</string>
@@ -48,18 +58,16 @@
     <string name="all_caught_up">Vous êtes à jour !</string>
     <string name="no_pending_tasks">Aucune tâche en attente pour le moment</string>
     <string name="loading_transactions">Chargement des transactions...</string>
-    <string name="pms_status_connected">PMS connecté</string>
-    <string name="pms_status_disconnected">PMS déconnecté</string>
-    <string name="kpi_disp_short">Disp.</string>
-    <string name="kpi_inv_short">Inv.</string>
+    <string name="kpi_disp_short">Dispenser</string>
+    <string name="kpi_inv_short">Inventaire</string>
     <string name="kpi_high_priority">Priorité élevée</string>
-    <string name="kpi_pending">En attente</string>
-    <string name="kpi_cont_drugs">Méd. contrôlés</string>
+    <string name="kpi_cont_drugs">Contrôlés</string>
     <string name="kpi_hazardous">Dangereux</string>
     <string name="kpi_cycle_count">Comptage cyclique</string>
-    <string name="kpi_pending_batch">Lot en attente</string>
+    <string name="kpi_pending_batch">Comptage de stock</string>
     <string name="standalone_kpi_disabled_message">Fonctionnalité non applicable</string>
     <string name="ndc_value">NDC %1$s</string>
+    <string name="rx_value">Rx %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title">PARAMÈTRES</string>
     <string name="setting_group_general">GÉNÉRAL</string>

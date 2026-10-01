@@ -531,6 +531,21 @@ class MainActivityViewModelTest {
     }
 
     @Test
+    fun `local logout stops HL7 even when the settings fetch fails`() = runTest(testDispatcher) {
+        // Local logout cleared the HL7 config, so init's preload skips; offline, the fetch throws.
+        every { preferenceHelper.isHl7ConfigFetched() } returns false
+        coEvery { repository.getApplicationSettings() } throws RuntimeException("offline")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        verify(exactly = 0) { hl7ServiceManager.shutdown() }
+
+        vm.onUserLoginOrLogOut()
+
+        verify(exactly = 1) { hl7ServiceManager.shutdown() }
+    }
+
+    @Test
     fun `startHl7AfterTerminalLoaded returns when disabled`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()

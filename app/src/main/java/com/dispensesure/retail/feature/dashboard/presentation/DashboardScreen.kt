@@ -29,10 +29,8 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.presentation.model.DashboardVariantParams
-import com.dispensesure.retail.feature.dashboard.presentation.variant.DashboardPhoneLandscape
-import com.dispensesure.retail.feature.dashboard.presentation.variant.DashboardPhonePortrait
-import com.dispensesure.retail.feature.dashboard.presentation.variant.DashboardTabletLandscape
-import com.dispensesure.retail.feature.dashboard.presentation.variant.DashboardTabletPortrait
+import com.dispensesure.retail.feature.dashboard.presentation.variant.DashboardLandscapeLayout
+import com.dispensesure.retail.feature.dashboard.presentation.variant.DashboardPortraitLayout
 import com.dispensesure.retail.feature.dashboard.presentation.viewmodel.DashboardViewModel
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
@@ -47,14 +45,14 @@ private val logger = AppLogger("DashboardScreen")
  *  - Collects state from [DashboardViewModel]
  *  - Owns global side-effects (back-press → exit dialog, profile redirect, logout, batch-created nav,
  *    HL7 start once terminal info is loaded)
- *  - Selects a variant composable based on window form factor + orientation
+ *  - Selects a layout by orientation; form factor only sets its compact flag
  *
- * The four variants live under [com.dispensesure.retail.feature.dashboard.presentation.variant] and
- * all accept the same [DashboardVariantParams]. This enforces "same data, different placement"
+ * The two layouts (landscape, portrait) live under [com.dispensesure.retail.feature.dashboard.presentation.variant] and
+ * both accept the same [DashboardVariantParams]. This enforces "same data, different placement"
  * at the type level.
  *
- * Variant selection uses [UserInterfaceUtils.isTablet] (smallest-width ≥600dp) plus
- * [UserInterfaceUtils.isLandscape]. This avoids pulling in the material3-window-size-class
+ * Layout selection uses [UserInterfaceUtils.isLandscape]; [UserInterfaceUtils.isTablet]
+ * (smallest-width ≥600dp) sets `compact`. This avoids pulling in the material3-window-size-class
  * artifact for what is, in practice, a binary form-factor decision.
  */
 @Composable
@@ -114,7 +112,7 @@ fun DashboardScreen(
     }
     LaunchedEffect(uiState.logoutUser) {
         if (uiState.logoutUser) {
-            showToast(context, R.string.session_expired)
+            showToast(context, R.string.session_expired, keepUntilShown = true)
             navController.navigate(AUTH_GRAPH_ROUTE) {
                 popUpTo(0) { inclusive = true }
             }
@@ -161,6 +159,7 @@ fun DashboardScreen(
         { _: KpiFilter -> showToast(context, R.string.standalone_kpi_disabled_message) }
     }
     val onTabSelected = remember(viewModel) { viewModel::onTabSelected }
+    val onTabVisible = remember(viewModel) { viewModel::onTabVisible }
     val onDispenseQuickAction = remember(viewModel, navController) {
         {
             viewModel.saveTxnId()
@@ -225,6 +224,7 @@ fun DashboardScreen(
         onRecentBatchClick = onRecentBatchClick,
         onQueueDispenseClick = onQueueDispenseClick,
         onQueueInventoryClick = onQueueInventoryClick,
+        onTabVisible = onTabVisible,
     )
 
     if (showBucketSelectDialog) {
@@ -251,15 +251,13 @@ fun DashboardScreen(
         )
     }
 
-    // ── Dispatch to the right variant ──
-    val isTablet = UserInterfaceUtils.isTablet()
-    val isLandscape = UserInterfaceUtils.isLandscape()
+    // ── Dispatch to the right layout ──
+    val isCompactScreen = !UserInterfaceUtils.isTablet()
 
-    when {
-        isTablet && !isLandscape -> DashboardTabletPortrait(params)
-        isTablet && isLandscape -> DashboardTabletLandscape(params)
-        !isTablet && !isLandscape -> DashboardPhonePortrait(params)
-        else -> DashboardPhoneLandscape(params)
+    if (UserInterfaceUtils.isLandscape()) {
+        DashboardLandscapeLayout(params, compact = isCompactScreen)
+    } else {
+        DashboardPortraitLayout(params, compact = isCompactScreen)
     }
 
     if (showLogoutDialog) {

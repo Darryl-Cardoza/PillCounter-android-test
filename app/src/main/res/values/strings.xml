@@ -1,8 +1,7 @@
 <resources>
     <!-- ================== APP INFO ================== -->
     <string name="app_name">DispenseSure</string>
-    <string name="rite_title">RITE TECHNOLOGIES</string>
-    <string name="version">Version</string>
+    <string name="version_label">Version %1$s</string>
 
     <!--    Common   -->
     <string name="pms">PMS</string>
@@ -21,23 +20,36 @@
     <string name="email">Email</string>
     <string name="remember_me">Remember me</string>
     <string name="code_sent_to">Security code has been sent to</string>
-    <string name="pre_resend_code">Resend code in %1$d s</string>
+    <string name="pre_resend_code">Resend code in %1$ds</string>
     <string name="resend_code">Resend code</string>
     <string name="verify">Verify</string>
+    <string name="welcome_back">Welcome Back</string>
+    <string name="sign_in_to_continue_to">Sign in to continue to %1$s</string>
+    <string name="email_address">Email Address</string>
+    <string name="email_placeholder">you@example.com</string>
+    <string name="log_in">Log In</string>
+    <string name="contact_administrator_for_access">Contact your administrator if you need access</string>
+    <string name="contact_support_for_code">Didn\'t receive the code? Contact support</string>
+    <string name="wordmark_dispense" translatable="false">DISPENSE</string>
+    <string name="wordmark_sure" translatable="false">SURE</string>
     <string name="login_button_text">LOGIN</string>
     <string name="update_button_text">UPDATE</string>
 
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispense</string>
-    <string name="tap_to_scan_rx_labels">Tap to scan Rx Labels</string>
-    <string name="stock_count">Stock Count</string>
+    <string name="tap_to_scan_rx_labels">Scan Rx Labels</string>
+    <string name="stock_count">Inventory</string>
     <string name="start_a_new_inventory_count">Start a new inventory count</string>
     <string name="start_inventory_count">Start inventory count</string>
     <string name="completed">Completed</string>
     <string name="partial">Pending</string>
     <string name="quick_actions">QUICK ACTIONS</string>
     <string name="todays_queue">TODAY\'S QUEUE</string>
+    <string name="dispense_queue">DISPENSE QUEUE</string>
+    <string name="inventory_queue">INVENTORY QUEUE</string>
+    <string name="tab_label_with_count">%1$s (%2$d)</string>
+    <string name="up_next">UP NEXT</string>
     <string name="queue_tab_pending">PENDING</string>
     <string name="queue_tab_priority">PRIORITY</string>
     <string name="queue_tab_controlled">CONTROLLED</string>
@@ -48,17 +60,15 @@
     <string name="all_caught_up">You are all caught up!</string>
     <string name="no_pending_tasks">No pending tasks right now</string>
     <string name="loading_transactions">Loading transactions...</string>
-    <string name="pms_status_connected">PMS Connected</string>
-    <string name="pms_status_disconnected">PMS Disconnected</string>
-    <string name="kpi_disp_short">Disp.</string>
-    <string name="kpi_inv_short">Inv.</string>
+    <string name="kpi_disp_short">Dispense</string>
+    <string name="kpi_inv_short">Inventory</string>
     <string name="kpi_high_priority">High Priority</string>
-    <string name="kpi_pending">Pending</string>
-    <string name="kpi_cont_drugs">Cont. Drugs</string>
+    <string name="kpi_cont_drugs">Controlled</string>
     <string name="kpi_hazardous">Hazardous</string>
     <string name="kpi_cycle_count">Cycle Count</string>
-    <string name="kpi_pending_batch">Pending Batch</string>
+    <string name="kpi_pending_batch">Stock Count</string>
     <string name="ndc_value">NDC %1$s</string>
+    <string name="rx_value">Rx %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title">SETTINGS</string>
     <string name="setting_group_general">GENERAL</string>

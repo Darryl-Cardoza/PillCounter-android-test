@@ -905,6 +905,33 @@ class PillCountTxnDaoTest {
         }
     }
 
+    @Test
+    fun `getTransactionsForDateRange returns the rx and refill numbers`() = runTest {
+        dao.insertIgnore(
+            baseTxn(
+                localId = 1L,
+                isDispense = true,
+                status = CountStatus.COMPLETED,
+                createdAt = 150L,
+                rxNo = "7654321",
+                refillNo = "2",
+            )
+        )
+
+        dao.getTransactionsForDateRange(
+            startDate = 100L,
+            endDate = 200L,
+            stepType = null,
+            isDispense = null,
+            status = null,
+            userLocalId = 1L
+        ).test {
+            val row = awaitItem().single()
+            assertEquals("7654321", row.rxNo)
+            assertEquals("2", row.refillNo)
+        }
+    }
+
     // ───────────────────────── observePartialByIsDispense ─────────────────────────
 
     @Test
@@ -938,6 +965,24 @@ class PillCountTxnDaoTest {
     }
 
     @Test
+    fun `observePartialByIsDispense lists oldest first within a priority, HL7 or not`() = runTest {
+        val newerHl7 = dao.insertIgnore(
+            baseTxn(isDispense = true, priority = TxnPriority.Medium, isComingFromHL7 = true, createdAt = 200L)
+        )
+        val olderManual = dao.insertIgnore(
+            baseTxn(isDispense = true, priority = TxnPriority.Medium, isComingFromHL7 = false, createdAt = 100L)
+        )
+
+        dao.observePartialByIsDispense(
+            isDispense = true,
+            userLocalId = 1L,
+            type = StepState.SCAN
+        ).test {
+            assertEquals(listOf(olderManual, newerHl7), awaitItem().map { it.txnId })
+        }
+    }
+
+    @Test
     fun `observePartialByIsDispense excludes non partial and deleted rows`() = runTest {
         val id = dao.insertIgnore(
             baseTxn(localId = 1L, isDispense = true, status = CountStatus.COMPLETED)
@@ -954,6 +999,28 @@ class PillCountTxnDaoTest {
         ).test {
             val list = awaitItem()
             assertEquals(1, list.size)
+        }
+    }
+
+    @Test
+    fun `observePartialByIsDispense returns the rx and refill numbers`() = runTest {
+        val withRx = dao.insertIgnore(
+            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL, rxNo = "7654321", refillNo = "2")
+        )
+        val withoutRx = dao.insertIgnore(
+            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL)
+        )
+
+        dao.observePartialByIsDispense(
+            isDispense = true,
+            userLocalId = 1L,
+            type = StepState.SCAN
+        ).test {
+            val byId = awaitItem().associateBy { it.txnId }
+            assertEquals("7654321", byId.getValue(withRx).rxNo)
+            assertEquals("2", byId.getValue(withRx).refillNo)
+            assertNull(byId.getValue(withoutRx).rxNo)
+            assertNull(byId.getValue(withoutRx).refillNo)
         }
     }
 
