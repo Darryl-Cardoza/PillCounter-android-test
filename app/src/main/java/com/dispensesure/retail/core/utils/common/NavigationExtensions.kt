@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.utils.common
 
 import androidx.navigation.NavController
+import com.dispensesure.retail.navigation.Screen
 import java.util.WeakHashMap
 
 fun NavController.navigateSafely(route: String) {
@@ -10,6 +11,16 @@ fun NavController.navigateSafely(route: String) {
     //If the destination is already on top, don't create another instance
     navigate(route) {
         launchSingleTop = true
+    }
+}
+
+// Back to the existing dashboard, keeping its loaded state; rebuilds it only if it isn't on the stack.
+fun NavController.navigateBackToDashboard() {
+    if (!popBackStack(Screen.Dashboard.route, inclusive = false)) {
+        navigate(Screen.Dashboard.route) {
+            popUpTo(0)
+            launchSingleTop = true
+        }
     }
 }
 
