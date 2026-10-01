@@ -1,8 +1,7 @@
 <resources>
     <!-- ================== APP INFO ================== -->
     <string name="app_name">DispenseSure</string>
-    <string name="rite_title">RITE TECHNOLOGIES</string>
-    <string name="version">Versión</string>
+    <string name="version_label">Versión %1$s</string>
 
     <!--    Common   -->
     <string name="pms">PMS</string>
@@ -18,9 +17,16 @@
     <string name="email">Correo electrónico</string>
     <string name="remember_me">Recuérdame</string>
     <string name="code_sent_to">Se ha enviado un código de seguridad a</string>
-    <string name="pre_resend_code">Reenviar código en %1$d s</string>
+    <string name="pre_resend_code">Reenviar código en %1$ds</string>
     <string name="resend_code">Reenviar código</string>
     <string name="verify">Verificar</string>
+    <string name="welcome_back">Bienvenido de nuevo</string>
+    <string name="sign_in_to_continue_to">Inicia sesión para continuar en %1$s</string>
+    <string name="email_address">Correo electrónico</string>
+    <string name="email_placeholder">tu@ejemplo.com</string>
+    <string name="log_in">Iniciar sesión</string>
+    <string name="contact_administrator_for_access">Contacta con tu administrador si necesitas acceso</string>
+    <string name="contact_support_for_code">¿No recibiste el código? Contacta con soporte</string>
     <string name="login_button_text">INICIAR SESIÓN</string>
     <string name="update_button_text">ACTUALIZAR</string>
     <string name="camera">Cámara</string>
@@ -30,14 +36,18 @@
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispensar</string>
-    <string name="tap_to_scan_rx_labels">Toca para escanear etiquetas Rx</string>
-    <string name="stock_count">Conteo de Stock</string>
+    <string name="tap_to_scan_rx_labels">Escanear etiquetas Rx</string>
+    <string name="stock_count">Inventario</string>
     <string name="start_a_new_inventory_count">Iniciar un nuevo conteo de inventario</string>
     <string name="start_inventory_count">Iniciar conteo de inventario</string>
     <string name="completed">Completado</string>
     <string name="partial">Pendiente</string>
     <string name="quick_actions">ACCIONES RÁPIDAS</string>
     <string name="todays_queue">COLA DE HOY</string>
+    <string name="dispense_queue">COLA DE DISPENSACIÓN</string>
+    <string name="inventory_queue">COLA DE INVENTARIO</string>
+    <string name="tab_label_with_count">%1$s (%2$d)</string>
+    <string name="up_next">SIGUIENTE</string>
     <string name="queue_tab_pending">PENDIENTE</string>
     <string name="queue_tab_priority">PRIORIDAD</string>
     <string name="queue_tab_controlled">CONTROLADO</string>
@@ -48,20 +58,23 @@
     <string name="all_caught_up">¡Está todo al día!</string>
     <string name="no_pending_tasks">No hay tareas pendientes por ahora</string>
     <string name="loading_transactions">Cargando transacciones...</string>
-    <string name="pms_status_connected">PMS conectado</string>
-    <string name="pms_status_disconnected">PMS desconectado</string>
-    <string name="kpi_disp_short">Disp.</string>
-    <string name="kpi_inv_short">Inv.</string>
+    <string name="kpi_disp_short">Dispensar</string>
+    <string name="kpi_inv_short">Inventario</string>
     <string name="kpi_high_priority">Alta prioridad</string>
-    <string name="kpi_pending">Pendiente</string>
-    <string name="kpi_cont_drugs">Med. controlados</string>
+    <string name="kpi_cont_drugs">Controlados</string>
     <string name="kpi_hazardous">Peligrosos</string>
     <string name="kpi_cycle_count">Conteo cíclico</string>
-    <string name="kpi_pending_batch">Lote pendiente</string>
+    <string name="kpi_pending_batch">Conteo de stock</string>
     <string name="standalone_kpi_disabled_message">Función no aplicable</string>
     <string name="ndc_value">NDC %1$s</string>
+    <string name="rx_value">Rx %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title">AJUSTES</string>
+    <string name="setting_group_general">GENERAL</string>
+    <string name="setting_group_controlled_drug">DISPENSACIÓN DE SUSTANCIAS CONTROLADAS</string>
+    <string name="setting_group_face_detection">DETECCIÓN FACIAL</string>
+    <string name="setting_group_voice_haptic">RESPUESTA DE VOZ Y HÁPTICA</string>
+    <string name="setting_group_hazardous">CONTEO DE PÍLDORAS PELIGROSAS</string>
     <string name="setting_ask_to_add_notes">Siempre preguntar para añadir notas</string>
     <string name="setting_save_history_for">Guardar historial por</string>
     <string name="pill_counting_sound">Sonido de conteo de pastillas</string>
@@ -78,7 +91,7 @@
     <string name="non_hazardous_tray_warning">Esta no es la bandeja peligrosa. Utilice la bandeja peligrosa.</string>
     <string name="clear_tray_color_lists">Borrar listas de colores de bandejas</string>
     <string name="clear_tray_color_lists_confirm">¿Está seguro de que desea borrar la clasificación de color de bandeja peligrosa?</string>
-    <string name="save_history_for_title">GUARDAR HISTORIAL DURANTE</string>
+    <string name="save_history_for_title">Guardar historial durante</string>
     <string name="require_double_count_title">Requerir doble recuento</string>
 
     <string-array name="history_options">
@@ -125,7 +138,7 @@
     <string name="rescane">Reescanear</string>
     <string name="done">Hecho</string>
     <string name="add">Agregar</string>
-    <string name="count">Contar</string>
+    <string name="count">Recuento</string>
     <string name="ok">Aceptar</string>
     <string name="cancel">Cancelar</string>
     <string name="yes">Sí</string>
@@ -176,6 +189,7 @@
     <string name="menu_profile">Perfil</string>
     <string name="menu_history">Historial</string>
     <string name="menu_settings">Configuración</string>
+    <string name="menu_lock_screen">Bloquear pantalla</string>
     <string name="menu_logout">Cerrar sesión</string>
     <string name="menu_completed">%1$d completados</string>
     <string name="menu_partial">%1$d pendientes</string>
@@ -242,6 +256,8 @@
 
     <string name="add_button_wait">Espere 2 segundos antes de agregar de nuevo.</string>
     <string name="add_zero_detected">No se puede agregar — no se detectaron pastillas.</string>
+    <string name="add_camera_not_ready">La cámara no está lista, inténtelo de nuevo.</string>
+    <string name="location_unavailable">Ubicación no disponible</string>
     <string name="duplicate_scan_ignored">Escaneo duplicado ignorado — no se detectaron pastillas nuevas.</string>
 
     <!-- For multi-select mode text in PartialListPanel -->
@@ -542,7 +558,6 @@
     <string name="session_locked_verify_button">Verificar con el rostro</string>
     <string name="session_locked_resuming_title">Bienvenido de nuevo, %1$s</string>
     <string name="session_locked_resuming_body">Identidad verificada.\nReanudando su sesión...</string>
-    <string name="setting_face_lock_now">Bloquear ahora</string>
     <string name="setting_face_lock_now_disabled_toast">Primero registre un rostro en Reconocimiento facial</string>
     <string name="setting_face_auto_lock_after">Bloqueo automático tras</string>
     <string name="setting_face_auto_lock_minutes">%1$d min</string>
@@ -567,5 +582,13 @@
     <string name="connection_info_title">Información de conexión</string>
     <string name="hl7_notification_title">Servicio en segundo plano HL7</string>
     <string name="rx_already_completed_message">Esta Rx ya ha sido dispensada</string>
+
+    <!-- ================== SAVED PHOTO INFO STRIPS ================== -->
+    <string name="photo_label_requested_ndc">NDC solicitado</string>
+    <string name="photo_label_dispensed_ndc">NDC dispensado</string>
+    <string name="photo_label_rx_refill">N.º Rx-Resurtido</string>
+    <string name="photo_label_step">Paso</string>
+    <string name="photo_label_date_time">Fecha y hora</string>
+    <string name="photo_label_operator">Operador</string>
 
 </resources>

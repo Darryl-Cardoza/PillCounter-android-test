@@ -42,7 +42,7 @@ import javax.inject.Singleton
  *   actually covers "killed from recents" — the initializer below cannot, because
  *   a foreground service keeps the process (and this singleton) alive.
  * - [isLocked] is the single source of truth the UI observes to show/hide the overlay.
- * - [lockNow] lets Settings (and a fresh login) trigger the same overlay on demand.
+ * - [lockNow] lets the Menu's Lock Screen row (and a fresh login) trigger the same overlay on demand.
  * - [startOnScan] tells the overlay to open on the verify camera instead of the lock screen.
  * - [unlock] is called after a successful face verify.
  */
@@ -79,6 +79,9 @@ class SessionLockController @Inject constructor(
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == preferenceHelper.userLoggedInKey && !preferenceHelper.isUserLoggedIn()) {
                 _verifiedFaceProfileId.value = null
+                // Nobody to verify into after a logout, so release the lock and let Login show.
+                _isLocked.value = false
+                _startOnScan.value = false
             }
         }
 
@@ -143,7 +146,7 @@ class SessionLockController @Inject constructor(
     }
 
     /**
-     * Manually triggers the lock overlay, e.g. from a Settings "Lock Now" row or
+     * Manually triggers the lock overlay, e.g. from the Menu's "Lock Screen" row or
      * right after a successful login.
      *
      * @param startOnScan Open the overlay on the verify camera instead of the idle lock screen.

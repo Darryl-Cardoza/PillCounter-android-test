@@ -3,18 +3,15 @@ package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.di.DefaultDispatcher
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.UserEntity
-import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
-import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.room.models.enums.TxnPriority
-import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
@@ -25,22 +22,34 @@ import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardUiState
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
+import com.dispensesure.retail.feature.dashboard.domain.model.QueueSources
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
 import com.dispensesure.retail.feature.dashboard.domain.model.UserDetail
 import com.dispensesure.retail.feature.dashboard.domain.model.UserProfile
 import com.dispensesure.retail.feature.dashboard.domain.model.UserSettings
+import com.dispensesure.retail.feature.dashboard.domain.model.buildDashboardQueues
+import com.dispensesure.retail.feature.dashboard.domain.model.recentActivityItems
+import com.dispensesure.retail.feature.dashboard.domain.model.toPendingDispenseItems
+import com.dispensesure.retail.feature.dashboard.domain.model.toPendingInventoryItems
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 import javax.inject.Inject
 
@@ -74,17 +83,18 @@ class DashboardViewModel @Inject constructor(
     private val hl7ServiceManager: Hl7ServiceManager,
     private val deviceKeyProvider: DeviceKeyProvider,
     private val sessionHealthController: SessionHealthController,
-
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     /** Logger instance for this ViewModel. */
     private val logger = AppLogger.create<DashboardViewModel>()
 
-    /**
-     * Unfiltered combined queue, kept separate so KPI filter toggling can re-derive the
-     * visible queue locally without waiting for the upstream DB flow to re-emit.
-     */
-    private val _unfilteredQueue = MutableStateFlow<List<QueueItem>>(emptyList())
+    /** Mapped Room lists per tab; the queue publisher derives what each tab shows from these. */
+    private val queueSources = MutableStateFlow(QueueSources())
+
+    /** One live Room collector per tab, started on the tab's first visit. */
+    private val tabJobs = mutableMapOf<DashboardTab, Job>()
+    private var inventoryKpiCountsJob: Job? = null
 
     /** Backing state flow for the Dashboard UI. */
     private val _uiState = MutableStateFlow(DashboardUiState())
@@ -104,9 +114,10 @@ class DashboardViewModel @Inject constructor(
 
     init {
         logger.i("DashboardViewModel initialized.")
+        startQueuePublisher()
         //  To avoid initial observe count call because of absence of localId
         if (preferenceHelper.getLocalId() != 0.toLong()) {
-            observeQueue()
+            startInitialQueueSubscriptions()
         }
         observeUserDetail()
         observeOperatorName()
@@ -207,188 +218,128 @@ class DashboardViewModel @Inject constructor(
 
     fun getBucketList(): List<String> = preferenceHelper.getBucketList()
 
-//    suspend fun getLastInProgressBatch() = batchDao.getLatest()
-
     // ─────────────────────────── New dashboard: queue + KPIs ───────────────────────────
 
+    /** Dispense queue and the inventory KPI counts load at launch; other tabs load on first visit. */
+    private fun startInitialQueueSubscriptions(localId: Long = preferenceHelper.getLocalId()) {
+        ensureTabObserved(DashboardTab.DISPENSE_QUEUE, localId)
+        if (inventoryKpiCountsJob?.isActive != true) {
+            inventoryKpiCountsJob = collectSource(
+                source = batchDao.observeInProgressBatchKpiCounts().flowOn(Dispatchers.IO).distinctUntilChanged(),
+            ) { copy(inventoryKpiCounts = it) }
+        }
+    }
+
+    /** Starts the Room collector for [tab] once; later visits reuse the live list. */
+    private fun ensureTabObserved(tab: DashboardTab, localId: Long = preferenceHelper.getLocalId()) {
+        if (localId == 0L || tabJobs[tab]?.isActive == true) return
+        queueSources.update { it.copy(observedTabs = it.observedTabs + tab) }
+        tabJobs[tab] = when (tab) {
+            DashboardTab.DISPENSE_QUEUE -> collectSource(pendingDispenseFlow(localId)) {
+                copy(pendingDispense = it, loadedTabs = loadedTabs + tab)
+            }
+            DashboardTab.INVENTORY_QUEUE -> collectSource(pendingInventoryFlow()) {
+                copy(pendingInventory = it, loadedTabs = loadedTabs + tab)
+            }
+            DashboardTab.RECENT_ACTIVITY -> collectSource(recentActivityFlow(localId)) {
+                copy(recentActivity = it, loadedTabs = loadedTabs + tab)
+            }
+        }
+    }
+
+    private fun pendingDispenseFlow(localId: Long) =
+        pillCountTxnDao.observePartialByIsDispense(
+            isDispense = true,
+            partialStatus = CountStatus.PARTIAL,
+            userLocalId = localId,
+            // totalPillCount sums detail rows of THIS step only. FIXED dispense
+            // never writes pill counts to the SCAN step (that's the NDC barcode
+            // scan); the counted pills land in TARGET_VERIFICATION for both the
+            // simple and controlled FIXED flows. Passing SCAN here made every
+            // queue row show "0/target". TARGET_VERIFICATION is also the step
+            // the Partial Counts resume screen (CountsViewModel) reads, so the
+            // queue count now matches the resume screen.
+            type = StepState.TARGET_VERIFICATION,
+        ).flowOn(Dispatchers.IO).distinctUntilChanged().map { it.toPendingDispenseItems() }
+
+    // Use the summaries query so uniqueNdcCount is populated from the
+    // join. getAllInProgress() returns bare BatchEntity rows with no
+    // txn join, which left the card stuck at "0 NDCs" even after scans.
+    private fun pendingInventoryFlow() =
+        batchDao.observeInProgressBatchSummaries()
+            .flowOn(Dispatchers.IO).distinctUntilChanged().map { it.toPendingInventoryItems() }
+
+    private fun recentActivityFlow(localId: Long): Flow<List<QueueItem>> {
+        val completedDispenses = pillCountTxnDao.getTransactionsForDateRange(
+            startDate = 0L,
+            endDate = Long.MAX_VALUE,
+            stepType = StepState.TARGET_VERIFICATION,
+            isDispense = true,
+            status = CountStatus.COMPLETED,
+            userLocalId = localId,
+        ).flowOn(Dispatchers.IO).distinctUntilChanged()
+        val completedBatches = batchDao.getBatchSummaries(startDate = 0L, endDate = Long.MAX_VALUE)
+            .flowOn(Dispatchers.IO).distinctUntilChanged()
+        return completedDispenses.combine(completedBatches, ::recentActivityItems)
+    }
+
+    /** Collects one source on Default into [queueSources]. */
+    private fun <T> collectSource(
+        source: Flow<T>,
+        updateSources: QueueSources.(T) -> QueueSources,
+    ): Job = viewModelScope.launch(defaultDispatcher) {
+        source.collect { value -> queueSources.update { it.updateSources(value) } }
+    }
+
     /**
-     * Observes the merged "Today's Queue" — pending dispense transactions plus in-progress
-     * batches — and recomputes KPI card counts whenever either source changes.
-     *
-     * Sources are intentionally limited to **existing DAO queries** in this iteration. Fields
-     * that require new joins (hazardous / controlled / high-priority flags on dispense rows,
-     * batch typing for cycle-count vs pending) are stubbed `false` / `0` here and tracked in
-     * `HOMESCREEN_REDESIGN.md` under "Open questions".
+     * The only writer of the queue lists: rebuilds them on Default when a source or the filter
+     * changes, then writes on Main, keeping unchanged list instances.
      */
-    private fun observeQueue(localId: Long = preferenceHelper.getLocalId()) {
-        viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isLoadingQueue = true) }
-
-            val dispenseFlow = pillCountTxnDao.observePartialByIsDispense(
-                isDispense = true,
-                partialStatus = CountStatus.PARTIAL,
-                userLocalId = localId,
-                // totalPillCount sums detail rows of THIS step only. FIXED dispense
-                // never writes pill counts to the SCAN step (that's the NDC barcode
-                // scan); the counted pills land in TARGET_VERIFICATION for both the
-                // simple and controlled FIXED flows. Passing SCAN here made every
-                // queue row show "0/target". TARGET_VERIFICATION is also the step
-                // the Partial Counts resume screen (CountsViewModel) reads, so the
-                // queue count now matches the resume screen.
-                type = StepState.TARGET_VERIFICATION,
-            )
-            // Use the summaries query so uniqueNdcCount is populated from the
-            // join. getAllInProgress() returns bare BatchEntity rows with no
-            // txn join, which left the card stuck at "0 NDCs" even after scans.
-            val inventoryFlow = batchDao.observeInProgressBatchSummaries()
-
-            dispenseFlow.combine(inventoryFlow) { dispense, batches ->
-                val dispenseItems = dispense.map { txn ->
-                    QueueItem.Dispense(
-                        txn = txn,
-                        isHazardous = txn.isHazardous,
-                        isHighPriority = txn.priority == TxnPriority.High,
-                        isControlled = isControlledDrugType(txn.drugType),
-                    )
-                }
-                val inventoryItems = batches.map { b ->
-                    QueueItem.Inventory(batch = b)
-                }
-                (dispenseItems + inventoryItems).sortedBy { it.createdAt }
-            }.collect { combined ->
-                _unfilteredQueue.value = combined
-                val counts = computeKpiCounts(combined)
-                _uiState.update { state ->
-                    state.copy(
-                        queue = applyKpiFilter(combined, state.activeKpiFilter),
-                        kpiCounts = counts,
-                        isLoadingQueue = false,
-                    )
+    private fun startQueuePublisher() {
+        viewModelScope.launch(defaultDispatcher) {
+            val activeFilter = _uiState.map { it.activeKpiFilter }.distinctUntilChanged()
+            queueSources.combine(activeFilter, ::buildDashboardQueues).collectLatest { queues ->
+                withContext(Dispatchers.Main) {
+                    _uiState.update { state ->
+                        state.copy(
+                            dispenseQueue = queues.dispenseQueue.reuseIfEqual(state.dispenseQueue),
+                            inventoryQueue = queues.inventoryQueue.reuseIfEqual(state.inventoryQueue),
+                            recentActivity = queues.recentActivity.reuseIfEqual(state.recentActivity),
+                            kpiCounts = queues.kpiCounts,
+                            dispenseTabCount = queues.dispenseTabCount,
+                            inventoryTabCount = queues.inventoryTabCount,
+                            loadedTabs = queues.loadedTabs,
+                            loadingTabs = queues.loadingTabs,
+                        )
+                    }
                 }
             }
         }
     }
 
-    /** Toggle a KPI filter — tapping the same card clears it. Also switches to Today's Queue, since that's the list the KPIs filter. */
+    // Keeps the current instance when contents are equal, so an unchanged page skips recomposition.
+    private fun <T> List<T>.reuseIfEqual(current: List<T>): List<T> = if (this == current) current else this
+
+    /** Toggle a KPI filter — tapping the same card clears it. Also switches to the filter's own queue. */
     fun onKpiFilterTapped(filter: KpiFilter) {
         _uiState.update { state ->
-            val newFilter = if (state.activeKpiFilter == filter) null else filter
             state.copy(
-                activeKpiFilter = newFilter,
-                queue = applyKpiFilter(_unfilteredQueue.value, newFilter),
-                activeTab = DashboardTab.TODAYS_QUEUE,
+                activeKpiFilter = if (state.activeKpiFilter == filter) null else filter,
+                activeTab = filter.queue,
             )
         }
+        ensureTabObserved(filter.queue)
     }
 
-    /** Switch the active tab between Today's Queue and Recent Activity. */
+    /** Switch the active tab; any tab change clears the KPI filter. Re-selecting the current tab is a no-op. */
     fun onTabSelected(tab: DashboardTab) {
-        _uiState.update { state ->
-            state.copy(
-                activeTab = tab,
-                activeKpiFilter = if (tab == DashboardTab.RECENT_ACTIVITY) null else state.activeKpiFilter,
-                queue = if (tab == DashboardTab.RECENT_ACTIVITY) applyKpiFilter(_unfilteredQueue.value, null) else state.queue,
-            )
-        }
-        if (tab == DashboardTab.RECENT_ACTIVITY) {
-            loadRecentActivity()
-        }
+        if (tab == _uiState.value.activeTab) return
+        _uiState.update { it.copy(activeTab = tab, activeKpiFilter = null) }
+        ensureTabObserved(tab)
     }
 
-    private var recentActivityJob: Job? = null
-
-    /**
-     * Observes completed dispense transactions + completed batches over the last 30 days,
-     * merged and sorted newest-first. Started lazily the first time the user selects the
-     * Recent Activity tab; re-collecting is a no-op because flows are hot-shared via Room.
-     */
-    private fun loadRecentActivity(localId: Long = preferenceHelper.getLocalId()) {
-        if (recentActivityJob?.isActive == true) return
-        if (localId == 0L) return
-
-        recentActivityJob = viewModelScope.launch(Dispatchers.IO) {
-            _uiState.update { it.copy(isLoadingQueue = true) }
-
-            val completedDispenseFlow = pillCountTxnDao.getTransactionsForDateRange(
-                startDate = 0L,
-                endDate = Long.MAX_VALUE,
-                stepType = StepState.TARGET_VERIFICATION,
-                isDispense = true,
-                status = CountStatus.COMPLETED,
-                userLocalId = localId,
-            )
-            val completedBatchesFlow = batchDao.getBatchSummaries(
-                startDate = 0L,
-                endDate = Long.MAX_VALUE,
-            )
-
-            completedDispenseFlow.combine(completedBatchesFlow) { dispenses, batches ->
-                val dispenseItems = dispenses.map { t ->
-                    QueueItem.Dispense(
-                        txn = PillCountWithDrugAndTotal(
-                            txnId = t.txnId,
-                            drugName = t.drugName,
-                            ndc = t.ndc,
-                            drugType = t.drugType,
-                            bucketId = t.bucketId,
-                            createdAt = t.createdAt,
-                            targetCount = t.targetCount,
-                            bottleInfoListJson = t.bottleInfoListJson,
-                            totalPillCount = t.pillCount ?: 0,
-                            isComingFromHL7 = false,
-                            isNdcVerified = false,
-                            isDispense = t.isDispense,
-                            priority = null,
-                            strength = t.strength,
-                            dosageForm = t.dosageForm,
-                            drugImagePath = t.drugImagePath,
-                        ),
-                        isHazardous = false,
-                        isHighPriority = false,
-                        isControlled = isControlledDrugType(t.drugType),
-                    )
-                }
-                val inventoryItems = batches
-                    .filter { it.status == BatchStatus.COMPLETED.name }
-                    .map { QueueItem.Inventory(batch = it) }
-                (dispenseItems + inventoryItems).sortedByDescending { it.createdAt }
-            }.collect { combined ->
-                _uiState.update { it.copy(recentActivity = combined, isLoadingQueue = false) }
-            }
-        }
-    }
-
-    private fun computeKpiCounts(items: List<QueueItem>): Map<KpiFilter, Int> {
-        val dispense = items.filterIsInstance<QueueItem.Dispense>()
-        val inventory = items.filterIsInstance<QueueItem.Inventory>()
-        return mapOf(
-            KpiFilter.DISP_HIGH_PRIORITY to dispense.count { it.isHighPriority },
-            KpiFilter.DISP_PENDING to dispense.size,
-            KpiFilter.DISP_CONTROLLED to dispense.count { it.isControlled },
-            KpiFilter.DISP_HAZARDOUS to dispense.count { it.isHazardous },
-            // Cycle Count = PMS-requested inventory counts. A batch carries a PMS
-            // request id (requestIdFromPMS) only when it was created from an INR^U04
-            // inventory request (Hl7Repository.handleInrInventoryRequest); manually
-            // started batches have it null. This is the same discriminator the
-            // history / unsynced lists use to tag a batch as PMS-sourced.
-            KpiFilter.INV_CYCLE_COUNT to inventory.count { it.isCycleCount },
-            // Pending Batch = manually started (non-PMS) inventory batches.
-            KpiFilter.INV_PENDING_BATCH to inventory.count { !it.isCycleCount },
-        )
-    }
-
-    private fun applyKpiFilter(
-        items: List<QueueItem>,
-        filter: KpiFilter?,
-    ): List<QueueItem> = when (filter) {
-        null -> items
-        KpiFilter.DISP_HIGH_PRIORITY -> items.filter { it is QueueItem.Dispense && it.isHighPriority }
-        KpiFilter.DISP_PENDING -> items.filterIsInstance<QueueItem.Dispense>()
-        KpiFilter.DISP_CONTROLLED -> items.filter { it is QueueItem.Dispense && it.isControlled }
-        KpiFilter.DISP_HAZARDOUS -> items.filter { it is QueueItem.Dispense && it.isHazardous }
-        KpiFilter.INV_CYCLE_COUNT -> items.filter { it is QueueItem.Inventory && it.isCycleCount }
-        KpiFilter.INV_PENDING_BATCH -> items.filter { it is QueueItem.Inventory && !it.isCycleCount }
-    }
+    /** Starts a tab's load when the pager first draws it, without switching to it. */
+    fun onTabVisible(tab: DashboardTab) = ensureTabObserved(tab)
 
     /**
      * Fetch the latest user details from the remote repository.
@@ -443,6 +394,7 @@ class DashboardViewModel @Inject constructor(
                             val localId = userDao.upsertPreservingLocalId(user = entity)
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.settings?.bucket ?: emptyList())
+                            preferenceHelper.saveIsColorImageEnabled(payload.data?.settings?.isColorImageEnabled ?: true)
                             preferenceHelper.setHl7Enabled(entity.isHl7Enable)
                             // Persist is_standalone so the RX-scan flow knows whether it may
                             // create dispense transactions locally (without waiting on PMS/HL7)
@@ -542,7 +494,8 @@ class DashboardViewModel @Inject constructor(
                             //  localId is 0 (from preference) — i.e. first-ever launch, where
                             //  the init-time observers no-opped for lack of a localId.
                             if (preferenceHelper.getLocalId() == 0.toLong()) {
-                                observeQueue(localId)
+                                // tabJobs is only touched on Main.
+                                withContext(Dispatchers.Main) { startInitialQueueSubscriptions(localId) }
                                 observeUserDetail(localId)
                             }
                             preferenceHelper.saveLocalId(localId)

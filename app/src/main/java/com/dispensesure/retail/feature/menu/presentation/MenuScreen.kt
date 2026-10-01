@@ -65,6 +65,7 @@ fun MenuScreen(
     val context = LocalContext.current
     val uiState by viewModel.uiState.collectAsState()
     val logoutState by loginViewModel.logoutUiState.collectAsState()
+    val hasEnabledFaceProfile by viewModel.hasEnabledFaceProfile.collectAsState()
     var showLogoutLoading by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
 
@@ -83,7 +84,7 @@ fun MenuScreen(
 
             Column(
                 modifier = Modifier
-                    .fillMaxSize()
+                    .weight(1f)
                     .verticalScroll(rememberScrollState())
                     .padding(start = dimens.medium, end = dimens.medium)
                     .background(extendedColors.secondaryBackground)
@@ -154,6 +155,19 @@ fun MenuScreen(
                     iconTint = MaterialTheme.colorScheme.primary,
                     title = stringResource(R.string.menu_profile),
                     onClick = { navController.navigate(Screen.Profile.route) }
+                )
+                HorizontalDivider(color = extendedColors.primaryBackground)
+                // Lock Screen: dimmed with a toast until a face is enrolled.
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.lock_screen,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_lock_screen),
+                    enabled = hasEnabledFaceProfile,
+                    onClick = {
+                        if (hasEnabledFaceProfile) viewModel.lockSessionNow()
+                        else showToast(context, R.string.setting_face_lock_now_disabled_toast)
+                    }
                 )
                 HorizontalDivider(color = extendedColors.primaryBackground)
                 // Logout
@@ -245,6 +259,16 @@ fun MenuScreen(
                     else -> {}
                 }
             }
+
+            // App version, pinned below the scrolling list.
+            Text(
+                text = stringResource(R.string.version_label, stringResource(R.string.app_version_name)),
+                style = MaterialTheme.typography.bodySmall,
+                color = extendedColors.textColor.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .align(Alignment.CenterHorizontally)
+                    .padding(vertical = dimens.small)
+            )
         }
     }
 

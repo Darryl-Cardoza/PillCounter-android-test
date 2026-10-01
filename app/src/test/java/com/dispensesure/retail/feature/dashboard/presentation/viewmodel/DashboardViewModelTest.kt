@@ -1,7 +1,6 @@
 package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 
 import android.util.Log
-import app.cash.turbine.test
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.ApiResponse
@@ -10,6 +9,7 @@ import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
+import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.CountStatus
@@ -19,6 +19,7 @@ import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.data.IUserDetailRepository
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
+import com.dispensesure.retail.feature.dashboard.domain.model.DashboardUiState
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
@@ -37,9 +38,13 @@ import io.mockk.unmockkAll
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -48,6 +53,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -82,10 +88,13 @@ class DashboardViewModelTest {
         every { Log.e(any(), any(), any()) } returns 0
 
         Dispatchers.setMain(testDispatcher)
+        // Main after setMain wraps testDispatcher; read it before the static mock hides it.
+        val testMain = Dispatchers.Main
         // The VM launches its work on a hardcoded Dispatchers.IO; redirect it to the
         // test scheduler so advanceUntilIdle() drives those coroutines deterministically.
         mockkStatic(Dispatchers::class)
         every { Dispatchers.IO } returns testDispatcher
+        every { Dispatchers.Main } returns testMain
 
         userDetailRepository = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
@@ -119,6 +128,7 @@ class DashboardViewModelTest {
         coEvery { userDao.upsertPreservingLocalId(any()) } returns 5L
         every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(emptyList())
+        every { batchDao.observeInProgressBatchKpiCounts(any()) } returns flowOf(InventoryKpiCountsDto(0, 0))
         every {
             pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
         } returns flowOf(emptyList())
@@ -143,6 +153,7 @@ class DashboardViewModelTest {
         hl7ServiceManager,
         deviceKeyProvider,
         sessionHealthController,
+        testDispatcher,
     )
 
     // ─────────────────────────────── helpers ───────────────────────────────
@@ -267,18 +278,6 @@ class DashboardViewModelTest {
         assertFalse(vm.isConnected.value)
         assertFalse(vm.pmsCertMismatch.value)
         assertFalse(vm.terminalInfoLoaded.value)
-    }
-
-    @Test
-    fun `init skips observeQueue when localId is zero`() = runTest(testDispatcher) {
-        every { preferenceHelper.getLocalId() } returns 0L
-        // token blank too so fetchUserDetail short-circuits.
-        every { preferenceHelper.getAccessToken() } returns null
-
-        createViewModel()
-        advanceUntilIdle()
-
-        verify(exactly = 0) { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) }
     }
 
     @Test
@@ -408,111 +407,259 @@ class DashboardViewModelTest {
         assertEquals(before, vm.uiState.value.userDetail)
     }
 
-    // ─────────────────────────────── observeQueue / KPI ───────────────────────────────
+    // ─────────────────────────────── queue subscriptions ───────────────────────────────
 
     @Test
-    fun `observeQueue builds queue and computes kpi counts`() = runTest(testDispatcher) {
-        val dispense = listOf(
-            dispenseTxn(txnId = 1, createdAt = 1, priority = TxnPriority.High, drugType = "CII"),
-            dispenseTxn(txnId = 2, createdAt = 3, isHazardous = true, drugType = "notControlled"),
-        )
-        val batches = listOf(
-            batchSummary(batchId = 10, createdAt = 2, requestIdFromPMS = "pms-1"),
-            batchSummary(batchId = 11, createdAt = 4, requestIdFromPMS = null),
-        )
-        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(dispense)
-        every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(batches)
-
-        val vm = createViewModel()
+    fun `init subscribes to dispense and inventory counts only`() = runTest(testDispatcher) {
+        createViewModel()
         advanceUntilIdle()
 
-        vm.uiState.test {
-            val state = expectMostRecentItem()
-            // sorted ascending by createdAt -> txn1(1), batch10(2), txn2(3), batch11(4)
-            assertEquals(4, state.queue.size)
-            val counts = state.kpiCounts
-            assertEquals(1, counts[KpiFilter.DISP_HIGH_PRIORITY])
-            assertEquals(2, counts[KpiFilter.DISP_PENDING])
-            assertEquals(1, counts[KpiFilter.DISP_CONTROLLED])
-            assertEquals(1, counts[KpiFilter.DISP_HAZARDOUS])
-            assertEquals(1, counts[KpiFilter.INV_CYCLE_COUNT])
-            assertEquals(1, counts[KpiFilter.INV_PENDING_BATCH])
-        }
+        verify(exactly = 1) { pillCountTxnDao.observePartialByIsDispense(any(), any(), 1L, any()) }
+        verify(exactly = 1) { batchDao.observeInProgressBatchKpiCounts(any()) }
+        verify(exactly = 0) { batchDao.observeInProgressBatchSummaries(any()) }
+        verify(exactly = 0) { pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any()) }
+        verify(exactly = 0) { batchDao.getBatchSummaries(any(), any()) }
     }
 
     @Test
-    fun `onKpiFilterTapped toggles filter and applies all branches`() = runTest(testDispatcher) {
-        val dispense = listOf(
-            dispenseTxn(txnId = 1, createdAt = 1, priority = TxnPriority.High, drugType = "CIII", isHazardous = true),
-            dispenseTxn(txnId = 2, createdAt = 3),
-        )
-        val batches = listOf(
-            batchSummary(batchId = 10, createdAt = 2, requestIdFromPMS = "pms"),
-            batchSummary(batchId = 11, createdAt = 4, requestIdFromPMS = null),
-        )
-        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(dispense)
-        every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(batches)
+    fun `queue subscriptions are skipped when localId is zero`() = runTest(testDispatcher) {
+        every { preferenceHelper.getLocalId() } returns 0L
+        every { preferenceHelper.getAccessToken() } returns null
 
         val vm = createViewModel()
         advanceUntilIdle()
+        vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
+        vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+        advanceUntilIdle()
 
-        // DISP_HIGH_PRIORITY
-        vm.onKpiFilterTapped(KpiFilter.DISP_HIGH_PRIORITY)
-        assertEquals(KpiFilter.DISP_HIGH_PRIORITY, vm.uiState.value.activeKpiFilter)
-        assertEquals(DashboardTab.TODAYS_QUEUE, vm.uiState.value.activeTab)
-        assertEquals(1, vm.uiState.value.queue.size)
-
-        // DISP_PENDING (different filter -> set)
-        vm.onKpiFilterTapped(KpiFilter.DISP_PENDING)
-        assertEquals(2, vm.uiState.value.queue.size)
-
-        // DISP_CONTROLLED
-        vm.onKpiFilterTapped(KpiFilter.DISP_CONTROLLED)
-        assertEquals(1, vm.uiState.value.queue.size)
-
-        // DISP_HAZARDOUS
-        vm.onKpiFilterTapped(KpiFilter.DISP_HAZARDOUS)
-        assertEquals(1, vm.uiState.value.queue.size)
-
-        // INV_CYCLE_COUNT
-        vm.onKpiFilterTapped(KpiFilter.INV_CYCLE_COUNT)
-        assertEquals(1, vm.uiState.value.queue.size)
-
-        // INV_PENDING_BATCH
-        vm.onKpiFilterTapped(KpiFilter.INV_PENDING_BATCH)
-        assertEquals(1, vm.uiState.value.queue.size)
-
-        // Toggle same filter off -> null filter, full queue.
-        vm.onKpiFilterTapped(KpiFilter.INV_PENDING_BATCH)
-        assertNull(vm.uiState.value.activeKpiFilter)
-        assertEquals(4, vm.uiState.value.queue.size)
+        verify(exactly = 0) { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) }
+        verify(exactly = 0) { batchDao.observeInProgressBatchSummaries(any()) }
+        verify(exactly = 0) { batchDao.getBatchSummaries(any(), any()) }
     }
 
-    // ─────────────────────────────── onTabSelected / loadRecentActivity ───────────────────────────────
+    @Test
+    fun `inventory tab subscribes once on first visit and stays live`() = runTest(testDispatcher) {
+        every { batchDao.observeInProgressBatchSummaries(any()) } returns MutableStateFlow(emptyList())
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
+        advanceUntilIdle()
+        vm.onTabSelected(DashboardTab.DISPENSE_QUEUE)
+        vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
+        advanceUntilIdle()
+
+        verify(exactly = 1) { batchDao.observeInProgressBatchSummaries(any()) }
+    }
 
     @Test
-    fun `onTabSelected recent activity clears filter and loads recent activity`() = runTest(testDispatcher) {
-        val completedDispense = listOf(txnWithDrug(txnId = 1, createdAt = 5, drugType = "CIV"))
-        val completedBatches = listOf(
-            batchSummary(batchId = 20, createdAt = 6, status = BatchStatus.COMPLETED.name),
-            batchSummary(batchId = 21, createdAt = 7, status = BatchStatus.INPROGRESS.name),
-        )
+    fun `recent tab subscribes once on first visit and stays live`() = runTest(testDispatcher) {
         every {
             pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
-        } returns flowOf(completedDispense)
-        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(completedBatches)
+        } returns MutableStateFlow(emptyList())
+        every { batchDao.getBatchSummaries(any(), any()) } returns MutableStateFlow(emptyList())
 
         val vm = createViewModel()
         advanceUntilIdle()
-        // set a filter first to confirm it gets cleared.
+        vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+        advanceUntilIdle()
+        vm.onTabSelected(DashboardTab.DISPENSE_QUEUE)
+        vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+        advanceUntilIdle()
+
+        verify(exactly = 1) { batchDao.getBatchSummaries(any(), any()) }
+    }
+
+    // ─────────────────────────────── loaded state ───────────────────────────────
+
+    @Test
+    fun `dispense tab is never loaded with its list missing`() = runTest(testDispatcher) {
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns
+            flowOf(listOf(dispenseTxn(txnId = 1)))
+        val states = mutableListOf<DashboardUiState>()
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.toList(states) }
+        advanceUntilIdle()
+
+        assertTrue(DashboardTab.DISPENSE_QUEUE in states.last().loadedTabs)
+        assertTrue(states.none { DashboardTab.DISPENSE_QUEUE in it.loadedTabs && it.dispenseQueue.isEmpty() })
+    }
+
+    @Test
+    fun `tab stays loading until its source emits`() = runTest(testDispatcher) {
+        val batches = MutableSharedFlow<List<BatchSummaryDto>>()
+        every { batchDao.observeInProgressBatchSummaries(any()) } returns batches
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.isLoadingQueue)
+        assertFalse(DashboardTab.INVENTORY_QUEUE in vm.uiState.value.loadedTabs)
+
+        batches.emit(emptyList())
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isLoadingQueue)
+        assertTrue(DashboardTab.INVENTORY_QUEUE in vm.uiState.value.loadedTabs)
+    }
+
+    @Test
+    fun `onTabVisible starts the tab load without switching tabs`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onTabVisible(DashboardTab.INVENTORY_QUEUE)
+        advanceUntilIdle()
+
+        verify(exactly = 1) { batchDao.observeInProgressBatchSummaries(any()) }
+        assertEquals(DashboardTab.DISPENSE_QUEUE, vm.uiState.value.activeTab)
+        assertTrue(DashboardTab.INVENTORY_QUEUE in vm.uiState.value.loadedTabs)
+    }
+
+    // ─────────────────────────────── lists / KPI ───────────────────────────────
+
+    private fun stubQueues() {
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(
+            listOf(
+                // DAO order: high priority first.
+                dispenseTxn(txnId = 2, createdAt = 3, priority = TxnPriority.High, drugType = "CII"),
+                dispenseTxn(txnId = 1, createdAt = 1, isHazardous = true),
+            )
+        )
+        every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(
+            listOf(
+                batchSummary(batchId = 11, createdAt = 4, requestIdFromPMS = null),
+                batchSummary(batchId = 10, createdAt = 2, requestIdFromPMS = "pms-1"),
+            )
+        )
+        every { batchDao.observeInProgressBatchKpiCounts(any()) } returns flowOf(InventoryKpiCountsDto(1, 1))
+    }
+
+    @Test
+    fun `dispense and inventory queues are split, ordered and counted`() = runTest(testDispatcher) {
+        stubQueues()
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(listOf(2L, 1L), state.dispenseQueue.map { it.txn.txnId })
+        assertEquals(listOf(10L, 11L), state.inventoryQueue.map { it.batch.batchId })
+        assertEquals(1, state.kpiCounts[KpiFilter.DISP_HIGH_PRIORITY])
+        assertEquals(2, state.kpiCounts[KpiFilter.DISP_PENDING])
+        assertEquals(1, state.kpiCounts[KpiFilter.DISP_CONTROLLED])
+        assertEquals(1, state.kpiCounts[KpiFilter.DISP_HAZARDOUS])
+        assertEquals(1, state.kpiCounts[KpiFilter.INV_CYCLE_COUNT])
+        assertEquals(1, state.kpiCounts[KpiFilter.INV_PENDING_BATCH])
+        assertEquals(2, state.dispenseTabCount)
+        assertEquals(2, state.inventoryTabCount)
+    }
+
+    @Test
+    fun `dispense kpi opens the dispense queue and narrows only it`() = runTest(testDispatcher) {
+        stubQueues()
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+        advanceUntilIdle()
+
+        vm.onKpiFilterTapped(KpiFilter.DISP_HAZARDOUS)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(DashboardTab.DISPENSE_QUEUE, state.activeTab)
+        assertEquals(KpiFilter.DISP_HAZARDOUS, state.activeKpiFilter)
+        assertEquals(listOf(1L), state.dispenseQueue.map { it.txn.txnId })
+        assertEquals(1, state.dispenseTabCount)
+    }
+
+    @Test
+    fun `inventory kpi opens and loads the inventory queue`() = runTest(testDispatcher) {
+        stubQueues()
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onKpiFilterTapped(KpiFilter.INV_CYCLE_COUNT)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertEquals(DashboardTab.INVENTORY_QUEUE, state.activeTab)
+        assertEquals(listOf(10L), state.inventoryQueue.map { it.batch.batchId })
+        assertEquals(2, state.dispenseQueue.size)
+        assertEquals(1, state.inventoryTabCount)
+    }
+
+    @Test
+    fun `re-tapping the active kpi clears it and stays on its queue`() = runTest(testDispatcher) {
+        stubQueues()
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onKpiFilterTapped(KpiFilter.INV_PENDING_BATCH)
+        advanceUntilIdle()
+        vm.onKpiFilterTapped(KpiFilter.INV_PENDING_BATCH)
+        advanceUntilIdle()
+
+        val state = vm.uiState.value
+        assertNull(state.activeKpiFilter)
+        assertEquals(DashboardTab.INVENTORY_QUEUE, state.activeTab)
+        assertEquals(2, state.inventoryQueue.size)
+    }
+
+    @Test
+    fun `changing tab clears the kpi filter`() = runTest(testDispatcher) {
+        stubQueues()
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onKpiFilterTapped(KpiFilter.DISP_HAZARDOUS)
+        advanceUntilIdle()
+
+        vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
+        advanceUntilIdle()
+
+        assertNull(vm.uiState.value.activeKpiFilter)
+        assertEquals(DashboardTab.INVENTORY_QUEUE, vm.uiState.value.activeTab)
+        assertEquals(2, vm.uiState.value.dispenseQueue.size)
+        assertEquals(2, vm.uiState.value.dispenseTabCount)
+    }
+
+    @Test
+    fun `selecting the current tab keeps the kpi filter`() = runTest(testDispatcher) {
+        stubQueues()
+        val vm = createViewModel()
+        advanceUntilIdle()
+        vm.onKpiFilterTapped(KpiFilter.DISP_HAZARDOUS)
+        advanceUntilIdle()
+
+        vm.onTabSelected(DashboardTab.DISPENSE_QUEUE)
+        advanceUntilIdle()
+
+        assertEquals(KpiFilter.DISP_HAZARDOUS, vm.uiState.value.activeKpiFilter)
+    }
+
+    @Test
+    fun `recent activity tab shows completed rows and is never filtered`() = runTest(testDispatcher) {
+        every {
+            pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
+        } returns flowOf(listOf(txnWithDrug(txnId = 1, createdAt = 5, drugType = "CIV")))
+        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(
+            listOf(
+                batchSummary(batchId = 20, createdAt = 6, status = BatchStatus.COMPLETED.name),
+                batchSummary(batchId = 21, createdAt = 7, status = BatchStatus.INPROGRESS.name),
+            )
+        )
+        val vm = createViewModel()
+        advanceUntilIdle()
         vm.onKpiFilterTapped(KpiFilter.DISP_PENDING)
+        advanceUntilIdle()
 
         vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
         advanceUntilIdle()
 
         assertEquals(DashboardTab.RECENT_ACTIVITY, vm.uiState.value.activeTab)
         assertNull(vm.uiState.value.activeKpiFilter)
-        // 1 completed dispense + 1 completed batch (INPROGRESS filtered out).
         assertEquals(2, vm.uiState.value.recentActivity.size)
     }
 
@@ -543,51 +690,40 @@ class DashboardViewModelTest {
         assertEquals("CAPSULE", row.txn.dosageForm)
     }
 
+    // ─────────────────────────────── change detection ───────────────────────────────
+
     @Test
-    fun `onTabSelected todays queue keeps filter`() = runTest(testDispatcher) {
+    fun `unchanged dispense list keeps its instance when inventory changes`() = runTest(testDispatcher) {
+        val batches = MutableStateFlow(listOf(batchSummary(batchId = 10, createdAt = 2)))
+        every { batchDao.observeInProgressBatchSummaries(any()) } returns batches
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns
+            flowOf(listOf(dispenseTxn(txnId = 1)))
         val vm = createViewModel()
         advanceUntilIdle()
-        vm.onKpiFilterTapped(KpiFilter.DISP_PENDING)
+        vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
+        advanceUntilIdle()
+        val dispenseBefore = vm.uiState.value.dispenseQueue
 
-        vm.onTabSelected(DashboardTab.TODAYS_QUEUE)
+        batches.value = listOf(batchSummary(batchId = 10, createdAt = 2), batchSummary(batchId = 11, createdAt = 5))
         advanceUntilIdle()
 
-        assertEquals(DashboardTab.TODAYS_QUEUE, vm.uiState.value.activeTab)
-        assertEquals(KpiFilter.DISP_PENDING, vm.uiState.value.activeKpiFilter)
+        assertEquals(2, vm.uiState.value.inventoryQueue.size)
+        assertSame(dispenseBefore, vm.uiState.value.dispenseQueue)
     }
 
     @Test
-    fun `loadRecentActivity is a no-op when already active`() = runTest(testDispatcher) {
-        every {
-            pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
-        } returns flowOf(emptyList())
-        every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
-
+    fun `identical room re-emission leaves state untouched`() = runTest(testDispatcher) {
+        val rows = MutableSharedFlow<List<PillCountWithDrugAndTotal>>(replay = 1)
+        rows.tryEmit(listOf(dispenseTxn(txnId = 1)))
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns rows
         val vm = createViewModel()
         advanceUntilIdle()
+        val before = vm.uiState.value
 
-        vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
-        vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+        rows.tryEmit(listOf(dispenseTxn(txnId = 1)))
         advanceUntilIdle()
 
-        // collected once even though selected twice (flowOf completes so the job is no longer
-        // active; but the second call dispatches before the first completes in same loop).
-        verify(atLeast = 1) { batchDao.getBatchSummaries(any(), any()) }
-    }
-
-    @Test
-    fun `loadRecentActivity no-ops when localId is zero`() = runTest(testDispatcher) {
-        every { preferenceHelper.getLocalId() } returns 0L
-        // give a token so fetchUserDetail does not re-establish localId.
-        every { preferenceHelper.getAccessToken() } returns null
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
-        advanceUntilIdle()
-
-        verify(exactly = 0) { batchDao.getBatchSummaries(any(), any()) }
+        assertSame(before, vm.uiState.value)
     }
 
     // ─────────────────────────────── fetchUserDetail branches ───────────────────────────────
@@ -742,7 +878,7 @@ class DashboardViewModelTest {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        // observeQueue(localId=9) invoked from fetch path.
+        // Dispense subscription (localId=9) started from the fetch path.
         verify { pillCountTxnDao.observePartialByIsDispense(any(), any(), 9L, any()) }
         verify { preferenceHelper.saveLocalId(9L) }
         assertEquals("First", vm.uiState.value.userDetail?.profile?.fName)

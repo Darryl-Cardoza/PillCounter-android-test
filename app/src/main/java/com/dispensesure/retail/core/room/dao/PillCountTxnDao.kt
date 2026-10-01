@@ -143,6 +143,8 @@ interface PillCountTxnDao {
            txn.isNdcVerified,
            txn.bucketId,
            txn.isDispense,
+           txn.rxNo,
+           txn.refillNo,
            txn.priority,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
                 THEN subDrug.drugName ELSE drug.drugName END AS drugName,
@@ -166,7 +168,6 @@ interface PillCountTxnDao {
            ON txn.substitutedDrugId = subDrug.drugId
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
-          AND details.isDeleted = 0
           AND details.type = :type
     WHERE txn.isDeleted = 0
       AND txn.status = :partialStatus
@@ -179,8 +180,7 @@ interface PillCountTxnDao {
                  WHEN 'Low'    THEN 3
                  ELSE 2
              END ASC, /* values correspond to TxnPriority enum names */
-             txn.isComingFromHL7 DESC,
-             txn.createdAt DESC
+             txn.createdAt ASC
     """
     )
 
@@ -425,7 +425,7 @@ interface PillCountTxnDao {
     LEFT JOIN drug_master AS subDrug
         ON pct.substitutedDrugId = subDrug.drugId
     LEFT JOIN pill_count_txn_details AS pcd
-        ON pct.txnId = pcd.txnId AND pcd.isDeleted = 0
+        ON pct.txnId = pcd.txnId
     WHERE pct.txnId = :transactionId AND pct.isDeleted = 0
     GROUP BY pct.txnId
     """
@@ -534,6 +534,8 @@ interface PillCountTxnDao {
         txn.targetCount,
         txn.note,
         txn.bucketId,
+        txn.rxNo,
+        txn.refillNo,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
              THEN subDrug.drugType ELSE drug.drugType END AS drugType,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.strength IS NOT NULL
@@ -544,7 +546,7 @@ interface PillCountTxnDao {
              THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
-           ON txn.txnId = details.txnId AND details.isDeleted = 0
+           ON txn.txnId = details.txnId
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
     LEFT JOIN drug_master AS subDrug
@@ -581,6 +583,8 @@ interface PillCountTxnDao {
         txn.targetCount,
         txn.note,
         txn.bucketId,
+        txn.rxNo,
+        txn.refillNo,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
              THEN subDrug.drugType ELSE drug.drugType END AS drugType,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.strength IS NOT NULL
@@ -592,7 +596,6 @@ interface PillCountTxnDao {
     FROM pill_count_txn AS txn
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
-           AND details.isDeleted = 0
            AND (:stepType IS NULL OR details.type = :stepType)
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
@@ -677,7 +680,13 @@ interface PillCountTxnDao {
      * @param txnId The transaction ID.
      * @return A list of image file paths.
      */
-    @Query("SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId")
+    @Query(
+        """
+        SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId
+        UNION ALL
+        SELECT rawImagePath FROM pill_count_txn_details WHERE txnId = :txnId AND rawImagePath IS NOT NULL
+        """
+    )
     suspend fun getTransactionDetailsImages(txnId: Long): List<String>
 
     /**
@@ -790,6 +799,8 @@ interface PillCountTxnDao {
            txn.isNdcVerified,
            txn.bucketId,
            txn.isDispense,
+           txn.rxNo,
+           txn.refillNo,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
                 THEN subDrug.drugName ELSE drug.drugName END AS drugName,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
@@ -812,7 +823,6 @@ interface PillCountTxnDao {
            ON txn.substitutedDrugId = subDrug.drugId
     LEFT JOIN pill_count_txn_details AS details
            ON txn.txnId = details.txnId
-          AND details.isDeleted = 0
           AND details.type = :type
     WHERE txn.isDeleted = 0
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)

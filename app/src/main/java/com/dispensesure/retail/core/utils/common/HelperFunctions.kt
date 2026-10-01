@@ -82,7 +82,7 @@ object HelperFunctions {
      *   never yet observed a `/health` response — first-launch flow).
      * - Clears tokens and returns `AUTH_GRAPH_ROUTE` when the threshold has been exceeded.
      *
-     * Side effect: on threshold-exceeded, tokens + login flag are cleared before returning.
+     * Side effect: on threshold-exceeded, tokens, login flag, local id and HL7 config are cleared before returning.
      *
      * @param preferenceHelper Persistent preference handler.
      * @return Route string — either `Dashboard.route` or `AUTH_GRAPH_ROUTE`.
@@ -100,13 +100,28 @@ object HelperFunctions {
         val thresholdMs = preferenceHelper.getOfflineSessionThresholdSeconds() * 1_000L
         val elapsed = System.currentTimeMillis() - anchor
         return if (elapsed > thresholdMs) {
-            preferenceHelper.clearTokens()
-            preferenceHelper.setUserLoggedIn(false)
-            preferenceHelper.clearLoggedInAt()
+            clearLocalSession(preferenceHelper)
             AUTH_GRAPH_ROUTE
         } else {
             Screen.Dashboard.route
         }
+    }
+
+    /** Logs out a user who didn't tick "Remember me". Call once per cold launch, before anything reads the login flag. */
+    fun clearSessionIfNotRemembered(preferenceHelper: PreferenceHelper) {
+        if (preferenceHelper.isUserLoggedIn() && !preferenceHelper.isRememberMeEnabled()) {
+            clearLocalSession(preferenceHelper)
+        }
+    }
+
+    // Local-only logout: tokens, login flag, session start time, local user id and HL7 config.
+    // Resetting the local id stops the next user's Dashboard showing the previous user's data.
+    private fun clearLocalSession(preferenceHelper: PreferenceHelper) {
+        preferenceHelper.clearTokens()
+        preferenceHelper.setUserLoggedIn(false)
+        preferenceHelper.clearLoggedInAt()
+        preferenceHelper.saveLocalId(0)
+        preferenceHelper.clearHl7Config()
     }
 
     /**

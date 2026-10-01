@@ -21,4 +21,8 @@ data class PillCountWithDrugAndTotal(
     val dosageForm: String? = null,
     /** Absolute local path to the downloaded drug image (.webp). Null if not yet downloaded. */
     val drugImagePath: String? = null,
+    /** Prescription (Rx) number; null for dispenses started without one. */
+    val rxNo: String? = null,
+    /** Refill (fill) number of the Rx; null when the order has none. */
+    val refillNo: String? = null,
 )

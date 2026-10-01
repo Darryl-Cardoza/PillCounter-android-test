@@ -1,12 +1,9 @@
 package com.dispensesure.retail.feature.dashboard.presentation.compose
 
 import androidx.annotation.DrawableRes
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +11,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.displayCutout
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -24,7 +28,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -34,22 +37,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.disabled
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.MenuButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -57,18 +56,17 @@ import com.dispensesure.retail.core.utils.compose.DrugCountRow
 import com.dispensesure.retail.core.utils.compose.DrugCountRowData
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardUiState
-import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
-import com.dispensesure.retail.feature.dashboard.presentation.model.DefaultKpiCards
+import com.dispensesure.retail.feature.dashboard.presentation.model.upNextDispense
 import com.dispensesure.retail.feature.history.presentation.compose.BatchHistoryRow
 import com.dispensesure.retail.ui.theme.AppTheme.extendedColors
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-// Shared scaffold widgets for the new dashboard. Both DashboardTabletPortrait and
-// DashboardTabletLandscape (and eventually the phone variants) consume these so the
-// "same data, different placement" contract holds without per-variant duplication.
+// Shared scaffold widgets for the new dashboard. DashboardLandscapeLayout and
+// DashboardPortraitLayout consume these so the "same data, different placement"
+// contract holds without per-layout duplication.
 
 internal fun buildTerminalUserLine(
     uiState: DashboardUiState,
@@ -87,6 +85,10 @@ internal fun buildTerminalUserLine(
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }
 
+// Status/nav bars plus the notch. The top bar takes the top edge, the content area the rest.
+internal val DashboardSafeInsets: WindowInsets
+    @Composable get() = WindowInsets.systemBars.union(WindowInsets.displayCutout)
+
 @Composable
 internal fun ScaffoldTopBar(
     pharmacyName: String?,
@@ -96,38 +98,35 @@ internal fun ScaffoldTopBar(
     navController: NavController,
     compact: Boolean = false,
 ) {
-    val logoSize = if (compact) 30.dp else 40.dp
     val horizontalPadding = if (compact) 12.dp else 16.dp
-    val verticalPadding = if (compact) 8.dp else 12.dp
+    // Phone portrait is too narrow for both lines side by side, so stack them.
+    val stackNameAndUser = compact && !UserInterfaceUtils.isLandscape()
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = horizontalPadding)
-            .padding(top = verticalPadding),
+            .background(extendedColors.secondaryBackground)
+            // Background paints behind the status bar / notch; only the content is inset.
+            .windowInsetsPadding(
+                DashboardSafeInsets.only(WindowInsetsSides.Top + WindowInsetsSides.Horizontal)
+            )
+            .padding(horizontal = horizontalPadding),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Image(
-            painter = painterResource(id = R.drawable.redsaillogo),
-            contentDescription = stringResource(R.string.pill_count_app_title),
-            modifier = Modifier.size(logoSize),
-        )
-        Spacer(modifier = Modifier.width(if (compact) 8.dp else 14.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = pharmacyName ?: "—",
-                fontSize = responsiveSp(12.sp, boostOnPhone = true),
-                color = extendedColors.textColor,
-                fontWeight = FontWeight.SemiBold,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = terminalAndUserLine,
-                style = MaterialTheme.typography.bodySmall,
-                color = extendedColors.textColor,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        if (stackNameAndUser) {
+            Column(modifier = Modifier.weight(1f)) {
+                PharmacyNameText(pharmacyName = pharmacyName)
+                Spacer(modifier = Modifier.height(responsiveDp(2.dp)))
+                TerminalAndUserText(terminalAndUserLine = terminalAndUserLine)
+            }
+        } else {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                PharmacyNameText(pharmacyName = pharmacyName)
+                Spacer(modifier = Modifier.width(if (compact) 8.dp else 14.dp))
+                TerminalAndUserText(terminalAndUserLine = terminalAndUserLine)
+            }
         }
         if (showPmsDot) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -141,10 +140,8 @@ internal fun ScaffoldTopBar(
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
-                    text = stringResource(
-                        if (isPmsConnected) R.string.pms_status_connected else R.string.pms_status_disconnected
-                    ),
-                    style = if (compact) MaterialTheme.typography.labelSmall else MaterialTheme.typography.labelMedium,
+                    text = stringResource(R.string.pms),
+                    style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.secondary,
                     maxLines = 1,
                 )
@@ -156,18 +153,44 @@ internal fun ScaffoldTopBar(
 }
 
 @Composable
+private fun PharmacyNameText(pharmacyName: String?) {
+    Text(
+        text = pharmacyName ?: "—",
+        fontSize = responsiveSp(12.sp, boostOnPhone = true),
+        color = extendedColors.textColor,
+        fontWeight = FontWeight.SemiBold,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+@Composable
+private fun TerminalAndUserText(terminalAndUserLine: String) {
+    Text(
+        text = terminalAndUserLine,
+        fontSize = responsiveSp(8.sp),
+        fontWeight = FontWeight.Light,
+        color = extendedColors.textColor,
+        maxLines = 1,
+        overflow = TextOverflow.Ellipsis,
+    )
+}
+
+@Composable
 internal fun ScaffoldQuickActionCard(
     title: String,
     subtitle: String,
     @DrawableRes innerIconRes: Int,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    compact: Boolean = false,
     centered: Boolean = false,
-    ringSize: Dp? = null,
-    iconSize: Dp? = null,
 ) {
-    val cardShape = RoundedCornerShape(12.dp)
+    val cardShape = RoundedCornerShape(DashboardBaseSizes.QuickActionCardCornerRadius)
+    val innerPadding = responsiveDp(DashboardBaseSizes.CardInnerPadding)
+    val iconToTextGap = responsiveDp(DashboardBaseSizes.IconToTextGap)
+    val titleToSubtitleGap = responsiveDp(DashboardBaseSizes.TitleToSubtitleGap)
+    val titleSize = responsiveSp(DashboardBaseSizes.QuickActionTitleText)
+    val subtitleSize = responsiveSp(DashboardBaseSizes.QuickActionSubtitleText)
     Card(
         modifier = modifier
             .clickable { onClick() },
@@ -179,31 +202,28 @@ internal fun ScaffoldQuickActionCard(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(if (compact) 16.dp else 24.dp),
+                    .padding(innerPadding),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 QuickActionRingIcon(
                     innerIconRes = innerIconRes,
                     contentDescription = title,
-                    compact = compact,
-                    overrideRingSize = ringSize,
-                    overrideIconSize = iconSize,
                 )
-                Spacer(modifier = Modifier.height(if (compact) 12.dp else 20.dp))
+                Spacer(modifier = Modifier.height(iconToTextGap))
                 Text(
                     text = title,
-                    fontSize = if (compact) 20.sp else 28.sp,
+                    fontSize = titleSize,
                     color = MaterialTheme.colorScheme.secondary,
                     fontWeight = FontWeight.SemiBold,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(titleToSubtitleGap))
                 Text(
                     text = subtitle,
-                    style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                    fontSize = subtitleSize,
                     color = extendedColors.textColor,
                     textAlign = TextAlign.Center,
                     maxLines = 1,
@@ -214,30 +234,26 @@ internal fun ScaffoldQuickActionCard(
             Row(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(if (compact) 16.dp else 24.dp),
+                    .padding(innerPadding),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 QuickActionRingIcon(
                     innerIconRes = innerIconRes,
                     contentDescription = title,
-                    compact = compact,
-                    overrideRingSize = ringSize,
-                    overrideIconSize = iconSize,
                 )
-                Spacer(modifier = Modifier.width(if (compact) 14.dp else 20.dp))
+                Spacer(modifier = Modifier.width(iconToTextGap))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = title,
-                        fontSize = if (compact) 20.sp else 28.sp,
+                        fontSize = titleSize,
                         color = MaterialTheme.colorScheme.secondary,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         text = subtitle,
-                        style = if (compact) MaterialTheme.typography.bodySmall else MaterialTheme.typography.bodyMedium,
+                        fontSize = subtitleSize,
                         color = extendedColors.textColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -248,251 +264,25 @@ internal fun ScaffoldQuickActionCard(
     }
 }
 
-
-@Composable
-internal fun ScaffoldKpiRow(
-    counts: Map<KpiFilter, Int>,
-    activeFilter: KpiFilter?,
-    onTap: (KpiFilter) -> Unit,
-    modifier: Modifier = Modifier,
-    cardWidth: Dp? = null,
-    cardHeight: Dp? = null,
-    disabledFilters: Set<KpiFilter> = emptySet(),
-    onDisabledTap: (KpiFilter) -> Unit = {},
-) {
-    Row(
-        modifier = modifier,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        DefaultKpiCards.forEach { spec ->
-            var cardModifier = Modifier.weight(1f)
-            if (cardWidth != null) cardModifier = cardModifier.width(cardWidth)
-            if (cardHeight != null) cardModifier = cardModifier.height(cardHeight)
-            val isDisabled = spec.filter in disabledFilters
-            ScaffoldKpiCard(
-                count = counts[spec.filter] ?: 0,
-                lineOne = stringResource(spec.lineOneRes),
-                lineTwo = stringResource(spec.lineTwoRes),
-                iconRes = spec.iconRes,
-                isActive = activeFilter == spec.filter,
-                isDisabled = isDisabled,
-                onClick = { onTap(spec.filter) },
-                onDisabledClick = { onDisabledTap(spec.filter) },
-                modifier = cardModifier,
-            )
-        }
-    }
-}
-
-/**
- * Vertical stack of all 6 KPI cards. Used by Tablet Landscape, where the KPIs sit in a narrow
- * middle column between Quick Actions and the queue list. Each card takes equal vertical weight.
- */
-@Composable
-internal fun ScaffoldKpiColumn(
-    counts: Map<KpiFilter, Int>,
-    activeFilter: KpiFilter?,
-    onTap: (KpiFilter) -> Unit,
-    modifier: Modifier = Modifier,
-    cardWidth: Dp? = null,
-    cardHeight: Dp? = null,
-    disabledFilters: Set<KpiFilter> = emptySet(),
-    onDisabledTap: (KpiFilter) -> Unit = {},
-) {
-    // Each card claims an equal vertical share. This bounds the height every card sees,
-    // which is required because ScaffoldKpiCard's inner Box uses fillMaxSize() — without a
-    // bounded height the first card consumes the column and the rest get pushed off-screen.
-    Column(
-        modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        DefaultKpiCards.forEach { spec ->
-            var cardModifier: Modifier = if (cardWidth != null) Modifier.width(cardWidth) else Modifier.fillMaxWidth()
-            cardModifier = if (cardHeight != null) cardModifier.height(cardHeight) else cardModifier.weight(1f)
-            val isDisabled = spec.filter in disabledFilters
-            ScaffoldKpiCard(
-                count = counts[spec.filter] ?: 0,
-                lineOne = stringResource(spec.lineOneRes),
-                lineTwo = stringResource(spec.lineTwoRes),
-                iconRes = spec.iconRes,
-                isActive = activeFilter == spec.filter,
-                isDisabled = isDisabled,
-                onClick = { onTap(spec.filter) },
-                onDisabledClick = { onDisabledTap(spec.filter) },
-                modifier = cardModifier,
-            )
-        }
-    }
-}
-
-/**
- * Vertically scrollable single-column KPI strip. Used by phone landscape where vertical space
- * is constrained but the middle column is narrow — user scrolls vertically through the 6 cards.
- * Cards have a fixed height; the column scrolls.
- */
-@Composable
-internal fun ScaffoldKpiScrollColumn(
-    counts: Map<KpiFilter, Int>,
-    activeFilter: KpiFilter?,
-    onTap: (KpiFilter) -> Unit,
-    modifier: Modifier = Modifier,
-    cardWidth: Dp? = null,
-    cardHeight: Dp = 96.dp,
-    disabledFilters: Set<KpiFilter> = emptySet(),
-    onDisabledTap: (KpiFilter) -> Unit = {},
-) {
-    val scrollState = androidx.compose.foundation.rememberScrollState()
-    Column(
-        modifier = modifier.verticalScroll(scrollState),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        DefaultKpiCards.forEach { spec ->
-            var cardModifier: Modifier = if (cardWidth != null) Modifier.width(cardWidth) else Modifier.fillMaxWidth()
-            cardModifier = cardModifier.height(cardHeight)
-            val isDisabled = spec.filter in disabledFilters
-            ScaffoldKpiCard(
-                count = counts[spec.filter] ?: 0,
-                lineOne = stringResource(spec.lineOneRes),
-                lineTwo = stringResource(spec.lineTwoRes),
-                iconRes = spec.iconRes,
-                isActive = activeFilter == spec.filter,
-                isDisabled = isDisabled,
-                onClick = { onTap(spec.filter) },
-                onDisabledClick = { onDisabledTap(spec.filter) },
-                modifier = cardModifier,
-            )
-        }
-    }
-}
-
-/**
- * Horizontally scrollable single-row KPI strip. Used by phone portrait where the 6 cards can't
- * fit side-by-side at narrow widths — user scrolls horizontally to reach the trailing cards.
- * Cards have a fixed width so each is fully readable; the row scrolls.
- */
-@Composable
-internal fun ScaffoldKpiScrollRow(
-    counts: Map<KpiFilter, Int>,
-    activeFilter: KpiFilter?,
-    onTap: (KpiFilter) -> Unit,
-    modifier: Modifier = Modifier,
-    cardWidth: Dp,
-    cardHeight: Dp = 96.dp,
-    disabledFilters: Set<KpiFilter> = emptySet(),
-    onDisabledTap: (KpiFilter) -> Unit = {},
-) {
-    val scrollState = androidx.compose.foundation.rememberScrollState()
-    Row(
-        modifier = modifier.horizontalScroll(scrollState),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        DefaultKpiCards.forEach { spec ->
-            val isDisabled = spec.filter in disabledFilters
-            ScaffoldKpiCard(
-                count = counts[spec.filter] ?: 0,
-                lineOne = stringResource(spec.lineOneRes),
-                lineTwo = stringResource(spec.lineTwoRes),
-                iconRes = spec.iconRes,
-                isActive = activeFilter == spec.filter,
-                isDisabled = isDisabled,
-                onClick = { onTap(spec.filter) },
-                onDisabledClick = { onDisabledTap(spec.filter) },
-                modifier = Modifier
-                    .width(cardWidth)
-                    .height(cardHeight),
-            )
-        }
-    }
-}
-
-@Composable
-internal fun ScaffoldKpiCard(
-    count: Int,
-    lineOne: String,
-    lineTwo: String,
-    @DrawableRes iconRes: Int,
-    isActive: Boolean,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier,
-    isDisabled: Boolean = false,
-    onDisabledClick: () -> Unit = {},
-) {
-    // Selection is shown by a primary border plus an all-around primary-tinted
-    // shadow, both strictly keyed on isActive so deselecting fully reverts.
-    // Background fill stays the same for selected and unselected cards.
-    val shape = RoundedCornerShape(8.dp)
-    Card(
-        modifier = modifier
-            .then(
-                if (isActive) {
-                    Modifier.shadow(
-                        elevation = 6.dp,
-                        shape = shape,
-                        ambientColor = MaterialTheme.colorScheme.primary,
-                        spotColor = MaterialTheme.colorScheme.primary,
-                    )
-                } else {
-                    Modifier
-                },
-            )
-            .semantics { if (isDisabled) disabled() }
-            .clickable { if (isDisabled) onDisabledClick() else onClick() },
-        shape = shape,
-        colors = CardDefaults.cardColors(containerColor = extendedColors.secondaryBackground),
-        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
-        border = if (isActive) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(12.dp)
-                .then(if (isDisabled) Modifier.alpha(0.5f) else Modifier),
-        ) {
-            Icon(
-                painter = painterResource(id = iconRes),
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.secondary,
-                modifier = Modifier
-                    .align(Alignment.TopEnd)
-                    .size(responsiveDp(14.dp)),
-            )
-            Column(modifier = Modifier.align(Alignment.BottomStart)) {
-                Text(
-                    text = count.toString(),
-                    fontSize = 28.sp,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = lineOne,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = extendedColors.textColor,
-                )
-                // Phone cards are the narrowest; ellipsize rather than wrap to a
-                // third row, which the fixed card height has no space for.
-                Text(
-                    text = lineTwo,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = extendedColors.textColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-    }
-}
-
 @Composable
 internal fun ScaffoldTabStrip(
     activeTab: DashboardTab,
+    dispenseCount: Int,
+    inventoryCount: Int,
     onSelect: (DashboardTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Row(modifier = modifier.fillMaxWidth()) {
         ScaffoldTab(
-            label = stringResource(R.string.todays_queue),
-            isActive = activeTab == DashboardTab.TODAYS_QUEUE,
-            onClick = { onSelect(DashboardTab.TODAYS_QUEUE) },
+            label = stringResource(R.string.tab_label_with_count, stringResource(R.string.dispense_queue), dispenseCount),
+            isActive = activeTab == DashboardTab.DISPENSE_QUEUE,
+            onClick = { onSelect(DashboardTab.DISPENSE_QUEUE) },
+            modifier = Modifier.weight(1f),
+        )
+        ScaffoldTab(
+            label = stringResource(R.string.tab_label_with_count, stringResource(R.string.inventory_queue), inventoryCount),
+            isActive = activeTab == DashboardTab.INVENTORY_QUEUE,
+            onClick = { onSelect(DashboardTab.INVENTORY_QUEUE) },
             modifier = Modifier.weight(1f),
         )
         ScaffoldTab(
@@ -521,11 +311,16 @@ private fun ScaffoldTab(
     ) {
         Text(
             text = label,
-            fontSize = responsiveSp(8.sp, boostOnPhone = true),
+            fontSize = responsiveSp(
+                if (UserInterfaceUtils.isTablet()) 8.sp else 10.sp,
+                boostOnPhone = false,
+            ),
             color = if (isActive) MaterialTheme.colorScheme.secondary else extendedColors.textColor,
             fontWeight = if (isActive) FontWeight.SemiBold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(2.dp))
         Box(
             modifier = Modifier
                 .height(2.dp)
@@ -541,7 +336,11 @@ internal fun ScaffoldQueueList(
     onDispenseClick: ((Long) -> Unit)?,
     onInventoryClick: ((Long) -> Unit)?,
     modifier: Modifier = Modifier,
+    showUpNextCard: Boolean = false,
+    isLoaded: Boolean = false,
 ) {
+    // Not loaded yet: don't claim the queue is empty.
+    if (items.isEmpty() && !isLoaded) return
     if (items.isEmpty()) {
         Box(
             modifier = modifier
@@ -576,12 +375,23 @@ internal fun ScaffoldQueueList(
         return
     }
 
+    val upNext = if (showUpNextCard) upNextDispense(items) else null
+    val remainingItems = if (upNext != null) items.drop(1) else items
+
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(vertical = 4.dp),
+        contentPadding = PaddingValues(vertical = 2.dp),
     ) {
-        items(items, key = { item ->
+        if (upNext != null) {
+            item(key = "up-next-${upNext.txn.txnId}") {
+                DispenseUpNextCard(
+                    item = upNext,
+                    onClick = { onDispenseClick?.invoke(upNext.txn.txnId) },
+                )
+            }
+        }
+        items(remainingItems, key = { item ->
             when (item) {
                 is QueueItem.Dispense -> "d-${item.txn.txnId}"
                 is QueueItem.Inventory -> "i-${item.batch.batchId}"
@@ -589,21 +399,7 @@ internal fun ScaffoldQueueList(
         }) { item ->
             when (item) {
                 is QueueItem.Dispense -> DrugCountRow(
-                    data = DrugCountRowData(
-                        barcodeImage = BottleInfoJson.decode(item.txn.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
-                        ndc = item.txn.ndc,
-                        drugType = item.txn.drugType,
-                        drugName = item.txn.drugName ?: "—",
-                        date = formatDate(item.txn.createdAt),
-                        bucketId = item.txn.bucketId,
-                        pillCount = item.txn.totalPillCount,
-                        targetCount = item.txn.targetCount ?: 0,
-                        isDispense = item.txn.isDispense,
-                        isComingFromHL7 = item.txn.isComingFromHL7,
-                        strength = item.txn.strength,
-                        dosageForm = item.txn.dosageForm,
-                        drugImagePath = item.txn.drugImagePath,
-                    ),
+                    data = item.toDrugCountRowData(),
                     onClick = { onDispenseClick?.invoke(item.txn.txnId) },
                 )
 
@@ -620,21 +416,34 @@ internal fun ScaffoldQueueList(
     }
 }
 
+// One mapping from a queued dispense to the row data, shared by the list row and the UP NEXT card.
+internal fun QueueItem.Dispense.toDrugCountRowData() = DrugCountRowData(
+    barcodeImage = BottleInfoJson.decode(txn.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
+    ndc = txn.ndc,
+    drugType = txn.drugType,
+    drugName = txn.drugName ?: "—",
+    date = formatDate(txn.createdAt),
+    bucketId = txn.bucketId,
+    pillCount = txn.totalPillCount,
+    targetCount = txn.targetCount ?: 0,
+    isDispense = txn.isDispense,
+    strength = txn.strength,
+    dosageForm = txn.dosageForm,
+    drugImagePath = txn.drugImagePath,
+    rxNo = txn.rxNo,
+    refillNo = txn.refillNo,
+)
+
 @Composable
 private fun QuickActionRingIcon(
     @DrawableRes innerIconRes: Int,
     contentDescription: String?,
-    compact: Boolean = false,
-    overrideRingSize: Dp? = null,
-    overrideIconSize: Dp? = null,
 ) {
-    val ringSize = overrideRingSize ?: if (compact) 64.dp else 110.dp
-    val iconSize = overrideIconSize ?: if (compact) 32.dp else 56.dp
     Box(
         modifier = Modifier
-            .size(ringSize)
+            .size(responsiveDp(DashboardBaseSizes.QuickActionRingSize))
             .border(
-                width = 2.dp,
+                width = DashboardBaseSizes.RingBorderWidth,
                 color = MaterialTheme.colorScheme.primary,
                 shape = CircleShape,
             ),
@@ -644,7 +453,7 @@ private fun QuickActionRingIcon(
             painter = painterResource(id = innerIconRes),
             contentDescription = contentDescription,
             tint = MaterialTheme.colorScheme.secondary,
-            modifier = Modifier.size(iconSize),
+            modifier = Modifier.size(responsiveDp(DashboardBaseSizes.QuickActionIconSize)),
         )
     }
 }

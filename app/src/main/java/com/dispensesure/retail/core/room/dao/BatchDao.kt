@@ -6,6 +6,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
+import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import kotlinx.coroutines.flow.Flow
 
@@ -275,6 +276,26 @@ interface BatchDao {
     fun observeInProgressBatchSummaries(
         inProgressStatus: BatchStatus = BatchStatus.INPROGRESS
     ): Flow<List<BatchSummaryDto>>
+
+    // Cycle Count = PMS-requested inventory counts. A batch carries a PMS
+    // request id (requestIdFromPMS) only when it was created from an INR^U04
+    // inventory request (Hl7Repository.handleInrInventoryRequest); manually
+    // started batches have it null. This is the same discriminator the
+    // history / unsynced lists use to tag a batch as PMS-sourced.
+    // Pending Batch = manually started (non-PMS) inventory batches.
+    @Query(
+        """
+    SELECT
+        COUNT(CASE WHEN requestIdFromPMS IS NOT NULL AND TRIM(requestIdFromPMS) <> '' THEN 1 END) AS cycleCount,
+        COUNT(CASE WHEN requestIdFromPMS IS NULL OR TRIM(requestIdFromPMS) = '' THEN 1 END) AS pendingBatchCount
+    FROM batch
+    WHERE isDeleted = 0
+      AND status = :inProgressStatus
+    """
+    )
+    fun observeInProgressBatchKpiCounts(
+        inProgressStatus: BatchStatus = BatchStatus.INPROGRESS
+    ): Flow<InventoryKpiCountsDto>
 
     @Query(
         """

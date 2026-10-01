@@ -226,7 +226,9 @@ fun CountsSection(
                                         isDispense = rowData.isDispense,
                                         strength = rowData.strength,
                                         dosageForm = rowData.dosageForm,
-                                        drugImagePath = rowData.drugImagePath
+                                        drugImagePath = rowData.drugImagePath,
+                                        rxNo = rowData.rxNo,
+                                        refillNo = rowData.refillNo
                                     ),
                                     onClick = { onTxnClick(rowData.txnId) }
                                 )
@@ -268,7 +270,9 @@ fun CountsSection(
                                         isDispense = rowData.isDispense,
                                         strength = rowData.strength,
                                         dosageForm = rowData.dosageForm,
-                                        drugImagePath = rowData.drugImagePath
+                                        drugImagePath = rowData.drugImagePath,
+                                        rxNo = rowData.rxNo,
+                                        refillNo = rowData.refillNo
                                     ),
                                     onClick = { onTxnClick(rowData.txnId) }
                                 )
