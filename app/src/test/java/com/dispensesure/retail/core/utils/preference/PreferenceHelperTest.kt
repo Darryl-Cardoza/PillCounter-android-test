@@ -172,6 +172,24 @@ class PreferenceHelperTest {
         assertFalse(helper.isUserLoggedIn())
     }
 
+    @Test
+    fun `isRememberMeEnabled defaults to false`() {
+        assertFalse(helper.isRememberMeEnabled())
+    }
+
+    @Test
+    fun `setRememberMe true then isRememberMeEnabled returns true`() {
+        helper.setRememberMe(true)
+        assertTrue(helper.isRememberMeEnabled())
+    }
+
+    @Test
+    fun `setRememberMe false after true then isRememberMeEnabled returns false`() {
+        helper.setRememberMe(true)
+        helper.setRememberMe(false)
+        assertFalse(helper.isRememberMeEnabled())
+    }
+
     // ─────────────────────────── USER IDENTIFIERS ───────────────────────────
 
     @Test
@@ -287,51 +305,6 @@ class PreferenceHelperTest {
     fun `saveShowNotesDialogSetting false is retrievable`() {
         helper.saveShowNotesDialogSetting(false)
         assertFalse(helper.getShowNotesDialogSetting())
-    }
-
-    // ─────────────────────────── RECENT LOGINS ───────────────────────────
-
-    @Test
-    fun `getRecentLogins returns empty list when unset`() {
-        assertEquals(emptyList<String>(), helper.getRecentLogins())
-    }
-
-    @Test
-    fun `addRecentLogin inserts newest first`() {
-        helper.addRecentLogin("a@x.com")
-        helper.addRecentLogin("b@x.com")
-        assertEquals(listOf("b@x.com", "a@x.com"), helper.getRecentLogins())
-    }
-
-    @Test
-    fun `addRecentLogin moves duplicate to front instead of duplicating`() {
-        helper.addRecentLogin("a@x.com")
-        helper.addRecentLogin("b@x.com")
-        helper.addRecentLogin("a@x.com")
-        assertEquals(listOf("a@x.com", "b@x.com"), helper.getRecentLogins())
-    }
-
-    @Test
-    fun `addRecentLogin caps list at five entries`() {
-        for (i in 1..6) helper.addRecentLogin("user$i@x.com")
-        val logins = helper.getRecentLogins()
-        assertEquals(5, logins.size)
-        assertEquals(listOf("user6@x.com", "user5@x.com", "user4@x.com", "user3@x.com", "user2@x.com"), logins)
-        assertFalse(logins.contains("user1@x.com"))
-    }
-
-    @Test
-    fun `removeRecentLogin removes matching email only`() {
-        helper.addRecentLogin("a@x.com")
-        helper.addRecentLogin("b@x.com")
-        helper.removeRecentLogin("a@x.com")
-        assertEquals(listOf("b@x.com"), helper.getRecentLogins())
-    }
-
-    @Test
-    fun `removeRecentLogin on empty list is a no-op`() {
-        helper.removeRecentLogin("nobody@x.com")
-        assertEquals(emptyList<String>(), helper.getRecentLogins())
     }
 
     // ─────────────────────────── HISTORY RETENTION ───────────────────────────
@@ -695,12 +668,6 @@ class PreferenceHelperTest {
     }
 
     @Test(expected = com.google.gson.JsonSyntaxException::class)
-    fun `getRecentLogins throws on corrupted json`() {
-        store["recent_logins"] = "not-json"
-        helper.getRecentLogins()
-    }
-
-    @Test(expected = com.google.gson.JsonSyntaxException::class)
     fun `getControlDrugTypes throws on corrupted json`() {
         store["key_control_drug_types"] = "not-json"
         helper.getControlDrugTypes()
@@ -719,19 +686,6 @@ class PreferenceHelperTest {
     }
 
     // ─────────────────────────── ADDITIONAL EDGE CASES ───────────────────────────
-
-    @Test
-    fun `addRecentLogin on empty history adds a single entry`() {
-        helper.addRecentLogin("only@x.com")
-        assertEquals(listOf("only@x.com"), helper.getRecentLogins())
-    }
-
-    @Test
-    fun `addRecentLogin re-adding the most recent email keeps it at front and does not grow list`() {
-        helper.addRecentLogin("a@x.com")
-        helper.addRecentLogin("a@x.com")
-        assertEquals(listOf("a@x.com"), helper.getRecentLogins())
-    }
 
     @Test
     fun `setControlDrugTypes overwrites previous set entirely rather than merging`() {

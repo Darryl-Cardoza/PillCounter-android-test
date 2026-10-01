@@ -107,18 +107,23 @@ sealed interface Screen {
     data object OtpVerify : Screen {
         private const val ROUTE_PREFIX = "otp_verify"
         const val ARG_EMAIL = "email"
+        const val ARG_REMEMBER_ME = "remember_me"
 
         // Full route with query parameters
-        override val route: String = "$ROUTE_PREFIX?$ARG_EMAIL={$ARG_EMAIL}"
+        override val route: String = "$ROUTE_PREFIX?$ARG_EMAIL={$ARG_EMAIL}&$ARG_REMEMBER_ME={$ARG_REMEMBER_ME}"
 
         // List of arguments to parse from the NavBackStackEntry
         val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_EMAIL) { type = NavType.StringType }
+            navArgument(ARG_EMAIL) { type = NavType.StringType },
+            navArgument(ARG_REMEMBER_ME) {
+                type = NavType.BoolType
+                defaultValue = false
+            }
         )
 
         // Helper function to generate the route string
-        fun createRoute(email: String): String {
-            return "$ROUTE_PREFIX?$ARG_EMAIL=$email"
+        fun createRoute(email: String, rememberMe: Boolean): String {
+            return "$ROUTE_PREFIX?$ARG_EMAIL=$email&$ARG_REMEMBER_ME=$rememberMe"
         }
     }
 
