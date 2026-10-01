@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.menu.presentation.viewmodel
 
 import android.util.Log
 import app.cash.turbine.test
+import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.BatchEntity
@@ -14,8 +15,10 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -25,7 +28,9 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -37,6 +42,7 @@ class MenuViewModelTest {
     private lateinit var pillCountTxnDao: PillCountTxnDao
     private lateinit var batchDao: BatchDao
     private lateinit var preferenceHelper: PreferenceHelper
+    private lateinit var sessionLockController: SessionLockController
 
     @Before
     fun setup() {
@@ -52,6 +58,7 @@ class MenuViewModelTest {
         pillCountTxnDao = mockk(relaxed = true)
         batchDao = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
+        sessionLockController = mockk(relaxed = true)
 
         // Sensible defaults so the init observers do not blow up.
         every { preferenceHelper.getLocalId() } returns 1L
@@ -69,7 +76,18 @@ class MenuViewModelTest {
     }
 
     private fun createViewModel(): MenuViewModel =
-        MenuViewModel(pillCountTxnDao, batchDao, preferenceHelper)
+        MenuViewModel(pillCountTxnDao, batchDao, preferenceHelper, sessionLockController)
+
+    @Test
+    fun `initial uiState has all counts at zero`() {
+        val state = createViewModel().uiState.value
+
+        assertEquals(0, state.fixedCompleted)
+        assertEquals(0, state.fixedPartial)
+        assertEquals(0, state.regularPartial)
+        assertEquals(0, state.regularCompleted)
+        assertEquals(0, state.unsyncedTransactionCount)
+    }
 
     // ────────────────────────────── init observers (happy path) ──────────────────────────────
 
@@ -225,5 +243,38 @@ class MenuViewModelTest {
         advanceUntilIdle()
 
         assertNull(vm.createBatch("bucket-1"))
+    }
+
+    // ────────────────────────────── lock screen ──────────────────────────────
+
+    @Test
+    fun `hasEnabledFaceProfile mirrors sessionLockController`() = runTest(testDispatcher) {
+        every { sessionLockController.hasEnabledProfile } returns MutableStateFlow(true)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.hasEnabledFaceProfile.value)
+    }
+
+    @Test
+    fun `lockSessionNow delegates to sessionLockController and returns true when locked`() = runTest(testDispatcher) {
+        every { sessionLockController.lockNow() } returns true
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertTrue(vm.lockSessionNow())
+        verify(exactly = 1) { sessionLockController.lockNow() }
+    }
+
+    @Test
+    fun `lockSessionNow returns false when no face profile is enabled`() = runTest(testDispatcher) {
+        every { sessionLockController.lockNow() } returns false
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(vm.lockSessionNow())
     }
 }

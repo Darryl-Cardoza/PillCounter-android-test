@@ -23,8 +23,6 @@ class ScreenTest {
         Assert.assertEquals("history_detail", Screen.HistoryDetail.route)
         Assert.assertEquals("profile", Screen.Profile.route)
         Assert.assertEquals("unsynced_transaction_screen", Screen.UnsyncedTransactionScreen.route)
-        Assert.assertEquals("save_history_for", Screen.SaveHistoryFor.route)
-        Assert.assertEquals("require_double_count", Screen.RequireDoubleCount.route)
     }
 
     // ─────────────────────────── InventoryScan ───────────────────────────

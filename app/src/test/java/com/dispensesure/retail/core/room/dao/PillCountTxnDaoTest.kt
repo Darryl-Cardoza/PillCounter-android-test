@@ -492,11 +492,13 @@ class PillCountTxnDaoTest {
     fun `getTransactionDetailsImages returns image paths for txn`() = runTest {
         val txnId = dao.insertIgnore(baseTxn())
         detailsDao.insert(PillCountTxnDetailsEntity(txnId = txnId, imagePath = "img1.jpg"))
-        detailsDao.insert(PillCountTxnDetailsEntity(txnId = txnId, imagePath = "img2.jpg"))
+        detailsDao.insert(
+            PillCountTxnDetailsEntity(txnId = txnId, imagePath = "img2.jpg", rawImagePath = "img2_raw.jpg")
+        )
 
         val images = dao.getTransactionDetailsImages(txnId)
-        assertEquals(2, images.size)
-        assertTrue(images.containsAll(listOf("img1.jpg", "img2.jpg")))
+        assertEquals(3, images.size)
+        assertTrue(images.containsAll(listOf("img1.jpg", "img2.jpg", "img2_raw.jpg")))
     }
 
     @Test

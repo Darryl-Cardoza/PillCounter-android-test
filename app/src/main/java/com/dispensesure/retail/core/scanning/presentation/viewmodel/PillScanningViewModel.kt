@@ -11,6 +11,8 @@ import android.os.Vibrator
 import android.os.VibratorManager
 import androidx.annotation.VisibleForTesting
 import androidx.camera.core.ImageProxy
+import androidx.core.content.ContextCompat
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import androidx.room.withTransaction
@@ -41,7 +43,9 @@ import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFil
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.OverlayUtils
+import com.dispensesure.retail.core.utils.common.PhotoInfo
 import com.dispensesure.retail.core.utils.common.SoundUtils
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
@@ -78,9 +82,11 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
+import kotlin.math.min
 
 /**
  * ViewModel responsible for:
@@ -114,6 +120,11 @@ class PillScanningViewModel @Inject constructor(
     private val logger = AppLogger("PillScanningVM")
     val context: Context = getApplication<Application>().applicationContext
     private var currentFrameBitmap: Bitmap? = null
+    // Frames are swapped on Dispatchers.Default and taken on Main; guards both.
+    private val frameLock = Any()
+    // Last looked-up location for the photo strip; Add never waits for a fresh one.
+    @Volatile private var cachedLocation: String? = null
+    private var locationJob: Job? = null
     private var lastTransformationMatrix: Matrix? = null
     @Volatile private var isAnalyzingFrame = false
     private var isPaused = false
@@ -178,6 +189,7 @@ class PillScanningViewModel @Inject constructor(
     // Lot/expiry decoded on the compulsory NDC scan, remembered so Done can stamp the new line.
     private var stockLotNo: String? = null
     private var stockExpNo: String? = null
+    private var stockSerialNo: String? = null
     // Deferred DispenseFlow stock session: remembered so [flushStagedDetails] can create
     // the batch + stock_txn + bottle_info atomically at Done. Zero/null in the pre-existing
     // hand-off paths (stockTxnId != 0L), where the rows already exist.
@@ -215,6 +227,9 @@ class PillScanningViewModel @Inject constructor(
         batchId: Long,
         drugId: Long,
         bucketId: String? = null,
+        lotNo: String? = null,
+        expNo: String? = null,
+        serialNo: String? = null,
     ) {
         isStockCountSession = true
         stockBottleId = bottleId
@@ -222,11 +237,11 @@ class PillScanningViewModel @Inject constructor(
         this.stockTxnId = stockTxnId
         stockDrugId = drugId
         stockBucketId = bucketId
-        // DispenseFlow doesn't decode lot/exp — keep the private fields null so
-        // flushStagedDetails' fresh insert leaves those columns null (matches the
-        // `(stockTxn, null, null)` keying documented on the stock-line contract).
-        stockLotNo = null
-        stockExpNo = null
+        // Decoded from the NDC scan in DispenseFlow (null for a plain, non-GS1 barcode);
+        // flushStagedDetails stamps them on the new loose line.
+        stockLotNo = lotNo
+        stockExpNo = expNo
+        stockSerialNo = serialNo
         isPaused = false
         viewModelScope.launch {
             val drug = drugMasterDao.getDrugById(drugId) ?: return@launch
@@ -397,6 +412,7 @@ class PillScanningViewModel @Inject constructor(
         cameraHelper = helper
         // A capture lost to an unbound camera never calls back, so clear the stuck flag here.
         _isCapturing.value = false
+        refreshLocation()
     }
 
     /** Observe all transaction details for the current transaction. */
@@ -526,6 +542,7 @@ class PillScanningViewModel @Inject constructor(
                             batchId = stockCountBatchId,
                             lotNo = stockLotNo,
                             expNo = stockExpNo,
+                            serialNo = stockSerialNo,
                             bottleQty = 0,
                             looseQty = stagedSum,
                             controlledImagePaths = controlledPaths,
@@ -575,6 +592,7 @@ class PillScanningViewModel @Inject constructor(
                                     batchId = effectiveBatchId,
                                     lotNo = stockLotNo,
                                     expNo = stockExpNo,
+                                    serialNo = stockSerialNo,
                                     bottleQty = 0,
                                     looseQty = stagedSum,
                                     controlledImagePaths = controlledPaths,
@@ -654,6 +672,15 @@ class PillScanningViewModel @Inject constructor(
         pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(current))
     }
 
+    /** Removes deleted detail ids from the txn's bottle list so it holds no dead ids. */
+    private suspend fun unlinkDetailsFromBottles(txnId: Long, deletedIds: Set<Long>) {
+        val txn = pillCountTxnDao.getById(txnId) ?: return
+        val bottles = BottleInfoJson.decode(txn.bottleInfoListJson)
+        if (bottles.none { bottle -> bottle.txnDetailsIds.any { it in deletedIds } }) return
+        val cleaned = bottles.map { it.copy(txnDetailsIds = it.txnDetailsIds - deletedIds) }
+        pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(cleaned))
+    }
+
     /**
      * Discard the in-memory staged count on back-out (no Done). Earlier
      * committed rows and looseQty are preserved — only this session's staged
@@ -691,14 +718,15 @@ class PillScanningViewModel @Inject constructor(
      */
     private fun deleteStagedImageFiles() {
         stagedDetails.forEach { detail ->
-            val path = detail.imagePath ?: return@forEach
-            try {
-                val file = java.io.File(path)
-                if (file.exists() && !file.delete()) {
-                    logger.w("Failed to delete staged image file: $path")
+            listOfNotNull(detail.imagePath, detail.rawImagePath).forEach { path ->
+                try {
+                    val file = java.io.File(path)
+                    if (file.exists() && !file.delete()) {
+                        logger.w("Failed to delete staged image file: $path")
+                    }
+                } catch (e: Exception) {
+                    logger.e("Error deleting staged image file: $path", e)
                 }
-            } catch (e: Exception) {
-                logger.e("Error deleting staged image file: $path", e)
             }
         }
     }
@@ -871,8 +899,10 @@ class PillScanningViewModel @Inject constructor(
         }
 
         currentScanId++
-        currentFrameBitmap?.recycle()
-        currentFrameBitmap = bitmap
+        synchronized(frameLock) {
+            currentFrameBitmap?.recycle()
+            currentFrameBitmap = bitmap
+        }
         lastTransformationMatrix = Matrix(matrix)
 
         logger.d("Frame analyzed | count=$count | scanId=$currentScanId")
@@ -1253,10 +1283,12 @@ class PillScanningViewModel @Inject constructor(
     private suspend fun performReset() {
         val txnId = preferenceHelper.getTxnId()
         if (txnId != 0L) {
-            // Files first: once the rows are gone their paths are unrecoverable.
-            deleteFiles(pillCountTxnDetailsDao.getImagePathsForTxn(txnId))
-            pillCountTxnDetailsDao.deleteAllForTxn(txnId)
-            pillCountTxnDao.resetForRecount(txnId)
+            withContext(Dispatchers.IO) {
+                // Files first: once the rows are gone their paths are unrecoverable.
+                deleteFiles(pillCountTxnDetailsDao.getImagePathsForTxn(txnId))
+                pillCountTxnDetailsDao.deleteAllForTxn(txnId)
+                pillCountTxnDao.resetForRecount(txnId)
+            }
         }
 
         stagedDetails.clear()
@@ -1301,7 +1333,7 @@ class PillScanningViewModel @Inject constructor(
     private fun deleteFiles(paths: List<String>) {
         paths.forEach { path ->
             runCatching { java.io.File(path).takeIf { it.exists() }?.delete() }
-                .onFailure { logger.w("Reset could not delete $path: ${it.message}") }
+                .onFailure { logger.w("Could not delete $path: ${it.message}") }
         }
     }
 
@@ -1339,12 +1371,14 @@ class PillScanningViewModel @Inject constructor(
             logger.e("Failed to generate performance summary", e)
         }
 
-        try {
-            currentFrameBitmap?.recycle()
-        } catch (e: Exception) {
-            logger.w("Error recycling bitmap: ${e.message}")
-        } finally {
-            currentFrameBitmap = null
+        synchronized(frameLock) {
+            try {
+                currentFrameBitmap?.recycle()
+            } catch (e: Exception) {
+                logger.w("Error recycling bitmap: ${e.message}")
+            } finally {
+                currentFrameBitmap = null
+            }
         }
         _modelState.value = ModelState.Idle
         logger.i("ViewModel cleared. Model remains loaded in Singleton.")
@@ -1389,6 +1423,13 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    /** Scanning-screen drug-image fallback, as a bitmap for the saved photo (keeps its aspect). */
+    private fun drugImagePlaceholder(): Bitmap? =
+        ContextCompat.getDrawable(getApplication(), R.drawable.prescription_icon)?.let { d ->
+            val h = if (d.intrinsicWidth > 0) 300 * d.intrinsicHeight / d.intrinsicWidth else 225
+            d.toBitmap(300, h.coerceAtLeast(1))
+        }
+
     private fun handleAddVialImageInTxn(event: PillScanningEvent.AddVialPhotoInTxn) {
         viewModelScope.launch(Dispatchers.IO) {
             val txnId = preferenceHelper.getTxnId()
@@ -1400,7 +1441,7 @@ class PillScanningViewModel @Inject constructor(
                         bitmap,
                         "txn_detail_${System.currentTimeMillis()}.jpg",
                         "transaction_details",
-                        grayscale = true
+                        grayscale = isGrayscaleImage(),
                     )
                 } else null
             } catch (e: Exception) {
@@ -1418,6 +1459,21 @@ class PillScanningViewModel @Inject constructor(
                     type = StepState.VIAL.toString()
                 )
             )
+        }
+    }
+
+    /** Hands over the latest analyzed frame; the caller now owns and recycles it. */
+    private fun takeCurrentFrame(): Bitmap? = synchronized(frameLock) {
+        val frame = currentFrameBitmap?.takeIf { !it.isRecycled }
+        currentFrameBitmap = null
+        frame
+    }
+
+    /** Refreshes [cachedLocation] in the background; skipped while a lookup is running. */
+    private fun refreshLocation() {
+        if (locationJob?.isActive == true) return
+        locationJob = viewModelScope.launch(Dispatchers.IO) {
+            cachedLocation = locationProvider.getCurrentLocationAsString()
         }
     }
 
@@ -1451,6 +1507,15 @@ class PillScanningViewModel @Inject constructor(
             logger.w("Add blocked: detected count is 0.")
             return
         }
+        // Fix the frame, pills and tray at the tap; the save must not pick up a later frame.
+        val frame = takeCurrentFrame()
+        if (frame == null) {
+            showToast(context, context.getString(R.string.add_camera_not_ready))
+            logger.w("Add blocked: no camera frame at tap.")
+            return
+        }
+        val filteredPills = _uiState.value.filteredPills
+        val trays = _trayDetections.value
         triggerAddPop(currentCount)
 
         val signature = _uiState.value.detectedPills.joinToString(separator = "|") {
@@ -1458,6 +1523,7 @@ class PillScanningViewModel @Inject constructor(
         } + "|count=$currentCount"
 
         if (signature == lastAddedScanSignature) {
+            frame.recycle()
             showToast(context.getString(R.string.duplicate_scan_ignored))
             logger.w("Duplicate add prevented: no change in detection pattern.")
             return
@@ -1473,81 +1539,118 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val userId = preferenceHelper.getUserId().orEmpty()
             val user = userDao.getByUserId(userId)
-            val location = locationProvider.getCurrentLocationAsString()
+            // No lookup finished yet: show the fallback rather than wait.
+            val location = cachedLocation ?: context.getString(R.string.location_unavailable)
 
-            val base = currentFrameBitmap
-            if (base == null || base.isRecycled) {
-                logger.e("Base frame bitmap is null or recycled, skipping save")
-                return@launch
-            }
+            val workingBitmap = frame
 
-            val workingBitmap = try {
-                base.copy(Bitmap.Config.ARGB_8888, true)
-            } catch (e: Exception) {
-                logger.e("Failed to copy base bitmap", e)
-                return@launch
-            }
-            if (workingBitmap == null) {
-                logger.e("Bitmap.copy() returned null, skipping save")
-                return@launch
-            }
-
-            val filteredPills = _uiState.value.filteredPills
             val txnId = preferenceHelper.getTxnId()
             val txn = pillCountTxnDao.getById(txnId)
-            val drug = drugMasterDao.getDrugById(txn?.drugId)
+            // A stock session has no pill_count_txn row: its drug comes from the session instead.
+            val drug = drugMasterDao.getDrugById(if (isStockCountSession) stockDrugId else txn?.drugId)
 
             // Resolve the currently active bottle (last one scanned) once — used both to
             // watermark this photo with its lot/exp/serial and to tag the detail row below.
             val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
             val activeBottle = bottles.lastOrNull()
+            // Stock lot/serial/expiry come from the line being counted onto; with none yet
+            // (it's created at Done) they are the values scanned for that new line.
+            val stockBottle = if (isStockCountSession && stockBottleId != 0L) bottleInfoDao.getById(stockBottleId) else null
 
-            val overlayBitmap = if (filteredPills.isNotEmpty()) {
-                try {
-                    OverlayUtils.drawDetectionsOnBitmap(
-                        bitmap = workingBitmap,
-                        detectedPills = filteredPills,
-                        previewWidth = cameraHelper?.getPreviewWidth() ?: workingBitmap.width,
-                        previewHeight = cameraHelper?.getPreviewHeight() ?: workingBitmap.height,
-                        userName = listOfNotNull(user?.fName, user?.lName).joinToString(" "),
-                        userId = user?.userId,
-                        location = location,
-                        timestamp = System.currentTimeMillis(),
-                        ndc = drug?.ndc,
-                        count = currentCount.toString(),
-                        rx = txn?.rxNo,
-                        stepLabel = stepType.name,
-                        lotNumber = activeBottle?.lotNumber,
-                        expirationDate = activeBottle?.expirationDate,
-                        serialNumber = activeBottle?.serialNumber,
-                    )
-                } catch (e: Exception) {
-                    logger.e("Overlay drawing failed, using bitmap without overlay", e)
-                    workingBitmap
-                }
-            } else {
-                workingBitmap
+            // Name, image and dispensed NDC follow the substitute when there is one.
+            val dispensedDrug = if (isStockCountSession) drug
+                else txn?.takeIf { it.isSubstitute }?.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } ?: drug
+            val drugImage = dispensedDrug?.drugImagePath?.takeIf { it.isNotBlank() }
+                ?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
+                ?: drugImagePlaceholder()
+
+            // Crop to tray + chute when a complete tray is in view; else keep the full frame.
+            val frameW = workingBitmap.width
+            val frameH = workingBitmap.height
+            val crop = OverlayUtils.savedPhotoCropRegion(trays, frameW, frameH)
+            val photoBitmap = if (crop != null) {
+                Bitmap.createBitmap(workingBitmap, crop.left, crop.top, crop.width(), crop.height())
+            } else workingBitmap
+            val photoPills = if (crop != null) {
+                OverlayUtils.pillsInCrop(filteredPills, crop, frameW, frameH)
+            } else filteredPills
+
+            val info = PhotoInfo(
+                drugName = dispensedDrug?.drugName,
+                drugImage = drugImage,
+                isStockCount = isStockCountSession || txn?.isDispense != true,
+                requestedNdc = drug?.ndc,
+                dispensedNdc = dispensedDrug?.ndc,
+                lotNumber = if (!isStockCountSession) activeBottle?.lotNumber
+                    else if (stockBottle != null) stockBottle.lotNo else stockLotNo,
+                serialNumber = if (!isStockCountSession) activeBottle?.serialNumber
+                    else if (stockBottle != null) stockBottle.serialNo else stockSerialNo,
+                expirationDate = if (!isStockCountSession) activeBottle?.expirationDate
+                    else if (stockBottle != null) stockBottle.expNo else stockExpNo,
+                count = currentCount,
+                rxRefill = if (isStockCountSession) null else OverlayUtils.rxRefill(txn?.rxNo, txn?.refillNo),
+                stepLabel = stepType.name,
+                userName = listOfNotNull(user?.fName, user?.lName).joinToString(" "),
+                location = location,
+                timestamp = System.currentTimeMillis(),
+            )
+            val overlayBitmap = try {
+                OverlayUtils.drawDetectionsOnBitmap(
+                    bitmap = photoBitmap,
+                    detectedPills = photoPills,
+                    info = info,
+                    res = getApplication<Application>().resources,
+                    scaleRefSide = min(frameW, frameH),
+                    // Same breakpoint as UserInterfaceUtils.isTablet(), read outside Compose.
+                    isPhone = getApplication<Application>().resources.configuration.smallestScreenWidthDp <
+                        UserInterfaceUtils.TABLET_BREAKPOINT_DP,
+                )
+            } catch (e: Exception) {
+                logger.e("Overlay drawing failed, using bitmap without overlay", e)
+                photoBitmap
             }
+            drugImage?.recycle()
 
+            val stamp = System.currentTimeMillis()
             val filePath = try {
                 if (!overlayBitmap.isRecycled) {
                     saveBitmapToFile(
                         getApplication(),
                         overlayBitmap,
-                        "txn_detail_${System.currentTimeMillis()}.jpg",
+                        "txn_detail_$stamp.jpg",
                         "transaction_details",
-                        grayscale = true
+                        grayscale = isGrayscaleImage(),
                     )
                 } else null
             } catch (e: Exception) {
                 logger.e("Failed saving bitmap", e)
                 null
             }
+            // TARGET_VERIFICATION also keeps the crop with nothing drawn on it, for PMS.
+            // Stock sessions land on the same step but get no raw image.
+            val rawPath = if (stepType == StepState.TARGET_VERIFICATION && !isStockCountSession) {
+                try {
+                    if (!photoBitmap.isRecycled) {
+                        saveBitmapToFile(
+                            getApplication(),
+                            photoBitmap,
+                            "txn_detail_${stamp}_raw.jpg",
+                            "transaction_details",
+                        )
+                    } else null
+                } catch (e: Exception) {
+                    logger.e("Failed saving raw bitmap", e)
+                    null
+                }
+            } else null
+            // createBitmap can hand back the source itself when the crop is the whole frame.
+            if (photoBitmap !== workingBitmap && !photoBitmap.isRecycled) photoBitmap.recycle()
 
             val detail = PillCountTxnDetailsEntity(
                 txnId = txnId,
                 pillCount = currentCount,
                 imagePath = filePath,
+                rawImagePath = rawPath,
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis(),
                 type = stepType.toString(),
@@ -1567,7 +1670,6 @@ class PillScanningViewModel @Inject constructor(
 
                 if (!workingBitmap.isRecycled) workingBitmap.recycle()
                 refreshStagedHistory(stepType)
-                currentFrameBitmap = null
 
                 logger.i("Transaction detail STAGED (in memory). Count=$currentCount, File=$filePath, stagedCount=${stagedDetails.size}")
             } else {
@@ -1576,14 +1678,17 @@ class PillScanningViewModel @Inject constructor(
                 // DB observer (observeTxnDetailsForTxn) drives uiState because
                 // stagingActive stays false. looseQty for REGULAR is incremented
                 // per-ADD here to match the per-row insert.
-                val newDetailsId = pillCountTxnDetailsDao.insert(detail)
-                linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+                // One transaction so a View All delete can't overwrite the bottle list mid-link.
+                appDatabase.withTransaction {
+                    val newDetailsId = pillCountTxnDetailsDao.insert(detail)
+                    linkDetailToActiveBottle(txnId, bottles, newDetailsId)
+                }
 
                 if (!workingBitmap.isRecycled) workingBitmap.recycle()
-                currentFrameBitmap = null
 
                 logger.i("Transaction detail INSERTED (immediate). Count=$currentCount, File=$filePath")
             }
+            refreshLocation()
         }
     }
 
@@ -1785,7 +1890,10 @@ class PillScanningViewModel @Inject constructor(
             val staged = stagedDetails.filter { it.type == step.toString() }
             val index = (-event.txnDetailId - 1).toInt()
             if (index in staged.indices) {
-                stagedDetails.remove(staged[index])
+                val removed = staged[index]
+                stagedDetails.remove(removed)
+                val paths = listOfNotNull(removed.imagePath, removed.rawImagePath)
+                viewModelScope.launch(Dispatchers.IO) { deleteFiles(paths) }
                 logger.i("Staged detail removed at index=$index (id=${event.txnDetailId})")
             } else {
                 logger.w("Staged delete ignored: id=${event.txnDetailId} out of range")
@@ -1793,8 +1901,14 @@ class PillScanningViewModel @Inject constructor(
             refreshStagedHistory(step)
             return
         }
-        viewModelScope.launch {
-            pillCountTxnDetailsDao.softDelete(event.txnDetailId)
+        viewModelScope.launch(Dispatchers.IO) {
+            // Files first: once the row is gone its paths are unrecoverable.
+            deleteFiles(pillCountTxnDetailsDao.getImagePathsForDetail(event.txnDetailId))
+            // One transaction so an Add can't overwrite the bottle list mid-unlink.
+            appDatabase.withTransaction {
+                pillCountTxnDetailsDao.hardDelete(event.txnDetailId)
+                unlinkDetailsFromBottles(preferenceHelper.getTxnId(), setOf(event.txnDetailId))
+            }
             logger.i("Transaction detail deleted. Id=${event.txnDetailId}")
         }
     }
@@ -1804,22 +1918,34 @@ class PillScanningViewModel @Inject constructor(
         // While staging, clear the in-memory buffer instead of soft-deleting DB
         // rows (which would wrongly remove prior committed counts).
         if (stagingActive) {
-            stagedDetails.removeAll { it.type == event.stepType.toString() }
+            val removed = stagedDetails.filter { it.type == event.stepType.toString() }
+            stagedDetails.removeAll(removed)
+            val paths = removed.flatMap { listOfNotNull(it.imagePath, it.rawImagePath) }
+            viewModelScope.launch(Dispatchers.IO) { deleteFiles(paths) }
             logger.i("All STAGED details cleared for step=${event.stepType}")
             refreshStagedHistory(event.stepType)
             return
         }
-        viewModelScope.launch {
-            pillCountTxnDetailsDao.softDeleteAllTransaction(
-                preferenceHelper.getTxnId(), type = event.stepType
-            )
-            logger.i("All transaction details deleted for txnId=${preferenceHelper.getTxnId()}")
+        viewModelScope.launch(Dispatchers.IO) {
+            val txnId = preferenceHelper.getTxnId()
+            // Files first: once the rows are gone their paths are unrecoverable.
+            deleteFiles(pillCountTxnDetailsDao.getImagePathsForStep(txnId, event.stepType))
+            // One transaction so an Add can't overwrite the bottle list mid-unlink.
+            appDatabase.withTransaction {
+                val deletedIds = pillCountTxnDetailsDao.getIdsForStep(txnId, event.stepType).toSet()
+                pillCountTxnDetailsDao.hardDeleteAllForStep(txnId, event.stepType)
+                unlinkDetailsFromBottles(txnId, deletedIds)
+            }
+            logger.i("All transaction details deleted for txnId=$txnId")
         }
     }
 
     // ------------------------------------------------------------------------
     // UI Utility Functions
     // ------------------------------------------------------------------------
+
+    /** True when the backend's colour-image setting is off, so saved photos go grayscale. */
+    fun isGrayscaleImage(): Boolean = !preferenceHelper.getIsColorImageEnabled()
 
     fun resetRestrictAdd() = _uiState.update { it.copy(restrictAdd = false) }
 

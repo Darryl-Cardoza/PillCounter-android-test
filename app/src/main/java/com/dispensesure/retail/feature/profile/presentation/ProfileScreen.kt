@@ -346,7 +346,7 @@ private fun ProfileTextField(
                 if (!readOnly) {
                     var input = it
                     if (keyboardType == KeyboardType.Phone) {
-                        input = input.filter { char -> char.isDigit() }
+                        input = input.filter { char -> char in '0'..'9' }
                     }
                     onValueChange(input)
                 }
@@ -417,7 +417,7 @@ private fun ResponsiveProfileFields(
         ), // <— Email read-only
         ProfileField(
             viewModel.npi,
-            { v -> viewModel.npi = v },
+            { v -> viewModel.onNpiChanged(v) },
             R.string.npi_number,
             viewModel.npiError,
             keyboardType = KeyboardType.Number,

@@ -62,6 +62,11 @@
     <string name="ndc_value">NDC %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title">PARAMÈTRES</string>
+    <string name="setting_group_general">GÉNÉRAL</string>
+    <string name="setting_group_controlled_drug">DISTRIBUTION DE SUBSTANCES CONTRÔLÉES</string>
+    <string name="setting_group_face_detection">DÉTECTION FACIALE</string>
+    <string name="setting_group_voice_haptic">RETOUR VOCAL ET HAPTIQUE</string>
+    <string name="setting_group_hazardous">COMPTAGE DE PILULES DANGEREUSES</string>
     <string name="setting_ask_to_add_notes">Toujours demander d\'ajouter des notes</string>
     <string name="setting_save_history_for">Enregistrer l\'historique pendant</string>
     <string name="pill_counting_sound">Son du comptage de pilules</string>
@@ -95,11 +100,6 @@
     <string name="drug_history_details">Détails de l\'historique du médicament</string>
     <!-- ================== VALIDATION ERRORS ================== -->
     <string name="error_email_invalid">Veuillez entrer une adresse e-mail valide.</string>
-    <string name="error_password_too_short">Le mot de passe doit contenir au moins 8 caractères.</string>
-    <string name="error_password_no_uppercase">Le mot de passe doit contenir au moins une lettre majuscule.</string>
-    <string name="error_password_no_lowercase">Le mot de passe doit contenir au moins une lettre minuscule.</string>
-    <string name="error_password_no_digit">Le mot de passe doit contenir au moins un chiffre.</string>
-    <string name="error_password_no_special">Le mot de passe doit contenir au moins un caractère spécial.</string>
     <string name="error_unknown">Une erreur est survenue.</string>
     <string name="error_invalid_otp">PIN invalide.</string>
     <string name="error_phone_invalid">Numéro de téléphone invalide</string>
@@ -107,6 +107,7 @@
     <string name="error_name_required">Ce champ est obligatoire</string>
     <string name="error_pharmacy_name_invalid">Nom de la pharmacie trop court</string>
     <string name="error_npi_invalid">Numéro NPI invalide</string>
+    <string name="error_npi_required">Le numéro NPI est obligatoire</string>
     <string name="error_no_internet">Pas de connexion Internet. Vérifiez votre réseau et réessayez.</string>
     <string name="error_timeout">La requête a pris trop de temps. Veuillez réessayer plus tard.</string>
     <string name="error_server_unavailable">Le serveur est temporairement indisponible. Veuillez réessayer plus tard.</string>
@@ -129,7 +130,7 @@
     <string name="rescane">Re-scanner</string>
     <string name="done">Terminé</string>
     <string name="add">Ajouter</string>
-    <string name="count">Compter</string>
+    <string name="count">Comptage</string>
     <string name="ok">OK</string>
     <string name="cancel">Annuler</string>
     <string name="yes">Oui</string>
@@ -180,6 +181,7 @@
     <string name="menu_profile">Profil</string>
     <string name="menu_history">Historique</string>
     <string name="menu_settings">Paramètres</string>
+    <string name="menu_lock_screen">Verrouiller l\'écran</string>
     <string name="menu_logout">Déconnexion</string>
     <string name="menu_completed">%1$d terminés</string>
     <string name="menu_partial">%1$d en attente</string>
@@ -246,6 +248,8 @@
 
     <string name="add_button_wait">Veuillez attendre 2 secondes avant d\'ajouter à nouveau.</string>
     <string name="add_zero_detected">Impossible d\'ajouter — aucune pilule détectée.</string>
+    <string name="add_camera_not_ready">La caméra n\'est pas prête, réessayez.</string>
+    <string name="location_unavailable">Localisation indisponible</string>
     <string name="duplicate_scan_ignored">Scan en double ignoré — aucune nouvelle pilule détectée.</string>
 
     <!-- For multi-select mode text in PartialListPanel -->
@@ -546,7 +550,6 @@
     <string name="session_locked_verify_button">Vérifier avec le visage</string>
     <string name="session_locked_resuming_title">Bon retour, %1$s</string>
     <string name="session_locked_resuming_body">Identité vérifiée.\nReprise de votre session...</string>
-    <string name="setting_face_lock_now">Verrouiller maintenant</string>
     <string name="setting_face_lock_now_disabled_toast">Enregistrez d\'abord un visage dans Reconnaissance faciale</string>
     <string name="setting_face_auto_lock_after">Verrouillage automatique après</string>
     <string name="setting_face_auto_lock_minutes">%1$d min</string>
@@ -571,5 +574,13 @@
     <string name="connection_info_title">INFORMATIONS DE CONNEXION</string>
     <string name="hl7_notification_title">Service d\'arrière-plan HL7</string>
     <string name="rx_already_completed_message">Cette ordonnance a déjà été délivrée.</string>
+
+    <!-- ================== SAVED PHOTO INFO STRIPS ================== -->
+    <string name="photo_label_requested_ndc">NDC demandé</string>
+    <string name="photo_label_dispensed_ndc">NDC délivré</string>
+    <string name="photo_label_rx_refill">N° Rx-Renouvellement</string>
+    <string name="photo_label_step">Étape</string>
+    <string name="photo_label_date_time">Date et heure</string>
+    <string name="photo_label_operator">Opérateur</string>
 
 </resources>

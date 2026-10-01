@@ -443,6 +443,7 @@ class DashboardViewModel @Inject constructor(
                             val localId = userDao.upsertPreservingLocalId(user = entity)
                             preferenceHelper.saveUserId(entity.userId)
                             preferenceHelper.setKeyBucketList(payload.data?.settings?.bucket ?: emptyList())
+                            preferenceHelper.saveIsColorImageEnabled(payload.data?.settings?.isColorImageEnabled ?: true)
                             preferenceHelper.setHl7Enabled(entity.isHl7Enable)
                             // Persist is_standalone so the RX-scan flow knows whether it may
                             // create dispense transactions locally (without waiting on PMS/HL7)

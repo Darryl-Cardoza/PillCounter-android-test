@@ -13,3 +13,6 @@ val statusChipBackgroundOnSecondary = Color(0xFFFFFFFF)
 val ToastBackground = Color(0xE6323232)
 val ToastText = Color(0xFFFFFFFF)
 
+
+const val DISABLED_ALPHA = 0.4f
+
