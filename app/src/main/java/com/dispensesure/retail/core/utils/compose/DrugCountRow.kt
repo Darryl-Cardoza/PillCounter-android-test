@@ -171,16 +171,13 @@ fun DrugCountRow(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            text = data.date,
-                            fontSize = 12.sp,
-                            color = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f, fill = false)
-                        )
-                    }
+                    Text(
+                        text = data.date,
+                        fontSize = 12.sp,
+                        color = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
 
                 Spacer(modifier = Modifier.width(dimens.extraSmall))

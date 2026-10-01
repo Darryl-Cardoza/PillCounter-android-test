@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.dashboard.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.di.DefaultDispatcher
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
@@ -34,12 +35,12 @@ import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.collectIndexed
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -82,7 +83,7 @@ class DashboardViewModel @Inject constructor(
     private val hl7ServiceManager: Hl7ServiceManager,
     private val deviceKeyProvider: DeviceKeyProvider,
     private val sessionHealthController: SessionHealthController,
-
+    @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
     /** Logger instance for this ViewModel. */
@@ -225,7 +226,6 @@ class DashboardViewModel @Inject constructor(
         if (inventoryKpiCountsJob?.isActive != true) {
             inventoryKpiCountsJob = collectSource(
                 source = batchDao.observeInProgressBatchKpiCounts().flowOn(Dispatchers.IO).distinctUntilChanged(),
-                showLoading = false,
             ) { copy(inventoryKpiCounts = it) }
         }
     }
@@ -233,13 +233,17 @@ class DashboardViewModel @Inject constructor(
     /** Starts the Room collector for [tab] once; later visits reuse the live list. */
     private fun ensureTabObserved(tab: DashboardTab, localId: Long = preferenceHelper.getLocalId()) {
         if (localId == 0L || tabJobs[tab]?.isActive == true) return
+        queueSources.update { it.copy(observedTabs = it.observedTabs + tab) }
         tabJobs[tab] = when (tab) {
-            DashboardTab.DISPENSE_QUEUE ->
-                collectSource(pendingDispenseFlow(localId)) { copy(pendingDispense = it) }
-            DashboardTab.INVENTORY_QUEUE ->
-                collectSource(pendingInventoryFlow()) { copy(pendingInventory = it) }
-            DashboardTab.RECENT_ACTIVITY ->
-                collectSource(recentActivityFlow(localId)) { copy(recentActivity = it) }
+            DashboardTab.DISPENSE_QUEUE -> collectSource(pendingDispenseFlow(localId)) {
+                copy(pendingDispense = it, loadedTabs = loadedTabs + tab)
+            }
+            DashboardTab.INVENTORY_QUEUE -> collectSource(pendingInventoryFlow()) {
+                copy(pendingInventory = it, loadedTabs = loadedTabs + tab)
+            }
+            DashboardTab.RECENT_ACTIVITY -> collectSource(recentActivityFlow(localId)) {
+                copy(recentActivity = it, loadedTabs = loadedTabs + tab)
+            }
         }
     }
 
@@ -279,21 +283,12 @@ class DashboardViewModel @Inject constructor(
         return completedDispenses.combine(completedBatches, ::recentActivityItems)
     }
 
-    /** Collects one source on Default into [queueSources]; the first emission ends the loading overlay. */
+    /** Collects one source on Default into [queueSources]. */
     private fun <T> collectSource(
         source: Flow<T>,
-        showLoading: Boolean = true,
         updateSources: QueueSources.(T) -> QueueSources,
-    ): Job = viewModelScope.launch(Dispatchers.Default) {
-        if (showLoading) setLoadingQueue(true)
-        source.collectIndexed { index, value ->
-            queueSources.update { it.updateSources(value) }
-            if (showLoading && index == 0) setLoadingQueue(false)
-        }
-    }
-
-    private suspend fun setLoadingQueue(isLoading: Boolean) = withContext(Dispatchers.Main) {
-        _uiState.update { it.copy(isLoadingQueue = isLoading) }
+    ): Job = viewModelScope.launch(defaultDispatcher) {
+        source.collect { value -> queueSources.update { it.updateSources(value) } }
     }
 
     /**
@@ -301,7 +296,7 @@ class DashboardViewModel @Inject constructor(
      * changes, then writes on Main, keeping unchanged list instances.
      */
     private fun startQueuePublisher() {
-        viewModelScope.launch(Dispatchers.Default) {
+        viewModelScope.launch(defaultDispatcher) {
             val activeFilter = _uiState.map { it.activeKpiFilter }.distinctUntilChanged()
             queueSources.combine(activeFilter, ::buildDashboardQueues).collectLatest { queues ->
                 withContext(Dispatchers.Main) {
@@ -313,6 +308,8 @@ class DashboardViewModel @Inject constructor(
                             kpiCounts = queues.kpiCounts,
                             dispenseTabCount = queues.dispenseTabCount,
                             inventoryTabCount = queues.inventoryTabCount,
+                            loadedTabs = queues.loadedTabs,
+                            loadingTabs = queues.loadingTabs,
                         )
                     }
                 }
@@ -340,6 +337,9 @@ class DashboardViewModel @Inject constructor(
         _uiState.update { it.copy(activeTab = tab, activeKpiFilter = null) }
         ensureTabObserved(tab)
     }
+
+    /** Starts a tab's load when the pager first draws it, without switching to it. */
+    fun onTabVisible(tab: DashboardTab) = ensureTabObserved(tab)
 
     /**
      * Fetch the latest user details from the remote repository.

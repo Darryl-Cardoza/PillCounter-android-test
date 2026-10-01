@@ -963,6 +963,24 @@ class PillCountTxnDaoTest {
     }
 
     @Test
+    fun `observePartialByIsDispense lists oldest first within a priority, HL7 or not`() = runTest {
+        val newerHl7 = dao.insertIgnore(
+            baseTxn(isDispense = true, priority = TxnPriority.Medium, isComingFromHL7 = true, createdAt = 200L)
+        )
+        val olderManual = dao.insertIgnore(
+            baseTxn(isDispense = true, priority = TxnPriority.Medium, isComingFromHL7 = false, createdAt = 100L)
+        )
+
+        dao.observePartialByIsDispense(
+            isDispense = true,
+            userLocalId = 1L,
+            type = StepState.SCAN
+        ).test {
+            assertEquals(listOf(olderManual, newerHl7), awaitItem().map { it.txnId })
+        }
+    }
+
+    @Test
     fun `observePartialByIsDispense excludes non partial and deleted rows`() = runTest {
         val id = dao.insertIgnore(
             baseTxn(localId = 1L, isDispense = true, status = CountStatus.COMPLETED)

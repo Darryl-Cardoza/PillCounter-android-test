@@ -37,8 +37,6 @@ import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
 import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.PlayfairDisplay
 
-// Everything on the card is white, drawn over the runtime primary colour.
-
 // Playfair's default line box is tall; 0.8x the font size keeps the one-line name compact.
 private const val UpNextDrugNameLineHeightRatio = 0.8f
 
@@ -58,7 +56,7 @@ internal fun DispenseUpNextCard(
             .fillMaxWidth()
             .sideBorder(
                 color = MaterialTheme.colorScheme.primary,
-                width = 3.dp,
+                width = 2.dp,
                 cornerRadius = DashboardBaseSizes.UpNextCardCornerRadius,
             )
             .clickable(onClick = onClick),

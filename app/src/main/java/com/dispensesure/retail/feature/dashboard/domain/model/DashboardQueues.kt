@@ -14,6 +14,9 @@ internal data class QueueSources(
     val pendingInventory: List<QueueItem.Inventory> = emptyList(),
     val recentActivity: List<QueueItem> = emptyList(),
     val inventoryKpiCounts: InventoryKpiCountsDto = InventoryKpiCountsDto(0, 0),
+    // Tabs whose collector has started, and tabs whose first list has arrived.
+    val observedTabs: Set<DashboardTab> = emptySet(),
+    val loadedTabs: Set<DashboardTab> = emptySet(),
 )
 
 // What each tab shows, the KPI card counts, and the counts in the tab headers.
@@ -24,6 +27,8 @@ internal data class DashboardQueues(
     val kpiCounts: Map<KpiFilter, Int>,
     val dispenseTabCount: Int,
     val inventoryTabCount: Int,
+    val loadedTabs: Set<DashboardTab>,
+    val loadingTabs: Set<DashboardTab>,
 )
 
 // The one place the dashboard lists and KPI counts are derived.
@@ -51,6 +56,8 @@ internal fun buildDashboardQueues(sources: QueueSources, activeFilter: KpiFilter
         dispenseTabCount = dispenseFilter?.let { kpiCounts.getValue(it) } ?: dispense.size,
         inventoryTabCount = inventoryFilter?.let { kpiCounts.getValue(it) }
             ?: (inventoryCounts.cycleCount + inventoryCounts.pendingBatchCount),
+        loadedTabs = sources.loadedTabs,
+        loadingTabs = sources.observedTabs - sources.loadedTabs,
     )
 }
 
@@ -69,7 +76,7 @@ private fun QueueItem.Inventory.matches(filter: KpiFilter): Boolean = when (filt
     KpiFilter.DISP_CONTROLLED, KpiFilter.DISP_HAZARDOUS -> false
 }
 
-// Keeps the DAO order: priority, then HL7, then newest.
+// Keeps the DAO order: priority, then oldest first.
 internal fun List<PillCountWithDrugAndTotal>.toPendingDispenseItems(): List<QueueItem.Dispense> =
     map { txn ->
         QueueItem.Dispense(

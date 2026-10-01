@@ -159,6 +159,7 @@ fun DashboardScreen(
         { _: KpiFilter -> showToast(context, R.string.standalone_kpi_disabled_message) }
     }
     val onTabSelected = remember(viewModel) { viewModel::onTabSelected }
+    val onTabVisible = remember(viewModel) { viewModel::onTabVisible }
     val onDispenseQuickAction = remember(viewModel, navController) {
         {
             viewModel.saveTxnId()
@@ -223,6 +224,7 @@ fun DashboardScreen(
         onRecentBatchClick = onRecentBatchClick,
         onQueueDispenseClick = onQueueDispenseClick,
         onQueueInventoryClick = onQueueInventoryClick,
+        onTabVisible = onTabVisible,
     )
 
     if (showBucketSelectDialog) {

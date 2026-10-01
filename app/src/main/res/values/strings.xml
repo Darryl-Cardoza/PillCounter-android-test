@@ -55,7 +55,6 @@
     <string name="kpi_disp_short">Dispense</string>
     <string name="kpi_inv_short">Inventory</string>
     <string name="kpi_high_priority">High Priority</string>
-    <string name="kpi_pending">Pending</string>
     <string name="kpi_cont_drugs">Controlled</string>
     <string name="kpi_hazardous">Hazardous</string>
     <string name="kpi_cycle_count">Cycle Count</string>

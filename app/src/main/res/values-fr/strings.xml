@@ -55,7 +55,6 @@
     <string name="kpi_disp_short">Dispenser</string>
     <string name="kpi_inv_short">Inventaire</string>
     <string name="kpi_high_priority">Priorité élevée</string>
-    <string name="kpi_pending">En attente</string>
     <string name="kpi_cont_drugs">Contrôlés</string>
     <string name="kpi_hazardous">Dangereux</string>
     <string name="kpi_cycle_count">Comptage cyclique</string>

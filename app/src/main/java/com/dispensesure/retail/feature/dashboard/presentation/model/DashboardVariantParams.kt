@@ -46,4 +46,6 @@ data class DashboardVariantParams(
     val disabledKpiFilters: Set<KpiFilter>,
     /** Tap on a disabled KPI card — surfaces why it's unavailable instead of filtering. */
     val onDisabledKpiFilterTapped: (KpiFilter) -> Unit,
+    /** Pager drew this tab's page — start loading it. */
+    val onTabVisible: (DashboardTab) -> Unit,
 )

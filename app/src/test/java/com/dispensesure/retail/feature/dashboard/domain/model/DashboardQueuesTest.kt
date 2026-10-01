@@ -217,4 +217,17 @@ class DashboardQueuesTest {
         assertEquals("CAPSULE", row.txn.dosageForm)
         assertEquals(7, row.txn.totalPillCount)
     }
+
+    @Test
+    fun `loading tabs are the observed tabs that have not loaded`() {
+        val sources = QueueSources(
+            observedTabs = setOf(DashboardTab.DISPENSE_QUEUE, DashboardTab.INVENTORY_QUEUE),
+            loadedTabs = setOf(DashboardTab.DISPENSE_QUEUE),
+        )
+
+        val queues = buildDashboardQueues(sources, activeFilter = null)
+
+        assertEquals(setOf(DashboardTab.DISPENSE_QUEUE), queues.loadedTabs)
+        assertEquals(setOf(DashboardTab.INVENTORY_QUEUE), queues.loadingTabs)
+    }
 }

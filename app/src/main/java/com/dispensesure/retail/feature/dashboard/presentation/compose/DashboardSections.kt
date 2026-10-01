@@ -144,25 +144,29 @@ internal fun DispenseAndInventoryQueueSection(
             modifier = Modifier.weight(1f),
             pageSpacing = responsiveDp(DashboardBaseSizes.CardGap),
         ) { page ->
-            when (DashboardTab.entries[page]) {
+            val tab = DashboardTab.entries[page]
+            // The pager draws a page as a swipe brings it on screen; start its load then.
+            LaunchedEffect(tab) { params.onTabVisible(tab) }
+            val isLoaded = tab in uiState.loadedTabs
+            when (tab) {
                 DashboardTab.DISPENSE_QUEUE -> ScaffoldQueueList(
                     items = uiState.dispenseQueue,
                     onDispenseClick = params.onQueueDispenseClick,
                     onInventoryClick = params.onQueueInventoryClick,
                     showUpNextCard = true,
-                    isLoading = uiState.isLoadingQueue,
+                    isLoaded = isLoaded,
                 )
                 DashboardTab.INVENTORY_QUEUE -> ScaffoldQueueList(
                     items = uiState.inventoryQueue,
                     onDispenseClick = params.onQueueDispenseClick,
                     onInventoryClick = params.onQueueInventoryClick,
-                    isLoading = uiState.isLoadingQueue,
+                    isLoaded = isLoaded,
                 )
                 DashboardTab.RECENT_ACTIVITY -> ScaffoldQueueList(
                     items = uiState.recentActivity,
                     onDispenseClick = params.onRecentDispenseClick,
                     onInventoryClick = params.onRecentBatchClick,
-                    isLoading = uiState.isLoadingQueue,
+                    isLoaded = isLoaded,
                 )
             }
         }

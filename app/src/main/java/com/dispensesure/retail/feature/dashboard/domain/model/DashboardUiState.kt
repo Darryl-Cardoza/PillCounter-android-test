@@ -88,6 +88,10 @@ data class DashboardUiState(
      */
     val recentActivity: List<QueueItem> = emptyList(),
 
-    /** Loading state for queue/transaction fetches from database. */
-    val isLoadingQueue: Boolean = false,
-)
+    /** Tabs whose list has been written, and tabs still waiting for their first list. */
+    val loadedTabs: Set<DashboardTab> = emptySet(),
+    val loadingTabs: Set<DashboardTab> = emptySet(),
+) {
+    /** Loading overlay: only while the tab on screen is still loading. */
+    val isLoadingQueue: Boolean get() = activeTab in loadingTabs
+}

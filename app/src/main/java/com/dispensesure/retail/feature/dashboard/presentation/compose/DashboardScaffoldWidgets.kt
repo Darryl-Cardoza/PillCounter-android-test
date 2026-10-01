@@ -337,10 +337,10 @@ internal fun ScaffoldQueueList(
     onInventoryClick: ((Long) -> Unit)?,
     modifier: Modifier = Modifier,
     showUpNextCard: Boolean = false,
-    isLoading: Boolean = false,
+    isLoaded: Boolean = false,
 ) {
-    // Still loading: the loading overlay is up, so don't claim the queue is empty yet.
-    if (items.isEmpty() && isLoading) return
+    // Not loaded yet: don't claim the queue is empty.
+    if (items.isEmpty() && !isLoaded) return
     if (items.isEmpty()) {
         Box(
             modifier = modifier

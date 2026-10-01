@@ -19,6 +19,7 @@ import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.data.IUserDetailRepository
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
+import com.dispensesure.retail.feature.dashboard.domain.model.DashboardUiState
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
 import com.dispensesure.retail.feature.dashboard.domain.model.Terminal
@@ -40,7 +41,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -84,11 +88,13 @@ class DashboardViewModelTest {
         every { Log.e(any(), any(), any()) } returns 0
 
         Dispatchers.setMain(testDispatcher)
+        // Main after setMain wraps testDispatcher; read it before the static mock hides it.
+        val testMain = Dispatchers.Main
         // The VM launches its work on a hardcoded Dispatchers.IO; redirect it to the
         // test scheduler so advanceUntilIdle() drives those coroutines deterministically.
         mockkStatic(Dispatchers::class)
         every { Dispatchers.IO } returns testDispatcher
-        every { Dispatchers.Default } returns testDispatcher
+        every { Dispatchers.Main } returns testMain
 
         userDetailRepository = mockk(relaxed = true)
         preferenceHelper = mockk(relaxed = true)
@@ -147,6 +153,7 @@ class DashboardViewModelTest {
         hl7ServiceManager,
         deviceKeyProvider,
         sessionHealthController,
+        testDispatcher,
     )
 
     // ─────────────────────────────── helpers ───────────────────────────────
@@ -463,12 +470,58 @@ class DashboardViewModelTest {
         verify(exactly = 1) { batchDao.getBatchSummaries(any(), any()) }
     }
 
+    // ─────────────────────────────── loaded state ───────────────────────────────
+
+    @Test
+    fun `dispense tab is never loaded with its list missing`() = runTest(testDispatcher) {
+        every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns
+            flowOf(listOf(dispenseTxn(txnId = 1)))
+        val states = mutableListOf<DashboardUiState>()
+        val vm = createViewModel()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) { vm.uiState.toList(states) }
+        advanceUntilIdle()
+
+        assertTrue(DashboardTab.DISPENSE_QUEUE in states.last().loadedTabs)
+        assertTrue(states.none { DashboardTab.DISPENSE_QUEUE in it.loadedTabs && it.dispenseQueue.isEmpty() })
+    }
+
+    @Test
+    fun `tab stays loading until its source emits`() = runTest(testDispatcher) {
+        val batches = MutableSharedFlow<List<BatchSummaryDto>>()
+        every { batchDao.observeInProgressBatchSummaries(any()) } returns batches
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onTabSelected(DashboardTab.INVENTORY_QUEUE)
+        advanceUntilIdle()
+        assertTrue(vm.uiState.value.isLoadingQueue)
+        assertFalse(DashboardTab.INVENTORY_QUEUE in vm.uiState.value.loadedTabs)
+
+        batches.emit(emptyList())
+        advanceUntilIdle()
+        assertFalse(vm.uiState.value.isLoadingQueue)
+        assertTrue(DashboardTab.INVENTORY_QUEUE in vm.uiState.value.loadedTabs)
+    }
+
+    @Test
+    fun `onTabVisible starts the tab load without switching tabs`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.onTabVisible(DashboardTab.INVENTORY_QUEUE)
+        advanceUntilIdle()
+
+        verify(exactly = 1) { batchDao.observeInProgressBatchSummaries(any()) }
+        assertEquals(DashboardTab.DISPENSE_QUEUE, vm.uiState.value.activeTab)
+        assertTrue(DashboardTab.INVENTORY_QUEUE in vm.uiState.value.loadedTabs)
+    }
+
     // ─────────────────────────────── lists / KPI ───────────────────────────────
 
     private fun stubQueues() {
         every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns flowOf(
             listOf(
-                // DAO order: newer high-priority row first.
+                // DAO order: high priority first.
                 dispenseTxn(txnId = 2, createdAt = 3, priority = TxnPriority.High, drugType = "CII"),
                 dispenseTxn(txnId = 1, createdAt = 1, isHazardous = true),
             )

@@ -12,7 +12,7 @@ class KpiCardSpecTest {
     private fun sample() = KpiCardSpec(
         filter = KpiFilter.DISP_PENDING,
         lineOneRes = R.string.kpi_disp_short,
-        lineTwoRes = R.string.kpi_pending,
+        lineTwoRes = R.string.kpi_pending_batch,
         iconRes = R.drawable.partial,
     )
 
@@ -21,7 +21,7 @@ class KpiCardSpecTest {
         val spec = sample()
         assertEquals(KpiFilter.DISP_PENDING, spec.filter)
         assertEquals(R.string.kpi_disp_short, spec.lineOneRes)
-        assertEquals(R.string.kpi_pending, spec.lineTwoRes)
+        assertEquals(R.string.kpi_pending_batch, spec.lineTwoRes)
         assertEquals(R.drawable.partial, spec.iconRes)
     }
 
@@ -52,7 +52,7 @@ class KpiCardSpecTest {
         val spec = sample()
         assertEquals(KpiFilter.DISP_PENDING, spec.component1())
         assertEquals(R.string.kpi_disp_short, spec.component2())
-        assertEquals(R.string.kpi_pending, spec.component3())
+        assertEquals(R.string.kpi_pending_batch, spec.component3())
         assertEquals(R.drawable.partial, spec.component4())
     }
 

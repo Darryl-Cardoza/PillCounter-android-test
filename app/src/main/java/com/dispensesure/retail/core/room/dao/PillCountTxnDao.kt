@@ -181,8 +181,7 @@ interface PillCountTxnDao {
                  WHEN 'Low'    THEN 3
                  ELSE 2
              END ASC, /* values correspond to TxnPriority enum names */
-             txn.isComingFromHL7 DESC,
-             txn.createdAt DESC
+             txn.createdAt ASC
     """
     )
 
