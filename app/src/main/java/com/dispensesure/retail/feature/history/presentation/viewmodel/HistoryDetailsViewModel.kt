@@ -37,11 +37,13 @@ class HistoryDetailsViewModel @Inject constructor(
 
     private fun getTransactionDetails() {
         viewModelScope.launch {
-            val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
-            _uiState.update { currentState ->
-                currentState.copy(
-                    txnInfo = txnInfo,
-                )
+            try {
+                val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
+                _uiState.update { currentState ->
+                    currentState.copy(
+                        txnInfo = txnInfo,
+                    )
+                }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

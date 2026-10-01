@@ -85,14 +85,19 @@ class AppLogger(private val tag: String) {
      * traces also run in release builds, where [i] is compiled out.
      */
     fun block(title: String, vararg lines: Pair<String, Any?>) {
-        val rule = "─".repeat(58)
-        Log.w(tag, buildString {
-            append('\n').append('┌').append(rule).append('\n')
-            append("│ ").append(title).append('\n')
-            append('├').append(rule)
-            lines.forEach { (label, value) -> append('\n').append("│ ").append(label).append(": ").append(value) }
-            append('\n').append('└').append(rule)
-        })
+        try {
+            val rule = "─".repeat(58)
+            Log.w(tag, buildString {
+                append('\n').append('┌').append(rule).append('\n')
+                append("│ ").append(title).append('\n')
+                append('├').append(rule)
+                lines.forEach { (label, value) -> append('\n').append("│ ").append(label).append(": ").append(value) }
+                append('\n').append('└').append(rule)
+            })
+        } catch (t: Throwable) {
+            // A value's toString() threw; the block is diagnostic only.
+            Log.w(tag, "$title (details unavailable)")
+        }
     }
 
     /**
@@ -149,7 +154,12 @@ class AppLogger(private val tag: String) {
         @Synchronized
         fun init(context: Context) {
             if (destination != null) return
-            destination = RemoteLogDestination(context.applicationContext)
+            // Runs in Application.onCreate: a failure here must leave logging off, not crash startup.
+            try {
+                destination = RemoteLogDestination(context.applicationContext)
+            } catch (t: Throwable) {
+                Log.w(INTERNAL_TAG, "Remote log destination unavailable; logging to Logcat only", t)
+            }
         }
 
         /**

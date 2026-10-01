@@ -277,4 +277,16 @@ class AppLoggerTest {
         assertEquals(LogLevel.DEBUG, destination.entries[0].level)
         assertEquals(LogLevel.INFO, destination.entries[1].level)
     }
+
+    @Test
+    fun `a throwing destination never propagates into the caller`() {
+        AppLogger.setDestinationForTest(object : LogDestination {
+            override fun write(entry: LogEntry) = throw IllegalStateException("destination broke")
+        })
+
+        // Would previously escape from inside the caller's own catch block.
+        logger.e("something failed", RuntimeException("original"))
+
+        verify(exactly = 1) { Log.e(tag, "something failed", any()) }
+    }
 }

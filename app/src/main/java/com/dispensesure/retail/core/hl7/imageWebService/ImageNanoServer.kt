@@ -255,6 +255,7 @@ class ImageNanoServer(
             .mapNotNull { it.barcodeImagePath?.takeIf { path -> path.isNotBlank() } }
             .forEach { path ->
                 resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it, txn.createdAt)) }
+                    ?: logger.w("Barcode image missing for txnId=${txn.txnId}: ${File(path).name}")
             }
 
         val details = txnDetailsDao.getAllForTxn(txn.txnId.toString())
@@ -262,11 +263,17 @@ class ImageNanoServer(
 
         for (detail: PillCountTxnDetailsEntity in details) {
             val path = detail.imagePath?.takeIf { it.isNotBlank() } ?: continue
-            val file = resolveFile(path) ?: continue
+            val file = resolveFile(path)
+            if (file == null) {
+                logger.w("Detail image missing for txnId=${txn.txnId}: ${File(path).name}")
+                continue
+            }
             entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, file, detail.createdAt))
             // Raw copy right after its processed image; zipResponse names it from that one.
-            detail.rawImagePath?.takeIf { it.isNotBlank() }?.let { resolveFile(it) }?.let {
-                entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, it, detail.createdAt, isRaw = true))
+            detail.rawImagePath?.takeIf { it.isNotBlank() }?.let { rawPath ->
+                val raw = resolveFile(rawPath)
+                if (raw == null) logger.w("Raw image missing for txnId=${txn.txnId}: ${File(rawPath).name}")
+                else entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, raw, detail.createdAt, isRaw = true))
             }
         }
 
