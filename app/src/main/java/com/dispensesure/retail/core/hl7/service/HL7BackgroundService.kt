@@ -823,7 +823,9 @@ class HL7Service : Service() {
 
             if (message == null) {
                 val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
-                logger.e("HL7 parse failed, no partial message: $errors", event = LogEvent.HL7_RECEIVE_FAILED)
+                // Error details can echo HL7 field values (PHI) — keep them out of the remote ERROR log.
+                logger.d("HL7 parse errors: $errors")
+                logger.e("HL7 parse failed, no partial message (${errors?.size ?: 0} error(s))", event = LogEvent.HL7_RECEIVE_FAILED)
                 return buildFallbackAck(raw, "Parse Failed")
             }
 
@@ -842,7 +844,9 @@ class HL7Service : Service() {
 
         } catch (e: Exception) {
             listener?.onError("HL7_PARSE", e)
-            logger.e("HL7 processing failed", e, event = LogEvent.HL7_RECEIVE_FAILED)
+            // Keep the type and stack trace but drop e.message, which can echo HL7 field values (PHI).
+            val safe = Exception(e.javaClass.name).also { it.stackTrace = e.stackTrace }
+            logger.e("HL7 processing failed", safe, event = LogEvent.HL7_RECEIVE_FAILED)
             buildFallbackAck(raw, e.message ?: "Unknown Error")
         }
     }

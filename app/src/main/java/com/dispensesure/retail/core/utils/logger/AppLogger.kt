@@ -187,22 +187,29 @@ class AppLogger(private val tag: String) {
             if (level < LoggerConfig.minimumLogLevel) return
             val dest = destination ?: return
 
-            val callSite = resolveCallSite()
-            dest.write(
-                LogEntry(
-                    timestampMillis = System.currentTimeMillis(),
-                    level = level,
-                    fileName = callSite.fileName,
-                    className = tag,
-                    methodName = callSite.methodName,
-                    message = message,
-                    humanReadableError = throwable?.let(ExceptionTranslator::translate),
-                    throwable = throwable,
-                    operatorName = LoggerConfig.operatorName?.takeIf { it.isNotBlank() },
-                    event = event
+            // Logging must never throw into the caller (often a catch block) — Logcat only.
+            try {
+                val callSite = resolveCallSite()
+                dest.write(
+                    LogEntry(
+                        timestampMillis = System.currentTimeMillis(),
+                        level = level,
+                        fileName = callSite.fileName,
+                        className = tag,
+                        methodName = callSite.methodName,
+                        message = message,
+                        humanReadableError = throwable?.let(ExceptionTranslator::translate),
+                        throwable = throwable,
+                        operatorName = LoggerConfig.operatorName?.takeIf { it.isNotBlank() },
+                        event = event
+                    )
                 )
-            )
+            } catch (t: Throwable) {
+                Log.w(INTERNAL_TAG, "Logging failed; entry dropped", t)
+            }
         }
+
+        private const val INTERNAL_TAG = "AppLogger"
 
         private data class CallSite(val fileName: String, val methodName: String)
 

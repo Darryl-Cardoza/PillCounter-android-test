@@ -14,6 +14,8 @@ import java.io.FileWriter
 import java.io.RandomAccessFile
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -35,7 +37,7 @@ class PerformanceLogger @Inject constructor(
 ) {
 
     private val _logFile: File by lazy {
-        val logDir = File(context.getExternalFilesDir(null), "performance_logs")
+        val logDir = File(context.getExternalFilesDir(null) ?: context.filesDir, "performance_logs")
         if (!logDir.exists()) {
             logDir.mkdirs()
         }
@@ -50,6 +52,9 @@ class PerformanceLogger @Inject constructor(
     }
 
     private val logger = AppLogger("PerformanceLogger")
+
+    // Single background writer keeps file I/O (incl. the init banner) off the caller's thread, in order.
+    private val writer = Executors.newSingleThreadExecutor { Thread(it, "perf-log").apply { isDaemon = true } }
 
     companion object {
         private val LOG_SEPARATOR = "=".repeat(80)
@@ -280,13 +285,15 @@ class PerformanceLogger @Inject constructor(
         val logMessage = "[$timestamp] $message"
 
         // Write to file
-        try {
-            BufferedWriter(FileWriter(_logFile, true)).use { writer ->
-                writer.write(logMessage)
-                writer.newLine()
+        writer.execute {
+            try {
+                BufferedWriter(FileWriter(_logFile, true)).use { out ->
+                    out.write(logMessage)
+                    out.newLine()
+                }
+            } catch (e: Exception) {
+                logger.e("Failed to write to log file", e, event = LogEvent.FILE_WRITE_ERROR)
             }
-        } catch (e: Exception) {
-            logger.e("Failed to write to log file", e, event = LogEvent.FILE_WRITE_ERROR)
         }
 
         // Also log to Logcat for debugging
@@ -294,7 +301,7 @@ class PerformanceLogger @Inject constructor(
     }
 
     private fun getCurrentTimestamp(): String {
-        return dateFormat.format(Date())
+        return synchronized(dateFormat) { dateFormat.format(Date()) }
     }
 
     private fun getCurrentDateForFile(): String {
@@ -545,9 +552,16 @@ class PerformanceLogger @Inject constructor(
     }
 
     /**
-     * Get the log file for external access
+     * Get the log file for external access, after pending background writes have landed.
      */
-    fun getLogFile(): File = _logFile
+    fun getLogFile(): File {
+        try {
+            writer.submit {}.get(2, TimeUnit.SECONDS)
+        } catch (e: Exception) {
+            // Best effort: return the file as-is rather than block or fail the caller.
+        }
+        return _logFile
+    }
 
     /**
      * Clear old logs (call periodically or on app start)

@@ -98,7 +98,12 @@ class MllpConnectionManager(
                 logger.d("send() attempt $attempt — received response")
                 return response
             } catch (e: Exception) {
-                logger.e("send() attempt $attempt failed: ${e.message}", e, event = LogEvent.HL7_SEND_FAILED)
+                // Only the final attempt is an ERROR (shipped remotely); earlier ones are retried.
+                if (attempt == SEND_RETRIES - 1) {
+                    logger.e("send() failed after $SEND_RETRIES attempts: ${e.message}", e, event = LogEvent.HL7_SEND_FAILED)
+                } else {
+                    logger.w("send() attempt $attempt failed: ${e.message}", e)
+                }
                 handleSendFailure()
                 if (attempt == SEND_RETRIES - 1) throw e
                 retryConnect()

@@ -103,8 +103,11 @@ class RemoteLogDestination internal constructor(
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val activeJobs = CopyOnWriteArrayList<Job>()
     private val pendingLogFile by lazy {
-        pendingLogFileOverride ?: File(File(appContext.getExternalFilesDir(null), "Logs"), PENDING_LOG_FILE_NAME)
+        pendingLogFileOverride
+            ?: File(File(appContext.getExternalFilesDir(null) ?: appContext.filesDir, "Logs"), PENDING_LOG_FILE_NAME)
     }
+    /** Holds the batch being flushed, so a process death mid-flush can't lose it (picked up next flush). */
+    private val flushingFile by lazy { File(pendingLogFile.parentFile, pendingLogFile.name + ".flushing") }
     private val pendingLock = Any()
 
     /**
@@ -133,7 +136,13 @@ class RemoteLogDestination internal constructor(
             }
             if (System.currentTimeMillis() < refreshBlockedUntil) return@synchronized null
             val delegate = tokenAuthenticator ?: return@synchronized null
-            delegate.authenticate(route, response).also {
+            val refreshed = try {
+                delegate.authenticate(route, response)
+            } catch (e: Exception) {
+                Log.w(TAG, "Token refresh for log send failed", e)
+                null
+            }
+            refreshed.also {
                 if (it == null) refreshBlockedUntil = System.currentTimeMillis() + REFRESH_COOLDOWN_MS
             }
         }
@@ -171,17 +180,18 @@ class RemoteLogDestination internal constructor(
     override fun write(entry: LogEntry) {
         if (entry.level != LogLevel.ERROR) return
 
-        val request = buildRequest(entry)
-        // /mobile/logs needs the user's bearer token, so until login (or while offline) queue
-        // to file; the backlog is flushed by connectivity, the next send, or onUserLoggedIn().
-        if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) {
-            persistPending(request)
-            return
-        }
-
+        // Everything heavier than capturing the session id runs off the caller's thread (often main).
+        val sessionId = LoggerConfig.sessionId
         launchTracked {
+            val request = buildRequest(entry, sessionId)
+            // /mobile/logs needs the user's bearer token, so until login (or while offline) queue
+            // to file; the backlog is flushed by connectivity, the next send, or onUserLoggedIn().
+            if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) {
+                persistNow(request)
+                return@launchTracked
+            }
             when (sendWithRetry(request)) {
-                SendResult.OK -> Unit
+                SendResult.OK -> flushPendingNow()
                 SendResult.DROP -> Log.w(TAG, "Log entry permanently rejected by the server — dropped")
                 else -> {
                     Log.w(TAG, "Log entry not delivered after $MAX_ATTEMPTS attempts — queuing for next connectivity")
@@ -189,7 +199,6 @@ class RemoteLogDestination internal constructor(
                 }
             }
         }
-        flushPending()
     }
 
     private enum class SendResult {
@@ -233,7 +242,14 @@ class RemoteLogDestination internal constructor(
     private fun launchTracked(block: suspend () -> Unit) {
         lateinit var job: Job
         job = scope.launch {
-            block()
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Throwable) {
+                // Uncaught here would reach the thread's handler and kill the app.
+                Log.w(TAG, "Remote log task failed", e)
+            }
         }
         activeJobs += job
         job.invokeOnCompletion { activeJobs -= job }
@@ -258,10 +274,6 @@ class RemoteLogDestination internal constructor(
         }
     }
 
-    private fun persistPending(request: RemoteLogRequest) {
-        launchTracked { persistNow(request) }
-    }
-
     /** Queue lines are `<attempts>\t<json>`; an un-prefixed line (older format) means 0 attempts. */
     private fun persistNow(request: RemoteLogRequest, attempts: Int = 0) {
         try {
@@ -269,10 +281,20 @@ class RemoteLogDestination internal constructor(
             synchronized(pendingLock) {
                 pendingLogFile.parentFile?.mkdirs()
                 pendingLogFile.appendText("$attempts\t$json" + System.lineSeparator())
+                trimPendingFile()
             }
         } catch (e: Exception) {
             Log.w(TAG, "Failed to queue log entry for later delivery", e)
         }
+    }
+
+    /** Caps the queue at [MAX_PENDING_BYTES] by dropping the oldest lines down to half that. Caller holds [pendingLock]. */
+    private fun trimPendingFile() {
+        if (pendingLogFile.length() <= MAX_PENDING_BYTES) return
+        var total = 0L
+        val newest = pendingLogFile.readLines().asReversed()
+            .takeWhile { total += it.length + 1; total <= MAX_PENDING_BYTES / 2 }.asReversed()
+        pendingLogFile.writeText(newest.joinToString("") { it + System.lineSeparator() })
     }
 
     /** Ships anything queued while logged out/offline. Also called right after login succeeds. */
@@ -296,9 +318,15 @@ class RemoteLogDestination internal constructor(
      */
     private suspend fun flushPendingNow() {
         if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) return
+        // Copy the queue into flushingFile before emptying it, so a process death mid-flush
+        // leaves the batch on disk (a leftover flushingFile is merged into the next flush).
         val queued = synchronized(pendingLock) {
-            if (!pendingLogFile.exists()) return
-            pendingLogFile.readLines().also { pendingLogFile.writeText("") }
+            if (!flushingFile.exists() && !pendingLogFile.exists()) return
+            val lines = (if (flushingFile.exists()) flushingFile.readLines() else emptyList()) +
+                (if (pendingLogFile.exists()) pendingLogFile.readLines() else emptyList())
+            flushingFile.writeText(lines.joinToString("") { it + System.lineSeparator() })
+            pendingLogFile.writeText("")
+            lines
         }
         val keep = mutableListOf<String>()
         var index = 0
@@ -309,10 +337,11 @@ class RemoteLogDestination internal constructor(
             }
         } finally {
             keep += queued.drop(index)
-            if (keep.isNotEmpty()) {
-                synchronized(pendingLock) {
+            synchronized(pendingLock) {
+                if (keep.isNotEmpty()) {
                     pendingLogFile.appendText(keep.joinToString(separator = "") { it + System.lineSeparator() })
                 }
+                flushingFile.delete()
             }
         }
     }
@@ -345,7 +374,7 @@ class RemoteLogDestination internal constructor(
         return if (attempts != null) attempts to line.substring(tab + 1) else 0 to line
     }
 
-    private fun buildRequest(entry: LogEntry): RemoteLogRequest {
+    private fun buildRequest(entry: LogEntry, sessionId: String): RemoteLogRequest {
         val throwable = entry.throwable
         return RemoteLogRequest(
             deviceKey = deviceKey(),
@@ -354,7 +383,7 @@ class RemoteLogDestination internal constructor(
             platform = PLATFORM,
             osVersion = Build.VERSION.RELEASE ?: "unknown",
             deviceModel = Build.MODEL ?: "unknown",
-            sessionId = LoggerConfig.sessionId,
+            sessionId = sessionId,
             logId = UUID.randomUUID().toString(),
             severity = severityOf(entry.level),
             timestamp = timestampFormat.get()!!.format(Date(entry.timestampMillis)),
@@ -461,6 +490,7 @@ class RemoteLogDestination internal constructor(
         private const val LOGOUT_FLUSH_TIMEOUT_MS = 5_000L
         private const val REFRESH_COOLDOWN_MS = 60_000L
         private const val KEY_COOLDOWN_MS = 30_000L
+        private const val MAX_PENDING_BYTES = 1_000_000L
         private const val RETRY_DELAY_MS = 2_000L
         private const val PENDING_LOG_FILE_NAME = "dispensesure_logs.txt"
     }
