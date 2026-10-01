@@ -18,9 +18,10 @@ class Hl7Parser @Inject constructor() {
     fun map(message: HL7Message): List<OrderGroup> {
         val msh: MSHSegment? = message.header
         val msgControlId = msh?.messageControlId.orEmpty()
-        val orc = message.segment<ORCSegment>(ORCSegment.NAME)
-            ?: error("No ORC segment in message $msgControlId")
-        return listOf(mapOrderGroup(msh, orc, message.segment(RXESegment.NAME)))
+        val orcs = message.segments<ORCSegment>(ORCSegment.NAME)
+        if (orcs.isEmpty()) error("No ORC segment in message $msgControlId")
+        val rxes = message.segments<RXESegment>(RXESegment.NAME)
+        return orcs.mapIndexed { i, orc -> mapOrderGroup(msh, orc, rxes.getOrNull(i)) }
     }
 
     private fun mapOrderGroup(
