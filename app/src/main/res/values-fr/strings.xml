@@ -130,7 +130,7 @@
     <string name="rescane">Re-scanner</string>
     <string name="done">Terminé</string>
     <string name="add">Ajouter</string>
-    <string name="count">Compter</string>
+    <string name="count">Comptage</string>
     <string name="ok">OK</string>
     <string name="cancel">Annuler</string>
     <string name="yes">Oui</string>
@@ -248,6 +248,8 @@
 
     <string name="add_button_wait">Veuillez attendre 2 secondes avant d\'ajouter à nouveau.</string>
     <string name="add_zero_detected">Impossible d\'ajouter — aucune pilule détectée.</string>
+    <string name="add_camera_not_ready">La caméra n\'est pas prête, réessayez.</string>
+    <string name="location_unavailable">Localisation indisponible</string>
     <string name="duplicate_scan_ignored">Scan en double ignoré — aucune nouvelle pilule détectée.</string>
 
     <!-- For multi-select mode text in PartialListPanel -->
@@ -572,5 +574,13 @@
     <string name="connection_info_title">INFORMATIONS DE CONNEXION</string>
     <string name="hl7_notification_title">Service d\'arrière-plan HL7</string>
     <string name="rx_already_completed_message">Cette ordonnance a déjà été délivrée.</string>
+
+    <!-- ================== SAVED PHOTO INFO STRIPS ================== -->
+    <string name="photo_label_requested_ndc">NDC demandé</string>
+    <string name="photo_label_dispensed_ndc">NDC délivré</string>
+    <string name="photo_label_rx_refill">N° Rx-Renouvellement</string>
+    <string name="photo_label_step">Étape</string>
+    <string name="photo_label_date_time">Date et heure</string>
+    <string name="photo_label_operator">Opérateur</string>
 
 </resources>

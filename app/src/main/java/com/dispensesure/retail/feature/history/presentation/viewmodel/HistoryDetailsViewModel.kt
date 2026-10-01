@@ -37,18 +37,11 @@ class HistoryDetailsViewModel @Inject constructor(
 
     private fun getTransactionDetails() {
         viewModelScope.launch {
-            try {
-                val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
-                    ?.let { txn ->
-                        // @Relation auto-query has no isDeleted filter — strip soft-deleted
-                        // details here so they never reach the UI.
-                        txn.copy(txnDetails = txn.txnDetails.filter { !it.isDeleted })
-                    }
-                _uiState.update { currentState ->
-                    currentState.copy(
-                        txnInfo = txnInfo,
-                    )
-                }
+            val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
+            _uiState.update { currentState ->
+                currentState.copy(
+                    txnInfo = txnInfo,
+                )
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

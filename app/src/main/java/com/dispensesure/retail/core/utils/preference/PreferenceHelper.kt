@@ -83,6 +83,8 @@ private const val KEY_LOGGED_IN_AT = "logged_in_at_ms"
 /** Default offline-session threshold (seconds) applied when the server has not yet supplied one. */
 private const val DEFAULT_OFFLINE_SESSION_THRESHOLD_SECONDS = 86_400L
 
+private const val KEY_IS_COLOR_IMAGE_ENABLED = "is_color_image_enabled"
+
 @Singleton
 class PreferenceHelper @Inject constructor(
     @ApplicationContext private val context: Context
@@ -248,6 +250,12 @@ class PreferenceHelper @Inject constructor(
 
     fun isProfileChecked(): Boolean =
         prefs.getBoolean("isProfileChecked", false)
+
+    fun getIsColorImageEnabled(): Boolean =
+        prefs.getBoolean(KEY_IS_COLOR_IMAGE_ENABLED, default = true)
+
+    fun saveIsColorImageEnabled(colorImageEnabled: Boolean) =
+        prefs.putBoolean(KEY_IS_COLOR_IMAGE_ENABLED, colorImageEnabled)
 
     fun getContext(): Context = context
 

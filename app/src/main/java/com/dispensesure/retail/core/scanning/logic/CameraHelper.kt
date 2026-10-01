@@ -600,9 +600,6 @@ class CameraHelper(
     // HELPERS
     // ---------------------------------------------------------
 
-    fun getPreviewWidth(): Int = previewView?.width ?: 640
-    fun getPreviewHeight(): Int = previewView?.height ?: 640
-
     fun imageProxyToBitmap(image: ImageProxy): Bitmap {
 
         val buffer = image.planes[0].buffer

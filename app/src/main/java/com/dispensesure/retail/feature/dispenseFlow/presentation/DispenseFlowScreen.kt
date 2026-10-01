@@ -520,6 +520,9 @@ fun DispenseFlowScreen(
                     batchId = dispenseState.batchId,
                     drugId = dispenseState.stockDrugId,
                     bucketId = dispenseState.selectedBucketId.ifBlank { null },
+                    lotNo = dispenseState.pendingFirstBottle?.lotNumber,
+                    expNo = dispenseState.pendingFirstBottle?.expirationDate,
+                    serialNo = dispenseState.pendingFirstBottle?.serialNumber,
                 )
             } else {
                 pillVm.getDrugInfo(forceStartStep = null)
@@ -572,7 +575,9 @@ fun DispenseFlowScreen(
         else pillVm.resumePillDetection()
     }
 
-    val barcodeAnalyzer = remember { FrameBarcodeAnalyzer(context.applicationContext) }
+    val barcodeAnalyzer = remember {
+        FrameBarcodeAnalyzer(context.applicationContext, isGrayscale = pillVm::isGrayscaleImage)
+    }
     DisposableEffect(Unit) {
         onDispose { barcodeAnalyzer.pause() }
     }
