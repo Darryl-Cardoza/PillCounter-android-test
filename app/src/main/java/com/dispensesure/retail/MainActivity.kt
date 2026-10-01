@@ -457,7 +457,7 @@ class MainActivity : ComponentActivity() {
                     popUpTo(0) { inclusive = true }
                 }
             }
-            showToast(this, R.string.session_expired)
+            showToast(this, R.string.session_expired, keepUntilShown = true)
         } finally {
             sessionHealthController.endTeardown()
         }

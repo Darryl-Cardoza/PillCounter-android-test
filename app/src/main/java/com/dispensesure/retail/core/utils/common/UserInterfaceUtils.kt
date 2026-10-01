@@ -180,8 +180,13 @@ object UserInterfaceUtils {
     }
 
     /** Displays a short Toast using a string resource ID. */
-    fun showToast(context: Context, @StringRes resId: Int, duration: Int = Toast.LENGTH_SHORT) {
-        AppToast.show(context.getString(resId), duration)
+    fun showToast(
+        context: Context,
+        @StringRes resId: Int,
+        duration: Int = Toast.LENGTH_SHORT,
+        keepUntilShown: Boolean = false
+    ) {
+        AppToast.show(context.getString(resId), duration, keepUntilShown)
     }
 
     // ───────────────────────────── Color Extensions ─────────────────────────────

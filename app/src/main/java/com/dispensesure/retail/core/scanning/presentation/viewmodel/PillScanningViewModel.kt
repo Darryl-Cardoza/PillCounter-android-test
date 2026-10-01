@@ -1510,7 +1510,7 @@ class PillScanningViewModel @Inject constructor(
         // Fix the frame, pills and tray at the tap; the save must not pick up a later frame.
         val frame = takeCurrentFrame()
         if (frame == null) {
-            showToast(context, context.getString(R.string.add_camera_not_ready))
+            showToast(context.getString(R.string.add_camera_not_ready))
             logger.w("Add blocked: no camera frame at tap.")
             return
         }

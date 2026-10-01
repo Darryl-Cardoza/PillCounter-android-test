@@ -7,6 +7,7 @@ import android.graphics.PixelFormat
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -44,6 +45,7 @@ object AppToast {
     private const val SHORT_MS = 2000L
     private const val LONG_MS = 3500L
     private const val BOTTOM_OFFSET_DP = 64
+    private const val PENDING_MAX_AGE_MS = 5000L
 
     private val handler = Handler(Looper.getMainLooper())
     private val hideRunnable = Runnable { hide() }
@@ -58,7 +60,12 @@ object AppToast {
     internal var shownMessage: String? = null
         private set
 
-    private class PendingToast(val message: String, val duration: Int)
+    private class PendingToast(
+        val message: String,
+        val duration: Int,
+        val keepUntilShown: Boolean,
+        val queuedAt: Long = SystemClock.elapsedRealtime()
+    )
 
     /** Call once from Application.onCreate so the toast knows which activity is on screen. */
     fun register(app: Application) {
@@ -69,7 +76,10 @@ object AppToast {
                 // A toast asked for while nothing was on screen shows now.
                 pendingToast?.let {
                     pendingToast = null
-                    show(it.message, it.duration)
+                    // Too old to make sense now, unless it must always be shown.
+                    if (it.keepUntilShown || SystemClock.elapsedRealtime() - it.queuedAt <= PENDING_MAX_AGE_MS) {
+                        show(it.message, it.duration)
+                    }
                 }
             }
 
@@ -89,12 +99,16 @@ object AppToast {
         })
     }
 
-    /** Shows [message], replacing any toast already on screen. Kept for the next resume if no activity is resumed. */
-    fun show(message: String, duration: Int) {
+    /**
+     * Shows [message], replacing any toast already on screen. Kept for the next resume if no activity is resumed.
+     * A kept toast is dropped after 5s unless [keepUntilShown], and only a [keepUntilShown] toast can replace that one.
+     */
+    fun show(message: String, duration: Int, keepUntilShown: Boolean = false) {
         hide()
         val activity = resumedActivity?.get()
         if (activity == null) {
-            pendingToast = PendingToast(message, duration)
+            if (pendingToast?.keepUntilShown == true && !keepUntilShown) return
+            pendingToast = PendingToast(message, duration, keepUntilShown)
             return
         }
 

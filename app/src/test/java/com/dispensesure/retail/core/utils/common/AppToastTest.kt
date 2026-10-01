@@ -114,6 +114,50 @@ class AppToastTest {
         assertNull(AppToast.shownMessage)
     }
 
+    @Test
+    fun pendingToast_olderThan5s_isDroppedOnResume() {
+        controller.create().start()
+
+        AppToast.show("Stale", Toast.LENGTH_SHORT)
+        idleFor(5001)
+
+        controller.resume().visible()
+        assertNull(AppToast.shownMessage)
+    }
+
+    @Test
+    fun pendingToast_exactly5sOld_showsOnResume() {
+        controller.create().start()
+
+        AppToast.show("Just in time", Toast.LENGTH_SHORT)
+        idleFor(5000)
+
+        controller.resume().visible()
+        assertEquals("Just in time", AppToast.shownMessage)
+    }
+
+    @Test
+    fun keepUntilShownToast_showsAfterLongBackground() {
+        controller.create().start()
+
+        AppToast.show("Session expired", Toast.LENGTH_LONG, keepUntilShown = true)
+        idleFor(60_000)
+
+        controller.resume().visible()
+        assertEquals("Session expired", AppToast.shownMessage)
+    }
+
+    @Test
+    fun regularToast_doesNotReplacePendingKeepUntilShownToast() {
+        controller.create().start()
+
+        AppToast.show("Session expired", Toast.LENGTH_LONG, keepUntilShown = true)
+        AppToast.show("Other", Toast.LENGTH_SHORT)
+
+        controller.resume().visible()
+        assertEquals("Session expired", AppToast.shownMessage)
+    }
+
     private fun idleFor(millis: Long) {
         shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(millis))
     }
