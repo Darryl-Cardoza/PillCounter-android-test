@@ -112,7 +112,7 @@ fun DashboardScreen(
     }
     LaunchedEffect(uiState.logoutUser) {
         if (uiState.logoutUser) {
-            showToast(context, R.string.session_expired)
+            showToast(context, R.string.session_expired, keepUntilShown = true)
             navController.navigate(AUTH_GRAPH_ROUTE) {
                 popUpTo(0) { inclusive = true }
             }

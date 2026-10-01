@@ -3,7 +3,6 @@
 import android.Manifest
 import android.util.Log
 import android.content.res.Configuration
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
@@ -63,7 +62,6 @@ import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -181,7 +179,7 @@ fun DispenseFlowScreen(
             !cameraPermissionState.granted &&
             !cameraPermissionState.showingSettingsDialog
         ) {
-            showToast(context, "Camera permission is required for this action")
+            showToast(context, R.string.camera_permission_required)
             navController.navigateBackToDashboard()
         }
     }
@@ -364,17 +362,23 @@ fun DispenseFlowScreen(
     }
 
     // === Pill-VM toasts ===
-    if (pillState.restrictAdd) {
-        UserInterfaceUtils.showToast(context, stringResource(id = R.string.max_count_reached))
-        pillVm.resetRestrictAdd()
+    val maxCountReachedToastText = stringResource(id = R.string.max_count_reached)
+    LaunchedEffect(pillState.restrictAdd) {
+        if (pillState.restrictAdd) {
+            showToast(maxCountReachedToastText)
+            pillVm.resetRestrictAdd()
+        }
     }
-    if (pillState.showNoTransaction) {
-        UserInterfaceUtils.showToast(context, stringResource(id = R.string.no_transaction_found))
-        pillVm.resetNoTransaction()
+    val noTransactionFoundToastText = stringResource(id = R.string.no_transaction_found)
+    LaunchedEffect(pillState.showNoTransaction) {
+        if (pillState.showNoTransaction) {
+            showToast(noTransactionFoundToastText)
+            pillVm.resetNoTransaction()
+        }
     }
     LaunchedEffect(pillState.showErrorMessage) {
         pillState.showErrorMessage?.let { message ->
-            showToast(context = context, message = message, duration = Toast.LENGTH_SHORT)
+            showToast(message = message)
             pillVm.clearErrorMessage()
         }
     }
@@ -596,7 +600,7 @@ fun DispenseFlowScreen(
     )
     LaunchedEffect(dispenseState.ndcNotAllowedToastTick) {
         if (dispenseState.ndcNotAllowedToastTick > 0) {
-            showToast(context, ndcNotAllowedToastText, Toast.LENGTH_SHORT)
+            showToast(ndcNotAllowedToastText)
         }
     }
 
@@ -684,7 +688,7 @@ fun DispenseFlowScreen(
 
     LaunchedEffect(dispenseState.error) {
         dispenseState.error?.let {
-            showToast(context, it, Toast.LENGTH_SHORT)
+            showToast(it)
             dispenseVm.clearError()
         }
     }
@@ -699,7 +703,7 @@ fun DispenseFlowScreen(
     val invalidScanToastText = stringResource(R.string.scan_correct_label)
     LaunchedEffect(dispenseState.showInvalidScanDialog) {
         if (dispenseState.showInvalidScanDialog) {
-            showToast(context, invalidScanToastText, Toast.LENGTH_SHORT)
+            showToast(invalidScanToastText)
             dispenseVm.dismissInvalidScanDialog()
         }
     }
@@ -707,7 +711,7 @@ fun DispenseFlowScreen(
     val ndcNotFoundToastText = stringResource(R.string.the_scanned_ndc_does_not_match)
     LaunchedEffect(dispenseState.showNdcNotFoundDialog) {
         if (dispenseState.showNdcNotFoundDialog) {
-            showToast(context, ndcNotFoundToastText, Toast.LENGTH_SHORT)
+            showToast(ndcNotFoundToastText)
             dispenseVm.dismissNdcNotFoundDialog()
         }
     }
@@ -762,7 +766,7 @@ fun DispenseFlowScreen(
     val rxScannedInStockCountToastText = stringResource(R.string.scan_correct_label)
     LaunchedEffect(dispenseState.showRxScannedInStockCountDialog) {
         if (dispenseState.showRxScannedInStockCountDialog) {
-            showToast(context, rxScannedInStockCountToastText, Toast.LENGTH_SHORT)
+            showToast(rxScannedInStockCountToastText)
             dispenseVm.dismissRxScannedInStockCountDialog()
         }
     }
@@ -774,7 +778,7 @@ fun DispenseFlowScreen(
     val ndcMismatchToastText = stringResource(R.string.rescan_ndc_does_not_match_toast)
     LaunchedEffect(dispenseState.ndcMismatchToastTick) {
         if (dispenseState.ndcMismatchToastTick > 0) {
-            showToast(context, ndcMismatchToastText, Toast.LENGTH_SHORT)
+            showToast(ndcMismatchToastText)
         }
     }
 
@@ -784,14 +788,14 @@ fun DispenseFlowScreen(
     val scanNdcToastText = stringResource(R.string.scan_ndc_toast)
     LaunchedEffect(dispenseState.scanNdcToastTick) {
         if (dispenseState.scanNdcToastTick > 0) {
-            showToast(context, scanNdcToastText, Toast.LENGTH_SHORT)
+            showToast(scanNdcToastText)
         }
     }
 
     val txnNotFoundToastText = stringResource(R.string.transaction_not_found_toast)
     LaunchedEffect(dispenseState.txnNotFoundToastTick) {
         if (dispenseState.txnNotFoundToastTick > 0) {
-            showToast(context, txnNotFoundToastText, Toast.LENGTH_SHORT)
+            showToast(txnNotFoundToastText)
         }
     }
 
@@ -799,7 +803,7 @@ fun DispenseFlowScreen(
     val rxDrugNotFoundToastText = stringResource(R.string.rx_label_drug_not_found_toast)
     LaunchedEffect(dispenseState.rxDrugNotFoundToastTick) {
         if (dispenseState.rxDrugNotFoundToastTick > 0) {
-            showToast(context, rxDrugNotFoundToastText, Toast.LENGTH_SHORT)
+            showToast(rxDrugNotFoundToastText)
         }
     }
 
@@ -807,7 +811,7 @@ fun DispenseFlowScreen(
     val vialRxMismatchToastText = stringResource(R.string.vial_rx_mismatch_toast)
     LaunchedEffect(dispenseState.vialRxMismatchToastTick) {
         if (dispenseState.vialRxMismatchToastTick > 0) {
-            showToast(context, vialRxMismatchToastText, Toast.LENGTH_SHORT)
+            showToast(vialRxMismatchToastText)
         }
     }
 
@@ -815,7 +819,7 @@ fun DispenseFlowScreen(
     val rxAlreadyCompletedToastText = stringResource(R.string.rx_already_completed_message)
     LaunchedEffect(dispenseState.rxAlreadyCompletedToastTick) {
         if (dispenseState.rxAlreadyCompletedToastTick > 0) {
-            showToast(context, rxAlreadyCompletedToastText, Toast.LENGTH_SHORT)
+            showToast(rxAlreadyCompletedToastText)
         }
     }
 
