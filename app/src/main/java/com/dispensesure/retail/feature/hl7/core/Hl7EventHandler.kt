@@ -6,11 +6,11 @@ import com.dispensesure.retail.core.hl7.core.Hl7EventListener
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
-import com.dispensesure.retail.feature.hl7.parsing.AckBuilder
 import com.dispensesure.retail.feature.hl7.parsing.Hl7OrderHandler
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Parser
 import com.dispensesure.retail.feature.hl7.parsing.Hl7Validator
 import com.dispensesure.retail.feature.hl7.presentation.Hl7OrderProcessor
+import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -19,11 +19,16 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import org.rite.hl7.HL7
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.ORCSegment
 import org.rite.hl7.model.segment.RXESegment
 import org.rite.hl7.model.segment.ZNISegment
 import org.rite.hl7.model.segment.ZUISegment
+import org.rite.hl7.validation.AckBuilder
+import org.rite.hl7.validation.AckSeverity
+import org.rite.hl7.validation.ValidationIssue
+import org.rite.hl7.validation.ValidationResult
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -32,12 +37,11 @@ class Hl7EventHandler @Inject constructor(
     @ApplicationContext private val context: Context,
     private val hl7Parser: Hl7Parser,
     private val hl7Validator: Hl7Validator,
-    private val ackBuilder: AckBuilder,
     private val hl7OrderHandler: Hl7OrderHandler,
     private val hl7OrderProcessor: Hl7OrderProcessor,
     private val hl7Repository: Hl7Repository,
-    private val hl7MessageSender: Hl7MessageSender,
     private val notifier: Hl7Notifier,
+    private val preferenceHelper: PreferenceHelper,
 ) : Hl7EventListener {
 
     private val logger = AppLogger("HL7EventHandler")
@@ -51,106 +55,141 @@ class Hl7EventHandler @Inject constructor(
 
     fun clearCertMismatch() { _pmsCertMismatch.value = false }
 
-    override fun onMessageReceived(parsed: HL7Message, idempotencyKey: String) {
+    private val ackBuilder by lazy { AckBuilder() }
+    private val hl7 by lazy { HL7(version = preferenceHelper.getHl7Version()) }
+
+    override fun onMessageReceived(parsed: HL7Message, idempotencyKey: String): String {
         val msh = parsed.header
         val msgId = msh?.messageControlId.orEmpty()
         val messageCode = msh?.messageCode?.uppercase().orEmpty()
         val triggerEvent = msh?.triggerEvent?.uppercase().orEmpty()
         logger.i("HL7 message received | msgId=$msgId | type=$messageCode^$triggerEvent | key=$idempotencyKey")
 
-        scope.launch {
-            when {
-                messageCode == "INR" -> {
-                    hl7Repository.handleInrInventoryRequest(parsed)
-                }
-                messageCode == "RDE" && parsed.segment<ORCSegment>(ORCSegment.NAME)
-                    ?.orderControl?.uppercase() == "CA" -> {
-                    hl7Repository.handleOrderCancellation(parsed)
-                    hl7MessageSender.send(ackBuilder.buildAck(parsed))
-                }
-                messageCode == "RDE" -> handleDispenseOrder(parsed, msgId)
-                else -> logger.w("Unhandled HL7 type=$messageCode^$triggerEvent | msgId=$msgId")
+        return when {
+            messageCode == "INR" -> {
+                // INR inventory request — no validation failure path; process async
+                scope.launch { hl7Repository.handleInrInventoryRequest(parsed) }
+                hl7.ack(parsed)
+            }
+            messageCode == "RDE" && parsed.segment<ORCSegment>(ORCSegment.NAME)
+                ?.orderControl?.uppercase() == "CA" -> {
+                // Cancellation — no validation failure path; process async
+                scope.launch { hl7Repository.handleOrderCancellation(parsed) }
+                hl7.ack(parsed)
+            }
+            messageCode == "RDE" -> {
+                // Dispense order — validate synchronously, return AA or AE
+                handleDispenseOrder(parsed, msgId)
+            }
+            else -> {
+                logger.w("Unhandled HL7 type=$messageCode^$triggerEvent | msgId=$msgId")
+                hl7.ack(parsed)
             }
         }
     }
 
-    private suspend fun handleDispenseOrder(parsed: HL7Message, msgId: String) {
+    private fun buildErrorAck(parsed: HL7Message, validationResult: ValidationResult): String =
+        runCatching { ackBuilder.build(parsed, validationResult).encode() }
+            .getOrElse { e ->
+                logger.e("AckBuilder.build() failed — falling back to hl7.ack()", e)
+                hl7.ack(parsed)
+            }
+
+    private fun errorResult(reason: String): ValidationResult = ValidationResult(
+        listOf(ValidationIssue(AckSeverity.ERROR, reason, "", "", "207"))
+    )
+
+    /**
+     * Validates and routes an RDE dispense order synchronously. Returns the ACK string to send.
+     * Processing that does not affect the ACK (DB writes, drug resolution) is dispatched async.
+     */
+    private fun handleDispenseOrder(parsed: HL7Message, msgId: String): String {
         val orc = parsed.segment<ORCSegment>(ORCSegment.NAME)
         val rxe = parsed.segment<RXESegment>(RXESegment.NAME)
         val hasZui = parsed.segment<ZUISegment>(ZUISegment.NAME) != null
         val hasZni = parsed.segment<ZNISegment>(ZNISegment.NAME) != null
         val orderControl = orc?.orderControl?.uppercase()
 
-        when {
+        return when {
             // ZUI and ZNI order-packet formats bypass the new RDE parser — handled in repository
             hasZui -> {
-                hl7Repository.handleZuiOrderPacketDispenseRequest(parsed)
-                hl7MessageSender.send(ackBuilder.buildAck(parsed))
+                scope.launch { hl7Repository.handleZuiOrderPacketDispenseRequest(parsed) }
+                hl7.ack(parsed)
             }
 
             hasZni -> {
-                hl7Repository.handleOrderPacketDispenseRequest(parsed)
-                hl7MessageSender.send(ackBuilder.buildAck(parsed))
+                scope.launch { hl7Repository.handleOrderPacketDispenseRequest(parsed) }
+                hl7.ack(parsed)
             }
 
-            // ORC|HD/RL/DC with no RXE — status-only actions, route directly to processor
+            // ORC|HD/RL/DC status-only actions — no structural validation needed, no RXE required
             orderControl in setOf("HD", "RL", "DC") -> {
-                val orders = try { hl7Parser.map(parsed) } catch (e: Exception) {
+                val orders = hl7Parser.map(parsed).getOrElse { e ->
                     logger.e("HL7 parse/map failed for $orderControl | msgId=$msgId | ${e.message}")
-                    hl7MessageSender.send(ackBuilder.buildError(parsed, e.message ?: "Parse error"))
-                    return
+                    return buildErrorAck(parsed, errorResult("Parse failed for $orderControl: ${e.message}"))
                 }
-                hl7MessageSender.send(ackBuilder.buildAck(parsed))
                 orders.forEach { order -> hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed)) }
+                hl7.ack(parsed)
             }
 
             // ORC|XO (change order) — repository handles the edit logic
             orderControl == "XO" && rxe != null -> {
-                hl7Repository.handleOrderEdit(parsed)
-                hl7MessageSender.send(ackBuilder.buildAck(parsed))
+                scope.launch { hl7Repository.handleOrderEdit(parsed) }
+                hl7.ack(parsed)
             }
 
-            // Standard RDE^O11 with ORC+RXE — new pipeline
+            // Standard RDE^O11 with ORC+RXE — validate then process
             rxe != null -> {
-                // 1. Parse to domain model first so we know ORC-1 before validating
-                val orders = try {
-                    hl7Parser.map(parsed)
-                } catch (e: Exception) {
+                // 1. Parse to domain model
+                val orders = hl7Parser.map(parsed).getOrElse { e ->
                     logger.e("HL7 parse/map failed | msgId=$msgId | ${e.message}")
-                    hl7MessageSender.send(ackBuilder.buildError(parsed, e.message ?: "Parse error"))
-                    return
+                    return buildErrorAck(parsed, errorResult("Parse failed: ${e.message}"))
                 }
 
-                val primaryOrder = orders.firstOrNull() ?: run {
-                    hl7MessageSender.send(ackBuilder.buildError(parsed, "No order groups found"))
-                    return
+                if (orders.isEmpty()) {
+                    logger.e("HL7 no order groups found | msgId=$msgId")
+                    notifier.show(
+                        title = context.getString(R.string.hl7_notification_new_rx_title),
+                        message = "HL7 message $msgId received but contained no processable orders",
+                    )
+                    return buildErrorAck(parsed, errorResult("No processable ORC/RXE pairs in message"))
                 }
 
-                // 2. Library structural validation — new AAR handles NO_RXE_CONTROLS internally
+                // 2. Structural validation via library
                 val structResult = hl7Validator.validateStructure(parsed)
                 if (!structResult.isValid) {
-                    hl7MessageSender.send(ackBuilder.buildErrorFromResult(parsed, structResult))
-                    return
+                    logger.e("HL7 structural validation failed | msgId=$msgId | ${structResult.issues.firstOrNull()?.errorText}")
+                    notifier.show(
+                        title = context.getString(R.string.hl7_notification_new_rx_title),
+                        message = "HL7 message $msgId rejected — structural validation failed: ${structResult.issues.firstOrNull()?.errorText}",
+                    )
+                    return buildErrorAck(parsed, structResult)
                 }
 
-                // 3. Business validation
-                val businessResult = hl7Validator.validateBusinessRules(primaryOrder)
-                if (!businessResult.isValid) {
-                    hl7MessageSender.send(ackBuilder.buildError(parsed, businessResult.reason ?: "Business validation failed"))
-                    return
+                // 3. Business validation — first failure rejects whole message
+                for (order in orders) {
+                    val businessResult = hl7Validator.validateBusinessRules(order)
+                    if (!businessResult.isValid) {
+                        logger.e("HL7 business validation failed | msgId=$msgId | orderId=${order.placerOrderNumber} | ${businessResult.reason}")
+                        notifier.show(
+                            title = context.getString(R.string.hl7_notification_new_rx_title),
+                            message = "HL7 message $msgId rejected — ${businessResult.reason}",
+                        )
+                        return buildErrorAck(parsed, errorResult(businessResult.reason ?: "Business validation failed"))
+                    }
                 }
 
-                // 4. AA — all validation passed
-                hl7MessageSender.send(ackBuilder.buildAck(parsed))
-
-                // 5. Route and process
+                // 4. Validation passed — dispatch processing async, return AA
                 orders.forEach { order ->
-                    val action = hl7OrderHandler.handle(order, parsed)
-                    hl7OrderProcessor.process(action)
+                    hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed))
                 }
+                hl7.ack(parsed)
             }
 
-            else -> logger.w("DISPENSE_ORDER with no RXE/ZUI/ZNI segment | msgId=$msgId")
+            else -> {
+                logger.w("DISPENSE_ORDER with no RXE/ZUI/ZNI segment | msgId=$msgId")
+                buildErrorAck(parsed, errorResult("RDE message missing required RXE segment"))
+            }
         }
     }
 

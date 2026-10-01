@@ -15,13 +15,26 @@ class Hl7Parser @Inject constructor() {
 
     private val logger = AppLogger("Hl7Parser")
 
-    fun map(message: HL7Message): List<OrderGroup> {
+    fun map(message: HL7Message): Result<List<OrderGroup>> {
         val msh: MSHSegment? = message.header
         val msgControlId = msh?.messageControlId.orEmpty()
         val orcs = message.segments<ORCSegment>(ORCSegment.NAME)
-        if (orcs.isEmpty()) error("No ORC segment in message $msgControlId")
+        if (orcs.isEmpty()) return Result.failure(IllegalArgumentException("No ORC segment in message $msgControlId"))
         val rxes = message.segments<RXESegment>(RXESegment.NAME)
-        return orcs.mapIndexed { i, orc -> mapOrderGroup(msh, orc, rxes.getOrNull(i)) }
+
+        val orders = orcs.mapIndexedNotNull { i, orc ->
+            val rxe = rxes.getOrNull(i)
+            val control = orc.orderControl.trim().uppercase()
+            // NW/RF require an RXE for drug+qty — skip this ORC without failing the whole message
+            if (rxe == null && control in setOf("NW", "RF")) {
+                logger.w("ORC[$i] control=$control has no paired RXE in msgId=$msgControlId — skipping order")
+                return@mapIndexedNotNull null
+            }
+            mapOrderGroup(msh, orc, rxe)
+        }
+
+        if (orders.isEmpty()) return Result.failure(IllegalArgumentException("No processable ORC/RXE pairs in message $msgControlId"))
+        return Result.success(orders)
     }
 
     private fun mapOrderGroup(

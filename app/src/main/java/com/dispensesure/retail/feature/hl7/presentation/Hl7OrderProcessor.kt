@@ -67,14 +67,26 @@ class Hl7OrderProcessor @Inject constructor(
 
         if (hl7Ndc.isBlank()) {
             logger.w("handleNewOrder: NDC missing (RXE-2) for rxNo=$rxNo — ignoring")
+            notifier.show(
+                title = context.getString(R.string.hl7_notification_drug_not_found_title),
+                message = "New order for Rx ${rxNo.orEmpty()} ignored — NDC missing in RXE-2",
+            )
             return
         }
         if (targetCount == null) {
             logger.w("handleNewOrder: dispense amount missing (RXE-10/RXE-3) for rxNo=$rxNo — ignoring")
+            notifier.show(
+                title = context.getString(R.string.hl7_notification_new_rx_title),
+                message = "New order for Rx ${rxNo.orEmpty()} ignored — dispense amount missing",
+            )
             return
         }
         if (targetCount <= 0) {
             logger.w("handleNewOrder: invalid dispense amount $targetCount for rxNo=$rxNo — ignoring")
+            notifier.show(
+                title = context.getString(R.string.hl7_notification_new_rx_title),
+                message = "New order for Rx ${rxNo.orEmpty()} ignored — invalid quantity $targetCount",
+            )
             return
         }
 
@@ -158,6 +170,10 @@ class Hl7OrderProcessor @Inject constructor(
 
         if (hl7Ndc.isBlank() || targetCount == null || targetCount <= 0) {
             logger.w("handleRefill: missing NDC or qty for rxNo=$rxNo refillNo=$refillNo — ignoring")
+            notifier.show(
+                title = context.getString(R.string.hl7_notification_new_rx_title),
+                message = "Refill for Rx ${rxNo.orEmpty()} ignored — NDC or quantity missing/invalid",
+            )
             return
         }
 
@@ -225,11 +241,25 @@ class Hl7OrderProcessor @Inject constructor(
 
     private suspend fun handleChangeOrder(order: OrderGroup) {
         val orderId = order.placerOrderNumber.takeIf { it.isNotBlank() } ?: return
-        val hl7Ndc = order.giveCode?.trim() ?: return
+        val hl7Ndc = order.giveCode?.trim() ?: run {
+            logger.w("handleChangeOrder: NDC missing for orderId=$orderId — ignoring")
+            notifier.show(
+                title = context.getString(R.string.hl7_notification_edit_rx_title),
+                message = "Change order for $orderId ignored — NDC missing",
+            )
+            return
+        }
         val hl7DrugName = order.giveName.orEmpty()
         val newTargetCount = order.dispenseAmount
 
         logger.i("ORC|XO for orderId=$orderId — looking up existing transaction")
+
+        // CA before any DB write: soft-delete directly, no update needed
+        if (order.orderStatus == "CA") {
+            logger.i("ORC|XO with status=CA for orderId=$orderId — soft-deleting without update")
+            pillCountTxnDao.softDeleteByOrderId(orderId)
+            return
+        }
 
         var existingTxn = pillCountTxnDao.getByTransactionOrderId(orderId)
         if (existingTxn == null) {
@@ -254,11 +284,6 @@ class Hl7OrderProcessor @Inject constructor(
             priority = order.priority,
             status = newStatus,
         )
-
-        if (order.orderStatus == "CA") {
-            pillCountTxnDao.softDeleteByOrderId(orderId)
-            return
-        }
 
         notifier.show(
             title = context.getString(R.string.hl7_notification_edit_rx_title),

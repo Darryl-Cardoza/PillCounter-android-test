@@ -111,8 +111,12 @@ class MllpServer(
                     val ack = try {
                         onHl7Message(msg)
                     } catch (e: Exception) {
-                        logger.e("onHl7Message() threw while handling received message — no ACK will be sent", e)
-                        throw e
+                        // onHl7Message (HL7BackgroundService.handleIncomingMessage) already catches
+                        // all exceptions internally and returns a fallback ACK string — this catch
+                        // is a last-resort guard. Log and continue so remaining split messages
+                        // in the same frame still get processed and ACKed.
+                        logger.e("onHl7Message() threw unexpectedly — skipping ACK for this message, continuing", e)
+                        continue
                     }
                     if (ack.isNotEmpty()) {
                         output.write(Mllp.wrap(ack))

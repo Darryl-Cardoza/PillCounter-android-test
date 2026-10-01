@@ -14,13 +14,19 @@ interface Hl7EventListener {
     /**
      * Called when a raw HL7 message is successfully received and parsed.
      *
+     * Implementations must validate the message synchronously and return the ACK string
+     * to send back to the sender. Return an AA ACK on success, AE/AR on failure.
+     * Processing that does not affect the ACK decision (DB writes, drug resolution) may
+     * be launched asynchronously after the ACK string is determined.
+     *
      * @param parsed Parsed HL7 message model (from hl7Core)
      * @param idempotencyKey Stable key used to prevent duplicate processing
+     * @return Wire-ready ACK string (AA, AE, or AR) to echo back via MLLP
      */
     fun onMessageReceived(
         parsed: HL7Message,
         idempotencyKey: String
-    )
+    ): String
 
     /**
      * Called after an HL7 message has been sent to a remote system.

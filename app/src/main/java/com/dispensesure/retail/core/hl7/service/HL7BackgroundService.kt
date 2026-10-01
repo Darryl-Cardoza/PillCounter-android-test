@@ -788,10 +788,11 @@ class HL7Service : Service() {
             logger.i("HL7 parsed OK: type=${message.header?.messageType.orEmpty()}, controlId=${message.header?.messageControlId.orEmpty()}")
 
             val key = message.header?.messageControlId.orEmpty().ifBlank { System.currentTimeMillis().toString() }
-            listener?.onMessageReceived(parsed = message, idempotencyKey = key)
 
-            // hl7Core builds and returns the validated ACK string
-            hl7.ack(message)
+            // Listener validates synchronously and returns the correct AA/AE/AR ACK string.
+            // Fall back to library AA ACK if no listener is attached.
+            listener?.onMessageReceived(parsed = message, idempotencyKey = key)
+                ?: hl7.ack(message)
 
         } catch (e: Exception) {
             listener?.onError("HL7_PARSE", e)
