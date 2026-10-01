@@ -3,6 +3,7 @@
 import com.google.devtools.ksp.KspExperimental
 import java.util.Properties
 
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
@@ -231,5 +232,5 @@ dependencies {
     // OpenCV — tray color detection
     implementation(libs.opencv)
 
-    implementation(project(":hl7Core"))
+    implementation(files("libs/hl7Core-release.aar"))
 }

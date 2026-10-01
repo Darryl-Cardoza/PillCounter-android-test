@@ -6,33 +6,43 @@ import com.dispensesure.retail.core.hl7.core.Hl7EventListener
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
+import com.dispensesure.retail.feature.hl7.parsing.AckBuilder
+import com.dispensesure.retail.feature.hl7.parsing.Hl7OrderHandler
+import com.dispensesure.retail.feature.hl7.parsing.Hl7Parser
+import com.dispensesure.retail.feature.hl7.parsing.Hl7Validator
+import com.dispensesure.retail.feature.hl7.presentation.Hl7OrderProcessor
 import com.dispensesure.retail.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.launch
 import org.rite.hl7.model.HL7Message
+import org.rite.hl7.model.segment.ORCSegment
+import org.rite.hl7.model.segment.RXESegment
+import org.rite.hl7.model.segment.ZNISegment
+import org.rite.hl7.model.segment.ZUISegment
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
- * HL7EventHandler
- *
- * Acts as the SINGLE adapter between the HL7 core layer and
- * the PillCounting business layer.
- *
- * Responsibilities:
- * - Receive callbacks from HL7 runtime (now using hl7Core HL7Message)
- * - Log lifecycle & protocol events
- * - Delegate business-relevant events directly to Hl7Repository
- */
 @Singleton
 class Hl7EventHandler @Inject constructor(
     @ApplicationContext private val context: Context,
+    private val hl7Parser: Hl7Parser,
+    private val hl7Validator: Hl7Validator,
+    private val ackBuilder: AckBuilder,
+    private val hl7OrderHandler: Hl7OrderHandler,
+    private val hl7OrderProcessor: Hl7OrderProcessor,
     private val hl7Repository: Hl7Repository,
-    private val notifier: Hl7Notifier
+    private val hl7MessageSender: Hl7MessageSender,
+    private val notifier: Hl7Notifier,
 ) : Hl7EventListener {
 
     private val logger = AppLogger("HL7EventHandler")
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
+
     private val _connectionState = MutableStateFlow(false)
     val connectionState: StateFlow<Boolean> = _connectionState
 
@@ -41,115 +51,137 @@ class Hl7EventHandler @Inject constructor(
 
     fun clearCertMismatch() { _pmsCertMismatch.value = false }
 
-    /**
-     * Called when a new HL7 message is received from PMS.
-     *
-     * Business meaning:
-     * - Incoming dispense request (RDE^O11)
-     * - Incoming inventory count request (INR^U04 / INR^U06)
-     *
-     * Action:
-     * - Delegate to repository for parsing, mapping, and persistence
-     */
-    override fun onMessageReceived(
-        parsed: HL7Message,
-        idempotencyKey: String
-    ) {
-        val msgId = parsed.messageControlId
-        logger.i("HL7 message received | msgId=$msgId | type=${parsed.messageType} | key=$idempotencyKey")
-        hl7Repository.handleReceivedMessage(parsed)
+    override fun onMessageReceived(parsed: HL7Message, idempotencyKey: String) {
+        val msh = parsed.header
+        val msgId = msh?.messageControlId.orEmpty()
+        val messageCode = msh?.messageCode?.uppercase().orEmpty()
+        val triggerEvent = msh?.triggerEvent?.uppercase().orEmpty()
+        logger.i("HL7 message received | msgId=$msgId | type=$messageCode^$triggerEvent | key=$idempotencyKey")
+
+        scope.launch {
+            when {
+                messageCode == "INR" -> {
+                    hl7Repository.handleInrInventoryRequest(parsed)
+                }
+                messageCode == "RDE" && parsed.segment<ORCSegment>(ORCSegment.NAME)
+                    ?.orderControl?.uppercase() == "CA" -> {
+                    hl7Repository.handleOrderCancellation(parsed)
+                    hl7MessageSender.send(ackBuilder.buildAck(parsed))
+                }
+                messageCode == "RDE" -> handleDispenseOrder(parsed, msgId)
+                else -> logger.w("Unhandled HL7 type=$messageCode^$triggerEvent | msgId=$msgId")
+            }
+        }
     }
 
-    /**
-     * Called when an outbound HL7 message is successfully sent.
-     *
-     * Business meaning:
-     * - Message left device successfully
-     *
-     * Action:
-     * - Currently informational only
-     * - ACK is the real sync signal
-     */
+    private suspend fun handleDispenseOrder(parsed: HL7Message, msgId: String) {
+        val orc = parsed.segment<ORCSegment>(ORCSegment.NAME)
+        val rxe = parsed.segment<RXESegment>(RXESegment.NAME)
+        val hasZui = parsed.segment<ZUISegment>(ZUISegment.NAME) != null
+        val hasZni = parsed.segment<ZNISegment>(ZNISegment.NAME) != null
+        val orderControl = orc?.orderControl?.uppercase()
+
+        when {
+            // ZUI and ZNI order-packet formats bypass the new RDE parser — handled in repository
+            hasZui -> {
+                hl7Repository.handleZuiOrderPacketDispenseRequest(parsed)
+                hl7MessageSender.send(ackBuilder.buildAck(parsed))
+            }
+
+            hasZni -> {
+                hl7Repository.handleOrderPacketDispenseRequest(parsed)
+                hl7MessageSender.send(ackBuilder.buildAck(parsed))
+            }
+
+            // ORC|HD/RL/DC with no RXE — status-only actions, route directly to processor
+            orderControl in setOf("HD", "RL", "DC") -> {
+                val orders = try { hl7Parser.map(parsed) } catch (e: Exception) {
+                    logger.e("HL7 parse/map failed for $orderControl | msgId=$msgId | ${e.message}")
+                    hl7MessageSender.send(ackBuilder.buildError(parsed, e.message ?: "Parse error"))
+                    return
+                }
+                hl7MessageSender.send(ackBuilder.buildAck(parsed))
+                orders.forEach { order -> hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed)) }
+            }
+
+            // ORC|XO (change order) — repository handles the edit logic
+            orderControl == "XO" && rxe != null -> {
+                hl7Repository.handleOrderEdit(parsed)
+                hl7MessageSender.send(ackBuilder.buildAck(parsed))
+            }
+
+            // Standard RDE^O11 with ORC+RXE — new pipeline
+            rxe != null -> {
+                // 1. Parse to domain model first so we know ORC-1 before validating
+                val orders = try {
+                    hl7Parser.map(parsed)
+                } catch (e: Exception) {
+                    logger.e("HL7 parse/map failed | msgId=$msgId | ${e.message}")
+                    hl7MessageSender.send(ackBuilder.buildError(parsed, e.message ?: "Parse error"))
+                    return
+                }
+
+                val primaryOrder = orders.firstOrNull() ?: run {
+                    hl7MessageSender.send(ackBuilder.buildError(parsed, "No order groups found"))
+                    return
+                }
+
+                // 2. Library structural validation — new AAR handles NO_RXE_CONTROLS internally
+                val structResult = hl7Validator.validateStructure(parsed)
+                if (!structResult.isValid) {
+                    hl7MessageSender.send(ackBuilder.buildErrorFromResult(parsed, structResult))
+                    return
+                }
+
+                // 3. Business validation
+                val businessResult = hl7Validator.validateBusinessRules(primaryOrder)
+                if (!businessResult.isValid) {
+                    hl7MessageSender.send(ackBuilder.buildError(parsed, businessResult.reason ?: "Business validation failed"))
+                    return
+                }
+
+                // 4. AA — all validation passed
+                hl7MessageSender.send(ackBuilder.buildAck(parsed))
+
+                // 5. Route and process
+                orders.forEach { order ->
+                    val action = hl7OrderHandler.handle(order, parsed)
+                    hl7OrderProcessor.process(action)
+                }
+            }
+
+            else -> logger.w("DISPENSE_ORDER with no RXE/ZUI/ZNI segment | msgId=$msgId")
+        }
+    }
+
     override fun onMessageSent(raw: String, messageId: String) {
         logger.i("HL7 message sent | msgId=$messageId")
     }
 
-    /**
-     * Called when an ACK is received for a previously sent HL7 message.
-     *
-     * Business meaning:
-     * - PMS has accepted the message
-     * - Transaction can be marked as synced
-     *
-     * Action:
-     * - Update transaction sync status
-     */
     override fun onAckReceived(ackRaw: String, messageId: String) {
         val isSuccess = isSuccessAck(ackRaw)
         logger.i("HL7 ACK received | msgId=$messageId | success=$isSuccess | raw=${ackRaw.replace("\r", "\\r")}")
-        // Dispense sends are marked synced inline by Hl7Repository.buildAndSendSuccessfulDispense
-        // right after its own send() call returns, using the exact txnId that was sent — not
-        // from this generic callback, which has no reliable txnId correlation and previously
-        // relied on a single shared "last sent" preference slot (a race when multiple sends
-        // were in flight). This callback remains informational/logging only.
         if (!isSuccess) {
             logger.w("Non-success ACK | msgId=$messageId")
         }
     }
 
-
-    /**
-     * Called when HL7 background service starts.
-     *
-     * Business meaning:
-     * - HL7 runtime is ready
-     *
-     * Action:
-     * - Logging only
-     */
     override fun onServiceStarted() {
         logger.i("HL7 service started")
     }
 
-    /**
-     * Called when HL7 background service stops.
-     *
-     * Business meaning:
-     * - HL7 runtime unavailable
-     *
-     * Action:
-     * - Logging only
-     */
     override fun onServiceStopped() {
         logger.w("HL7 service stopped")
     }
 
-    /**
-     * Called when HL7 server socket starts listening.
-     *
-     * Business meaning:
-     * - PMS can now connect to device
-     */
     override fun onServerStarted(port: Int) {
         logger.i("HL7 server started on port $port")
     }
 
-    /**
-     * Called when HL7 server socket is stopped.
-     */
     override fun onServerStopped() {
         logger.w("HL7 server stopped")
     }
 
-    /**
-     * Called when client connection to PMS is established.
-     *
-     * Business meaning:
-     * - Safe to resend queued HL7 messages
-     *
-     * Action:
-     * - Trigger resend of pending transactions
-     */
     override fun onClientConnected(host: String, port: Int) {
         logger.i("HL7 client connected | $host:$port")
         _connectionState.value = true
@@ -157,62 +189,35 @@ class Hl7EventHandler @Inject constructor(
         hl7Repository.resendPendingHl7BatchTransactions()
         notifier.show(
             title = context.getString(R.string.hl7_notification_device_connected_title),
-            message = context.getString(R.string.hl7_notification_device_connected_message, host)
+            message = context.getString(R.string.hl7_notification_device_connected_message, host),
         )
     }
 
-    /**
-     * Called when client disconnects from PMS.
-     *
-     * Business meaning:
-     * - Temporary connectivity loss
-     */
     override fun onClientDisconnected() {
         logger.w("HL7 client disconnected")
         _connectionState.value = false
     }
 
-    /**
-     * Called when image HTTP service starts.
-     */
     override fun onImageServiceStarted(baseUrl: String) {
         logger.i("HL7 image service started | baseUrl=$baseUrl")
     }
 
-    /**
-     * Called when image HTTP service stops.
-     */
     override fun onImageServiceStopped() {
         logger.w("HL7 image service stopped")
     }
 
-    /**
-     * Called when NSD service is registered.
-     *
-     * Business meaning:
-     * - PMS can discover device automatically
-     */
     override fun onNsdRegistered(serviceName: String) {
         logger.i("HL7 NSD registered | service=$serviceName")
     }
 
-    /**
-     * Called when NSD discovery starts.
-     */
     override fun onNsdDiscoveryStarted() {
         logger.i("HL7 NSD discovery started")
     }
 
-    /**
-     * Called when a PMS service is found via NSD.
-     */
     override fun onNsdServiceFound(serviceName: String, host: String, port: Int) {
         logger.i("HL7 NSD service found | $serviceName @ $host:$port")
     }
 
-    /**
-     * Called for any error inside HL7 runtime.
-     */
     override fun onError(source: String, throwable: Throwable) {
         logger.e("HL7 error | source=$source | message=${throwable.message}")
     }

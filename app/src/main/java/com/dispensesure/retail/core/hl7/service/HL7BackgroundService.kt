@@ -785,9 +785,9 @@ class HL7Service : Service() {
                 logger.w("HL7 parse had errors but partial message available: $errors")
             }
 
-            logger.i("HL7 parsed OK: type=${message.messageType}, controlId=${message.messageControlId}")
+            logger.i("HL7 parsed OK: type=${message.header?.messageType.orEmpty()}, controlId=${message.header?.messageControlId.orEmpty()}")
 
-            val key = message.messageControlId.ifBlank { System.currentTimeMillis().toString() }
+            val key = message.header?.messageControlId.orEmpty().ifBlank { System.currentTimeMillis().toString() }
             listener?.onMessageReceived(parsed = message, idempotencyKey = key)
 
             // hl7Core builds and returns the validated ACK string
@@ -841,10 +841,10 @@ class HL7Service : Service() {
         serviceScope.launch {
             try {
                 val messageStr = original.encode()
-                logger.i("sendHl7Message | msgId=${original.messageControlId} | len=${messageStr.length}")
+                logger.i("sendHl7Message | msgId=${original.header?.messageControlId.orEmpty()} | len=${messageStr.length}")
                 val ack = clientManager.send(messageStr)
-                listener?.onMessageSent(messageStr, original.messageControlId)
-                listener?.onAckReceived(ack, original.messageControlId)
+                listener?.onMessageSent(messageStr, original.header?.messageControlId.orEmpty())
+                listener?.onAckReceived(ack, original.header?.messageControlId.orEmpty())
             } catch (e: Exception) {
                 listener?.onError("MESSAGE_SEND", e)
             }

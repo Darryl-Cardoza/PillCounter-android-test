@@ -59,6 +59,7 @@ keystore.properties
 
 # Local planning/working notes, not part of the shipped project
 plans/
+plan/
 
 DrugCatalogStressSeeder.swift
 DrugCatalogSeeder.kt

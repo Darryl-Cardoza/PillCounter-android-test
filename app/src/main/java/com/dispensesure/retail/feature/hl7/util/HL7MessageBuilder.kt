@@ -214,32 +214,30 @@ object HL7MessageBuilder {
                     z.rxNumber = vividOrderId
                     z.dispensedQuantity = totalCount.toString()
                     z.transactionStatus = ZuiTransactionStatus.DONE
-                    z.drugImages = buildZuiImagePayload(txnId = txn.txnId, bottles = bottles, details = txnDetails)
+                    z.drugImage = buildZuiImagePayload(txnId = txn.txnId, bottles = bottles, details = txnDetails)
+                        ?.firstOrNull()?.getOrNull(2)
                     z.drugLotNumber = effectiveLotNumber
                     z.drugSerialNumber = effectiveSerialNumber
                     z.drugExpirationDate = effectiveExpirationDate
                 }
                 Hl7Format.EYECON.sendingApplication -> {
-                    // EyeCon ZUI — 25-field raw layout; fields 6/18/19/21 are what PMS's
-                    // C# parser reads, rest are context fields per EyeCon spec. ZUI-11
-                    // (transactionOrderId) is the RxNo-RefillNo composite, same as vividOrderId.
+                    // EyeCon ZUI — uses same ZUIDispenseBuilder as Vivid.
+                    // EyeCon-specific fields (userName, verifiedBy, stockBottleVerification,
+                    // packetVersion, techName, fillStatus, stockBottleBarcodeNdc) were removed
+                    // in the new library; map available fields only.
                     val eyeConNdc = drugCode.replace("-", "")
                     val eyeConUserFirstName = pharmacistGivenName.orEmpty()
-                    val verifiedBy = eyeConUserFirstName.take(10)
-                    zuiEyeCon { z ->
+                    zui { z ->
                         z.ndc = eyeConNdc
-                        z.drugName = drugName
-                        z.userName = eyeConUserFirstName
-                        z.prescriptionNumber = orderId
+                        z.vividUserName = eyeConUserFirstName.take(10)
+                        z.rxNumber = orderId
                         z.fillNumber = "1"
-                        z.verifiedBy = verifiedBy
-                        z.stockBottleVerification = if (isNdcVerified) "A" else "N"
-                        z.packetVersion = "1"
-                        z.techName = eyeConUserFirstName
                         z.transactionOrderId = vividOrderId
                         z.dispensedQuantity = totalCount.toString()
-                        z.fillStatus = "complete"
-                        z.stockBottleBarcodeNdc = eyeConNdc
+                        z.transactionStatus = ZuiTransactionStatus.DONE
+                        z.drugLotNumber = effectiveLotNumber
+                        z.drugSerialNumber = effectiveSerialNumber
+                        z.drugExpirationDate = effectiveExpirationDate
                     }
                 }
             }
@@ -299,10 +297,8 @@ object HL7MessageBuilder {
                     b.valueType = obx.valueType
                     b.observationId = obx.observationId
                     b.observationText = obx.observationText
-                    b.observationIdCodingSystem = obx.observationIdCodingSystem
                     b.observationValue = obx.observationValue
-                    b.observationValueText = obx.observationValueText
-                    b.observationValueCodingSystem = obx.observationValueCodingSystem
+                    b.observationValue2 = obx.observationValueText
                     b.resultStatus = obx.resultStatus
                     b.units = obx.units
                 }
@@ -488,7 +484,7 @@ object HL7MessageBuilder {
                 orc { orc ->
                     orc.orderControl = "RE"
                     orc.placerOrderNumber = orderId
-                    orc.placerOrderCorrelationId = requestId
+                    orc.fillerOrderNumber = requestId
                 }
 
                 obx { obx ->
@@ -508,19 +504,8 @@ object HL7MessageBuilder {
                         inv.substanceCode = key.ndc
                         inv.substanceName = key.name.ifEmpty { null }
                         inv.substanceCodeSystem = "L"
-                        inv.statusCode = "A"
-                        inv.statusText = "Active"
-                        inv.statusCodeSystem = "HL70383"
-                        inv.itemTypeCode = "DRUG"
-                        inv.itemTypeText = "Drug"
-                        inv.itemTypeCodeSystem = "HL70384"
-                        inv.quantityOnHand = total.toString()
                         inv.inventoryOnHandQuantity = total.toString()
-                        // INV-9 left unset: no PMS-expected-qty data flows into BatchTxnDto yet,
-                        // so setting it to the counted total would fake discrepancy as always 0.
-                        inv.unitsCode = "TAB"
-                        inv.unitsText = "Tablets"
-                        inv.unitsCodeSystem = "UCUM"
+                        inv.units = "TAB"
                         inv.expirationDate = key.expiry.ifEmpty { null }
                         inv.lotNumber = key.lot.ifEmpty { null }
                     }
@@ -533,7 +518,7 @@ object HL7MessageBuilder {
                         // Two components, not one string: HL7Escaping would turn a
                         // literal "2000^2" into 2000\S\2.
                         obx.observationValue = value.sealed.toString()
-                        obx.observationValueText = value.sealedBottles.toString()
+                        obx.observationValue2 = value.sealedBottles.toString()
                         obx.resultStatus = "F"
                     }
                     obx { obx ->
@@ -542,7 +527,7 @@ object HL7MessageBuilder {
                         obx.observationId = "OPEN_QTY"
                         obx.subId = invSetId
                         obx.observationValue = value.opened.toString()
-                        obx.observationValueText = value.openedBottles.toString()
+                        obx.observationValue2 = value.openedBottles.toString()
                         obx.resultStatus = "F"
                     }
                     value.imagePaths.forEach { path ->

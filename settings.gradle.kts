@@ -25,4 +25,3 @@ dependencyResolutionManagement {
 
 rootProject.name = "DispenseSureRetail"
 include(":app")
-include(":hl7Core")

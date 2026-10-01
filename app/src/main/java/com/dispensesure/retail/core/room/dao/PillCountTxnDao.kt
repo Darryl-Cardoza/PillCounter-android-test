@@ -351,6 +351,40 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
+    @Query(
+        """
+        UPDATE pill_count_txn
+        SET status    = :status,
+            updatedAt = :now
+        WHERE rxNo = :rxNo AND isDeleted = 0
+        """
+    )
+    suspend fun updateStatusByRxNo(
+        rxNo: String,
+        status: CountStatus,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query(
+        """
+        UPDATE pill_count_txn
+        SET status    = :status,
+            updatedAt = :now
+        WHERE transactionOrderId = :orderId AND isDeleted = 0
+        """
+    )
+    suspend fun updateStatusByOrderId(
+        orderId: String,
+        status: CountStatus,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query("UPDATE pill_count_txn SET isDeleted = 1, updatedAt = :now WHERE transactionOrderId = :orderId AND isDeleted = 0")
+    suspend fun softDeleteByOrderId(
+        orderId: String,
+        now: Long = System.currentTimeMillis()
+    )
+
     @Query("DELETE FROM pill_count_txn")
     suspend fun deleteAllTransactions()
 
