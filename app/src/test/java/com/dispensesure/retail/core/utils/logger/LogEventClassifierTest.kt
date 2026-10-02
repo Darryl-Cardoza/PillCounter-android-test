@@ -28,9 +28,9 @@ class LogEventClassifierTest {
     @Test
     fun `an explicit event on the entry is never overridden`() {
         val result = LogEventClassifier.classify(
-            entry(className = "LoginViewModel", throwable = SocketTimeoutException(), event = LogEvent.DISPENSE_COUNT)
+            entry(className = "LoginViewModel", throwable = SocketTimeoutException(), event = LogEvent.DISPENSE_FAILED)
         )
-        assertEquals(LogEvent.DISPENSE_COUNT, result)
+        assertEquals(LogEvent.DISPENSE_FAILED, result)
     }
 
     @Test

@@ -80,6 +80,18 @@ class AppLogger(private val tag: String) {
     }
 
     /**
+     * Runs [block] and logs a failure as an error instead of rethrowing it. For framework callbacks
+     * and other entry points where an uncaught exception would crash the app.
+     */
+    inline fun catching(message: String, event: LogEvent, block: () -> Unit) {
+        try {
+            block()
+        } catch (ex: Exception) {
+            e(message, ex, event = event)
+        }
+    }
+
+    /**
      * Logs a titled block as one logcat entry, so a multi-line trace stays together instead of
      * interleaving with other tags. Emitted at warning level like [w], not [i]: the flows this
      * traces also run in release builds, where [i] is compiled out.
@@ -161,12 +173,6 @@ class AppLogger(private val tag: String) {
                 Log.w(INTERNAL_TAG, "Remote log destination unavailable; logging to Logcat only", t)
             }
         }
-
-        /**
-         * Lets [com.dispensesure.retail.core.utils.logger.di.LoggerModule] hand out the same
-         * [LogDestination] instance to Hilt-managed classes instead of standing up a second one.
-         */
-        fun currentDestination(): LogDestination? = destination
 
         /** Hands the log client the app's shared RuntimeUnit (the one MainActivity clears). Call once Hilt is ready. */
         fun setRuntimeUnit(runtimeUnit: com.dispensesure.retail.core.security.RuntimeUnit) {

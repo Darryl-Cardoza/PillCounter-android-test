@@ -26,7 +26,6 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingle
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.compose.GlobalLoadingOverlay
 import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.presentation.model.DashboardVariantParams
@@ -105,11 +104,7 @@ fun DashboardScreen(
         if (!isProfileChecked) {
             if (uiState.navigateToProfile && !preferenceHelper.isDoNotAskAgain()) {
                 logger.d("Navigating to Profile screen")
-                try {
-                    navController.navigate(Screen.Profile.route)
-                } catch (e: Exception) {
-                    logger.e("Navigation to Profile screen failed", e, event = LogEvent.NAVIGATION_FAILED)
-                }
+                navController.navigate(Screen.Profile.route)
                 viewModel.resetNavigateToProfile()
                 preferenceHelper.setProfileChecked(true)
             }
@@ -120,28 +115,20 @@ fun DashboardScreen(
     LaunchedEffect(uiState.logoutUser) {
         if (uiState.logoutUser) {
             showToast(context, R.string.session_expired)
-            try {
-                navController.navigate(AUTH_GRAPH_ROUTE) {
-                    popUpTo(0) { inclusive = true }
-                }
-            } catch (e: Exception) {
-                logger.e("Navigation to auth graph after logout failed", e, event = LogEvent.NAVIGATION_FAILED)
+            navController.navigate(AUTH_GRAPH_ROUTE) {
+                popUpTo(0) { inclusive = true }
             }
         }
     }
 
     LaunchedEffect(uiState.createdBatchId) {
         uiState.createdBatchId?.let { batchId ->
-            try {
-                navController.navigate(
-                    Screen.DispenseFlow.createRoute(
-                        scanType = CountType.REGULAR.toString(),
-                        batchId = batchId,
-                    )
+            navController.navigate(
+                Screen.DispenseFlow.createRoute(
+                    scanType = CountType.REGULAR.toString(),
+                    batchId = batchId,
                 )
-            } catch (e: Exception) {
-                logger.e("Navigation to DispenseFlow after batch creation failed", e, event = LogEvent.NAVIGATION_FAILED)
-            }
+            )
             viewModel.clearCreatedBatchId()
         }
     }
@@ -151,11 +138,7 @@ fun DashboardScreen(
     // new Batch Stock Count panel (Screen.InventoryScan), NOT the legacy DispenseFlow.
     LaunchedEffect(uiState.pendingStockCountBucketId) {
         uiState.pendingStockCountBucketId?.let { bucketId ->
-            try {
-                navController.navigate(Screen.InventoryScan.createRoute(bucketId = bucketId))
-            } catch (e: Exception) {
-                logger.e("Navigation to InventoryScan (stock count) failed", e, event = LogEvent.NAVIGATION_FAILED)
-            }
+            navController.navigate(Screen.InventoryScan.createRoute(bucketId = bucketId))
             viewModel.clearPendingStockCountBucketId()
         }
     }
@@ -181,15 +164,11 @@ fun DashboardScreen(
     val onDispenseQuickAction = remember(viewModel, navController) {
         {
             viewModel.saveTxnId()
-            try {
-                navController.navigate(
-                    Screen.DispenseFlow.createRoute(
-                        scanType = CountType.FIXED.toString(),
-                    )
+            navController.navigate(
+                Screen.DispenseFlow.createRoute(
+                    scanType = CountType.FIXED.toString(),
                 )
-            } catch (e: Exception) {
-                logger.e("Navigation to DispenseFlow from dispense quick action failed", e, event = LogEvent.NAVIGATION_FAILED)
-            }
+            )
         }
     }
     val onInventoryQuickAction = remember(viewModel) {
@@ -201,20 +180,12 @@ fun DashboardScreen(
     val onRecentDispenseClick = remember(viewModel, navController) {
         { txnId: Long ->
             viewModel.selectCurrentTransaction(txnId)
-            try {
-                navController.navigate(Screen.HistoryDetail.route)
-            } catch (e: Exception) {
-                logger.e("Navigation to HistoryDetail failed", e, event = LogEvent.NAVIGATION_FAILED)
-            }
+            navController.navigate(Screen.HistoryDetail.route)
         }
     }
     val onRecentBatchClick = remember(navController) {
         { batchId: Long ->
-            try {
-                navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
-            } catch (e: Exception) {
-                logger.e("Navigation to BatchHistoryDetail failed", e, event = LogEvent.NAVIGATION_FAILED)
-            }
+            navController.navigate(Screen.BatchHistoryDetail.createRoute(batchId))
         }
     }
     val onQueueDispenseClick = remember(viewModel, navController) {
@@ -223,27 +194,19 @@ fun DashboardScreen(
                 showEnableHl7Dialog = true
             } else {
                 viewModel.selectCurrentTransaction(txnId)
-                try {
-                    navController.navigate(
-                        Screen.DispenseFlow.createRoute(
-                            scanType = CountType.FIXED.toString(),
-                            fromResume = true,
-                            fromQueue = true,
-                        )
+                navController.navigate(
+                    Screen.DispenseFlow.createRoute(
+                        scanType = CountType.FIXED.toString(),
+                        fromResume = true,
+                        fromQueue = true,
                     )
-                } catch (e: Exception) {
-                    logger.e("Navigation to DispenseFlow from queue resume failed", e, event = LogEvent.NAVIGATION_FAILED)
-                }
+                )
             }
         }
     }
     val onQueueInventoryClick = remember(navController) {
         { batchId: Long ->
-            try {
-                navController.navigate(Screen.InventoryScan.createRoute(batchId))
-            } catch (e: Exception) {
-                logger.e("Navigation to InventoryScan from queue failed", e, event = LogEvent.NAVIGATION_FAILED)
-            }
+            navController.navigate(Screen.InventoryScan.createRoute(batchId))
         }
     }
 
@@ -329,7 +292,7 @@ fun DashboardScreen(
             confirmText = stringResource(R.string.pms_cert_mismatch_confirm),
             cancelText = stringResource(R.string.cancel),
             onConfirm = { if (!viewModel.clearPmsCertPin()) showToast(context, R.string.error_generic) },
-            onCancel = { viewModel.dismissPmsCertMismatch() }
+            onCancel = { viewModel.clearPmsCertPin() }
         )
     }
 

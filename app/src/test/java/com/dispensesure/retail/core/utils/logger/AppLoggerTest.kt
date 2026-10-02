@@ -194,6 +194,19 @@ class AppLoggerTest {
     }
 
     @Test
+    fun `catching logs the failure as an error and does not rethrow`() {
+        val failure = IllegalStateException("boom")
+
+        logger.catching("callback failed", LogEvent.HL7_CONNECT_FAILED) { throw failure }
+
+        val entry = destination.entries.single()
+        assertEquals(LogLevel.ERROR, entry.level)
+        assertEquals("callback failed", entry.message)
+        assertEquals(failure, entry.throwable)
+        assertEquals(LogEvent.HL7_CONNECT_FAILED, entry.event)
+    }
+
+    @Test
     fun `entry carries the message, tag as class, and translated throwable`() {
         LoggerConfig.minimumLogLevel = LogLevel.VERBOSE
         val throwable = java.net.SocketTimeoutException("timeout")

@@ -974,7 +974,7 @@ class InventoryScanViewModel @Inject constructor(
                     logger.d("INV_SCAN confirmEndCount: no committed NDC — nothing to persist")
                 }
             } catch (e: Exception) {
-                logger.e("confirmEndCount failed", e, event = LogEvent.STOCK_COUNT_COMPLETE)
+                logger.e("confirmEndCount failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
             } finally {
                 _showEndCountDialog.value = false
                 _batchEnded.value = true

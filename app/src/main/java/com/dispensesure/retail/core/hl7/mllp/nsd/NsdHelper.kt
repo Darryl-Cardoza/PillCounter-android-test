@@ -205,7 +205,7 @@ class NsdHelper(context: Context) {
 
             sharedListener = object : NsdManager.RegistrationListener {
 
-                override fun onServiceRegistered(info: NsdServiceInfo) {
+                override fun onServiceRegistered(info: NsdServiceInfo): Unit = logger.catching("onServiceRegistered() failed", LogEvent.HL7_CONNECT_FAILED) {
                     isRegistering.set(false)
                     isRegistered.set(true)
                     registeredServiceName = info.serviceName
@@ -220,14 +220,10 @@ class NsdHelper(context: Context) {
                     } else {
                         logger.i("Service registered: ${info.serviceName}")
                     }
-                    try {
-                        registeredCallback?.invoke(info.serviceName)
-                    } catch (e: Exception) {
-                        logger.e("onServiceRegistered() callback failed", e, event = LogEvent.HL7_CONNECT_FAILED)
-                    }
+                    registeredCallback?.invoke(info.serviceName)
                 }
 
-                override fun onServiceUnregistered(info: NsdServiceInfo) {
+                override fun onServiceUnregistered(info: NsdServiceInfo): Unit = logger.catching("onServiceUnregistered() failed", LogEvent.HL7_CONNECT_FAILED) {
                     logger.i("Service unregistered: ${info.serviceName} — name released")
                     completeRelease()
                 }
@@ -245,7 +241,7 @@ class NsdHelper(context: Context) {
                     registeredCallback = null
                 }
 
-                override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {
+                override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int): Unit = logger.catching("onUnregistrationFailed() failed", LogEvent.HL7_CONNECT_FAILED) {
                     // The name may or may not be free. Clearing state anyway is the lesser evil:
                     // staying stuck in "unregistering" would block every future broadcast.
                     logger.e("Unregister failed: $errorCode — clearing state so re-registration can proceed", event = LogEvent.HL7_CONNECT_FAILED)
@@ -372,20 +368,16 @@ class NsdHelper(context: Context) {
                     logger.w("HL7-NSD · Discovery started for $type")
                 }
 
-                override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                    try {
-                        if (serviceInfo.serviceType != normalizedType) return
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                            resolveWithAddressList(serviceInfo, onResolved)
-                        } else {
-                            resolveWithIpv4Preference(serviceInfo, attempt = 1, onResolved)
-                        }
-                    } catch (e: Exception) {
-                        logger.e("onServiceFound() handling failed for ${serviceInfo.serviceName}", e, event = LogEvent.HL7_CONNECT_FAILED)
+                override fun onServiceFound(serviceInfo: NsdServiceInfo): Unit = logger.catching("onServiceFound() failed", LogEvent.HL7_CONNECT_FAILED) {
+                    if (serviceInfo.serviceType != normalizedType) return
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                        resolveWithAddressList(serviceInfo, onResolved)
+                    } else {
+                        resolveWithIpv4Preference(serviceInfo, attempt = 1, onResolved)
                     }
                 }
 
-                override fun onServiceLost(serviceInfo: NsdServiceInfo) {
+                override fun onServiceLost(serviceInfo: NsdServiceInfo): Unit = logger.catching("onServiceLost() failed", LogEvent.HL7_CONNECT_FAILED) {
                     logger.w("Service lost: ${serviceInfo.serviceName}")
                     onLost(serviceInfo)
                 }
@@ -444,40 +436,36 @@ class NsdHelper(context: Context) {
     ) {
         val executor = Executor { it.run() }
         val callback = object : NsdManager.ServiceInfoCallback {
-            override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
+            override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int): Unit = logger.catching("onServiceInfoCallbackRegistrationFailed() failed", LogEvent.HL7_CONNECT_FAILED) {
                 logger.e("registerServiceInfoCallback failed: $errorCode — falling back to resolveService", event = LogEvent.HL7_CONNECT_FAILED)
                 resolveWithIpv4Preference(serviceInfo, attempt = 1, onResolved)
             }
 
-            override fun onServiceUpdated(resolved: NsdServiceInfo) {
-                try {
-                    nsdManager.unregisterServiceInfoCallback(this)
+            override fun onServiceUpdated(resolved: NsdServiceInfo): Unit = logger.catching("onServiceUpdated() failed", LogEvent.HL7_CONNECT_FAILED) {
+                nsdManager.unregisterServiceInfoCallback(this)
 
-                    val addresses: List<InetAddress> = resolved.hostAddresses
-                    val chosen = addresses.filterIsInstance<Inet4Address>()
-                        .firstOrNull { isOnLocalWifiSubnet(it) }
-                        ?: addresses.filterIsInstance<Inet4Address>().firstOrNull()
+                val addresses: List<InetAddress> = resolved.hostAddresses
+                val chosen = addresses.filterIsInstance<Inet4Address>()
+                    .firstOrNull { isOnLocalWifiSubnet(it) }
+                    ?: addresses.filterIsInstance<Inet4Address>().firstOrNull()
 
-                    if (chosen == null) {
-                        logger.w("hostAddresses list empty/no IPv4 — falling back to resolved.host=${resolved.host}")
-                        mainHandler.post { onResolved(resolved) }
-                        return
-                    }
-
-                    logger.d("hostAddresses=$addresses — chose $chosen (subnet-matched=${isOnLocalWifiSubnet(chosen)})")
-                    val patched = NsdServiceInfo().apply {
-                        serviceName = resolved.serviceName
-                        serviceType = resolved.serviceType
-                        host = chosen
-                        port = resolved.port
-                    }
-                    mainHandler.post { onResolved(patched) }
-                } catch (e: Exception) {
-                    logger.e("onServiceUpdated() handling failed for ${resolved.serviceName}", e, event = LogEvent.HL7_CONNECT_FAILED)
+                if (chosen == null) {
+                    logger.w("hostAddresses list empty/no IPv4 — falling back to resolved.host=${resolved.host}")
+                    mainHandler.post { onResolved(resolved) }
+                    return
                 }
+
+                logger.d("hostAddresses=$addresses — chose $chosen (subnet-matched=${isOnLocalWifiSubnet(chosen)})")
+                val patched = NsdServiceInfo().apply {
+                    serviceName = resolved.serviceName
+                    serviceType = resolved.serviceType
+                    host = chosen
+                    port = resolved.port
+                }
+                mainHandler.post { onResolved(patched) }
             }
 
-            override fun onServiceLost() {
+            override fun onServiceLost(): Unit = logger.catching("onServiceLost() failed", LogEvent.HL7_CONNECT_FAILED) {
                 logger.w("Resolve — service lost mid-resolution")
                 nsdManager.unregisterServiceInfoCallback(this)
             }
@@ -508,7 +496,7 @@ class NsdHelper(context: Context) {
             serviceInfo,
             object : NsdManager.ResolveListener {
 
-                override fun onServiceResolved(resolved: NsdServiceInfo) {
+                override fun onServiceResolved(resolved: NsdServiceInfo): Unit = logger.catching("onServiceResolved() failed", LogEvent.HL7_CONNECT_FAILED) {
                     val host = resolved.host
                     val sameSubnet = host is Inet4Address && isOnLocalWifiSubnet(host)
                     if (!sameSubnet && attempt < maxAttempts) {

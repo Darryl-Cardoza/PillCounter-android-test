@@ -1606,11 +1606,7 @@ class PillScanningViewModel @Inject constructor(
                 val dispensedDrug = if (isStockCountSession) drug
                     else txn?.takeIf { it.isSubstitute }?.substitutedDrugId?.let { drugMasterDao.getDrugById(it) } ?: drug
                 val drugImage = dispensedDrug?.drugImagePath?.takeIf { it.isNotBlank() }
-                    ?.let {
-                        runCatching { BitmapFactory.decodeFile(it) }
-                            .onFailure { e -> logger.w("Could not decode drug image $it: ${e.message}", e) }
-                            .getOrNull()
-                    }
+                    ?.let { runCatching { BitmapFactory.decodeFile(it) }.getOrNull() }
                     ?: drugImagePlaceholder()
 
                 // Crop to tray + chute when a complete tray is in view; else keep the full frame.
