@@ -590,5 +590,13 @@
     <string name="photo_label_step">Étape</string>
     <string name="photo_label_date_time">Date et heure</string>
     <string name="photo_label_operator">Opérateur</string>
+    <string name="hl7_notification_new_rx_ndc_missing">Nouvelle commande pour la Rx %1$s ignorée — NDC manquant dans RXE-2</string>
+    <string name="hl7_notification_new_rx_qty_missing">Nouvelle commande pour la Rx %1$s ignorée — quantité à délivrer manquante</string>
+    <string name="hl7_notification_new_rx_qty_invalid">Nouvelle commande pour la Rx %1$s ignorée — quantité non valide %2$d</string>
+    <string name="hl7_notification_refill_exhausted">Renouvellements épuisés pour la Rx %1$s — aucun renouvellement restant (RXE-16=%2$d)</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing">Renouvellement de la Rx %1$s ignoré — NDC ou quantité manquants ou non valides</string>
+    <string name="hl7_notification_no_processable_orders">Message HL7 %1$s reçu, mais il ne contenait aucune commande traitable</string>
+    <string name="hl7_notification_structural_validation_failed">Message HL7 %1$s rejeté — échec de la validation structurelle : %2$s</string>
+    <string name="hl7_notification_business_validation_failed">Message HL7 %1$s rejeté — %2$s</string>
 
 </resources>

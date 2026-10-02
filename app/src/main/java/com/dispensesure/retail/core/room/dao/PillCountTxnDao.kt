@@ -316,6 +316,10 @@ interface PillCountTxnDao {
     @Query("SELECT * FROM pill_count_txn WHERE rxNo = :rxNo AND refillNo = :fillNo AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
     suspend fun getByRxNoAndFillNo(rxNo: String, fillNo: String): PillCountTxnEntity?
 
+    // Same Rx from the same HL7 message (MSH-10) — detects a PMS resend.
+    @Query("SELECT * FROM pill_count_txn WHERE rxNo = :rxNo AND hl7MessageControlId = :messageControlId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByRxNoAndMessageControlId(rxNo: String, messageControlId: String): PillCountTxnEntity?
+
     /** Most recent transaction for [rxNo], regardless of fill number — used when no fill number is supplied. */
     @Query("SELECT * FROM pill_count_txn WHERE rxNo = :rxNo AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
     suspend fun getMostRecentByRxNo(rxNo: String): PillCountTxnEntity?
@@ -349,6 +353,44 @@ interface PillCountTxnDao {
         targetCount: Int?,
         priority: TxnPriority?,
         status: CountStatus?,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query(
+        """
+        UPDATE pill_count_txn
+        SET status    = :status,
+            updatedAt = :now
+        WHERE transactionOrderId = :orderId
+          AND isDeleted = 0
+          AND status IN ('PARTIAL', 'ON_HOLD')
+        """
+    )
+    suspend fun updateStatusByOrderIdIfPartialOrOnHold(
+        orderId: String,
+        status: CountStatus,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query(
+        """
+        UPDATE pill_count_txn
+        SET status    = :status,
+            updatedAt = :now
+        WHERE transactionOrderId = :orderId
+          AND isDeleted = 0
+          AND status = 'PARTIAL'
+        """
+    )
+    suspend fun updateStatusByOrderIdIfPartial(
+        orderId: String,
+        status: CountStatus,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query("UPDATE pill_count_txn SET isDeleted = 1, updatedAt = :now WHERE transactionOrderId = :orderId AND isDeleted = 0")
+    suspend fun softDeleteByOrderId(
+        orderId: String,
         now: Long = System.currentTimeMillis()
     )
 
