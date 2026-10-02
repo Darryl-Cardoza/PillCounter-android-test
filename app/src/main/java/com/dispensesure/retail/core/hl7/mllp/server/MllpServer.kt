@@ -113,7 +113,7 @@ class MllpServer(
                     } catch (e: Exception) {
                         // Last-resort guard — build a minimal AR ACK so PMS doesn't time out.
                         logger.e("onHl7Message() threw unexpectedly — sending AR fallback ACK", e)
-                        val fallbackAck = buildFallbackArAck(msg)
+                        val fallbackAck = Hl7FallbackAck.build(msg, e.message ?: "Unknown Error")
                         runCatching { output.write(Mllp.wrap(fallbackAck)); output.flush() }
                         continue
                     }
@@ -140,13 +140,6 @@ class MllpServer(
             serverSocket?.close()
             scope.cancel()
         }
-    }
-
-    private fun buildFallbackArAck(raw: String): String {
-        val controlId = raw.lineSequence()
-            .firstOrNull { it.startsWith("MSH|") }
-            ?.split("|")?.getOrNull(9).orEmpty()
-        return "MSH|^~\\&||||||||ACK^R01|FALLBACK||2.5\rMSA|AR|$controlId"
     }
 
     private fun splitMessages(frame: String): List<String> {

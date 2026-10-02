@@ -301,7 +301,10 @@ class MllpServerTest {
             socket.getOutputStream().flush()
 
             val fallbackAck = withTimeout(5000) { readMllpFrame(socket.getInputStream()) }
-            assertTrue("fallback ACK should contain MSA|AR", fallbackAck.contains("MSA|AR"))
+            assertTrue("fallback ACK should contain MSA|AR", fallbackAck.contains("MSA|AR|MSG001"))
+            // Sender/receiver swapped and processing id + version echoed, not blank/hardcoded.
+            assertTrue(fallbackAck.startsWith("MSH|^~\\&|RECV|FAC|SEND|FAC|"))
+            assertTrue(fallbackAck.contains("|ACKMSG001|P|2.5\r"))
 
             // Second message — callback succeeds, ACK returned
             Thread.sleep(100)

@@ -19,6 +19,7 @@ import com.dispensesure.retail.feature.hl7.parsing.model.OrderGroup
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import org.rite.hl7.model.HL7Message
@@ -40,8 +41,8 @@ class Hl7OrderProcessor @Inject constructor(
     private val logger = AppLogger("Hl7OrderProcessor")
     private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
-    fun process(action: Hl7OrderAction) {
-        scope.launch {
+    fun process(action: Hl7OrderAction): Job {
+        return scope.launch {
             when (action) {
                 is Hl7OrderAction.NewOrder -> handleNewOrder(action.order, action.message)
                 is Hl7OrderAction.Refill -> handleRefill(action.order, action.message)
@@ -92,8 +93,8 @@ class Hl7OrderProcessor @Inject constructor(
 
         val refillNo = order.refillNumber.toString()
 
-        // Upsert: if same Rx + same refill already exists → update, else create new
-        val existing = if (rxNo != null) pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo) else null
+        // Upsert: if same Rx + same refill already exists and is still open → update, else create new
+        val existing = if (rxNo != null) pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo)?.takeUnless { it.isFinished() } else null
         val finalDrug = resolveDrug(hl7Ndc, hl7DrugName) ?: return
         val drugId = drugMasterDao.upsertPreservingId(finalDrug)
 
@@ -155,14 +156,24 @@ class Hl7OrderProcessor @Inject constructor(
         val refillNo = if (order.refillNumber > 0) {
             order.refillNumber.toString()
         } else {
-            // RXE-16 not sent by PMS — derive from most recent txn for this Rx
-            val mostRecent = if (rxNo != null) pillCountTxnDao.getMostRecentByRxNo(rxNo) else null
-            val prevRefill = mostRecent?.refillNo?.toIntOrNull() ?: 0
-            (prevRefill + 1).toString()
+            // A PMS resend of this message (same Rx + MSH-10) reuses its refill instead of adding another.
+            val resent = if (rxNo != null && order.messageControlId.isNotBlank()) {
+                pillCountTxnDao.getByRxNoAndMessageControlId(rxNo, order.messageControlId)
+            } else null
+            if (resent?.isFinished() == true) {
+                logger.w("handleRefill: resend of msgId=${order.messageControlId} for rxNo=$rxNo already finished — ignoring")
+                return
+            }
+            resent?.refillNo ?: run {
+                // RXE-16 not sent by PMS — derive from most recent txn for this Rx
+                val mostRecent = if (rxNo != null) pillCountTxnDao.getMostRecentByRxNo(rxNo) else null
+                val prevRefill = mostRecent?.refillNo?.toIntOrNull() ?: 0
+                (prevRefill + 1).toString()
+            }
         }
 
-        // Same Rx + same refillNo → update existing; different refillNo → new txn
-        val existing = if (rxNo != null) pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo) else null
+        // Same Rx + same refillNo still open → update existing; otherwise → new txn
+        val existing = if (rxNo != null) pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo)?.takeUnless { it.isFinished() } else null
 
         val hl7Ndc = order.giveCode?.trim().orEmpty()
         val hl7DrugName = order.giveName.orEmpty()
@@ -335,6 +346,10 @@ class Hl7OrderProcessor @Inject constructor(
             null
         }
     }
+
+    // A finished count is never overwritten by a later NW/RF for the same fill.
+    private fun PillCountTxnEntity.isFinished() =
+        status == CountStatus.COMPLETED || status == CountStatus.FORCE_COMPLETED
 
     private fun mapOrderStatus(orderStatus: String?): CountStatus? = when (orderStatus?.uppercase()) {
         "IP" -> CountStatus.PARTIAL

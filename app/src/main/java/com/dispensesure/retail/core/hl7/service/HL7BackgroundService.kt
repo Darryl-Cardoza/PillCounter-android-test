@@ -17,6 +17,7 @@ import com.dispensesure.retail.core.hl7.mllp.client.MllpClient
 import com.dispensesure.retail.core.hl7.mllp.client.MllpConnectionManager
 import com.dispensesure.retail.core.hl7.mllp.nsd.NetworkIpMonitor
 import com.dispensesure.retail.core.hl7.mllp.nsd.NsdHelper
+import com.dispensesure.retail.core.hl7.mllp.server.Hl7FallbackAck
 import com.dispensesure.retail.core.hl7.mllp.server.MllpServer
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsSocketFactory
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -777,7 +778,7 @@ class HL7Service : Service() {
             if (message == null) {
                 val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
                 logger.e("HL7 parse failed, no partial message: $errors")
-                return buildFallbackAck(raw, "Parse Failed")
+                return Hl7FallbackAck.build(raw, "Parse Failed")
             }
 
             if (!parseResult.isSuccess) {
@@ -797,38 +798,7 @@ class HL7Service : Service() {
         } catch (e: Exception) {
             listener?.onError("HL7_PARSE", e)
             logger.e("HL7 processing failed", e)
-            buildFallbackAck(raw, e.message ?: "Unknown Error")
-        }
-    }
-
-    /**
-     * Builds a minimal ACK from raw MSH fields when the full parse fails, so the sender
-     * doesn't time out waiting for an acknowledgement — AA when no error message is given,
-     * AR (with the error text in MSA-3) otherwise.
-     */
-    private fun buildFallbackAck(raw: String, errorMsg: String? = null): String {
-        return try {
-            val msh = raw.lineSequence().first { it.startsWith("MSH|") }
-            val f = msh.split("|")
-            val sendingApp  = f.getOrElse(2) { "" }
-            val sendingFac  = f.getOrElse(3) { "" }
-            val recvApp     = f.getOrElse(4) { "" }
-            val recvFac     = f.getOrElse(5) { "" }
-            val ts          = f.getOrElse(6) { "" }
-            val controlId   = f.getOrElse(9) { "" }
-            val procId      = f.getOrElse(10) { "P" }
-            val version     = f.getOrElse(11) { "2.5" }
-
-            val ackCode = if (errorMsg != null) "AR" else "AA"
-            val cleanError = errorMsg?.replace("|", " ")?.replace("\r", " ")?.replace("\n", " ") ?: ""
-            val textMessage = if (cleanError.isNotEmpty()) "|$cleanError" else ""
-
-            "MSH|^~\\&|$recvApp|$recvFac|$sendingApp|$sendingFac|$ts||ACK^R01|ACK$controlId|$procId|$version\rMSA|$ackCode|$controlId$textMessage"
-        } catch (_: Exception) {
-            val ackCode = if (errorMsg != null) "AR" else "AA"
-            val cleanError = errorMsg?.replace("|", " ")?.replace("\r", " ")?.replace("\n", " ") ?: ""
-            val textMessage = if (cleanError.isNotEmpty()) "|$cleanError" else ""
-            "MSH|^~\\&||||||||ACK^R01|FALLBACK||2.5\rMSA|$ackCode|$textMessage"
+            Hl7FallbackAck.build(raw, e.message ?: "Unknown Error")
         }
     }
 

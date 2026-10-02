@@ -205,17 +205,16 @@ class Hl7RepositoryTest {
             ).joinToString("\r")
         )
 
-    /** INR^U06 inventory request built from MSH + INV segment(s). */
+    /** INR^U06 inventory request in the PMS layout: drug in INV-1, status in INV-2. */
     private fun inventoryMessage(
         ndc: String = "12345",
         drugName: String = "Aspirin",
-        quantity: String = "10",
         controlId: String = "MSG1",
     ): HL7Message =
         parse(
             listOf(
                 msh("INR", "U06", controlId),
-                "INV|1|$ndc^$drugName|||$quantity",
+                "INV|$ndc^$drugName^NDC|A^Active",
             ).joinToString("\r")
         )
 
@@ -767,6 +766,23 @@ class Hl7RepositoryTest {
         repo.handleInrInventoryRequest(msg)
 
         coVerify(timeout = 3000) { batchDao.insert(any()) }
+    }
+
+    @Test
+    fun `handleInrInventoryRequest reads ndc and name from INV-1 not the INV-2 status`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { drugMasterDao.getDrugByNdc(any()) } returns null
+        coEvery { drugRepository.getDrugInfoByNdc(any<GetNdcRequestModel>()) } returns
+            drugInfo(ndc = "", genericName = null)
+        val savedDrug = slot<DrugMasterEntity>()
+        coEvery { drugMasterDao.upsertPreservingId(capture(savedDrug)) } returns 9L
+        coEvery { batchDao.insert(any()) } returns 100L
+
+        repo.handleInrInventoryRequest(inventoryMessage())
+
+        coVerify(timeout = 3000) { batchDao.insert(any()) }
+        assertEquals("12345", savedDrug.captured.ndc)
+        assertEquals("Aspirin", savedDrug.captured.drugName)
     }
 
     @Test

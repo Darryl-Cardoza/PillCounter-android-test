@@ -674,10 +674,10 @@ class Hl7Repository @Inject constructor(
 
         if (invSegments.isNotEmpty()) {
             for (inv in invSegments) {
-                val ndc = inv.substanceCode.trim()
-                val lot = inv.lotNumber.trim()
-                val expiry = inv.expirationDate.trim()
-                val targetCount = inv.inventoryOnHandQuantity.toIntOrNull() ?: 0
+                val ndc = inv.deviceItemCode.trim()
+                val lot = inv.deviceLotNumber.trim()
+                val expiry = inv.deviceExpirationDate.trim()
+                val targetCount = inv.deviceQuantityOnHand.toIntOrNull() ?: 0
 
                 if (ndc.isBlank()) {
                     logger.w("Skipping INV segment — NDC is blank")
@@ -686,7 +686,7 @@ class Hl7Repository @Inject constructor(
 
                 resolveInventoryItem(
                     ndc = ndc,
-                    fallbackName = inv.substanceName,
+                    fallbackName = inv.deviceItemName,
                     lot = lot,
                     expiry = expiry,
                     targetCount = targetCount

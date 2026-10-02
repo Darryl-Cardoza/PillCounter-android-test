@@ -44,7 +44,7 @@ import java.lang.reflect.Method
  * collaborator's own test suite — see ImageWebServerTest, MllpConnectionManagerTest, etc.).
  *
  * Instead, this suite targets the service's own logic directly:
- *  - `handleIncomingMessage` / `buildFallbackAck` — the message parsing + ACK pipeline.
+ *  - `handleIncomingMessage` — the message parsing + ACK pipeline (fallback ACK: Hl7FallbackAckTest).
  *  - `loadConfigFromIntent` — Intent extras → HL7Config mapping.
  *  - `updateConfig`, `setListener`/`removeListener` — simple state mutation.
  *  - `sendHl7Message` / `sendRawHl7Message` — outbound send + listener callback routing.
@@ -105,11 +105,6 @@ class HL7ServiceTest {
     private fun handleIncomingMessage(raw: String): String {
         val m = privateMethod("handleIncomingMessage", String::class.java)
         return m.invoke(service, raw) as String
-    }
-
-    private fun buildFallbackAck(raw: String, errorMsg: String?): String {
-        val m = privateMethod("buildFallbackAck", String::class.java, String::class.java)
-        return m.invoke(service, raw, errorMsg) as String
     }
 
     private fun loadConfigFromIntent(intent: Intent) {
@@ -190,68 +185,6 @@ class HL7ServiceTest {
 
         verify(exactly = 1) { listener.onError("HL7_PARSE", any()) }
         assertTrue(ack.contains("MSA|AR"))
-    }
-
-    // ──────────────────────────── buildFallbackAck ────────────────────────────
-
-    @Test
-    fun `buildFallbackAck swaps sending and receiving app and facility, AA when no error`() {
-        val raw = sampleHl7("CTRL123")
-
-        val ack = buildFallbackAck(raw, null)
-
-        val mshFields = ack.lineSequence().first { it.startsWith("MSH|") }.split("|")
-        // sendingApp/fac <-> receivingApp/fac are swapped relative to the original.
-        assertEquals("RECVAPP", mshFields.getOrNull(2))
-        assertEquals("RECVFAC", mshFields.getOrNull(3))
-        assertEquals("SENDAPP", mshFields.getOrNull(4))
-        assertEquals("SENDFAC", mshFields.getOrNull(5))
-        assertTrue(ack.contains("MSA|AA|CTRL123"))
-    }
-
-    @Test
-    fun `buildFallbackAck returns AR ack code when errorMsg provided`() {
-        val raw = sampleHl7("CTRL456")
-
-        val ack = buildFallbackAck(raw, "Something went wrong")
-
-        assertTrue(ack.contains("MSA|AR|CTRL456|Something went wrong"))
-    }
-
-    @Test
-    fun `buildFallbackAck sanitizes pipe and newline characters in error message`() {
-        val raw = sampleHl7("CTRL789")
-
-        val ack = buildFallbackAck(raw, "bad|pipe\r\nchars")
-
-        // The error text must not introduce extra pipe-delimited fields or line breaks
-        // into the MSA segment, since that would corrupt the ACK's field structure.
-        val msaLine = ack.lineSequence().first { it.startsWith("MSA|") }
-        assertFalse(msaLine.contains("\r"))
-        assertFalse(msaLine.contains("\n"))
-        val msaFields = msaLine.split("|")
-        assertEquals("AR", msaFields[1])
-        assertEquals("CTRL789", msaFields[2])
-        assertEquals("bad pipe  chars", msaFields[3])
-    }
-
-    @Test
-    fun `buildFallbackAck falls into catch branch and still returns ack when no MSH segment present`() {
-        val raw = "GARBAGE_NO_MSH_SEGMENT_AT_ALL"
-
-        val ack = buildFallbackAck(raw, "parse failed")
-
-        assertTrue(ack.startsWith("MSH|"))
-        assertTrue(ack.contains("MSA|AR"))
-    }
-
-    @Test
-    fun `buildFallbackAck catch branch produces AA ack when no error and no MSH`() {
-        val raw = ""
-
-        val ack = buildFallbackAck(raw, null)
-
-        assertTrue(ack.contains("MSA|AA"))
     }
 
     // ──────────────────────────── loadConfigFromIntent ────────────────────────────
