@@ -257,8 +257,8 @@ class PDFHelperExporter(private val context: Context) {
             logger.e("PDF export failed while writing file", e, event = LogEvent.FILE_WRITE_ERROR)
             try {
                 pdfDocument.finishPage(page)
-            } catch (ignored: Exception) {
-                logger.w("finishPage() cleanup after IOException also failed: ${ignored.message}")
+            } catch (cleanupError: Exception) {
+                logger.w("finishPage() cleanup after IOException also failed: ${cleanupError.message}")
             }
             return null
         } catch (e: Exception) {

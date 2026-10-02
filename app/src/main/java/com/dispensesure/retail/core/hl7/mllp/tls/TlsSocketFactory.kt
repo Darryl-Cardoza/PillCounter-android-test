@@ -7,6 +7,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import java.net.Socket
+import java.security.cert.CertificateException
 import java.util.concurrent.ConcurrentHashMap
 import javax.net.ssl.SSLSocket
 import javax.net.ssl.SSLSocketFactory
@@ -23,6 +24,11 @@ import javax.net.ssl.SSLSocketFactory
  * ✔ TLS 1.2 / 1.3
  * ✔ AES-GCM ciphers only
  */
+/** True when the TOFU trust manager rejected the peer because its certificate fingerprint changed. */
+internal fun Throwable.isCertPinMismatch(): Boolean =
+    generateSequence(this) { it.cause }
+        .any { it is CertificateException && it.message?.contains("fingerprint mismatch") == true }
+
 class TlsSocketFactory(
     private val context: Context,
     hostIdentifier: String = LEGACY_HOST_IDENTIFIER
@@ -62,7 +68,12 @@ class TlsSocketFactory(
             sslSocket.startHandshake()
             sslSocket
         } catch (e: Exception) {
-            logger.e("TLS handshake failed while connecting to $ip:$port", e, event = LogEvent.NETWORK_ERROR)
+            if (e.isCertPinMismatch()) {
+                // MllpConnectionManager logs the mismatch as an ERROR once and blocks reconnects.
+                logger.w("TLS handshake rejected: certificate pin mismatch at $ip:$port", e, event = LogEvent.HL7_CONNECT_FAILED)
+            } else {
+                logger.eThrottled("TLS handshake failed while connecting to $ip:$port", e, event = LogEvent.NETWORK_ERROR)
+            }
             sslSocket.close()
             throw e
         }

@@ -7,6 +7,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.verifyPin.data.VerifyPinRepository
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifiedUser
@@ -179,6 +180,20 @@ class VerifyPinViewModelTest {
         advanceUntilIdle()
 
         verify(exactly = 1) { prefs.saveTokens("access", "refresh") }
+    }
+
+    @Test
+    fun `verifyPin success starts a new log session`() = runTest {
+        val user = VerifiedUser(email = email, isVerified = true)
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
+            Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
+        val before = LoggerConfig.sessionId
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertTrue(LoggerConfig.sessionId != before)
     }
 
     @Test

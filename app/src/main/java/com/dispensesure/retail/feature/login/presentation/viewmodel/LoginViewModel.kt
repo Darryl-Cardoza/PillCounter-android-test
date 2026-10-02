@@ -85,7 +85,6 @@ class LoginViewModel @Inject constructor(
 
             repository.login(email)
                 .onSuccess {
-                    LoggerConfig.newSession()
                     logger.i("Login successful.")
                     _uiState.value = LoginUiState.Success
                     try {
@@ -117,7 +116,7 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             _logoutUiState.value = LogoutUiState.Loading
 
-            // Best effort (5s cap): queued logs go out under this user's token before it is cleared;
+            // Best effort (2s cap): queued logs go out under this user's token before it is cleared;
             // anything that doesn't make it stays in the file and ships after the next login.
             AppLogger.flushBeforeLogout()
             repository.logout(refreshToken)

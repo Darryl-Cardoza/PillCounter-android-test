@@ -22,7 +22,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
 
         val match = regex.matchEntire(actualValue.trim())
             ?: run {
-                logger.e("Scan data does not match label format: $actualValue", event = LogEvent.SCAN_FAILED)
+                logger.w("Scan data does not match label format", event = LogEvent.SCAN_FAILED)
                 return ParsedScanData()
             }
 

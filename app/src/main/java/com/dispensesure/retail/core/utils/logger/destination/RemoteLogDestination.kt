@@ -34,6 +34,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Authenticator
 import okhttp3.Interceptor
@@ -313,7 +314,8 @@ class RemoteLogDestination internal constructor(
      * in the file (see [flushPendingNow]) and ship after the next login.
      */
     suspend fun flushBeforeLogout(timeoutMs: Long = LOGOUT_FLUSH_TIMEOUT_MS) {
-        withTimeoutOrNull(timeoutMs) { flushPendingNow(wait = true) }
+        // File I/O and the network call stay off the caller's (Main) thread.
+        withContext(Dispatchers.IO) { withTimeoutOrNull(timeoutMs) { flushPendingNow(wait = true) } }
     }
 
     /**
@@ -402,7 +404,7 @@ class RemoteLogDestination internal constructor(
             logId = UUID.randomUUID().toString(),
             severity = severityOf(entry.level),
             timestamp = timestampFormat.get()!!.format(Date(entry.timestampMillis)),
-            // "File -> Class -> Method -> error", see LogFormatter.formatSingleLine.
+            // "File -> Class -> Method -> message", see LogFormatter.formatSingleLine.
             message = PhiRedactor.redact(LogFormatter.formatSingleLine(entry)),
             tag = entry.className,
             event = LogEventClassifier.classify(entry).name,
@@ -463,14 +465,8 @@ class RemoteLogDestination internal constructor(
     }
 
     /**
-     * Attaches `X-Server-Key`/`Content-Type` (plus the bearer token) like the shared
-     * [com.dispensesure.retail.core.api.interfaceDetail.HeaderInterceptor], but never logs
-     * through `AppLogger` on failure — see the class doc for why.
-     */
-    /**
      * The key, or an [IOException] so the send fails and the entry is queued instead of going out
-     * keyless. [RuntimeUnit.material] logs its own retrieval failures at ERROR, which would feed
-     * straight back into this destination, so a failure blocks retrieval for [KEY_COOLDOWN_MS].
+     * keyless. A failure blocks retrieval for [KEY_COOLDOWN_MS] so a broken keystore isn't hit on every send.
      */
     private fun serverKey(): String {
         val now = System.currentTimeMillis()
@@ -502,7 +498,7 @@ class RemoteLogDestination internal constructor(
         private const val PLATFORM = "android"
         private const val MAX_ATTEMPTS = 3
         private const val MAX_QUEUE_ATTEMPTS = 5
-        private const val LOGOUT_FLUSH_TIMEOUT_MS = 5_000L
+        private const val LOGOUT_FLUSH_TIMEOUT_MS = 2_000L
         private const val REFRESH_COOLDOWN_MS = 60_000L
         private const val KEY_COOLDOWN_MS = 30_000L
         private const val MAX_PENDING_BYTES = 1_000_000L

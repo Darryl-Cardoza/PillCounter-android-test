@@ -230,7 +230,7 @@ class ProfileViewModel @Inject constructor(
                 .catch { e -> logger.e("Failed to observe user (localId=$localId)", e, event = LogEvent.USER_FETCH_FAILED) }
                 .collect { user ->
                 user?.let {
-                    logger.i("Prefilling profile UI with user (localId=$localId, email=${it.email})")
+                    logger.i("Prefilling profile UI with user (localId=$localId)")
                     firstName = it.fName ?: ""
                     lastName = it.lName ?: ""
                     pharmacyName = it.pharmacyName.orEmpty()

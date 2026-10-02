@@ -51,7 +51,7 @@ enum class LogEvent {
 
     // ── Pill scanning / counting (core.scanning camera workflow) ────────────
     PILL_COUNT_FAILED,
-    PILL_COUNT_RESET,
+    PILL_COUNT_RESET_FAILED,
     TRAY_CLASSIFY_FAILED,
     GLOVE_DETECT_FAILED,
     MODEL_LOAD_FAILED,
@@ -108,6 +108,5 @@ enum class LogEvent {
     APP_CRASH,
     PARSING_ERROR,
     FUNCTIONALITY_ERROR,
-    RUNTIME_ERROR,
     UNKNOWN_ERROR
 }

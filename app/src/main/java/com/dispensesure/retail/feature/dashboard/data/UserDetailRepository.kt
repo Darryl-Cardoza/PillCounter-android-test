@@ -61,7 +61,7 @@ class UserDetailRepository @Inject constructor(
                             logger.i("User detail fetched successfully.")
                             Result.success(it)
                         } ?: run {
-                            logger.e("Empty response body while fetching user detail.", event = LogEvent.USER_FETCH_FAILED)
+                            logger.w("Empty response body while fetching user detail.", event = LogEvent.USER_FETCH_FAILED)
                             Result.failure(Exception("Empty response body"))
                         }
                     }
@@ -80,7 +80,7 @@ class UserDetailRepository @Inject constructor(
                                         ?: Result.failure(Exception("Empty response body after retry"))
                                 } else {
                                     val failure = Exception("Failed after token refresh: HTTP ${retryResponse.code()}")
-                                    logger.e("User detail retry after token refresh failed", failure, event = LogEvent.USER_FETCH_FAILED)
+                                    logger.w("User detail retry after token refresh failed", failure, event = LogEvent.USER_FETCH_FAILED)
                                     Result.failure(failure)
                                 }
                             },
@@ -95,17 +95,17 @@ class UserDetailRepository @Inject constructor(
                     }
 
                     else -> {
-                        logger.e("Error fetching user detail. HTTP code: ${response.code()}", event = LogEvent.USER_FETCH_FAILED)
+                        logger.w("Error fetching user detail. HTTP code: ${response.code()}", event = LogEvent.USER_FETCH_FAILED)
                         Result.failure(Exception("Server returned ${response.code()}"))
                     }
                 }
 
                 result //
             } catch (e: HttpException) {
-                logger.e("HttpException during getUserDetail()", e, event = LogEvent.USER_FETCH_FAILED)
+                logger.w("HttpException during getUserDetail()", e, event = LogEvent.USER_FETCH_FAILED)
                 Result.failure(e)
             } catch (e: Exception) {
-                logger.e("Unexpected error fetching user detail", e, event = LogEvent.USER_FETCH_FAILED)
+                logger.w("Unexpected error fetching user detail", e, event = LogEvent.USER_FETCH_FAILED)
                 Result.failure(e)
             }
         }

@@ -45,8 +45,8 @@ class PillCountingApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         AppToast.register(this)
-        // Must run before any other logging in this method, and before any other
-        // singleton/DI-managed class has a chance to log during its own init.
+        // Runs right after super.onCreate(), where Hilt injects; anything logged during injection
+        // reaches Logcat only. Must run before any other logging in this method.
         AppLogger.init(this)
         AppLogger.setTokenAuthenticator(tokenAuthenticator)
         AppLogger.setRuntimeUnit(runtimeUnit)

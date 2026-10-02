@@ -221,7 +221,7 @@ class Hl7EventHandler @Inject constructor(
     }
 
     override fun onPmsCertMismatch() {
-        logger.e("PMS certificate mismatch — blocking reconnects until admin clears the pin", event = LogEvent.HL7_CONNECT_FAILED)
+        logger.w("PMS certificate mismatch — blocking reconnects until admin clears the pin", event = LogEvent.HL7_CONNECT_FAILED)
         _pmsCertMismatch.value = true
     }
 }

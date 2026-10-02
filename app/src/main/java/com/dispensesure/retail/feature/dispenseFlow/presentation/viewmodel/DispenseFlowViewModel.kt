@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel
 import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -204,60 +205,60 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     private suspend fun initializeFromResumedTxnInternal() {
-            val txnId = preferenceHelper.getTxnId()
-            if (txnId == 0L) {
-                logger.w("Resume init requested but no txnId in preferences — falling back to PRE_RX")
-                _uiState.update { it.copy(initResolved = true) }
-                return
-            }
-            val txn = pillCountTxnDao.getById(txnId)
-            if (txn == null) {
-                logger.w("Resume init: txn $txnId not found in DB — falling back to PRE_RX")
-                _uiState.update { it.copy(initResolved = true) }
-                return
-            }
-            pillCountTxnDao.updateGlovesPresent(txnId, false)
-            val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
+        val txnId = preferenceHelper.getTxnId()
+        if (txnId == 0L) {
+            logger.w("Resume init requested but no txnId in preferences — falling back to PRE_RX")
+            _uiState.update { it.copy(initResolved = true) }
+            return
+        }
+        val txn = pillCountTxnDao.getById(txnId)
+        if (txn == null) {
+            logger.w("Resume init: txn $txnId not found in DB — falling back to PRE_RX")
+            _uiState.update { it.copy(initResolved = true) }
+            return
+        }
+        pillCountTxnDao.updateGlovesPresent(txnId, false)
+        val drug = txn.drugId?.let { drugMasterDao.getDrugById(it) }
 
-            if (txn.isNdcVerified == true) {
-                // RX + container both confirmed — skip straight to pill counting.
-                _uiState.update {
-                    it.copy(
-                        stage = DispenseStage.COUNTING,
-                        initResolved = true,
-                        txnId = txnId,
-                        drugName = drug?.drugName.orEmpty(),
-                        ndc = drug?.ndc.orEmpty(),
-                        rxNo = txn.rxNo,
-                        refillNo = txn.refillNo,
-                        qty = txn.targetCount?.toString(),
-                        isHazardous = drug?.isHazardous ?: false,
-                    )
-                }
-                logger.i("[HAZARDOUS] Resume init (NDC verified): txn=$txnId drug=${drug?.drugName} isHazardous=${drug?.isHazardous ?: false} — jumping to COUNTING")
-            } else {
-                // Container not yet scanned — land in PRE_NDC so the user only scans the container.
-                _uiState.update {
-                    it.copy(
-                        stage = DispenseStage.PRE_NDC,
-                        initResolved = true,
-                        txnId = txnId,
-                        drugName = drug?.drugName.orEmpty(),
-                        ndc = drug?.ndc.orEmpty(),
-                        hl7ExpectedNdc = drug?.ndc,
-                        rxNo = txn.rxNo,
-                        refillNo = txn.refillNo,
-                        qty = txn.targetCount?.toString(),
-                        isHazardous = drug?.isHazardous ?: false,
-                        // Shown on the container-scan step's details bar.
-                        drugImage = drug?.drugImagePath.orEmpty(),
-                        ndcStrength = drug?.strength,
-                        ndcDosageForm = drug?.dosageForm,
-                        selectedBucketId = txn.bucketId.orEmpty(),
-                    )
-                }
-                logger.i("[HAZARDOUS] Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
+        if (txn.isNdcVerified == true) {
+            // RX + container both confirmed — skip straight to pill counting.
+            _uiState.update {
+                it.copy(
+                    stage = DispenseStage.COUNTING,
+                    initResolved = true,
+                    txnId = txnId,
+                    drugName = drug?.drugName.orEmpty(),
+                    ndc = drug?.ndc.orEmpty(),
+                    rxNo = txn.rxNo,
+                    refillNo = txn.refillNo,
+                    qty = txn.targetCount?.toString(),
+                    isHazardous = drug?.isHazardous ?: false,
+                )
             }
+            logger.i("[HAZARDOUS] Resume init (NDC verified): txn=$txnId drug=${drug?.drugName} isHazardous=${drug?.isHazardous ?: false} — jumping to COUNTING")
+        } else {
+            // Container not yet scanned — land in PRE_NDC so the user only scans the container.
+            _uiState.update {
+                it.copy(
+                    stage = DispenseStage.PRE_NDC,
+                    initResolved = true,
+                    txnId = txnId,
+                    drugName = drug?.drugName.orEmpty(),
+                    ndc = drug?.ndc.orEmpty(),
+                    hl7ExpectedNdc = drug?.ndc,
+                    rxNo = txn.rxNo,
+                    refillNo = txn.refillNo,
+                    qty = txn.targetCount?.toString(),
+                    isHazardous = drug?.isHazardous ?: false,
+                    // Shown on the container-scan step's details bar.
+                    drugImage = drug?.drugImagePath.orEmpty(),
+                    ndcStrength = drug?.strength,
+                    ndcDosageForm = drug?.dosageForm,
+                    selectedBucketId = txn.bucketId.orEmpty(),
+                )
+            }
+            logger.i("[HAZARDOUS] Resume init (NDC pending): txn=$txnId drug=${drug?.drugName} expectedNdc=${drug?.ndc} isHazardous=${drug?.isHazardous ?: false}")
+        }
     }
 
     /**
@@ -816,7 +817,7 @@ class DispenseFlowViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("Advance to counting stage failed after substitute confirm", e, event = LogEvent.NDC_SCAN_FAILED)
-                _uiState.update { it.copy(error = e.message) }
+                _uiState.update { it.copy(error = appContext.getString(R.string.error_generic)) }
             }
         }
     }
@@ -1074,7 +1075,7 @@ class DispenseFlowViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("NDC confirm (sheet) failed for txn=$txnId", e, event = LogEvent.NDC_SCAN_FAILED)
-                _uiState.update { it.copy(error = e.message) }
+                _uiState.update { it.copy(error = appContext.getString(R.string.error_generic)) }
             }
         }
     }

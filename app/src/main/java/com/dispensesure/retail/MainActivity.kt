@@ -50,6 +50,7 @@ import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayS
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
 import com.dispensesure.retail.core.utils.common.HelperFunctions.clearSessionIfNotRemembered
@@ -197,7 +198,7 @@ class MainActivity : ComponentActivity() {
             try {
                 runtimeUnit.activateIfNeeded()
             } catch (e: Exception) {
-                logger.e("runtimeUnit.activateIfNeeded() failed", e, event = LogEvent.KEK_ROTATE_FAILED)
+                logger.e("runtimeUnit.activateIfNeeded() failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
             }
 //        } else {
 //            runtimeUnit.revokeClearance()
@@ -477,6 +478,7 @@ class MainActivity : ComponentActivity() {
             preferenceHelper.clearTokens()
             preferenceHelper.setUserLoggedIn(false)
             sessionHealthController.markLoggedOut()
+            LoggerConfig.newSession()
             sessionLockController.unlock()
             if (::navController.isInitialized) {
                 navController.navigate(AUTH_GRAPH_ROUTE) {

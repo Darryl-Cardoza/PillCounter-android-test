@@ -193,7 +193,7 @@ class IdCardAnalyzer(private val appContext: Context) {
                 }
             }
             .addOnFailureListener { ex ->
-                logger.e("ID_SCAN barcode failure token=$token", ex, event = LogEvent.SCAN_FAILED)
+                logger.eThrottled("ID_SCAN barcode failure token=$token", ex, event = LogEvent.SCAN_FAILED)
                 runOcr(input, bitmap, token, onDetected)
             }
     }
@@ -244,7 +244,7 @@ class IdCardAnalyzer(private val appContext: Context) {
                 }
             }
             .addOnFailureListener { ex ->
-                logger.e("ID_SCAN OCR failure token=$token", ex, event = LogEvent.SCAN_FAILED)
+                logger.eThrottled("ID_SCAN OCR failure token=$token", ex, event = LogEvent.SCAN_FAILED)
             }
             .addOnCompleteListener {
                 finishFrame(bitmap, token)

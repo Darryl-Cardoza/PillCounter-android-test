@@ -62,10 +62,10 @@ class ProfileRepository @Inject constructor(
                     profileApi.updateProfile("Bearer $newToken", request)
                 }
             }
-            logger.e("Profile update failed with HttpException", e, event = LogEvent.PROFILE_UPDATE_FAILED)
+            logger.w("Profile update failed with HttpException", e, event = LogEvent.PROFILE_UPDATE_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Profile update failed", e, event = LogEvent.PROFILE_UPDATE_FAILED)
+            logger.w("Profile update failed", e, event = LogEvent.PROFILE_UPDATE_FAILED)
             Result.failure(e)
         }
     }
@@ -92,10 +92,10 @@ class ProfileRepository @Inject constructor(
                     profileApi.deleteProfile("Bearer $newToken")
                 }
             }
-            logger.e("Profile delete failed with HttpException", e, event = LogEvent.PROFILE_DELETE_FAILED)
+            logger.w("Profile delete failed with HttpException", e, event = LogEvent.PROFILE_DELETE_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Profile deletion failed", e, event = LogEvent.PROFILE_DELETE_FAILED)
+            logger.w("Profile deletion failed", e, event = LogEvent.PROFILE_DELETE_FAILED)
             Result.failure(e)
         }
     }
@@ -138,10 +138,10 @@ class ProfileRepository @Inject constructor(
                     profileApi.getPharmacyTypes("Bearer $newToken")
                 }
             }
-            logger.e("Fetching pharmacy types failed with HttpException", e, event = LogEvent.CACHE_READ_FAILED)
+            logger.w("Fetching pharmacy types failed with HttpException", e, event = LogEvent.CACHE_READ_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Fetching pharmacy types failed", e, event = LogEvent.CACHE_READ_FAILED)
+            logger.w("Fetching pharmacy types failed", e, event = LogEvent.CACHE_READ_FAILED)
             Result.failure(e)
         }
     }

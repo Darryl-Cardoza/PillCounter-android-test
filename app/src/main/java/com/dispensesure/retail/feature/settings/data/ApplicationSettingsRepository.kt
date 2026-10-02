@@ -28,10 +28,10 @@ class ApplicationSettingsRepository @Inject constructor(
 
             return apiService.getApplicationSettings(androidVersion = "android")
         } catch (e: HttpException) {
-            logger.e("Http error when fetching settings", e, event = LogEvent.SETTINGS_FETCH_FAILED)
+            logger.w("Http error when fetching settings", e, event = LogEvent.SETTINGS_FETCH_FAILED)
             throw e
         } catch (e: Exception) {
-            logger.e("Unexpected error when fetching settings", e, event = LogEvent.SETTINGS_FETCH_FAILED)
+            logger.w("Unexpected error when fetching settings", e, event = LogEvent.SETTINGS_FETCH_FAILED)
             throw e
         }
     }

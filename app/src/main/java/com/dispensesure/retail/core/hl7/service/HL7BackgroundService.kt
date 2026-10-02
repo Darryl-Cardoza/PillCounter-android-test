@@ -367,7 +367,7 @@ class HL7Service : Service() {
             },
 
             onCertMismatch = {
-                logger.e("PMS certificate mismatch — notifying listener", event = LogEvent.HL7_CONNECT_FAILED)
+                logger.w("PMS certificate mismatch — notifying listener", event = LogEvent.HL7_CONNECT_FAILED)
                 listener?.onPmsCertMismatch()
             },
         )
@@ -725,7 +725,7 @@ class HL7Service : Service() {
         val port = preferenceHelper.getPmsPort()
 
         if (host.isNullOrBlank() || port <= 0) {
-            logger.e("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry", event = LogEvent.HL7_CONNECT_FAILED)
+            logger.eThrottled("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry", event = LogEvent.HL7_CONNECT_FAILED)
             scheduleStaticPmsRetry()
             return
         }

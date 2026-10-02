@@ -6,8 +6,6 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
-import com.dispensesure.retail.core.utils.logger.AppLogger
-import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -17,7 +15,6 @@ import javax.crypto.spec.GCMParameterSpec
 
 class RuntimeUnit(private val context: Context) {
 
-    private val logger = AppLogger.create<RuntimeUnit>()
 
     // ── Security gate ─────────────────────────────────────────────────────────
     // Must be explicitly cleared by MainActivity after passing security checks.
@@ -46,16 +43,11 @@ class RuntimeUnit(private val context: Context) {
         check(securityCleared) {
             "RuntimeUnit: activation blocked — security violations present"
         }
-        try {
-            if (existsInStore()) return
-            val raw     = compose()
-            val refined = refine(raw)
-            persist(seal(refined))
-            destroy(refined)
-        } catch (e: Exception) {
-            logger.e("RuntimeUnit: activateIfNeeded() failed", e, event = LogEvent.RUNTIME_ERROR)
-            throw e
-        }
+        if (existsInStore()) return
+        val raw     = compose()
+        val refined = refine(raw)
+        persist(seal(refined))
+        destroy(refined)
     }
 
     @Throws(Exception::class)
@@ -63,13 +55,8 @@ class RuntimeUnit(private val context: Context) {
         check(securityCleared) {
             "RuntimeUnit: key retrieval blocked — security violations present"
         }
-        try {
-            val sealed = retrieve()
-            return open(sealed)
-        } catch (e: Exception) {
-            logger.e("RuntimeUnit: material() retrieval failed", e, event = LogEvent.RUNTIME_ERROR)
-            throw e
-        }
+        val sealed = retrieve()
+        return open(sealed)
     }
 
     // ── Assembly ──────────────────────────────────────────────────────────────

@@ -410,7 +410,7 @@ class CameraHelper(
             } else image.close()
 
         } catch (t: Throwable) {
-            logger.e("Analyzer error", t, event = LogEvent.SCAN_FAILED)
+            logger.eThrottled("Analyzer error", t, event = LogEvent.SCAN_FAILED)
             image.close()
         }
     }
@@ -541,7 +541,7 @@ class CameraHelper(
             cam.cameraControl.startFocusAndMetering(action)
 
         } catch (e: Exception) {
-            logger.e("Autofocus failed", e, event = LogEvent.SCAN_FAILED)
+            logger.eThrottled("Autofocus failed", e, event = LogEvent.SCAN_FAILED)
         }
     }
 

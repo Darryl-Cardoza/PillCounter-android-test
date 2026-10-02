@@ -394,7 +394,7 @@ class MainActivityViewModel @Inject constructor(
             val current = getCurrentAppVersion()
             compareVersions(remoteVersion, current) > 0
         } catch (e: Exception) {
-            logger.e("isUpdateRequired() version comparison failed (remoteVersion=$remoteVersion)", e, event = LogEvent.SETTINGS_APPLY_FAILED)
+            logger.w("isUpdateRequired() version comparison failed (remoteVersion=$remoteVersion)", e, event = LogEvent.SETTINGS_APPLY_FAILED)
             false
         }
     }

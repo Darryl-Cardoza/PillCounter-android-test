@@ -406,7 +406,7 @@ class PillScanningViewModel @Inject constructor(
                 try {
                     performanceLogger.logPerformanceSnapshot("PERIODIC_MONITORING")
                 } catch (e: Exception) {
-                    logger.e("Performance monitoring failed", e, event = LogEvent.FUNCTIONALITY_ERROR)
+                    logger.eThrottled("Performance monitoring failed", e, event = LogEvent.FUNCTIONALITY_ERROR)
                 }
             }
         }
@@ -1161,7 +1161,7 @@ class PillScanningViewModel @Inject constructor(
             try {
                 currentState.analyzer.analyze(image)
             } catch (e: Exception) {
-                logger.e("Frame analysis failed.", e, event = LogEvent.PILL_COUNT_FAILED)
+                logger.eThrottled("Frame analysis failed.", e, event = LogEvent.PILL_COUNT_FAILED)
                 image.close()
             } finally {
                 isAnalyzingFrame = false
@@ -1303,7 +1303,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to reset transaction", e, event = LogEvent.PILL_COUNT_RESET)
+                logger.e("Failed to reset transaction", e, event = LogEvent.PILL_COUNT_RESET_FAILED)
                 showGenericError()
             }
         }.join()
@@ -1350,12 +1350,12 @@ class PillScanningViewModel @Inject constructor(
             val txnId = preferenceHelper.getTxnId()
             when {
                 txnId != 0L -> pillCountTxnDao.observeById(txnId)
-                    .catch { e -> logger.e("Failed observing txn reset availability. txnId=$txnId", e, event = LogEvent.PILL_COUNT_RESET) }
+                    .catch { e -> logger.e("Failed observing txn reset availability. txnId=$txnId", e, event = LogEvent.PILL_COUNT_RESET_FAILED) }
                     .collect { txn ->
                     _uiState.update { it.copy(canReset = txn?.isSynced != true) }
                 }
                 batchId != 0L -> batchDao.observeById(batchId)
-                    .catch { e -> logger.e("Failed observing batch reset availability. batchId=$batchId", e, event = LogEvent.PILL_COUNT_RESET) }
+                    .catch { e -> logger.e("Failed observing batch reset availability. batchId=$batchId", e, event = LogEvent.PILL_COUNT_RESET_FAILED) }
                     .collect { batch ->
                     val available =
                         batch?.let { b -> !b.isSynced && b.lastAckedChunkIndex == 0 } ?: true

@@ -31,7 +31,7 @@ object LogEventClassifier {
     private fun exceptionEvent(throwable: Throwable?): LogEvent? = when {
         throwable is SocketTimeoutException -> LogEvent.NETWORK_TIMEOUT
         throwable is UnknownHostException || throwable is ConnectException -> LogEvent.NETWORK_ERROR
-        throwable is FileNotFoundException -> LogEvent.FILE_WRITE_ERROR
+        throwable is FileNotFoundException -> LogEvent.FILE_READ_ERROR
         throwable is SecurityException -> LogEvent.PERMISSION_DENIED
         isDatabaseException(throwable) -> LogEvent.DATABASE_ERROR
         else -> null
@@ -54,8 +54,8 @@ object LogEventClassifier {
             "FaceAuthViewModel", "FaceProfileRepository" -> when {
                 "delete" in message -> LogEvent.FACE_DELETE_FAILED
                 "verify" in message -> LogEvent.FACE_VERIFY_FAILED
-                "register" in message || "enroll" in message -> LogEvent.FACE_REGISTER_FAILED
                 "duplicate" in message -> LogEvent.FACE_DUPLICATE_FOUND
+                "register" in message || "enroll" in message -> LogEvent.FACE_REGISTER_FAILED
                 else -> LogEvent.FACE_CAPTURE_FAILED
             }
 
@@ -89,7 +89,7 @@ object LogEventClassifier {
                 "model" in message -> LogEvent.MODEL_LOAD_FAILED
                 "glove" in message -> LogEvent.GLOVE_DETECT_FAILED
                 "tray" in message -> LogEvent.TRAY_CLASSIFY_FAILED
-                "reset" in message -> LogEvent.PILL_COUNT_RESET
+                "reset" in message -> LogEvent.PILL_COUNT_RESET_FAILED
                 else -> LogEvent.PILL_COUNT_FAILED
             }
 

@@ -361,11 +361,14 @@ class Hl7Repository @Inject constructor(
                 } else {
                     // Stop here — do not send later chunks out of order. The batch
                     // stays unsynced and will resume at this exact chunk next time.
-                    logger.e(
-                        "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed/NAKed for batchId=$batchId: " +
-                            "${result.exceptionOrNull()?.message ?: "non-success ACK"}",
-                        event = LogEvent.HL7_SEND_FAILED
-                    )
+                    val chunkMessage = "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed/NAKed for batchId=$batchId: " +
+                        "${result.exceptionOrNull()?.message ?: "non-success ACK"}"
+                    // A failed send is already logged by Hl7ServiceManager; only a NAK is new here.
+                    if (result.isFailure) {
+                        logger.w(chunkMessage, event = LogEvent.HL7_SEND_FAILED)
+                    } else {
+                        logger.e(chunkMessage, event = LogEvent.HL7_SEND_FAILED)
+                    }
                     return
                 }
             }

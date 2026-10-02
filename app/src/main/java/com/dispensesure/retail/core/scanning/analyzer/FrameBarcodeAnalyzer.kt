@@ -392,7 +392,7 @@ class FrameBarcodeAnalyzer(
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
-                            logger.e("onBarcodeDetected() dispatch failed for raw='$rawValue'", e, event = LogEvent.SCAN_FAILED)
+                            logger.e("onBarcodeDetected() dispatch failed", e, event = LogEvent.SCAN_FAILED)
                         } finally {
                             if (!bitmapCopy.isRecycled) bitmapCopy.recycle()
                         }
@@ -402,7 +402,7 @@ class FrameBarcodeAnalyzer(
                 }
             }
             .addOnFailureListener { ex ->
-                logger.e("INV_SCAN MLKit failure token=$token", ex, event = LogEvent.SCAN_FAILED)
+                logger.eThrottled("INV_SCAN MLKit failure token=$token", ex, event = LogEvent.SCAN_FAILED)
                 bitmapCopy.recycle()
             }
             .addOnCompleteListener {

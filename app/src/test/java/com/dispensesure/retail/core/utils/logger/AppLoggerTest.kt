@@ -194,6 +194,27 @@ class AppLoggerTest {
     }
 
     @Test
+    fun `eThrottled sends one error per interval and logs repeats as warnings`() {
+        LoggerConfig.minimumLogLevel = LogLevel.WARN
+        val throttled = AppLogger("ThrottleTag")
+
+        repeat(3) { throttled.eThrottled("frame failed", RuntimeException(), event = LogEvent.SCAN_FAILED) }
+
+        assertEquals(listOf(LogLevel.ERROR, LogLevel.WARN, LogLevel.WARN), destination.entries.map { it.level })
+    }
+
+    @Test
+    fun `eThrottled limits each call site separately`() {
+        LoggerConfig.minimumLogLevel = LogLevel.WARN
+        val throttled = AppLogger("ThrottleSitesTag")
+
+        throttled.eThrottled("analyzer failed", event = LogEvent.SCAN_FAILED)
+        throttled.eThrottled("autofocus failed", event = LogEvent.SCAN_FAILED)
+
+        assertEquals(listOf(LogLevel.ERROR, LogLevel.ERROR), destination.entries.map { it.level })
+    }
+
+    @Test
     fun `catching logs the failure as an error and does not rethrow`() {
         val failure = IllegalStateException("boom")
 

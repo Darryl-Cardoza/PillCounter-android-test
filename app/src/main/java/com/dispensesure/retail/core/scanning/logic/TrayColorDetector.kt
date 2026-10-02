@@ -38,7 +38,6 @@ object TrayColorDetector {
             result
         } catch (e: Exception) {
             logger.e("Color detection error", e, event = LogEvent.TRAY_CLASSIFY_FAILED)
-            logger.e("TrayColorDetector.detect() FAILED: ${e.message}", event = LogEvent.TRAY_CLASSIFY_FAILED)
             TrayColor.UNKNOWN
         }
     }

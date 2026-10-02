@@ -46,8 +46,8 @@ class LogEventClassifierTest {
     }
 
     @Test
-    fun `file not found maps to file write error`() {
-        assertEquals(LogEvent.FILE_WRITE_ERROR, LogEventClassifier.classify(entry(throwable = FileNotFoundException())))
+    fun `file not found maps to file read error`() {
+        assertEquals(LogEvent.FILE_READ_ERROR, LogEventClassifier.classify(entry(throwable = FileNotFoundException())))
     }
 
     @Test

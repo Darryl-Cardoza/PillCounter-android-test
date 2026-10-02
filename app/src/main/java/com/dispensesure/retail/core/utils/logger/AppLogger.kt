@@ -80,6 +80,29 @@ class AppLogger(private val tag: String) {
     }
 
     /**
+     * Like [e], but at most one ERROR per call site every [intervalMs]; repeats in between are
+     * logged with [w]. For per-frame or per-retry failures that would otherwise flood the remote log.
+     */
+    fun eThrottled(message: String, throwable: Throwable? = null, event: LogEvent, intervalMs: Long = 60_000L) {
+        // Keyed on the calling line, so two different failures in one class don't hide each other.
+        val site = Throwable().stackTrace.firstOrNull {
+            it.className != INTERNAL_CLASS_NAME && !it.className.startsWith("$INTERNAL_CLASS_NAME$")
+        }
+        val key = "$tag|$event|${site?.className}:${site?.lineNumber}"
+        val now = System.currentTimeMillis()
+        var send = false
+        lastErrorAt.compute(key) { _, last ->
+            if (last == null || now - last >= intervalMs) {
+                send = true
+                now
+            } else {
+                last
+            }
+        }
+        if (send) e(message, throwable, event) else w(message, throwable, event)
+    }
+
+    /**
      * Runs [block] and logs a failure as an error instead of rethrowing it. For framework callbacks
      * and other entry points where an uncaught exception would crash the app.
      */
@@ -154,6 +177,9 @@ class AppLogger(private val tag: String) {
 
         @Volatile
         private var destination: LogDestination? = null
+
+        /** Last ERROR time per tag+event, for [eThrottled]. */
+        private val lastErrorAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
         /**
          * Wires up the [LogDestination]. Call once, as early as possible, from

@@ -10,8 +10,7 @@ package com.dispensesure.retail.core.utils.logger
  * catch identifiers that follow a recognizable structural pattern. A patient's name, address, or
  * prescription detail typed directly into a log message (e.g. "Failed to save transaction for
  * John Smith") looks like ordinary text and passes through untouched. Call sites must not
- * interpolate patient-identifying details into log messages in the first place — see the
- * `android-logging` skill's Sensitive Information rule.
+ * interpolate patient-identifying details into log messages in the first place.
  */
 object PhiRedactor {
 

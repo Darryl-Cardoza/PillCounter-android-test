@@ -13,6 +13,7 @@ import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
@@ -110,6 +111,7 @@ class VerifyPinViewModel @Inject constructor(
                     try {
                         if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
                             prefs.saveTokens(accessToken, refreshToken)
+                            LoggerConfig.newSession()
                             AppLogger.onUserLoggedIn()
 //                            prefs.setHl7Enabled(isHL7Enabled)
                             // Anchor the offline-expiry clock at login-success so the first-launch

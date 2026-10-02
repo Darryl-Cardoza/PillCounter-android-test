@@ -60,7 +60,7 @@ class DrugRepository @Inject constructor(
         return try {
             val token = preferenceHelper.getAccessToken()
             if (token.isNullOrBlank()) {
-                logger.e("No access token found. Aborting API call.", event = LogEvent.DRUG_LOOKUP_FAILED)
+                logger.w("No access token found. Aborting API call.", event = LogEvent.DRUG_LOOKUP_FAILED)
                 return null
             }
 

@@ -435,7 +435,7 @@ class PillAnalyzer(
             // frame.letterboxed is owned and reused by Letterbox — do NOT recycle.
 
         } catch (e: Exception) {
-            logger.e("[PillAnalyzer] Frame failed", e, event = LogEvent.PILL_COUNT_FAILED)
+            logger.eThrottled("[PillAnalyzer] Frame failed", e, event = LogEvent.PILL_COUNT_FAILED)
             trackingBitmap?.recycle()
         } finally {
             imageProxy.close()
@@ -510,7 +510,7 @@ class PillAnalyzer(
             pillInterpreter.runForMultipleInputsOutputs(arrayOf(buf), outMap)
             true
         } catch (e: Exception) {
-            logger.e("Pill inference failed", e, event = LogEvent.PILL_COUNT_FAILED)
+            logger.eThrottled("Pill inference failed", e, event = LogEvent.PILL_COUNT_FAILED)
             false
         }
     }

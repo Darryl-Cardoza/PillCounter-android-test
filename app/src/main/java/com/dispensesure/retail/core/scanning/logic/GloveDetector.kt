@@ -186,7 +186,7 @@ object GloveDetector {
             }
             result
         } catch (e: Exception) {
-            logger.e("Glove detector inference failed", e, event = LogEvent.GLOVE_DETECT_FAILED)
+            logger.eThrottled("Glove detector inference failed", e, event = LogEvent.GLOVE_DETECT_FAILED)
             emptyList()
         }
     }
