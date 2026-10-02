@@ -301,6 +301,16 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `dismissPmsCertMismatch clears the mismatch flag`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.dismissPmsCertMismatch()
+
+        verify(exactly = 1) { hl7EventHandler.clearCertMismatch() }
+    }
+
+    @Test
     fun `isHl7Enabled delegates to preference helper`() = runTest(testDispatcher) {
         every { preferenceHelper.isHl7Enabled() } returns true
         val vm = createViewModel()

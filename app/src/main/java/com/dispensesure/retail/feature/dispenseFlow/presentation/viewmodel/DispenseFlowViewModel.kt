@@ -921,9 +921,17 @@ class DispenseFlowViewModel @Inject constructor(
                 // Same txn id resetTransaction works from, so both halves of a reset
                 // agree on which transaction they are restarting.
                 val txnId = _uiState.value.txnId.takeIf { it != 0L } ?: preferenceHelper.getTxnId()
-                val drug = txnId.takeIf { it != 0L }
-                    ?.let { pillCountTxnDao.getById(it) }
-                    ?.drugId?.let { drugMasterDao.getDrugById(it) }
+                // The count is already wiped: a failed lookup only loses the display fallbacks, so still move the stage.
+                val drug = try {
+                    txnId.takeIf { it != 0L }
+                        ?.let { pillCountTxnDao.getById(it) }
+                        ?.drugId?.let { drugMasterDao.getDrugById(it) }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("Drug lookup for container scan failed", e, event = LogEvent.NDC_SCAN_FAILED)
+                    null
+                }
 
                 _uiState.update {
                     it.copy(
@@ -947,6 +955,7 @@ class DispenseFlowViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("Return to container scan failed", e, event = LogEvent.NDC_SCAN_FAILED)
+                _uiState.update { it.copy(error = appContext.getString(R.string.error_generic)) }
             }
         }
     }

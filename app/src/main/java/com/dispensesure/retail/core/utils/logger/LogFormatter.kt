@@ -54,13 +54,10 @@ object LogFormatter {
      * Single-line rendering for a remote log/crash aggregator (Datadog, Sentry, ...) — see
      * `RemoteLogDestination`. Deliberately terse (no timestamp/stack trace: the provider attaches
      * those itself), so it stays greppable as one line per error: `File -> Class -> Method ->
-     * Error Message`.
+     * Message`. Always the caller's message: the translated error travels separately in the payload.
      */
-    fun formatSingleLine(entry: LogEntry): String {
-        val errorMessage = entry.throwable?.let { entry.humanReadableError ?: ExceptionTranslator.translate(it) }
-            ?: entry.message
-        return "${entry.fileName} -> ${entry.className} -> ${entry.methodName} -> $errorMessage"
-    }
+    fun formatSingleLine(entry: LogEntry): String =
+        "${entry.fileName} -> ${entry.className} -> ${entry.methodName} -> ${entry.message.replace(Regex("[\r\n]+"), " ")}"
 
     private fun stackTraceOf(throwable: Throwable): String {
         val writer = StringWriter()

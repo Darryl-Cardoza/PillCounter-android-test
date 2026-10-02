@@ -68,7 +68,7 @@ class DrugImageDownloader @Inject constructor(
                 val response = okHttpClient.newCall(request).execute()
 
                 if (!response.isSuccessful) {
-                    logger.w("DrugImage download failed: HTTP ${response.code} for $url")
+                    logger.w("DrugImage download failed: HTTP ${response.code} for ${url.substringBefore('?')}")
                     return@withContext null
                 }
 
@@ -77,14 +77,14 @@ class DrugImageDownloader @Inject constructor(
                         input.copyTo(output)
                     }
                 } ?: run {
-                    logger.w("DrugImage response body was null for $url")
+                    logger.w("DrugImage response body was null for ${url.substringBefore('?')}")
                     return@withContext null
                 }
 
                 logger.i("DrugImage saved: ${targetFile.absolutePath}")
                 targetFile.absolutePath
             } catch (e: Exception) {
-                logger.e("DrugImage download exception for url=$url drugName=$drugName", e, event = LogEvent.DRUG_IMAGE_FAILED)
+                logger.e("DrugImage download exception for url=${url.substringBefore('?')} drugName=$drugName", e, event = LogEvent.DRUG_IMAGE_FAILED)
                 null
             }
         }

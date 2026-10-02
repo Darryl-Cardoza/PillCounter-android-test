@@ -315,7 +315,14 @@ class RemoteLogDestination internal constructor(
      */
     suspend fun flushBeforeLogout(timeoutMs: Long = LOGOUT_FLUSH_TIMEOUT_MS) {
         // File I/O and the network call stay off the caller's (Main) thread.
-        withContext(Dispatchers.IO) { withTimeoutOrNull(timeoutMs) { flushPendingNow(wait = true) } }
+        try {
+            withContext(Dispatchers.IO) { withTimeoutOrNull(timeoutMs) { flushPendingNow(wait = true) } }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // Best effort: a storage failure must not block logout. Log.w, not logger, to avoid a log loop.
+            Log.w(TAG, "Flush before logout failed — entries stay queued", e)
+        }
     }
 
     /**
@@ -349,7 +356,10 @@ class RemoteLogDestination internal constructor(
         var index = 0
         try {
             while (index < queued.size) {
-                processQueuedLine(queued[index])?.let { keep += it }
+                val (kept, stop) = processQueuedLine(queued[index])
+                // Network down or token unusable: the rest would fail the same way, so leave them queued.
+                if (stop) break
+                kept?.let { keep += it }
                 index++
             }
         } finally {
@@ -363,25 +373,28 @@ class RemoteLogDestination internal constructor(
         }
     }
 
-    /** Sends one queued line; returns the line to keep (with updated attempts) or null when done with it. */
-    private suspend fun processQueuedLine(line: String): String? {
-        if (line.isBlank()) return null
+    /**
+     * Sends one queued line. Returns the line to keep (with updated attempts, or null when done with it)
+     * and whether the flush should stop here; on stop the line itself is kept unchanged by the caller.
+     */
+    private suspend fun processQueuedLine(line: String): Pair<String?, Boolean> {
+        if (line.isBlank()) return null to false
         val (attempts, json) = parseQueued(line)
         return try {
-            val request = requestAdapter.fromJson(json) ?: return null
+            val request = requestAdapter.fromJson(json) ?: return null to false
             when (trySend(request)) {
-                SendResult.OK, SendResult.DROP -> null
-                SendResult.RETRY_FREE -> "$attempts\t$json"
+                SendResult.OK, SendResult.DROP -> null to false
+                SendResult.RETRY_FREE -> line to true
                 SendResult.RETRY_COUNTED ->
                     if (attempts + 1 >= MAX_QUEUE_ATTEMPTS) {
                         Log.w(TAG, "Queued log entry rejected $MAX_QUEUE_ATTEMPTS times — dropped")
-                        null
-                    } else "${attempts + 1}\t$json"
+                        null to false
+                    } else "${attempts + 1}\t$json" to false
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            line // unparseable or unexpected: keep for the next flush
+            line to false // unparseable or unexpected: keep for the next flush
         }
     }
 

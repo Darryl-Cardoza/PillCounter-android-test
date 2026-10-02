@@ -96,7 +96,7 @@ object LogEventClassifier {
             "HistoryViewModel", "HistoryDetailsViewModel" ->
                 if ("delete" in message) LogEvent.HISTORY_DELETE_FAILED else LogEvent.HISTORY_LOAD_FAILED
 
-            "Hl7Repository", "Hl7ServiceManager", "Hl7EventHandler", "HL7BackgroundService",
+            "Hl7Repository", "Hl7ServiceManager", "Hl7EventHandler", "HL7backgroundService",
             "MllpClient", "MllpConnectionManager", "MllpServer", "NsdHelper" -> when {
                 "connect" in message -> LogEvent.HL7_CONNECT_FAILED
                 "resend" in message -> LogEvent.HL7_RESEND_FAILED

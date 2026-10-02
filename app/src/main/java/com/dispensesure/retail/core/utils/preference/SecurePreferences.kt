@@ -103,7 +103,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored)
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -117,7 +117,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toBoolean()
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -131,7 +131,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toInt()
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -145,7 +145,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toLong()
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }

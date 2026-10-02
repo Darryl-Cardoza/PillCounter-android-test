@@ -179,7 +179,9 @@ class Hl7Repository @Inject constructor(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                logger.e("Failed to process inbound HL7 message (type=$inboundType, msgId=${message.messageControlId})", e, event = LogEvent.HL7_RECEIVE_FAILED)
+                // Keep the type and stack trace but drop e.message, which can echo HL7 field values (PHI).
+                val safe = Exception(e.javaClass.name).also { it.stackTrace = e.stackTrace }
+                logger.e("Failed to process inbound HL7 message (type=$inboundType, msgId=${message.messageControlId})", safe, event = LogEvent.HL7_RECEIVE_FAILED)
             }
         }
     }

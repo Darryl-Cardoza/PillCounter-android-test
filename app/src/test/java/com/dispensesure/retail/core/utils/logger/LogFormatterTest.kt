@@ -131,7 +131,7 @@ class LogFormatterTest {
     // -------------------------------------------------------------------------
 
     @Test
-    fun `formatSingleLine uses translated error for an exception entry`() {
+    fun `formatSingleLine keeps the caller's message for an exception entry`() {
         val throwable = java.net.SocketTimeoutException("timeout")
         val entry = LogEntry(
             timestampMillis = 0L,
@@ -146,13 +146,13 @@ class LogFormatterTest {
 
         assertEquals(
             "UserRepository.kt -> UserRepository -> getUserProfile -> " +
-                "The request timed out while communicating with the server.",
+                "Failed while retrieving the user profile from the backend.",
             LogFormatter.formatSingleLine(entry)
         )
     }
 
     @Test
-    fun `formatSingleLine falls back to the plain message when there is no throwable`() {
+    fun `formatSingleLine uses the plain message when there is no throwable`() {
         val entry = LogEntry(
             timestampMillis = 0L,
             level = LogLevel.ERROR,
@@ -178,10 +178,11 @@ class LogFormatterTest {
             fileName = "Foo.kt",
             className = "Foo",
             methodName = "bar",
-            message = "context message",
+            message = "context message\nsecond line\rMSH|segment",
             throwable = throwable
         )
 
-        assertFalse(LogFormatter.formatSingleLine(entry).contains("\n"))
+        val line = LogFormatter.formatSingleLine(entry)
+        assertFalse(line.contains("\n") || line.contains("\r"))
     }
 }

@@ -276,7 +276,9 @@ class RemoteLogDestinationTest {
     fun `entries that still fail to send during a flush are re-queued, not lost`() {
         online(false)
         val destination = destination()
+        // One at a time so the failing entry is queued last (a flush stops at the first network failure).
         destination.write(entry(message = "will-succeed"))
+        destination.awaitIdleForTest()
         destination.write(entry(message = "will-keep-failing"))
         destination.awaitIdleForTest()
 
@@ -290,6 +292,25 @@ class RemoteLogDestinationTest {
         val remaining = pendingFile.readText()
         assertFalse("The entry that sent successfully must be removed from the queue", remaining.contains("will-succeed"))
         assertTrue("The entry that still fails must remain queued for the next flush", remaining.contains("will-keep-failing"))
+    }
+
+    @Test
+    fun `a flush stops at the first network failure and keeps the rest queued`() {
+        online(false)
+        val destination = destination()
+        repeat(3) {
+            destination.write(entry(message = "stop-marker-$it"))
+            destination.awaitIdleForTest()
+        }
+
+        online(true)
+        coEvery { api.sendLog(any()) } throws java.io.IOException("server unreachable")
+        destination.flushPending()
+        destination.awaitIdleForTest()
+
+        coVerify(exactly = 1) { api.sendLog(any()) }
+        val remaining = pendingFile.readText()
+        repeat(3) { assertTrue(remaining.contains("stop-marker-$it")) }
     }
 
     @Test
@@ -371,5 +392,15 @@ class RemoteLogDestinationTest {
         val remaining = pendingFile.readText()
         assertTrue(remaining.contains("slow-1"))
         assertTrue(remaining.contains("slow-2"))
+    }
+
+    @Test
+    fun `flushBeforeLogout does not throw when the queue file cannot be read`() {
+        online(true)
+        // A directory where the queue file should be: readLines() throws an IOException.
+        pendingFile.mkdirs()
+        val destination = destination()
+
+        kotlinx.coroutines.runBlocking { destination.flushBeforeLogout(5_000L) }
     }
 }

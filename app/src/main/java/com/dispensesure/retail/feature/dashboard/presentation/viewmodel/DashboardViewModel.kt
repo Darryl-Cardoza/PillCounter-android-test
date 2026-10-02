@@ -110,6 +110,9 @@ class DashboardViewModel @Inject constructor(
     /** @return false when the pin could not be cleared; the mismatch dialog stays up. */
     fun clearPmsCertPin(): Boolean = hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
 
+    /** Closes the mismatch dialog even when the pin clear failed (Cancel must always close it). */
+    fun dismissPmsCertMismatch() = hl7EventHandler.clearCertMismatch()
+
     /** StateFlow to signal when terminal info is loaded from auth/me */
     private val _terminalInfoLoaded = MutableStateFlow(false)
     val terminalInfoLoaded: StateFlow<Boolean> = _terminalInfoLoaded.asStateFlow()
