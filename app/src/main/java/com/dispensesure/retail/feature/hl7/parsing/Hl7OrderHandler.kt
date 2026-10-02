@@ -15,7 +15,10 @@ class Hl7OrderHandler @Inject constructor() {
     fun handle(order: OrderGroup, message: HL7Message): Hl7OrderAction = when (order.orderControl) {
         "NW" -> Hl7OrderAction.NewOrder(order, message)
         "RF" -> Hl7OrderAction.Refill(order, message)
-        "CA" -> Hl7OrderAction.Cancel(order.placerOrderNumber)
+        "CA" -> Hl7OrderAction.Cancel(
+            rxNo = order.fillerOrderNumber.takeIf { it.isNotBlank() }
+                ?: order.placerOrderNumber
+        )
         "HD" -> Hl7OrderAction.Hold(order.placerOrderNumber)
         "RL" -> Hl7OrderAction.Release(order.placerOrderNumber)
         "DC" -> Hl7OrderAction.Discontinue(order.placerOrderNumber)

@@ -42,7 +42,7 @@ import org.rite.hl7.model.HL7Message
  * - Load HL7 configuration from Intent extras at startup
  * - Start and manage MLLP server and client connections
  * - Register and broadcast HL7 service via NSD
- * - Parse incoming HL7 messages using hl7Core [HL7] facade, build ACKs, emit callbacks
+ * - Parse incoming HL7 messages using the HL7 library [HL7] facade, build ACKs, emit callbacks
  * - Send automated responses (ACK / RDS)
  * - Maintain foreground notification to prevent background termination
  *
@@ -80,7 +80,7 @@ class HL7Service : Service() {
     private lateinit var networkIpMonitor: NetworkIpMonitor
 
     /**
-     * hl7Core facade — wires together parser, validator, builder, and AckBuilder
+     * HL7 library facade — wires together parser, validator, builder, and AckBuilder
      * with all PillCounter Z-segments (ZSN, ZSV, ZAD) pre-registered.
      * Rebuilt when [config] changes (i.e., after [updateConfig] is called).
      */
@@ -761,7 +761,7 @@ class HL7Service : Service() {
      * Handles an incoming raw HL7 string from the MLLP server.
      *
      * Pipeline:
-     * 1. Parse raw text via hl7Core's [HL7] facade (parser + validator).
+     * 1. Parse raw text via the HL7 library [HL7] facade (parser + validator).
      * 2. Notify the [listener] with the typed [HL7Message].
      * 3. Build and return a wire-ready ACK string via [HL7.ack].
      *    On parse failure, returns an AA ACK derived from the raw MSH fields.
@@ -842,10 +842,11 @@ class HL7Service : Service() {
         serviceScope.launch {
             try {
                 val messageStr = original.encode()
-                logger.i("sendHl7Message | msgId=${original.header?.messageControlId.orEmpty()} | len=${messageStr.length}")
+                val msgId = original.messageControlId.orEmpty()
+                logger.i("sendHl7Message | msgId=$msgId | len=${messageStr.length}")
                 val ack = clientManager.send(messageStr)
-                listener?.onMessageSent(messageStr, original.header?.messageControlId.orEmpty())
-                listener?.onAckReceived(ack, original.header?.messageControlId.orEmpty())
+                listener?.onMessageSent(messageStr, msgId)
+                listener?.onAckReceived(ack, msgId)
             } catch (e: Exception) {
                 listener?.onError("MESSAGE_SEND", e)
             }

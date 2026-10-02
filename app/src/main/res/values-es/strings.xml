@@ -590,5 +590,14 @@
     <string name="photo_label_step">Paso</string>
     <string name="photo_label_date_time">Fecha y hora</string>
     <string name="photo_label_operator">Operador</string>
+    <string name="hl7_notification_new_rx_ndc_missing">New order for Rx %1$s ignored — NDC missing in RXE-2</string>
+    <string name="hl7_notification_new_rx_qty_missing">New order for Rx %1$s ignored — dispense amount missing</string>
+    <string name="hl7_notification_new_rx_qty_invalid">New order for Rx %1$s ignored — invalid quantity %2$d</string>
+    <string name="hl7_notification_refill_exhausted">Refill exhausted for Rx %1$s — no remaining refills (RXE-16=%2$d)</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing">Refill for Rx %1$s ignored — NDC or quantity missing/invalid</string>
+    <string name="hl7_notification_change_order_ndc_missing">Change order for %1$s ignored — NDC missing</string>
+    <string name="hl7_notification_no_processable_orders">HL7 message %1$s received but contained no processable orders</string>
+    <string name="hl7_notification_structural_validation_failed">HL7 message %1$s rejected — structural validation failed: %2$s</string>
+    <string name="hl7_notification_business_validation_failed">HL7 message %1$s rejected — %2$s</string>
 
 </resources>

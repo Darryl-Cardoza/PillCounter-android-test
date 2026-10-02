@@ -215,30 +215,18 @@ object HL7MessageBuilder {
                     z.dispensedQuantity = totalCount.toString()
                     z.transactionStatus = ZuiTransactionStatus.DONE
                     z.drugImage = buildZuiImagePayload(txnId = txn.txnId, bottles = bottles, details = txnDetails)
-                        ?.firstOrNull()?.getOrNull(2)
+                        ?.joinToString("^") { group -> group.joinToString("&") }
                     z.drugLotNumber = effectiveLotNumber
                     z.drugSerialNumber = effectiveSerialNumber
                     z.drugExpirationDate = effectiveExpirationDate
                 }
                 Hl7Format.EYECON.sendingApplication -> {
-                    // EyeCon ZUI — uses same ZUIDispenseBuilder as Vivid.
-                    // EyeCon-specific fields (userName, verifiedBy, stockBottleVerification,
-                    // packetVersion, techName, fillStatus, stockBottleBarcodeNdc) were removed
-                    // in the new library; map available fields only.
+                    // EyeCon uses a 25-field fixed ZUI layout that the ZUIDispenseBuilder
+                    // (11 fields max) cannot express. Use the builder for ZUI-1 only so the
+                    // segment appears in the encoded message, then replace the whole line with
+                    // the correct 25-field segment in buildEyeConZuiSegment below.
                     val eyeConNdc = drugCode.replace("-", "")
-                    val eyeConUserFirstName = pharmacistGivenName.orEmpty()
-                    zui { z ->
-                        z.ndc = eyeConNdc
-                        z.vividUserName = eyeConUserFirstName.take(10)
-                        z.rxNumber = orderId
-                        z.fillNumber = "1"
-                        z.transactionOrderId = vividOrderId
-                        z.dispensedQuantity = totalCount.toString()
-                        z.transactionStatus = ZuiTransactionStatus.DONE
-                        z.drugLotNumber = effectiveLotNumber
-                        z.drugSerialNumber = effectiveSerialNumber
-                        z.drugExpirationDate = effectiveExpirationDate
-                    }
+                    zui { z -> z.ndc = eyeConNdc }
                 }
             }
 
@@ -348,7 +336,71 @@ object HL7MessageBuilder {
             }
         }
 
-        return message.encode()
+        var encoded = message.encode()
+        // The library HL7-escapes '^' and '&' inside field strings to '\S\' and '\T\'.
+        // ZUI-8 carries multi-group image data joined by '^' (groups) and '&' (parts within a
+        // group) — these must be real HL7 separator characters, not escaped literals.
+        // Unescape only within the ZUI segment line so other segments aren't affected.
+        if (config.messageFormat == Hl7Format.VIVID) {
+            encoded = encoded.replace(Regex("(ZUI\\|[^\r\n]*)")) { match ->
+                match.value.replace("\\S\\", "^").replace("\\T\\", "&")
+            }
+        }
+        return if (config.messageFormat == Hl7Format.EYECON) {
+            val eyeConNdc = drugCode.replace("-", "")
+            val firstName = pharmacistGivenName.orEmpty()
+            val stockVerification = if (isNdcVerified) "A" else ""
+            val zuiSegment = buildEyeConZuiSegment(
+                ndc = eyeConNdc,
+                drugName = drugName,
+                firstName = firstName,
+                rxNumber = orderId,
+                fillNumber = "1",
+                verifiedBy = firstName,
+                stockBottleVerification = stockVerification,
+                dispensedQuantity = totalCount.toString(),
+                fillStatus = "complete",
+                stockBottleBarcodeNdc = eyeConNdc,
+            )
+            // Replace the stub ZUI line the builder emitted with the full 25-field segment.
+            encoded.replace(Regex("ZUI\\|[^\r\n]*"), zuiSegment)
+        } else {
+            encoded
+        }
+    }
+
+    /**
+     * Builds the EyeCon fixed 25-field ZUI segment string.
+     * Field positions match the EyeCon PMS C# parser spec:
+     * ZUI-1=ndc, ZUI-2=drugName, ZUI-3=firstName, ZUI-4=prescriptionNumber,
+     * ZUI-5=fillNumber, ZUI-6=verifiedBy, ZUI-7=stockBottleVerification,
+     * ZUI-18=dispensedQuantity, ZUI-19=fillStatus, ZUI-21=stockBottleBarcodeNdc.
+     */
+    private fun buildEyeConZuiSegment(
+        ndc: String,
+        drugName: String,
+        firstName: String,
+        rxNumber: String,
+        fillNumber: String,
+        verifiedBy: String,
+        stockBottleVerification: String,
+        dispensedQuantity: String,
+        fillStatus: String,
+        stockBottleBarcodeNdc: String,
+    ): String {
+        val fields = Array(26) { "" }
+        fields[0] = "ZUI"
+        fields[1] = ndc
+        fields[2] = drugName
+        fields[3] = firstName
+        fields[4] = rxNumber
+        fields[5] = fillNumber
+        fields[6] = verifiedBy
+        fields[7] = stockBottleVerification
+        fields[18] = dispensedQuantity
+        fields[19] = fillStatus
+        fields[21] = stockBottleBarcodeNdc
+        return fields.joinToString("|")
     }
 
     // =========================================================
@@ -483,8 +535,8 @@ object HL7MessageBuilder {
 
                 orc { orc ->
                     orc.orderControl = "RE"
-                    orc.placerOrderNumber = orderId
-                    orc.fillerOrderNumber = requestId
+                    // ORC-2: bucketId^requestId as components (not separate fields).
+                    orc.placerOrderNumber = if (!requestId.isNullOrBlank()) "$orderId^$requestId" else orderId
                 }
 
                 obx { obx ->
@@ -553,11 +605,22 @@ object HL7MessageBuilder {
                 }
             }
 
+            // HL7 library escapes literal '^' to '\S\' when it appears inside a field
+            // string — but ORC-2.2 (requestId component) must be a real component separator.
+            // Post-process the encoded ORC line to restore the component separator.
+            val encoded = if (requestId != null) {
+                message.encode().replace(
+                    "ORC|RE|${orderId}\\S\\${requestId}",
+                    "ORC|RE|${orderId}^${requestId}"
+                )
+            } else {
+                message.encode()
+            }
             InventoryChunk(
                 chunkIndex = chunkIndex,
                 totalChunks = totalChunks,
                 itemTotal = chunkTotal,
-                message = message.encode()
+                message = encoded
             )
         }
     }

@@ -127,6 +127,8 @@ class HL7ServiceTest {
     fun `handleIncomingMessage parses successfully, notifies listener, and returns ack`() {
         setField("hl7", HL7(version = "2.5"))
         val listener = mockk<Hl7EventListener>(relaxed = true)
+        every { listener.onMessageReceived(any(), any()) } returns
+            "MSH|^~\\&|RECVAPP|RECVFAC|SENDAPP|SENDFAC|20240101120000||ACK^A01|ACK001|P|2.5\rMSA|AA|MSG001"
         setField("listener", listener)
 
         val raw = sampleHl7("MSG001")
@@ -155,6 +157,8 @@ class HL7ServiceTest {
     fun `handleIncomingMessage still notifies listener and acks when parse succeeds with errors`() {
         setField("hl7", HL7(version = "2.5"))
         val listener = mockk<Hl7EventListener>(relaxed = true)
+        every { listener.onMessageReceived(any(), any()) } returns
+            "MSH|^~\\&|RECVAPP|RECVFAC|SENDAPP|SENDFAC|20240101120000||ACK^A01|ACK002|P|2.5\rMSA|AA|MSG002"
         setField("listener", listener)
 
         // Missing required trigger event / malformed but still parseable as a partial message

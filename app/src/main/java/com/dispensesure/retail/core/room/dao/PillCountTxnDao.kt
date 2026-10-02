@@ -357,11 +357,11 @@ interface PillCountTxnDao {
         UPDATE pill_count_txn
         SET status    = :status,
             updatedAt = :now
-        WHERE rxNo = :rxNo AND isDeleted = 0
+        WHERE transactionOrderId = :orderId AND isDeleted = 0
         """
     )
-    suspend fun updateStatusByRxNo(
-        rxNo: String,
+    suspend fun updateStatusByOrderId(
+        orderId: String,
         status: CountStatus,
         now: Long = System.currentTimeMillis()
     )
@@ -371,10 +371,28 @@ interface PillCountTxnDao {
         UPDATE pill_count_txn
         SET status    = :status,
             updatedAt = :now
-        WHERE transactionOrderId = :orderId AND isDeleted = 0
+        WHERE transactionOrderId = :orderId
+          AND isDeleted = 0
+          AND status IN ('PARTIAL', 'ON_HOLD')
         """
     )
-    suspend fun updateStatusByOrderId(
+    suspend fun updateStatusByOrderIdIfPartialOrOnHold(
+        orderId: String,
+        status: CountStatus,
+        now: Long = System.currentTimeMillis()
+    )
+
+    @Query(
+        """
+        UPDATE pill_count_txn
+        SET status    = :status,
+            updatedAt = :now
+        WHERE transactionOrderId = :orderId
+          AND isDeleted = 0
+          AND status = 'PARTIAL'
+        """
+    )
+    suspend fun updateStatusByOrderIdIfPartial(
         orderId: String,
         status: CountStatus,
         now: Long = System.currentTimeMillis()

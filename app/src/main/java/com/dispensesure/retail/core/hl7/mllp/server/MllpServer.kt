@@ -26,7 +26,7 @@ import javax.net.ssl.SSLSocket
  *
  * The server is fully responsible for TCP/MLLP transport only; all HL7 parsing,
  * validation, and ACK building is delegated to the supplied callback so that
- * this class remains decoupled from the hl7Core message model.
+ * this class remains decoupled from the AAR library message model.
  *
  * @param port       TCP port to listen on.
  * @param bypassTls  When true, listens on a plain (non-TLS) server socket instead
@@ -111,11 +111,10 @@ class MllpServer(
                     val ack = try {
                         onHl7Message(msg)
                     } catch (e: Exception) {
-                        // onHl7Message (HL7BackgroundService.handleIncomingMessage) already catches
-                        // all exceptions internally and returns a fallback ACK string — this catch
-                        // is a last-resort guard. Log and continue so remaining split messages
-                        // in the same frame still get processed and ACKed.
-                        logger.e("onHl7Message() threw unexpectedly — skipping ACK for this message, continuing", e)
+                        // Last-resort guard — build a minimal AR ACK so PMS doesn't time out.
+                        logger.e("onHl7Message() threw unexpectedly — sending AR fallback ACK", e)
+                        val fallbackAck = buildFallbackArAck(msg)
+                        runCatching { output.write(Mllp.wrap(fallbackAck)); output.flush() }
                         continue
                     }
                     if (ack.isNotEmpty()) {
@@ -141,6 +140,13 @@ class MllpServer(
             serverSocket?.close()
             scope.cancel()
         }
+    }
+
+    private fun buildFallbackArAck(raw: String): String {
+        val controlId = raw.lineSequence()
+            .firstOrNull { it.startsWith("MSH|") }
+            ?.split("|")?.getOrNull(9).orEmpty()
+        return "MSH|^~\\&||||||||ACK^R01|FALLBACK||2.5\rMSA|AR|$controlId"
     }
 
     private fun splitMessages(frame: String): List<String> {

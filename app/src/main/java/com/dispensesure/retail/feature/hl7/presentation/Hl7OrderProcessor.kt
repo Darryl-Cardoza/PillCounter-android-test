@@ -45,7 +45,7 @@ class Hl7OrderProcessor @Inject constructor(
             when (action) {
                 is Hl7OrderAction.NewOrder -> handleNewOrder(action.order, action.message)
                 is Hl7OrderAction.Refill -> handleRefill(action.order, action.message)
-                is Hl7OrderAction.Cancel -> handleCancel(action.orderId)
+                is Hl7OrderAction.Cancel -> handleCancel(action.rxNo)
                 is Hl7OrderAction.Hold -> handleHold(action.orderId)
                 is Hl7OrderAction.Release -> handleRelease(action.orderId)
                 is Hl7OrderAction.Discontinue -> handleDiscontinue(action.orderId)
@@ -69,7 +69,7 @@ class Hl7OrderProcessor @Inject constructor(
             logger.w("handleNewOrder: NDC missing (RXE-2) for rxNo=$rxNo — ignoring")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_drug_not_found_title),
-                message = "New order for Rx ${rxNo.orEmpty()} ignored — NDC missing in RXE-2",
+                message = context.getString(R.string.hl7_notification_new_rx_ndc_missing, rxNo.orEmpty()),
             )
             return
         }
@@ -77,7 +77,7 @@ class Hl7OrderProcessor @Inject constructor(
             logger.w("handleNewOrder: dispense amount missing (RXE-10/RXE-3) for rxNo=$rxNo — ignoring")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_new_rx_title),
-                message = "New order for Rx ${rxNo.orEmpty()} ignored — dispense amount missing",
+                message = context.getString(R.string.hl7_notification_new_rx_qty_missing, rxNo.orEmpty()),
             )
             return
         }
@@ -85,7 +85,7 @@ class Hl7OrderProcessor @Inject constructor(
             logger.w("handleNewOrder: invalid dispense amount $targetCount for rxNo=$rxNo — ignoring")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_new_rx_title),
-                message = "New order for Rx ${rxNo.orEmpty()} ignored — invalid quantity $targetCount",
+                message = context.getString(R.string.hl7_notification_new_rx_qty_invalid, rxNo.orEmpty(), targetCount),
             )
             return
         }
@@ -146,7 +146,7 @@ class Hl7OrderProcessor @Inject constructor(
             logger.w("handleRefill: refills exhausted for rxNo=$rxNo (RXE-16=$pending) — notifying, not creating txn")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_new_rx_title),
-                message = "Refill exhausted for Rx $rxNo — no remaining refills (RXE-16=$pending)",
+                message = context.getString(R.string.hl7_notification_refill_exhausted, rxNo.orEmpty(), pending),
             )
             return
         }
@@ -172,7 +172,7 @@ class Hl7OrderProcessor @Inject constructor(
             logger.w("handleRefill: missing NDC or qty for rxNo=$rxNo refillNo=$refillNo — ignoring")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_new_rx_title),
-                message = "Refill for Rx ${rxNo.orEmpty()} ignored — NDC or quantity missing/invalid",
+                message = context.getString(R.string.hl7_notification_refill_ndc_or_qty_missing, rxNo.orEmpty()),
             )
             return
         }
@@ -219,19 +219,19 @@ class Hl7OrderProcessor @Inject constructor(
         )
     }
 
-    private suspend fun handleCancel(orderId: String) {
-        logger.i("ORC|CA for orderId=$orderId — soft-deleting transaction")
-        pillCountTxnDao.softDeleteByOrderId(orderId)
+    private suspend fun handleCancel(rxNo: String) {
+        logger.i("ORC|CA for rxNo=$rxNo — soft-deleting transaction")
+        pillCountTxnDao.softDeleteByRxNo(rxNo)
     }
 
     private suspend fun handleHold(orderId: String) {
         logger.i("ORC|HD for orderId=$orderId — marking ON_HOLD")
-        pillCountTxnDao.updateStatusByOrderId(orderId, CountStatus.ON_HOLD)
+        pillCountTxnDao.updateStatusByOrderIdIfPartial(orderId, CountStatus.ON_HOLD)
     }
 
     private suspend fun handleRelease(orderId: String) {
         logger.i("ORC|RL for orderId=$orderId — restoring to PARTIAL")
-        pillCountTxnDao.updateStatusByOrderId(orderId, CountStatus.PARTIAL)
+        pillCountTxnDao.updateStatusByOrderIdIfPartialOrOnHold(orderId, CountStatus.PARTIAL)
     }
 
     private suspend fun handleDiscontinue(orderId: String) {
@@ -240,33 +240,34 @@ class Hl7OrderProcessor @Inject constructor(
     }
 
     private suspend fun handleChangeOrder(order: OrderGroup) {
-        val orderId = order.placerOrderNumber.takeIf { it.isNotBlank() } ?: return
+        val rxNo = order.fillerOrderNumber.takeIf { it.isNotBlank() }
+            ?: order.placerOrderNumber.takeIf { it.isNotBlank() } ?: return
         val hl7Ndc = order.giveCode?.trim() ?: run {
-            logger.w("handleChangeOrder: NDC missing for orderId=$orderId — ignoring")
+            logger.w("handleChangeOrder: NDC missing for rxNo=$rxNo — ignoring")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_edit_rx_title),
-                message = "Change order for $orderId ignored — NDC missing",
+                message = context.getString(R.string.hl7_notification_change_order_ndc_missing, rxNo),
             )
             return
         }
         val hl7DrugName = order.giveName.orEmpty()
         val newTargetCount = order.dispenseAmount
 
-        logger.i("ORC|XO for orderId=$orderId — looking up existing transaction")
+        logger.i("ORC|XO for rxNo=$rxNo — looking up existing transaction")
 
         // CA before any DB write: soft-delete directly, no update needed
         if (order.orderStatus == "CA") {
-            logger.i("ORC|XO with status=CA for orderId=$orderId — soft-deleting without update")
-            pillCountTxnDao.softDeleteByOrderId(orderId)
+            logger.i("ORC|XO with status=CA for rxNo=$rxNo — soft-deleting without update")
+            pillCountTxnDao.softDeleteByRxNo(rxNo)
             return
         }
 
-        var existingTxn = pillCountTxnDao.getByTransactionOrderId(orderId)
+        var existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
         if (existingTxn == null) {
-            logger.w("ORC|XO ignored: no active transaction for orderId=$orderId")
+            logger.w("ORC|XO ignored: no active transaction for rxNo=$rxNo")
             notifier.show(
                 title = context.getString(R.string.hl7_notification_edit_rx_title),
-                message = context.getString(R.string.hl7_notification_edit_rx_not_found, orderId),
+                message = context.getString(R.string.hl7_notification_edit_rx_not_found, rxNo),
             )
             return
         }
@@ -289,7 +290,7 @@ class Hl7OrderProcessor @Inject constructor(
             title = context.getString(R.string.hl7_notification_edit_rx_title),
             message = context.getString(
                 R.string.hl7_notification_edit_rx_updated,
-                orderId,
+                rxNo,
                 resolvedDrug?.drugName ?: hl7DrugName,
                 newTargetCount ?: 0,
             ),

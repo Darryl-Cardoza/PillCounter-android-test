@@ -78,10 +78,11 @@ class Hl7OrderHandlerTest {
     }
 
     @Test
-    fun `CA returns Cancel with placerOrderNumber`() {
+    fun `CA returns Cancel with fillerOrderNumber as rxNo`() {
         val action = handler.handle(order("CA", "ORD-CA"), minimalMsg())
         assertTrue(action is Hl7OrderAction.Cancel)
-        assertEquals("ORD-CA", (action as Hl7OrderAction.Cancel).orderId)
+        // order() helper sets fillerOrderNumber = "RX-1"; Cancel carries that as rxNo
+        assertEquals("RX-1", (action as Hl7OrderAction.Cancel).rxNo)
     }
 
     @Test

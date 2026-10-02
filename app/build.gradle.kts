@@ -3,7 +3,6 @@
 import com.google.devtools.ksp.KspExperimental
 import java.util.Properties
 
-
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")

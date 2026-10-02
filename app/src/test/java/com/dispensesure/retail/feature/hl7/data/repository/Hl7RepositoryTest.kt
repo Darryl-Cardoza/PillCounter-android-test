@@ -65,7 +65,7 @@ import org.rite.hl7.parser.HL7ParseResult
  *    coroutine reached the relevant point.
  *
  * Inbound HL7 messages are built by parsing real wire-format HL7 text via [HL7Parser] into a
- * genuine [HL7Message] — the SUT's [HL7Message] constructor is internal to the hl7Core module, so
+ * genuine [HL7Message] — the SUT's [HL7Message] constructor is internal to the HL7 library AAR, so
  * tests cannot construct one directly.
  */
 @OptIn(ExperimentalCoroutinesApi::class)

@@ -20,7 +20,7 @@ class Hl7Validator @Inject constructor() {
         val defaultConfig = ValidationConfig()
         val config = defaultConfig.copy(
             knownOrderControlCodes = setOf("NW", "RF", "CA", "HD", "RL", "DC", "XO", "RP"),
-            knownPriorities = setOf("S", "A", "R", "T"),
+            knownPriorities = setOf("High", "Medium", "Low"),
         )
         HL7Validator(config)
     }

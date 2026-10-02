@@ -23,6 +23,7 @@ import org.rite.hl7.HL7
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.model.segment.ORCSegment
 import org.rite.hl7.model.segment.RXESegment
+import org.rite.hl7.model.segment.ZADSegment
 import org.rite.hl7.model.segment.ZNISegment
 import org.rite.hl7.model.segment.ZUISegment
 import org.rite.hl7.validation.AckBuilder
@@ -56,7 +57,7 @@ class Hl7EventHandler @Inject constructor(
     fun clearCertMismatch() { _pmsCertMismatch.value = false }
 
     private val ackBuilder by lazy { AckBuilder() }
-    private val hl7 by lazy { HL7(version = preferenceHelper.getHl7Version()) }
+    private fun hl7() = HL7(version = preferenceHelper.getHl7Version())
 
     override fun onMessageReceived(parsed: HL7Message, idempotencyKey: String): String {
         val msh = parsed.header
@@ -66,16 +67,11 @@ class Hl7EventHandler @Inject constructor(
         logger.i("HL7 message received | msgId=$msgId | type=$messageCode^$triggerEvent | key=$idempotencyKey")
 
         return when {
-            messageCode == "INR" -> {
-                // INR inventory request — no validation failure path; process async
+            messageCode == "INR" && triggerEvent == "U06"
+                    && parsed.segment<ZADSegment>(ZADSegment.NAME) == null -> {
+                // INR^U06 without ZAD — inventory count request; process async
                 scope.launch { hl7Repository.handleInrInventoryRequest(parsed) }
-                hl7.ack(parsed)
-            }
-            messageCode == "RDE" && parsed.segment<ORCSegment>(ORCSegment.NAME)
-                ?.orderControl?.uppercase() == "CA" -> {
-                // Cancellation — no validation failure path; process async
-                scope.launch { hl7Repository.handleOrderCancellation(parsed) }
-                hl7.ack(parsed)
+                buildSuccessAck(parsed)
             }
             messageCode == "RDE" -> {
                 // Dispense order — validate synchronously, return AA or AE
@@ -83,16 +79,23 @@ class Hl7EventHandler @Inject constructor(
             }
             else -> {
                 logger.w("Unhandled HL7 type=$messageCode^$triggerEvent | msgId=$msgId")
-                hl7.ack(parsed)
+                buildSuccessAck(parsed)
             }
         }
     }
 
+    private fun buildSuccessAck(parsed: HL7Message): String =
+        runCatching { ackBuilder.build(parsed, ValidationResult(emptyList())).encode() }
+            .getOrElse { e ->
+                logger.e("AckBuilder.build() failed for AA — falling back to hl7().ack()", e)
+                hl7().ack(parsed)
+            }
+
     private fun buildErrorAck(parsed: HL7Message, validationResult: ValidationResult): String =
         runCatching { ackBuilder.build(parsed, validationResult).encode() }
             .getOrElse { e ->
-                logger.e("AckBuilder.build() failed — falling back to hl7.ack()", e)
-                hl7.ack(parsed)
+                logger.e("AckBuilder.build() failed — falling back to hl7().ack()", e)
+                hl7().ack(parsed)
             }
 
     private fun errorResult(reason: String): ValidationResult = ValidationResult(
@@ -114,12 +117,22 @@ class Hl7EventHandler @Inject constructor(
             // ZUI and ZNI order-packet formats bypass the new RDE parser — handled in repository
             hasZui -> {
                 scope.launch { hl7Repository.handleZuiOrderPacketDispenseRequest(parsed) }
-                hl7.ack(parsed)
+                buildSuccessAck(parsed)
             }
 
             hasZni -> {
                 scope.launch { hl7Repository.handleOrderPacketDispenseRequest(parsed) }
-                hl7.ack(parsed)
+                buildSuccessAck(parsed)
+            }
+
+            // ORC|CA — route through parser+processor
+            orderControl == "CA" -> {
+                val orders = hl7Parser.map(parsed).getOrElse { e ->
+                    logger.e("HL7 parse/map failed for CA | msgId=$msgId | ${e.message}")
+                    return buildErrorAck(parsed, errorResult("Parse failed for CA: ${e.message}"))
+                }
+                orders.forEach { order -> hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed)) }
+                buildSuccessAck(parsed)
             }
 
             // ORC|HD/RL/DC status-only actions — no structural validation needed, no RXE required
@@ -129,13 +142,13 @@ class Hl7EventHandler @Inject constructor(
                     return buildErrorAck(parsed, errorResult("Parse failed for $orderControl: ${e.message}"))
                 }
                 orders.forEach { order -> hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed)) }
-                hl7.ack(parsed)
+                buildSuccessAck(parsed)
             }
 
             // ORC|XO (change order) — repository handles the edit logic
             orderControl == "XO" && rxe != null -> {
                 scope.launch { hl7Repository.handleOrderEdit(parsed) }
-                hl7.ack(parsed)
+                buildSuccessAck(parsed)
             }
 
             // Standard RDE^O11 with ORC+RXE — validate then process
@@ -150,7 +163,7 @@ class Hl7EventHandler @Inject constructor(
                     logger.e("HL7 no order groups found | msgId=$msgId")
                     notifier.show(
                         title = context.getString(R.string.hl7_notification_new_rx_title),
-                        message = "HL7 message $msgId received but contained no processable orders",
+                        message = context.getString(R.string.hl7_notification_no_processable_orders, msgId),
                     )
                     return buildErrorAck(parsed, errorResult("No processable ORC/RXE pairs in message"))
                 }
@@ -161,7 +174,7 @@ class Hl7EventHandler @Inject constructor(
                     logger.e("HL7 structural validation failed | msgId=$msgId | ${structResult.issues.firstOrNull()?.errorText}")
                     notifier.show(
                         title = context.getString(R.string.hl7_notification_new_rx_title),
-                        message = "HL7 message $msgId rejected — structural validation failed: ${structResult.issues.firstOrNull()?.errorText}",
+                        message = context.getString(R.string.hl7_notification_structural_validation_failed, msgId, structResult.issues.firstOrNull()?.errorText.orEmpty()),
                     )
                     return buildErrorAck(parsed, structResult)
                 }
@@ -173,7 +186,7 @@ class Hl7EventHandler @Inject constructor(
                         logger.e("HL7 business validation failed | msgId=$msgId | orderId=${order.placerOrderNumber} | ${businessResult.reason}")
                         notifier.show(
                             title = context.getString(R.string.hl7_notification_new_rx_title),
-                            message = "HL7 message $msgId rejected — ${businessResult.reason}",
+                            message = context.getString(R.string.hl7_notification_business_validation_failed, msgId, businessResult.reason.orEmpty()),
                         )
                         return buildErrorAck(parsed, errorResult(businessResult.reason ?: "Business validation failed"))
                     }
@@ -183,7 +196,7 @@ class Hl7EventHandler @Inject constructor(
                 orders.forEach { order ->
                     hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed))
                 }
-                hl7.ack(parsed)
+                buildSuccessAck(parsed)
             }
 
             else -> {

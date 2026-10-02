@@ -840,7 +840,7 @@ class Hl7Repository @Inject constructor(
 
     /**
      * Inserts ZIN|...|EXPECTED_ON_HAND|<count> detail rows into the transaction.
-     * Uses the new [ZINSegment] typed segment from hl7Core.
+     * Uses the new [ZINSegment] typed segment from the HL7 library AAR.
      */
     internal suspend fun insertZinContainerDetails(txnId: Long, message: HL7Message) {
         val zinSegments = message.segments<ZINSegment>(ZINSegment.NAME)
@@ -874,8 +874,9 @@ class Hl7Repository @Inject constructor(
     // ─────────────────────────── INBOUND HANDLER: ORC|CA (CANCEL) ───────────────────────────
 
     internal suspend fun handleOrderCancellation(message: HL7Message) {
-        val rxNo = message.segment<ORCSegment>(ORCSegment.NAME)?.placerOrderNumber
-            ?.takeIf { it.isNotBlank() } ?: return
+        val orc = message.segment<ORCSegment>(ORCSegment.NAME)
+        val rxNo = (orc?.fillerOrderNumber?.takeIf { it.isNotBlank() }
+            ?: orc?.placerOrderNumber?.takeIf { it.isNotBlank() }) ?: return
         logger.i("Received ORC|CA for rxNo=$rxNo — soft-deleting transaction")
         pillCountTxnDao.softDeleteByRxNo(rxNo)
         logger.i("Transaction with rxNo=$rxNo marked as deleted")
@@ -898,7 +899,8 @@ class Hl7Repository @Inject constructor(
      */
     internal suspend fun handleOrderEdit(message: HL7Message) {
         val orc = message.segment<ORCSegment>(ORCSegment.NAME) ?: return
-        val rxNo = orc.placerOrderNumber.takeIf { it.isNotBlank() } ?: return
+        val rxNo = orc.fillerOrderNumber.takeIf { it.isNotBlank() }
+            ?: orc.placerOrderNumber.takeIf { it.isNotBlank() } ?: return
         val rxe = message.segment<RXESegment>(RXESegment.NAME) ?: return
 
         val orderStatusRaw = orc.orderStatus?.uppercase().orEmpty()

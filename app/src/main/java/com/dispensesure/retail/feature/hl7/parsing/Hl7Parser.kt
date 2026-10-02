@@ -18,19 +18,45 @@ class Hl7Parser @Inject constructor() {
     fun map(message: HL7Message): Result<List<OrderGroup>> {
         val msh: MSHSegment? = message.header
         val msgControlId = msh?.messageControlId.orEmpty()
-        val orcs = message.segments<ORCSegment>(ORCSegment.NAME)
-        if (orcs.isEmpty()) return Result.failure(IllegalArgumentException("No ORC segment in message $msgControlId"))
-        val rxes = message.segments<RXESegment>(RXESegment.NAME)
+        val allSegments = message.typedSegments
+        if (allSegments.none { it.segmentName == ORCSegment.NAME }) {
+            return Result.failure(IllegalArgumentException("No ORC segment in message $msgControlId"))
+        }
 
-        val orders = orcs.mapIndexedNotNull { i, orc ->
-            val rxe = rxes.getOrNull(i)
-            val control = orc.orderControl.trim().uppercase()
-            // NW/RF require an RXE for drug+qty — skip this ORC without failing the whole message
-            if (rxe == null && control in setOf("NW", "RF")) {
-                logger.w("ORC[$i] control=$control has no paired RXE in msgId=$msgControlId — skipping order")
-                return@mapIndexedNotNull null
+        // Pair each ORC with the RXE immediately following it in wire order.
+        val orders = buildList {
+            var pendingOrc: ORCSegment? = null
+            for (seg in allSegments) {
+                when (seg.segmentName) {
+                    ORCSegment.NAME -> {
+                        pendingOrc?.let { orc ->
+                            val control = orc.orderControl.trim().uppercase()
+                            if (control !in setOf("NW", "RF")) {
+                                add(mapOrderGroup(msh, orc, null))
+                            } else {
+                                logger.w("ORC control=$control has no paired RXE in msgId=$msgControlId — skipping")
+                            }
+                        }
+                        @Suppress("UNCHECKED_CAST")
+                        pendingOrc = seg as ORCSegment
+                    }
+                    RXESegment.NAME -> {
+                        val orc = pendingOrc ?: continue
+                        @Suppress("UNCHECKED_CAST")
+                        add(mapOrderGroup(msh, orc, seg as RXESegment))
+                        pendingOrc = null
+                    }
+                }
             }
-            mapOrderGroup(msh, orc, rxe)
+            // Flush trailing ORC with no RXE
+            pendingOrc?.let { orc ->
+                val control = orc.orderControl.trim().uppercase()
+                if (control !in setOf("NW", "RF")) {
+                    add(mapOrderGroup(msh, orc, null))
+                } else {
+                    logger.w("ORC control=$control has no paired RXE in msgId=$msgControlId — skipping")
+                }
+            }
         }
 
         if (orders.isEmpty()) return Result.failure(IllegalArgumentException("No processable ORC/RXE pairs in message $msgControlId"))

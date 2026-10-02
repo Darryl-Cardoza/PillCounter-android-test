@@ -5,7 +5,7 @@ import org.rite.hl7.model.HL7Message
 sealed class Hl7OrderAction {
     data class NewOrder(val order: OrderGroup, val message: HL7Message) : Hl7OrderAction()
     data class Refill(val order: OrderGroup, val message: HL7Message) : Hl7OrderAction()
-    data class Cancel(val orderId: String) : Hl7OrderAction()
+    data class Cancel(val rxNo: String) : Hl7OrderAction()
     data class Hold(val orderId: String) : Hl7OrderAction()
     data class Release(val orderId: String) : Hl7OrderAction()
     data class Discontinue(val orderId: String) : Hl7OrderAction()

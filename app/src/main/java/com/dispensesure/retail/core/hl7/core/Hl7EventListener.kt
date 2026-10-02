@@ -19,7 +19,7 @@ interface Hl7EventListener {
      * Processing that does not affect the ACK decision (DB writes, drug resolution) may
      * be launched asynchronously after the ACK string is determined.
      *
-     * @param parsed Parsed HL7 message model (from hl7Core)
+     * @param parsed Parsed HL7 message model (from hl7Core-release.aar, org.rite.hl7 namespace)
      * @param idempotencyKey Stable key used to prevent duplicate processing
      * @return Wire-ready ACK string (AA, AE, or AR) to echo back via MLLP
      */

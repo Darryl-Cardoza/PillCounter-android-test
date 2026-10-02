@@ -284,7 +284,7 @@ class MllpServerTest {
     }
 
     @Test
-    fun `onHl7Message exception is swallowed, no ACK sent, server remains up for next messages`() = runBlocking {
+    fun `onHl7Message exception sends AR fallback ACK, server remains up for next messages`() = runBlocking {
         val port = freePort()
         var callCount = 0
         val server = MllpServer(port, bypassTls = true) { msg ->
@@ -296,9 +296,12 @@ class MllpServerTest {
         try {
             val socket = connectWithRetry(port)
             socket.soTimeout = 3000
-            // First message — callback throws, no ACK sent, connection stays open
-            socket.getOutputStream().write(Mllp.wrap("TRIGGER-1"))
+            // First message — callback throws, fallback AR ACK sent, connection stays open
+            socket.getOutputStream().write(Mllp.wrap("MSH|^~\\&|SEND|FAC|RECV|FAC|20240101||RDE^O11|MSG001|P|2.5"))
             socket.getOutputStream().flush()
+
+            val fallbackAck = withTimeout(5000) { readMllpFrame(socket.getInputStream()) }
+            assertTrue("fallback ACK should contain MSA|AR", fallbackAck.contains("MSA|AR"))
 
             // Second message — callback succeeds, ACK returned
             Thread.sleep(100)
