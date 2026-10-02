@@ -75,7 +75,7 @@ class CameraHelper(
     // [processImageProxy] drops them before they reach frameFlow. Closes after
     // SCAN_FRAMES_BEFORE_GATE consecutive scanning results; reopens on any
     // non-scanning AF state, or unconditionally after MAX_GATE_CLOSED_MS so a
-    // lens that never converges (hard scenes, overlapping re-triggers) cannot
+    // lens that never converges (hard scenes) cannot
     // starve frameFlow. Reset in [attachFocusStateListener] before each session
     // starts, then written only by the capture callback of the current bind
     // generation; gateClosedAtMs == 0 means the gate is open.

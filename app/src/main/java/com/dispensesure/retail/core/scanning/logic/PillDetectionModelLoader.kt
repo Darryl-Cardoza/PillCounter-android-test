@@ -85,7 +85,7 @@ class PillDetectionModelLoader @Inject constructor(
         private const val TRAY_MODEL_ENABLED = true
 
         private const val MAX_CPU_THREADS = 4
-        private const val WARMUP_RUNS = 3
+        internal const val WARMUP_RUNS = 3
     }
 
     suspend fun getOrLoadInterpreters(includeGlove: Boolean = true): LoadedModels {
@@ -114,7 +114,7 @@ class PillDetectionModelLoader @Inject constructor(
             // live analyzer reads on every frame. Only the first load is safe for that: no
             // analyzer can exist before it. A later reload (glove added for a hazardous drug)
             // runs while the old analyzer is still analysing.
-            val firstLoad = pillInterpreter == null
+            val firstLoad = isFirstLoad()
 
             withContext(Dispatchers.IO) {
                 coroutineScope {
@@ -262,6 +262,9 @@ class PillDetectionModelLoader @Inject constructor(
         }
     }
 
+    /** True until the pill interpreter has been loaded once. Call under [mutex]. */
+    private fun isFirstLoad(): Boolean = pillInterpreter == null
+
     /**
      * Builds an Interpreter using the GPU delegate when supported on this device
      * (backend auto-selected by CompatibilityList — OpenCL preferred, OpenGL
@@ -341,20 +344,20 @@ class PillDetectionModelLoader @Inject constructor(
         frameWarmUp: Boolean
     ) {
         val tStart = System.currentTimeMillis()
-        try {
-            if (frameWarmUp) {
-                // Drives the pill model and the rest of the frame pipeline the way the
-                // analyzer does (see FramePathWarmUp), which also compiles the shaders.
-                FramePathWarmUp.run(pill)
-            } else {
-                warmUpTfliteInterpreter(pill, "Pill")
-            }
+        val frameWarmedUp = frameWarmUp && try {
+            // Drives the pill model and the rest of the frame pipeline the way the
+            // analyzer does (see FramePathWarmUp), which also compiles the shaders.
+            FramePathWarmUp.run(pill)
+            true
         } catch (t: Throwable) {
             Log.w(TAG, "Frame-path warm-up failed, using interpreter-only warm-up: ${t.message}")
+            false
+        }
+        if (!frameWarmedUp) {
             try {
                 warmUpTfliteInterpreter(pill, "Pill")
-            } catch (t2: Throwable) {
-                Log.w(TAG, "Pill warm-up failed (continuing): ${t2.message}")
+            } catch (t: Throwable) {
+                Log.w(TAG, "Pill warm-up failed (continuing): ${t.message}")
             }
         }
         if (glove != null) {
