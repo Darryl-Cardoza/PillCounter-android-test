@@ -241,13 +241,13 @@ class DashboardViewModel @Inject constructor(
         if (localId == 0L || tabJobs[tab]?.isActive == true) return
         queueSources.update { it.copy(observedTabs = it.observedTabs + tab) }
         tabJobs[tab] = when (tab) {
-            DashboardTab.DISPENSE_QUEUE -> collectSource(pendingDispenseFlow(localId)) {
+            DashboardTab.DISPENSE_QUEUE -> collectSource(pendingDispenseFlow(localId), tab) {
                 copy(pendingDispense = it, loadedTabs = loadedTabs + tab)
             }
-            DashboardTab.INVENTORY_QUEUE -> collectSource(pendingInventoryFlow()) {
+            DashboardTab.INVENTORY_QUEUE -> collectSource(pendingInventoryFlow(), tab) {
                 copy(pendingInventory = it, loadedTabs = loadedTabs + tab)
             }
-            DashboardTab.RECENT_ACTIVITY -> collectSource(recentActivityFlow(localId)) {
+            DashboardTab.RECENT_ACTIVITY -> collectSource(recentActivityFlow(localId), tab) {
                 copy(recentActivity = it, loadedTabs = loadedTabs + tab)
             }
         }
@@ -289,12 +289,18 @@ class DashboardViewModel @Inject constructor(
         return completedDispenses.combine(completedBatches, ::recentActivityItems)
     }
 
-    /** Collects one source on Default into [queueSources]. */
+    /** Collects one source on Default into [queueSources]. A failed [tab] source still ends its loading state. */
     private fun <T> collectSource(
         source: Flow<T>,
+        tab: DashboardTab? = null,
         updateSources: QueueSources.(T) -> QueueSources,
     ): Job = viewModelScope.launch(defaultDispatcher) {
-        source.collect { value -> queueSources.update { it.updateSources(value) } }
+        source
+            .catch { e ->
+                logger.e("Observing dashboard source failed", e, event = LogEvent.DASHBOARD_LOAD_FAILED)
+                if (tab != null) queueSources.update { it.copy(loadedTabs = it.loadedTabs + tab) }
+            }
+            .collect { value -> queueSources.update { it.updateSources(value) } }
     }
 
     /**
@@ -319,15 +325,6 @@ class DashboardViewModel @Inject constructor(
                         )
                     }
                 }
-                val inventoryItems = batches
-                    .filter { it.status == BatchStatus.COMPLETED.name }
-                    .map { QueueItem.Inventory(batch = it) }
-                (dispenseItems + inventoryItems).sortedByDescending { it.createdAt }
-            }.catch { e ->
-                logger.e("Observing recent activity failed", e, event = LogEvent.DASHBOARD_LOAD_FAILED)
-                _uiState.update { it.copy(isLoadingQueue = false) }
-            }.collect { combined ->
-                _uiState.update { it.copy(recentActivity = combined, isLoadingQueue = false) }
             }
         }
     }

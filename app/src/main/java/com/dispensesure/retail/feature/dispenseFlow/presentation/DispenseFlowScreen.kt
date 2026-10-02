@@ -815,14 +815,14 @@ fun DispenseFlowScreen(
         }
     }
 
-    // Scanned RX's most recent transaction is already dispensed — block re-dispensing.
     val genericErrorToastText = stringResource(R.string.error_generic)
     LaunchedEffect(dispenseState.errorToastTick) {
         if (dispenseState.errorToastTick > 0) {
-            showToast(context, genericErrorToastText, Toast.LENGTH_SHORT)
+            showToast(genericErrorToastText)
         }
     }
 
+    // Scanned RX's most recent transaction is already dispensed — block re-dispensing.
     val rxAlreadyCompletedToastText = stringResource(R.string.rx_already_completed_message)
     LaunchedEffect(dispenseState.rxAlreadyCompletedToastTick) {
         if (dispenseState.rxAlreadyCompletedToastTick > 0) {

@@ -667,8 +667,8 @@ class PreferenceHelperTest {
         assertEquals(null, helper.getThemeColors())
     }
 
-    @Test(expected = com.google.gson.JsonSyntaxException::class)
-    fun `getControlDrugTypes throws on corrupted json`() {
+    @Test
+    fun `getControlDrugTypes returns empty set on corrupted json instead of throwing`() {
         store["key_control_drug_types"] = "not-json"
         assertEquals(emptySet<String>(), helper.getControlDrugTypes())
     }

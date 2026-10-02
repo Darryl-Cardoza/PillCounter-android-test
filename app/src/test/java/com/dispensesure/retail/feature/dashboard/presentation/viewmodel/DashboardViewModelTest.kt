@@ -537,7 +537,7 @@ class DashboardViewModelTest {
     }
 
     @Test
-    fun `observeQueue failure is caught, does not crash, and clears the loading flag`() =
+    fun `queue source failure is caught, does not crash, and clears the loading flag`() =
         runTest(testDispatcher) {
             every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns
                 flow { throw RuntimeException("db boom") }
@@ -547,7 +547,7 @@ class DashboardViewModelTest {
             advanceUntilIdle()
 
             assertFalse(vm.uiState.value.isLoadingQueue)
-            assertTrue(vm.uiState.value.queue.isEmpty())
+            assertTrue(vm.uiState.value.dispenseQueue.isEmpty())
         }
 
     @Test

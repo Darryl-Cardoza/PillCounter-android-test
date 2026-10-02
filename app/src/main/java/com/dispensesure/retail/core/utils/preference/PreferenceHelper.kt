@@ -284,36 +284,6 @@ class PreferenceHelper @Inject constructor(
         return value
     }
 
-    // ─────────────────────────── RECENT LOGINS ───────────────────────────
-    // Stored as JSON string — SecurePreferences does not support StringSet
-
-    fun addRecentLogin(email: String) {
-        val current = getRecentLogins().toMutableList()
-        current.remove(email)
-        current.add(0, email)
-        while (current.size > 5) current.removeAt(current.size - 1)
-        prefs.putString(KEY_RECENT_LOGINS, gson.toJson(current))
-        logger.i("Added recent login (total=${current.size})")
-    }
-
-    fun getRecentLogins(): List<String> {
-        val json = prefs.getString(KEY_RECENT_LOGINS) ?: return emptyList()
-        return try {
-            gson.fromJson(json, Array<String>::class.java).toList()
-        } catch (e: Exception) {
-            // Read directly on the Login screen's first composition (LoginScreen.kt) — a
-            // corrupted/stale blob here must degrade to "no recent logins" rather than crash it.
-            logger.e("Failed to parse recent logins, returning empty list", e, event = LogEvent.CACHE_READ_FAILED)
-            emptyList()
-        }
-    }
-
-    fun removeRecentLogin(email: String) {
-        val updated = getRecentLogins().filterNot { it == email }
-        prefs.putString(KEY_RECENT_LOGINS, gson.toJson(updated))
-        logger.i("Removed recent login (remaining=${updated.size})")
-    }
-
     // ─────────────────────────── HISTORY RETENTION ───────────────────────────
 
     fun saveHistoryRetention(days: Int) {
