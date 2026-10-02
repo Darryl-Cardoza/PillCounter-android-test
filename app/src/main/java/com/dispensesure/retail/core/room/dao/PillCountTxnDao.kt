@@ -147,6 +147,8 @@ interface PillCountTxnDao {
            txn.isNdcVerified,
            txn.bucketId,
            txn.isDispense,
+           txn.rxNo,
+           txn.refillNo,
            txn.priority,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
                 THEN subDrug.drugName ELSE drug.drugName END AS drugName,
@@ -182,8 +184,7 @@ interface PillCountTxnDao {
                  WHEN 'Low'    THEN 3
                  ELSE 2
              END ASC, /* values correspond to TxnPriority enum names */
-             txn.isComingFromHL7 DESC,
-             txn.createdAt DESC
+             txn.createdAt ASC
     """
     )
 
@@ -537,6 +538,8 @@ interface PillCountTxnDao {
         txn.targetCount,
         txn.note,
         txn.bucketId,
+        txn.rxNo,
+        txn.refillNo,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
              THEN subDrug.drugType ELSE drug.drugType END AS drugType,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.strength IS NOT NULL
@@ -584,6 +587,8 @@ interface PillCountTxnDao {
         txn.targetCount,
         txn.note,
         txn.bucketId,
+        txn.rxNo,
+        txn.refillNo,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
              THEN subDrug.drugType ELSE drug.drugType END AS drugType,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.strength IS NOT NULL
@@ -798,6 +803,8 @@ interface PillCountTxnDao {
            txn.isNdcVerified,
            txn.bucketId,
            txn.isDispense,
+           txn.rxNo,
+           txn.refillNo,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
                 THEN subDrug.drugName ELSE drug.drugName END AS drugName,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL

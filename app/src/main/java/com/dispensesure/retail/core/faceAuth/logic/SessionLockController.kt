@@ -84,6 +84,9 @@ class SessionLockController @Inject constructor(
         SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
             if (key == preferenceHelper.userLoggedInKey && !preferenceHelper.isUserLoggedIn()) {
                 _verifiedFaceProfileId.value = null
+                // Nobody to verify into after a logout, so release the lock and let Login show.
+                _isLocked.value = false
+                _startOnScan.value = false
             }
         }
 

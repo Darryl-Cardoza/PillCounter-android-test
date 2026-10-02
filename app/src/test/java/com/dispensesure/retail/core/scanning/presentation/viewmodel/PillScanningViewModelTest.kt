@@ -632,12 +632,12 @@ class PillScanningViewModelTest {
     @Test
     fun `Add with no camera frame shows a toast and records nothing`() = runTest {
         mockkObject(UserInterfaceUtils)
-        every { UserInterfaceUtils.showToast(any(), any<String>(), any()) } returns Unit
+        every { UserInterfaceUtils.showToast(any<String>(), any()) } returns Unit
 
         tapAdd()
         advanceUntilIdle()
 
-        verify(exactly = 1) { UserInterfaceUtils.showToast(any(), any<String>(), any()) }
+        verify(exactly = 1) { UserInterfaceUtils.showToast(any<String>(), any()) }
         assertFalse(viewModel.uiState.value.isAddCooldown)
         // Signature unset, so the retry isn't rejected as a duplicate.
         assertNull(getPrivateField("lastAddedScanSignature"))

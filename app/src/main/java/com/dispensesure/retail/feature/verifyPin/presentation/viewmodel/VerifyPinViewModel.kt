@@ -194,4 +194,9 @@ class VerifyPinViewModel @Inject constructor(
     fun setUserLoggedIn(isLoggedIn: Boolean) {
         prefs.setUserLoggedIn(isLoggedIn)
     }
+
+    /** Stores the Login screen's "Remember me" choice once the OTP is verified. */
+    fun saveRememberMe(enabled: Boolean) {
+        prefs.setRememberMe(enabled)
+    }
 }

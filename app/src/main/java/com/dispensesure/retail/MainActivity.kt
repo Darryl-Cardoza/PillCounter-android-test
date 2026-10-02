@@ -52,6 +52,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
+import com.dispensesure.retail.core.utils.common.HelperFunctions.clearSessionIfNotRemembered
 import com.dispensesure.retail.core.utils.common.HelperFunctions.openPlayStore
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.LoadingIndicator
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.SecurityErrorDialog
@@ -158,6 +159,11 @@ class MainActivity : ComponentActivity() {
         // overlay is up on the first frame. Null state only: a config-change or
         // process-death restore must not lock a session the user is mid-way through.
         if (savedInstanceState == null) {
+            // Runs first so the face lock and permission chain see the logged-out state.
+            // Skipped for notification taps, which keep the user in the app.
+            if (!intent.getBooleanExtra(EXTRA_OPENED_FROM_NOTIFICATION, false)) {
+                clearSessionIfNotRemembered(preferenceHelper)
+            }
             sessionLockController.onAppLaunch()
         }
 
@@ -265,6 +271,11 @@ class MainActivity : ComponentActivity() {
                         navController = rememberNavController()
                         val preferenceHelper = remember { PreferenceHelper(this) }
                         val startDestination = remember { resolveStartDestinationAndClearIfExpired(preferenceHelper) }
+                        // A local logout (Remember me off, offline expiry) doesn't stop HL7, and the
+                        // settings fetch only stops it when online. Stop it here, with no network needed.
+                        LaunchedEffect(Unit) {
+                            if (!preferenceHelper.isUserLoggedIn()) settingsViewModel.onUserLoginOrLogOut()
+                        }
 
                         // ── Security dialog shown once over all other content ──
                         if (securityViolations.isNotEmpty()) {
@@ -467,23 +478,13 @@ class MainActivity : ComponentActivity() {
             preferenceHelper.setUserLoggedIn(false)
             sessionHealthController.markLoggedOut()
             sessionLockController.unlock()
-        } catch (e: Exception) {
-            // This runs on session-expiry/refresh-401 — already the worst possible moment for
-            // the app to crash, since the user would be left stuck with an invalidated session
-            // and no way back to Login. Swallow and log rather than propagate.
-            logger.e("Logout teardown failed", e, event = LogEvent.LOGOUT_FAILED)
-        } finally {
-            // Always leave for Login, even if a cleanup step above threw.
-            try {
-                if (::navController.isInitialized) {
-                    navController.navigate(AUTH_GRAPH_ROUTE) {
-                        popUpTo(0) { inclusive = true }
-                    }
+            if (::navController.isInitialized) {
+                navController.navigate(AUTH_GRAPH_ROUTE) {
+                    popUpTo(0) { inclusive = true }
                 }
-                showToast(this, R.string.session_expired)
-            } catch (e: Exception) {
-                logger.e("Navigation to Login after logout failed", e, event = LogEvent.LOGOUT_FAILED)
             }
+            showToast(this, R.string.session_expired, keepUntilShown = true)
+        } finally {
             sessionHealthController.endTeardown()
         }
     }
@@ -651,6 +652,11 @@ class MainActivity : ComponentActivity() {
         }
 
         intent.removeExtra("navigate_route")
+    }
+
+    companion object {
+        // Set on every notification tap intent, so a notification never logs out a user without Remember me.
+        const val EXTRA_OPENED_FROM_NOTIFICATION = "opened_from_notification"
     }
 
 }

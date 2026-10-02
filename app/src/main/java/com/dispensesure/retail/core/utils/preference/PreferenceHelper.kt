@@ -26,6 +26,7 @@ private const val KEY_USER_ID = "user_id"
 private const val KEY_LOGGED_IN_EMAIL = "logged_in_email"
 private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
+private const val KEY_REMEMBER_ME = "remember_me"
 
 // Transactions
 private const val KEY_TXN_ID = "txn_id"
@@ -36,7 +37,6 @@ private const val KEY_THEME_COLORS = "theme_colors"
 // Miscellaneous
 private const val KEY_DO_NOT_ASK_AGAIN = "do_not_ask_again"
 private const val KEY_SHOW_NOTES_DIALOG = "key_show_notes_dialog"
-private const val KEY_RECENT_LOGINS = "recent_logins"
 private const val KEY_HISTORY_RETENTION = "history_retention"
 
 // HL7
@@ -138,6 +138,18 @@ class PreferenceHelper @Inject constructor(
     fun isUserLoggedIn(): Boolean {
         val state = prefs.getBoolean(KEY_USER_LOGGED_IN, false)
         logger.d("Checked user login state: $state")
+        return state
+    }
+
+    fun setRememberMe(enabled: Boolean) {
+        prefs.putBoolean(KEY_REMEMBER_ME, enabled)
+        logger.i("Set remember me: $enabled")
+    }
+
+    // Missing counts as false, so users logged in before this setting existed log in once more.
+    fun isRememberMeEnabled(): Boolean {
+        val state = prefs.getBoolean(KEY_REMEMBER_ME, false)
+        logger.d("Checked remember me: $state")
         return state
     }
 

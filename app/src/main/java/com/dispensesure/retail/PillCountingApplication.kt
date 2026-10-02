@@ -9,6 +9,7 @@ import com.dispensesure.retail.core.security.RuntimeUnit
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import coil.ImageLoader
 import com.dispensesure.retail.core.utils.coil.EncryptedImageFetcher
+import com.dispensesure.retail.core.utils.common.AppToast
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.LoggerConfig
@@ -43,6 +44,7 @@ class PillCountingApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppToast.register(this)
         // Must run before any other logging in this method, and before any other
         // singleton/DI-managed class has a chance to log during its own init.
         AppLogger.init(this)
