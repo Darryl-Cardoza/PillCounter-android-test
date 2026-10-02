@@ -107,13 +107,6 @@ class Hl7OrderHandlerTest {
     }
 
     @Test
-    fun `XO returns ChangeOrder`() {
-        val action = handler.handle(order("XO"), minimalMsg())
-        assertTrue(action is Hl7OrderAction.ChangeOrder)
-        assertEquals("ORD-1", (action as Hl7OrderAction.ChangeOrder).order.placerOrderNumber)
-    }
-
-    @Test
     fun `RP returns ReplaceTodo`() {
         val action = handler.handle(order("RP"), minimalMsg())
         assertEquals(Hl7OrderAction.ReplaceTodo, action)

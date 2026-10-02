@@ -590,14 +590,13 @@
     <string name="photo_label_step">Étape</string>
     <string name="photo_label_date_time">Date et heure</string>
     <string name="photo_label_operator">Opérateur</string>
-    <string name="hl7_notification_new_rx_ndc_missing">New order for Rx %1$s ignored — NDC missing in RXE-2</string>
-    <string name="hl7_notification_new_rx_qty_missing">New order for Rx %1$s ignored — dispense amount missing</string>
-    <string name="hl7_notification_new_rx_qty_invalid">New order for Rx %1$s ignored — invalid quantity %2$d</string>
-    <string name="hl7_notification_refill_exhausted">Refill exhausted for Rx %1$s — no remaining refills (RXE-16=%2$d)</string>
-    <string name="hl7_notification_refill_ndc_or_qty_missing">Refill for Rx %1$s ignored — NDC or quantity missing/invalid</string>
-    <string name="hl7_notification_change_order_ndc_missing">Change order for %1$s ignored — NDC missing</string>
-    <string name="hl7_notification_no_processable_orders">HL7 message %1$s received but contained no processable orders</string>
-    <string name="hl7_notification_structural_validation_failed">HL7 message %1$s rejected — structural validation failed: %2$s</string>
-    <string name="hl7_notification_business_validation_failed">HL7 message %1$s rejected — %2$s</string>
+    <string name="hl7_notification_new_rx_ndc_missing">Nouvelle commande pour la Rx %1$s ignorée — NDC manquant dans RXE-2</string>
+    <string name="hl7_notification_new_rx_qty_missing">Nouvelle commande pour la Rx %1$s ignorée — quantité à délivrer manquante</string>
+    <string name="hl7_notification_new_rx_qty_invalid">Nouvelle commande pour la Rx %1$s ignorée — quantité non valide %2$d</string>
+    <string name="hl7_notification_refill_exhausted">Renouvellements épuisés pour la Rx %1$s — aucun renouvellement restant (RXE-16=%2$d)</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing">Renouvellement de la Rx %1$s ignoré — NDC ou quantité manquants ou non valides</string>
+    <string name="hl7_notification_no_processable_orders">Message HL7 %1$s reçu, mais il ne contenait aucune commande traitable</string>
+    <string name="hl7_notification_structural_validation_failed">Message HL7 %1$s rejeté — échec de la validation structurelle : %2$s</string>
+    <string name="hl7_notification_business_validation_failed">Message HL7 %1$s rejeté — %2$s</string>
 
 </resources>

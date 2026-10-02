@@ -30,7 +30,7 @@ picture see [`/docs/architecture.md`](../../../../../../../docs/architecture.md)
 | `unsyncedTransaction` | List transactions awaiting sync | `UnsyncedTransactionScreen` | `UnsyncedTransactionViewModel` | — |
 | `profile` | View/update profile, delete account | `Profile` | `ProfileViewModel` | `IProfileApi` |
 | `settings` | App settings (history retention, CS double-count) | `Settings` | (uses `MainActivityViewModel` / settings repo) | settings API in `core/settings` |
-| `hl7` | HL7 orchestration (send/receive, notifications) | — (service-driven) | — | MLLP via `core/hl7` + `:hl7Core` |
+| `hl7` | HL7 orchestration (send/receive, notifications) | — (service-driven) | — | MLLP via `core/hl7` + HL7 AAR (`org.rite.hl7`) |
 
 ---
 
@@ -110,8 +110,8 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
 ### `hl7`
 
 - Orchestrates HL7 messaging on top of `core/hl7` (MLLP client/server, TLS, NSD)
-  and `:hl7Core` (segment builders/parsers). Runs with `HL7Service`, a foreground
-  service. See [`/docs/architecture.md`](../../../../../../../docs/architecture.md) §7.
+  and the prebuilt HL7 AAR `app/libs/hl7Core-release.aar` (segment builders/parsers).
+  Runs with `HL7Service`, a foreground service. See [`/docs/architecture.md`](../../../../../../../docs/architecture.md) §7.
 
 ---
 
@@ -120,8 +120,7 @@ and `inventoryFlow` sit on. Lives in [`../core/scanning/`](../../core/scanning/)
 Automated coverage is currently minimal (template tests + one commented-out
 `ForgotPasswordViewModelTest`). Recommended priority for new unit tests:
 `DispenseFlowViewModel` (count/persist logic), `TokenAuthenticator` (refresh),
-HL7 builders/parsers in `:hl7Core` (pure Kotlin — easy to test), and repository
-mapping. Libraries available: JUnit4, MockK, Mockito, Turbine, coroutines-test.
+and repository mapping. Libraries available: JUnit4, MockK, Mockito, Turbine, coroutines-test.
 
 ## Cross-feature known risks
 

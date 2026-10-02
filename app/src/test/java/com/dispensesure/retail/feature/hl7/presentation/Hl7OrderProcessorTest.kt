@@ -102,7 +102,7 @@ class Hl7OrderProcessorTest {
     }
 
     @Test
-    fun `NW with a saved COMPLETED row leaves it alone and inserts a new transaction`() = runTest {
+    fun `NW with a saved COMPLETED row from another message inserts a new transaction`() = runTest {
         coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.COMPLETED, "0")
 
         processor.process(newOrder(order("NW"))).join()
@@ -111,12 +111,34 @@ class Hl7OrderProcessorTest {
     }
 
     @Test
-    fun `NW with a saved FORCE_COMPLETED row leaves it alone and inserts a new transaction`() = runTest {
+    fun `NW with a saved FORCE_COMPLETED row from another message inserts a new transaction`() = runTest {
         coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.FORCE_COMPLETED, "0")
 
         processor.process(newOrder(order("NW"))).join()
 
         verifyInsertedNew(refillNo = "0")
+    }
+
+    @Test
+    fun `NW resent after its COMPLETED row writes nothing`() = runTest {
+        val finished = savedRow(CountStatus.COMPLETED, "0")
+        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns finished
+        coEvery { pillCountTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns finished
+
+        processor.process(newOrder(order("NW"))).join()
+
+        verifyIgnoredAsResend()
+    }
+
+    @Test
+    fun `NW resent after its FORCE_COMPLETED row writes nothing`() = runTest {
+        val finished = savedRow(CountStatus.FORCE_COMPLETED, "0")
+        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "0") } returns finished
+        coEvery { pillCountTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns finished
+
+        processor.process(newOrder(order("NW"))).join()
+
+        verifyIgnoredAsResend()
     }
 
     @Test
@@ -162,12 +184,23 @@ class Hl7OrderProcessorTest {
     }
 
     @Test
-    fun `RF with RXE-16 and a saved COMPLETED row leaves it alone and inserts a new transaction`() = runTest {
+    fun `RF with RXE-16 and a saved COMPLETED row from another message inserts a new transaction`() = runTest {
         coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "2") } returns savedRow(CountStatus.COMPLETED, "2")
 
         processor.process(refill(order("RF", pendingRefills = 1, refillNumber = 2))).join()
 
         verifyInsertedNew(refillNo = "2")
+    }
+
+    @Test
+    fun `RF with RXE-16 resent after its COMPLETED row writes nothing`() = runTest {
+        val finished = savedRow(CountStatus.COMPLETED, "2")
+        coEvery { pillCountTxnDao.getByRxNoAndFillNo(RX, "2") } returns finished
+        coEvery { pillCountTxnDao.getByRxNoAndMessageControlId(RX, MSG_ID) } returns finished
+
+        processor.process(refill(order("RF", pendingRefills = 1, refillNumber = 2))).join()
+
+        verifyIgnoredAsResend()
     }
 
     @Test
@@ -294,6 +327,11 @@ class Hl7OrderProcessorTest {
     private fun verifyNoTxnWrite() {
         coVerify(exactly = 0) { pillCountTxnDao.upsertPreservingId(any()) }
         coVerify(exactly = 0) { pillCountTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
+    }
+
+    private fun verifyIgnoredAsResend() {
+        verifyNoTxnWrite()
+        coVerify(exactly = 0) { drugMasterDao.getDrugByNdc(any()) }
     }
 
     private companion object {

@@ -22,7 +22,6 @@ class Hl7OrderHandler @Inject constructor() {
         "HD" -> Hl7OrderAction.Hold(order.placerOrderNumber)
         "RL" -> Hl7OrderAction.Release(order.placerOrderNumber)
         "DC" -> Hl7OrderAction.Discontinue(order.placerOrderNumber)
-        "XO" -> Hl7OrderAction.ChangeOrder(order)
         "RP" -> {
             // TODO: RP (Replace) atomicity and dual-ACK behaviour not yet designed
             logger.w("RP (Replace) received for ${order.placerOrderNumber} — not yet implemented, ignoring")

@@ -50,7 +50,6 @@ class Hl7OrderProcessor @Inject constructor(
                 is Hl7OrderAction.Hold -> handleHold(action.orderId)
                 is Hl7OrderAction.Release -> handleRelease(action.orderId)
                 is Hl7OrderAction.Discontinue -> handleDiscontinue(action.orderId)
-                is Hl7OrderAction.ChangeOrder -> handleChangeOrder(action.order)
                 is Hl7OrderAction.ReplaceTodo -> {
                     logger.w("RP (Replace) received — not yet implemented, ignoring")
                 }
@@ -94,7 +93,12 @@ class Hl7OrderProcessor @Inject constructor(
         val refillNo = order.refillNumber.toString()
 
         // Upsert: if same Rx + same refill already exists and is still open → update, else create new
-        val existing = if (rxNo != null) pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo)?.takeUnless { it.isFinished() } else null
+        val matched = if (rxNo != null) pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo) else null
+        if (matched?.isFinished() == true && findResend(rxNo, order.messageControlId)?.isFinished() == true) {
+            logger.w("handleNewOrder: resend of msgId=${order.messageControlId} for rxNo=$rxNo already finished — ignoring")
+            return
+        }
+        val existing = matched?.takeUnless { it.isFinished() }
         val finalDrug = resolveDrug(hl7Ndc, hl7DrugName) ?: return
         val drugId = drugMasterDao.upsertPreservingId(finalDrug)
 
@@ -157,9 +161,7 @@ class Hl7OrderProcessor @Inject constructor(
             order.refillNumber.toString()
         } else {
             // A PMS resend of this message (same Rx + MSH-10) reuses its refill instead of adding another.
-            val resent = if (rxNo != null && order.messageControlId.isNotBlank()) {
-                pillCountTxnDao.getByRxNoAndMessageControlId(rxNo, order.messageControlId)
-            } else null
+            val resent = findResend(rxNo, order.messageControlId)
             if (resent?.isFinished() == true) {
                 logger.w("handleRefill: resend of msgId=${order.messageControlId} for rxNo=$rxNo already finished — ignoring")
                 return
@@ -173,7 +175,12 @@ class Hl7OrderProcessor @Inject constructor(
         }
 
         // Same Rx + same refillNo still open → update existing; otherwise → new txn
-        val existing = if (rxNo != null) pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo)?.takeUnless { it.isFinished() } else null
+        val matched = if (rxNo != null) pillCountTxnDao.getByRxNoAndFillNo(rxNo, refillNo) else null
+        if (matched?.isFinished() == true && findResend(rxNo, order.messageControlId)?.isFinished() == true) {
+            logger.w("handleRefill: resend of msgId=${order.messageControlId} for rxNo=$rxNo already finished — ignoring")
+            return
+        }
+        val existing = matched?.takeUnless { it.isFinished() }
 
         val hl7Ndc = order.giveCode?.trim().orEmpty()
         val hl7DrugName = order.giveName.orEmpty()
@@ -250,64 +257,6 @@ class Hl7OrderProcessor @Inject constructor(
         pillCountTxnDao.softDeleteByOrderId(orderId)
     }
 
-    private suspend fun handleChangeOrder(order: OrderGroup) {
-        val rxNo = order.fillerOrderNumber.takeIf { it.isNotBlank() }
-            ?: order.placerOrderNumber.takeIf { it.isNotBlank() } ?: return
-        val hl7Ndc = order.giveCode?.trim() ?: run {
-            logger.w("handleChangeOrder: NDC missing for rxNo=$rxNo — ignoring")
-            notifier.show(
-                title = context.getString(R.string.hl7_notification_edit_rx_title),
-                message = context.getString(R.string.hl7_notification_change_order_ndc_missing, rxNo),
-            )
-            return
-        }
-        val hl7DrugName = order.giveName.orEmpty()
-        val newTargetCount = order.dispenseAmount
-
-        logger.i("ORC|XO for rxNo=$rxNo — looking up existing transaction")
-
-        // CA before any DB write: soft-delete directly, no update needed
-        if (order.orderStatus == "CA") {
-            logger.i("ORC|XO with status=CA for rxNo=$rxNo — soft-deleting without update")
-            pillCountTxnDao.softDeleteByRxNo(rxNo)
-            return
-        }
-
-        var existingTxn = pillCountTxnDao.getActiveByRxNo(rxNo)
-        if (existingTxn == null) {
-            logger.w("ORC|XO ignored: no active transaction for rxNo=$rxNo")
-            notifier.show(
-                title = context.getString(R.string.hl7_notification_edit_rx_title),
-                message = context.getString(R.string.hl7_notification_edit_rx_not_found, rxNo),
-            )
-            return
-        }
-
-        val resolvedDrug = resolveDrug(hl7Ndc, hl7DrugName)
-        val newDrugId = resolvedDrug?.let { drugMasterDao.upsertPreservingId(it) }
-            ?: existingTxn.drugId
-
-        val newStatus = mapOrderStatus(order.orderStatus)
-
-        pillCountTxnDao.updateFromHl7Edit(
-            txnId = existingTxn.txnId,
-            drugId = newDrugId,
-            targetCount = newTargetCount,
-            priority = order.priority,
-            status = newStatus,
-        )
-
-        notifier.show(
-            title = context.getString(R.string.hl7_notification_edit_rx_title),
-            message = context.getString(
-                R.string.hl7_notification_edit_rx_updated,
-                rxNo,
-                resolvedDrug?.drugName ?: hl7DrugName,
-                newTargetCount ?: 0,
-            ),
-        )
-    }
-
     private suspend fun resolveDrug(ndc: String, fallbackName: String): DrugMasterEntity? {
         val local = drugMasterDao.getDrugByNdc(ndc)
         if (local != null) return local
@@ -351,10 +300,9 @@ class Hl7OrderProcessor @Inject constructor(
     private fun PillCountTxnEntity.isFinished() =
         status == CountStatus.COMPLETED || status == CountStatus.FORCE_COMPLETED
 
-    private fun mapOrderStatus(orderStatus: String?): CountStatus? = when (orderStatus?.uppercase()) {
-        "IP" -> CountStatus.PARTIAL
-        "CM" -> CountStatus.COMPLETED
-        "HD" -> CountStatus.ON_HOLD
-        else -> null
-    }
+    // Saved row for this Rx from the same HL7 message (MSH-10), i.e. a PMS resend.
+    private suspend fun findResend(rxNo: String?, messageControlId: String): PillCountTxnEntity? =
+        if (rxNo != null && messageControlId.isNotBlank()) {
+            pillCountTxnDao.getByRxNoAndMessageControlId(rxNo, messageControlId)
+        } else null
 }

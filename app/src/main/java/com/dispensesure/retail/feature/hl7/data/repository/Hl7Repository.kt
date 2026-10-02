@@ -870,18 +870,6 @@ class Hl7Repository @Inject constructor(
         }
     }
 
-
-    // ─────────────────────────── INBOUND HANDLER: ORC|CA (CANCEL) ───────────────────────────
-
-    internal suspend fun handleOrderCancellation(message: HL7Message) {
-        val orc = message.segment<ORCSegment>(ORCSegment.NAME)
-        val rxNo = (orc?.fillerOrderNumber?.takeIf { it.isNotBlank() }
-            ?: orc?.placerOrderNumber?.takeIf { it.isNotBlank() }) ?: return
-        logger.i("Received ORC|CA for rxNo=$rxNo — soft-deleting transaction")
-        pillCountTxnDao.softDeleteByRxNo(rxNo)
-        logger.i("Transaction with rxNo=$rxNo marked as deleted")
-    }
-
     // ─────────────────────────── INBOUND HANDLER: ORC|XO (EDIT) ───────────────────────────
 
     /**
@@ -1033,7 +1021,7 @@ class Hl7Repository @Inject constructor(
      * IP = in-progress/resume → PARTIAL
      * CM = complete          → COMPLETED
      * HD = on-hold           → ON_HOLD
-     * CA is handled via soft-delete in [handleOrderCancellation]; returns null here.
+     * CA is handled via soft-delete in [handleOrderEdit]; returns null here.
      */
     private fun mapHl7OrderStatus(orderStatus: String?): CountStatus? {
         return when (orderStatus?.uppercase()) {

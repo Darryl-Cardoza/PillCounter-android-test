@@ -196,15 +196,6 @@ class Hl7RepositoryTest {
         return parse(segments.joinToString("\r"))
     }
 
-    /** ORC|CA cancel-order message. */
-    private fun cancelMessage(placerOrderId: String = "RX1", controlId: String = "MSG1"): HL7Message =
-        parse(
-            listOf(
-                msh("RDE", "O11", controlId),
-                "ORC|CA|$placerOrderId",
-            ).joinToString("\r")
-        )
-
     /** INR^U06 inventory request in the PMS layout: drug in INV-1, status in INV-2. */
     private fun inventoryMessage(
         ndc: String = "12345",
@@ -275,16 +266,6 @@ class Hl7RepositoryTest {
         // asserting the observer was never collected; this avoids racing the background launch.
         verify(timeout = 3000) { preferenceHelper.isHl7Enabled() }
         verify(exactly = 0) { pillCountTxnDao.observePendingHl7Txn() }
-    }
-
-    @Test
-    fun `handleOrderCancellation routes cancel order`() = runTest(testDispatcher) {
-        val repo = createRepo()
-        val msg = cancelMessage(placerOrderId = "RX9")
-
-        repo.handleOrderCancellation(msg)
-
-        coVerify(timeout = 3000) { pillCountTxnDao.softDeleteByRxNo("RX9", any()) }
     }
 
     @Test
@@ -811,16 +792,6 @@ class Hl7RepositoryTest {
 
         verify(timeout = 3000) { notifier.show(any(), any()) }
         coVerify(exactly = 0) { batchDao.insert(any()) }
-    }
-
-    // ─────────────────────────────── handleOrderCancellation ───────────────────────────────
-
-    @Test
-    fun `handleOrderCancellation soft deletes`() = runTest(testDispatcher) {
-        val repo = createRepo()
-        repo.handleOrderCancellation(cancelMessage(placerOrderId = "RX5"))
-
-        coVerify(timeout = 3000) { pillCountTxnDao.softDeleteByRxNo("RX5", any()) }
     }
 
     // ─────────────────────────────── handleOrderEdit ───────────────────────────────
