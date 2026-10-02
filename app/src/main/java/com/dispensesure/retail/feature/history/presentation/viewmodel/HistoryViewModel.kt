@@ -88,9 +88,12 @@ class HistoryViewModel @Inject constructor(
                     isDispense = isDispense,
                     status = status,
                     userLocalId = preferenceHelper.getLocalId()
-                )
+                ).catch { e ->
+                    // Caught per query so a later date/mode change still loads.
+                    logger.e("Observing transactions for date range failed", e, event = LogEvent.HISTORY_LOAD_FAILED)
+                    emit(emptyList())
+                }
             }
-            .catch { e -> logger.e("Observing transactions for date range failed", e, event = LogEvent.HISTORY_LOAD_FAILED) }
             .stateIn(
                 viewModelScope,
                 SharingStarted.WhileSubscribed(5_000),
@@ -131,9 +134,11 @@ class HistoryViewModel @Inject constructor(
                     startDate = start,
                     endDate = end,
                     userLocalId = preferenceHelper.getLocalId()
-                )
+                ).catch { e ->
+                    logger.e("Observing batch summaries failed", e, event = LogEvent.HISTORY_LOAD_FAILED)
+                    emit(emptyList())
+                }
             }
-            .catch { e -> logger.e("Observing batch summaries failed", e, event = LogEvent.HISTORY_LOAD_FAILED) }
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     val batchGroups: StateFlow<List<BatchSummary>> =

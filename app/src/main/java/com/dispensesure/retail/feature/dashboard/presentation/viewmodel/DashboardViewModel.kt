@@ -97,8 +97,12 @@ class DashboardViewModel @Inject constructor(
     val isConnected: StateFlow<Boolean> = hl7EventHandler.connectionState
     val pmsCertMismatch: StateFlow<Boolean> = hl7EventHandler.pmsCertMismatch
 
-    fun clearPmsCertPin() {
-        hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
+    /** @return false when the pin could not be cleared; the mismatch dialog stays up. */
+    fun clearPmsCertPin(): Boolean = hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
+
+    /** Closes the mismatch dialog without trusting the new certificate; reconnects stay blocked. */
+    fun dismissPmsCertMismatch() {
+        hl7EventHandler.clearCertMismatch()
     }
 
     /** StateFlow to signal when terminal info is loaded from auth/me */

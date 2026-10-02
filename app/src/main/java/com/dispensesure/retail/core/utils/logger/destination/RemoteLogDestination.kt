@@ -33,6 +33,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Authenticator
 import okhttp3.Interceptor
@@ -97,9 +98,13 @@ class RemoteLogDestination internal constructor(
     private var keyBlockedUntil = 0L
     // Lazy: AppLogger.init() builds this before the rest of the app is ready.
     private val preferenceHelper by lazy { PreferenceHelper(appContext) }
+    // Set while reading the token: a decrypt failure there logs an ERROR, which must not re-enter write().
+    private val readingToken = ThreadLocal<Boolean>()
     private val accessToken: () -> String? = accessTokenOverride ?: {
-        try { preferenceHelper.getAccessToken() } catch (e: Exception) { null }
+        readingToken.set(true)
+        try { preferenceHelper.getAccessToken() } catch (e: Exception) { null } finally { readingToken.remove() }
     }
+    private val flushMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val activeJobs = CopyOnWriteArrayList<Job>()
     private val pendingLogFile by lazy {
@@ -178,7 +183,7 @@ class RemoteLogDestination internal constructor(
     }
 
     override fun write(entry: LogEntry) {
-        if (entry.level != LogLevel.ERROR) return
+        if (entry.level != LogLevel.ERROR || readingToken.get() == true) return
 
         // Everything heavier than capturing the session id runs off the caller's thread (often main).
         val sessionId = LoggerConfig.sessionId
@@ -308,7 +313,7 @@ class RemoteLogDestination internal constructor(
      * in the file (see [flushPendingNow]) and ship after the next login.
      */
     suspend fun flushBeforeLogout(timeoutMs: Long = LOGOUT_FLUSH_TIMEOUT_MS) {
-        withTimeoutOrNull(timeoutMs) { flushPendingNow() }
+        withTimeoutOrNull(timeoutMs) { flushPendingNow(wait = true) }
     }
 
     /**
@@ -316,8 +321,18 @@ class RemoteLogDestination internal constructor(
      * Cancellation-safe: in `finally` the unsent remainder (including a line interrupted
      * mid-send) is always re-appended, so a timeout can't lose entries.
      */
-    private suspend fun flushPendingNow() {
+    private suspend fun flushPendingNow(wait: Boolean = false) {
         if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) return
+        // One flush at a time: a second would re-send the same .flushing batch and duplicate the unsent lines.
+        if (wait) flushMutex.lock() else if (!flushMutex.tryLock()) return
+        try {
+            flushLocked()
+        } finally {
+            flushMutex.unlock()
+        }
+    }
+
+    private suspend fun flushLocked() {
         // Copy the queue into flushingFile before emptying it, so a process death mid-flush
         // leaves the batch on disk (a leftover flushingFile is merged into the next flush).
         val queued = synchronized(pendingLock) {

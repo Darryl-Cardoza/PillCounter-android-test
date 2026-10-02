@@ -328,8 +328,8 @@ fun DashboardScreen(
             message = stringResource(R.string.pms_cert_mismatch_message),
             confirmText = stringResource(R.string.pms_cert_mismatch_confirm),
             cancelText = stringResource(R.string.cancel),
-            onConfirm = { viewModel.clearPmsCertPin() },
-            onCancel = { viewModel.clearPmsCertPin() }
+            onConfirm = { if (!viewModel.clearPmsCertPin()) showToast(context, R.string.error_generic) },
+            onCancel = { viewModel.dismissPmsCertMismatch() }
         )
     }
 

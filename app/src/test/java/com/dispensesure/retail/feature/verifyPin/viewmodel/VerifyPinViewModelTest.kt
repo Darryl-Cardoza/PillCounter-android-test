@@ -236,8 +236,8 @@ class VerifyPinViewModelTest {
 
     @Test
     fun `verifyPin success with token persistence failure sets Error instead of crashing`() = runTest {
-        // The API call already succeeded here — a local SecurePreferences/KeyStore failure
-        // while saving the session must not propagate uncaught out of the coroutine.
+        // SecurePreferences.put* throws on encrypt failure (they don't swallow), so a failed token
+        // save must land in Error rather than reaching Success with no token stored.
         val user = VerifiedUser(email = email, isVerified = true)
         val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
         coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns

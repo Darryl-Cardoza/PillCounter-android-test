@@ -447,6 +447,7 @@ class ProfileViewModel @Inject constructor(
                     .onSuccess {
                         logger.i("Profile update success")
 
+                        var localSaveFailed = false
                         val localId = preferenceHelper.getLocalId()
                         if (localId != null && localId != 0L) {
                             val entity = UserEntity(
@@ -472,6 +473,7 @@ class ProfileViewModel @Inject constructor(
                                 throw e
                             } catch (e: Exception) {
                                 logger.e("Failed to persist updated user entity in Room (localId=$localId)", e, event = LogEvent.PROFILE_UPDATE_FAILED)
+                                localSaveFailed = true
                             }
                         }
 
@@ -589,7 +591,12 @@ class ProfileViewModel @Inject constructor(
                             }
                         }
 
-                        _updateUiState.value = ProfileUpdateUiState.Success
+                        // The server has the update but this device doesn't: report it so the user retries.
+                        _updateUiState.value = if (localSaveFailed) {
+                            ProfileUpdateUiState.Error(context.getString(R.string.error_generic))
+                        } else {
+                            ProfileUpdateUiState.Success
+                        }
                     }
                     .onFailure { e ->
                         logger.e("Profile update failed", e, event = LogEvent.PROFILE_UPDATE_FAILED)

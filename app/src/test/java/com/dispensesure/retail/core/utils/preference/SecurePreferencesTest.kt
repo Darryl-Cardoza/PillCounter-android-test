@@ -5,6 +5,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -151,30 +152,29 @@ class SecurePreferencesTest {
 
     // ─────────────────────────── ENCRYPT-FAILURE ON WRITE ───────────────────────────
     // AndroidKeyStore isn't available under Robolectric (see class doc), so encrypt() genuinely
-    // throws NoSuchAlgorithmException here — this doubles as a real exercise of put*'s
-    // catch-and-log fallback, not just a mocked stand-in for it.
+    // throws here. put* must propagate that (KEK rotation and login rely on it) and persist nothing.
 
     @Test
-    fun `putString with non-null value does not throw when encryption is unavailable`() {
-        prefs.putString("key", "value")
+    fun `putString with non-null value throws and persists nothing when encryption is unavailable`() {
+        assertThrows(Exception::class.java) { prefs.putString("key", "value") }
         assertFalse("value must not be persisted when encryption failed", prefs.contains("key"))
     }
 
     @Test
-    fun `putBoolean does not throw when encryption is unavailable`() {
-        prefs.putBoolean("flag", true)
+    fun `putBoolean throws and persists nothing when encryption is unavailable`() {
+        assertThrows(Exception::class.java) { prefs.putBoolean("flag", true) }
         assertFalse("value must not be persisted when encryption failed", prefs.contains("flag"))
     }
 
     @Test
-    fun `putInt does not throw when encryption is unavailable`() {
-        prefs.putInt("count", 5)
+    fun `putInt throws and persists nothing when encryption is unavailable`() {
+        assertThrows(Exception::class.java) { prefs.putInt("count", 5) }
         assertFalse("value must not be persisted when encryption failed", prefs.contains("count"))
     }
 
     @Test
-    fun `putLong does not throw when encryption is unavailable`() {
-        prefs.putLong("id", 5L)
+    fun `putLong throws and persists nothing when encryption is unavailable`() {
+        assertThrows(Exception::class.java) { prefs.putLong("id", 5L) }
         assertFalse("value must not be persisted when encryption failed", prefs.contains("id"))
     }
 

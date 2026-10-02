@@ -330,7 +330,7 @@
     public void d(...);
     public void i(...);
     public void w(...);
-    public void e(...);
+    # e() is kept: it feeds RemoteLogDestination, which ships ERROR logs to /mobile/logs.
 }
 
 # NOTE: kotlinx.coroutines.debug is intentionally excluded from assumenosideeffects.

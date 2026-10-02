@@ -1885,10 +1885,22 @@ class DispenseFlowViewModelTest {
             val vm = createViewModel()
             var stageDuringPrelude: DispenseStage? = null
 
-            vm.returnToContainerScan { stageDuringPrelude = vm.uiState.value.stage }
+            vm.returnToContainerScan { stageDuringPrelude = vm.uiState.value.stage; true }
             advanceUntilIdle()
 
             assertEquals(DispenseStage.PRE_RX, stageDuringPrelude)
             assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
+        }
+
+    @Test
+    fun `returnToContainerScan keeps the stage when the reset fails`() =
+        runTest(testDispatcher) {
+            val vm = createViewModel()
+            val before = vm.uiState.value.stage
+
+            vm.returnToContainerScan { false }
+            advanceUntilIdle()
+
+            assertEquals(before, vm.uiState.value.stage)
         }
 }

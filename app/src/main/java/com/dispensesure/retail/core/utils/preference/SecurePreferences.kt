@@ -92,13 +92,9 @@ class SecurePreferences(context: Context,
     fun putString(key: String, value: String?, commit: Boolean = false) {
         if (value == null) {
             prefs.edit(commit) { remove(key) }
-            return
-        }
-        try {
-            val encrypted = encrypt(value)
-            prefs.edit(commit) { putString(key, encrypted) }
-        } catch (e: Exception) {
-            logger.e("Failed to encrypt pref '$key', value not persisted", e, event = LogEvent.FILE_WRITE_ERROR)
+        } else {
+            // Throws on encrypt failure: callers (e.g. KEK rotation) rely on it to abort.
+            prefs.edit(commit) { putString(key, encrypt(value)) }
         }
     }
 
@@ -113,12 +109,7 @@ class SecurePreferences(context: Context,
     }
 
     fun putBoolean(key: String, value: Boolean) {
-        try {
-            val encrypted = encrypt(value.toString())
-            prefs.edit { putString(key, encrypted) }
-        } catch (e: Exception) {
-            logger.e("Failed to encrypt pref '$key', value not persisted", e, event = LogEvent.FILE_WRITE_ERROR)
-        }
+        prefs.edit { putString(key, encrypt(value.toString())) }
     }
 
     fun getBoolean(key: String, default: Boolean = false): Boolean {
@@ -132,12 +123,7 @@ class SecurePreferences(context: Context,
     }
 
     fun putInt(key: String, value: Int, commit: Boolean = false) {
-        try {
-            val encrypted = encrypt(value.toString())
-            prefs.edit(commit) { putString(key, encrypted) }
-        } catch (e: Exception) {
-            logger.e("Failed to encrypt pref '$key', value not persisted", e, event = LogEvent.FILE_WRITE_ERROR)
-        }
+        prefs.edit(commit) { putString(key, encrypt(value.toString())) }
     }
 
     fun getInt(key: String, default: Int = 0): Int {
@@ -151,12 +137,7 @@ class SecurePreferences(context: Context,
     }
 
     fun putLong(key: String, value: Long) {
-        try {
-            val encrypted = encrypt(value.toString())
-            prefs.edit { putString(key, encrypted) }
-        } catch (e: Exception) {
-            logger.e("Failed to encrypt pref '$key', value not persisted", e, event = LogEvent.FILE_WRITE_ERROR)
-        }
+        prefs.edit { putString(key, encrypt(value.toString())) }
     }
 
     fun getLong(key: String, default: Long = 0L): Long {

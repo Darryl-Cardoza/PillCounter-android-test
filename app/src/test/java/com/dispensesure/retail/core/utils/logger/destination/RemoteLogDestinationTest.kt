@@ -238,6 +238,25 @@ class RemoteLogDestinationTest {
     }
 
     @Test
+    fun `overlapping flushes send each queued entry once`() {
+        online(false)
+        val destination = destination()
+        destination.write(entry(message = "dup-marker"))
+        destination.awaitIdleForTest()
+        coEvery { api.sendLog(any()) } coAnswers {
+            kotlinx.coroutines.delay(200)
+            Response.success("".toResponseBody(null))
+        }
+
+        online(true)
+        repeat(3) { destination.flushPending() }
+        destination.awaitIdleForTest()
+
+        coVerify(exactly = 1) { api.sendLog(match { it.message.contains("dup-marker") }) }
+        assertFalse(pendingFile.readText().contains("dup-marker"))
+    }
+
+    @Test
     fun `a successful online write opportunistically flushes any existing backlog`() {
         online(false)
         val destination = destination()

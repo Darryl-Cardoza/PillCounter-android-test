@@ -467,18 +467,23 @@ class MainActivity : ComponentActivity() {
             preferenceHelper.setUserLoggedIn(false)
             sessionHealthController.markLoggedOut()
             sessionLockController.unlock()
-            if (::navController.isInitialized) {
-                navController.navigate(AUTH_GRAPH_ROUTE) {
-                    popUpTo(0) { inclusive = true }
-                }
-            }
-            showToast(this, R.string.session_expired)
         } catch (e: Exception) {
             // This runs on session-expiry/refresh-401 — already the worst possible moment for
             // the app to crash, since the user would be left stuck with an invalidated session
             // and no way back to Login. Swallow and log rather than propagate.
             logger.e("Logout teardown failed", e, event = LogEvent.LOGOUT_FAILED)
         } finally {
+            // Always leave for Login, even if a cleanup step above threw.
+            try {
+                if (::navController.isInitialized) {
+                    navController.navigate(AUTH_GRAPH_ROUTE) {
+                        popUpTo(0) { inclusive = true }
+                    }
+                }
+                showToast(this, R.string.session_expired)
+            } catch (e: Exception) {
+                logger.e("Navigation to Login after logout failed", e, event = LogEvent.LOGOUT_FAILED)
+            }
             sessionHealthController.endTeardown()
         }
     }

@@ -414,6 +414,7 @@ class FaceAuthViewModel @Inject constructor(
                 // when lastProcessedAt starts at MIN_VALUE, wrapping to a huge negative number
                 // that's always < the interval — every frame was silently dropped, forever.
                 var lastProcessedAt = 0L
+                var frameErrorLogged = false
                 frames.collect { bitmap ->
                     // A prior frame in this same loop (or a concurrent manual tap) may have
                     // already landed on a result — stop attempting once we're no longer Scanning,
@@ -425,10 +426,21 @@ class FaceAuthViewModel @Inject constructor(
                     if (now - lastProcessedAt < AUTO_VERIFY_FRAME_INTERVAL_MS) return@collect
                     lastProcessedAt = now
 
-                    val face = faceEngine.detectPrimary(bitmap) ?: return@collect
-                    if (faceQualityGate.evaluate(bitmap, face) != null) return@collect
+                    // One bad frame must not end the loop and leave the lock on Scanning.
+                    try {
+                        val face = faceEngine.detectPrimary(bitmap) ?: return@collect
+                        if (faceQualityGate.evaluate(bitmap, face) != null) return@collect
 
-                    runVerify(bitmap) // suspends here, so no two attempts ever overlap
+                        runVerify(bitmap) // suspends here, so no two attempts ever overlap
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Logged once per loop: frames arrive every 150ms and would flood the log.
+                        if (!frameErrorLogged) {
+                            frameErrorLogged = true
+                            logger.e("Auto-verify frame failed; continuing with next frame", e, event = LogEvent.FACE_VERIFY_FAILED)
+                        }
+                    }
                 }
             } catch (e: CancellationException) {
                 throw e

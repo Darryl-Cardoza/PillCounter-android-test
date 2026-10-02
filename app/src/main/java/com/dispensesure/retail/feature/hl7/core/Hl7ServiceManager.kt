@@ -173,9 +173,11 @@ class Hl7ServiceManager @Inject constructor(
      * Clear the stored TOFU certificate pin and resume PMS connection.
      * Call this when the PMS server certificate is legitimately rotated.
      */
-    fun clearPmsCertPin(hl7EventHandler: Hl7EventHandler) {
-        hl7EventHandler.clearCertMismatch()
-        serviceManager.getService()?.clearPmsCertPin()
+    fun clearPmsCertPin(hl7EventHandler: Hl7EventHandler): Boolean {
+        // Only dismiss the mismatch once the pin is really cleared; otherwise the dialog stays for a retry.
+        val cleared = serviceManager.getService()?.clearPmsCertPin() == true
+        if (cleared) hl7EventHandler.clearCertMismatch()
+        return cleared
     }
 
     /**

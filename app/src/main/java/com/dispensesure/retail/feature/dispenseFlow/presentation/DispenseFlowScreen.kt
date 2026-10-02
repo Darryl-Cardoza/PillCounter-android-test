@@ -831,6 +831,13 @@ fun DispenseFlowScreen(
     }
 
     // Scanned RX's most recent transaction is already dispensed — block re-dispensing.
+    val genericErrorToastText = stringResource(R.string.error_generic)
+    LaunchedEffect(dispenseState.errorToastTick) {
+        if (dispenseState.errorToastTick > 0) {
+            showToast(context, genericErrorToastText, Toast.LENGTH_SHORT)
+        }
+    }
+
     val rxAlreadyCompletedToastText = stringResource(R.string.rx_already_completed_message)
     LaunchedEffect(dispenseState.rxAlreadyCompletedToastTick) {
         if (dispenseState.rxAlreadyCompletedToastTick > 0) {
@@ -895,12 +902,14 @@ fun DispenseFlowScreen(
                 dispenseVm.returnToContainerScan {
                     // Delete first, then move the stage — otherwise the SCAN strip
                     // renders against counts that are still on their way out.
-                    pillVm.resetTransaction()
-                    // Land on SCAN before the stage flips. The stage effect would do
-                    // it a frame later, by which time the strip has already composed
-                    // against the step we just left and spent its announcement on it.
-                    // The effect repeating the call after the flip is harmless.
-                    pillVm.enterScanStep()
+                    // A failed reset keeps the current step (the VM shows the error).
+                    pillVm.resetTransaction().also { ok ->
+                        // Land on SCAN before the stage flips. The stage effect would do
+                        // it a frame later, by which time the strip has already composed
+                        // against the step we just left and spent its announcement on it.
+                        // The effect repeating the call after the flip is harmless.
+                        if (ok) pillVm.enterScanStep()
+                    }
                 }
                 // The analyzer self-pauses after every read; re-arm it for the rescan.
                 barcodeAnalyzer.resume()

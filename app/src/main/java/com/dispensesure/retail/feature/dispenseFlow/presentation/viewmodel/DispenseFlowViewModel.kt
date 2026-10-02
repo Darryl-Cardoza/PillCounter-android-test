@@ -907,12 +907,13 @@ class DispenseFlowViewModel @Inject constructor(
      * it is the same order — only the container scan's own state is cleared.
      *
      * [resetCount] runs first and on this scope, so leaving the screen mid-reset cannot
-     * strand a wiped transaction with the stage still on COUNTING.
+     * strand a wiped transaction with the stage still on COUNTING. If it returns false the
+     * reset failed, so the stage is left where it is.
      */
-    fun returnToContainerScan(resetCount: suspend () -> Unit = {}) {
+    fun returnToContainerScan(resetCount: suspend () -> Boolean = { true }) {
         viewModelScope.launch {
             try {
-                resetCount()
+                if (!resetCount()) return@launch
                 // The container scan replaced drugImage with the server's image URL, but
                 // the details bar loads a local file. Take the drug row's own path back,
                 // the same value the counting header reads.
@@ -1281,6 +1282,7 @@ class DispenseFlowViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("Resume from queue failed for txn=$txnId", e, event = LogEvent.DISPENSE_RESUME_FAILED)
+                _uiState.update { it.copy(errorToastTick = it.errorToastTick + 1) }
             }
         }
     }

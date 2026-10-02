@@ -544,15 +544,23 @@ class HL7Service : Service() {
     /** Raw MLLP connection state — flips instantly, unlike [Hl7EventHandler.connectionState] which waits for [MllpConnectionManager]'s settle delay. */
     fun isPmsConnected(): Boolean = clientManager.isConnected()
 
-    fun clearPmsCertPin() {
+    /** @return false when the pin could not be cleared, so the caller keeps the mismatch state. */
+    fun clearPmsCertPin(): Boolean {
         logger.i("clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")
         try {
             tlsFactory.clearServerPin()
             clientManager.unblockCertMismatch()
-            discoverPmsAndConnect()
         } catch (e: Exception) {
             logger.e("clearPmsCertPin() failed", e, event = LogEvent.HL7_CONNECT_FAILED)
+            return false
         }
+        // The pin is cleared; a discovery failure here doesn't undo that.
+        try {
+            discoverPmsAndConnect()
+        } catch (e: Exception) {
+            logger.e("clearPmsCertPin() — rediscovery failed", e, event = LogEvent.HL7_CONNECT_FAILED)
+        }
+        return true
     }
 
     fun discoverPmsAndConnect() {
