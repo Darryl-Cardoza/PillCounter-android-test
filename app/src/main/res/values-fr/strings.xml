@@ -90,8 +90,6 @@
     <string name="tour_done">Terminé</string>
     <string name="tour_step_of">Étape %1$d sur %2$d</string>
 
-    <string name="kpi_disp_short">Disp.</string>
-    <string name="kpi_inv_short">Inv.</string>
     <string name="kpi_high_priority">Priorité élevée</string>
     <string name="kpi_cont_drugs">Contrôlés</string>
     <string name="kpi_hazardous">Dangereux</string>

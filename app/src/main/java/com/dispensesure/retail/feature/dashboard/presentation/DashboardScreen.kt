@@ -293,11 +293,12 @@ fun DashboardScreen(
     // ── Dispatch to the right layout ──
     val isCompactScreen = !UserInterfaceUtils.isTablet()
 
-    if (UserInterfaceUtils.isLandscape()) {
-        DashboardLandscapeLayout(params, compact = isCompactScreen)
-    } else {
-        DashboardPortraitLayout(params, compact = isCompactScreen)
-    }
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (UserInterfaceUtils.isLandscape()) {
+            DashboardLandscapeLayout(params, compact = isCompactScreen)
+        } else {
+            DashboardPortraitLayout(params, compact = isCompactScreen)
+        }
 
         // isActive is required here (not just currentStep?.id) because dismiss() doesn't
         // reset currentIndex — without it, a tour ending on this exact step would leave

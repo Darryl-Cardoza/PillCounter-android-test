@@ -156,8 +156,6 @@
     <string name="tour_title_end_count_confirm">Confirm and finish</string>
     <string name="tour_desc_end_count_confirm">Tap Yes to close out this batch — that\'s the tutorial complete!</string>
 
-    <string name="kpi_disp_short">Disp.</string>
-    <string name="kpi_inv_short">Inv.</string>
     <string name="kpi_high_priority">High Priority</string>
     <string name="kpi_cont_drugs">Controlled</string>
     <string name="kpi_hazardous">Hazardous</string>
