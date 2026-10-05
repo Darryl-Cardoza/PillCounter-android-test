@@ -18,8 +18,6 @@ import com.dispensesure.retail.feature.history.presentation.HistoryDetailScreen
 import com.dispensesure.retail.feature.history.presentation.HistoryScreen
 import com.dispensesure.retail.feature.menu.presentation.MenuScreen
 import com.dispensesure.retail.feature.profile.presentation.ProfileScreen
-import com.dispensesure.retail.feature.settings.presentation.SaveCsDoubleCountScreen
-import com.dispensesure.retail.feature.settings.presentation.SaveHistoryForScreen
 import com.dispensesure.retail.feature.settings.presentation.SettingsScreen
 import com.dispensesure.retail.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
 
@@ -159,14 +157,6 @@ fun AppNavGraph(
             ProfileScreen(
                 navController = navController
             )
-        }
-
-        composable(route = Screen.SaveHistoryFor.route) {
-            SaveHistoryForScreen(navController = navController)
-        }
-
-        composable(route = Screen.RequireDoubleCount.route) {
-            SaveCsDoubleCountScreen(navController = navController)
         }
 
         composable(route = Screen.FaceIntro.route) {

@@ -32,6 +32,7 @@ import com.dispensesure.retail.core.tourguide.TourGuideTapBlock
 import com.dispensesure.retail.core.tourguide.TourGuidePrefs
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
+import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.permission.rememberPermissionState
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
@@ -113,6 +114,7 @@ fun InventoryScanHost(
             // Inventory is barcode-only (no parallel pill detection), so we can
             // run more decode attempts/sec to cut time-to-detect on a steadied label.
             minIntervalMs = 100L,
+            isGrayscale = cameraVm::isGrayscaleImage,
         )
     }
     DisposableEffect(Unit) { onDispose { analyzer.close() } }
@@ -149,7 +151,7 @@ fun InventoryScanHost(
             } else {
                 context.getString(err.messageResId)
             }
-            showToast(context, text)
+            showToast(text)
             inventoryVm.clearErrorMessage()
         }
     }
@@ -386,9 +388,6 @@ fun InventoryScanHost(
 internal fun inventoryBack(navController: NavController) {
     val popped = navController.popBackStack()
     if (!popped) {
-        navController.navigate(Screen.Dashboard.route) {
-            popUpTo(0)
-            launchSingleTop = true
-        }
+        navController.navigateBackToDashboard()
     }
 }

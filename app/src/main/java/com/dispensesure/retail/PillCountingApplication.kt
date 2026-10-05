@@ -6,6 +6,7 @@ import coil.Coil
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import coil.ImageLoader
 import com.dispensesure.retail.core.utils.coil.EncryptedImageFetcher
+import com.dispensesure.retail.core.utils.common.AppToast
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import dagger.hilt.android.HiltAndroidApp
@@ -27,6 +28,7 @@ class PillCountingApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        AppToast.register(this)
 //        FirebaseApp.initializeApp(this)
 
         if (!OpenCVLoader.initLocal()) {

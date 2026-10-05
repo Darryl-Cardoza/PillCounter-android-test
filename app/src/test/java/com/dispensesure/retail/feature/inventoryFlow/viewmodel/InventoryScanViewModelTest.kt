@@ -105,7 +105,7 @@ class InventoryScanViewModelTest {
      * - isGs1Barcode → false (GTIN path via toGtin14)
      * - toGtin14 → ndc (identity, already 14 digits)
      * - getDrugByGtin → local DrugMasterEntity found (skips API)
-     * - findByDrugInBatch / findLine → null (no existing stock txn / bottle line; relaxed default)
+     * - findByDrugInBatch / findSealedLine → null (no existing stock txn / bottle line; relaxed default)
      * - getDrugIdByNdc → 1L (needed by persistActive to avoid error)
      */
     private fun setupScanMocks(ndc: String = TEST_NDC) {
@@ -114,7 +114,7 @@ class InventoryScanViewModelTest {
         every { barcodeDecoder.toGtin14(ndc) } returns ndc
         coEvery { drugMasterDao.getDrugByGtin(ndc) } returns drug
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
-        coEvery { bottleInfoDao.findLine(any(), any(), any()) } returns null
+        coEvery { bottleInfoDao.findSealedLine(any(), any(), any()) } returns null
         coEvery { drugMasterDao.getDrugIdByNdc(ndc) } returns 1L
     }
 

@@ -78,11 +78,13 @@ class HL7MessageBuilderTest {
         pillCount: Int? = null,
         type: String? = null,
         imagePath: String? = null,
+        rawImagePath: String? = null,
     ): PillCountTxnDetailsEntity = PillCountTxnDetailsEntity(
         txnDetailsId = txnDetailsId,
         pillCount = pillCount,
         type = type,
         imagePath = imagePath,
+        rawImagePath = rawImagePath,
     )
 
     // ============================ DISPENSE ============================
@@ -288,6 +290,65 @@ class HL7MessageBuilderTest {
         assertEquals("1B1", secondGroupParts[0])
         assertEquals("2C2", secondGroupParts[1])
         assertEquals(java.util.Base64.getEncoder().encodeToString(byteArrayOf(5, 6, 7, 8)), secondGroupParts[2])
+    }
+
+    @Test
+    fun `buildDispenseMessage for Vivid format sends the raw image right after its processed one`() {
+        val img = File.createTempFile("zui8_img", ".png").apply { writeBytes(byteArrayOf(1)); deleteOnExit() }
+        val raw = File.createTempFile("zui8_raw", ".png").apply { writeBytes(byteArrayOf(2)); deleteOnExit() }
+        val details = listOf(
+            detail(
+                txnDetailsId = 1L, pillCount = 15, type = StepState.TARGET_VERIFICATION.name,
+                imagePath = img.absolutePath, rawImagePath = raw.absolutePath
+            ),
+        )
+
+        val msg = HL7MessageBuilder.buildDispenseMessage(
+            txn = txn(txnId = 654L, rxNo = "RX-V1", note = null),
+            txnDetails = details,
+            drugCode = "11111-222-33",
+            scannedDrugCode = "11111-222-33",
+            drugName = "Drug",
+            pharmacistName = null,
+            config = HL7Config.current(
+                selectedTerminalName = "PILLCOUNTER",
+                pmsHostName = "PMS",
+                hl7Format = Hl7Format.VIVID,
+                sendingApplicationName = Hl7Format.VIVID.sendingApplication,
+            ),
+        )
+
+        val groups = msg.lineSequence().first { it.startsWith("ZUI|") }.split("|")[8].split("^")
+        assertEquals(2, groups.size)
+        assertEquals(listOf("1B1", "1C2", java.util.Base64.getEncoder().encodeToString(byteArrayOf(1))), groups[0].split("&"))
+        assertEquals(listOf("1B1", "2C2", java.util.Base64.getEncoder().encodeToString(byteArrayOf(2))), groups[1].split("&"))
+    }
+
+    @Test
+    fun `buildDispenseMessage adds a _raw OBX row after the processed image row`() {
+        val details = listOf(
+            detail(
+                txnDetailsId = 1L, pillCount = 10, type = StepState.TARGET_VERIFICATION.name,
+                imagePath = "/a/txn_detail_1.jpg", rawImagePath = "/a/txn_detail_1_raw.jpg"
+            ),
+            detail(txnDetailsId = 2L, pillCount = 2, type = StepState.VIAL.name, imagePath = "/a/vial.jpg"),
+        )
+
+        val msg = HL7MessageBuilder.buildDispenseMessage(
+            txn = txn(txnId = 1L, rxNo = "RX1", note = null),
+            txnDetails = details,
+            drugCode = "NDC1",
+            scannedDrugCode = "NDC1",
+            drugName = "Drug",
+            pharmacistName = null,
+            location = null,
+        )
+
+        val obx = msg.lineSequence().filter { it.contains("|RP|IMG") }.toList()
+        assertEquals(3, obx.size)
+        assertTrue(obx[0].contains("IMG001") && obx[0].contains("images/txn_detail_1.jpg"))
+        assertTrue(obx[1].contains("IMG002") && obx[1].contains("_raw") && obx[1].contains("images/txn_detail_1_raw.jpg"))
+        assertTrue(obx[2].contains("IMG003") && obx[2].contains("images/vial.jpg"))
     }
 
     @Test

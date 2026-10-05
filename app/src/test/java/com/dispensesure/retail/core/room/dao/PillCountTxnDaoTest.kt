@@ -493,11 +493,13 @@ class PillCountTxnDaoTest {
     fun `getTransactionDetailsImages returns image paths for txn`() = runTest {
         val txnId = dao.insertIgnore(baseTxn())
         detailsDao.insert(PillCountTxnDetailsEntity(txnId = txnId, imagePath = "img1.jpg"))
-        detailsDao.insert(PillCountTxnDetailsEntity(txnId = txnId, imagePath = "img2.jpg"))
+        detailsDao.insert(
+            PillCountTxnDetailsEntity(txnId = txnId, imagePath = "img2.jpg", rawImagePath = "img2_raw.jpg")
+        )
 
         val images = dao.getTransactionDetailsImages(txnId)
-        assertEquals(2, images.size)
-        assertTrue(images.containsAll(listOf("img1.jpg", "img2.jpg")))
+        assertEquals(3, images.size)
+        assertTrue(images.containsAll(listOf("img1.jpg", "img2.jpg", "img2_raw.jpg")))
     }
 
     @Test
@@ -939,6 +941,33 @@ class PillCountTxnDaoTest {
         }
     }
 
+    @Test
+    fun `getTransactionsForDateRange returns the rx and refill numbers`() = runTest {
+        dao.insertIgnore(
+            baseTxn(
+                localId = 1L,
+                isDispense = true,
+                status = CountStatus.COMPLETED,
+                createdAt = 150L,
+                rxNo = "7654321",
+                refillNo = "2",
+            )
+        )
+
+        dao.getTransactionsForDateRange(
+            startDate = 100L,
+            endDate = 200L,
+            stepType = null,
+            isDispense = null,
+            status = null,
+            userLocalId = 1L
+        ).test {
+            val row = awaitItem().single()
+            assertEquals("7654321", row.rxNo)
+            assertEquals("2", row.refillNo)
+        }
+    }
+
     // ───────────────────────── observePartialByIsDispense ─────────────────────────
 
     @Test
@@ -972,6 +1001,24 @@ class PillCountTxnDaoTest {
     }
 
     @Test
+    fun `observePartialByIsDispense lists oldest first within a priority, HL7 or not`() = runTest {
+        val newerHl7 = dao.insertIgnore(
+            baseTxn(isDispense = true, priority = TxnPriority.Medium, isComingFromHL7 = true, createdAt = 200L)
+        )
+        val olderManual = dao.insertIgnore(
+            baseTxn(isDispense = true, priority = TxnPriority.Medium, isComingFromHL7 = false, createdAt = 100L)
+        )
+
+        dao.observePartialByIsDispense(
+            isDispense = true,
+            userLocalId = 1L,
+            type = StepState.SCAN
+        ).test {
+            assertEquals(listOf(olderManual, newerHl7), awaitItem().map { it.txnId })
+        }
+    }
+
+    @Test
     fun `observePartialByIsDispense excludes non partial and deleted rows`() = runTest {
         val id = dao.insertIgnore(
             baseTxn(localId = 1L, isDispense = true, status = CountStatus.COMPLETED)
@@ -988,6 +1035,28 @@ class PillCountTxnDaoTest {
         ).test {
             val list = awaitItem()
             assertEquals(1, list.size)
+        }
+    }
+
+    @Test
+    fun `observePartialByIsDispense returns the rx and refill numbers`() = runTest {
+        val withRx = dao.insertIgnore(
+            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL, rxNo = "7654321", refillNo = "2")
+        )
+        val withoutRx = dao.insertIgnore(
+            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL)
+        )
+
+        dao.observePartialByIsDispense(
+            isDispense = true,
+            userLocalId = 1L,
+            type = StepState.SCAN
+        ).test {
+            val byId = awaitItem().associateBy { it.txnId }
+            assertEquals("7654321", byId.getValue(withRx).rxNo)
+            assertEquals("2", byId.getValue(withRx).refillNo)
+            assertNull(byId.getValue(withoutRx).rxNo)
+            assertNull(byId.getValue(withoutRx).refillNo)
         }
     }
 
@@ -1064,5 +1133,47 @@ class PillCountTxnDaoTest {
         val saved = dao.getById(id)
         assertNull(saved?.operatorFirstName)
         assertNull(saved?.operatorLastName)
+    }
+
+    // ───────────────────────── HL7 status guards / resend lookup ─────────────────────────
+
+    @Test
+    fun `updateStatusByOrderIdIfPartial holds PARTIAL rows and leaves finished rows alone`() = runTest {
+        val partialId = dao.insertIgnore(baseTxn(status = CountStatus.PARTIAL).copy(transactionOrderId = "ORD1"))
+        val completedId = dao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
+        val forcedId = dao.insertIgnore(baseTxn(status = CountStatus.FORCE_COMPLETED).copy(transactionOrderId = "ORD1"))
+
+        dao.updateStatusByOrderIdIfPartial("ORD1", CountStatus.ON_HOLD)
+
+        assertEquals(CountStatus.ON_HOLD, dao.getById(partialId)?.status)
+        assertEquals(CountStatus.COMPLETED, dao.getById(completedId)?.status)
+        assertEquals(CountStatus.FORCE_COMPLETED, dao.getById(forcedId)?.status)
+    }
+
+    @Test
+    fun `updateStatusByOrderIdIfPartialOrOnHold releases ON_HOLD rows and leaves finished rows alone`() = runTest {
+        val heldId = dao.insertIgnore(baseTxn(status = CountStatus.ON_HOLD).copy(transactionOrderId = "ORD1"))
+        val completedId = dao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
+        val forcedId = dao.insertIgnore(baseTxn(status = CountStatus.FORCE_COMPLETED).copy(transactionOrderId = "ORD1"))
+
+        dao.updateStatusByOrderIdIfPartialOrOnHold("ORD1", CountStatus.PARTIAL)
+
+        assertEquals(CountStatus.PARTIAL, dao.getById(heldId)?.status)
+        assertEquals(CountStatus.COMPLETED, dao.getById(completedId)?.status)
+        assertEquals(CountStatus.FORCE_COMPLETED, dao.getById(forcedId)?.status)
+    }
+
+    @Test
+    fun `getByRxNoAndMessageControlId matches rx and control id and returns newest non deleted row`() = runTest {
+        assertNull(dao.getByRxNoAndMessageControlId("RX1", "MSG1"))
+
+        dao.insertIgnore(baseTxn(rxNo = "RX1", createdAt = 100L).copy(hl7MessageControlId = "MSG1"))
+        val newerId = dao.insertIgnore(baseTxn(rxNo = "RX1", createdAt = 200L).copy(hl7MessageControlId = "MSG1"))
+        // Same message, other Rx (multi-ORC) and a deleted row must not win.
+        dao.insertIgnore(baseTxn(rxNo = "RX2", createdAt = 300L).copy(hl7MessageControlId = "MSG1"))
+        dao.insertIgnore(baseTxn(rxNo = "RX1", createdAt = 400L).copy(hl7MessageControlId = "MSG1", isDeleted = true))
+
+        assertEquals(newerId, dao.getByRxNoAndMessageControlId("RX1", "MSG1")?.txnId)
+        assertNull(dao.getByRxNoAndMessageControlId("RX1", "MSG2"))
     }
 }

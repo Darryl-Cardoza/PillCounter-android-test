@@ -23,7 +23,7 @@ data class TxnWithDetails(
         parentColumn = "txnId",
         entityColumn = "txnId",
         entity = PillCountTxnDetailsEntity::class,
-        projection = ["txnDetailsId", "txnId", "pillCount", "imagePath", "type", "isDeleted"]
+        projection = ["txnDetailsId", "txnId", "pillCount", "imagePath", "type"]
     )
     val txnDetails: List<TxnDetailInfo>,
     val isComingFromHL7 : Boolean,
@@ -40,5 +40,4 @@ data class TxnDetailInfo(
     val pillCount: Int?,
     val imagePath: String?,
     val type: StepState?,
-    val isDeleted: Boolean = false,
 )

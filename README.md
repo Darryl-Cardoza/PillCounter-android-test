@@ -37,12 +37,12 @@ system (PMS) over the local network.
 **Architecture.** Single-Activity Jetpack Compose app, **feature-first MVVM**
 with a Clean-ish layering (`presentation` / `domain` / `data` per feature) and a
 shared `core/` infrastructure layer. DI via Hilt. A separate pure-Kotlin
-`:hl7Core` module implements HL7 v2 builders/parsers. See
+HL7 v2 library is shipped as a prebuilt AAR at `app/libs/hl7Core-release.aar` (`org.rite.hl7` namespace). See
 [docs/architecture.md](docs/architecture.md).
 
 **Modules**
 - `:app` — the application (`com.android.application`, namespace `com.dispensesure.retail`)
-- `:hl7Core` — HL7 v2 library (`com.android.library`, namespace `org.rite.hl7`)
+- HL7 v2 library: prebuilt AAR at `app/libs/hl7Core-release.aar` (`org.rite.hl7` namespace)
 
 ---
 
@@ -93,10 +93,7 @@ app/src/main/java/com/dispensesure/retail/
 ├── navigation/                  # AppNavGraph, NavGraphBuilder, Screen (routes)
 └── ui/theme/                    # Compose theme
 
-hl7Core/src/main/kotlin/org/rite/hl7/
-├── builder/  parser/            # HL7 v2 segment builders & parsers
-├── domain/model/                # HL7 domain data
-└── util/                        # constants & helpers
+app/libs/hl7Core-release.aar    # prebuilt HL7 v2 library (org.rite.hl7 namespace)
 ```
 
 Each `feature/<name>/` generally contains:

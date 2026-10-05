@@ -10,8 +10,8 @@ import com.google.gson.Gson
  * @property serialNumber Serial number (GS1 AI 21), null for a non-GS1 scan.
  * @property txnDetailsIds IDs of the `PillCountTxnDetailsEntity` rows recorded while this bottle
  *   was active. There is no stored pill count: a bottle's true count is always
- *   `SUM(pillCount) FROM pill_count_txn_details WHERE txnDetailsId IN txnDetailsIds AND
- *   isDeleted = 0`, computed live wherever it's needed — so deleting/redoing a count is
+ *   `SUM(pillCount) FROM pill_count_txn_details WHERE txnDetailsId IN txnDetailsIds`,
+ *   computed live wherever it's needed — so deleting/redoing a count is
  *   automatically reflected, with no snapshot that can go stale.
  * @property scannedAt When this bottle was scanned (epoch millis).
  * @property txnId The `PillCountTxnEntity.txnId` this bottle belongs to.

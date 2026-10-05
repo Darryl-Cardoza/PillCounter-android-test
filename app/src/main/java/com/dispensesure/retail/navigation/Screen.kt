@@ -107,18 +107,23 @@ sealed interface Screen {
     data object OtpVerify : Screen {
         private const val ROUTE_PREFIX = "otp_verify"
         const val ARG_EMAIL = "email"
+        const val ARG_REMEMBER_ME = "remember_me"
 
         // Full route with query parameters
-        override val route: String = "$ROUTE_PREFIX?$ARG_EMAIL={$ARG_EMAIL}"
+        override val route: String = "$ROUTE_PREFIX?$ARG_EMAIL={$ARG_EMAIL}&$ARG_REMEMBER_ME={$ARG_REMEMBER_ME}"
 
         // List of arguments to parse from the NavBackStackEntry
         val navArguments: List<NamedNavArgument> = listOf(
-            navArgument(ARG_EMAIL) { type = NavType.StringType }
+            navArgument(ARG_EMAIL) { type = NavType.StringType },
+            navArgument(ARG_REMEMBER_ME) {
+                type = NavType.BoolType
+                defaultValue = false
+            }
         )
 
         // Helper function to generate the route string
-        fun createRoute(email: String): String {
-            return "$ROUTE_PREFIX?$ARG_EMAIL=$email"
+        fun createRoute(email: String, rememberMe: Boolean): String {
+            return "$ROUTE_PREFIX?$ARG_EMAIL=$email&$ARG_REMEMBER_ME=$rememberMe"
         }
     }
 
@@ -237,14 +242,6 @@ sealed interface Screen {
             fromQueue: Boolean = false,
             allowedNdcs: Set<String> = emptySet(),
         ) = "$ROUTE_PREFIX/$scanType?$ARG_FROM_HL7=$fromHl7&$ARG_FROM_RESUME=$fromResume&$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}&$ARG_FROM_QUEUE=$fromQueue&$ARG_ALLOWED_NDCS=${allowedNdcs.joinToString(",")}"
-    }
-
-    data object SaveHistoryFor : Screen {
-        override val route: String = "save_history_for"
-    }
-
-    data object RequireDoubleCount : Screen {
-        override val route: String = "require_double_count"
     }
 
     data object FaceIntro : Screen {

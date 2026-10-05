@@ -95,11 +95,11 @@ class PillAnalyzer(
 
         // Decode floor: below the tracker's keep score nothing can hold a track,
         // so anchors under this never need decoding.
-        private const val PRE_NMS_SCORE_FLOOR = PillTracker.KEEP_SCORE
+        internal const val PRE_NMS_SCORE_FLOOR = PillTracker.KEEP_SCORE
         // Deploy contract nms_iou. Measured in the training repo: no two distinct
         // pills overlap above IoU 0.5, so a second box above it is a duplicate on
         // the same pill — 0.6 let those through and inflated the count.
-        private const val PILL_NMS_IOU = 0.50f
+        internal const val PILL_NMS_IOU = 0.50f
         // Reference decoder ceilings: at most this many candidates enter NMS and
         // this many detections leave it (nms_top_k / keep_top_k).
         private const val NMS_TOP_K = 1500

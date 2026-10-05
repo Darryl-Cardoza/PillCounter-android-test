@@ -87,21 +87,6 @@ class HistoryDetailsViewModelTest {
         assertEquals(1L, viewModel.uiState.value.txnInfo?.txnId)
     }
 
-    // HIST_DET_VM_003
-    @Test
-    fun `init filters out soft-deleted txnDetails`() = runTest {
-        val activeDetail = TxnDetailInfo(txnId = 1L, pillCount = 5, imagePath = null, type = null, isDeleted = false)
-        val deletedDetail = TxnDetailInfo(txnId = 1L, pillCount = 3, imagePath = null, type = null, isDeleted = true)
-        coEvery { pillCountTxnDao.getTxnWithDetails(any()) } returns buildTxnWithDetails(listOf(activeDetail, deletedDetail))
-
-        val viewModel = createViewModel()
-        advanceUntilIdle()
-
-        val details = viewModel.uiState.value.txnInfo?.txnDetails
-        assertEquals(1, details?.size)
-        assertEquals(false, details?.get(0)?.isDeleted)
-    }
-
     // HIST_DET_VM_004
     @Test
     fun `init uses txnId from preferenceHelper`() = runTest {

@@ -23,6 +23,9 @@ data class Dimens(
     val buttonCornerRadius: Dp = 56.dp,
     val buttonInnerHorizontalPadding: Dp = 60.dp,
     val settingRowVerticalPadding: Dp = 14.dp,
+    // Settings group cards: corner radius and the gap between cards.
+    val settingsCardCornerRadius: Dp = 8.dp,
+    val settingsCardSpacing: Dp = 12.dp,
     val menuRowVerticalPadding: Dp = 12.dp,
     val menuRowSpacing: Dp = 10.dp,
     val profileTextFieldHeight: Dp = 62.dp,
@@ -56,6 +59,8 @@ val tabletDimens = Dimens(
     buttonCornerRadius = 56.dp,
     buttonInnerHorizontalPadding = 80.dp,
     settingRowVerticalPadding = 20.dp,
+    settingsCardCornerRadius = 12.dp,
+    settingsCardSpacing = 16.dp,
     menuRowVerticalPadding = 18.dp,
     menuRowSpacing = 14.dp,
     profileTextFieldHeight = 70.dp,

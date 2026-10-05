@@ -15,8 +15,7 @@ class TxnWithDetailsTest {
         txnId = 1L,
         pillCount = 10,
         imagePath = "img.png",
-        type = StepState.SCAN,
-        isDeleted = true
+        type = StepState.SCAN
     )
 
     private fun sample() = TxnWithDetails(
@@ -48,7 +47,6 @@ class TxnWithDetailsTest {
         assertNull(d.pillCount)
         assertNull(d.imagePath)
         assertNull(d.type)
-        assertFalse(d.isDeleted)
     }
 
     @Test
@@ -59,7 +57,6 @@ class TxnWithDetailsTest {
         assertEquals(10, d.pillCount)
         assertEquals("img.png", d.imagePath)
         assertEquals(StepState.SCAN, d.type)
-        assertTrue(d.isDeleted)
     }
 
     @Test
@@ -75,7 +72,6 @@ class TxnWithDetailsTest {
         assertEquals(10, d.component3())
         assertEquals("img.png", d.component4())
         assertEquals(StepState.SCAN, d.component5())
-        assertEquals(true, d.component6())
     }
 
     // ---------- TxnWithDetails ----------

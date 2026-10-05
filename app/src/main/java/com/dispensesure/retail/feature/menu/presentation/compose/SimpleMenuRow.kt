@@ -23,6 +23,7 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.constants.LocalDimens
 import com.dispensesure.retail.ui.theme.AppTheme.extendedColors
+import com.dispensesure.retail.ui.theme.DISABLED_ALPHA
 
 /**
  * A simple reusable row for displaying a menu option in the navigation drawer or menu screen.
@@ -71,10 +72,9 @@ fun SimpleMenuRow(
 
     // When disabled, the row stays tappable (so callers can surface a toast) but
     // is visually dimmed to read as inactive.
-    val disabledAlpha = 0.4f
-    val resolvedIconTint = if (enabled) iconTint else iconTint.copy(alpha = disabledAlpha)
+    val resolvedIconTint = if (enabled) iconTint else iconTint.copy(alpha = DISABLED_ALPHA)
     val resolvedTextColor =
-        if (enabled) extendedColors.textColor else extendedColors.textColor.copy(alpha = disabledAlpha)
+        if (enabled) extendedColors.textColor else extendedColors.textColor.copy(alpha = DISABLED_ALPHA)
 
     Spacer(modifier = Modifier.height(dimens.menuRowSpacing))
 
@@ -108,7 +108,7 @@ fun SimpleMenuRow(
                 text = it,
                 fontSize = 16.sp,
                 color = if (enabled) MaterialTheme.colorScheme.secondary
-                else MaterialTheme.colorScheme.secondary.copy(alpha = disabledAlpha),
+                else MaterialTheme.colorScheme.secondary.copy(alpha = DISABLED_ALPHA),
                 modifier = Modifier.padding(end = 12.dp)
             )
         }

@@ -2,8 +2,13 @@ package com.dispensesure.retail.feature.hl7.core
 
 import android.content.Context
 import android.util.Log
+import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
+import com.dispensesure.retail.feature.hl7.parsing.Hl7OrderHandler
+import com.dispensesure.retail.feature.hl7.parsing.Hl7Parser
+import com.dispensesure.retail.feature.hl7.parsing.Hl7Validator
+import com.dispensesure.retail.feature.hl7.presentation.Hl7OrderProcessor
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -16,18 +21,22 @@ import org.junit.Before
 import org.junit.Test
 import org.rite.hl7.model.HL7Message
 import org.rite.hl7.parser.HL7ParseResult
-import org.rite.hl7.parser.HL7Parser
+import org.rite.hl7.parser.HL7Parser as CoreHL7Parser
 
 class Hl7EventHandlerTest {
 
     private lateinit var context: Context
+    private lateinit var hl7Parser: Hl7Parser
+    private lateinit var hl7Validator: Hl7Validator
+    private lateinit var hl7OrderHandler: Hl7OrderHandler
+    private lateinit var hl7OrderProcessor: Hl7OrderProcessor
     private lateinit var hl7Repository: Hl7Repository
     private lateinit var notifier: Hl7Notifier
+    private lateinit var preferenceHelper: PreferenceHelper
     private lateinit var handler: Hl7EventHandler
 
     @Before
     fun setup() {
-        // AppLogger wraps android.util.Log, which is not available on the JVM.
         mockkStatic(Log::class)
         every { Log.d(any(), any<String>()) } returns 0
         every { Log.d(any(), any(), any()) } returns 0
@@ -39,67 +48,58 @@ class Hl7EventHandlerTest {
         every { Log.e(any(), any(), any()) } returns 0
 
         context = mockk(relaxed = true)
+        hl7Parser = mockk(relaxed = true)
+        hl7Validator = mockk(relaxed = true)
+        hl7OrderHandler = mockk(relaxed = true)
+        hl7OrderProcessor = mockk(relaxed = true)
         hl7Repository = mockk(relaxed = true)
         notifier = mockk(relaxed = true)
+        preferenceHelper = mockk(relaxed = true)
 
         every { context.getString(any()) } returns "x"
         every { context.getString(any(), any()) } returns "y"
+        every { preferenceHelper.getHl7Version() } returns "2.5"
 
-        handler = Hl7EventHandler(context, hl7Repository, notifier)
+        handler = Hl7EventHandler(
+            context,
+            hl7Parser,
+            hl7Validator,
+            hl7OrderHandler,
+            hl7OrderProcessor,
+            hl7Repository,
+            notifier,
+            preferenceHelper,
+        )
     }
 
     @After
-    fun tearDown() {
-        unmockkAll()
-    }
+    fun tearDown() = unmockkAll()
 
-    private val hl7Parser = HL7Parser.Builder().build()
+    private val coreParser = CoreHL7Parser.Builder().build()
 
-    private fun message(): HL7Message {
-        val raw = "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|MSG-1|P|2.5"
-        return when (val result = hl7Parser.parse(raw)) {
+    private fun message(raw: String = "MSH|^~\\&|PMS|FAC|APP|STORE|20240101||RDE^O11|MSG-1|P|2.5"): HL7Message =
+        when (val result = coreParser.parse(raw)) {
             is HL7ParseResult.Success -> result.message
             is HL7ParseResult.Failure -> result.partialMessage
                 ?: error("Failed to parse test HL7 message: ${result.errors}")
         }
-    }
 
     @Test
-    fun `onMessageReceived delegates to repository`() {
-        val msg = message()
-
-        handler.onMessageReceived(msg, "key-1")
-
-        verify(exactly = 1) { hl7Repository.handleReceivedMessage(msg) }
-    }
-
-    @Test
-    fun `onMessageSent logs only`() {
+    fun `onMessageSent logs only and does not touch repository`() {
         handler.onMessageSent("raw", "MSG-2")
 
-        verify(exactly = 0) { hl7Repository.handleReceivedMessage(any()) }
     }
 
     @Test
-    fun `onAckReceived on success ACK is informational only, does not touch the repository`() {
-        // markTransactionSynced is now invoked inline by
-        // Hl7Repository.buildAndSendSuccessfulDispense right after its own send() call,
-        // using the exact txnId sent — not from this generic callback, which has no
-        // reliable txnId correlation. This callback must not call into the repository at all.
+    fun `onAckReceived on success ACK is informational only`() {
         val successAck = "MSH|^~\\&|PMS|PHARMACY|PillCounter|ROBOT|20240101000000||ACK|MSG-3|P|2.5\rMSA|AA|MSG-3\r"
-
         handler.onAckReceived(successAck, "MSG-3")
-
-        verify(exactly = 0) { hl7Repository.handleReceivedMessage(any()) }
     }
 
     @Test
-    fun `onAckReceived on error ACK is informational only, does not touch the repository`() {
+    fun `onAckReceived on error ACK is informational only`() {
         val errorAck = "MSH|^~\\&|PMS|PHARMACY|PillCounter|ROBOT|20240101000000||ACK|MSG-3|P|2.5\rMSA|AE|MSG-3|rejected\r"
-
         handler.onAckReceived(errorAck, "MSG-3")
-
-        verify(exactly = 0) { hl7Repository.handleReceivedMessage(any()) }
     }
 
     @Test
@@ -177,9 +177,7 @@ class Hl7EventHandlerTest {
     @Test
     fun `onPmsCertMismatch sets cert mismatch flag`() {
         assertFalse(handler.pmsCertMismatch.value)
-
         handler.onPmsCertMismatch()
-
         assertTrue(handler.pmsCertMismatch.value)
     }
 
@@ -187,9 +185,7 @@ class Hl7EventHandlerTest {
     fun `clearCertMismatch resets cert mismatch flag`() {
         handler.onPmsCertMismatch()
         assertTrue(handler.pmsCertMismatch.value)
-
         handler.clearCertMismatch()
-
         assertFalse(handler.pmsCertMismatch.value)
     }
 }

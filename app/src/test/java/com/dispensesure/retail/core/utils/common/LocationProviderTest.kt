@@ -4,6 +4,7 @@ import android.content.Context
 import android.location.Address
 import android.location.Geocoder
 import android.location.Location
+import com.dispensesure.retail.R
 import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationServices
@@ -82,6 +83,7 @@ class LocationProviderTest {
         mockkStatic(LocationServices::class)
         client = mockk(relaxed = true)
         every { LocationServices.getFusedLocationProviderClient(context) } returns client
+        every { context.getString(R.string.location_unavailable) } returns "Location unavailable"
         provider = LocationProvider(context)
     }
 

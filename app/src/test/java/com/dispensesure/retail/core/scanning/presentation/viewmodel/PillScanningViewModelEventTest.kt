@@ -20,6 +20,8 @@ import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
+import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
+import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
@@ -27,18 +29,22 @@ import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.util.MainDispatcherRule
+import androidx.room.withTransaction
 import io.mockk.coEvery
 import io.mockk.coJustRun
 import io.mockk.coVerify
 import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkStatic
+import io.mockk.slot
 import io.mockk.unmockkAll
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
@@ -81,8 +87,18 @@ class PillScanningViewModelEventTest {
 
     private lateinit var viewModel: PillScanningViewModel
 
+    // True while a withTransaction block runs, so tests can check a write happened inside one.
+    @Volatile private var inTransaction = false
+
     @Before
     fun setup() {
+        // Run withTransaction blocks inline; a relaxed AppDatabase never runs them.
+        mockkStatic("androidx.room.RoomDatabaseKt")
+        val txBlock = slot<suspend () -> Any?>()
+        coEvery { appDatabase.withTransaction(capture(txBlock)) } coAnswers {
+            inTransaction = true
+            try { txBlock.captured.invoke() } finally { inTransaction = false }
+        }
         every { application.applicationContext } returns application
         every { application.getString(any<Int>()) } returns "test error"
         every { application.getString(any<Int>(), any()) } returns "test error"
@@ -166,26 +182,128 @@ class PillScanningViewModelEventTest {
 
     // SCAN_VM_031
     @Test
-    fun `TransactionDetailDeleted calls softDelete with the provided txnDetailId`() = runTest {
-        viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
-        advanceUntilIdle()
+    fun `TransactionDetailDeleted hard-deletes the files then the row`() = runTest {
+        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
 
-        coVerify(exactly = 1) { pillCountTxnDetailsDao.softDelete(eq(5L), any()) }
+        viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
+
+        // Delete runs on real Dispatchers.IO; wait for the last call, then check order.
+        coVerify(timeout = 3000) { pillCountTxnDetailsDao.hardDelete(5L) }
+        coVerifyOrder {
+            pillCountTxnDetailsDao.getImagePathsForDetail(5L)
+            pillCountTxnDetailsDao.hardDelete(5L)
+        }
     }
 
     // ─────────────────────────── AllTransactionDetailsDeleted ───────────────────────────
 
     // SCAN_VM_032
     @Test
-    fun `AllTransactionDetailsDeleted calls softDeleteAllTransaction for the given stepType`() = runTest {
+    fun `AllTransactionDetailsDeleted hard-deletes the step's files then rows`() = runTest {
+        coEvery { pillCountTxnDetailsDao.getImagePathsForStep(any(), any()) } returns emptyList()
+
         viewModel.onEvent(
             PillScanningEvent.AllTransactionDetailsDeleted(stepType = StepState.CONTAINER_INITIATE)
         )
-        advanceUntilIdle()
 
-        coVerify(exactly = 1) {
-            pillCountTxnDetailsDao.softDeleteAllTransaction(any(), any(), eq(StepState.CONTAINER_INITIATE))
+        coVerify(timeout = 3000) {
+            pillCountTxnDetailsDao.hardDeleteAllForStep(any(), eq(StepState.CONTAINER_INITIATE))
         }
+        coVerifyOrder {
+            pillCountTxnDetailsDao.getImagePathsForStep(any(), eq(StepState.CONTAINER_INITIATE))
+            pillCountTxnDetailsDao.hardDeleteAllForStep(any(), eq(StepState.CONTAINER_INITIATE))
+        }
+    }
+
+    // ─────────────────────────── Delete: bottle links ───────────────────────────
+
+    private fun txnWithBottleIds(vararg ids: Long) = PillCountTxnEntity(
+        txnId = 9L, isDispense = true, status = CountStatus.PARTIAL,
+        bottleInfoListJson = BottleInfoJson.encode(listOf(BottleInfo(txnId = 9L, txnDetailsIds = ids.toList()))),
+    )
+
+    private fun bottleIdsWritten(json: String) = BottleInfoJson.decode(json).single().txnDetailsIds
+
+    @Test
+    fun `TransactionDetailDeleted removes the id from its bottle`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
+        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L)
+        val json = slot<String>()
+
+        viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
+
+        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, capture(json), any()) }
+        assertEquals(listOf(6L), bottleIdsWritten(json.captured))
+        coVerifyOrder {
+            pillCountTxnDetailsDao.hardDelete(5L)
+            pillCountTxnDao.updateBottleInfoList(9L, any(), any())
+        }
+    }
+
+    @Test
+    fun `AllTransactionDetailsDeleted removes the step's ids from bottles`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForStep(any(), any()) } returns emptyList()
+        coEvery { pillCountTxnDetailsDao.getIdsForStep(9L, StepState.TARGET_VERIFICATION) } returns listOf(5L, 6L)
+        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L, 7L)
+        val json = slot<String>()
+
+        viewModel.onEvent(PillScanningEvent.AllTransactionDetailsDeleted(stepType = StepState.TARGET_VERIFICATION))
+
+        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, capture(json), any()) }
+        assertEquals(listOf(7L), bottleIdsWritten(json.captured))
+    }
+
+    @Test
+    fun `TransactionDetailDeleted leaves bottles alone when the id isn't linked`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
+        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(6L)
+
+        viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
+
+        coVerify(timeout = 3000) { pillCountTxnDao.getById(9L) }
+        coVerify(exactly = 0) { pillCountTxnDao.updateBottleInfoList(any(), any(), any()) }
+    }
+
+    @Test
+    fun `TransactionDetailDeleted deletes the row and unlinks it in one transaction`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForDetail(5L) } returns emptyList()
+        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L)
+        var deleteInTx = false
+        var unlinkInTx = false
+        coEvery { pillCountTxnDetailsDao.hardDelete(5L) } coAnswers { deleteInTx = inTransaction }
+        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers { unlinkInTx = inTransaction }
+
+        viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
+
+        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) }
+        assertTrue(deleteInTx)
+        assertTrue(unlinkInTx)
+        coVerify(exactly = 1) { appDatabase.withTransaction<Any?>(any()) }
+    }
+
+    @Test
+    fun `AllTransactionDetailsDeleted deletes the rows and unlinks them in one transaction`() = runTest {
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { pillCountTxnDetailsDao.getImagePathsForStep(any(), any()) } returns emptyList()
+        coEvery { pillCountTxnDetailsDao.getIdsForStep(9L, StepState.TARGET_VERIFICATION) } returns listOf(5L, 6L)
+        coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L, 7L)
+        var deleteInTx = false
+        var unlinkInTx = false
+        coEvery { pillCountTxnDetailsDao.hardDeleteAllForStep(9L, StepState.TARGET_VERIFICATION) } coAnswers {
+            deleteInTx = inTransaction
+        }
+        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers { unlinkInTx = inTransaction }
+
+        viewModel.onEvent(PillScanningEvent.AllTransactionDetailsDeleted(stepType = StepState.TARGET_VERIFICATION))
+
+        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) }
+        assertTrue(deleteInTx)
+        assertTrue(unlinkInTx)
+        coVerify(exactly = 1) { appDatabase.withTransaction<Any?>(any()) }
     }
 
     // ─────────────────────────── NoteSaved ───────────────────────────

@@ -38,6 +38,9 @@ class CameraMotionEstimator {
     private var previous: Mat? = null
     private var disabled = false
 
+    /** False once an OpenCV error has disabled the estimator. */
+    val isAvailable: Boolean get() = !disabled
+
     /** Null on the first frame, when the correlation peak is too weak, or if OpenCV is unavailable. */
     fun estimate(letterboxed: Bitmap): Shift? {
         if (disabled) return null
@@ -69,6 +72,16 @@ class CameraMotionEstimator {
     fun reset() {
         previous?.release()
         previous = null
+    }
+
+    /** Frees every Mat; the estimator must not be used afterwards. */
+    fun release() {
+        reset()
+        try {
+            rgba.release(); gray.release(); small.release(); current.release(); window.release()
+        } catch (_: Throwable) {
+            // OpenCV never loaded, so there is nothing to free.
+        }
     }
 
     companion object {

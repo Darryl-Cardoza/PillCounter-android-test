@@ -100,6 +100,7 @@ class FCMService @Inject constructor(
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            putExtra(MainActivity.EXTRA_OPENED_FROM_NOTIFICATION, true)
         }
 
         val pendingIntent = PendingIntent.getActivity(

@@ -104,6 +104,8 @@ class UnsyncedTransactionViewModel @Inject constructor(
         isDispense = isDispense,
         strength = strength,
         dosageForm = dosageForm,
-        drugImagePath = drugImagePath
+        drugImagePath = drugImagePath,
+        rxNo = rxNo,
+        refillNo = refillNo
     )
 }

@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.menu.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.BatchEntity
@@ -36,7 +37,8 @@ import javax.inject.Inject
 class MenuViewModel @Inject constructor(
     private val pillCountTxnDao: PillCountTxnDao,
     private val batchDao: BatchDao,
-    private val preferenceHelper: PreferenceHelper
+    private val preferenceHelper: PreferenceHelper,
+    private val sessionLockController: SessionLockController
 ) : ViewModel() {
 
     /** Backing state flow for the Menu UI. */
@@ -44,6 +46,9 @@ class MenuViewModel @Inject constructor(
 
     /** Public immutable UI state exposed to the UI layer. */
     val uiState: StateFlow<MenuUiState> = _uiState.asStateFlow()
+
+    /** Whether the Menu "Lock Screen" row should be enabled — mirrors [SessionLockController.hasEnabledProfile]. */
+    val hasEnabledFaceProfile: StateFlow<Boolean> = sessionLockController.hasEnabledProfile
 
     init {
         observeDashboardCounts()
@@ -109,6 +114,13 @@ class MenuViewModel @Inject constructor(
 
     /** HL7 toggle from the portal (cached in prefs). */
     fun isHl7Enabled(): Boolean = preferenceHelper.isHl7Enabled()
+
+    /**
+     * Manually triggers the session-lock overlay.
+     *
+     * @return true if the lock engaged, false if there's no enabled face profile to verify against.
+     */
+    fun lockSessionNow(): Boolean = sessionLockController.lockNow()
 
     suspend fun getLastInProgressBatch() = batchDao.getLatest()
 

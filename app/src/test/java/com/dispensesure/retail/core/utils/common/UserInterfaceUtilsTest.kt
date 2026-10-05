@@ -25,7 +25,7 @@ import java.util.TimeZone
  *  - spScale()
  *
  * The @Composable members (isTablet, isLandscape, dialogs, text fields, responsive* helpers,
- * AppInfo, etc.) require a Compose runtime / LocalConfiguration and are NOT covered here.
+ * etc.) require a Compose runtime / LocalConfiguration and are NOT covered here.
  *
  * NOTE on toColor(): String.toColorInt() ultimately calls android.graphics.Color.parseColor,
  * which under isReturnDefaultValues=true returns 0 (no real parsing). We therefore only assert

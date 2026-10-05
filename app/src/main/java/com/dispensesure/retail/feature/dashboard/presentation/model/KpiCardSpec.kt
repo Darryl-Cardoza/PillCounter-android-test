@@ -18,7 +18,6 @@ internal data class KpiCardSpec(
 
 internal val DefaultKpiCards: List<KpiCardSpec> = listOf(
     KpiCardSpec(KpiFilter.DISP_HIGH_PRIORITY, R.string.kpi_disp_short, R.string.kpi_high_priority, R.drawable.priorityhigh),
-    KpiCardSpec(KpiFilter.DISP_PENDING, R.string.kpi_disp_short, R.string.kpi_pending, R.drawable.partial),
     KpiCardSpec(KpiFilter.DISP_CONTROLLED, R.string.kpi_disp_short, R.string.kpi_cont_drugs, R.drawable.prescription_icon),
     KpiCardSpec(KpiFilter.DISP_HAZARDOUS, R.string.kpi_disp_short, R.string.kpi_hazardous, R.drawable.warning),
     KpiCardSpec(KpiFilter.INV_CYCLE_COUNT, R.string.kpi_inv_short, R.string.kpi_cycle_count, R.drawable.prescription_icon),

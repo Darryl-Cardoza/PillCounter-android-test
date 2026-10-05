@@ -7,6 +7,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.platform.LocalConfiguration
 import com.dispensesure.retail.core.utils.constants.Dimens
 import com.dispensesure.retail.core.utils.constants.LocalDimens
@@ -42,6 +43,7 @@ fun DispenseSureRetailTheme(
     CompositionLocalProvider(
         LocalExtendedColors provides extendedColors,
         LocalDimens provides dimens,
+        LocalIsDarkTheme provides darkTheme,
     ) {
         MaterialTheme(
             colorScheme = colorScheme,
@@ -51,10 +53,17 @@ fun DispenseSureRetailTheme(
     }
 }
 
+// The light/dark choice the theme actually applied, so screens never re-derive it.
+val LocalIsDarkTheme = staticCompositionLocalOf { false }
+
 object AppTheme {
     val extendedColors: ExtendedColors
         @Composable
         get() = LocalExtendedColors.current
+
+    val isDarkTheme: Boolean
+        @Composable
+        get() = LocalIsDarkTheme.current
 
     val dimens: Dimens
         @Composable

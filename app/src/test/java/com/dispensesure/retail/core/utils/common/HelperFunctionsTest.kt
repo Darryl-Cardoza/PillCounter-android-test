@@ -14,6 +14,7 @@ import org.junit.Test
  * Unit tests for the PURE members of [HelperFunctions]:
  *  - maskEmail (all branches: null/blank, no/edge @, normal masking)
  *  - resolveStartDestinationAndClearIfExpired (logged-in vs not, threshold branches)
+ *  - clearSessionIfNotRemembered (remember on/off, logged out)
  *  - mapCounts (all CountType x CountStatus combinations incl. else branch)
  *
  * Android-dependent members (exitApp, enableImmersiveFullscreen, openPlayStore,
@@ -120,6 +121,8 @@ class HelperFunctionsTest {
         io.mockk.verify { pref.clearTokens() }
         io.mockk.verify { pref.setUserLoggedIn(false) }
         io.mockk.verify { pref.clearLoggedInAt() }
+        io.mockk.verify { pref.saveLocalId(0) }
+        io.mockk.verify { pref.clearHl7Config() }
     }
 
     @Test
@@ -144,6 +147,45 @@ class HelperFunctionsTest {
         io.mockk.verify { pref.clearTokens() }
         io.mockk.verify { pref.setUserLoggedIn(false) }
         io.mockk.verify { pref.clearLoggedInAt() }
+        io.mockk.verify { pref.saveLocalId(0) }
+        io.mockk.verify { pref.clearHl7Config() }
+    }
+
+    // ───────────────────────────── clearSessionIfNotRemembered ─────────────────────────────
+
+    @Test
+    fun clearIfNotRemembered_loggedInRememberOff_clearsSession() {
+        val pref = mockk<PreferenceHelper>(relaxed = true)
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.isRememberMeEnabled() } returns false
+        HelperFunctions.clearSessionIfNotRemembered(pref)
+        io.mockk.verify { pref.clearTokens() }
+        io.mockk.verify { pref.setUserLoggedIn(false) }
+        io.mockk.verify { pref.clearLoggedInAt() }
+        io.mockk.verify { pref.saveLocalId(0) }
+        io.mockk.verify { pref.clearHl7Config() }
+    }
+
+    @Test
+    fun clearIfNotRemembered_loggedInRememberOn_keepsSession() {
+        val pref = mockk<PreferenceHelper>(relaxed = true)
+        every { pref.isUserLoggedIn() } returns true
+        every { pref.isRememberMeEnabled() } returns true
+        HelperFunctions.clearSessionIfNotRemembered(pref)
+        io.mockk.verify(exactly = 0) { pref.clearTokens() }
+        io.mockk.verify(exactly = 0) { pref.setUserLoggedIn(any()) }
+        io.mockk.verify(exactly = 0) { pref.saveLocalId(any()) }
+        io.mockk.verify(exactly = 0) { pref.clearHl7Config() }
+    }
+
+    @Test
+    fun clearIfNotRemembered_notLoggedIn_doesNothing() {
+        val pref = mockk<PreferenceHelper>(relaxed = true)
+        every { pref.isUserLoggedIn() } returns false
+        every { pref.isRememberMeEnabled() } returns false
+        HelperFunctions.clearSessionIfNotRemembered(pref)
+        io.mockk.verify(exactly = 0) { pref.clearTokens() }
+        io.mockk.verify(exactly = 0) { pref.setUserLoggedIn(any()) }
     }
 
     // ───────────────────────────── mapCounts ─────────────────────────────

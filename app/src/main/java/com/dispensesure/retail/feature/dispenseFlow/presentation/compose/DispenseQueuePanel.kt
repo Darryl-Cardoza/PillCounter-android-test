@@ -162,10 +162,11 @@ fun DispenseQueuePanel(
                             pillCount = item.txn.totalPillCount,
                             targetCount = item.txn.targetCount ?: 0,
                             isDispense = true,
-                            isComingFromHL7 = item.txn.isComingFromHL7,
                             strength = item.txn.strength,
                             dosageForm = item.txn.dosageForm,
                             drugImagePath = item.txn.drugImagePath,
+                            rxNo = item.txn.rxNo,
+                            refillNo = item.txn.refillNo,
                         ),
                         onClick = { onItemClick(item.txn.txnId) },
                     )

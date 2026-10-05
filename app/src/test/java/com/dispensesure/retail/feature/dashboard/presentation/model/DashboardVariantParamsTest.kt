@@ -25,6 +25,7 @@ class DashboardVariantParamsTest {
     private val onRecentBatchClick: (Long) -> Unit = {}
     private val onQueueDispenseClick: (Long) -> Unit = {}
     private val onQueueInventoryClick: (Long) -> Unit = {}
+    private val onTabVisible: (DashboardTab) -> Unit = {}
     private val tourState = TourGuideState(emptyList())
 
     private fun sample() = DashboardVariantParams(
@@ -42,6 +43,7 @@ class DashboardVariantParamsTest {
         onQueueInventoryClick = onQueueInventoryClick,
         disabledKpiFilters = emptySet(),
         onDisabledKpiFilterTapped = {},
+        onTabVisible = onTabVisible,
         tourState = tourState,
     )
 
@@ -60,6 +62,7 @@ class DashboardVariantParamsTest {
         assertSame(onRecentBatchClick, p.onRecentBatchClick)
         assertSame(onQueueDispenseClick, p.onQueueDispenseClick)
         assertSame(onQueueInventoryClick, p.onQueueInventoryClick)
+        assertSame(onTabVisible, p.onTabVisible)
     }
 
     @Test
@@ -100,6 +103,7 @@ class DashboardVariantParamsTest {
         assertSame(onRecentBatchClick, p.component10())
         assertSame(onQueueDispenseClick, p.component11())
         assertSame(onQueueInventoryClick, p.component12())
+        assertSame(onTabVisible, p.component15())
     }
 
     @Test
@@ -129,6 +133,7 @@ class DashboardVariantParamsTest {
             onQueueInventoryClick = { queueInventoryId = it },
             disabledKpiFilters = emptySet(),
             onDisabledKpiFilterTapped = {},
+            onTabVisible = {},
             tourState = TourGuideState(emptyList()),
         )
 

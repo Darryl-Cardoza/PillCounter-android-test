@@ -200,6 +200,39 @@ class SessionLockControllerTest {
     }
 
     @Test
+    fun `logging out releases a lock that was already on`() {
+        // Cold start with Remember me off: the controller starts locked, then the launch logs out.
+        val listener = slot<SharedPreferences.OnSharedPreferenceChangeListener>()
+        val preferenceHelper = mockk<PreferenceHelper>(relaxed = true) {
+            every { isUserLoggedIn() } returns true
+            every { hasEnabledFaceProfile() } returns true
+            every { getFaceLockTimeoutMinutes() } returns 60
+            every { userLoggedInKey } returns LOGGED_IN_KEY
+            every { registerOnChangeListener(capture(listener)) } just Runs
+        }
+        val repository = mockk<FaceProfileRepository> {
+            every { observeProfiles() } returns flowOf(
+                listOf(
+                    FaceProfileEntity(
+                        id = 1L, firstName = "Bruce", lastName = "Wayne",
+                        email = null, createdAt = 0L
+                    )
+                )
+            )
+        }
+        val controller = SessionLockController(preferenceHelper, repository)
+        controller.lockNow(startOnScan = true)
+        assertTrue(controller.isLocked.value)
+
+        every { preferenceHelper.isUserLoggedIn() } returns false
+        listener.captured.onSharedPreferenceChanged(mockk(), LOGGED_IN_KEY)
+        controller.onAppLaunch()
+
+        assertFalse(controller.isLocked.value)
+        assertFalse(controller.startOnScan.value)
+    }
+
+    @Test
     fun `an unrelated pref change leaves the verified user alone`() {
         val listener = slot<SharedPreferences.OnSharedPreferenceChangeListener>()
         val preferenceHelper = mockk<PreferenceHelper>(relaxed = true) {

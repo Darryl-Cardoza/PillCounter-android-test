@@ -68,16 +68,16 @@ class ImageNanoServerTest {
         txnId: Long? = 1L,
         pillCount: Int? = 5,
         imagePath: String? = null,
+        rawImagePath: String? = null,
         type: String? = "VIAL",
-        isDeleted: Boolean = false,
         createdAt: Long = System.currentTimeMillis(),
     ) = PillCountTxnDetailsEntity(
         txnDetailsId = txnDetailsId,
         txnId = txnId,
         pillCount = pillCount,
         imagePath = imagePath,
+        rawImagePath = rawImagePath,
         type = type,
-        isDeleted = isDeleted,
         createdAt = createdAt,
     )
 
@@ -245,20 +245,6 @@ class ImageNanoServerTest {
     }
 
     @Test
-    fun `zip skips soft-deleted detail images`() {
-        val kept = newDetail(txnDetailsId = 1, imagePath = writeTempImage("kept.jpg").absolutePath, isDeleted = false)
-        val deleted = newDetail(txnDetailsId = 2, imagePath = writeTempImage("deleted.jpg").absolutePath, isDeleted = true)
-        val txn = newTxn()
-        coEvery { txnDao.getBySequenceNumber("SEQ-1") } returns txn
-        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(kept, deleted)
-
-        val response = serve("/images/getbysequencenumber/SEQ-1")
-
-        assertEquals(NanoHTTPD.Response.Status.OK, response.status)
-        assertEquals(1, zipEntryNames(response).size)
-    }
-
-    @Test
     fun `zip skips blank and null image paths`() {
         val blank = newDetail(txnDetailsId = 1, imagePath = "  ")
         val nullPath = newDetail(txnDetailsId = 2, imagePath = null)
@@ -317,6 +303,44 @@ class ImageNanoServerTest {
         assertEquals(2, names.size)
         assertTrue(names.any { it.startsWith("1_") && it.contains("1B2") })
         assertTrue(names.any { it.startsWith("2_") && it.contains("2B2") })
+    }
+
+    @Test
+    fun `legacy zip names the raw image after its processed image`() {
+        val d = newDetail(
+            imagePath = writeTempImage("tv.jpg").absolutePath,
+            rawImagePath = writeTempImage("tv_raw.jpg").absolutePath,
+            type = "TARGET_VERIFICATION", pillCount = 30,
+        )
+        val v = newDetail(txnDetailsId = 2, imagePath = writeTempImage("v.jpg").absolutePath, type = "VIAL", createdAt = Long.MAX_VALUE)
+        val txn = newTxn()
+        coEvery { txnDao.getBySequenceNumber("SEQ-1") } returns txn
+        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(d, v)
+
+        val names = zipEntryNames(serve("/images/getbysequencenumber/SEQ-1"))
+
+        assertEquals(3, names.size)
+        assertEquals(names[0].removeSuffix(".jpg") + "_raw.jpg", names[1])
+        // The raw entry doesn't take a sequence number: the vial is still 2nd.
+        assertTrue(names[2].startsWith("2_"))
+    }
+
+    @Test
+    fun `PMS zip names the raw image after its processed image`() {
+        val d = newDetail(
+            imagePath = writeTempImage("tv2.jpg").absolutePath,
+            rawImagePath = writeTempImage("tv2_raw.jpg").absolutePath,
+            type = "TARGET_VERIFICATION",
+        )
+        val txn = newTxn().copy(rxNo = "RX1", transactionOrderId = "ORD1")
+        coEvery { txnDao.getByTransactionOrderId("ORD1") } returns txn
+        coEvery { txnDetailsDao.getAllForTxn(txn.txnId.toString()) } returns listOf(d)
+
+        val names = zipEntryNames(serve("/pic=*&format=zip&orderid=ORD1"))
+
+        assertEquals(2, names.size)
+        assertTrue(names[0].endsWith("_BWTP1.jpg"))
+        assertEquals(names[0].removeSuffix(".jpg") + "_raw.jpg", names[1])
     }
 
     // ----------------------------------------------------------------

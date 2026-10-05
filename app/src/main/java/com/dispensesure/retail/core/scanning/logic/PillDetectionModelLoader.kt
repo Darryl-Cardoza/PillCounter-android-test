@@ -85,7 +85,7 @@ class PillDetectionModelLoader @Inject constructor(
         private const val TRAY_MODEL_ENABLED = true
 
         private const val MAX_CPU_THREADS = 4
-        private const val WARMUP_RUNS = 3
+        internal const val WARMUP_RUNS = 3
     }
 
     suspend fun getOrLoadInterpreters(includeGlove: Boolean = true): LoadedModels {
@@ -109,6 +109,12 @@ class PillDetectionModelLoader @Inject constructor(
             logger.i(if (includeGlove) "Loading pill + tray + glove interpreters" else "Loading pill + tray interpreters (glove deferred)")
 
             performanceLogger.logPerformanceSnapshot("PRE_MODEL_LOAD")
+
+            // FramePathWarmUp reuses the shared Letterbox / ImagePreprocessor scratch, which a
+            // live analyzer reads on every frame. Only the first load is safe for that: no
+            // analyzer can exist before it. A later reload (glove added for a hazardous drug)
+            // runs while the old analyzer is still analysing.
+            val firstLoad = isFirstLoad()
 
             withContext(Dispatchers.IO) {
                 coroutineScope {
@@ -242,7 +248,8 @@ class PillDetectionModelLoader @Inject constructor(
                     warmUp(
                         pill = pillHolder.interpreter,
                         glove = gloveHolder?.interpreter,
-                        tray = trayDetector
+                        tray = trayDetector,
+                        frameWarmUp = firstLoad
                     )
 
                     LoadedModels(
@@ -254,6 +261,9 @@ class PillDetectionModelLoader @Inject constructor(
             }
         }
     }
+
+    /** True until the pill interpreter has been loaded once. Call under [mutex]. */
+    private fun isFirstLoad(): Boolean = pillInterpreter == null
 
     /**
      * Builds an Interpreter using the GPU delegate when supported on this device
@@ -330,13 +340,25 @@ class PillDetectionModelLoader @Inject constructor(
     private fun warmUp(
         pill: Interpreter,
         glove: Interpreter?,
-        tray: TraySegmentationDetector?
+        tray: TraySegmentationDetector?,
+        frameWarmUp: Boolean
     ) {
         val tStart = System.currentTimeMillis()
-        try {
-            warmUpTfliteInterpreter(pill, "Pill")
+        val frameWarmedUp = frameWarmUp && try {
+            // Drives the pill model and the rest of the frame pipeline the way the
+            // analyzer does (see FramePathWarmUp), which also compiles the shaders.
+            FramePathWarmUp.run(pill)
+            true
         } catch (t: Throwable) {
-            Log.w(TAG, "Pill warm-up failed (continuing): ${t.message}")
+            Log.w(TAG, "Frame-path warm-up failed, using interpreter-only warm-up: ${t.message}")
+            false
+        }
+        if (!frameWarmedUp) {
+            try {
+                warmUpTfliteInterpreter(pill, "Pill")
+            } catch (t: Throwable) {
+                Log.w(TAG, "Pill warm-up failed (continuing): ${t.message}")
+            }
         }
         if (glove != null) {
             try {

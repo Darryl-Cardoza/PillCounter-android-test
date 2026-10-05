@@ -5,11 +5,14 @@ import android.content.res.AssetManager
 import com.dispensesure.retail.core.security.ModelDecryptor
 import com.dispensesure.retail.core.security.ModelKeyUnit
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
+import io.mockk.Runs
 import io.mockk.every
+import io.mockk.just
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.mockkConstructor
 import io.mockk.unmockkAll
+import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
@@ -17,6 +20,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
+import org.tensorflow.lite.Interpreter
+import org.tensorflow.lite.Tensor
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.FileOutputStream
@@ -43,6 +48,8 @@ import java.nio.ByteOrder
  *  - "loadModelBytes": both the encrypted (asset copy + decrypt) and
  *    unencrypted (direct asset read) branches, including the "already copied"
  *    short-circuit that skips re-copying the .enc file.
+ *  - "isFirstLoad": true until a pill interpreter is cached.
+ *  - "warmUp": frame-path vs plain pill warm-up, and the fallback between them.
  */
 class PillDetectionModelLoaderTest {
 
@@ -253,5 +260,102 @@ class PillDetectionModelLoaderTest {
         io.mockk.verify(exactly = 0) { assetManager.open(any()) }
         assertArrayEquals(preExistingBytes, existingFile.readBytes())
         assertArrayEquals(decrypted, result)
+    }
+
+    // ---- isFirstLoad --------------------------------------------------------
+
+    private fun invokeIsFirstLoad(): Boolean {
+        val method = PillDetectionModelLoader::class.java.getDeclaredMethod("isFirstLoad")
+        method.isAccessible = true
+        return method.invoke(loader) as Boolean
+    }
+
+    @Test
+    fun `isFirstLoad is true before any pill interpreter is loaded`() {
+        assertTrue(invokeIsFirstLoad())
+    }
+
+    @Test
+    fun `isFirstLoad is false once a pill interpreter is cached`() {
+        PillDetectionModelLoader::class.java.getDeclaredField("pillInterpreter").apply {
+            isAccessible = true
+            set(loader, mockk<Interpreter>())
+        }
+
+        assertFalse(invokeIsFirstLoad())
+    }
+
+    // ---- warmUp -------------------------------------------------------------
+
+    /** Interpreter with one [1, 2] input and output, so the plain warm-up can run on it. */
+    private fun warmUpInterpreter(): Interpreter {
+        val tensor = mockk<Tensor> { every { shape() } returns intArrayOf(1, 2) }
+        return mockk {
+            every { getInputTensor(0) } returns tensor
+            every { outputTensorCount } returns 1
+            every { getOutputTensor(0) } returns tensor
+            every { runForMultipleInputsOutputs(any(), any()) } just Runs
+        }
+    }
+
+    private fun invokeWarmUp(pill: Interpreter, frameWarmUp: Boolean) {
+        val method = PillDetectionModelLoader::class.java.getDeclaredMethod(
+            "warmUp",
+            Interpreter::class.java,
+            Interpreter::class.java,
+            TraySegmentationDetector::class.java,
+            Boolean::class.javaPrimitiveType
+        )
+        method.isAccessible = true
+        method.invoke(loader, pill, null, null, frameWarmUp)
+    }
+
+    @Test
+    fun `warmUp with frameWarmUp runs the frame path and not the plain warm-up`() {
+        mockkObject(FramePathWarmUp)
+        every { FramePathWarmUp.run(any()) } just Runs
+        val pill = warmUpInterpreter()
+
+        invokeWarmUp(pill, frameWarmUp = true)
+
+        verify(exactly = 1) { FramePathWarmUp.run(pill) }
+        verify(exactly = 0) { pill.runForMultipleInputsOutputs(any(), any()) }
+    }
+
+    @Test
+    fun `warmUp without frameWarmUp runs only the plain warm-up`() {
+        mockkObject(FramePathWarmUp)
+        val pill = warmUpInterpreter()
+
+        invokeWarmUp(pill, frameWarmUp = false)
+
+        verify(exactly = 0) { FramePathWarmUp.run(any()) }
+        verify(exactly = PillDetectionModelLoader.WARMUP_RUNS) {
+            pill.runForMultipleInputsOutputs(any(), any())
+        }
+    }
+
+    @Test
+    fun `warmUp falls back to the plain warm-up when the frame path throws`() {
+        mockkObject(FramePathWarmUp)
+        every { FramePathWarmUp.run(any()) } throws RuntimeException("frame path failed")
+        val pill = warmUpInterpreter()
+
+        invokeWarmUp(pill, frameWarmUp = true)
+
+        verify(exactly = PillDetectionModelLoader.WARMUP_RUNS) {
+            pill.runForMultipleInputsOutputs(any(), any())
+        }
+    }
+
+    @Test
+    fun `warmUp without frameWarmUp does not retry a failed plain pill warm-up`() {
+        mockkObject(FramePathWarmUp)
+        val pill = warmUpInterpreter()
+        every { pill.runForMultipleInputsOutputs(any(), any()) } throws RuntimeException("inference failed")
+
+        invokeWarmUp(pill, frameWarmUp = false)
+
+        verify(exactly = 1) { pill.runForMultipleInputsOutputs(any(), any()) }
     }
 }

@@ -231,5 +231,5 @@ dependencies {
     // OpenCV — tray color detection
     implementation(libs.opencv)
 
-    implementation(project(":hl7Core"))
+    implementation(files("libs/hl7Core-release.aar"))
 }

@@ -12,7 +12,7 @@ class KpiCardSpecTest {
     private fun sample() = KpiCardSpec(
         filter = KpiFilter.DISP_PENDING,
         lineOneRes = R.string.kpi_disp_short,
-        lineTwoRes = R.string.kpi_pending,
+        lineTwoRes = R.string.kpi_pending_batch,
         iconRes = R.drawable.partial,
     )
 
@@ -21,7 +21,7 @@ class KpiCardSpecTest {
         val spec = sample()
         assertEquals(KpiFilter.DISP_PENDING, spec.filter)
         assertEquals(R.string.kpi_disp_short, spec.lineOneRes)
-        assertEquals(R.string.kpi_pending, spec.lineTwoRes)
+        assertEquals(R.string.kpi_pending_batch, spec.lineTwoRes)
         assertEquals(R.drawable.partial, spec.iconRes)
     }
 
@@ -52,17 +52,16 @@ class KpiCardSpecTest {
         val spec = sample()
         assertEquals(KpiFilter.DISP_PENDING, spec.component1())
         assertEquals(R.string.kpi_disp_short, spec.component2())
-        assertEquals(R.string.kpi_pending, spec.component3())
+        assertEquals(R.string.kpi_pending_batch, spec.component3())
         assertEquals(R.drawable.partial, spec.component4())
     }
 
     @Test
     fun defaultKpiCards_hasExpectedSizeAndContent() {
-        assertEquals(6, DefaultKpiCards.size)
+        assertEquals(5, DefaultKpiCards.size)
 
         val expected = listOf(
             KpiCardSpec(KpiFilter.DISP_HIGH_PRIORITY, R.string.kpi_disp_short, R.string.kpi_high_priority, R.drawable.priorityhigh),
-            KpiCardSpec(KpiFilter.DISP_PENDING, R.string.kpi_disp_short, R.string.kpi_pending, R.drawable.partial),
             KpiCardSpec(KpiFilter.DISP_CONTROLLED, R.string.kpi_disp_short, R.string.kpi_cont_drugs, R.drawable.prescription_icon),
             KpiCardSpec(KpiFilter.DISP_HAZARDOUS, R.string.kpi_disp_short, R.string.kpi_hazardous, R.drawable.warning),
             KpiCardSpec(KpiFilter.INV_CYCLE_COUNT, R.string.kpi_inv_short, R.string.kpi_cycle_count, R.drawable.prescription_icon),
@@ -78,5 +77,10 @@ class KpiCardSpecTest {
         assertEquals(filters.size, filters.toSet().size)
         assertTrue(filters.contains(KpiFilter.INV_CYCLE_COUNT))
         assertTrue(filters.contains(KpiFilter.INV_PENDING_BATCH))
+    }
+
+    @Test
+    fun defaultKpiCards_excludesPendingDispense() {
+        assertTrue(DefaultKpiCards.none { it.filter == KpiFilter.DISP_PENDING })
     }
 }

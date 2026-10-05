@@ -104,41 +104,54 @@ class BottleInfoDaoTest {
         assertEquals(3, result?.bottleQty)
     }
 
-    // ───────────────────────── findLine (null-tolerant matching) ─────────────────────────
+    // ───────────────────────── findSealedLine (null-tolerant matching) ─────────────────────────
 
     @Test
-    fun `findLine matches exact lot and expiry`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "12-2027"))
-        val found = dao.findLine(1L, "L1", "12-2027")
+    fun `findSealedLine matches exact lot and expiry`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "12-2027", bottleQty = 1))
+        val found = dao.findSealedLine(1L, "L1", "12-2027")
         assertEquals(1L, found?.bottleId)
     }
 
     @Test
-    fun `findLine matches when both lotNo and expNo are null`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = null, expNo = null))
-        val found = dao.findLine(1L, null, null)
+    fun `findSealedLine matches when both lotNo and expNo are null`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = null, expNo = null, bottleQty = 1))
+        val found = dao.findSealedLine(1L, null, null)
         assertEquals(1L, found?.bottleId)
     }
 
     @Test
-    fun `findLine returns null when lot matches but expiry differs`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "12-2027"))
-        val found = dao.findLine(1L, "L1", "01-2028")
+    fun `findSealedLine returns null when lot matches but expiry differs`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "12-2027", bottleQty = 1))
+        val found = dao.findSealedLine(1L, "L1", "01-2028")
         assertNull(found)
     }
 
     @Test
-    fun `findLine returns null when stored lot is null but query lot is not`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = null, expNo = null))
-        val found = dao.findLine(1L, "L1", null)
+    fun `findSealedLine returns null when stored lot is null but query lot is not`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = null, expNo = null, bottleQty = 1))
+        val found = dao.findSealedLine(1L, "L1", null)
         assertNull(found)
     }
 
     @Test
-    fun `findLine returns null for different stockTxnId`() = runTest {
-        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "12-2027"))
-        val found = dao.findLine(2L, "L1", "12-2027")
+    fun `findSealedLine returns null for different stockTxnId`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "12-2027", bottleQty = 1))
+        val found = dao.findSealedLine(2L, "L1", "12-2027")
         assertNull(found)
+    }
+
+    @Test
+    fun `findSealedLine skips a loose line with the same lot`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "12-2027", bottleQty = 0, looseQty = 40))
+        assertNull(dao.findSealedLine(1L, "L1", "12-2027"))
+    }
+
+    @Test
+    fun `findSealedLine picks the sealed line over a loose line of the same lot`() = runTest {
+        dao.insert(BottleInfoEntity(bottleId = 1L, stockTxnId = 1L, lotNo = "L1", expNo = "12-2027", bottleQty = 0, looseQty = 40))
+        dao.insert(BottleInfoEntity(bottleId = 2L, stockTxnId = 1L, lotNo = "L1", expNo = "12-2027", bottleQty = 2))
+        assertEquals(2L, dao.findSealedLine(1L, "L1", "12-2027")?.bottleId)
     }
 
     // ───────────────────────── incrementLooseQtyAndImages ─────────────────────────

@@ -538,6 +538,21 @@ class MainActivityViewModelTest {
     }
 
     @Test
+    fun `local logout stops HL7 even when the settings fetch fails`() = runTest(testDispatcher) {
+        // Local logout cleared the HL7 config, so init's preload skips; offline, the fetch throws.
+        every { preferenceHelper.isHl7ConfigFetched() } returns false
+        coEvery { repository.getApplicationSettings() } throws RuntimeException("offline")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        verify(exactly = 0) { hl7ServiceManager.shutdown() }
+
+        vm.onUserLoginOrLogOut()
+
+        verify(exactly = 1) { hl7ServiceManager.shutdown() }
+    }
+
+    @Test
     fun `startHl7AfterTerminalLoaded returns when disabled`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
@@ -753,22 +768,30 @@ class MainActivityViewModelTest {
     }
 
     @Test
-    fun `toggleSchedule adds then removes a code`() = runTest(testDispatcher) {
-        // start with empty saved selection
+    fun `updateSchedules writes the chosen set to state and prefs`() = runTest(testDispatcher) {
         every { preferenceHelper.isControlDrugTypesInitialized() } returns true
         every { preferenceHelper.getControlDrugTypes() } returns emptySet()
 
         val vm = createViewModel()
         advanceUntilIdle()
 
-        // add
-        vm.toggleSchedule(ScheduleCode.CII)
-        assertTrue(vm.selectedSchedules.value.contains(ScheduleCode.CII))
-        verify { preferenceHelper.setControlDrugTypes(setOf("CII")) }
+        vm.updateSchedules(setOf(ScheduleCode.CII, ScheduleCode.CIV))
 
-        // remove
-        vm.toggleSchedule(ScheduleCode.CII)
-        assertFalse(vm.selectedSchedules.value.contains(ScheduleCode.CII))
+        assertEquals(setOf(ScheduleCode.CII, ScheduleCode.CIV), vm.selectedSchedules.value)
+        verify { preferenceHelper.setControlDrugTypes(setOf("CII", "CIV")) }
+    }
+
+    @Test
+    fun `updateSchedules allows an empty set`() = runTest(testDispatcher) {
+        every { preferenceHelper.isControlDrugTypesInitialized() } returns true
+        every { preferenceHelper.getControlDrugTypes() } returns setOf("CII")
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.updateSchedules(emptySet())
+
+        assertTrue(vm.selectedSchedules.value.isEmpty())
         verify { preferenceHelper.setControlDrugTypes(emptySet()) }
     }
 

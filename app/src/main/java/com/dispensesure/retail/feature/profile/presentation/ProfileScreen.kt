@@ -1,7 +1,6 @@
 package com.dispensesure.retail.feature.profile.presentation
 
 import android.content.res.Configuration
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
@@ -111,7 +110,6 @@ fun ProfileScreen(
     // Determine navigation type
     val cameFromDashboard =
         fromRoute?.contains(Screen.Dashboard.route, ignoreCase = true) == true
-    val context = LocalContext.current
     // First-login flow (came from the dashboard prompt): whether the profile is
     // saved or skipped, offer face enrollment next. Profile is popped so the
     // intro sits directly above the dashboard.
@@ -212,12 +210,9 @@ fun ProfileScreen(
                 }
 
                 is ProfileUpdateUiState.Success -> {
-                    showToast(
-                        context = context,
-                        message = stringResource(R.string.profile_updated_successfully),
-                        duration = Toast.LENGTH_SHORT
-                    )
+                    val profileUpdatedToastText = stringResource(R.string.profile_updated_successfully)
                     LaunchedEffect(updateUiState) {
+                        showToast(profileUpdatedToastText)
                         if (cameFromDashboard) {
                             navigateToFaceIntro()
                         } else {
@@ -351,7 +346,7 @@ private fun ProfileTextField(
                 if (!readOnly) {
                     var input = it
                     if (keyboardType == KeyboardType.Phone) {
-                        input = input.filter { char -> char.isDigit() }
+                        input = input.filter { char -> char in '0'..'9' }
                     }
                     onValueChange(input)
                 }
@@ -422,7 +417,7 @@ private fun ResponsiveProfileFields(
         ), // <— Email read-only
         ProfileField(
             viewModel.npi,
-            { v -> viewModel.npi = v },
+            { v -> viewModel.onNpiChanged(v) },
             R.string.npi_number,
             viewModel.npiError,
             keyboardType = KeyboardType.Number,

@@ -45,5 +45,7 @@ data class CountItem(
     val priority: TxnPriority? = null,
     val strength: String? = null,
     val dosageForm: String? = null,
-    val drugImagePath: String? = null
+    val drugImagePath: String? = null,
+    val rxNo: String? = null,
+    val refillNo: String? = null
 )

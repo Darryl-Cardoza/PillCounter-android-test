@@ -384,4 +384,13 @@ class VerifyPinViewModelTest {
         viewModel.setUserLoggedIn(false)
         verify(exactly = 1) { prefs.setUserLoggedIn(false) }
     }
+
+    @Test
+    fun `saveRememberMe delegates to prefs`() = runTest {
+        viewModel.saveRememberMe(true)
+        verify(exactly = 1) { prefs.setRememberMe(true) }
+
+        viewModel.saveRememberMe(false)
+        verify(exactly = 1) { prefs.setRememberMe(false) }
+    }
 }

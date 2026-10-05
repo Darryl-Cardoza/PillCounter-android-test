@@ -2,7 +2,8 @@
 
 > Audience: engineers working on this codebase. This document describes the
 > _actual_ architecture as found in the source (package `com.dispensesure.retail`,
-> plus the `:hl7Core` library module `org.rite.hl7`), not an idealized version.
+> plus the prebuilt HL7 v2 library `org.rite.hl7`, shipped as `app/libs/hl7Core-release.aar`),
+> not an idealized version.
 
 ---
 
@@ -45,8 +46,8 @@ network auto-discovery (NSD). Data is persisted in an **encrypted Room
             │
             ▼
 ┌──────────────────────────────────────────────────────────────────┐
-│ :hl7Core  (pure-Kotlin HL7 v2 builders + parsers, no Android deps  │
-│            beyond the library plugin) — used by feature/hl7 + core/hl7│
+│ hl7Core-release.aar  (prebuilt HL7 v2 builders + parsers,          │
+│            org.rite.hl7) — used by feature/hl7 + core/hl7          │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
@@ -154,7 +155,8 @@ User → DispenseFlowScreen → DispenseFlowViewModel
 
 ## 7. HL7 / MLLP subsystem
 
-- `:hl7Core` is a **pure HL7 v2** module: segment builders
+- The HL7 v2 library is a **prebuilt AAR** (`app/libs/hl7Core-release.aar`, source not
+  in this repo): segment builders
   (`MSH/PID/PV1/ORC/RXC/RXD/RXE/RXR/INV/EQU`), parsers, ACK generation, and
   domain models. It has no dependency on the app module.
 - `core/hl7` provides the Android transport: an **MLLP client + server**, TLS
@@ -196,10 +198,10 @@ User → DispenseFlowScreen → DispenseFlowViewModel
 
 ## 10. Build & toolchain notes
 
-- Two Gradle modules: `:app` (`com.android.application`) and `:hl7Core`
-  (`com.android.library`). JDK/JVM target **17** across both (enforced via
+- One Gradle module: `:app` (`com.android.application`). The HL7 library comes in
+  as a prebuilt AAR. JDK/JVM target **17** (enforced via
   `org.gradle.java.home` and `jvmToolchain(17)`).
-- `compileSdk = 36`, `minSdk = 29` (app) / `26` (hl7Core), `targetSdk = 36`.
+- `compileSdk = 36`, `minSdk = 29`, `targetSdk = 36` (the HL7 AAR's own minSdk is 24).
 - Release builds are minified (R8) + resource-shrunk and signed from
   `keystore.properties` (guarded so its absence doesn't break debug builds).
 - See the root `README.md` for setup, and `cleanup_report.md` /
