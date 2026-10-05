@@ -132,16 +132,6 @@ internal fun DispenseAndInventoryQueueSection(
         }
     }
 
-    // The queue/recent-activity steps point at real list content, so show the matching tab.
-    val tourStepId = params.tourState.currentStep?.id.takeIf { params.tourState.isActive }
-    LaunchedEffect(tourStepId) {
-        when (tourStepId) {
-            "queue_list" -> onTabSelected(DashboardTab.DISPENSE_QUEUE)
-            "inventory_queue" -> onTabSelected(DashboardTab.INVENTORY_QUEUE)
-            "recent_activity" -> onTabSelected(DashboardTab.RECENT_ACTIVITY)
-        }
-    }
-
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(responsiveDp(2.dp)),
@@ -155,7 +145,7 @@ internal fun DispenseAndInventoryQueueSection(
         )
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.weight(1f).tourTarget(params.tourState, "queue_list"),
+            modifier = Modifier.weight(1f),
             pageSpacing = responsiveDp(DashboardBaseSizes.CardGap),
         ) { page ->
             val tab = DashboardTab.entries[page]

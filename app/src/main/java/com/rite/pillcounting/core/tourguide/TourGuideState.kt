@@ -26,7 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /** A self-contained part of the tour; the user is asked before moving on to the next one. */
-enum class TourSection { DASHBOARD, DISPENSE, STOCK_COUNT }
+enum class TourSection { DISPENSE, STOCK_COUNT, DASHBOARD }
 
 /**
  * Forces the tooltip to a fixed edge instead of automatic placement, for a target that

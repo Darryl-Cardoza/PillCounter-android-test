@@ -634,6 +634,4 @@
     <string name="tour_picker_title">Quelle visite ?</string>
     <string name="tour_picker_full">Visite complète</string>
     <string name="tour_picker_start">Démarrer</string>
-    <string name="tour_title_inventory_queue">File d\'inventaire</string>
-    <string name="tour_desc_inventory_queue">La file d\'inventaire liste vos comptages de stock en cours; touchez-en un pour continuer.</string>
 </resources>

@@ -259,7 +259,7 @@ fun TourGuideOverlay(
                         modifier = Modifier
                             .width(22.dp)
                             .height(22.dp)
-                            .background(accentColor, RoundedCornerShape(50)),
+                            .background(MaterialTheme.colorScheme.secondary, RoundedCornerShape(50)),
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
@@ -291,7 +291,7 @@ fun TourGuideOverlay(
                         modifier = Modifier
                             .fillMaxWidth((state.currentIndex + 1) / state.steps.size.toFloat())
                             .height(4.dp)
-                            .background(MaterialTheme.colorScheme.primary, RoundedCornerShape(2.dp)),
+                            .background(MaterialTheme.colorScheme.secondary, RoundedCornerShape(2.dp)),
                     )
                 }
                 val compactPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
@@ -301,7 +301,7 @@ fun TourGuideOverlay(
                 ) {
                     Text(
                         text = stringResource(R.string.tour_step_of, state.currentIndex + 1, state.steps.size),
-                        color = extendedColors.textColor,
+                        color = MaterialTheme.colorScheme.secondary,
                         fontSize = 11.sp,
                         modifier = Modifier.weight(1f),
                     )

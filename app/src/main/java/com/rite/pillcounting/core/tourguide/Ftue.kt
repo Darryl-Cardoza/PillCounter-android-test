@@ -57,9 +57,6 @@ private val DASHBOARD_STEPS = listOf(
     TourStep("kpi_dispense", R.string.tour_title_kpi_dispense, R.string.tour_desc_kpi_dispense, TourSection.DASHBOARD, setOf("kpi_high_priority", "kpi_controlled", "kpi_hazardous")),
     TourStep("kpi_inventory", R.string.tour_title_kpi_inventory, R.string.tour_desc_kpi_inventory, TourSection.DASHBOARD, setOf("kpi_cycle_count", "kpi_pending_batch")),
     TourStep("tabs", R.string.tour_title_tabs, R.string.tour_desc_tabs, TourSection.DASHBOARD),
-    TourStep("queue_list", R.string.tour_title_queue_list, R.string.tour_desc_queue_list, TourSection.DASHBOARD),
-    TourStep("inventory_queue", R.string.tour_title_inventory_queue, R.string.tour_desc_inventory_queue, TourSection.DASHBOARD, setOf("queue_list")),
-    TourStep("recent_activity", R.string.tour_title_recent_activity, R.string.tour_desc_recent_activity, TourSection.DASHBOARD, setOf("queue_list")),
 )
 
 private val DISPENSE_STEPS = listOf(

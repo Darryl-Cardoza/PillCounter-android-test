@@ -74,8 +74,6 @@
     <string name="tour_desc_stock_count">Starts a new inventory count session to reconcile stock.</string>
     <string name="tour_title_tabs">Queue / Activity</string>
     <string name="tour_desc_tabs">Switch the list below between the Dispense Queue, the Inventory Queue and Recent Activity.</string>
-    <string name="tour_title_recent_activity">Recent activity</string>
-    <string name="tour_desc_recent_activity">Everything you\'ve dispensed or counted recently — tap any row to reopen it.</string>
     <string name="tour_skip">Skip</string>
     <string name="tour_back">Back</string>
     <string name="tour_next">Next</string>
@@ -93,8 +91,6 @@
     <string name="tour_desc_count_add_circle">Tap to add the detected pills to the running count. Long-press to move it.</string>
     <string name="tour_title_add_note_actions">Skip or save</string>
     <string name="tour_desc_add_note_actions">Skip if there\'s nothing to note, or save a note to the record. In this tour it is skipped for you.</string>
-    <string name="tour_title_queue_list">Today\'s transactions</string>
-    <string name="tour_desc_queue_list">The Dispense Queue. The Up Next card at the top is the prescription to work on next; tap any row to resume it.</string>
 
     <!-- Stock count (inventory) tour guide -->
     <string name="tour_title_dispense_tap">Start a dispense</string>
@@ -679,6 +675,4 @@
     <string name="tour_picker_title">Which tour?</string>
     <string name="tour_picker_full">Full tour</string>
     <string name="tour_picker_start">Start</string>
-    <string name="tour_title_inventory_queue">Inventory Queue</string>
-    <string name="tour_desc_inventory_queue">The Inventory Queue lists your in-progress stock counts; tap one to continue counting.</string>
 </resources>

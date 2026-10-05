@@ -634,6 +634,4 @@
     <string name="tour_picker_title">¿Qué recorrido?</string>
     <string name="tour_picker_full">Recorrido completo</string>
     <string name="tour_picker_start">Iniciar</string>
-    <string name="tour_title_inventory_queue">Cola de inventario</string>
-    <string name="tour_desc_inventory_queue">La cola de inventario muestra sus conteos de existencias en curso; toque uno para continuar.</string>
 </resources>

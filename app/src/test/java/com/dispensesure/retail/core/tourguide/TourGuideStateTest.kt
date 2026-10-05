@@ -27,7 +27,7 @@ class TourGuideStateTest {
     fun `start concatenates the chosen sections and drops pms when HL7 is off`() = runTest {
         val state = TestScopeState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
         state.start(TourSection.entries, hl7Enabled = false)
-        assertEquals(listOf("d1", "x1", "x2", "s1"), state.steps.map { it.id })
+        assertEquals(listOf("x1", "x2", "s1", "d1"), state.steps.map { it.id })
     }
 
     @Test
