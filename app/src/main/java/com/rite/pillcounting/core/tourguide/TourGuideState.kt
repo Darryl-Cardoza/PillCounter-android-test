@@ -116,6 +116,10 @@ class TourGuideState(
 
     val isLastStep: Boolean get() = nextIndex() == null
 
+    /** 1-based position and total among the steps that are shown (skipped ones don't count). */
+    val stepTotal: Int get() = steps.count { it.id !in skipped }
+    val stepNumber: Int get() = steps.take(currentIndex + 1).count { it.id !in skipped }.coerceAtLeast(1)
+
     fun registerTarget(id: String, coordinates: LayoutCoordinates, owner: Any = id) {
         if (coordinates.isAttached) targetBounds[id to owner] = coordinates.boundsInRoot()
     }

@@ -1592,7 +1592,13 @@ fun DispenseFlowScreen(
                 onNext = {
                     when (ftueState.currentStep?.id) {
                         "d_scan_rx" -> {
-                            dispenseVm.useDummyRxData()
+                            // useDummyRxData ignores calls mid-load or in another stage; wait for a state it accepts.
+                            withTimeout(TourActionTimeoutMs) {
+                                dispenseVm.uiState.first {
+                                    it.showRxDetails || (!it.isLoading && (it.stage == DispenseStage.PRE_RX || it.stage == DispenseStage.QUEUE))
+                                }
+                            }
+                            if (!dispenseVm.uiState.value.showRxDetails) dispenseVm.useDummyRxData()
                             withTimeout(TourActionTimeoutMs) { dispenseVm.uiState.first { it.showRxDetails } }
                         }
                         "d_scan_container" -> {

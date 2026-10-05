@@ -349,15 +349,17 @@ class MainActivity : ComponentActivity() {
                                     // section: purge tutorial data first, then show the Dashboard.
                                     LaunchedEffect(Unit) {
                                         FtueController.events.collect { event ->
+                                            // After a logout or expiry there is no user to mark or to show a Dashboard to.
+                                            val loggedIn = preferenceHelper.isUserLoggedIn()
                                             if (event == TourEvent.Ended) {
                                                 // A replay from the menu must not leave the first-login offer pending.
-                                                TourGuidePrefs.markSeen(this@MainActivity, preferenceHelper.getLocalId())
+                                                if (loggedIn) TourGuidePrefs.markSeen(this@MainActivity, preferenceHelper.getLocalId())
                                                 settingsViewModel.purgeTutorialData()
                                                 // The last demo step's completion writes are still landing; sweep again.
                                                 delay(1500)
                                                 settingsViewModel.purgeTutorialData()
                                             }
-                                            navController.navigateBackToDashboard()
+                                            if (loggedIn) navController.navigateBackToDashboard()
                                         }
                                     }
                                     TourSectionPrompt(FtueController.state)

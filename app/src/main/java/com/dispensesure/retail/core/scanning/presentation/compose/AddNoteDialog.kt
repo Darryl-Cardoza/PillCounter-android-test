@@ -62,6 +62,8 @@ fun AddNoteDialog(
     var showError by remember { mutableStateOf(false) }
 
     val tourState = FtueController.state
+    // Fixed at first composition: switching windows when the tour ends would rebuild the dialog.
+    val inTour = remember { tourState.isActive }
 
     val card: @Composable () -> Unit = {
         Card(
@@ -185,7 +187,7 @@ fun AddNoteDialog(
         }
     }
 
-    if (tourState.isActive) {
+    if (inTour) {
         // Tour: the card is shown in the tour's own dialog window so its card draws above it.
         TourDialogHost(state = tourState, onNext = { onSkip() }, content = card)
     } else {

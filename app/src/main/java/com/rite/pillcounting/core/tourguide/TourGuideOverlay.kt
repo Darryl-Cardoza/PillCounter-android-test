@@ -263,7 +263,7 @@ fun TourGuideOverlay(
                         contentAlignment = Alignment.Center,
                     ) {
                         Text(
-                            text = (state.currentIndex + 1).toString(),
+                            text = state.stepNumber.toString(),
                             color = extendedColors.primaryBackground,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold,
@@ -289,7 +289,7 @@ fun TourGuideOverlay(
                 ) {
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth((state.currentIndex + 1) / state.steps.size.toFloat())
+                            .fillMaxWidth((state.stepNumber / state.stepTotal.coerceAtLeast(1).toFloat()).coerceIn(0f, 1f))
                             .height(4.dp)
                             .background(MaterialTheme.colorScheme.secondary, RoundedCornerShape(2.dp)),
                     )
@@ -300,7 +300,7 @@ fun TourGuideOverlay(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Text(
-                        text = stringResource(R.string.tour_step_of, state.currentIndex + 1, state.steps.size),
+                        text = stringResource(R.string.tour_step_of, state.stepNumber, state.stepTotal),
                         color = MaterialTheme.colorScheme.secondary,
                         fontSize = 11.sp,
                         modifier = Modifier.weight(1f),

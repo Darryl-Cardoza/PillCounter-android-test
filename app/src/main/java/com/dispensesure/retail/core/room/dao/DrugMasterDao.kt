@@ -100,15 +100,16 @@ interface DrugMasterDao {
 
     /* ───────────────────────────── Queries ────────────────────────────── */
 
+    /** Deletes the drug with this NDC (used to remove the tutorial demo drug). */
+    @Query("DELETE FROM drug_master WHERE ndc = :ndc")
+    suspend fun deleteByNdc(ndc: String)
+
     /**
      * Retrieves a drug by its National Drug Code (NDC).
      *
      * @param ndc National Drug Code string.
      * @return The matching [DrugMasterEntity], or `null` if not found.
      */
-    @Query("DELETE FROM drug_master WHERE ndc = :ndc")
-    suspend fun deleteByNdc(ndc: String)
-
     @Query("SELECT * FROM drug_master WHERE ndc = :ndc LIMIT 1")
     suspend fun getDrugByNdc(ndc: String): DrugMasterEntity?
 
