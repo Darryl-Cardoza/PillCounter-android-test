@@ -45,9 +45,6 @@ fun InformationPanelSection(
     val scanType = uiState.scanType
     val onAdd = { onEvent(PillScanningEvent.AddTransactionDetailClicked(filteredPillCount, stepType)) }
     val onDone = {
-        // FTUE: don't advance "count_add_circle" here — this circle can fire for more
-        // than one StepState in a row before reaching VIAL, so advancing early would
-        // desync the tour. LaunchedEffect(pillStepType) advances it once VIAL is real.
         onEvent(PillScanningEvent.FinalDone(stepType = stepType, totalCount))
     }
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE

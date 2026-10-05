@@ -406,6 +406,32 @@ class BatchDaoTest {
     }
 
     @Test
+    fun `tutorial bucket batches are hidden from unsynced and in-progress queries`() = runTest {
+        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false, bucketId = "TUTORIAL"))
+        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.COMPLETED, isSynced = false, bucketId = "Normal"))
+        dao.insert(BatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, bucketId = "TUTORIAL"))
+
+        assertEquals(listOf(2L), dao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
+        dao.observeInProgressBatchSummaries().test {
+            assertTrue(awaitItem().isEmpty())
+        }
+        dao.observeInProgressBatchKpiCounts().test {
+            assertEquals(0, awaitItem().pendingBatchCount)
+        }
+    }
+
+    @Test
+    fun `getTutorialBatchIds finds the tutorial bucket and demo drug batches`() = runTest {
+        val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TUTORIAL_DUMMY_NDC, drugName = "Tutorial Demo Drug"))
+        dao.insert(BatchEntity(batchId = 1L, bucketId = "TUTORIAL"))
+        dao.insert(BatchEntity(batchId = 2L, bucketId = "Normal"))
+        dao.insert(BatchEntity(batchId = 3L, bucketId = "Normal"))
+        stockTxnDao.insertIgnore(StockTxnEntity(batchId = 3L, drugId = demoDrugId))
+
+        assertEquals(setOf(1L, 3L), dao.getTutorialBatchIds().toSet())
+    }
+
+    @Test
     fun `markBatchSynced flips isSynced flag to true`() = runTest {
         dao.insert(BatchEntity(batchId = 1L, isSynced = false))
         dao.markBatchSynced(1L)

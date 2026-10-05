@@ -106,6 +106,9 @@ interface DrugMasterDao {
      * @param ndc National Drug Code string.
      * @return The matching [DrugMasterEntity], or `null` if not found.
      */
+    @Query("DELETE FROM drug_master WHERE ndc = :ndc")
+    suspend fun deleteByNdc(ndc: String)
+
     @Query("SELECT * FROM drug_master WHERE ndc = :ndc LIMIT 1")
     suspend fun getDrugByNdc(ndc: String): DrugMasterEntity?
 

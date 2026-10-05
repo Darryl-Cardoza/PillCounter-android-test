@@ -23,7 +23,8 @@ import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TutorialEntryRegistry
+import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
 import com.dispensesure.retail.core.room.dao.BottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -85,6 +86,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
@@ -576,14 +578,9 @@ class PillScanningViewModel @Inject constructor(
                             val effectiveBatchId = if (stockCountBatchId != 0L) {
                                 stockCountBatchId
                             } else {
-                                batchDao.insertNewInProgressBatch(bucketId = stockBucketId).also { newBatchId ->
-                                    // Only a freshly-minted batch — never mark an existing,
-                                    // pre-tutorial batch the user happens to still be
-                                    // continuing while the tour is active.
-                                    if (FtueController.state.isActive) {
-                                        TutorialEntryRegistry.markTutorialBatch(newBatchId)
-                                    }
-                                }
+                                batchDao.insertNewInProgressBatch(
+                                    bucketId = if (FtueController.state.isActive) TutorialData.BUCKET else stockBucketId,
+                                )
                             }
                             val existingStockTxn = stockTxnDao.findByDrugInBatch(effectiveBatchId, stockDrugId)
                             val effectiveStockTxnId = existingStockTxn?.txnId
@@ -2515,12 +2512,7 @@ class PillScanningViewModel @Inject constructor(
                     _capturedBitmap.value = bitmap
                     // A fresh still is unsaved, so the flag can never outlive the still it guards.
                     captureCommitted = false
-                    if (autoConfirm) {
-                        // autoConfirm skips the real Done tap the FTUE tour's "vial_done" step
-                        // waits on, so advance it manually here or the tour gets stuck forever.
-                        FtueController.state.advanceIfCurrent("vial_done")
-                        saveCaptureImage()
-                    }
+                    if (autoConfirm) saveCaptureImage()
                 }
             },
             onCaptureError = { _isCapturing.value = false }
@@ -2535,6 +2527,22 @@ class PillScanningViewModel @Inject constructor(
             _showFlash.value = true
             delay(350)
             _showFlash.value = false
+        }
+    }
+
+    /** Whether finishing a count asks for a note; the tour skips its note step otherwise. */
+    fun isNotesDialogEnabled(): Boolean = preferenceHelper.getShowNotesDialogSetting()
+
+    /** Tour: saves a blank demo vial photo (no camera needed); returns once the workflow has left VIAL, else throws. */
+    suspend fun captureVialForTour() {
+        if (_currentStep.value == StepState.VIAL && !captureCommitted) {
+            _capturedBitmap.value = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.DKGRAY) }
+            saveCaptureImage()
+        }
+        // With the notes setting on, VIAL stays the current step until the note is answered, so
+        // the Add Note dialog appearing is as good as leaving VIAL.
+        withTimeout(TourActionTimeoutMs) {
+            while (_currentStep.value == StepState.VIAL && !_uiState.value.showNotesDialog) delay(50)
         }
     }
 

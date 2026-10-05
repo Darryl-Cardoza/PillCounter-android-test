@@ -58,7 +58,6 @@ import com.dispensesure.retail.core.utils.compose.DrugCountRow
 import com.dispensesure.retail.core.utils.compose.DrugCountRowData
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardUiState
-import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
 import com.dispensesure.retail.feature.dashboard.presentation.model.upNextDispense
 import com.dispensesure.retail.feature.history.presentation.compose.BatchHistoryRow
@@ -70,16 +69,6 @@ import java.util.Locale
 // Shared scaffold widgets for the new dashboard. DashboardLandscapeLayout and
 // DashboardPortraitLayout consume these so the "same data, different placement"
 // contract holds without per-layout duplication.
-
-/** The tour-guide target id for a KPI card, keyed by its filter — shared by every KPI layout. */
-private fun kpiTourId(filter: KpiFilter): String = when (filter) {
-    KpiFilter.DISP_HIGH_PRIORITY -> "kpi_high_priority"
-    KpiFilter.DISP_PENDING -> "kpi_pending"
-    KpiFilter.DISP_CONTROLLED -> "kpi_controlled"
-    KpiFilter.DISP_HAZARDOUS -> "kpi_hazardous"
-    KpiFilter.INV_CYCLE_COUNT -> "kpi_cycle_count"
-    KpiFilter.INV_PENDING_BATCH -> "kpi_pending_batch"
-}
 
 internal fun buildTerminalUserLine(
     uiState: DashboardUiState,
@@ -165,9 +154,7 @@ internal fun ScaffoldTopBar(
             }
             Spacer(modifier = Modifier.width(if (compact) 8.dp else 12.dp))
         }
-        Box(modifier = Modifier.tourTarget(tourState, "menu")) {
-            MenuButton(navController = navController)
-        }
+        MenuButton(navController = navController)
     }
 }
 
@@ -290,8 +277,9 @@ internal fun ScaffoldTabStrip(
     inventoryCount: Int,
     onSelect: (DashboardTab) -> Unit,
     modifier: Modifier = Modifier,
+    tourState: TourGuideState? = null,
 ) {
-    Row(modifier = modifier.fillMaxWidth()) {
+    Row(modifier = modifier.fillMaxWidth().tourTarget(tourState, "tabs")) {
         ScaffoldTab(
             label = stringResource(R.string.tab_label_with_count, stringResource(R.string.dispense_queue), dispenseCount),
             isActive = activeTab == DashboardTab.DISPENSE_QUEUE,

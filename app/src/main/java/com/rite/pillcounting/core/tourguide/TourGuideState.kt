@@ -1,8 +1,11 @@
 package com.dispensesure.retail.core.tourguide
 
 import androidx.annotation.StringRes
-import androidx.compose.runtime.Composable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.relocation.BringIntoViewRequester
+import androidx.compose.foundation.relocation.bringIntoViewRequester
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
@@ -15,16 +18,15 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-/**
- * [ACTION_TAP] lets the tap pass through to the real control underneath while that same
- * tap also advances the step (no Next button); [ACTION_WAIT] blocks nothing and is
- * advanced externally via [TourGuideState.advanceIfCurrent].
- */
-enum class TourStepMode { INFO, ACTION_TAP, ACTION_WAIT }
+/** A self-contained part of the tour; the user is asked before moving on to the next one. */
+enum class TourSection { DASHBOARD, DISPENSE, STOCK_COUNT }
 
 /**
  * Forces the tooltip to a fixed edge instead of automatic placement, for a target that
@@ -33,110 +35,187 @@ enum class TourStepMode { INFO, ACTION_TAP, ACTION_WAIT }
  */
 enum class TooltipEdge { TOP, BOTTOM }
 
-/** One stop on a tour: the target it points at, its tooltip copy, and how it advances. */
+/** One stop on a tour. [targetIds] are the tagged composables whose bounds get spotlighted. */
 data class TourStep(
     val id: String,
     @StringRes val titleRes: Int,
     @StringRes val descriptionRes: Int,
-    val mode: TourStepMode = TourStepMode.INFO,
+    val section: TourSection,
+    val targetIds: Set<String> = setOf(id),
     val pinnedEdge: TooltipEdge? = null,
+    /** Spotlight each target on its own instead of one box around all of them. */
+    val separateBlocks: Boolean = false,
 )
 
 /**
- * Drives a spotlight tour over a set of [TourStep]s. Targets register their on-screen
- * bounds via [tourTarget] as they're laid out; [TourGuideOverlay] reads the current
- * step's bounds back out to draw the cutout and position the tooltip.
+ * Drives a spotlight tour. Targets register their on-screen bounds via [tourTarget];
+ * [TourGuideOverlay] reads the current step's bounds back out to draw the cutout.
+ * The user only ever taps Next or Skip: Next goes through [runStep], which serialises
+ * taps so a double tap can't run a step's action (or advance) twice.
  */
 @Stable
-class TourGuideState(val steps: List<TourStep>) {
+class TourGuideState(
+    private val stepsFor: (TourSection) -> List<TourStep> = ::tourStepsFor,
+    private val scope: CoroutineScope = CoroutineScope(Dispatchers.Main),
+) {
+    var steps by mutableStateOf<List<TourStep>>(emptyList())
+        private set
     var currentIndex by mutableStateOf(0)
         private set
     var isActive by mutableStateOf(false)
         private set
 
-    // A SnapshotStateMap (not a plain MutableMap) so overlay reads of currentTargetRect
-    // recompose as bounds are (re)registered — e.g. once the KPI row scrolls a target
-    // into view and onGloballyPositioned reports its new position.
-    private val targetBounds = mutableStateMapOf<String, Rect>()
+    /** Set when the current section is done and another follows; the tour waits for the answer. */
+    var pendingSection by mutableStateOf<TourSection?>(null)
+        private set
 
-    // Plain Dispatchers.Main, NOT .immediate: .immediate skips deferring when already called
-    // from the main thread, which would defeat advanceIfCurrent's tap-race fix entirely.
-    private val scope = CoroutineScope(Dispatchers.Main)
+    /** True while a step's action runs; Next and Skip are disabled. */
+    var stepBusy by mutableStateOf(false)
+        private set
+
+    /** Bumped when a step's action fails, so the overlay can show the retry toast. */
+    var failureTick by mutableStateOf(0)
+        private set
+
+    /** Invoked once when the tour ends for any reason (done, skipped, locked, logged out). */
+    var onEnded: (() -> Unit)? = null
+
+    // A SnapshotStateMap so overlay reads recompose as bounds are (re)registered. Keyed by
+    // (id, owner): the same id can be tagged by two composables at once (layout variants,
+    // a crossfade), and one leaving composition must not wipe the other's bounds.
+    private val targetBounds = mutableStateMapOf<Pair<String, Any>, Rect>()
+
+    /** Bounds for [id]: the largest visible registration, since off-screen copies clip to empty. */
+    private fun boundsOf(id: String): Rect? =
+        targetBounds.filterKeys { it.first == id }.values
+            .filter { !it.isEmpty }
+            .maxByOrNull { it.width * it.height }
 
     val currentStep: TourStep? get() = steps.getOrNull(currentIndex)
-    val currentTargetRect: Rect? get() = currentStep?.let { targetBounds[it.id] }
-    val isLastStep: Boolean get() = currentIndex == steps.lastIndex
 
-    fun registerTarget(id: String, coordinates: LayoutCoordinates) {
-        if (coordinates.isAttached) {
-            targetBounds[id] = coordinates.boundsInRoot()
-        }
+    /** The current step's target rects, one per target id that is on screen. */
+    val currentTargetRects: List<Rect>
+        get() = currentStep?.targetIds?.mapNotNull(::boundsOf).orEmpty()
+
+    /** Union of [currentTargetRects]. */
+    val currentTargetRect: Rect?
+        get() = currentTargetRects
+            .reduceOrNull { a, b ->
+                Rect(minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom))
+            }
+
+    // Steps whose scenario doesn't arise in this run (e.g. no vial photo in the workflow).
+    private var skipped by mutableStateOf<Set<String>>(emptySet())
+
+    fun setStepSkipped(id: String, skip: Boolean) {
+        if ((id in skipped) != skip) skipped = if (skip) skipped + id else skipped - id
     }
 
-    /**
-     * Called when the tagged composable leaves composition (see [tourTarget]); without it
-     * a stale rect would linger and get spotlighted for a step with no real content there.
-     */
-    fun clearTarget(id: String) {
-        targetBounds.remove(id)
+    private fun nextIndex(): Int? =
+        (currentIndex + 1 until steps.size).firstOrNull { steps[it].id !in skipped }
+
+    val isLastStep: Boolean get() = nextIndex() == null
+
+    fun registerTarget(id: String, coordinates: LayoutCoordinates, owner: Any = id) {
+        if (coordinates.isAttached) targetBounds[id to owner] = coordinates.boundsInRoot()
     }
 
-    fun start() {
+    /** Called when the tagged composable leaves composition, so a stale rect isn't spotlighted. */
+    fun clearTarget(id: String, owner: Any = id) {
+        targetBounds.remove(id to owner)
+    }
+
+    fun start(sections: List<TourSection>, hl7Enabled: Boolean = true) {
+        steps = sections.flatMap(stepsFor).filter { hl7Enabled || it.id != PMS_STEP_ID }
         currentIndex = 0
-        isActive = true
-    }
-
-    fun next() {
-        if (isLastStep) dismiss() else currentIndex++
+        pendingSection = null
+        stepBusy = false
+        skipped = emptySet()
+        isActive = steps.isNotEmpty()
     }
 
     fun back() {
-        if (currentIndex > 0) currentIndex--
+        val prev = steps.getOrNull(currentIndex - 1) ?: return
+        if (!stepBusy && prev.section == currentStep?.section) currentIndex--
     }
 
-    fun dismiss() {
-        isActive = false
-    }
-
-    /**
-     * Advances only if [id] is still the current step. Deferred by one tick so the
-     * recomposition it triggers can't race the same tap's dispatch to the real control
-     * underneath, which used to silently swallow that tap.
-     */
-    fun advanceIfCurrent(id: String) {
-        if (isActive && currentStep?.id == id) {
-            scope.launch { next() }
-        }
-    }
-
-    /**
-     * Skips forward past every step in [ids] in one deferred pass, for a real action that
-     * bypasses one or more optional steps whose own tap-to-advance never got a chance to fire.
-     */
-    fun advanceWhileCurrentIn(ids: Set<String>) {
-        if (!isActive) return
+    /** Runs [action] for step [id] once; a repeat tap, or a tap for a stale step, is ignored. */
+    fun runStep(id: String, action: suspend () -> Unit = {}) {
+        if (stepBusy || !isActive || pendingSection != null || currentStep?.id != id) return
+        stepBusy = true
         scope.launch {
-            while (isActive && ids.contains(currentStep?.id)) next()
+            try {
+                action()
+                advanceIfCurrent(id)
+            } catch (e: TimeoutCancellationException) {
+                // A withTimeout in the action is a failed step, not a cancelled one.
+                failureTick++
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                failureTick++
+            } finally {
+                stepBusy = false
+            }
         }
+    }
+
+    fun advanceIfCurrent(id: String) {
+        if (!isActive || currentStep?.id != id) return
+        val nextIdx = nextIndex()
+        val following = nextIdx?.let { steps[it] }
+        when {
+            following == null -> end()
+            following.section != currentStep?.section -> pendingSection = following.section
+            else -> currentIndex = nextIdx
+        }
+    }
+
+    /** The user chose to carry on into the section the prompt offered. */
+    fun continueToNextSection() {
+        if (pendingSection == null) return
+        pendingSection = null
+        currentIndex = nextIndex() ?: currentIndex
+    }
+
+    fun end() {
+        if (!isActive) return
+        isActive = false
+        pendingSection = null
+        onEnded?.invoke()
     }
 }
 
-@Composable
-fun rememberTourGuideState(steps: List<TourStep>): TourGuideState =
-    remember(steps) { TourGuideState(steps) }
-
 /**
  * Registers this composable's laid-out bounds under [id] so a tour guide can spotlight it,
- * and clears them again when this composable leaves composition — see [TourGuideState.clearTarget].
+ * clears them when it leaves composition, and scrolls it into view when it is the first
+ * target of the current step.
  */
+@OptIn(ExperimentalFoundationApi::class)
 fun Modifier.tourTarget(state: TourGuideState?, id: String): Modifier {
     if (state == null) return this
-    return this
-        .onGloballyPositioned { coordinates -> state.registerTarget(id, coordinates) }
-        .composed {
-            DisposableEffect(state, id) {
-                onDispose { state.clearTarget(id) }
+    return this.composed {
+        val owner = remember { Any() }
+        val requester = remember { BringIntoViewRequester() }
+        val step = state.currentStep
+        val targets = step?.targetIds.orEmpty()
+        // Only the Dashboard scrolls its targets into view (KPI row, tabs); doing it inside a
+        // bottom sheet or camera screen can shift content the tour is pointing at.
+        val wanted = state.isActive && step?.section == TourSection.DASHBOARD &&
+            (targets.firstOrNull() == id || targets.lastOrNull() == id)
+        LaunchedEffect(wanted, step?.id) {
+            // A group's last card scrolls in first, then the first, so the whole group
+            // ends up visible when it fits.
+            if (wanted) {
+                if (targets.lastOrNull() != id) delay(350)
+                requester.bringIntoView()
             }
-            this
         }
+        DisposableEffect(state, id) {
+            onDispose { state.clearTarget(id, owner) }
+        }
+        Modifier
+            .bringIntoViewRequester(requester)
+            .onGloballyPositioned { coordinates -> state.registerTarget(id, coordinates, owner) }
+    }
 }

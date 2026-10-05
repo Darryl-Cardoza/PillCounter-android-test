@@ -181,6 +181,7 @@ class MainActivityViewModelTest {
         hl7ServiceManager,
         hl7EventHandler,
         hl7Repository,
+        mockk(relaxed = true),
         sessionLockController,
         sessionHealthController,
         testDispatcher,

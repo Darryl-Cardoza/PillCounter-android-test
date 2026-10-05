@@ -8,7 +8,7 @@ import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
-import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
+import com.dispensesure.retail.core.tourguide.TutorialData
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -223,6 +223,7 @@ interface BatchDao {
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
       AND b.startDateTime BETWEEN :startDate AND :endDate
+      AND b.bucketId IS NOT '${TutorialData.BUCKET}'
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """
@@ -247,6 +248,7 @@ interface BatchDao {
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
       AND b.status = :completedStatus
+      AND b.bucketId IS NOT '${TutorialData.BUCKET}'
       AND b.isSynced = 0
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
@@ -277,6 +279,7 @@ interface BatchDao {
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
       AND b.status = :inProgressStatus
+      AND b.bucketId IS NOT '${TutorialData.BUCKET}'
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """
@@ -299,6 +302,7 @@ interface BatchDao {
     FROM batch
     WHERE isDeleted = 0
       AND status = :inProgressStatus
+      AND bucketId IS NOT '${TutorialData.BUCKET}'
     """
     )
     fun observeInProgressBatchKpiCounts(
@@ -320,6 +324,7 @@ interface BatchDao {
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
       AND b.status = :completedStatus
+      AND b.bucketId IS NOT '${TutorialData.BUCKET}'
       AND b.isSynced = 0
       AND NOT EXISTS (
         SELECT 1 FROM stock_txn st
@@ -334,8 +339,18 @@ interface BatchDao {
     )
     suspend fun getUnsyncedCompletedBatchesOnce(
         completedStatus: BatchStatus = BatchStatus.COMPLETED,
-        excludeNdc: String = TUTORIAL_DUMMY_NDC
+        excludeNdc: String = TutorialData.DEMO_NDC
     ): List<BatchSummaryDto>
+
+    @Query(
+        """
+        SELECT batchId FROM batch
+        WHERE bucketId = '${TutorialData.BUCKET}'
+           OR batchId IN (SELECT st.batchId FROM stock_txn st JOIN drug_master dm ON st.drugId = dm.drugId
+                          WHERE dm.ndc = '${TutorialData.DEMO_NDC}' AND st.batchId IS NOT NULL)
+        """
+    )
+    suspend fun getTutorialBatchIds(): List<Long>
 
     @Query("UPDATE batch SET isSynced = 1 WHERE batchId = :batchId")
     suspend fun markBatchSynced(batchId: Long)

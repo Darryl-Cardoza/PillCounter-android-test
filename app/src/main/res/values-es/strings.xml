@@ -70,20 +70,8 @@
     <string name="tour_desc_dispense">Toca para escanear etiquetas de Rx e iniciar el flujo de dispensación.</string>
     <string name="tour_title_stock_count">Conteo de Inventario</string>
     <string name="tour_desc_stock_count">Inicia una nueva sesión de conteo de inventario para conciliar el stock.</string>
-    <string name="tour_title_kpi_high_priority">Alta Prioridad</string>
-    <string name="tour_desc_kpi_high_priority">Cantidad de elementos urgentes que necesitan atención inmediata.</string>
-    <string name="tour_title_kpi_pending">Pendientes</string>
-    <string name="tour_desc_kpi_pending">Cantidad de tareas en espera de finalizar.</string>
-    <string name="tour_title_kpi_controlled">Med. Controlados</string>
-    <string name="tour_desc_kpi_controlled">Cantidad de elementos de sustancias controladas en espera de revisión.</string>
-    <string name="tour_title_kpi_hazardous">Peligrosos</string>
-    <string name="tour_desc_kpi_hazardous">Cantidad de líneas de dispensación marcadas como fármacos peligrosos. Desliza la fila para verla.</string>
-    <string name="tour_title_kpi_cycle_count">Conteo Cíclico</string>
-    <string name="tour_desc_kpi_cycle_count">Cantidad de lotes de conteo cíclico de inventario. Desliza la fila para verla.</string>
-    <string name="tour_title_kpi_pending_batch">Lote Pendiente</string>
-    <string name="tour_desc_kpi_pending_batch">Cantidad de lotes de inventario que aún están en curso. Desliza la fila para verla.</string>
     <string name="tour_title_tabs">Cola / Actividad</string>
-    <string name="tour_desc_tabs">Cambia la lista de abajo entre la cola pendiente de hoy y el historial de actividad reciente.</string>
+    <string name="tour_desc_tabs">Cambia la lista de abajo entre la cola de dispensación, la cola de inventario y la actividad reciente.</string>
     <string name="tour_skip">Omitir</string>
     <string name="tour_back">Atrás</string>
     <string name="tour_next">Siguiente</string>
@@ -629,4 +617,23 @@
     <string name="hl7_notification_structural_validation_failed">Mensaje HL7 %1$s rechazado — falló la validación estructural: %2$s</string>
     <string name="hl7_notification_business_validation_failed">Mensaje HL7 %1$s rechazado — %2$s</string>
 
+    <string name="tour_title_kpi_dispense">Tarjetas de dispensación</string>
+    <string name="tour_desc_kpi_dispense">Conteos de Alta prioridad, Controlados y Peligrosos de sus dispensaciones. Toque una tarjeta para filtrar la cola.</string>
+    <string name="tour_title_kpi_inventory">Tarjetas de inventario</string>
+    <string name="tour_desc_kpi_inventory">Conteo de ciclo y Lote pendiente muestran su trabajo de inventario. Toque una tarjeta para filtrar la cola.</string>
+    <string name="tour_step_failed">No se pudo continuar el recorrido — toque Siguiente para reintentar u Omitir</string>
+    <string name="tour_section_done_prompt">Recorrido de %1$s completado. ¿Continuar con el recorrido de %2$s?</string>
+    <string name="tour_continue">Continuar</string>
+    <string name="tour_end">Terminar recorrido</string>
+    <string name="tour_section_dashboard">Panel</string>
+    <string name="tour_section_dispense">Dispensar</string>
+    <string name="tour_section_stock_count">Conteo de existencias</string>
+    <string name="tour_offer_message">¿Quiere hacer un recorrido rápido por la aplicación? Puede repetirlo cuando quiera desde el menú.</string>
+    <string name="tour_offer_start">Iniciar recorrido</string>
+    <string name="tour_offer_not_now">Ahora no</string>
+    <string name="tour_picker_title">¿Qué recorrido?</string>
+    <string name="tour_picker_full">Recorrido completo</string>
+    <string name="tour_picker_start">Iniciar</string>
+    <string name="tour_title_inventory_queue">Cola de inventario</string>
+    <string name="tour_desc_inventory_queue">La cola de inventario muestra sus conteos de existencias en curso; toque uno para continuar.</string>
 </resources>

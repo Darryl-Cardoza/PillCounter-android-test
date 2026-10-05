@@ -6,7 +6,7 @@ import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TutorialEntryRegistry
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
@@ -300,11 +300,11 @@ class DispenseFlowViewModel @Inject constructor(
                 // A tutorial-created completion doesn't count against a redo of the same
                 // demo Rx — the whole point of a practice run is being able to repeat it,
                 // and its row gets deleted once the tour finishes/is skipped anyway (see
-                // TutorialEntryRegistry). A genuine prior completion (not tutorial-created)
+                // TutorialData). A genuine prior completion (not tutorial-created)
                 // still blocks re-dispensing exactly as before, even mid-tutorial.
                 val blocksRedispense = mostRecentTxn != null &&
                     (mostRecentTxn.status == CountStatus.COMPLETED || mostRecentTxn.status == CountStatus.FORCE_COMPLETED) &&
-                    !TutorialEntryRegistry.isTutorialEntry(mostRecentTxn.txnId)
+                    !TutorialData.isTutorialRx(mostRecentTxn.rxNo)
                 if (blocksRedispense) {
                     _uiState.update {
                         it.copy(isLoading = false, rxAlreadyCompletedToastTick = it.rxAlreadyCompletedToastTick + 1)
@@ -479,13 +479,13 @@ class DispenseFlowViewModel @Inject constructor(
             drugMasterDao.upsertPreservingId(
                 DrugMasterEntity(
                     ndc = TUTORIAL_DUMMY_NDC,
-                    drugName = "Tutorial Demo Drug",
+                    drugName = TutorialData.DEMO_DRUG_NAME,
                     drugType = "TABLET",
                 )
             )
             showStandaloneRxSheet(
                 parsedNdc = TUTORIAL_DUMMY_NDC,
-                rxNo = "TUTORIALDEMO${System.currentTimeMillis()}",
+                rxNo = "${TutorialData.RX_PREFIX}${System.currentTimeMillis()}",
                 refillNo = null,
                 bucket = null,
                 targetCount = TUTORIAL_DUMMY_TARGET_COUNT,
@@ -529,11 +529,6 @@ class DispenseFlowViewModel @Inject constructor(
             bucketId = draft.bucket,
         )
         val txnId = pillCountTxnDao.upsertPreservingId(newTxn)
-        // A dispense created while the guided tour is driving this screen is a practice
-        // run through the real flow, not a real dispense — it must never reach the PMS.
-        if (FtueController.state.isActive) {
-            TutorialEntryRegistry.markTutorialEntry(txnId)
-        }
         return txnId
     }
 
@@ -1313,6 +1308,6 @@ private const val VIAL_MISMATCH_TOAST_COOLDOWN_MS = 2000L
  * Reused/upserted in place every time rather than randomly generated, so a
  * repeat tutorial run doesn't pile up throwaway `drug_master` rows.
  */
-internal const val TUTORIAL_DUMMY_NDC = "00000000000"
+internal const val TUTORIAL_DUMMY_NDC = TutorialData.DEMO_NDC
 private const val TUTORIAL_DUMMY_TARGET_COUNT = 5
 

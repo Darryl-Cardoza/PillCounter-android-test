@@ -61,10 +61,9 @@ import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
-import com.dispensesure.retail.core.tourguide.FTUE_ID
 import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
-import com.dispensesure.retail.core.tourguide.TourGuidePrefs
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -95,6 +94,8 @@ import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.AppTheme.dimens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import java.util.Locale
 import kotlin.math.roundToInt
 import com.dispensesure.retail.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
@@ -155,22 +156,7 @@ fun DispenseFlowScreen(
     val isSoundEnabled by pillVm.isSoundEnabled.collectAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
 
-    // ── Dispense-flow FTUE hooks ─────────────────────────────────────────────
-    // The gated tutorial (started on the dashboard, see DashboardScreen.kt) shares one
-    // TourGuideState across screens via FtueController. Its two "scan the barcode" steps
-    // are hands-free (ACTION_WAIT — no tap to gate), so they advance themselves here, right
-    // when the real scan actually succeeds.
     val ftueState = FtueController.state
-    LaunchedEffect(dispenseState.showRxDetails) {
-        if (dispenseState.showRxDetails) {
-            ftueState.advanceIfCurrent("camera_preview")
-        }
-    }
-    LaunchedEffect(dispenseState.showNdcDetails, dispenseState.stage) {
-        if (dispenseState.showNdcDetails || dispenseState.stage == DispenseStage.COUNTING) {
-            ftueState.advanceIfCurrent("camera_preview")
-        }
-    }
 
     // ── BT scanner input ────────────────────────────────────────────────────
     // Tracks the text typed by a Bluetooth HID barcode scanner into the overlay
@@ -326,17 +312,9 @@ fun DispenseFlowScreen(
     val pillStepType by pillVm.currentStep.collectAsState()
     val capturedBitmap by pillVm.capturedBitmap.collectAsState()
     val pillSteps by pillVm.steps.collectAsState()
-
-    // FTUE hands-free: "count_add_circle" spotlights the same on-screen circle
-    // across possibly several StepStates in a row (CONTAINER_INITIATE →
-    // TARGET_VERIFICATION, see PillScanningViewModel.buildWorkflowSteps) before the
-    // workflow genuinely leaves it behind — only advance once it actually reaches
-    // VIAL, not on the first round's own completion (InformationPanelSection.kt's
-    // onDone deliberately does NOT advance this step for exactly that reason).
-    LaunchedEffect(pillStepType) {
-        if (ftueState.isActive && pillStepType == StepState.VIAL) {
-            ftueState.advanceIfCurrent("count_add_circle")
-        }
+    // Tour: only show steps whose scenario arises in this workflow.
+    LaunchedEffect(Unit) {
+        ftueState.setStepSkipped("d_note", !pillVm.isNotesDialogEnabled())
     }
 
     // The workflow is only built when counting starts, so the SCAN step has no
@@ -1492,7 +1470,8 @@ fun DispenseFlowScreen(
                     drugImage = dispenseState.drugImage,
                     onCancel = { dispenseVm.onRxCancelled() },
                     onProceed = { dispenseVm.onRxConfirmed() },
-                    dismissible = true,
+                    // The tour only leaves this sheet through its own Next / Skip.
+                    dismissible = !ftueState.isActive,
                 )
             } else {
                 // How far the panel has been dragged toward the right edge.
@@ -1512,7 +1491,7 @@ fun DispenseFlowScreen(
                             val dismissPx = INLINE_PANEL_DISMISS_DRAG.toPx()
                             detectHorizontalDragGestures(
                                 onDragEnd = {
-                                    if (panelDragPx > dismissPx) {
+                                    if (panelDragPx > dismissPx && !ftueState.isActive) {
                                         dispenseVm.onRxCancelled()
                                     } else {
                                         panelDragPx = 0f
@@ -1605,37 +1584,41 @@ fun DispenseFlowScreen(
         // VerifyRxDetailsInlinePanel renders inline in this same window with its own
         // TourGuideOverlay, and both would otherwise render duplicate scrims/tooltips
         // for the same "verify_rx_proceed" target.
-        if (!dispenseState.showRxDetails && !dispenseState.showNdcDetails) {
+        // d_note is drawn by the Add Note dialog's own window (TourDialogHost).
+        if (!dispenseState.showRxDetails && !dispenseState.showNdcDetails && ftueState.currentStep?.id != "d_note") {
             TourGuideOverlay(
                 state = ftueState,
-                onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
                 modifier = Modifier.fillMaxSize(),
-                // Escape hatch for gated steps: camera-scan steps fake missing external
-                // data; manually calls advanceIfCurrent since invoking the callback
-                // directly bypasses the overlay's own tap-in-target gesture detection.
-                onDummyNext = when (ftueState.currentStep?.id) {
-                    // Both "camera_preview" occurrences share this one id; the active
-                    // stage disambiguates which real scan is being faked.
-                    "camera_preview" -> when (dispenseState.stage) {
-                        DispenseStage.PRE_RX, DispenseStage.QUEUE -> { { dispenseVm.useDummyRxData() } }
-                        DispenseStage.PRE_NDC -> { { dispenseVm.useDummyNdcData() } }
-                        else -> null
+                onNext = {
+                    when (ftueState.currentStep?.id) {
+                        "d_scan_rx" -> {
+                            dispenseVm.useDummyRxData()
+                            withTimeout(TourActionTimeoutMs) { dispenseVm.uiState.first { it.showRxDetails } }
+                        }
+                        "d_scan_container" -> {
+                            // The Rx sheet's Proceed creates the txn asynchronously.
+                            withTimeout(TourActionTimeoutMs) { dispenseVm.uiState.first { it.stage == DispenseStage.PRE_NDC } }
+                            dispenseVm.useDummyNdcData()
+                            withTimeout(TourActionTimeoutMs) {
+                                dispenseVm.uiState.first { it.stage == DispenseStage.COUNTING || it.showNdcDetails }
+                            }
+                            if (dispenseVm.uiState.value.showNdcDetails) {
+                                dispenseVm.onNdcConfirmed()
+                                withTimeout(TourActionTimeoutMs) { dispenseVm.uiState.first { it.stage == DispenseStage.COUNTING } }
+                            }
+                            // The count circle only exists once the workflow is on a counting step;
+                            // without this the next step would spotlight nothing.
+                            withTimeout(TourActionTimeoutMs) { pillVm.currentStep.first { it in countingSteps } }
+                        }
+                        "d_count" -> {
+                            pillVm.dummyCompleteCount()
+                            withTimeout(TourActionTimeoutMs) {
+                                pillVm.currentStep.first { it == StepState.VIAL || it !in countingSteps }
+                            }
+                            // The vial photo isn't a tour step; save a demo one so the count can finish.
+                            if (pillVm.currentStep.value == StepState.VIAL) pillVm.captureVialForTour()
+                        }
                     }
-                    "count_add_circle" -> {
-                        // No manual advanceIfCurrent here — LaunchedEffect(pillStepType)
-                        // advances this step once the workflow genuinely reaches VIAL.
-                        { pillVm.dummyCompleteCount() }
-                    }
-                    "vial_capture" -> {
-                        // captureImage() is async; a separate dummy tap on "vial_done" would
-                        // race saveCaptureImage() before the bitmap lands. autoConfirm=true
-                        // has captureImage() call saveCaptureImage() itself once ready.
-                        { FtueController.state.advanceIfCurrent("vial_capture"); pillVm.captureImage(autoConfirm = true) }
-                    }
-                    "vial_done" -> {
-                        { FtueController.state.advanceIfCurrent("vial_done"); pillVm.saveCaptureImage() }
-                    }
-                    else -> null
                 },
             )
         }
@@ -1665,7 +1648,8 @@ internal fun handleBarcode(
     onRxInNdcStage: () -> Unit,
     onRxInStockCount: () -> Unit,
 ): Boolean {
-    if (value.isBlank()) return false
+    // No real scans during the tour: the demo data is fed in by the tour card's Next.
+    if (value.isBlank() || FtueController.state.isActive) return false
     return when (stage) {
         DispenseStage.QUEUE,
         DispenseStage.PRE_RX -> {
@@ -1714,3 +1698,4 @@ internal fun handleBarcode(
     }
 }
 
+private val countingSteps = setOf(StepState.CONTAINER_INITIATE, StepState.TARGET_VERIFICATION, StepState.TARGET_REVERIFICATION)

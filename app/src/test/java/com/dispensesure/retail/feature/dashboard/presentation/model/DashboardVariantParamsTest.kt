@@ -26,7 +26,7 @@ class DashboardVariantParamsTest {
     private val onQueueDispenseClick: (Long) -> Unit = {}
     private val onQueueInventoryClick: (Long) -> Unit = {}
     private val onTabVisible: (DashboardTab) -> Unit = {}
-    private val tourState = TourGuideState(emptyList())
+    private val tourState = TourGuideState()
 
     private fun sample() = DashboardVariantParams(
         uiState = uiState,
@@ -134,7 +134,7 @@ class DashboardVariantParamsTest {
             disabledKpiFilters = emptySet(),
             onDisabledKpiFilterTapped = {},
             onTabVisible = {},
-            tourState = TourGuideState(emptyList()),
+            tourState = TourGuideState(),
         )
 
         p.onKpiFilterTapped(KpiFilter.DISP_PENDING)

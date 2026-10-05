@@ -28,9 +28,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.snapshotFlow
-import com.dispensesure.retail.core.tourguide.FTUE_ID
 import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourEvent
 import com.dispensesure.retail.core.tourguide.TourGuidePrefs
+import com.dispensesure.retail.core.tourguide.TourSectionPrompt
+import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -206,6 +208,9 @@ class MainActivity : ComponentActivity() {
 
 
 
+        // Create the tour's snapshot state outside composition; first touched inside a
+        // composition it is born in an unapplied snapshot and crashes on read.
+        FtueController.state
         setContent {
             LaunchedEffect(Unit) {
                 handleNavigationIntent(intent)
@@ -303,28 +308,6 @@ class MainActivity : ComponentActivity() {
                                     // itself — see its init block. MainActivity no longer holds an
                                     // Hl7Repository reference.
 
-                                    // markSeen is done HERE, not in each TourGuideOverlay's own
-                                    // onDispose, because advanceIfCurrent defers to the next tick —
-                                    // the overlay can be disposed before isActive flips, so its
-                                    // onDispose check never fires and "seen" never persists.
-                                    LaunchedEffect(Unit) {
-                                        var tutorialWasActive = false
-                                        snapshotFlow { FtueController.state.isActive }.collect { active ->
-                                            if (active) {
-                                                tutorialWasActive = true
-                                            } else if (tutorialWasActive) {
-                                                tutorialWasActive = false
-                                                TourGuidePrefs.markSeen(this@MainActivity, FTUE_ID)
-                                                settingsViewModel.onTutorialFinished()
-                                            }
-                                        }
-                                    }
-                                    // Orphan sweep: catches a tutorial killed mid-tour, which never
-                                    // gets a true->false transition for the effect above to react to.
-                                    LaunchedEffect(Unit) {
-                                        settingsViewModel.onTutorialFinished()
-                                    }
-
                                     // Bump on every HEALTHY -> OFFLINE transition so the
                                     // OfflineOverlay re-expands its message pill on each
                                     // fresh disconnect (see OfflineOverlay#resetKey).
@@ -356,8 +339,28 @@ class MainActivity : ComponentActivity() {
                                                 requestNotificationPermission()
                                             }
                                         },
-                                        onLogOut         = { settingsViewModel.onUserLoginOrLogOut() }
+                                        onLogOut         = {
+                                            FtueController.end()
+                                            settingsViewModel.onUserLoginOrLogOut()
+                                        }
                                     )
+
+                                    // The tour ends (done, skipped, locked, logged out) or moves to its next
+                                    // section: purge tutorial data first, then show the Dashboard.
+                                    LaunchedEffect(Unit) {
+                                        FtueController.events.collect { event ->
+                                            if (event == TourEvent.Ended) {
+                                                // A replay from the menu must not leave the first-login offer pending.
+                                                TourGuidePrefs.markSeen(this@MainActivity, preferenceHelper.getLocalId())
+                                                settingsViewModel.purgeTutorialData()
+                                                // The last demo step's completion writes are still landing; sweep again.
+                                                delay(1500)
+                                                settingsViewModel.purgeTutorialData()
+                                            }
+                                            navController.navigateBackToDashboard()
+                                        }
+                                    }
+                                    TourSectionPrompt(FtueController.state)
 
                                     // App-wide offline indicator: thin red border + bottom-left
                                     // analog clock that visualises time remaining before the
@@ -377,6 +380,7 @@ class MainActivity : ComponentActivity() {
 
                                     val isLocked by sessionLockController.isLocked.collectAsStateWithLifecycle()
                                     val startOnScan by sessionLockController.startOnScan.collectAsStateWithLifecycle()
+                                    LaunchedEffect(isLocked) { if (isLocked) FtueController.end() }
                                     if (isLocked) {
                                         SessionLockOverlayScreen(
                                             startOnScan = startOnScan,
@@ -484,6 +488,7 @@ class MainActivity : ComponentActivity() {
             sessionHealthController.endTeardown()
             return
         }
+        FtueController.end()
         try {
             preferenceHelper.clearTokens()
             preferenceHelper.setUserLoggedIn(false)

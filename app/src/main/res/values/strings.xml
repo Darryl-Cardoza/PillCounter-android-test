@@ -72,20 +72,8 @@
     <string name="tour_desc_dispense">Tap to scan Rx labels and start the dispensing workflow.</string>
     <string name="tour_title_stock_count">Stock Count</string>
     <string name="tour_desc_stock_count">Starts a new inventory count session to reconcile stock.</string>
-    <string name="tour_title_kpi_high_priority">High Priority</string>
-    <string name="tour_desc_kpi_high_priority">Count of urgent items that need immediate attention.</string>
-    <string name="tour_title_kpi_pending">Pending</string>
-    <string name="tour_desc_kpi_pending">Count of tasks awaiting completion.</string>
-    <string name="tour_title_kpi_controlled">Cont. Drugs</string>
-    <string name="tour_desc_kpi_controlled">Count of controlled-substance items awaiting review.</string>
-    <string name="tour_title_kpi_hazardous">Hazardous</string>
-    <string name="tour_desc_kpi_hazardous">Count of dispense rows flagged as hazardous drugs. Scroll the row to see it.</string>
-    <string name="tour_title_kpi_cycle_count">Cycle Count</string>
-    <string name="tour_desc_kpi_cycle_count">Count of inventory cycle-count batches. Scroll the row to see it.</string>
-    <string name="tour_title_kpi_pending_batch">Pending Batch</string>
-    <string name="tour_desc_kpi_pending_batch">Count of inventory batches still in progress. Scroll the row to see it.</string>
     <string name="tour_title_tabs">Queue / Activity</string>
-    <string name="tour_desc_tabs">Switches the list below between today\'s pending queue and recent activity history.</string>
+    <string name="tour_desc_tabs">Switch the list below between the Dispense Queue, the Inventory Queue and Recent Activity.</string>
     <string name="tour_title_recent_activity">Recent activity</string>
     <string name="tour_desc_recent_activity">Everything you\'ve dispensed or counted recently — tap any row to reopen it.</string>
     <string name="tour_skip">Skip</string>
@@ -95,44 +83,18 @@
     <string name="tour_step_of">Step %1$d of %2$d</string>
 
     <!-- Dispense flow tour guide -->
-    <string name="tour_title_scan_rx_back">Back</string>
-    <string name="tour_desc_scan_rx_back">Leaves the dispense flow and returns to the dashboard.</string>
     <string name="tour_title_scan_rx_camera">Scan the Rx label</string>
     <string name="tour_desc_scan_rx_camera">Point the camera at the prescription label\'s barcode to start dispensing.</string>
-    <string name="tour_title_scan_rx_bt_scanner">Hardware scanner</string>
-    <string name="tour_desc_scan_rx_bt_scanner">A connected barcode scanner can type the Rx code in here directly.</string>
-    <string name="tour_title_verify_rx_details">Prescription details</string>
-    <string name="tour_desc_verify_rx_details">Confirm the drug, NDC and Rx numbers scanned from the label.</string>
-    <string name="tour_title_verify_rx_tiles">Quantity &amp; drug info</string>
-    <string name="tour_desc_verify_rx_tiles">Review the prescribed quantity, strength and storage bucket.</string>
-    <string name="tour_title_verify_rx_actions">Cancel or proceed</string>
-    <string name="tour_desc_verify_rx_actions">Cancel to rescan, or proceed to start counting this prescription.</string>
     <string name="tour_title_verify_rx_proceed">Confirm &amp; count</string>
     <string name="tour_desc_verify_rx_proceed">Tap Proceed to start counting this prescription.</string>
     <string name="tour_title_scan_container">Scan the container</string>
     <string name="tour_desc_scan_container">Point the camera at the container\'s QR code or NDC barcode.</string>
-    <string name="tour_title_count_header">Prescription in progress</string>
-    <string name="tour_desc_count_header">Shows the NDC, drug name, strength and bucket you\'re currently counting.</string>
-    <string name="tour_title_count_steps">Workflow steps</string>
-    <string name="tour_desc_count_steps">Tracks progress through scanning, counting and verification.</string>
-    <string name="tour_title_count_view_all">View all counts</string>
-    <string name="tour_desc_count_view_all">See every count captured so far for this prescription.</string>
     <string name="tour_title_count_add_circle">Add a count</string>
     <string name="tour_desc_count_add_circle">Tap to add the detected pills to the running count. Long-press to move it.</string>
-    <string name="tour_title_vial_redo">Redo</string>
-    <string name="tour_desc_vial_redo">Retake the vial photo if it didn\'t come out clearly.</string>
-    <string name="tour_title_vial_capture">Capture</string>
-    <string name="tour_desc_vial_capture">Takes a photo of the pill vial for the record.</string>
-    <string name="tour_title_vial_done">Done</string>
-    <string name="tour_desc_vial_done">Confirms the captured vial photo and moves on.</string>
-    <string name="tour_title_add_note_textarea">Add a note</string>
-    <string name="tour_desc_add_note_textarea">Record any observation about this dispense, like a mismatch or damage.</string>
     <string name="tour_title_add_note_actions">Skip or save</string>
-    <string name="tour_desc_add_note_actions">Skip if there\'s nothing to note, or save your note to the record.</string>
-    <string name="tour_title_queue_tabs">Filter the queue</string>
-    <string name="tour_desc_queue_tabs">Switch between pending, priority, controlled and hazardous transactions.</string>
+    <string name="tour_desc_add_note_actions">Skip if there\'s nothing to note, or save a note to the record. In this tour it is skipped for you.</string>
     <string name="tour_title_queue_list">Today\'s transactions</string>
-    <string name="tour_desc_queue_list">Tap any transaction to resume or review its dispense.</string>
+    <string name="tour_desc_queue_list">The Dispense Queue. The Up Next card at the top is the prescription to work on next; tap any row to resume it.</string>
 
     <!-- Stock count (inventory) tour guide -->
     <string name="tour_title_dispense_tap">Start a dispense</string>
@@ -140,7 +102,7 @@
     <string name="tour_title_stock_count_tap">Start a stock count</string>
     <string name="tour_desc_stock_count_tap">Tap Stock Count to begin counting inventory.</string>
     <string name="tour_title_select_bucket">Select a bucket</string>
-    <string name="tour_desc_select_bucket">Choose which storage bucket you\'re counting — then tap OK.</string>
+    <string name="tour_desc_select_bucket">Choose which storage bucket you\'re counting. For this tour the demo count is set up for you.</string>
     <string name="tour_title_inv_camera_preview">Scan a drug</string>
     <string name="tour_desc_inv_camera_preview">Point the camera at a bottle\'s NDC barcode to start counting it.</string>
     <string name="tour_title_inv_counter">Adjust the count</string>
@@ -152,9 +114,7 @@
     <string name="tour_title_inv_scan_pills">Count loose pills (optional)</string>
     <string name="tour_desc_inv_scan_pills">Optional: scan more bottles and tap ADD to count them, tap here for an already-opened bottle\'s loose pills, or just tap End Count.</string>
     <string name="tour_title_inv_end_count">Finish the count</string>
-    <string name="tour_desc_inv_end_count">Tap End Count once every NDC in this batch has been counted.</string>
-    <string name="tour_title_end_count_confirm">Confirm and finish</string>
-    <string name="tour_desc_end_count_confirm">Tap Yes to close out this batch — that\'s the tutorial complete!</string>
+    <string name="tour_desc_inv_end_count">Tap End Count once every NDC in this batch has been counted. Next opens the note screen.</string>
 
     <string name="kpi_high_priority">High Priority</string>
     <string name="kpi_cont_drugs">Controlled</string>
@@ -702,4 +662,23 @@
     <string name="photo_label_date_time">Date &amp; Time</string>
     <string name="photo_label_operator">Operator</string>
 
+    <string name="tour_title_kpi_dispense">Dispense cards</string>
+    <string name="tour_desc_kpi_dispense">High Priority, Controlled and Hazardous counts for your dispenses. Tap a card to filter the queue.</string>
+    <string name="tour_title_kpi_inventory">Inventory cards</string>
+    <string name="tour_desc_kpi_inventory">Cycle Count and Pending Batch show your inventory work. Tap a card to filter the queue.</string>
+    <string name="tour_step_failed">Couldn\'t continue the tour — tap Next to retry or Skip</string>
+    <string name="tour_section_done_prompt">%1$s tour done. Continue to the %2$s tour?</string>
+    <string name="tour_continue">Continue</string>
+    <string name="tour_end">End tour</string>
+    <string name="tour_section_dashboard">Dashboard</string>
+    <string name="tour_section_dispense">Dispense</string>
+    <string name="tour_section_stock_count">Stock Count</string>
+    <string name="tour_offer_message">Take a quick tour of the app? You can replay it any time from the menu.</string>
+    <string name="tour_offer_start">Start tour</string>
+    <string name="tour_offer_not_now">Not now</string>
+    <string name="tour_picker_title">Which tour?</string>
+    <string name="tour_picker_full">Full tour</string>
+    <string name="tour_picker_start">Start</string>
+    <string name="tour_title_inventory_queue">Inventory Queue</string>
+    <string name="tour_desc_inventory_queue">The Inventory Queue lists your in-progress stock counts; tap one to continue counting.</string>
 </resources>

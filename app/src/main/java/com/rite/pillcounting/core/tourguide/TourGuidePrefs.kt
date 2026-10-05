@@ -4,9 +4,8 @@ import android.content.Context
 import androidx.core.content.edit
 
 /**
- * Tracks which screens' tour guide the user has already seen, so it only auto-launches
- * once per screen. Non-sensitive per-device UI state — plain SharedPreferences, same as
- * [com.dispensesure.retail.core.utils.preference.CountCirclePositionPrefs].
+ * Whether the first-login tour offer has been answered, per user. Non-sensitive UI state,
+ * so plain SharedPreferences like [com.dispensesure.retail.core.utils.preference.CountCirclePositionPrefs].
  */
 object TourGuidePrefs {
 
@@ -15,10 +14,12 @@ object TourGuidePrefs {
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREF_NAME, Context.MODE_PRIVATE)
 
-    fun hasSeen(context: Context, screenId: String): Boolean =
-        prefs(context).getBoolean(screenId, false)
+    private fun key(localId: Long) = "ftue_v2_$localId"
 
-    fun markSeen(context: Context, screenId: String) {
-        prefs(context).edit { putBoolean(screenId, true) }
+    fun hasSeen(context: Context, localId: Long): Boolean =
+        prefs(context).getBoolean(key(localId), false)
+
+    fun markSeen(context: Context, localId: Long) {
+        prefs(context).edit { putBoolean(key(localId), true) }
     }
 }

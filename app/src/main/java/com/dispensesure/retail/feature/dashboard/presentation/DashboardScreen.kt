@@ -23,15 +23,16 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.models.enums.CountType
-import com.dispensesure.retail.core.tourguide.FTUE_ID
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
-import com.dispensesure.retail.core.tourguide.TourGuideTapBlock
+import com.dispensesure.retail.core.tourguide.TourDialogHost
+import com.dispensesure.retail.core.tourguide.TourSection
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.tourguide.TourGuidePrefs
-import com.dispensesure.retail.core.tourguide.TourStepMode
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.SingleSelectDialogContent
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.compose.GlobalLoadingOverlay
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -79,16 +80,16 @@ fun DashboardScreen(
     // The shared, app-wide FTUE state (not a `remember`ed instance) — it must survive
     // navigating away to the dispense flow, which disposes this whole composable.
     val tourState = FtueController.state
-    LaunchedEffect(Unit) {
-        // !isActive too: this LaunchedEffect(Unit) restarts fresh every time
-        // DashboardScreen is recomposed from scratch — including navigating BACK
-        // here mid-tour (e.g. returning from the dispense flow before the whole
-        // tour is done). hasSeen only flips true once the entire tour finishes,
-        // so without the isActive check every such return-trip called start()
-        // again and reset the tour back to step 0.
-        if (!TourGuidePrefs.hasSeen(context, FTUE_ID) && !tourState.isActive) {
-            tourState.start()
-        }
+    // The Add Note steps belong to dialogs on other screens; if that screen already closed
+    // there is nothing to show here, so move past the step.
+    LaunchedEffect(tourState.isActive, tourState.currentStep?.id) {
+        val id = tourState.currentStep?.id
+        if (tourState.isActive && (id == "d_note" || id == "s_note")) tourState.advanceIfCurrent(id)
+    }
+    val localId = remember { preferenceHelper.getLocalId() }
+    // Offer the tour once per user; answering either way counts as seen.
+    var showTourOffer by remember {
+        mutableStateOf(!TourGuidePrefs.hasSeen(context, localId) && !tourState.isActive)
     }
 
     BackHandler(enabled = true) {
@@ -160,10 +161,6 @@ fun DashboardScreen(
     // new Batch Stock Count panel (Screen.InventoryScan), NOT the legacy DispenseFlow.
     LaunchedEffect(uiState.pendingStockCountBucketId) {
         uiState.pendingStockCountBucketId?.let { bucketId ->
-            // The tour's "select_bucket" step is hands-free (the real Select Bucket
-            // dialog is a shared, generic AlertDialog we deliberately don't gate/tag) —
-            // advance the instant a bucket is actually chosen and OK is tapped.
-            tourState.advanceIfCurrent("select_bucket")
             navController.navigate(Screen.InventoryScan.createRoute(bucketId = bucketId))
             viewModel.clearPendingStockCountBucketId()
         }
@@ -256,7 +253,8 @@ fun DashboardScreen(
         tourState = tourState,
     )
 
-    if (showBucketSelectDialog) {
+    val inTourBucketStep = tourState.isActive && tourState.currentStep?.id == "s_bucket"
+    if (showBucketSelectDialog || inTourBucketStep) {
         val bucketList = viewModel.getBucketList()
         // Default the selection to "Normal" (case-insensitive); fall back to the
         // first bucket if there's no Normal. This is the expected default rather
@@ -265,29 +263,43 @@ fun DashboardScreen(
             .indexOfFirst { it.equals("Normal", ignoreCase = true) }
             .let { if (it >= 0) it else if (bucketList.isNotEmpty()) 0 else null }
 
-        CommonSingleSelectDialog(
-            title = stringResource(R.string.select_bucket),
-            options = bucketList,
-            selectedIndex = defaultBucketIndex,
-            onCancel = {
-                // FTUE: this dialog's own Cancel/OK are what drive the "select_bucket"
-                // step now — its Skip/Next buttons aren't reliably tappable while this
-                // real dialog is also open (see TourGuideOverlay.kt's skipScrim
-                // comment), so Cancel here doubles as ending the tour, same as Skip
-                // would have.
-                if (tourState.isActive && tourState.currentStep?.id == "select_bucket") {
-                    tourState.dismiss()
-                }
-                showBucketSelectDialog = false
-            },
-            onOk = { index ->
-                if (index in bucketList.indices) {
+        if (inTourBucketStep) {
+            // Tour: the dialog is shown but not interactive; Next picks the default bucket.
+            // The batch itself is created on the first demo scan, under the TUTORIAL bucket.
+            TourDialogHost(
+                state = tourState,
+                onNext = {
+                    viewModel.saveTxnId()
+                    val index = defaultBucketIndex ?: error("no buckets to pick")
                     viewModel.createBatch(bucketList[index])
-                }
-                showBucketSelectDialog = false
-            },
-            distanceBetweenOptions = 2.dp,
-        )
+                    showBucketSelectDialog = false
+                },
+            ) {
+                SingleSelectDialogContent(
+                    title = stringResource(R.string.select_bucket),
+                    options = bucketList,
+                    selectedIndex = defaultBucketIndex,
+                    onCancel = {},
+                    onOk = {},
+                    distanceBetweenOptions = 2.dp,
+                    modifier = Modifier.tourTarget(tourState, "select_bucket"),
+                )
+            }
+        } else {
+            CommonSingleSelectDialog(
+                title = stringResource(R.string.select_bucket),
+                options = bucketList,
+                selectedIndex = defaultBucketIndex,
+                onCancel = { showBucketSelectDialog = false },
+                onOk = { index ->
+                    if (index in bucketList.indices) {
+                        viewModel.createBatch(bucketList[index])
+                    }
+                    showBucketSelectDialog = false
+                },
+                distanceBetweenOptions = 2.dp,
+            )
+        }
     }
 
     // ── Dispatch to the right layout ──
@@ -300,41 +312,35 @@ fun DashboardScreen(
             DashboardPortraitLayout(params, compact = isCompactScreen)
         }
 
-        // isActive is required here (not just currentStep?.id) because dismiss() doesn't
-        // reset currentIndex — without it, a tour ending on this exact step would leave
-        // this true forever, permanently tap-blocking the real Dashboard.
-        val suppressBucketStep = tourState.isActive &&
-            tourState.currentStep?.id == "select_bucket" && !showBucketSelectDialog
-        if (suppressBucketStep) {
-            // Don't leave the real Dashboard (Quick Action cards, KPI cards, the
-            // hamburger menu) freely tappable in this gap — an "outside tap" escape
-            // hatch out of the guided flow while the tutorial is still active.
-            TourGuideTapBlock(modifier = Modifier.fillMaxSize())
-        } else {
+        // The bucket step is drawn by its own dialog window (TourDialogHost).
+        if (tourState.currentStep?.id != "s_bucket") {
             TourGuideOverlay(
                 state = tourState,
-                onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
                 modifier = Modifier.fillMaxSize(),
-                // Every gated step here is a plain tap always available regardless of
-                // real data — dummy Next just performs the exact same action a real tap
-                // would. Only the ACTION_TAP occurrence of "dispense"/"stock_count"
-                // qualifies — both ids are reused earlier for the INFO walkthrough
-                // steps, which already have their own real Next button.
-                onDummyNext = when {
-                    tourState.currentStep?.id == "dispense" && tourState.currentStep?.mode == TourStepMode.ACTION_TAP -> {
-                        { tourState.advanceIfCurrent("dispense"); onDispenseQuickAction() }
+                onNext = {
+                    when (tourState.currentStep?.id) {
+                        "d_card" -> onDispenseQuickAction()
                     }
-                    tourState.currentStep?.id == "stock_count" && tourState.currentStep?.mode == TourStepMode.ACTION_TAP -> {
-                        { tourState.advanceIfCurrent("stock_count"); onInventoryQuickAction() }
-                    }
-                    // "select_bucket" has no dummy-Next handler: its tooltip never
-                    // renders a button row at all while the real Select Bucket dialog
-                    // is open (TourGuideOverlay.kt's skipScrim) — that dialog's own
-                    // OK/Cancel drive the tour instead (wired above).
-                    else -> null
                 },
             )
         }
+    }
+
+    if (showTourOffer) {
+        CommonDialog(
+            message = stringResource(R.string.tour_offer_message),
+            confirmText = stringResource(R.string.tour_offer_start),
+            cancelText = stringResource(R.string.tour_offer_not_now),
+            onConfirm = {
+                TourGuidePrefs.markSeen(context, localId)
+                showTourOffer = false
+                FtueController.start(TourSection.entries, viewModel.isHl7Enabled())
+            },
+            onCancel = {
+                TourGuidePrefs.markSeen(context, localId)
+                showTourOffer = false
+            },
+        )
     }
 
     if (showLogoutDialog) {

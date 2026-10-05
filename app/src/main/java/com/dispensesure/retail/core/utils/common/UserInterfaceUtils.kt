@@ -40,6 +40,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
@@ -500,6 +501,85 @@ object UserInterfaceUtils {
                 }
             }
         )
+    }
+
+    /** Tour copy of [CommonSingleSelectDialog]'s card, hosted directly in the tour's dialog window. */
+    @Composable
+    fun SingleSelectDialogContent(
+        title: String,
+        options: List<String>,
+        selectedIndex: Int? = null,
+        onCancel: () -> Unit,
+        onOk: (Int) -> Unit,
+        distanceBetweenOptions: Dp = 8.dp,
+        confirmText: String = stringResource(R.string.ok),
+        modifier: Modifier = Modifier,
+    ) {
+        val dimens = AppTheme.dimens
+        var currentSelection by remember { mutableStateOf(selectedIndex) }
+
+        Surface(
+            modifier = modifier.widthIn(max = 400.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = AppTheme.extendedColors.primaryBackground,
+            tonalElevation = 6.dp,
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text(
+                    text = title,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AppTheme.extendedColors.textColor,
+                    modifier = Modifier.padding(bottom = 16.dp)
+                )
+                options.forEachIndexed { index, option ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { currentSelection = index }
+                            .padding(vertical = distanceBetweenOptions)
+                    ) {
+                        RadioButton(
+                            selected = currentSelection == index,
+                            onClick = { currentSelection = index },
+                            colors = RadioButtonDefaults.colors(
+                                selectedColor = MaterialTheme.colorScheme.primary
+                            )
+                        )
+                        Spacer(modifier = Modifier.width(dimens.small))
+                        Text(
+                            text = option,
+                            fontSize = 16.sp,
+                            color = AppTheme.extendedColors.textColor
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(24.dp))
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    HollowButton(
+                        text = stringResource(R.string.cancel).uppercase(),
+                        onClick = onCancel,
+                        color = MaterialTheme.colorScheme.primary,
+                        fixedWidth = false,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                    )
+                    Spacer(modifier = Modifier.width(16.dp))
+                    ActionButtonPrimary(
+                        text = confirmText.uppercase(),
+                        onClick = { currentSelection?.let { onOk(it) } },
+                        // Disabled until the user makes a deliberate selection.
+                        // Callers that want a preselected option pass selectedIndex.
+                        enabled = currentSelection != null,
+                        fixedWidth = false,
+                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                    )
+                }
+            }
+        }
     }
 
     /** Displays a multi-selection dialog with checkboxes and confirm/cancel actions. */

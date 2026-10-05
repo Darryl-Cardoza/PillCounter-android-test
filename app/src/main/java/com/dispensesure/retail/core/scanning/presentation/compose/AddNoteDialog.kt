@@ -41,10 +41,8 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.tourguide.FTUE_ID
 import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TourGuideOverlay
-import com.dispensesure.retail.core.tourguide.TourGuidePrefs
+import com.dispensesure.retail.core.tourguide.TourDialogHost
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
@@ -63,21 +61,9 @@ fun AddNoteDialog(
     var noteText by rememberSaveable { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
 
-    val context = LocalContext.current
     val tourState = FtueController.state
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            // Block accidental dismissals — tapping outside the camera viewport
-            // was closing this mid-flow and losing the note. Only the explicit
-            // Close (X), Skip, and Save buttons should dismiss it.
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false,
-            usePlatformDefaultWidth = false
-        )
-    ) {
-        Box {
+    val card: @Composable () -> Unit = {
         Card(
             shape = RoundedCornerShape(dimens.medium),
             modifier = Modifier
@@ -195,35 +181,24 @@ fun AddNoteDialog(
                         modifier = Modifier.weight(1f),
                     )
                 }
-
-                // This dialog wraps tightly to its real content, with the Skip/Save row as
-                // the very last thing in it — leaving no room below for the tour tooltip,
-                // which would otherwise render right on top of those buttons instead of
-                // clear of them. Reserve that room only while this step is actually up.
-                if (tourState.isActive && tourState.currentStep?.id == "add_note_actions") {
-                    Spacer(modifier = Modifier.height(220.dp))
-                }
             }
         }
-        TourGuideOverlay(
-            state = tourState,
-            onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
-            // matchParentSize, not fillMaxSize: this Box is the Dialog's own content —
-            // fillMaxSize would force the dialog window to expand to fill the whole
-            // screen instead of wrapping tightly around the 300dp-wide Card.
-            modifier = Modifier.matchParentSize(),
-            isScreenRoot = false,
-            // This dialog only ever tags "add_note_actions" — restrict to it explicitly
-            // (see the equivalent comment in VerifyRxDetailsBottomSheet.kt) so a rect
-            // registered by some unrelated composable elsewhere in the same window can
-            // never be mistaken for this dialog's own target.
-            ownedStepIds = setOf("add_note_actions"),
-            // Skip/Save are always available regardless of real data — dummy Next just
-            // performs the same action Skip would.
-            onDummyNext = if (tourState.currentStep?.id == "add_note_actions") {
-                { tourState.advanceIfCurrent("add_note_actions"); onSkip() }
-            } else null,
-        )
-        }
+    }
+
+    if (tourState.isActive) {
+        // Tour: the card is shown in the tour's own dialog window so its card draws above it.
+        TourDialogHost(state = tourState, onNext = { onSkip() }, content = card)
+    } else {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(
+                // Block accidental dismissals — tapping outside the camera viewport
+                // was closing this mid-flow and losing the note. Only the explicit
+                // Close (X), Skip, and Save buttons should dismiss it.
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+                usePlatformDefaultWidth = false
+            ),
+        ) { card() }
     }
 }

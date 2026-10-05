@@ -7,14 +7,13 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TutorialEntryRegistry
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
 import com.dispensesure.retail.core.room.dao.BottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.BottleInfoEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
-import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
@@ -247,10 +246,8 @@ class InventoryScanViewModel @Inject constructor(
         val existing = resolvedBatchId.value
         if (existing != 0L) return existing
         return try {
-            val newId = batchDao.insertNewInProgressBatch(bucketId = _bucketId.value)
-            if (FtueController.state.isActive) {
-                TutorialEntryRegistry.markTutorialBatch(newId)
-            }
+            val bucket = if (FtueController.state.isActive) TutorialData.BUCKET else _bucketId.value
+            val newId = batchDao.insertNewInProgressBatch(bucketId = bucket)
             resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
@@ -315,6 +312,8 @@ class InventoryScanViewModel @Inject constructor(
     fun onBarcodeDetected(rawValue: String) = onBarcodeDetected(rawValue, bypassCooldown = false)
 
     private fun onBarcodeDetected(rawValue: String, bypassCooldown: Boolean) {
+        // No real scans during the tour; the demo data comes from the tour card's Next.
+        if (FtueController.state.isActive) return
         logger.d("INV_SCAN onBarcodeDetected raw='$rawValue' bypassCooldown=$bypassCooldown currentActive=${_activeNdc.value?.ndc}")
         _scannerPaused.value = true
         viewModelScope.launch {
@@ -522,12 +521,12 @@ class InventoryScanViewModel @Inject constructor(
             try {
                 drugMasterDao.upsertPreservingId(
                     DrugMasterEntity(
-                        ndc = TUTORIAL_DUMMY_NDC,
-                        drugName = "Tutorial Demo Drug",
+                        ndc = TutorialData.DEMO_NDC,
+                        drugName = TutorialData.DEMO_DRUG_NAME,
                         drugType = "TABLET",
                     )
                 )
-                val drug = drugMasterDao.getDrugByNdc(TUTORIAL_DUMMY_NDC) ?: return@launch
+                val drug = drugMasterDao.getDrugByNdc(TutorialData.DEMO_NDC) ?: return@launch
 
                 if (resolvedBatchId.value == 0L && ensureBatchCreated() == 0L) return@launch
 

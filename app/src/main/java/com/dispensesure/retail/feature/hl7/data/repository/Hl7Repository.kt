@@ -7,7 +7,6 @@ import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.BatchDao
 import com.dispensesure.retail.core.room.dao.BottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
@@ -26,8 +25,6 @@ import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
 import com.dispensesure.retail.core.scanning.data.DrugRepository
-import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TutorialEntryRegistry
 import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
@@ -225,7 +222,7 @@ class Hl7Repository @Inject constructor(
      * synced ([BatchDao.markBatchSynced]) only once every chunk has ACKed.
      */
     suspend fun buildAndSendInventoryResponse(batchId: Long) {
-        if (TutorialEntryRegistry.isTutorialBatch(batchId)) {
+        if (batchId in batchDao.getTutorialBatchIds()) {
             logger.i("Tutorial batch — never sending to PMS, batchId=$batchId")
             return
         }
@@ -305,12 +302,12 @@ class Hl7Repository @Inject constructor(
      * sweep, and without the lock both paths send the same dispense.
      */
     fun sendDispenseNow(txnId: Long) {
-        if (TutorialEntryRegistry.isTutorialEntry(txnId)) {
-            logger.i("Tutorial entry — never sending to PMS, txnId=$txnId")
-            return
-        }
         if (preferenceHelper.isHl7Enabled()) {
             scope.launch {
+                if (txnId in pillCountTxnDao.getTutorialTxnIds()) {
+                    logger.i("Tutorial entry — never sending to PMS, txnId=$txnId")
+                    return@launch
+                }
                 logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
                 resendMutex.withLock {
                     buildAndSendSuccessfulDispense(txnId = txnId)
@@ -336,7 +333,7 @@ class Hl7Repository @Inject constructor(
             }
             try {
                 val pendingTxn = pillCountTxnDao.getPendingHl7TxnOnce()
-                    .filterNot { it.txnId in rejectedTxnIds || TutorialEntryRegistry.isTutorialEntry(it.txnId) }
+                    .filterNot { it.txnId in rejectedTxnIds }
                 if (pendingTxn.isEmpty()) {
                     logger.i("No pending HL7 transactions to sync")
                     return@launch
@@ -356,7 +353,6 @@ class Hl7Repository @Inject constructor(
     fun resendPendingHl7BatchTransactions() {
         scope.launch {
             val pendingBatches = batchDao.getUnsyncedCompletedBatchesOnce()
-                .filterNot { TutorialEntryRegistry.isTutorialBatch(it.batchId) }
             if (pendingBatches.isEmpty()) {
                 logger.i("No pending HL7 batch transactions to sync")
                 return@launch
@@ -398,9 +394,6 @@ class Hl7Repository @Inject constructor(
      * Removes a synced dispense transaction and its image files from local storage. Row deletion
      * cascades to its detail rows; the barcode and detail images are file-system artifacts and
      * must be deleted explicitly.
-     *
-     * Internal (not private): also reused by [deleteTutorialData] to remove a tutorial-created
-     * txn once the FTUE tour finishes or is skipped.
      */
     internal suspend fun deleteSyncedTransaction(txnId: Long) {
         if (txnId <= 0L) return
@@ -421,68 +414,6 @@ class Hl7Repository @Inject constructor(
             logger.i("Deleted synced txn $txnId from local storage (allowLocalStorage=false)")
         } catch (e: Exception) {
             logger.e("Failed to delete synced txn $txnId", e)
-        }
-    }
-
-    /**
-     * Deletes every dispense txn and stock-count batch created while the FTUE tutorial was
-     * active, once it finishes or is skipped, so a practice run never lingers as real history.
-     */
-    suspend fun deleteTutorialData() {
-        // Guard against a real race: an Activity recreation mid-tutorial re-runs this same
-        // startup orphan-sweep call while FtueController.state.isActive is still true. Without
-        // this guard it would clear TutorialEntryRegistry's markers for a batch/txn the
-        // tutorial is still actively using, before its own DB delete completes.
-        if (FtueController.state.isActive) return
-
-        // The marker is only cleared once its row is confirmed gone (not eagerly up front):
-        // a still-in-flight write from the real action that just finished the tour (e.g.
-        // confirmEndCount's async batchDao.markAsCompleted/resendPendingHl7BatchTransactions)
-        // can otherwise race this cleanup and leave the row behind with nothing left to hide
-        // it from Recent Activity or block it from being sent over HL7.
-        TutorialEntryRegistry.snapshotTutorialTxnIds().forEach { txnId ->
-            deleteSyncedTransaction(txnId)
-            if (pillCountTxnDao.getById(txnId) == null) TutorialEntryRegistry.unmarkTutorialEntry(txnId)
-        }
-        TutorialEntryRegistry.snapshotTutorialBatchIds().forEach { batchId ->
-            deleteTutorialBatch(batchId)
-            if (batchDao.getById(batchId) == null) TutorialEntryRegistry.unmarkTutorialBatch(batchId)
-        }
-
-        // Orphan sweep: TutorialEntryRegistry is in-memory only, so a run ended by killing the
-        // process loses its markers entirely; sweep by the durable demo-NDC drug id too.
-        val demoDrugId = drugMasterDao.getDrugByNdc(TUTORIAL_DUMMY_NDC)?.drugId
-        if (demoDrugId != null) {
-            pillCountTxnDao.getTxnIdsByDrugId(demoDrugId).forEach { deleteSyncedTransaction(it) }
-            stockTxnDao.getBatchIdsByDrugId(demoDrugId).forEach { deleteTutorialBatch(it) }
-        }
-    }
-
-    /**
-     * Removes a tutorial-created stock-count batch and its image files from local storage.
-     * `stock_txn`→`batch` is `onDelete = SET_NULL`, not `CASCADE` — the batch row must be
-     * deleted only *after* its stock_txn rows (which themselves cascade to bottle_info), or
-     * those child rows would be orphaned with a null batchId instead of removed.
-     */
-    private suspend fun deleteTutorialBatch(batchId: Long) {
-        if (batchId <= 0L) return
-        try {
-            // getByBatchId's DTO aliases the controlled-drug image-path column as `imagePaths`
-            // (BottleInfoDao.kt) — collect before the rows go.
-            val filesToDelete = bottleInfoDao.getByBatchId(batchId).flatMap { it.imagePaths.orEmpty() }
-
-            stockTxnDao.deleteByBatchIds(listOf(batchId))
-            batchDao.deleteById(batchId)
-
-            filesToDelete.forEach { path ->
-                val file = java.io.File(path)
-                if (file.exists() && !file.delete()) {
-                    logger.w("Failed to delete file for tutorial batch $batchId: $path")
-                }
-            }
-            logger.i("Deleted tutorial batch $batchId from local storage")
-        } catch (e: Exception) {
-            logger.e("Failed to delete tutorial batch $batchId", e)
         }
     }
 

@@ -440,12 +440,8 @@ internal fun CounterRow(
             .clip(RoundedCornerShape(12.dp))
             .border(1.dp, borderColor, RoundedCornerShape(12.dp))
             .tourTarget(FtueController.state, "inv_counter")
-            // Also spotlighted for "inv_scan_pills": scanning another bottle while
-            // still sitting on that later, optional step brings this exact same card
-            // back up for the new NDC — without this second tag the tour would go
-            // fully blank for that (perfectly normal) real action, since "inv_counter"
-            // itself only ever matches its own earlier, one-time step.
-            .tourTarget(FtueController.state, "inv_scan_pills"),
+            // Highlighted together with the Scan Pills button on that step.
+            .tourTarget(FtueController.state, "inv_scan_pills_counter"),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {

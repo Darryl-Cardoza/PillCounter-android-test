@@ -187,7 +187,6 @@ private fun ActionButtonItems(
         horizontalAlignment = Alignment.CenterHorizontally,
         modifier = Modifier
             .clickable(enabled = hasCapture) { onDone() }
-            .tourTarget(tourState, "vial_done")
     ) {
         Icon(
             imageVector = Icons.Default.Check,

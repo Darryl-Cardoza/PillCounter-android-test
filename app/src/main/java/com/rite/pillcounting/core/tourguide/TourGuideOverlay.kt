@@ -1,5 +1,7 @@
 package com.dispensesure.retail.core.tourguide
 
+import android.widget.Toast
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -23,7 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +43,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -64,52 +67,45 @@ private val EstimatedTooltipHeight = 190.dp
 // overlapping and garbling both. This pushes it up clear of that zone instead.
 private val PinnedBottomExtraClearance = 130.dp
 
-// A TOP-pinned tooltip (the targetless-ACTION_WAIT "explaining a real native dialog" case —
-// select_bucket, end_count_confirm) would otherwise sit flush against the screen's own top
-// edge, covering the real app header (pharmacy name, PMS status, hamburger menu) underneath
-// it. This pushes it down clear of that zone. It also happens to keep the tooltip clear of
-// the real dialog itself, which is vertically centered lower on screen.
+// A TOP-pinned tooltip would otherwise sit flush against the screen's own top edge, covering
+// the real app header (pharmacy name, PMS status, hamburger menu). This pushes it down clear.
 private val PinnedTopExtraClearance = 140.dp
 
 /**
  * Full-screen spotlight tour: dims everything except the current step's target and shows
- * a tooltip; place as the last child of the screen's root [Box]. ACTION_TAP steps block all
- * taps on the target — progress comes only from the tour card's own Next button.
+ * a tooltip; place as the last child of the screen's root [Box]. Every step blocks all taps on
+ * the screen — progress comes only from the tour card's Next / Skip buttons. [onNext] is the
+ * demo action Next performs for this step (null = just advance); it runs through
+ * [TourGuideState.runStep], so a double tap can't run it twice.
  */
 @Composable
 fun TourGuideOverlay(
     state: TourGuideState,
-    onFinished: () -> Unit = {},
     modifier: Modifier = Modifier,
     pinnedEdgeOverride: TooltipEdge? = null,
     isScreenRoot: Boolean = true,
-    // Restricts this instance to the step id(s) it tags itself; without it, any rect
-    // existing in [TourGuideState]'s shared window-wide target map reads as ownership,
-    // even when a different composable in the same window registered it.
+    // Restricts this instance to the step id(s) it owns; without it, any rect existing in
+    // [TourGuideState]'s shared window-wide target map reads as ownership, even when a
+    // different composable in another window registered it.
     ownedStepIds: Set<String>? = null,
-    // Non-null only for a step whose hands-free advance is waiting on real external
-    // data the demo environment may not have (e.g. an actual Rx label or bottle to
-    // scan) — a "Next" button alongside Skip that lets the caller fake that data and
-    // advance immediately, instead of leaving the user stuck with nothing to scan.
-    onDummyNext: (() -> Unit)? = null,
+    // False inside a Dialog window, where the host decides what Back does.
+    handleBack: Boolean = true,
+    onNext: (suspend () -> Unit)? = null,
 ) {
-    if (!state.isActive) return
+    if (!state.isActive || state.pendingSection != null) return
     val step = state.currentStep ?: return
 
-    // Fires exactly once when the tour truly ends (not on unrelated disposal, e.g.
-    // navigating away) — reading isActive inside onDispose is what distinguishes the two.
-    DisposableEffect(state) {
-        onDispose { if (!state.isActive) onFinished() }
-    }
+    val context = LocalContext.current
+    // Only failures that happen while this overlay is up count; older ones were already shown.
+    val seenFailures = remember { state.failureTick }
+    if (handleBack) BackHandler(enabled = true) { state.end() }
 
     val density = LocalDensity.current
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
     // This overlay's own top-left, in the SAME root-relative coordinate space as
-    // [Rect]s pulled from [TourGuideState] (which are captured via `boundsInRoot()`) —
-    // this Box only sits exactly at its window's (0,0) at the screen root; nested
-    // inside a ModalBottomSheet/Dialog (or any padded ancestor) it doesn't, so the
-    // root-relative target rect has to be converted to LOCAL coordinates with this
-    // offset before it's used for drawing below.
+    // [Rect]s pulled from [TourGuideState] (captured via `boundsInRoot()`) — nested inside a
+    // ModalBottomSheet/Dialog this Box doesn't sit at its window's (0,0), so the target rect
+    // is converted to LOCAL coordinates with this offset before drawing.
     var boxOffsetInRoot by remember { mutableStateOf(Offset.Zero) }
     val accentColor = MaterialTheme.colorScheme.primary
 
@@ -121,44 +117,13 @@ fun TourGuideOverlay(
     }
     val effectivePinnedEdge = pinnedEdgeOverride ?: step.pinnedEdge
 
-    // A targetless ACTION_WAIT step (explaining a real native dialog we don't tag) has no
-    // live interaction to preserve, so block the whole screen like INFO — this can't
-    // interfere with the dialog itself, which lives in a separate Android Window.
-    val skipScrim = step.mode == TourStepMode.ACTION_WAIT && paddedRect == null
-
-    // ACTION_TAP's target may live in a different window than this instance; if so, render
-    // nothing rather than paint a stray tap-block over content the correct instance already
-    // gates. ACTION_WAIT falls back the same way when its target hasn't registered yet.
-    val ownsCurrentStep = if (ownedStepIds != null) {
-        step.id in ownedStepIds
-    } else {
-        paddedRect != null ||
-            (isScreenRoot && (step.mode != TourStepMode.ACTION_TAP || effectivePinnedEdge != null))
-    }
+    // A target may live in a different window than this instance; if so, render nothing
+    // rather than paint a stray scrim over content the correct instance already covers.
+    val ownsCurrentStep = if (ownedStepIds != null) step.id in ownedStepIds else paddedRect != null || isScreenRoot
     if (!ownsCurrentStep) return
-
-    val interactionModifier = when (step.mode) {
-        TourStepMode.INFO -> Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = {},
-        )
-        // Full block, same as INFO — the target is never tappable. Every ACTION_TAP step
-        // has a working Next button that performs the real action instead, so progress
-        // never depends on tapping the underlying UI.
-        TourStepMode.ACTION_TAP -> Modifier.clickable(
-            interactionSource = remember { MutableInteractionSource() },
-            indication = null,
-            onClick = {},
-        )
-        TourStepMode.ACTION_WAIT -> if (skipScrim) {
-            Modifier.clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {},
-            )
-        } else {
-            Modifier
+    LaunchedEffect(state.failureTick) {
+        if (state.failureTick != seenFailures) {
+            Toast.makeText(context, R.string.tour_step_failed, Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -168,32 +133,42 @@ fun TourGuideOverlay(
                 containerSize = it.size
                 boxOffsetInRoot = it.positionInRoot()
             }
-            .then(interactionModifier),
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = {},
+            ),
     ) {
         // Drawing (Canvas) and offset placement below all happen in coordinates LOCAL to
         // this Box, unlike the root-relative Rects from TourGuideState — convert once here.
-        val localRect = paddedRect?.let {
+        val toLocal = { it: Rect ->
             Rect(
                 it.left - boxOffsetInRoot.x, it.top - boxOffsetInRoot.y,
                 it.right - boxOffsetInRoot.x, it.bottom - boxOffsetInRoot.y,
             )
         }
+        val localRect = paddedRect?.let(toLocal)
+        // What gets cut out: one box around every target, or each target on its own.
+        val cutouts = if (step.separateBlocks) {
+            state.currentTargetRects.map {
+                toLocal(Rect(it.left - padPx, it.top - padPx, it.right + padPx, it.bottom + padPx))
+            }
+        } else {
+            listOfNotNull(localRect)
+        }
 
-        // Skipped for a targetless ACTION_WAIT step: the real dialog it explains draws in
-        // its own Android Window on top of this scrim regardless and already dims its own
-        // background, so dimming here would just look odd. Tap-blocking still applies.
-        if (!skipScrim) {
+        run {
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer(compositingStrategy = CompositingStrategy.Offscreen),
             ) {
                 drawRect(color = Color.Black.copy(alpha = 0.68f))
-                if (localRect != null) {
+                cutouts.forEach { cut ->
                     drawRoundRect(
                         color = Color.Transparent,
-                        topLeft = Offset(localRect.left, localRect.top),
-                        size = Size(localRect.width, localRect.height),
+                        topLeft = Offset(cut.left, cut.top),
+                        size = Size(cut.width, cut.height),
                         cornerRadius = CornerRadius(cornerPx, cornerPx),
                         blendMode = BlendMode.Clear,
                     )
@@ -201,15 +176,15 @@ fun TourGuideOverlay(
             }
         }
 
-        if (localRect != null) {
+        if (cutouts.isNotEmpty()) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                drawRoundRect(
+                cutouts.forEach { cut -> drawRoundRect(
                     color = accentColor,
-                    topLeft = Offset(localRect.left, localRect.top),
-                    size = Size(localRect.width, localRect.height),
+                    topLeft = Offset(cut.left, cut.top),
+                    size = Size(cut.width, cut.height),
                     cornerRadius = CornerRadius(cornerPx, cornerPx),
                     style = Stroke(width = with(density) { 1.dp.toPx() }),
-                )
+                ) }
             }
         }
 
@@ -330,93 +305,46 @@ fun TourGuideOverlay(
                         fontSize = 11.sp,
                         modifier = Modifier.weight(1f),
                     )
-                    // skipScrim: the real dialog's window wins any touch race regardless of
-                    // visual overlap, so Skip/Next buttons here would look tappable but never
-                    // respond — the dialog's own buttons drive the tour instead.
-                    if (!skipScrim) {
+                    TextButton(
+                        onClick = { state.end() },
+                        enabled = !state.stepBusy,
+                        contentPadding = compactPadding,
+                    ) {
+                        Text(
+                            text = stringResource(R.string.tour_skip),
+                            fontSize = 12.sp,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    // Only the Dashboard section is pure info and lets the user step back;
+                    // later sections run real demo actions that can't be undone.
+                    if (step.section == TourSection.DASHBOARD && state.currentIndex > 0) {
                         TextButton(
-                            onClick = { state.dismiss(); onFinished() },
+                            onClick = { state.back() },
+                            enabled = !state.stepBusy,
                             contentPadding = compactPadding,
                         ) {
                             Text(
-                                text = stringResource(R.string.tour_skip),
+                                text = stringResource(R.string.tour_back),
                                 fontSize = 12.sp,
                                 color = MaterialTheme.colorScheme.primary,
                             )
-                        }
-                        // Escape hatch for a hands-free step blocked on real external
-                        // data the demo environment may not have (a real Rx label, a
-                        // real bottle to scan) — fakes that data via the
-                        // caller-supplied callback and advances immediately, same as
-                        // the real thing succeeding would.
-                        if (onDummyNext != null) {
-                            TextButton(
-                                onClick = onDummyNext,
-                                contentPadding = compactPadding,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.tour_next),
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
                         }
                     }
-                    // Action steps advance from the real tap/callback, not a synthetic
-                    // button — only Skip is offered alongside Back/Next for INFO steps.
-                    if (step.mode == TourStepMode.INFO) {
-                        if (state.currentIndex > 0) {
-                            TextButton(
-                                onClick = { state.back() },
-                                contentPadding = compactPadding,
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.tour_back),
-                                    fontSize = 12.sp,
-                                    color = MaterialTheme.colorScheme.primary,
-                                )
-                            }
-                        }
-                        TextButton(
-                            onClick = {
-                                if (state.isLastStep) {
-                                    state.dismiss()
-                                    onFinished()
-                                } else {
-                                    state.next()
-                                }
-                            },
-                            contentPadding = compactPadding,
-                        ) {
-                            Text(
-                                text = if (state.isLastStep) stringResource(R.string.tour_done) else stringResource(R.string.tour_next),
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.primary,
-                            )
-                        }
+                    TextButton(
+                        onClick = { state.runStep(step.id) { onNext?.invoke() } },
+                        enabled = !state.stepBusy,
+                        contentPadding = compactPadding,
+                    ) {
+                        Text(
+                            text = if (state.isLastStep) stringResource(R.string.tour_done) else stringResource(R.string.tour_next),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
                     }
                 }
             }
         }
     }
-}
-
-/**
- * Invisible full-screen tap sink used while a step's real dialog isn't on screen yet (or
- * just closed) — keeps the screen locked instead of leaving real UI underneath tappable
- * during that gap.
- */
-@Composable
-fun TourGuideTapBlock(modifier: Modifier = Modifier) {
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = {},
-            ),
-    )
 }

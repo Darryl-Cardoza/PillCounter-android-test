@@ -9,6 +9,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -25,11 +28,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
-import com.dispensesure.retail.core.tourguide.FTUE_ID
 import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
-import com.dispensesure.retail.core.tourguide.TourGuideTapBlock
-import com.dispensesure.retail.core.tourguide.TourGuidePrefs
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
@@ -134,12 +135,7 @@ fun InventoryScanHost(
     // would block frames and make that swap unreachable.
     LaunchedEffect(panelState.activeNdc) {
         logger.d("INV_SCAN activeNdc → ${panelState.activeNdc?.ndc} hazardous=${panelState.activeNdc?.isHazardous}")
-        if (panelState.activeNdc == null) {
-            analyzer.resume()
-        } else {
-            // Hands-free FTUE step: a scanned bottle just became the active NDC.
-            FtueController.state.advanceIfCurrent("inv_camera_preview")
-        }
+        if (panelState.activeNdc == null) analyzer.resume()
     }
 
     // Surface VM errors as toasts. The VM emits a localized resource id + optional
@@ -203,37 +199,13 @@ fun InventoryScanHost(
 
     // Named so the tour's dummy-Next handler below can invoke the exact same real
     // action a tap would, instead of duplicating it.
-    val onEdit = {
-        // FTUE hands-free: EDIT was actually tapped — advance past the optional
-        // "inv_edit_button" step onto "inv_edit_actions" for the real panel's
-        // Cancel/Save row.
-        FtueController.state.advanceIfCurrent("inv_edit_button")
-        inventoryVm.openEditDetails()
-    }
-    val onEndCount = {
-        // FTUE safety net: user skipped some or all of the optional
-        // "inv_edit_button"/"inv_edit_actions"/"inv_scan_pills" steps and tapped
-        // END COUNT directly, so the ACTION_TAP tap-in-target advance for
-        // "inv_end_count" never got a chance to fire (the tour wasn't on that
-        // step yet) — skip past all of them in one go instead of getting stuck.
-        FtueController.state.advanceWhileCurrentIn(
-            setOf("inv_edit_button", "inv_edit_actions", "inv_scan_pills", "inv_end_count")
-        )
-        showNoteDialog = true
-    }
+    val onEdit = { inventoryVm.openEditDetails() }
+    val onEndCount = { showNoteDialog = true }
 
     val scope = InventoryScanScope(
         state = panelState,
         canEndCount = panelState.totalNdcs > 0 || panelState.activeNdc != null,
         onScanPills = {
-            // FTUE: SCAN PILLS is itself optional, but tapping it always means the
-            // user is done with the optional "inv_edit_button"/"inv_edit_actions"
-            // (Edit Details) and "inv_scan_pills" steps too, whichever of them the
-            // tour is still sitting on — skip past all three in one go before the
-            // dispense-flow hand-off below.
-            FtueController.state.advanceWhileCurrentIn(
-                setOf("inv_edit_button", "inv_edit_actions", "inv_scan_pills")
-            )
             // Persist the active count, clear the staged txn, then hand
             // off to the merged dispense flow in stock-count mode. fromResume=true so
             // DispenseFlowScreen skips RX and loads the drug/txn from preferences,
@@ -287,51 +259,30 @@ fun InventoryScanHost(
     // without touching any of the shells.
     Box(modifier = Modifier.fillMaxSize()) {
         scope.content()
-        // Only show "end_count_confirm"'s tooltip while the real dialog is actually up.
-        // Requires isActive too: dismiss() doesn't reset currentIndex, so a tour that
-        // ended on this last step would otherwise tap-block this screen forever.
-        val suppressEndCountConfirmStep = FtueController.state.isActive &&
-            FtueController.state.currentStep?.id == "end_count_confirm" && !showEndCountConfirmDialog
-        if (suppressEndCountConfirmStep) {
-            // Don't leave the real Batch Stock Count screen freely tappable in this
-            // gap — an "outside tap" escape hatch out of the guided flow while the
-            // tutorial is still active.
-            TourGuideTapBlock(modifier = Modifier.fillMaxSize())
-        } else {
-            TourGuideOverlay(
-                state = FtueController.state,
-                onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
-                modifier = Modifier.fillMaxSize(),
-                // Escape hatch for every gated step this root overlay owns — the
-                // camera-scan step fakes the missing real bottle; the rest just perform
-                // the exact same action their real target would (reusing the very same
-                // callbacks above where one exists), since those aren't blocked on any
-                // external data in the first place.
-                onDummyNext = when (FtueController.state.currentStep?.id) {
-                    "inv_camera_preview" -> { { inventoryVm.useDummyNdcData() } }
-                    "inv_counter" -> {
-                        { FtueController.state.advanceIfCurrent("inv_counter"); inventoryVm.increment() }
+        // s_note is drawn by the Add Note dialog's own window (TourDialogHost).
+        if (FtueController.state.currentStep?.id != "s_note") TourGuideOverlay(
+            state = FtueController.state,
+            modifier = Modifier.fillMaxSize(),
+            onNext = {
+                when (FtueController.state.currentStep?.id) {
+                    "s_scan" -> {
+                        inventoryVm.useDummyNdcData()
+                        withTimeout(TourActionTimeoutMs) { snapshotFlow { panelState.activeNdc }.first { it != null } }
                     }
-                    "inv_edit_button" -> onEdit
-                    "inv_edit_actions" -> {
-                        // No real edits to save — dismissing without saving is the safe
-                        // equivalent of tapping Cancel.
-                        { FtueController.state.advanceIfCurrent("inv_edit_actions"); inventoryVm.dismissEditDetails() }
+                    "s_counter" -> inventoryVm.increment()
+                    // END COUNT only shows once the active bottle is committed, as in real use.
+                    "s_scan_pills" -> {
+                        inventoryVm.onAdd()
+                        analyzer.resume()
+                        withTimeout(TourActionTimeoutMs) { snapshotFlow { panelState.activeNdc }.first { it == null } }
                     }
-                    "inv_scan_pills" -> {
-                        // Purely optional — dummy Next just skips it, same as the real
-                        // "do neither SCAN PILLS nor EDIT" path.
-                        { FtueController.state.advanceIfCurrent("inv_scan_pills") }
-                    }
-                    "inv_end_count" -> onEndCount
-                    // "end_count_confirm" has no dummy-Next handler: its tooltip never
-                    // renders a button row at all while the real confirmation dialog
-                    // is open (TourGuideOverlay.kt's skipScrim) — that dialog's own
-                    // Yes/No drive the tour instead (wired below).
-                    else -> null
-                },
-            )
-        }
+                    "s_edit" -> onEdit()
+                    // No real edits to save — dismissing without saving is the same as Cancel.
+                    "s_edit_actions" -> inventoryVm.dismissEditDetails()
+                    "s_end_count" -> onEndCount()
+                }
+            },
+        )
     }
 
     if (showNoteDialog) {
@@ -340,7 +291,12 @@ fun InventoryScanHost(
             onSkip = {
                 showNoteDialog = false
                 pendingNote = null
-                showEndCountConfirmDialog = true
+                if (FtueController.state.isActive) {
+                    // Tour: skip the confirm dialog and finish the demo count directly.
+                    inventoryVm.confirmEndCount(null)
+                } else {
+                    showEndCountConfirmDialog = true
+                }
             },
             onSave = { note ->
                 showNoteDialog = false
@@ -360,18 +316,8 @@ fun InventoryScanHost(
                 inventoryVm.confirmEndCount(pendingNote)
                 showEndCountConfirmDialog = false
                 pendingNote = null
-                // FTUE: "end_count_confirm" is the tour's final step — this ends it,
-                // exactly like tapping Yes for real finishing the batch.
-                FtueController.state.advanceIfCurrent("end_count_confirm")
             },
             onCancel = {
-                // FTUE: this dialog's own Yes/No are what drive the "end_count_confirm"
-                // step now — its Skip/Next buttons aren't reliably tappable while this
-                // real dialog is also open (see TourGuideOverlay.kt's skipScrim
-                // comment), so No here doubles as ending the tour, same as Skip would.
-                if (FtueController.state.isActive && FtueController.state.currentStep?.id == "end_count_confirm") {
-                    FtueController.state.dismiss()
-                }
                 showEndCountConfirmDialog = false
                 pendingNote = null
             },

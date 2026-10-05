@@ -70,20 +70,8 @@
     <string name="tour_desc_dispense">Appuyez pour scanner les étiquettes Rx et démarrer le flux de dispensation.</string>
     <string name="tour_title_stock_count">Comptage de Stock</string>
     <string name="tour_desc_stock_count">Démarre une nouvelle session de comptage d\'inventaire pour rapprocher le stock.</string>
-    <string name="tour_title_kpi_high_priority">Priorité Élevée</string>
-    <string name="tour_desc_kpi_high_priority">Nombre d\'éléments urgents nécessitant une attention immédiate.</string>
-    <string name="tour_title_kpi_pending">En Attente</string>
-    <string name="tour_desc_kpi_pending">Nombre de tâches en attente de finalisation.</string>
-    <string name="tour_title_kpi_controlled">Méd. Contrôlés</string>
-    <string name="tour_desc_kpi_controlled">Nombre d\'éléments de substances contrôlées en attente de révision.</string>
-    <string name="tour_title_kpi_hazardous">Dangereux</string>
-    <string name="tour_desc_kpi_hazardous">Nombre de lignes de dispensation marquées comme médicaments dangereux. Faites défiler la ligne pour la voir.</string>
-    <string name="tour_title_kpi_cycle_count">Comptage Cyclique</string>
-    <string name="tour_desc_kpi_cycle_count">Nombre de lots de comptage cyclique d\'inventaire. Faites défiler la ligne pour la voir.</string>
-    <string name="tour_title_kpi_pending_batch">Lot en Attente</string>
-    <string name="tour_desc_kpi_pending_batch">Nombre de lots d\'inventaire encore en cours. Faites défiler la ligne pour la voir.</string>
     <string name="tour_title_tabs">File / Activité</string>
-    <string name="tour_desc_tabs">Bascule la liste ci-dessous entre la file d\'attente du jour et l\'historique d\'activité récente.</string>
+    <string name="tour_desc_tabs">Bascule la liste ci-dessous entre la file de dispensation, la file d\'inventaire et l\'activité récente.</string>
     <string name="tour_skip">Passer</string>
     <string name="tour_back">Retour</string>
     <string name="tour_next">Suivant</string>
@@ -629,4 +617,23 @@
     <string name="hl7_notification_structural_validation_failed">Message HL7 %1$s rejeté — échec de la validation structurelle : %2$s</string>
     <string name="hl7_notification_business_validation_failed">Message HL7 %1$s rejeté — %2$s</string>
 
+    <string name="tour_title_kpi_dispense">Cartes de dispensation</string>
+    <string name="tour_desc_kpi_dispense">Compteurs Priorité haute, Contrôlés et Dangereux de vos dispensations. Touchez une carte pour filtrer la file.</string>
+    <string name="tour_title_kpi_inventory">Cartes d\'inventaire</string>
+    <string name="tour_desc_kpi_inventory">Comptage cyclique et Lot en attente montrent votre travail d\'inventaire. Touchez une carte pour filtrer la file.</string>
+    <string name="tour_step_failed">Impossible de continuer la visite — touchez Suivant pour réessayer ou Passer</string>
+    <string name="tour_section_done_prompt">Visite %1$s terminée. Continuer avec la visite %2$s ?</string>
+    <string name="tour_continue">Continuer</string>
+    <string name="tour_end">Terminer la visite</string>
+    <string name="tour_section_dashboard">Tableau de bord</string>
+    <string name="tour_section_dispense">Dispensation</string>
+    <string name="tour_section_stock_count">Comptage de stock</string>
+    <string name="tour_offer_message">Faire une visite rapide de l\'application ? Vous pouvez la rejouer à tout moment depuis le menu.</string>
+    <string name="tour_offer_start">Démarrer la visite</string>
+    <string name="tour_offer_not_now">Pas maintenant</string>
+    <string name="tour_picker_title">Quelle visite ?</string>
+    <string name="tour_picker_full">Visite complète</string>
+    <string name="tour_picker_start">Démarrer</string>
+    <string name="tour_title_inventory_queue">File d\'inventaire</string>
+    <string name="tour_desc_inventory_queue">La file d\'inventaire liste vos comptages de stock en cours; touchez-en un pour continuer.</string>
 </resources>

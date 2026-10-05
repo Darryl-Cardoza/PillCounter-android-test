@@ -26,6 +26,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
+import com.dispensesure.retail.core.tourguide.TutorialDataCleaner
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
@@ -66,6 +67,7 @@ class MainActivityViewModel @Inject constructor(
     private val hl7ServiceManager: Hl7ServiceManager,
     private val hl7EventHandler: Hl7EventHandler,
     private val hl7Repository: Hl7Repository,
+    private val tutorialDataCleaner: TutorialDataCleaner,
     private val sessionLockController: SessionLockController,
     private val sessionHealthController: SessionHealthController,
     private val ioDispatcher: CoroutineDispatcher,
@@ -73,15 +75,7 @@ class MainActivityViewModel @Inject constructor(
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
 
-    /**
-     * Called from [com.dispensesure.retail.MainActivity] when the FTUE tutorial finishes or is
-     * skipped, to delete the txns/batches it created. See [Hl7Repository.deleteTutorialData].
-     */
-    fun onTutorialFinished() {
-        viewModelScope.launch {
-            hl7Repository.deleteTutorialData()
-        }
-    }
+    suspend fun purgeTutorialData() = tutorialDataCleaner.purge()
 
     // The full config identity HL7 last started with, so a later settings/auth-me fetch
     // that returns different values (e.g. HL7 was preloaded from stale cached prefs on a
@@ -244,6 +238,9 @@ class MainActivityViewModel @Inject constructor(
     val faceLockTimeoutMinutes: StateFlow<Int> = _faceLockTimeoutMinutes
 
     init {
+        // A tour killed mid-run leaves tutorial rows behind; drop them before HL7 can see them.
+        viewModelScope.launch(ioDispatcher) { tutorialDataCleaner.purge() }
+
         // Load cached/fallback theme instantly
         loadCachedOrFallbackTheme()
 

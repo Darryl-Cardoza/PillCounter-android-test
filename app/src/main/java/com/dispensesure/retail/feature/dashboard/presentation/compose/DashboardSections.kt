@@ -18,6 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
@@ -56,6 +57,7 @@ internal fun QuickActionsAndKpiSection(
             LandscapeKpiList(
                 state = kpiState,
                 compact = compact,
+                tourState = params.tourState,
                 modifier = Modifier.fillMaxWidth().weight(1f - LandscapeQuickActionsHeightShare),
             )
         } else {
@@ -67,6 +69,7 @@ internal fun QuickActionsAndKpiSection(
             PortraitKpiRow(
                 state = kpiState,
                 compact = compact,
+                tourState = params.tourState,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
         }
@@ -89,7 +92,7 @@ private fun QuickActionCardsRow(
             innerIconRes = R.drawable.regular_count_inner,
             onClick = params.onDispenseQuickAction,
             centered = ringAboveText,
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1f).fillMaxHeight().tourTarget(params.tourState, "dispense"),
         )
         ScaffoldQuickActionCard(
             title = stringResource(R.string.stock_count),
@@ -97,7 +100,7 @@ private fun QuickActionCardsRow(
             innerIconRes = R.drawable.fixed_count_inner,
             onClick = params.onInventoryQuickAction,
             centered = ringAboveText,
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1f).fillMaxHeight().tourTarget(params.tourState, "stock_count"),
         )
     }
 }
@@ -129,6 +132,16 @@ internal fun DispenseAndInventoryQueueSection(
         }
     }
 
+    // The queue/recent-activity steps point at real list content, so show the matching tab.
+    val tourStepId = params.tourState.currentStep?.id.takeIf { params.tourState.isActive }
+    LaunchedEffect(tourStepId) {
+        when (tourStepId) {
+            "queue_list" -> onTabSelected(DashboardTab.DISPENSE_QUEUE)
+            "inventory_queue" -> onTabSelected(DashboardTab.INVENTORY_QUEUE)
+            "recent_activity" -> onTabSelected(DashboardTab.RECENT_ACTIVITY)
+        }
+    }
+
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(responsiveDp(2.dp)),
@@ -138,10 +151,11 @@ internal fun DispenseAndInventoryQueueSection(
             dispenseCount = uiState.dispenseTabCount,
             inventoryCount = uiState.inventoryTabCount,
             onSelect = params.onTabSelected,
+            tourState = params.tourState,
         )
         HorizontalPager(
             state = pagerState,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier.weight(1f).tourTarget(params.tourState, "queue_list"),
             pageSpacing = responsiveDp(DashboardBaseSizes.CardGap),
         ) { page ->
             val tab = DashboardTab.entries[page]

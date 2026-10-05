@@ -70,10 +70,8 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.rememberAsyncImagePainter
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.tourguide.FTUE_ID
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
-import com.dispensesure.retail.core.tourguide.TourGuidePrefs
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
@@ -776,7 +774,6 @@ private fun TabletHorizontalBody(
     }
     TourGuideOverlay(
         state = tourState,
-        onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
         // matchParentSize, not fillMaxSize: this Box is the sheet's own content — sizing
         // the overlay to fillMaxSize would force the *sheet itself* to expand to fill the
         // whole screen instead of wrapping its real (35%-height) content.
@@ -788,12 +785,10 @@ private fun TabletHorizontalBody(
         // This sheet only ever tags "verify_rx_proceed" — restrict to it explicitly so this
         // instance never mistakes a DIFFERENT step's rect (e.g. the camera preview behind
         // it, registered in the same window-wide target map) for one of its own.
-        ownedStepIds = setOf("verify_rx_proceed"),
+        ownedStepIds = setOf("d_verify_rx"),
         // PROCEED is always tappable regardless of real data — dummy Next just performs
         // the exact same action a real tap would.
-        onDummyNext = if (tourState.currentStep?.id == "verify_rx_proceed") {
-            { tourState.advanceIfCurrent("verify_rx_proceed"); onProceed() }
-        } else null,
+        onNext = { if (tourState.currentStep?.id == "d_verify_rx") onProceed() },
     )
     }
 }
@@ -960,15 +955,12 @@ private fun TabletVerticalBody(
     }
     TourGuideOverlay(
         state = tourState,
-        onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
         // See the equivalent comment in TabletHorizontalBody — matchParentSize, never
         // fillMaxSize, inside a sheet/drawer's own content Box.
         modifier = Modifier.matchParentSize(),
         isScreenRoot = false,
-        ownedStepIds = setOf("verify_rx_proceed"),
-        onDummyNext = if (tourState.currentStep?.id == "verify_rx_proceed") {
-            { tourState.advanceIfCurrent("verify_rx_proceed"); onProceed() }
-        } else null,
+        ownedStepIds = setOf("d_verify_rx"),
+        onNext = { if (tourState.currentStep?.id == "d_verify_rx") onProceed() },
     )
     }
 }
@@ -1131,15 +1123,12 @@ private fun SheetBody(
     }
     TourGuideOverlay(
         state = tourState,
-        onFinished = { TourGuidePrefs.markSeen(context, FTUE_ID) },
         // See the equivalent comment in TabletHorizontalBody — matchParentSize, never
         // fillMaxSize, inside a sheet/drawer's own content Box.
         modifier = Modifier.matchParentSize(),
         isScreenRoot = false,
-        ownedStepIds = setOf("verify_rx_proceed"),
-        onDummyNext = if (tourState.currentStep?.id == "verify_rx_proceed") {
-            { tourState.advanceIfCurrent("verify_rx_proceed"); onProceed() }
-        } else null,
+        ownedStepIds = setOf("d_verify_rx"),
+        onNext = { if (tourState.currentStep?.id == "d_verify_rx") onProceed() },
     )
     }
 }

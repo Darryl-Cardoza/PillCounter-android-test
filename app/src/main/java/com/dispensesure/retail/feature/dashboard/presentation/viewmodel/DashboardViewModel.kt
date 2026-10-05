@@ -15,7 +15,6 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
-import com.dispensesure.retail.core.tourguide.TutorialEntryRegistry
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.data.IUserDetailRepository
