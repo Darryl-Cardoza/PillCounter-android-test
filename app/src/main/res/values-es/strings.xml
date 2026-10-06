@@ -590,5 +590,13 @@
     <string name="photo_label_step">Paso</string>
     <string name="photo_label_date_time">Fecha y hora</string>
     <string name="photo_label_operator">Operador</string>
+    <string name="hl7_notification_new_rx_ndc_missing">Nuevo pedido para Rx %1$s ignorado — falta el NDC en RXE-2</string>
+    <string name="hl7_notification_new_rx_qty_missing">Nuevo pedido para Rx %1$s ignorado — falta la cantidad a surtir</string>
+    <string name="hl7_notification_new_rx_qty_invalid">Nuevo pedido para Rx %1$s ignorado — cantidad no válida %2$d</string>
+    <string name="hl7_notification_refill_exhausted">Resurtidos agotados para Rx %1$s — no quedan resurtidos (RXE-16=%2$d)</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing">Resurtido de Rx %1$s ignorado — NDC o cantidad faltantes o no válidos</string>
+    <string name="hl7_notification_no_processable_orders">Mensaje HL7 %1$s recibido, pero no contenía pedidos procesables</string>
+    <string name="hl7_notification_structural_validation_failed">Mensaje HL7 %1$s rechazado — falló la validación estructural: %2$s</string>
+    <string name="hl7_notification_business_validation_failed">Mensaje HL7 %1$s rechazado — %2$s</string>
 
 </resources>

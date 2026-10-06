@@ -18,7 +18,6 @@ import androidx.camera.camera2.interop.CaptureRequestOptions
 import androidx.camera.camera2.interop.ExperimentalCamera2Interop
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
-import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
 import androidx.camera.core.ImageCaptureException
@@ -35,23 +34,15 @@ import androidx.lifecycle.LifecycleOwner
 import com.google.common.util.concurrent.ListenableFuture
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.DelicateCoroutinesApi
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import java.util.concurrent.Executor
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
-import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -85,7 +76,7 @@ class CameraHelper(
     // [processImageProxy] drops them before they reach frameFlow. Closes after
     // SCAN_FRAMES_BEFORE_GATE consecutive scanning results; reopens on any
     // non-scanning AF state, or unconditionally after MAX_GATE_CLOSED_MS so a
-    // lens that never converges (hard scenes, overlapping re-triggers) cannot
+    // lens that never converges (hard scenes) cannot
     // starve frameFlow. Reset in [attachFocusStateListener] before each session
     // starts, then written only by the capture callback of the current bind
     // generation; gateClosedAtMs == 0 means the gate is open.
@@ -98,20 +89,6 @@ class CameraHelper(
     // Last display rotation pushed via setTargetRotation. Used to detect an
     // actual rotation change so we can rebind the use cases (see setTargetRotation).
     private var lastAppliedRotation = ROTATION_UNSET
-
-    /** Drives the periodic autofocus re-trigger; cancelled on pause/teardown. */
-    private val focusScope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
-    private var focusJob: Job? = null
-
-    /**
-     * How often to re-trigger center autofocus. A single startup
-     * startFocusAndMetering() locks focus on whatever was centered at bind time
-     * (usually an empty scene) for the metering duration, so a bottle presented
-     * afterward stays soft until focus re-converges. Re-triggering on this
-     * cadence keeps focus locked onto the currently-centered object — the bound
-     * for "present a bottle → sharp" instead of waiting on lazy continuous AF.
-     */
-    private val autofocusIntervalMs = 1500L
 
     // onUndeliveredElement closes any frame the CONFLATED buffer overwrites before a slow
     // collector reads it — without it, ImageAnalysis's KEEP_ONLY_LATEST strategy stalls
@@ -261,9 +238,6 @@ class CameraHelper(
                 val zoomInit =
                     boundCamera?.cameraInfo?.zoomState?.value?.zoomRatio ?: 1f
                 _zoomFlow.value = zoomInit
-
-                setCenterFocus(previewView)
-                startPeriodicFocus(previewView)
 
             } catch (e: Exception) {
                 logger.e("Failed binding camera", e, event = LogEvent.SCAN_FAILED)
@@ -516,61 +490,11 @@ class CameraHelper(
     }
 
     // ---------------------------------------------------------
-    // AUTO FOCUS
-    // ---------------------------------------------------------
-
-    fun setCenterFocus(previewView: PreviewView) {
-        try {
-            val cam = boundCamera ?: return
-            // Skip until the preview has been measured — a 0×0 metering point is
-            // meaningless and throws on some devices.
-            if (previewView.width == 0 || previewView.height == 0) return
-            val factory = previewView.meteringPointFactory
-            val center = factory.createPoint(
-                previewView.width / 2f,
-                previewView.height / 2f
-            )
-
-            // Auto-cancel after roughly one refocus cycle so a triggered AF lock
-            // never outlives the next re-trigger (see [startPeriodicFocus]); a
-            // long lock here is what kept a stale focus plane on screen.
-            val action = FocusMeteringAction.Builder(center, FocusMeteringAction.FLAG_AF)
-                .setAutoCancelDuration(2, TimeUnit.SECONDS)
-                .build()
-
-            cam.cameraControl.startFocusAndMetering(action)
-
-        } catch (e: Exception) {
-            logger.eThrottled("Autofocus failed", e, event = LogEvent.SCAN_FAILED)
-        }
-    }
-
-    /**
-     * Periodically re-triggers center autofocus while the camera is streaming.
-     * This is what makes "present a bottle → it sharpens" fast: a one-shot AF at
-     * bind time locks onto the empty startup scene, so without a re-trigger the
-     * label stays soft until that lock expires. Cancelled in [pauseCamera].
-     */
-    private fun startPeriodicFocus(previewView: PreviewView) {
-        focusJob?.cancel()
-        focusJob = focusScope.launch {
-            while (isActive) {
-                delay(autofocusIntervalMs)
-                if (isStreaming.get() && isBound.get()) {
-                    setCenterFocus(previewView)
-                }
-            }
-        }
-    }
-
-    // ---------------------------------------------------------
     // PAUSE / RESUME
     // ---------------------------------------------------------
 
     fun pauseCamera() {
         logger.i("Pausing camera")
-        focusJob?.cancel()
-        focusJob = null
         aeAwbLocked = false
         try {
             val provider = cameraProviderFuture.get()

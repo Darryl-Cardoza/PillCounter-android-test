@@ -17,6 +17,7 @@ import com.dispensesure.retail.core.hl7.mllp.client.MllpClient
 import com.dispensesure.retail.core.hl7.mllp.client.MllpConnectionManager
 import com.dispensesure.retail.core.hl7.mllp.nsd.NetworkIpMonitor
 import com.dispensesure.retail.core.hl7.mllp.nsd.NsdHelper
+import com.dispensesure.retail.core.hl7.mllp.server.Hl7FallbackAck
 import com.dispensesure.retail.core.hl7.mllp.server.MllpServer
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsSocketFactory
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -44,7 +45,7 @@ import org.rite.hl7.model.HL7Message
  * - Load HL7 configuration from Intent extras at startup
  * - Start and manage MLLP server and client connections
  * - Register and broadcast HL7 service via NSD
- * - Parse incoming HL7 messages using hl7Core [HL7] facade, build ACKs, emit callbacks
+ * - Parse incoming HL7 messages using the HL7 library [HL7] facade, build ACKs, emit callbacks
  * - Send automated responses (ACK / RDS)
  * - Maintain foreground notification to prevent background termination
  *
@@ -87,7 +88,7 @@ class HL7Service : Service() {
     private lateinit var networkIpMonitor: NetworkIpMonitor
 
     /**
-     * hl7Core facade — wires together parser, validator, builder, and AckBuilder
+     * HL7 library facade — wires together parser, validator, builder, and AckBuilder
      * with all PillCounter Z-segments (ZSN, ZSV, ZAD) pre-registered.
      * Rebuilt when [config] changes (i.e., after [updateConfig] is called).
      */
@@ -780,7 +781,7 @@ class HL7Service : Service() {
      * Handles an incoming raw HL7 string from the MLLP server.
      *
      * Pipeline:
-     * 1. Parse raw text via hl7Core's [HL7] facade (parser + validator).
+     * 1. Parse raw text via the HL7 library [HL7] facade (parser + validator).
      * 2. Notify the [listener] with the typed [HL7Message].
      * 3. Build and return a wire-ready ACK string via [HL7.ack].
      *    On parse failure, returns an AA ACK derived from the raw MSH fields.
@@ -795,10 +796,8 @@ class HL7Service : Service() {
 
             if (message == null) {
                 val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
-                // Error details can echo HL7 field values (PHI) — keep them out of the remote ERROR log.
-                logger.d("HL7 parse errors: $errors")
                 logger.e("HL7 parse failed, no partial message (${errors?.size ?: 0} error(s))", event = LogEvent.HL7_RECEIVE_FAILED)
-                return buildFallbackAck(raw, "Parse Failed")
+                return Hl7FallbackAck.build(raw, "Parse Failed")
             }
 
             if (!parseResult.isSuccess) {
@@ -806,51 +805,21 @@ class HL7Service : Service() {
                 logger.w("HL7 parse had errors but partial message available: $errors")
             }
 
-            logger.i("HL7 parsed OK: type=${message.messageType}, controlId=${message.messageControlId}")
+            logger.i("HL7 parsed OK: type=${message.header?.messageType.orEmpty()}, controlId=${message.header?.messageControlId.orEmpty()}")
 
-            val key = message.messageControlId.ifBlank { System.currentTimeMillis().toString() }
+            val key = message.header?.messageControlId.orEmpty().ifBlank { System.currentTimeMillis().toString() }
+
+            // Listener validates synchronously and returns the correct AA/AE/AR ACK string.
+            // Fall back to library AA ACK if no listener is attached.
             listener?.onMessageReceived(parsed = message, idempotencyKey = key)
-
-            // hl7Core builds and returns the validated ACK string
-            hl7.ack(message)
+                ?: hl7.ack(message)
 
         } catch (e: Exception) {
             listener?.onError("HL7_PARSE", e)
             // Keep the type and stack trace but drop e.message, which can echo HL7 field values (PHI).
             val safe = Exception(e.javaClass.name).also { it.stackTrace = e.stackTrace }
             logger.e("HL7 processing failed", safe, event = LogEvent.HL7_RECEIVE_FAILED)
-            buildFallbackAck(raw, e.message ?: "Unknown Error")
-        }
-    }
-
-    /**
-     * Builds a minimal ACK from raw MSH fields when the full parse fails, so the sender
-     * doesn't time out waiting for an acknowledgement — AA when no error message is given,
-     * AR (with the error text in MSA-3) otherwise.
-     */
-    private fun buildFallbackAck(raw: String, errorMsg: String? = null): String {
-        return try {
-            val msh = raw.lineSequence().first { it.startsWith("MSH|") }
-            val f = msh.split("|")
-            val sendingApp  = f.getOrElse(2) { "" }
-            val sendingFac  = f.getOrElse(3) { "" }
-            val recvApp     = f.getOrElse(4) { "" }
-            val recvFac     = f.getOrElse(5) { "" }
-            val ts          = f.getOrElse(6) { "" }
-            val controlId   = f.getOrElse(9) { "" }
-            val procId      = f.getOrElse(10) { "P" }
-            val version     = f.getOrElse(11) { "2.5" }
-
-            val ackCode = if (errorMsg != null) "AR" else "AA"
-            val cleanError = errorMsg?.replace("|", " ")?.replace("\r", " ")?.replace("\n", " ") ?: ""
-            val textMessage = if (cleanError.isNotEmpty()) "|$cleanError" else ""
-
-            "MSH|^~\\&|$recvApp|$recvFac|$sendingApp|$sendingFac|$ts||ACK^R01|ACK$controlId|$procId|$version\rMSA|$ackCode|$controlId$textMessage"
-        } catch (_: Exception) {
-            val ackCode = if (errorMsg != null) "AR" else "AA"
-            val cleanError = errorMsg?.replace("|", " ")?.replace("\r", " ")?.replace("\n", " ") ?: ""
-            val textMessage = if (cleanError.isNotEmpty()) "|$cleanError" else ""
-            "MSH|^~\\&||||||||ACK^R01|FALLBACK||2.5\rMSA|$ackCode|$textMessage"
+            Hl7FallbackAck.build(raw, e.message ?: "Unknown Error")
         }
     }
 
@@ -864,10 +833,11 @@ class HL7Service : Service() {
         serviceScope.launch {
             try {
                 val messageStr = original.encode()
-                logger.i("sendHl7Message | msgId=${original.messageControlId} | len=${messageStr.length}")
+                val msgId = original.messageControlId.orEmpty()
+                logger.i("sendHl7Message | msgId=$msgId | len=${messageStr.length}")
                 val ack = clientManager.send(messageStr)
-                listener?.onMessageSent(messageStr, original.messageControlId)
-                listener?.onAckReceived(ack, original.messageControlId)
+                listener?.onMessageSent(messageStr, msgId)
+                listener?.onAckReceived(ack, msgId)
             } catch (e: Exception) {
                 listener?.onError("MESSAGE_SEND", e)
             }

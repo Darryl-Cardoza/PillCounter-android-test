@@ -513,6 +513,14 @@
     <string name="hl7_notification_edit_rx_updated">Rx %1$s updated • %2$s • New Qty: %3$d</string>
     <string name="hl7_notification_edit_rx_not_found">Rx %1$s not found or already completed — update ignored.</string>
     <string name="hl7_notification_edit_rx_drug_not_found">Rx %1$s update failed: drug NDC %2$s not found.</string>
+    <string name="hl7_notification_new_rx_ndc_missing">New order for Rx %1$s ignored — NDC missing in RXE-2</string>
+    <string name="hl7_notification_new_rx_qty_missing">New order for Rx %1$s ignored — dispense amount missing</string>
+    <string name="hl7_notification_new_rx_qty_invalid">New order for Rx %1$s ignored — invalid quantity %2$d</string>
+    <string name="hl7_notification_refill_exhausted">Refill exhausted for Rx %1$s — no remaining refills (RXE-16=%2$d)</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing">Refill for Rx %1$s ignored — NDC or quantity missing/invalid</string>
+    <string name="hl7_notification_no_processable_orders">HL7 message %1$s received but contained no processable orders</string>
+    <string name="hl7_notification_structural_validation_failed">HL7 message %1$s rejected — structural validation failed: %2$s</string>
+    <string name="hl7_notification_business_validation_failed">HL7 message %1$s rejected — %2$s</string>
 
     <!-- ================== GLOVE DETECTION ================== -->
     <string name="cd_gloves_detected">Gloves detected</string>

@@ -27,7 +27,7 @@ import javax.net.ssl.SSLSocket
  *
  * The server is fully responsible for TCP/MLLP transport only; all HL7 parsing,
  * validation, and ACK building is delegated to the supplied callback so that
- * this class remains decoupled from the hl7Core message model.
+ * this class remains decoupled from the AAR library message model.
  *
  * @param port       TCP port to listen on.
  * @param bypassTls  When true, listens on a plain (non-TLS) server socket instead
@@ -105,21 +105,23 @@ class MllpServer(
             val output = socket.outputStream
 
             while (!socket.isClosed) {
-                val msg = readMllp(input)
-                logger.i("Received MLLP message (${msg.length} chars) from ${socket.inetAddress?.hostAddress}")
-                val ack = try {
-                    onHl7Message(msg)
-                } catch (e: Exception) {
-                    // A crash inside message handling must not silently kill this client's
-                    // read loop with no trace — previously this was swallowed by the outer
-                    // catch below, so a message could arrive, fail to parse/process, and
-                    // look exactly like "the server never received anything."
-                    logger.e("onHl7Message() threw while handling received message — no ACK will be sent", e, event = LogEvent.HL7_RECEIVE_FAILED)
-                    throw e
-                }
-                if (ack.isNotEmpty()) {
-                    output.write(Mllp.wrap(ack))
-                    output.flush()
+                val frame = readMllp(input)
+                logger.i("Received MLLP frame (${frame.length} chars) from ${socket.inetAddress?.hostAddress}")
+                val messages = splitMessages(frame)
+                for (msg in messages) {
+                    val ack = try {
+                        onHl7Message(msg)
+                    } catch (e: Exception) {
+                        // Last-resort guard — build a minimal AR ACK so PMS doesn't time out.
+                        logger.e("onHl7Message() threw while handling received message — no ACK will be sent", e, event = LogEvent.HL7_RECEIVE_FAILED)
+                        val fallbackAck = Hl7FallbackAck.build(msg, e.message ?: "Unknown Error")
+                        runCatching { output.write(Mllp.wrap(fallbackAck)); output.flush() }
+                        continue
+                    }
+                    if (ack.isNotEmpty()) {
+                        output.write(Mllp.wrap(ack))
+                        output.flush()
+                    }
                 }
             }
         } catch (e: EOFException) {
@@ -138,6 +140,16 @@ class MllpServer(
             clients.clear()
             serverSocket?.close()
             scope.cancel()
+        }
+    }
+
+    private fun splitMessages(frame: String): List<String> {
+        val parts = frame.split(Regex("(?=MSH\\|)")).filter { it.isNotBlank() }
+        return if (parts.size > 1) {
+            logger.i("Frame contains ${parts.size} concatenated HL7 messages — splitting")
+            parts
+        } else {
+            listOf(frame)
         }
     }
 

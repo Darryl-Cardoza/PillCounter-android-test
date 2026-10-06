@@ -2,7 +2,6 @@ package com.dispensesure.retail.core.scanning.logic
 
 import android.content.Context
 import androidx.camera.lifecycle.ProcessCameraProvider
-import androidx.camera.view.PreviewView
 import androidx.lifecycle.LifecycleOwner
 import androidx.test.core.app.ApplicationProvider
 import com.google.common.util.concurrent.ListenableFuture
@@ -10,7 +9,6 @@ import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
 import io.mockk.unmockkObject
-import io.mockk.verify
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -25,7 +23,7 @@ import java.util.concurrent.Executor
  * Unit tests for [CameraHelper].
  *
  * [CameraHelper] is a thin wrapper around CameraX (`ProcessCameraProvider`,
- * `ImageAnalysis`, `ImageCapture`, `PreviewView.meteringPointFactory`, real
+ * `ImageAnalysis`, `ImageCapture`, real
  * `ImageProxy` pixel buffers, `BitmapFactory`) whose real binding/capture/focus
  * logic runs inside CameraX listener callbacks and requires a live camera
  * pipeline (Robolectric has no native CameraX shadow). All camera-bound state
@@ -111,25 +109,6 @@ class CameraHelperTest {
         helper.setTargetRotation(0)
         helper.setTargetRotation(90)
         // No exception means the guarded (isBound==false) path was taken both times.
-    }
-
-    @Test
-    fun `setCenterFocus is a no-op when no camera is bound`() {
-        val helper = newHelper()
-        val previewView: PreviewView = mockk(relaxed = true)
-        // boundCamera is null => early return before touching previewView metering.
-        helper.setCenterFocus(previewView)
-        verify(exactly = 0) { previewView.meteringPointFactory }
-    }
-
-    @Test
-    fun `setCenterFocus is a no-op when preview view has zero width or height`() {
-        val helper = newHelper()
-        val previewView: PreviewView = mockk(relaxed = true)
-        // Even if boundCamera were non-null, unmeasured (0x0) preview must be skipped;
-        // here boundCamera is null anyway so this also exercises the null-camera guard.
-        helper.setCenterFocus(previewView)
-        verify(exactly = 0) { previewView.meteringPointFactory }
     }
 
     @Test
