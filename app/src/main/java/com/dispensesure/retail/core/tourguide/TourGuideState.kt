@@ -138,7 +138,7 @@ class TourGuideState(
 
     fun back() {
         val prev = steps.getOrNull(currentIndex - 1) ?: return
-        if (!stepBusy && prev.section == currentStep?.section) currentIndex--
+        if (!stepBusy && pendingSection == null && prev.section == currentStep?.section) currentIndex--
     }
 
     /** Runs [action] for step [id] once; a repeat tap, or a tap for a stale step, is ignored. */
