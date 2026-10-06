@@ -779,22 +779,12 @@ private fun TabletHorizontalBody(
 /** The d_verify_rx spotlight, drawn inside each sheet body's own content Box. */
 @Composable
 private fun BoxScope.VerifyRxTourOverlay(tourState: TourGuideState, onProceed: () -> Unit) {
+    // Sheet-local spotlight: sized to the sheet content (not fullscreen), draws only d_verify_rx.
     TourGuideOverlay(
         state = tourState,
-        // matchParentSize, not fillMaxSize: this Box is the sheet's own content — sizing
-        // the overlay to fillMaxSize would force the *sheet itself* to expand to fill the
-        // whole screen instead of wrapping its real (35%-height) content.
         modifier = Modifier.matchParentSize(),
-        // Not the screen root: only render here when a step's real target is actually in
-        // this sheet, never as a fallback for a step (e.g. a camera-preview step) that has
-        // no target at all — the screen root already owns showing that.
         isScreenRoot = false,
-        // This sheet only ever tags "verify_rx_proceed" — restrict to it explicitly so this
-        // instance never mistakes a DIFFERENT step's rect (e.g. the camera preview behind
-        // it, registered in the same window-wide target map) for one of its own.
         ownedStepIds = setOf("d_verify_rx"),
-        // PROCEED is always tappable regardless of real data — dummy Next just performs
-        // the exact same action a real tap would.
         onNext = { if (tourState.currentStep?.id == "d_verify_rx") onProceed() },
     )
 }

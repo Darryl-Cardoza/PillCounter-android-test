@@ -32,6 +32,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
@@ -187,6 +188,17 @@ class PillScanningViewModelCaptureTest {
     }
 
     // ─────────────────────────── capture button ───────────────────────────
+
+    @Test
+    fun `captureVialForTour returns without timing out when the notes setting is off`() = runTest {
+        mockkStatic(Bitmap::class)
+        every { Bitmap.createBitmap(any<Int>(), any<Int>(), any<Bitmap.Config>()) } returns mockk(relaxed = true)
+        every { preferenceHelper.getTxnId() } returns 42L
+        every { preferenceHelper.getShowNotesDialogSetting() } returns false
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+
+        viewModel.captureVialForTour()
+    }
 
     @Test
     fun `captureImage ignores a second tap while the first capture is still in flight`() = runTest {
