@@ -70,6 +70,7 @@ import java.util.Locale
 
 internal fun buildTerminalUserLine(
     uiState: DashboardUiState,
+    operatorLabel: String,
     includeTerminal: Boolean = true,
 ): String {
     val profile = uiState.userDetail?.profile
@@ -80,8 +81,9 @@ internal fun buildTerminalUserLine(
     val terminal = if (includeTerminal) activeTerminalName else null
     // The face user who verified into this session wins over the account name — same rule
     // HL7 uses for its operator. Falls back to the account only before the first emission.
-    val user = uiState.operatorName?.ifBlank { null }
-        ?: listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
+    val user = (uiState.operatorName?.ifBlank { null }
+        ?: listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null })
+        ?.let { "$operatorLabel: $it" }
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }
 
@@ -156,7 +158,7 @@ internal fun ScaffoldTopBar(
 private fun PharmacyNameText(pharmacyName: String?) {
     Text(
         text = pharmacyName ?: "—",
-        fontSize = responsiveSp(12.sp, boostOnPhone = true),
+        fontSize = responsiveSp(10.sp, boostOnPhone = true),
         color = extendedColors.textColor,
         fontWeight = FontWeight.SemiBold,
         maxLines = 1,

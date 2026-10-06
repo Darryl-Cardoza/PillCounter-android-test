@@ -7,7 +7,7 @@ import androidx.compose.ui.unit.sp
 // responsiveDp — never use these raw, except the "fixed" group at the bottom.
 internal object DashboardBaseSizes {
     // Text (responsiveSp)
-    val SectionLabelText = 8.sp
+//    val SectionLabelText = 8.sp
     val QuickActionTitleText = 10.sp
     val QuickActionSubtitleText = 7.sp
     val KpiTitleText = 8.sp
@@ -21,7 +21,7 @@ internal object DashboardBaseSizes {
     // Boxes (responsiveDp)
     val ScreenEdgePadding = 12.dp
     val SectionGap = 8.dp
-    val CardGap = 4.dp
+    val CardGap = 6.dp
     val CardInnerPadding = 8.dp
     val KpiIconSize = 20.dp
     val QuickActionRingSize = 44.dp

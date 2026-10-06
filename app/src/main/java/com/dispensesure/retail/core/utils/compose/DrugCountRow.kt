@@ -41,6 +41,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.ui.theme.AppTheme
 import java.io.File
 
@@ -128,6 +129,7 @@ fun DrugCountRow(
                 color = AppTheme.extendedColors.secondaryBackground,
                 shape = RoundedCornerShape(dimens.extraSmall)
             )
+            .padding(end = responsiveDp(8.dp))
             .clickable { if (multiSelectMode) onSelectChange() else onClick() }
     ) {
         Card(
@@ -142,6 +144,7 @@ fun DrugCountRow(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 val isTablet = UserInterfaceUtils.isTablet()
+                val lineHeightResponsiveSp = responsiveSp(8.sp)
                 DrugThumbnail(
                     data = data,
                     modifier = Modifier
@@ -155,8 +158,8 @@ fun DrugCountRow(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = data.drugName,
-                        fontSize = 16.sp,
-                        lineHeight = 16.sp,
+                        fontSize = responsiveSp(8.sp),
+                        lineHeight = lineHeightResponsiveSp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
@@ -166,8 +169,8 @@ fun DrugCountRow(
                     if (idLine.isNotEmpty()) {
                         Text(
                             text = idLine,
-                            fontSize = 12.sp,
-                            lineHeight = 16.sp,
+                            fontSize = responsiveSp(7.5.sp),
+                            lineHeight = lineHeightResponsiveSp,
                             fontWeight = FontWeight.Medium,
                             color = AppTheme.extendedColors.textColor,
                             maxLines = 1,
@@ -176,8 +179,8 @@ fun DrugCountRow(
                     }
                     Text(
                         text = data.date,
-                        fontSize = 12.sp,
-                        lineHeight = 16.sp,
+                        fontSize = responsiveSp(6.sp),
+                        lineHeight = lineHeightResponsiveSp,
                         color = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -195,8 +198,8 @@ fun DrugCountRow(
                     }
                     Text(
                         text = countText,
-                        fontSize = 22.sp,
-                        fontWeight = FontWeight.SemiBold,
+                        fontSize = responsiveSp(12.sp),
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.secondary
                     )
                 }

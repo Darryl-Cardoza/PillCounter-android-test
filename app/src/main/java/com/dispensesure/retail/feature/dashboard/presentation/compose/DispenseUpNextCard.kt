@@ -127,7 +127,7 @@ private fun UpNextCount(count: Int) {
     Text(
         text = count.toString(),
         fontSize = responsiveSp(DashboardBaseSizes.UpNextCountText),
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Medium,
         color = MaterialTheme.colorScheme.secondary,
         maxLines = 1,
     )
