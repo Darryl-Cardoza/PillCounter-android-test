@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -31,7 +32,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.HistoryRetention
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.LoadingIndicator
+import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateSafely
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
@@ -217,7 +218,7 @@ fun MenuScreen(
                                     .fillMaxSize()
                                     .padding(top = 40.dp)
                             ) {
-                                LoadingIndicator()
+                                BreathingDotsLoader(Modifier.fillMaxSize().wrapContentSize())
                                 Text(
                                     text = stringResource(R.string.logging_out),
                                     color = MaterialTheme.colorScheme.primary,

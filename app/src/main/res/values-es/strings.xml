@@ -5,7 +5,6 @@
 
     <!--    Common   -->
     <string name="pms">PMS</string>
-    <string name="loading">Cargando...</string>
     <string name="open_settings">Abrir la configuración</string>
     <string name="not_now">Ahora no</string>
     <string name="location_access">Acceso a la ubicación</string>
@@ -57,7 +56,6 @@
     <string name="nothing_here_yet">Aún no hay nada aquí</string>
     <string name="all_caught_up">¡Está todo al día!</string>
     <string name="no_pending_tasks">No hay tareas pendientes por ahora</string>
-    <string name="loading_transactions">Cargando transacciones...</string>
     <string name="kpi_disp_short">Dispensar</string>
     <string name="kpi_inv_short">Inventario</string>
     <string name="kpi_high_priority">Alta prioridad</string>
