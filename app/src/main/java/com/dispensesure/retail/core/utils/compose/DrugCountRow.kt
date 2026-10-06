@@ -145,8 +145,8 @@ fun DrugCountRow(
                 DrugThumbnail(
                     data = data,
                     modifier = Modifier
-                        .width(if (isTablet) 80.dp else 60.dp)
-                        .height(if (isTablet) 74.dp else 56.dp),
+                        .width(if (isTablet) 85.dp else 70.dp)
+                        .height(if (isTablet) 65.dp else 50.dp),
                 )
 
                 Spacer(modifier = Modifier.width(12.dp))
@@ -155,7 +155,8 @@ fun DrugCountRow(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = data.drugName,
-                        fontSize = 14.sp,
+                        fontSize = 16.sp,
+                        lineHeight = 16.sp,
                         fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
@@ -166,7 +167,9 @@ fun DrugCountRow(
                         Text(
                             text = idLine,
                             fontSize = 12.sp,
-                            color = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),
+                            lineHeight = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = AppTheme.extendedColors.textColor,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -174,6 +177,7 @@ fun DrugCountRow(
                     Text(
                         text = data.date,
                         fontSize = 12.sp,
+                        lineHeight = 16.sp,
                         color = AppTheme.extendedColors.textColor.copy(alpha = 0.8f),
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
@@ -193,7 +197,7 @@ fun DrugCountRow(
                         text = countText,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = MaterialTheme.colorScheme.secondary
                     )
                 }
             }

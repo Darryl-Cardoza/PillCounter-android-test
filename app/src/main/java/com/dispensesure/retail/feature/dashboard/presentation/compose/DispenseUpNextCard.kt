@@ -1,7 +1,7 @@
 package com.dispensesure.retail.feature.dashboard.presentation.compose
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,7 +28,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.compose.DrugThumbnail
@@ -49,8 +49,6 @@ internal fun DispenseUpNextCard(
 ) {
     val rowData = item.toDrugCountRowData()
     val detailSize = responsiveSp(DashboardBaseSizes.UpNextDetailText)
-    // Tablet: date sits under the Rx / NDC line and the count beside it, so there's no footer row.
-    val isTablet = UserInterfaceUtils.isTablet()
     Card(
         modifier = modifier
             .fillMaxWidth()
@@ -64,57 +62,46 @@ internal fun DispenseUpNextCard(
         colors = CardDefaults.cardColors(containerColor = AppTheme.extendedColors.secondaryBackground),
         elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
     ) {
-        Column(
-            modifier = Modifier.padding(responsiveDp(DashboardBaseSizes.UpNextCardPadding)),
-            verticalArrangement = Arrangement.spacedBy(responsiveDp(DashboardBaseSizes.SectionGap)),
-        ) {
-            UpNextHeader(isHighPriority = item.isHighPriority)
-
-            Row(verticalAlignment = if (isTablet) Alignment.Bottom else Alignment.CenterVertically) {
-                DrugThumbnail(
-                    data = rowData,
-                    modifier = Modifier
-                        .width(responsiveDp(DashboardBaseSizes.UpNextThumbnailWidth))
-                        .height(responsiveDp(DashboardBaseSizes.UpNextThumbnailHeight)),
-                    backgroundColor = Color.White,
+        Box(modifier = Modifier.padding(responsiveDp(DashboardBaseSizes.UpNextCardPadding))) {
+            val thumbnailWidth = responsiveDp(DashboardBaseSizes.UpNextThumbnailWidth)
+            // matchParentSize sizes the thumbnail after the text, so it spans the full text height
+            // without the drug image's own size stretching the card.
+            DrugThumbnail(
+                data = rowData,
+                modifier = Modifier
+                    .matchParentSize()
+                    .wrapContentWidth(Alignment.Start)
+                    .width(thumbnailWidth),
+                backgroundColor = Color.White,
+            )
+            Column(
+                modifier = Modifier.padding(start = thumbnailWidth + responsiveDp(DashboardBaseSizes.IconToTextGap)),
+            ) {
+                UpNextHeader(isHighPriority = item.isHighPriority)
+                Spacer(modifier = Modifier.height(responsiveDp(DashboardBaseSizes.UpNextTextLineGap)))
+                val drugNameSize = responsiveSp(DashboardBaseSizes.UpNextDrugNameText, boostOnPhone = false)
+                Text(
+                    text = rowData.drugName,
+                    fontFamily = PlayfairDisplay,
+                    fontSize = drugNameSize,
+                    lineHeight = drugNameSize * UpNextDrugNameLineHeightRatio,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
-                Spacer(modifier = Modifier.width(responsiveDp(DashboardBaseSizes.IconToTextGap)))
-                Column(modifier = Modifier.weight(1f)) {
-                    val drugNameSize = responsiveSp(DashboardBaseSizes.UpNextDrugNameText, boostOnPhone = false)
+                // Same line as the queue rows: "Rx 7654321-2  •  340B  •  CII".
+                val idLine = rowData.identifierLine()
+                if (idLine.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(responsiveDp(DashboardBaseSizes.UpNextTextLineGap)))
                     Text(
-                        text = rowData.drugName,
-                        fontFamily = PlayfairDisplay,
-                        fontWeight = FontWeight.SemiBold,
-                        fontSize = drugNameSize,
-                        lineHeight = drugNameSize * UpNextDrugNameLineHeightRatio,
+                        text = idLine,
+                        fontSize = detailSize,
                         color = MaterialTheme.colorScheme.primary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
-                    // Same line as the queue rows: "Rx 7654321-2  •  340B  •  CII".
-                    val idLine = rowData.identifierLine()
-                    if (idLine.isNotEmpty()) {
-                        Spacer(modifier = Modifier.height(responsiveDp(DashboardBaseSizes.UpNextTextLineGap)))
-                        Text(
-                            text = idLine,
-                            fontSize = detailSize,
-                            color = MaterialTheme.colorScheme.primary,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    if (isTablet) {
-                        Spacer(modifier = Modifier.height(responsiveDp(DashboardBaseSizes.UpNextTextLineGap)))
-                        UpNextDate(date = rowData.date, fontSize = detailSize)
-                    }
                 }
-                if (isTablet) {
-                    Spacer(modifier = Modifier.width(responsiveDp(DashboardBaseSizes.IconToTextGap)))
-                    UpNextCount(count = rowData.targetCount)
-                }
-            }
-
-            if (!isTablet) {
+                Spacer(modifier = Modifier.height(responsiveDp(DashboardBaseSizes.SectionGap)))
                 Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
                     UpNextDate(date = rowData.date, fontSize = detailSize, modifier = Modifier.weight(1f))
                     UpNextCount(count = rowData.targetCount)

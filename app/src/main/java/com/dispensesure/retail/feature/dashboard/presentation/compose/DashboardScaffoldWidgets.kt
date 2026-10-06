@@ -323,7 +323,7 @@ private fun ScaffoldTab(
         Spacer(modifier = Modifier.height(2.dp))
         Box(
             modifier = Modifier
-                .height(2.dp)
+                .height(1.dp)
                 .fillMaxWidth()
                 .background(if (isActive) MaterialTheme.colorScheme.secondary else Color.Transparent)
         )
@@ -381,7 +381,7 @@ internal fun ScaffoldQueueList(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(vertical = 2.dp),
+        contentPadding = PaddingValues(vertical = 8.dp),
     ) {
         if (upNext != null) {
             item(key = "up-next-${upNext.txn.txnId}") {

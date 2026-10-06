@@ -29,10 +29,9 @@ internal object DashboardBaseSizes {
     val IconToTextGap = 8.dp
     val TitleToSubtitleGap = 2.dp
     val PortraitKpiTileWidthOnPhone = 110.dp
-    val UpNextCardPadding = 14.dp
-    val UpNextThumbnailWidth = 96.dp
-    val UpNextThumbnailHeight = 72.dp
-    val UpNextHeaderIconSize = 20.dp
+    val UpNextCardPadding = 13.dp
+    val UpNextThumbnailWidth = 136.dp
+    val UpNextHeaderIconSize = 16.dp
     val UpNextHeaderIconToLabelGap = 2.dp
     val UpNextTextLineGap = 4.dp
 
