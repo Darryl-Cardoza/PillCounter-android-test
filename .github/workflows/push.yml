@@ -104,7 +104,6 @@ jobs:
       fail_on_dead_code: false
     secrets:
       PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
-      DD_API_KEY: ${{ secrets.DD_API_KEY }}
 
   # CD for version tags. Only fires when the tag also contains "release", the
   # same condition `ci` above uses to pick build_variant -- so `ci` has
@@ -148,3 +147,22 @@ jobs:
       PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
       ESPER_API_KEY: ${{ secrets.ESPER_API_KEY }}
       PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+
+  # Uploads the R8 mapping to the observability vendor. Runs here (not in the reusable
+  # pipeline) so the key stays in this repo, and only after ci + cd succeeded for the
+  # release tag. The version id derives from the commit SHA, so it matches the shipped build.
+  upload-mapping:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, 'release')
+    needs: [ extract-version, ci, cd ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ needs.extract-version.outputs.java_version }}
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Upload R8 mapping
+        env:
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+        run: ./gradlew :app:uploadMappingRelease --no-daemon --stacktrace

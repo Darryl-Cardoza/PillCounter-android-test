@@ -24,9 +24,10 @@ val keystoreProps =
         if (hasKeystore) keystorePropsFile.inputStream().use { props.load(it) }
     }
 
-// Unique per Gradle invocation: ties a release binary's logs to the exact mapping uploaded for it.
-val ddVersion by lazy {
-    val suffix = List(6) { (('a'..'z') + ('0'..'9')).random() }.joinToString("")
+// Same commit => same id, so the pipeline's APK/AAB and the mapping uploaded by the
+// upload-mapping job (separate Gradle runs) agree. Local builds get "local0".
+val buildVersionId by lazy {
+    val suffix = (System.getenv("GITHUB_SHA") ?: "local0").take(6)
     "${android.defaultConfig.versionName}-${android.defaultConfig.versionCode}-$suffix"
 }
 
@@ -77,7 +78,7 @@ android {
 
     buildTypes {
         release {
-            buildConfigField("String", "DD_VERSION", "\"$ddVersion\"")
+            buildConfigField("String", "BUILD_VERSION_ID", "\"$buildVersionId\"")
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
@@ -88,7 +89,7 @@ android {
             )
         }
         debug {
-            buildConfigField("String", "DD_VERSION", "\"debug\"")
+            buildConfigField("String", "BUILD_VERSION_ID", "\"debug\"")
 //            isMinifyEnabled = true
 //            proguardFiles(
 //                getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -247,14 +248,11 @@ dependencies {
 datadog {
     site = "US1"
     serviceName = "dispensesure-mobile"
-    versionName = ddVersion
+    versionName = buildVersionId
     checkProjectDependencies = SdkCheckLevel.NONE // no Datadog SDK in this app, mapping upload only
 }
 
-// Upload only when CI provides the key; local release builds skip silently.
+// Upload only when the key is set (the upload-mapping CI job runs this task); local builds skip.
 tasks.matching { it.name == "uploadMappingRelease" }.configureEach {
     onlyIf { !System.getenv("DD_API_KEY").isNullOrBlank() }
-}
-tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
-    finalizedBy("uploadMappingRelease")
 }
