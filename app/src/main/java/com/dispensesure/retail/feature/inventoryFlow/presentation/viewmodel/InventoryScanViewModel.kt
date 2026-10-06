@@ -517,6 +517,7 @@ class InventoryScanViewModel @Inject constructor(
      * would — skipping barcode decode entirely since there's no real label to decode.
      */
     fun useDummyNdcData(demoDrugName: String) {
+        if (!FtueController.state.isActive) return
         FtueController.track(viewModelScope.launch {
             try {
                 TutorialData.upsertDemoDrug(drugMasterDao, demoDrugName)

@@ -462,6 +462,7 @@ class DispenseFlowViewModel @Inject constructor(
      * timestamped so repeat tutorial runs never collide with a prior demo dispense.
      */
     fun useDummyRxData() {
+        if (!FtueController.state.isActive) return
         if (_uiState.value.stage != DispenseStage.PRE_RX && _uiState.value.stage != DispenseStage.QUEUE) return
         if (_uiState.value.isLoading) return
         _uiState.update { it.copy(isLoading = true) }
@@ -486,6 +487,7 @@ class DispenseFlowViewModel @Inject constructor(
      * server round-trip.
      */
     fun useDummyNdcData() {
+        if (!FtueController.state.isActive) return
         onNdcBarcodeRead(TutorialData.DEMO_NDC, imagePath = null)
     }
 

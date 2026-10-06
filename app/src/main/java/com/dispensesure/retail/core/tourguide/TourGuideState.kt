@@ -25,6 +25,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.util.concurrent.CopyOnWriteArraySet
 
 /** A self-contained part of the tour; the user is asked before moving on to the next one. */
 enum class TourSection { DISPENSE, STOCK_COUNT, DASHBOARD }
@@ -115,7 +116,7 @@ class TourGuideState(
 
     // The running step's action; cancelled on end() so it can't write demo data after cleanup.
     private var stepJob: Job? = null
-    private val demoJobs = mutableSetOf<Job>()
+    private val demoJobs = CopyOnWriteArraySet<Job>()
 
     fun registerTarget(id: String, coordinates: LayoutCoordinates, owner: Any = id) {
         if (coordinates.isAttached) targetBounds[id to owner] = coordinates.boundsInRoot()
