@@ -30,6 +30,7 @@ import com.dispensesure.retail.feature.dispenseFlow.domain.model.DispenseStage
 import com.dispensesure.retail.feature.dispenseFlow.domain.model.StandaloneRxDraft
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -467,17 +468,23 @@ class DispenseFlowViewModel @Inject constructor(
         if (_uiState.value.isLoading) return
         _uiState.update { it.copy(isLoading = true) }
         FtueController.track(viewModelScope.launch {
-            if (_uiState.value.stage == DispenseStage.QUEUE) {
-                _uiState.update { it.copy(stage = DispenseStage.PRE_RX) }
+            try {
+                if (_uiState.value.stage == DispenseStage.QUEUE) {
+                    _uiState.update { it.copy(stage = DispenseStage.PRE_RX) }
+                }
+                TutorialData.upsertDemoDrug(drugMasterDao, appContext.getString(R.string.tour_demo_drug_name))
+                showStandaloneRxSheet(
+                    parsedNdc = TutorialData.DEMO_NDC,
+                    rxNo = "${TutorialData.RX_PREFIX}${System.currentTimeMillis()}",
+                    refillNo = null,
+                    bucket = null,
+                    targetCount = TUTORIAL_DUMMY_TARGET_COUNT,
+                )
+            } catch (e: CancellationException) {
+                // The tour ended mid-write: drop the loader this call raised.
+                _uiState.update { it.copy(isLoading = false) }
+                throw e
             }
-            TutorialData.upsertDemoDrug(drugMasterDao, appContext.getString(R.string.tour_demo_drug_name))
-            showStandaloneRxSheet(
-                parsedNdc = TutorialData.DEMO_NDC,
-                rxNo = "${TutorialData.RX_PREFIX}${System.currentTimeMillis()}",
-                refillNo = null,
-                bucket = null,
-                targetCount = TUTORIAL_DUMMY_TARGET_COUNT,
-            )
         })
     }
 
@@ -739,6 +746,9 @@ class DispenseFlowViewModel @Inject constructor(
                 }
                 logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}")
                 advanceToCountingStage()
+            } catch (e: CancellationException) {
+                _uiState.update { it.copy(isLoading = false) }
+                throw e
             } catch (e: Exception) {
                 logger.e("NDC barcode processing failed", e)
                 _uiState.update { it.copy(isLoading = false, error = e.message) }

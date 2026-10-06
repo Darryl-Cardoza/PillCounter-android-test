@@ -32,6 +32,7 @@ import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.RecentBatchRow
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -547,6 +548,8 @@ class InventoryScanViewModel @Inject constructor(
                 )
                 _activeNdc.value = newActive
                 persistActive(newActive)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 logger.e("INV_SCAN useDummyNdcData failed", e)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
