@@ -9,6 +9,7 @@ import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import android.text.TextUtils
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
 import java.io.File
 import java.io.FileOutputStream
@@ -189,7 +190,7 @@ class HistoryPdfExporter(private val context: Context) {
             }
 
             val footerText = "Generated on: ${
-                SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+                SimpleDateFormat(DateFormats.MMM_DD_YYYY_HH_MM_A, Locale.getDefault()).format(Date())
             }"
 
             canvas.drawText(

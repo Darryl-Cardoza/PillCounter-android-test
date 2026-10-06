@@ -3,9 +3,9 @@ package com.dispensesure.retail.core.utils.common
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.Month
+import java.util.TimeZone
 
 /**
  * Unit tests for [DateUtils].
@@ -75,15 +75,13 @@ class DateUtilsTest {
     }
 
     // -------------------------------------------------------------------------
-    // convertToDate  —  format yyMMdd → human-readable "d MMM yyyy"
+    // convertToDate  —  format yyMMdd → "MM/dd/yy"
     // -------------------------------------------------------------------------
 
     // DATE_008
     @Test
     fun `convertToDate returns formatted string for valid yyMMdd input`() {
-        val result = DateUtils.convertToDate("251006")
-        assertTrue("Expected '6 Oct 2025', got '$result'", result.contains("2025"))
-        assertTrue(result.contains("Oct"))
+        assertEquals("10/06/25", DateUtils.convertToDate("251006"))
     }
 
     // DATE_009
@@ -111,10 +109,13 @@ class DateUtilsTest {
     // DATE_012
     @Test
     fun `convertUTCTimestampToDate returns non-empty string for valid ISO timestamp`() {
-        val result = DateUtils.convertUTCTimestampToDate("2024-12-31T10:30:00Z")
-        assertTrue("Expected a formatted date, got '$result'", result.isNotEmpty())
-        assertTrue(result.contains("2024"))
-        assertTrue(result.contains("Dec"))
+        val tz = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+            assertEquals("12/31/24", DateUtils.convertUTCTimestampToDate("2024-12-31T10:30:00Z"))
+        } finally {
+            TimeZone.setDefault(tz)
+        }
     }
 
     // DATE_013

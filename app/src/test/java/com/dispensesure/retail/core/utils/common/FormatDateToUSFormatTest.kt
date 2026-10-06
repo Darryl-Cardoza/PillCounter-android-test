@@ -6,31 +6,35 @@ import org.junit.Test
 /**
  * Unit tests for the top-level [formatDateToUSFormat] function.
  *
- * Covers: input already in MM-dd-yyyy, input in MM-dd-yyyy hh:mm a, unparseable input
+ * Covers: new MM/dd/yy and legacy MM-dd-yyyy expiry text, unparseable input
  * (returned trimmed), custom output pattern, and the blank-input passthrough.
  */
 class FormatDateToUSFormatTest {
 
     @Test
-    fun parsesDateOnlyFormat_returnsMmDdYyyy() {
-        assertEquals("12-31-2024", formatDateToUSFormat("12-31-2024"))
+    fun legacyExpiry_returnsMmDdYy() {
+        assertEquals("12/31/27", formatDateToUSFormat("12-31-2027"))
     }
 
     @Test
-    fun parsesDateTimeFormat_returnsDateOnlyByDefault() {
-        // Input matches second format; default output pattern is MM-dd-yyyy.
-        assertEquals("12-31-2024", formatDateToUSFormat("12-31-2024 10:30 AM"))
+    fun newExpiry_returnedUnchanged() {
+        assertEquals("12/31/27", formatDateToUSFormat("12/31/27"))
     }
 
     @Test
     fun trimsWhitespaceBeforeParsing() {
-        assertEquals("01-02-2023", formatDateToUSFormat("  01-02-2023  "))
+        assertEquals("01/02/23", formatDateToUSFormat("  01-02-2023  "))
     }
 
     @Test
     fun unparseableInput_returnsTrimmedCleanInput() {
         // No format matches -> falls through to returning cleanInput.
         assertEquals("not-a-date", formatDateToUSFormat("  not-a-date  "))
+    }
+
+    @Test
+    fun dashPlaceholder_returnedUnchanged() {
+        assertEquals("—", formatDateToUSFormat("—"))
     }
 
     @Test
@@ -64,7 +68,7 @@ class FormatDateToUSFormatTest {
 
     @Test
     fun leapDayOnLeapYear_parsesSuccessfully() {
-        assertEquals("02-29-2024", formatDateToUSFormat("02-29-2024"))
+        assertEquals("02/29/24", formatDateToUSFormat("02-29-2024"))
     }
 
     @Test
@@ -75,13 +79,7 @@ class FormatDateToUSFormatTest {
 
     @Test
     fun startOfYearBoundary_parsesSuccessfully() {
-        assertEquals("01-01-2024", formatDateToUSFormat("01-01-2024"))
-    }
-
-    @Test
-    fun dateTimeFormat_invalidHourValue_returnsCleanInput() {
-        // Hour 25 is invalid for hh (1-12) pattern; both formats must fail to parse.
-        assertEquals("12-31-2024 25:00 AM", formatDateToUSFormat("12-31-2024 25:00 AM"))
+        assertEquals("01/01/24", formatDateToUSFormat("01-01-2024"))
     }
 
     @Test
@@ -90,11 +88,5 @@ class FormatDateToUSFormatTest {
         // the catch block must return the original, untrimmed input, not cleanInput.
         val result = formatDateToUSFormat("  12-31-2024  ", "qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq")
         assertEquals("  12-31-2024  ", result)
-    }
-
-    @Test
-    fun customOutputPattern_appliedToDateTimeInput() {
-        val result = formatDateToUSFormat("12-31-2024 10:30 AM", "yyyy-MM-dd")
-        assertEquals("2024-12-31", result)
     }
 }

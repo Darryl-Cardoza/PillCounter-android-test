@@ -127,10 +127,14 @@ class UserInterfaceUtilsTest {
 
     @Test
     fun toFormattedDate_validEpoch_returnsFormattedString() {
-        // 2021-01-01T00:00:00Z = 1609459200000
-        val result = 1609459200000L.toFormattedDate()
-        assertTrue("got '$result'", result.contains("2020") || result.contains("2021"))
-        assertTrue(result != "-")
+        val tz = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+            // 1609459200000 = 01 Jan 2021 00:00 UTC; AM/PM case is locale-dependent.
+            assertEquals("01/01/21 12:00 am", 1609459200000L.toFormattedDate().lowercase())
+        } finally {
+            TimeZone.setDefault(tz)
+        }
     }
 
     @Test
@@ -139,7 +143,7 @@ class UserInterfaceUtilsTest {
         try {
             TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
             // 1609459200000 = 01 Jan 2021 UTC
-            assertEquals("01 Jan 2021", 1609459200000L.toDateString())
+            assertEquals("01/01/21", 1609459200000L.toDateString())
         } finally {
             TimeZone.setDefault(tz)
         }

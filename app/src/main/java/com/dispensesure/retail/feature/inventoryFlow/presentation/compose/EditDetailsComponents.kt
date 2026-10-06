@@ -42,6 +42,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -312,7 +313,7 @@ private fun EditBatchRowItem(
             modifier = Modifier.weight(1f),
         )
         Text(
-            text = row.expiry.ifBlank { "—" },
+            text = formatDateToUSFormat(row.expiry).ifBlank { "—" },
             color = AppTheme.extendedColors.textColor,
             fontSize = responsiveSp(6.sp),
             maxLines = 1,

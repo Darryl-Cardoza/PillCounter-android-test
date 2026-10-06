@@ -121,13 +121,22 @@ class OverlayUtilsTest {
     }
 
     @Test
+    fun `legacy expiry shows in US format`() {
+        val top = OverlayUtils.topRowFields(info(), res).associate { it.label to it.value }
+        assertEquals("07/31/28", top["Expiry"])
+    }
+
+    @Test
     fun `bottom rows follow the screenshot grid`() {
         val rows = OverlayUtils.bottomRows(info(count = 30), res)
         assertEquals(listOf("Count", "RxNo-Refill", "Step", "Date & Time"), rows[0].map { it.label })
         assertEquals(listOf("Operator", "Location"), rows[1].map { it.label })
         assertEquals("30", rows[0][0].value)
-        // MM-dd-yyyy HH:mm
-        assertTrue(Regex("""\d{2}-\d{2}-\d{4} \d{2}:\d{2}""").matches(rows[0][3].value))
+        // MM/dd/yy hh:mm a
+        assertTrue(
+            Regex("""\d{2}/\d{2}/\d{2} \d{2}:\d{2} [AP]M""", RegexOption.IGNORE_CASE)
+                .matches(rows[0][3].value)
+        )
     }
 
     @Test

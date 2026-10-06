@@ -6,7 +6,7 @@ import java.util.*
 
 fun formatDateToUSFormat(
     input: String,
-    outputPattern: String = DateFormats.MM_DD_YYYY
+    outputPattern: String = DateFormats.MM_DD_YY
 ): String {
     return try {
         val cleanInput = input.trim()
