@@ -1780,7 +1780,7 @@ class PillScanningViewModel @Inject constructor(
         // DB rows, so it must never run outside an active tutorial regardless of
         // what calls it.
         if (!FtueController.state.isActive) return
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             val countingCircleSteps = setOf(
                 StepState.CONTAINER_INITIATE,
                 StepState.TARGET_VERIFICATION,
@@ -1828,7 +1828,7 @@ class PillScanningViewModel @Inject constructor(
                 // spinning on a step our shortfall calc didn't actually satisfy.
                 if (_currentStep.value == before) break
             }
-        }
+        })
     }
 
     fun clearErrorMessage() {

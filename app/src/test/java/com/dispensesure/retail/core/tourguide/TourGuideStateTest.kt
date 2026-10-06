@@ -9,6 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 
 class TourGuideStateTest {
 
@@ -137,6 +138,19 @@ class TourGuideStateTest {
         gate.complete(Unit)
         assertFalse(resumed)
         assertFalse(state.stepBusy)
+    }
+
+    @Test
+    fun `end cancels tracked demo jobs but track is a no-op outside a tour`() = runTest {
+        val state = TestScopeState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        val idle = Job()
+        state.track(idle)
+        state.start(listOf(TourSection.DISPENSE))
+        val demo = Job()
+        state.track(demo)
+        state.end()
+        assertTrue(demo.isCancelled)
+        assertFalse(idle.isCancelled)
     }
 
     @Test

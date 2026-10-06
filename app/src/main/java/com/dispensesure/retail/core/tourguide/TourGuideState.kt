@@ -115,6 +115,7 @@ class TourGuideState(
 
     // The running step's action; cancelled on end() so it can't write demo data after cleanup.
     private var stepJob: Job? = null
+    private val demoJobs = mutableSetOf<Job>()
 
     fun registerTarget(id: String, coordinates: LayoutCoordinates, owner: Any = id) {
         if (coordinates.isAttached) targetBounds[id to owner] = coordinates.boundsInRoot()
@@ -180,11 +181,20 @@ class TourGuideState(
         currentIndex = nextIndex() ?: currentIndex
     }
 
+    /** Registers a view-model demo write so [end] cancels it; no-op outside a tour. */
+    fun track(job: Job): Job {
+        if (!isActive) return job
+        demoJobs += job
+        job.invokeOnCompletion { demoJobs -= job }
+        return job
+    }
+
     fun end() {
         if (!isActive) return
         isActive = false
         pendingSection = null
         stepJob?.cancel()
+        demoJobs.toList().forEach { it.cancel() }
         onEnded?.invoke()
     }
 }

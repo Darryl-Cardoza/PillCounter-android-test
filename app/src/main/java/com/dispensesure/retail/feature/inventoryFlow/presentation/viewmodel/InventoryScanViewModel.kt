@@ -517,7 +517,7 @@ class InventoryScanViewModel @Inject constructor(
      * would — skipping barcode decode entirely since there's no real label to decode.
      */
     fun useDummyNdcData(demoDrugName: String) {
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             try {
                 TutorialData.upsertDemoDrug(drugMasterDao, demoDrugName)
                 val drug = drugMasterDao.getDrugByNdc(TutorialData.DEMO_NDC) ?: return@launch
@@ -550,7 +550,7 @@ class InventoryScanViewModel @Inject constructor(
                 logger.e("INV_SCAN useDummyNdcData failed", e)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
             }
-        }
+        })
     }
 
     fun clearErrorMessage() {

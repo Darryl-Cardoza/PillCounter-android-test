@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.tourguide
 
 import com.dispensesure.retail.R
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
@@ -39,6 +40,8 @@ object FtueController {
 
     /** The single exit: Skip, End tour, last step, Back, lock and logout all land here. */
     fun end() = state.end()
+
+    fun track(job: Job) = state.track(job)
 
     fun continueTour() {
         state.continueToNextSection()

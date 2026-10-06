@@ -465,7 +465,7 @@ class DispenseFlowViewModel @Inject constructor(
         if (_uiState.value.stage != DispenseStage.PRE_RX && _uiState.value.stage != DispenseStage.QUEUE) return
         if (_uiState.value.isLoading) return
         _uiState.update { it.copy(isLoading = true) }
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             if (_uiState.value.stage == DispenseStage.QUEUE) {
                 _uiState.update { it.copy(stage = DispenseStage.PRE_RX) }
             }
@@ -477,7 +477,7 @@ class DispenseFlowViewModel @Inject constructor(
                 bucket = null,
                 targetCount = TUTORIAL_DUMMY_TARGET_COUNT,
             )
-        }
+        })
     }
 
     /**
@@ -588,7 +588,7 @@ class DispenseFlowViewModel @Inject constructor(
 
         _uiState.update { it.copy(isLoading = true, pendingFirstBottle = firstBottle) }
 
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             try {
                 // Batch PMS restriction: if an NDC allowlist is set, reject any
                 // scan whose drug isn't in the batch's requested set.
@@ -741,7 +741,7 @@ class DispenseFlowViewModel @Inject constructor(
                 logger.e("NDC barcode processing failed", e)
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
-        }
+        })
     }
 
     /**
