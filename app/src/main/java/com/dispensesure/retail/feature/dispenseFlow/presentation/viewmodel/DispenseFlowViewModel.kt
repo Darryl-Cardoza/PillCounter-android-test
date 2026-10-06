@@ -747,7 +747,7 @@ class DispenseFlowViewModel @Inject constructor(
                 logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}")
                 advanceToCountingStage()
             } catch (e: CancellationException) {
-                _uiState.update { it.copy(isLoading = false) }
+                _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
                 throw e
             } catch (e: Exception) {
                 logger.e("NDC barcode processing failed", e)
