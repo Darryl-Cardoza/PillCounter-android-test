@@ -185,8 +185,7 @@ private fun ActionButtonItems(
     // DONE
     Column(
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier
-            .clickable(enabled = hasCapture) { onDone() }
+        modifier = Modifier.clickable(enabled = hasCapture) { onDone() }
     ) {
         Icon(
             imageVector = Icons.Default.Check,

@@ -60,8 +60,6 @@
     <string name="loading_transactions">Chargement des transactions...</string>
     <string name="kpi_disp_short">Dispenser</string>
     <string name="kpi_inv_short">Inventaire</string>
-    <string name="pms_status_connected">PMS connecté</string>
-    <string name="pms_status_disconnected">PMS déconnecté</string>
 
     <!-- Home screen tour guide -->
     <string name="tour_title_pms">État de connexion au PMS</string>
@@ -634,6 +632,7 @@
     <string name="tour_picker_title">Quelle visite ?</string>
     <string name="tour_picker_full">Visite complète</string>
     <string name="tour_picker_start">Démarrer</string>
+    <string name="tour_demo_drug_name">Médicament de démonstration du tutoriel</string>
     <string name="menu_start_tutorial">Démarrer le tutoriel</string>
     <string name="tour_desc_add_note_actions">Passez s\'il n\'y a rien à noter, ou enregistrez une note dans le dossier. Dans cette visite, elle est passée pour vous.</string>
     <string name="tour_desc_count_add_circle">Touchez pour ajouter les comprimés détectés au comptage. Appuyez longuement pour le déplacer.</string>

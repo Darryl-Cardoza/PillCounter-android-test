@@ -395,7 +395,7 @@ class Hl7Repository @Inject constructor(
      * cascades to its detail rows; the barcode and detail images are file-system artifacts and
      * must be deleted explicitly.
      */
-    internal suspend fun deleteSyncedTransaction(txnId: Long) {
+    private suspend fun deleteSyncedTransaction(txnId: Long) {
         if (txnId <= 0L) return
         try {
             val txn = pillCountTxnDao.getById(txnId)

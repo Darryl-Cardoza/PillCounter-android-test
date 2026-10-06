@@ -9,7 +9,7 @@ import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
-import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
+import com.dispensesure.retail.core.tourguide.TutorialData
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -397,7 +397,7 @@ class BatchDaoTest {
 
     @Test
     fun `getUnsyncedCompletedBatchesOnce excludes batches for tutorial demo drug`() = runTest {
-        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TUTORIAL_DUMMY_NDC, drugName = "Tutorial Demo Drug"))
+        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
         dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
         stockTxnDao.insertIgnore(StockTxnEntity(batchId = 1L, drugId = tutorialDrugId))
 
@@ -421,14 +421,14 @@ class BatchDaoTest {
     }
 
     @Test
-    fun `getTutorialBatchIds finds the tutorial bucket and demo drug batches`() = runTest {
-        val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TUTORIAL_DUMMY_NDC, drugName = "Tutorial Demo Drug"))
+    fun `getTutorialBatchIds finds only tutorial bucket batches, not real batches holding the demo drug`() = runTest {
+        val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
         dao.insert(BatchEntity(batchId = 1L, bucketId = "TUTORIAL"))
         dao.insert(BatchEntity(batchId = 2L, bucketId = "Normal"))
         dao.insert(BatchEntity(batchId = 3L, bucketId = "Normal"))
         stockTxnDao.insertIgnore(StockTxnEntity(batchId = 3L, drugId = demoDrugId))
 
-        assertEquals(setOf(1L, 3L), dao.getTutorialBatchIds().toSet())
+        assertEquals(listOf(1L), dao.getTutorialBatchIds())
     }
 
     @Test

@@ -22,6 +22,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -104,21 +105,16 @@ class TourGuideState(
                 Rect(minOf(a.left, b.left), minOf(a.top, b.top), maxOf(a.right, b.right), maxOf(a.bottom, b.bottom))
             }
 
-    // Steps whose scenario doesn't arise in this run (e.g. no vial photo in the workflow).
-    private var skipped by mutableStateOf<Set<String>>(emptySet())
-
-    fun setStepSkipped(id: String, skip: Boolean) {
-        if ((id in skipped) != skip) skipped = if (skip) skipped + id else skipped - id
-    }
-
-    private fun nextIndex(): Int? =
-        (currentIndex + 1 until steps.size).firstOrNull { steps[it].id !in skipped }
+    private fun nextIndex(): Int? = (currentIndex + 1).takeIf { it < steps.size }
 
     val isLastStep: Boolean get() = nextIndex() == null
 
-    /** 1-based position and total among the steps that are shown (skipped ones don't count). */
-    val stepTotal: Int get() = steps.count { it.id !in skipped }
-    val stepNumber: Int get() = steps.take(currentIndex + 1).count { it.id !in skipped }.coerceAtLeast(1)
+    /** 1-based position and total. */
+    val stepTotal: Int get() = steps.size
+    val stepNumber: Int get() = currentIndex + 1
+
+    // The running step's action; cancelled on end() so it can't write demo data after cleanup.
+    private var stepJob: Job? = null
 
     fun registerTarget(id: String, coordinates: LayoutCoordinates, owner: Any = id) {
         if (coordinates.isAttached) targetBounds[id to owner] = coordinates.boundsInRoot()
@@ -129,12 +125,14 @@ class TourGuideState(
         targetBounds.remove(id to owner)
     }
 
-    fun start(sections: List<TourSection>, hl7Enabled: Boolean = true) {
-        steps = sections.flatMap(stepsFor).filter { hl7Enabled || it.id != PMS_STEP_ID }
+    /** Steps whose scenario doesn't arise in this run (no PMS, no note prompt) are left out. */
+    fun start(sections: List<TourSection>, hl7Enabled: Boolean = true, notesEnabled: Boolean = true) {
+        steps = sections.flatMap(stepsFor).filter {
+            (hl7Enabled || it.id != PMS_STEP_ID) && (notesEnabled || it.id != NOTE_STEP_ID)
+        }
         currentIndex = 0
         pendingSection = null
         stepBusy = false
-        skipped = emptySet()
         isActive = steps.isNotEmpty()
     }
 
@@ -147,7 +145,7 @@ class TourGuideState(
     fun runStep(id: String, action: suspend () -> Unit = {}) {
         if (stepBusy || !isActive || pendingSection != null || currentStep?.id != id) return
         stepBusy = true
-        scope.launch {
+        stepJob = scope.launch {
             try {
                 action()
                 advanceIfCurrent(id)
@@ -186,6 +184,7 @@ class TourGuideState(
         if (!isActive) return
         isActive = false
         pendingSection = null
+        stepJob?.cancel()
         onEnded?.invoke()
     }
 }

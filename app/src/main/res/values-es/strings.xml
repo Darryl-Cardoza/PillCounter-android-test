@@ -60,8 +60,6 @@
     <string name="loading_transactions">Cargando transacciones...</string>
     <string name="kpi_disp_short">Dispensar</string>
     <string name="kpi_inv_short">Inventario</string>
-    <string name="pms_status_connected">PMS conectado</string>
-    <string name="pms_status_disconnected">PMS desconectado</string>
 
     <!-- Home screen tour guide -->
     <string name="tour_title_pms">Estado de conexión con el PMS</string>
@@ -634,6 +632,7 @@
     <string name="tour_picker_title">¿Qué recorrido?</string>
     <string name="tour_picker_full">Recorrido completo</string>
     <string name="tour_picker_start">Iniciar</string>
+    <string name="tour_demo_drug_name">Medicamento de demostración del tutorial</string>
     <string name="menu_start_tutorial">Iniciar tutorial</string>
     <string name="tour_desc_add_note_actions">Omita si no hay nada que anotar, o guarde una nota en el registro. En este recorrido se omite por usted.</string>
     <string name="tour_desc_count_add_circle">Toque para añadir las pastillas detectadas al conteo. Mantenga pulsado para moverlo.</string>

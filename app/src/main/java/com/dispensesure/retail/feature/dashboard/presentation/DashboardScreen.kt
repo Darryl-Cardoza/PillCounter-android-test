@@ -29,6 +29,7 @@ import com.dispensesure.retail.core.tourguide.TourDialogHost
 import com.dispensesure.retail.core.tourguide.TourSection
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.tourguide.TourGuidePrefs
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
@@ -270,8 +271,7 @@ fun DashboardScreen(
                 state = tourState,
                 onNext = {
                     viewModel.saveTxnId()
-                    val index = defaultBucketIndex ?: error("no buckets to pick")
-                    viewModel.createBatch(bucketList[index])
+                    viewModel.createBatch(defaultBucketIndex?.let { bucketList[it] } ?: TutorialData.BUCKET)
                     showBucketSelectDialog = false
                 },
             ) {
@@ -326,7 +326,8 @@ fun DashboardScreen(
         }
     }
 
-    if (showTourOffer) {
+    val isSessionLocked by viewModel.isSessionLocked.collectAsState()
+    if (showTourOffer && !isSessionLocked) {
         CommonDialog(
             message = stringResource(R.string.tour_offer_message),
             confirmText = stringResource(R.string.tour_offer_start),
@@ -334,7 +335,7 @@ fun DashboardScreen(
             onConfirm = {
                 TourGuidePrefs.markSeen(context, localId)
                 showTourOffer = false
-                FtueController.start(TourSection.entries, viewModel.isHl7Enabled())
+                FtueController.start(TourSection.entries, viewModel.isHl7Enabled(), preferenceHelper.getShowNotesDialogSetting())
             },
             onCancel = {
                 TourGuidePrefs.markSeen(context, localId)

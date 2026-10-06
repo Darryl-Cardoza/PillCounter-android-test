@@ -516,16 +516,10 @@ class InventoryScanViewModel @Inject constructor(
      * dispense flow's dummy fallback uses and activates it exactly as a real scan
      * would — skipping barcode decode entirely since there's no real label to decode.
      */
-    fun useDummyNdcData() {
+    fun useDummyNdcData(demoDrugName: String) {
         viewModelScope.launch {
             try {
-                drugMasterDao.upsertPreservingId(
-                    DrugMasterEntity(
-                        ndc = TutorialData.DEMO_NDC,
-                        drugName = TutorialData.DEMO_DRUG_NAME,
-                        drugType = "TABLET",
-                    )
-                )
+                TutorialData.upsertDemoDrug(drugMasterDao, demoDrugName)
                 val drug = drugMasterDao.getDrugByNdc(TutorialData.DEMO_NDC) ?: return@launch
 
                 if (resolvedBatchId.value == 0L && ensureBatchCreated() == 0L) return@launch

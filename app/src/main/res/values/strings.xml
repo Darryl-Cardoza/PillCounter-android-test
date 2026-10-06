@@ -62,8 +62,6 @@
     <string name="loading_transactions">Loading transactions...</string>
     <string name="kpi_disp_short">Dispense</string>
     <string name="kpi_inv_short">Inventory</string>
-    <string name="pms_status_connected">PMS Connected</string>
-    <string name="pms_status_disconnected">PMS Disconnected</string>
 
     <!-- Home screen tour guide -->
     <string name="tour_title_pms">PMS Connected Status</string>
@@ -675,4 +673,5 @@
     <string name="tour_picker_title">Which tour?</string>
     <string name="tour_picker_full">Full tour</string>
     <string name="tour_picker_start">Start</string>
+    <string name="tour_demo_drug_name">Tutorial Demo Drug</string>
 </resources>

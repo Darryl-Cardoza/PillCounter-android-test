@@ -44,9 +44,7 @@ fun InformationPanelSection(
     val targetCount = uiState.targetCount
     val scanType = uiState.scanType
     val onAdd = { onEvent(PillScanningEvent.AddTransactionDetailClicked(filteredPillCount, stepType)) }
-    val onDone = {
-        onEvent(PillScanningEvent.FinalDone(stepType = stepType, totalCount))
-    }
+    val onDone = { onEvent(PillScanningEvent.FinalDone(stepType = stepType, totalCount)) }
     val isLandscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     // Rotation swaps the CountMode variant below and recreates its

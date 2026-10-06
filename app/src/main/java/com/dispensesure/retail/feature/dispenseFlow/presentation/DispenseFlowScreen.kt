@@ -312,10 +312,6 @@ fun DispenseFlowScreen(
     val pillStepType by pillVm.currentStep.collectAsState()
     val capturedBitmap by pillVm.capturedBitmap.collectAsState()
     val pillSteps by pillVm.steps.collectAsState()
-    // Tour: only show steps whose scenario arises in this workflow.
-    LaunchedEffect(Unit) {
-        ftueState.setStepSkipped("d_note", !pillVm.isNotesDialogEnabled())
-    }
 
     // The workflow is only built when counting starts, so the SCAN step has no
     // steps to show. Land the VM on SCAN as the user gets here.

@@ -196,7 +196,11 @@ fun MenuScreen(
                         onOk = { index ->
                             showTourPicker = false
                             val sections = if (index == 0) TourSection.entries else listOf(TourSection.entries[index - 1])
-                            FtueController.start(sections, hl7Enabled = loginViewModel.preferenceHelper.isHl7Enabled())
+                            FtueController.start(
+                                sections,
+                                hl7Enabled = loginViewModel.preferenceHelper.isHl7Enabled(),
+                                notesEnabled = loginViewModel.preferenceHelper.getShowNotesDialogSetting(),
+                            )
                             navController.navigate(Screen.Dashboard.route) {
                                 popUpTo(0)
                                 launchSingleTop = true

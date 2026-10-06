@@ -42,7 +42,7 @@ class TutorialDataCleanerTest {
     @Test
     fun `purge removes tutorial rows and keeps real ones`() = runTest {
         val demoDrugId = db.drugMasterDao().insertIgnore(
-            DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = TutorialData.DEMO_DRUG_NAME),
+            DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"),
         )
         val realDrugId = db.drugMasterDao().insertIgnore(DrugMasterEntity(ndc = "1234", drugName = "Aspirin"))
 

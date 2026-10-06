@@ -11,7 +11,7 @@ import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
-import com.dispensesure.retail.feature.dispenseFlow.presentation.viewmodel.TUTORIAL_DUMMY_NDC
+import com.dispensesure.retail.core.tourguide.TutorialData
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -580,7 +580,7 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `getPendingHl7TxnOnce excludes tutorial demo drug transactions`() = runTest {
-        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TUTORIAL_DUMMY_NDC, drugName = "Tutorial Demo Drug"))
+        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
         dao.insertIgnore(
             baseTxn(isDispense = true, status = CountStatus.COMPLETED, isSynced = null, drugId = tutorialDrugId)
         )
@@ -598,7 +598,7 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `getTutorialTxnIds finds demo drug and Rx prefix txns only`() = runTest {
-        val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TUTORIAL_DUMMY_NDC, drugName = "Tutorial Demo Drug"))
+        val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
         val byDrug = dao.insertIgnore(baseTxn(drugId = demoDrugId))
         val byRx = dao.insertIgnore(baseTxn(rxNo = "TUTORIALDEMO9"))
         dao.insertIgnore(baseTxn(rxNo = "RX100"))
@@ -900,7 +900,7 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `getTransactionsForDateRange excludes tutorial demo drug transactions`() = runTest {
-        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TUTORIAL_DUMMY_NDC, drugName = "Tutorial Demo Drug"))
+        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
         dao.insertIgnore(
             baseTxn(
                 localId = 1L,

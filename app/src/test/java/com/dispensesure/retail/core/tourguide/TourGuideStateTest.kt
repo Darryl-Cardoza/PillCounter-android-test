@@ -100,13 +100,27 @@ class TourGuideStateTest {
     }
 
     @Test
-    fun `a skipped step is passed over`() = runTest {
-        val state = TestScopeState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
-        state.start(listOf(TourSection.DISPENSE))
-        state.setStepSkipped("x2", true)
+    fun `start drops the note step when notes are off`() = runTest {
+        val state = TourGuideState(
+            stepsFor = { listOf(step("x1", it), step(NOTE_STEP_ID, it)) },
+            scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler)),
+        )
+        state.start(listOf(TourSection.DISPENSE), notesEnabled = false)
+        assertEquals(listOf("x1"), state.steps.map { it.id })
         assertTrue(state.isLastStep)
-        state.advanceIfCurrent("x1")
-        assertFalse(state.isActive)
+    }
+
+    @Test
+    fun `end cancels a step that is still running`() = runTest {
+        val state = TestScopeState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        val gate = CompletableDeferred<Unit>()
+        var resumed = false
+        state.start(listOf(TourSection.DISPENSE))
+        state.runStep("x1") { gate.await(); resumed = true }
+        state.end()
+        gate.complete(Unit)
+        assertFalse(resumed)
+        assertFalse(state.stepBusy)
     }
 
     @Test

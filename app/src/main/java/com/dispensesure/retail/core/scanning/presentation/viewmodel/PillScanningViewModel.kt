@@ -266,6 +266,9 @@ class PillScanningViewModel @Inject constructor(
     // True once the still on screen has been written, so a Done re-tap cannot write it twice.
     private var captureCommitted = false
 
+    /** Tour: set once Done goes straight to confirm (notes setting off), so the VIAL wait ends. */
+    private var confirmDoneStarted = false
+
     private val _txnInfo = MutableStateFlow<TxnWithDetails?>(null)
     val txnInfo: StateFlow<TxnWithDetails?> = _txnInfo
 
@@ -1902,6 +1905,7 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun handleConfirmDone() {
+        confirmDoneStarted = true
         viewModelScope.launch {
             val txnId = preferenceHelper.getTxnId()
             // Flush staged details to the DB BEFORE reading the total / deciding
@@ -2530,19 +2534,17 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
-    /** Whether finishing a count asks for a note; the tour skips its note step otherwise. */
-    fun isNotesDialogEnabled(): Boolean = preferenceHelper.getShowNotesDialogSetting()
-
     /** Tour: saves a blank demo vial photo (no camera needed); returns once the workflow has left VIAL, else throws. */
     suspend fun captureVialForTour() {
+        confirmDoneStarted = false
         if (_currentStep.value == StepState.VIAL && !captureCommitted) {
             _capturedBitmap.value = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.DKGRAY) }
             saveCaptureImage()
         }
-        // With the notes setting on, VIAL stays the current step until the note is answered, so
-        // the Add Note dialog appearing is as good as leaving VIAL.
+        // VIAL stays the current step until the note is answered (notes on) or the txn is
+        // confirmed (notes off), so either of those is as good as leaving VIAL.
         withTimeout(TourActionTimeoutMs) {
-            while (_currentStep.value == StepState.VIAL && !_uiState.value.showNotesDialog) delay(50)
+            while (_currentStep.value == StepState.VIAL && !_uiState.value.showNotesDialog && !confirmDoneStarted) delay(50)
         }
     }
 

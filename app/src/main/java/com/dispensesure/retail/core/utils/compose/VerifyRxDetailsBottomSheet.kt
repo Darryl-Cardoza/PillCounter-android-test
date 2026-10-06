@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -55,7 +56,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
@@ -72,6 +72,7 @@ import coil.compose.rememberAsyncImagePainter
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourGuideOverlay
+import com.dispensesure.retail.core.tourguide.TourGuideState
 import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
@@ -688,7 +689,6 @@ private fun TabletHorizontalBody(
     onProceed: () -> Unit,
     drugImage: String,
 ) {
-    val context = LocalContext.current
     val tourState = FtueController.state
 
     Box {
@@ -772,6 +772,13 @@ private fun TabletHorizontalBody(
 
         Spacer(modifier = Modifier.height(8.dp))
     }
+    VerifyRxTourOverlay(tourState, onProceed)
+    }
+}
+
+/** The d_verify_rx spotlight, drawn inside each sheet body's own content Box. */
+@Composable
+private fun BoxScope.VerifyRxTourOverlay(tourState: TourGuideState, onProceed: () -> Unit) {
     TourGuideOverlay(
         state = tourState,
         // matchParentSize, not fillMaxSize: this Box is the sheet's own content — sizing
@@ -790,7 +797,6 @@ private fun TabletHorizontalBody(
         // the exact same action a real tap would.
         onNext = { if (tourState.currentStep?.id == "d_verify_rx") onProceed() },
     )
-    }
 }
 
 /**
@@ -804,7 +810,7 @@ private fun TabletButtonRow(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     spacing: Dp,
-    tourState: com.dispensesure.retail.core.tourguide.TourGuideState? = null,
+    tourState: TourGuideState? = null,
 ) {
     // Use the universal HollowButton (outlined) + ActionButtonPrimary (filled).
     // Give the Row a fixed total width and let each child claim weight(1f) of it
@@ -858,7 +864,6 @@ private fun TabletVerticalBody(
     // gives the 2x2 grid generous, equal gutters.
     val gridSpacing = 16.dp
 
-    val context = LocalContext.current
     val tourState = FtueController.state
 
     Box {
@@ -888,53 +893,49 @@ private fun TabletVerticalBody(
                 .fillMaxWidth(),
         ) {
             // ── Top group: drug name, divider, Rx | NDC (tight spacing) ──
-            Column {
+            DetailItem(
+                label = stringResource(R.string.drugname),
+                value = drugName,
+                valueMaxLines = 1,
+                modifier = Modifier.fillMaxWidth().padding(end = 100.dp)
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(thickness = 1.dp, color = dividerColor)
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
                 DetailItem(
-                    label = stringResource(R.string.drugname),
-                    value = drugName,
-                    valueMaxLines = 1,
-                    modifier = Modifier.fillMaxWidth().padding(end = 100.dp)
+                    label = stringResource(R.string.rx_number),
+                    value = rxNumber,
+                    modifier = Modifier.weight(1f)
                 )
-                Spacer(modifier = Modifier.height(12.dp))
-                HorizontalDivider(thickness = 1.dp, color = dividerColor)
-                Spacer(modifier = Modifier.height(12.dp))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    DetailItem(
-                        label = stringResource(R.string.rx_number),
-                        value = rxNumber,
-                        modifier = Modifier.weight(1f)
-                    )
-                    DetailItem(
-                        label = stringResource(R.string.ndc_number),
-                        value = ndcNumber,
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+                DetailItem(
+                    label = stringResource(R.string.ndc_number),
+                    value = ndcNumber,
+                    modifier = Modifier.weight(1f)
+                )
             }
 
             // Large gap above the grid (Figma).
             Spacer(modifier = Modifier.weight(1f))
 
             // ── 2x2 tile grid: [Quantity | Form] / [Strength | Bucket] ──
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(gridSpacing)
-                ) {
-                    QuantityTile(quantity = quantity, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
-                    DrugImageTile(drugImagePath = drugImage,modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
-                }
-                Spacer(modifier = Modifier.height(gridSpacing))
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(gridSpacing)
-                ) {
-                    StrengthTile(strength = strength, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
-                    BucketTile(bucket = bucket, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
-                }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(gridSpacing)
+            ) {
+                QuantityTile(quantity = quantity, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+                DrugImageTile(drugImagePath = drugImage,modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+            }
+            Spacer(modifier = Modifier.height(gridSpacing))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(gridSpacing)
+            ) {
+                StrengthTile(strength = strength, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
+                BucketTile(bucket = bucket, modifier = Modifier.weight(1f).height(gridTileHeight).padding(bottom = 8.dp))
             }
 
             // Balancing gap below the grid so it reads as centered in the space.
@@ -953,15 +954,7 @@ private fun TabletVerticalBody(
 
         Spacer(modifier = Modifier.height(8.dp))
     }
-    TourGuideOverlay(
-        state = tourState,
-        // See the equivalent comment in TabletHorizontalBody — matchParentSize, never
-        // fillMaxSize, inside a sheet/drawer's own content Box.
-        modifier = Modifier.matchParentSize(),
-        isScreenRoot = false,
-        ownedStepIds = setOf("d_verify_rx"),
-        onNext = { if (tourState.currentStep?.id == "d_verify_rx") onProceed() },
-    )
+    VerifyRxTourOverlay(tourState, onProceed)
     }
 }
 
@@ -1013,7 +1006,6 @@ private fun SheetBody(
     // pinned button row. Outer column fills the parent's bounded height so weight() works.
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
 
-    val context = LocalContext.current
     val tourState = FtueController.state
 
     Box {
@@ -1055,9 +1047,7 @@ private fun SheetBody(
                 )
         ) {
 
-            Box(
-                modifier = if (isLandscape) Modifier.weight(1f) else Modifier
-            ) {
+            Box(modifier = if (isLandscape) Modifier.weight(1f) else Modifier) {
                 DetailsGrid(
                     drugName = drugName,
                     ndcNumber = ndcNumber,
@@ -1121,15 +1111,7 @@ private fun SheetBody(
             }
         }
     }
-    TourGuideOverlay(
-        state = tourState,
-        // See the equivalent comment in TabletHorizontalBody — matchParentSize, never
-        // fillMaxSize, inside a sheet/drawer's own content Box.
-        modifier = Modifier.matchParentSize(),
-        isScreenRoot = false,
-        ownedStepIds = setOf("d_verify_rx"),
-        onNext = { if (tourState.currentStep?.id == "d_verify_rx") onProceed() },
-    )
+    VerifyRxTourOverlay(tourState, onProceed)
     }
 }
 

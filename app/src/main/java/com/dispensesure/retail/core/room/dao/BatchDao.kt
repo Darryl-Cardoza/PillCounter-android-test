@@ -344,10 +344,7 @@ interface BatchDao {
 
     @Query(
         """
-        SELECT batchId FROM batch
-        WHERE bucketId = '${TutorialData.BUCKET}'
-           OR batchId IN (SELECT st.batchId FROM stock_txn st JOIN drug_master dm ON st.drugId = dm.drugId
-                          WHERE dm.ndc = '${TutorialData.DEMO_NDC}' AND st.batchId IS NOT NULL)
+        SELECT batchId FROM batch WHERE bucketId = '${TutorialData.BUCKET}'
         """
     )
     suspend fun getTutorialBatchIds(): List<Long>

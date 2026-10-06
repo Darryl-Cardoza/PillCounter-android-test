@@ -33,7 +33,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
@@ -158,9 +157,7 @@ fun AddNoteDialog(
 
                 // Buttons Row
                 Row(
-                    modifier = Modifier.fillMaxWidth()
-                        .padding(horizontal = 10.dp)
-                        .tourTarget(tourState, "add_note_actions"),
+                    modifier = Modifier.fillMaxWidth().tourTarget(tourState, "add_note_actions"),
                     horizontalArrangement = Arrangement.spacedBy(dimens.medium)
                 ) {
                     HollowButton(

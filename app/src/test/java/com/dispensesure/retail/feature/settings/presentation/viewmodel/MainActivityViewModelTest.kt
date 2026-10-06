@@ -18,7 +18,6 @@ import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
-import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.settings.domain.data.IApplicationSettingsRepository
 import com.dispensesure.retail.feature.settings.domain.model.ApplicationSettingsHL7Config
 import com.dispensesure.retail.feature.settings.domain.model.ApplicationSettingsResponse
@@ -61,8 +60,6 @@ class MainActivityViewModelTest {
     private lateinit var bottleInfoDao: BottleInfoDao
     private lateinit var hl7ServiceManager: Hl7ServiceManager
     private lateinit var hl7EventHandler: Hl7EventHandler
-    private lateinit var hl7Repository: Hl7Repository
-    private lateinit var sessionLockController: SessionLockController
     private lateinit var sessionHealthController: SessionHealthController
 
     private fun themeColors(primary: String = "#000000") = ThemeColors(
@@ -134,8 +131,6 @@ class MainActivityViewModelTest {
         bottleInfoDao = mockk(relaxed = true)
         hl7ServiceManager = mockk(relaxed = true)
         hl7EventHandler = mockk(relaxed = true)
-        hl7Repository = mockk(relaxed = true)
-        sessionLockController = mockk(relaxed = true)
         sessionHealthController = mockk(relaxed = true)
 
         // Defaults so init doesn't crash.
@@ -180,9 +175,7 @@ class MainActivityViewModelTest {
         bottleInfoDao,
         hl7ServiceManager,
         hl7EventHandler,
-        hl7Repository,
         mockk(relaxed = true),
-        sessionLockController,
         sessionHealthController,
         testDispatcher,
     )

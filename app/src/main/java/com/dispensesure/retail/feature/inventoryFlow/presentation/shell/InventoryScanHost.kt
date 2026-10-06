@@ -257,6 +257,7 @@ fun InventoryScanHost(
     // differently-shaped root (Row/Box/Column/BottomSheetScaffold). Wrapping only
     // this call is the single, minimal place to hang the screen-root tour overlay
     // without touching any of the shells.
+    val demoDrugName = stringResource(R.string.tour_demo_drug_name)
     Box(modifier = Modifier.fillMaxSize()) {
         scope.content()
         // s_note is drawn by the Add Note dialog's own window (TourDialogHost).
@@ -266,7 +267,7 @@ fun InventoryScanHost(
             onNext = {
                 when (FtueController.state.currentStep?.id) {
                     "s_scan" -> {
-                        inventoryVm.useDummyNdcData()
+                        inventoryVm.useDummyNdcData(demoDrugName)
                         withTimeout(TourActionTimeoutMs) { snapshotFlow { panelState.activeNdc }.first { it != null } }
                     }
                     "s_counter" -> inventoryVm.increment()

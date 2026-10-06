@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.receiveAsFlow
 
 const val PMS_STEP_ID = "pms"
+const val NOTE_STEP_ID = "d_note"
 
 /** How long a demo action may wait on the app (a scan result, a saved photo) before the step fails. */
 const val TourActionTimeoutMs = 8_000L
@@ -33,7 +34,8 @@ object FtueController {
         it.onEnded = { _events.trySend(TourEvent.Ended) }
     }
 
-    fun start(sections: List<TourSection>, hl7Enabled: Boolean) = state.start(sections, hl7Enabled)
+    fun start(sections: List<TourSection>, hl7Enabled: Boolean, notesEnabled: Boolean) =
+        state.start(sections, hl7Enabled, notesEnabled)
 
     /** The single exit: Skip, End tour, last step, Back, lock and logout all land here. */
     fun end() = state.end()
@@ -65,7 +67,7 @@ private val DISPENSE_STEPS = listOf(
     TourStep("d_verify_rx", R.string.tour_title_verify_rx_proceed, R.string.tour_desc_verify_rx_proceed, TourSection.DISPENSE, setOf("verify_rx_proceed")),
     TourStep("d_scan_container", R.string.tour_title_scan_container, R.string.tour_desc_scan_container, TourSection.DISPENSE, setOf("camera_preview"), TooltipEdge.BOTTOM),
     TourStep("d_count", R.string.tour_title_count_add_circle, R.string.tour_desc_count_add_circle, TourSection.DISPENSE, setOf("count_add_circle")),
-    TourStep("d_note", R.string.tour_title_add_note_actions, R.string.tour_desc_add_note_actions, TourSection.DISPENSE, setOf("add_note_actions")),
+    TourStep(NOTE_STEP_ID, R.string.tour_title_add_note_actions, R.string.tour_desc_add_note_actions, TourSection.DISPENSE, setOf("add_note_actions")),
 )
 
 private val STOCK_COUNT_STEPS = listOf(

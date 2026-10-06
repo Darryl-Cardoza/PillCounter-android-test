@@ -27,7 +27,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourEvent
 import com.dispensesure.retail.core.tourguide.TourGuidePrefs
@@ -355,7 +354,8 @@ class MainActivity : ComponentActivity() {
                                                 // A replay from the menu must not leave the first-login offer pending.
                                                 if (loggedIn) TourGuidePrefs.markSeen(this@MainActivity, preferenceHelper.getLocalId())
                                                 settingsViewModel.purgeTutorialData()
-                                                // The last demo step's completion writes are still landing; sweep again.
+                                                // end() cancels the running step, but the last step's completion writes run in
+                                                // viewModelScope and may still be landing; sweep again.
                                                 delay(1500)
                                                 settingsViewModel.purgeTutorialData()
                                             }
