@@ -1,5 +1,6 @@
 @file:OptIn(KspExperimental::class)
 
+import com.datadog.gradle.plugin.SdkCheckLevel
 import com.google.devtools.ksp.KspExperimental
 import java.util.Properties
 
@@ -13,6 +14,7 @@ plugins {
     id("com.google.gms.google-services")
     alias(libs.plugins.androidx.room)
     id("com.autonomousapps.dependency-analysis")
+    alias(libs.plugins.datadog)
 }
 
 val keystorePropsFile = rootProject.file("keystore.properties")
@@ -21,6 +23,12 @@ val keystoreProps =
     Properties().also { props ->
         if (hasKeystore) keystorePropsFile.inputStream().use { props.load(it) }
     }
+
+// Unique per Gradle invocation: ties a release binary's logs to the exact mapping uploaded for it.
+val ddVersion by lazy {
+    val suffix = List(6) { (('a'..'z') + ('0'..'9')).random() }.joinToString("")
+    "${android.defaultConfig.versionName}-${android.defaultConfig.versionCode}-$suffix"
+}
 
 android {
     namespace = "com.dispensesure.retail"
@@ -69,6 +77,7 @@ android {
 
     buildTypes {
         release {
+            buildConfigField("String", "DD_VERSION", "\"$ddVersion\"")
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
@@ -79,6 +88,7 @@ android {
             )
         }
         debug {
+            buildConfigField("String", "DD_VERSION", "\"debug\"")
 //            isMinifyEnabled = true
 //            proguardFiles(
 //                getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -232,4 +242,19 @@ dependencies {
     implementation(libs.opencv)
 
     implementation(files("libs/hl7Core-release.aar"))
+}
+
+datadog {
+    site = "US1"
+    serviceName = "dispensesure-mobile"
+    versionName = ddVersion
+    checkProjectDependencies = SdkCheckLevel.NONE // no Datadog SDK in this app, mapping upload only
+}
+
+// Upload only when CI provides the key; local release builds skip silently.
+tasks.matching { it.name == "uploadMappingRelease" }.configureEach {
+    onlyIf { !System.getenv("DD_API_KEY").isNullOrBlank() }
+}
+tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }.configureEach {
+    finalizedBy("uploadMappingRelease")
 }

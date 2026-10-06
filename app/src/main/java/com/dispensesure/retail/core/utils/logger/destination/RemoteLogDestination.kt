@@ -410,6 +410,7 @@ class RemoteLogDestination internal constructor(
             deviceKey = deviceKey(),
             appName = APP_NAME,
             appVersion = "${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})",
+            buildVersion = BuildConfig.DD_VERSION,
             platform = PLATFORM,
             osVersion = Build.VERSION.RELEASE ?: "unknown",
             deviceModel = Build.MODEL ?: "unknown",

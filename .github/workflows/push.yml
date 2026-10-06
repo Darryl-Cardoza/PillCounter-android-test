@@ -104,6 +104,7 @@ jobs:
       fail_on_dead_code: false
     secrets:
       PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+      DD_API_KEY: ${{ secrets.DD_API_KEY }}
 
   # CD for version tags. Only fires when the tag also contains "release", the
   # same condition `ci` above uses to pick build_variant -- so `ci` has
