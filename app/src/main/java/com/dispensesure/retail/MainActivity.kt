@@ -352,14 +352,18 @@ class MainActivity : ComponentActivity() {
                                             val loggedIn = preferenceHelper.isUserLoggedIn()
                                             if (event == TourEvent.Ended) {
                                                 // A replay from the menu must not leave the first-login offer pending.
-                                                if (loggedIn) TourGuidePrefs.markSeen(this@MainActivity, preferenceHelper.getLocalId())
-                                                settingsViewModel.purgeTutorialData()
-                                                // end() cancels the running step, but the last step's completion writes run in
-                                                // viewModelScope and may still be landing; sweep again.
-                                                delay(1500)
+                                                preferenceHelper.getLocalId().takeIf { loggedIn && it != 0L }
+                                                    ?.let { TourGuidePrefs.markSeen(this@MainActivity, it) }
                                                 settingsViewModel.purgeTutorialData()
                                             }
                                             if (loggedIn) navController.navigateBackToDashboard()
+                                            if (event == TourEvent.Ended) {
+                                                // end() cancels the running step, but the last step's completion writes run in
+                                                // viewModelScope and may still be landing; sweep again. After the navigation,
+                                                // so the wait can't pull the user back to the Dashboard later.
+                                                delay(1500)
+                                                settingsViewModel.purgeTutorialData()
+                                            }
                                         }
                                     }
                                     TourSectionPrompt(FtueController.state)

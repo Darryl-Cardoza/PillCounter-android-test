@@ -87,10 +87,12 @@ fun DashboardScreen(
         val id = tourState.currentStep?.id
         if (tourState.isActive && (id == "d_note" || id == "s_note")) tourState.advanceIfCurrent(id)
     }
-    val localId = remember { preferenceHelper.getLocalId() }
+    // Read each composition, not remembered: right after login this can still be 0, and a
+    // stale 0 would mark (and look up) the wrong user's flag. 0 means no user yet.
+    val localId = preferenceHelper.getLocalId()
     // Offer the tour once per user; answering either way counts as seen.
-    var showTourOffer by remember {
-        mutableStateOf(!TourGuidePrefs.hasSeen(context, localId) && !tourState.isActive)
+    var showTourOffer by remember(localId) {
+        mutableStateOf(localId != 0L && !TourGuidePrefs.hasSeen(context, localId) && !tourState.isActive)
     }
 
     BackHandler(enabled = true) {

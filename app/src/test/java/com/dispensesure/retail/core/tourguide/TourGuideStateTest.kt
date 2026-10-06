@@ -111,6 +111,22 @@ class TourGuideStateTest {
     }
 
     @Test
+    fun `back does nothing while the next-section prompt is showing`() = runTest {
+        val state = TestScopeState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        state.start(listOf(TourSection.DISPENSE, TourSection.STOCK_COUNT))
+        state.advanceIfCurrent("x1")
+        state.advanceIfCurrent("x2")
+        assertEquals(TourSection.STOCK_COUNT, state.pendingSection)
+        val index = state.currentIndex
+
+        state.back()
+
+        assertEquals(index, state.currentIndex)
+        state.continueToNextSection()
+        assertEquals("s1", state.currentStep?.id)
+    }
+
+    @Test
     fun `end cancels a step that is still running`() = runTest {
         val state = TestScopeState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
         val gate = CompletableDeferred<Unit>()
