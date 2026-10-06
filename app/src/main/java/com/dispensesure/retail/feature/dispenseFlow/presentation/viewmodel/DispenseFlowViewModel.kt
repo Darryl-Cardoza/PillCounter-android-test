@@ -549,6 +549,8 @@ class DispenseFlowViewModel @Inject constructor(
             drugRepository.getDrugInfoByNdc(
                 GetNdcRequestModel(target_ndc = "", scanned_ndc = gtin14)
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.e("allowlist NDC resolve failed for gtin=$gtin14", e)
             null
