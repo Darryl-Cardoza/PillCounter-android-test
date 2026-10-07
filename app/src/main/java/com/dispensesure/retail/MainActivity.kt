@@ -333,6 +333,7 @@ class MainActivity : ComponentActivity() {
                                             // Enrolled operators verify their face before reaching the
                                             // dashboard, but only after the permission chain finishes.
                                             lockAfterPermissionChain = true
+                                            sessionLockController.setLockPending(true)
                                             if (!permissionChainInProgress) {
                                                 permissionChainInProgress = true
                                                 requestNotificationPermission()
@@ -626,6 +627,7 @@ class MainActivity : ComponentActivity() {
             lockAfterPermissionChain = false
             sessionLockController.lockNow(startOnScan = true)
         }
+        sessionLockController.setLockPending(false)
         if (permanentlyDeniedPermissions.isEmpty()) {
             promptEnableLocationServicesIfNeeded()
             return

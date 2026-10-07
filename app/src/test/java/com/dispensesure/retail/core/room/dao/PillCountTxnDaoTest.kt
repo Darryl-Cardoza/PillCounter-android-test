@@ -591,7 +591,7 @@ class PillCountTxnDaoTest {
     @Test
     fun `getPendingHl7TxnOnce excludes tutorial Rx numbers even without the demo drug`() = runTest {
         dao.insertIgnore(
-            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isSynced = null, rxNo = "TUTORIALDEMO123")
+            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isSynced = null, rxNo = "${TutorialData.RX_PREFIX}123")
         )
         assertTrue(dao.getPendingHl7TxnOnce().isEmpty())
     }
@@ -600,7 +600,7 @@ class PillCountTxnDaoTest {
     fun `getTutorialTxnIds finds demo drug and Rx prefix txns only`() = runTest {
         val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
         val byDrug = dao.insertIgnore(baseTxn(drugId = demoDrugId))
-        val byRx = dao.insertIgnore(baseTxn(rxNo = "TUTORIALDEMO9"))
+        val byRx = dao.insertIgnore(baseTxn(rxNo = "${TutorialData.RX_PREFIX}9"))
         dao.insertIgnore(baseTxn(rxNo = "RX100"))
 
         assertEquals(setOf(byDrug, byRx), dao.getTutorialTxnIds().toSet())

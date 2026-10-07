@@ -366,6 +366,7 @@ interface BatchDao {
         WHERE isDeleted = 0
           AND status = :completedStatus
           AND isSynced = 0
+          AND bucketId IS NOT '${TutorialData.BUCKET}'
     """)
     fun getUnsyncedCompletedBatchCount(
         completedStatus: BatchStatus = BatchStatus.COMPLETED

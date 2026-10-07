@@ -46,7 +46,7 @@ class TutorialDataCleanerTest {
         )
         val realDrugId = db.drugMasterDao().insertIgnore(DrugMasterEntity(ndc = "1234", drugName = "Aspirin"))
 
-        val demoTxn = db.pillCountTxnDao().insertIgnore(PillCountTxnEntity(drugId = demoDrugId, rxNo = "TUTORIALDEMO1", isDispense = true, status = CountStatus.PARTIAL))
+        val demoTxn = db.pillCountTxnDao().insertIgnore(PillCountTxnEntity(drugId = demoDrugId, rxNo = "${TutorialData.RX_PREFIX}1", isDispense = true, status = CountStatus.PARTIAL))
         val realTxn = db.pillCountTxnDao().insertIgnore(PillCountTxnEntity(drugId = realDrugId, rxNo = "RX1", isDispense = true, status = CountStatus.PARTIAL))
 
         db.batchDao().insert(BatchEntity(batchId = 10L, bucketId = TutorialData.BUCKET))
@@ -67,7 +67,7 @@ class TutorialDataCleanerTest {
 
     @Test
     fun `purge removes a tutorial txn whose demo drug is already gone and an empty tutorial batch`() = runTest {
-        val txn = db.pillCountTxnDao().insertIgnore(PillCountTxnEntity(drugId = null, rxNo = "TUTORIALDEMO2", isDispense = true, status = CountStatus.PARTIAL))
+        val txn = db.pillCountTxnDao().insertIgnore(PillCountTxnEntity(drugId = null, rxNo = "${TutorialData.RX_PREFIX}2", isDispense = true, status = CountStatus.PARTIAL))
         db.batchDao().insert(BatchEntity(batchId = 20L, bucketId = TutorialData.BUCKET))
 
         cleaner.purge()

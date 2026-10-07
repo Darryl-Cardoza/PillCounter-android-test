@@ -6,7 +6,7 @@ import com.dispensesure.retail.core.room.models.DrugMasterEntity
 /** Durable markers for tutorial-created rows; DAO filters and the purge both key off these. */
 object TutorialData {
     const val DEMO_NDC = "00000000000"
-    const val BUCKET = "TUTORIAL"
+    const val BUCKET = "__TUTORIAL__"
     const val RX_PREFIX = "TUTORIALDEMO"
 
     /** Upserted in place every run, so repeat tours don't pile up `drug_master` rows. */

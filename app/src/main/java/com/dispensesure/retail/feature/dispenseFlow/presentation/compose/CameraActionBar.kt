@@ -1,4 +1,4 @@
-package com.dispensesure.retail.feature.dispenseFlow.presentation.compose
+﻿package com.dispensesure.retail.feature.dispenseFlow.presentation.compose
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
@@ -30,8 +30,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.isTablet
-import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.constants.Dimens
@@ -130,8 +128,6 @@ private fun ActionButtonItems(
     onDone: () -> Unit,
     dimens: Dimens
 ) {
-    val tourState = FtueController.state
-
     // Phone landscape is the tightest of the four layouts — the controls sit in a
     // column down the right edge, between the details bar and the strip. Trim them
     // a little there only; every other form factor keeps its sizes.
@@ -170,8 +166,7 @@ private fun ActionButtonItems(
                 color = if (hasCapture || isCapturing) AppTheme.extendedColors.primaryBackground else MaterialTheme.colorScheme.primary,
                 shape = CircleShape
             )
-            .clickable(enabled = !hasCapture && !isCapturing) { onCapture() }
-            .tourTarget(tourState, "vial_capture"),
+            .clickable(enabled = !hasCapture && !isCapturing) { onCapture() },
         contentAlignment = Alignment.Center
     ) {
         Icon(

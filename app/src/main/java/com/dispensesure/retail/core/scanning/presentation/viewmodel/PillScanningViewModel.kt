@@ -2536,6 +2536,7 @@ class PillScanningViewModel @Inject constructor(
 
     /** Tour: saves a blank demo vial photo (no camera needed); returns once the workflow has left VIAL, else throws. */
     suspend fun captureVialForTour() {
+        if (!FtueController.state.isActive) return
         confirmDoneStarted = false
         if (_currentStep.value == StepState.VIAL && !captureCommitted) {
             _capturedBitmap.value = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.DKGRAY) }

@@ -212,6 +212,7 @@ class DashboardViewModel @Inject constructor(
 
     /** The tour offer waits until the session is unlocked; its dialog would sit above the lock overlay. */
     val isSessionLocked: StateFlow<Boolean> = sessionLockController.isLocked
+    val isLockPending: StateFlow<Boolean> = sessionLockController.lockPending
 
     fun isHl7Enabled(): Boolean {
         return preferenceHelper.isHl7Enabled()

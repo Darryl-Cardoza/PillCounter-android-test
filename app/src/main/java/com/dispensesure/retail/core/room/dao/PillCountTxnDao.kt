@@ -780,14 +780,12 @@ interface PillCountTxnDao {
       AND isDispense = 1
       AND status = :completedStatus
       AND (isSynced IS NULL OR isSynced = 0)
-      AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = :excludeNdc))
       AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     ORDER BY updatedAt ASC
     """
     )
     fun observePendingHl7Txn(
-        completedStatus: CountStatus = CountStatus.COMPLETED,
-        excludeNdc: String = TutorialData.DEMO_NDC
+        completedStatus: CountStatus = CountStatus.COMPLETED
     ): Flow<List<PillCountTxnEntity>>
 
 
@@ -890,6 +888,7 @@ interface PillCountTxnDao {
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)
       AND txn.isDispense = :isDispense
       AND txn.isSynced = 0
+      AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
@@ -909,6 +908,7 @@ interface PillCountTxnDao {
       AND (status = :completeStatus OR status = :forceCompleteStatus)
       AND isSynced = 0
       AND isComingFromHL7 = 1
+      AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     """
     )
     fun getTotalCompletedTransactionCount(

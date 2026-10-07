@@ -329,7 +329,8 @@ fun DashboardScreen(
     }
 
     val isSessionLocked by viewModel.isSessionLocked.collectAsState()
-    if (shouldShowTourOffer(showTourOffer, isSessionLocked)) {
+    val isLockPending by viewModel.isLockPending.collectAsState()
+    if (shouldShowTourOffer(showTourOffer, isSessionLocked || isLockPending)) {
         CommonDialog(
             message = stringResource(R.string.tour_offer_message),
             confirmText = stringResource(R.string.tour_offer_start),

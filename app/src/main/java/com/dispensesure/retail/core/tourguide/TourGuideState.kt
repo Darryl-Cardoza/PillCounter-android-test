@@ -207,7 +207,7 @@ class TourGuideState(
  */
 @OptIn(ExperimentalFoundationApi::class)
 fun Modifier.tourTarget(state: TourGuideState?, id: String): Modifier {
-    if (state == null) return this
+    if (state == null || !state.isActive) return this
     return this.composed {
         val owner = remember { Any() }
         val requester = remember { BringIntoViewRequester() }

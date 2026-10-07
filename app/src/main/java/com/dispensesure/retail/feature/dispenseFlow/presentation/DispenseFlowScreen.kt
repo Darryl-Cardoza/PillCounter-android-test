@@ -1599,8 +1599,11 @@ fun DispenseFlowScreen(
                         }
                         "d_scan_container" -> {
                             // The Rx sheet's Proceed creates the txn asynchronously.
-                            withTimeout(TourActionTimeoutMs) { dispenseVm.uiState.first { it.stage == DispenseStage.PRE_NDC } }
-                            dispenseVm.useDummyNdcData()
+                            // A retry may find the previous attempt already past PRE_NDC.
+                            if (dispenseVm.uiState.value.stage != DispenseStage.COUNTING) {
+                                withTimeout(TourActionTimeoutMs) { dispenseVm.uiState.first { it.stage == DispenseStage.PRE_NDC } }
+                                dispenseVm.useDummyNdcData()
+                            }
                             withTimeout(TourActionTimeoutMs) {
                                 dispenseVm.uiState.first { it.stage == DispenseStage.COUNTING || it.showNdcDetails }
                             }
