@@ -341,6 +341,7 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onLogOut         = {
                                             FtueController.end()
+                                            sessionLockController.setLockPending(false)
                                             settingsViewModel.onUserLoginOrLogOut()
                                         }
                                     )
