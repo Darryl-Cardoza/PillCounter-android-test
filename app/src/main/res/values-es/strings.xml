@@ -662,4 +662,5 @@
     <string name="tour_title_select_bucket">Seleccionar un depósito</string>
     <string name="tour_title_stock_count_tap">Iniciar un conteo de existencias</string>
     <string name="tour_title_verify_rx_proceed">Confirmar y contar</string>
+    <string name="tour_ended_locked">El recorrido terminó porque la sesión se bloqueó.</string>
 </resources>

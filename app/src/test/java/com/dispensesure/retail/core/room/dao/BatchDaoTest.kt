@@ -396,13 +396,12 @@ class BatchDaoTest {
     }
 
     @Test
-    fun `getUnsyncedCompletedBatchesOnce excludes batches for tutorial demo drug`() = runTest {
+    fun `getUnsyncedCompletedBatchesOnce keeps a real batch that holds the demo drug`() = runTest {
         val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
         dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
         stockTxnDao.insertIgnore(StockTxnEntity(batchId = 1L, drugId = tutorialDrugId))
 
-        val result = dao.getUnsyncedCompletedBatchesOnce()
-        assertTrue(result.isEmpty())
+        assertEquals(listOf(1L), dao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
     }
 
     @Test

@@ -662,4 +662,5 @@
     <string name="tour_title_select_bucket">Sélectionner un casier</string>
     <string name="tour_title_stock_count_tap">Démarrer un comptage de stock</string>
     <string name="tour_title_verify_rx_proceed">Confirmer et compter</string>
+    <string name="tour_ended_locked">La visite s\'est terminée car la session a été verrouillée.</string>
 </resources>

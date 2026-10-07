@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import android.view.MotionEvent
 import android.view.WindowManager
 import com.dispensesure.retail.core.utils.permission.isLocationServicesEnabled
@@ -29,7 +30,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourEvent
-import com.dispensesure.retail.core.tourguide.TourGuidePrefs
 import com.dispensesure.retail.core.tourguide.TourSectionPrompt
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import androidx.core.app.ActivityCompat
@@ -352,9 +352,6 @@ class MainActivity : ComponentActivity() {
                                             // After a logout or expiry there is no user to mark or to show a Dashboard to.
                                             val loggedIn = preferenceHelper.isUserLoggedIn()
                                             if (event == TourEvent.Ended) {
-                                                // A replay from the menu must not leave the first-login offer pending.
-                                                preferenceHelper.getLocalId().takeIf { loggedIn && it != 0L }
-                                                    ?.let { TourGuidePrefs.markSeen(this@MainActivity, it) }
                                                 settingsViewModel.purgeTutorialData()
                                             }
                                             if (loggedIn) navController.navigateBackToDashboard()
@@ -389,7 +386,14 @@ class MainActivity : ComponentActivity() {
 
                                     val isLocked by sessionLockController.isLocked.collectAsStateWithLifecycle()
                                     val startOnScan by sessionLockController.startOnScan.collectAsStateWithLifecycle()
-                                    LaunchedEffect(isLocked) { if (isLocked) FtueController.end() }
+                                    LaunchedEffect(isLocked) {
+                                        if (isLocked) {
+                                            if (FtueController.state.isActive) {
+                                                Toast.makeText(this@MainActivity, R.string.tour_ended_locked, Toast.LENGTH_LONG).show()
+                                            }
+                                            FtueController.end()
+                                        }
+                                    }
                                     if (isLocked) {
                                         SessionLockOverlayScreen(
                                             startOnScan = startOnScan,

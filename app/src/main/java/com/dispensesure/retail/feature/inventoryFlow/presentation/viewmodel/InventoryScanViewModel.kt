@@ -593,13 +593,13 @@ class InventoryScanViewModel @Inject constructor(
      */
     private fun schedulePersist(active: ActiveNdc) {
         counterPersistJob?.cancel()
-        counterPersistJob = viewModelScope.launch {
+        counterPersistJob = FtueController.track(viewModelScope.launch {
             delay(COUNTER_PERSIST_DEBOUNCE_MS)
             // Clear the handle BEFORE persisting so persistActive's own
             // counterPersistJob?.cancel() doesn't cancel this still-running job.
             counterPersistJob = null
             persistActive(active)
-        }
+        })
     }
 
     /* ─────────────────────────  Recent-row tap  ───────────────────────── */

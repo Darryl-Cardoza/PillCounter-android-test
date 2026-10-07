@@ -116,6 +116,7 @@ class TourGuideState(
 
     // The running step's action; cancelled on end() so it can't write demo data after cleanup.
     private var stepJob: Job? = null
+    private var tourRun = 0
     private val demoJobs = CopyOnWriteArraySet<Job>()
 
     fun registerTarget(id: String, coordinates: LayoutCoordinates, owner: Any = id) {
@@ -134,6 +135,7 @@ class TourGuideState(
         }
         currentIndex = 0
         pendingSection = null
+        tourRun++
         stepBusy = false
         isActive = steps.isNotEmpty()
     }
@@ -147,6 +149,7 @@ class TourGuideState(
     fun runStep(id: String, action: suspend () -> Unit = {}) {
         if (stepBusy || !isActive || pendingSection != null || currentStep?.id != id) return
         stepBusy = true
+        val run = tourRun
         stepJob = scope.launch {
             try {
                 action()
@@ -159,7 +162,8 @@ class TourGuideState(
             } catch (e: Exception) {
                 failureTick++
             } finally {
-                stepBusy = false
+                // A cancelled step must not clear the busy flag of a newer tour's step.
+                if (run == tourRun) stepBusy = false
             }
         }
     }

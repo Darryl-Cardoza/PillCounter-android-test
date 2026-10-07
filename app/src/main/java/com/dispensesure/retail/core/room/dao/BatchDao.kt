@@ -326,20 +326,12 @@ interface BatchDao {
       AND b.status = :completedStatus
       AND b.bucketId IS NOT '${TutorialData.BUCKET}'
       AND b.isSynced = 0
-      AND NOT EXISTS (
-        SELECT 1 FROM stock_txn st
-        JOIN drug_master dm ON st.drugId = dm.drugId
-        WHERE st.batchId = b.batchId
-          AND st.isDeleted = 0
-          AND dm.ndc = :excludeNdc
-      )
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """
     )
     suspend fun getUnsyncedCompletedBatchesOnce(
-        completedStatus: BatchStatus = BatchStatus.COMPLETED,
-        excludeNdc: String = TutorialData.DEMO_NDC
+        completedStatus: BatchStatus = BatchStatus.COMPLETED
     ): List<BatchSummaryDto>
 
     @Query(
