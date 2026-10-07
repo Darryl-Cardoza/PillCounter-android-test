@@ -70,7 +70,7 @@ json = "20251224"
 opencv = "4.10.0"
 
 # --- TLS / Local Server ---
-bouncycastle = "1.84"
+bouncycastle = "1.85"
 nanohttpd = "2.3.1"
 
 # --- Testing ---

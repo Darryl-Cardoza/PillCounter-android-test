@@ -103,7 +103,7 @@ class InventoryScanViewModel @Inject constructor(
     private val resolvedBatchId = MutableStateFlow(argBatchId)
 
     /** Bucket label rendered on the active card. Empty until the batch loads. */
-    private val _bucketId = MutableStateFlow<String?>(null)
+    private val currentBucketId = MutableStateFlow<String?>(null)
 
     /**
      * Expected NDCs for a PMS-requested (INR^U04) stock count. A PMS batch is
@@ -212,7 +212,7 @@ class InventoryScanViewModel @Inject constructor(
                 if (argBatchId != 0L) {
                     resolvedBatchId.value = argBatchId
                     val batch = batchDao.getById(argBatchId)
-                    _bucketId.value = batch?.bucketId
+                    currentBucketId.value = batch?.bucketId
                     // PMS-requested inventory: lock scanning to the requested NDCs.
                     // The batch was pre-populated with a txn per requested drug, so
                     // those NDCs are the allowed set. Manually started batches
@@ -230,7 +230,7 @@ class InventoryScanViewModel @Inject constructor(
                 } else {
                     // No batch yet — the user selected a bucket on the dashboard but the
                     // batch row will be created on the first successful NDC scan.
-                    _bucketId.value = argBucketId
+                    currentBucketId.value = argBucketId
                 }
             } catch (e: CancellationException) {
                 throw e
@@ -253,7 +253,7 @@ class InventoryScanViewModel @Inject constructor(
         val existing = resolvedBatchId.value
         if (existing != 0L) return existing
         return try {
-            val newId = batchDao.insertNewInProgressBatch(bucketId = _bucketId.value)
+            val newId = batchDao.insertNewInProgressBatch(bucketId = currentBucketId.value)
             resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
@@ -272,7 +272,7 @@ class InventoryScanViewModel @Inject constructor(
      * `flatMapLatest` in [recentRows], which subscribes to
      * [bottleInfoDao.observeByBatchId] + [stockTxnDao.observeRequestedDrugs]
      * against the real batch so the just-counted bottle appears in the list.
-     * Also hydrates [_bucketId] and (for PMS batches) [expectedNdcs] the same
+     * Also hydrates [currentBucketId] and (for PMS batches) [expectedNdcs] the same
      * way the `init` block does.
      *
      * @param batchId The batchId minted by
@@ -285,7 +285,7 @@ class InventoryScanViewModel @Inject constructor(
             try {
                 resolvedBatchId.value = batchId
                 val batch = batchDao.getById(batchId)
-                // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
+                // Do NOT overwrite currentBucketId from the batch here — the user's chosen bucket
                 // is already authoritative (set from argBucketId at init). Reading it back
                 // from a lazily-created batch would clobber the selection with a stale/null
                 // value if the commit hadn't populated bucketId at insert time.
@@ -494,7 +494,7 @@ class InventoryScanViewModel @Inject constructor(
                 val newActive = ActiveNdc(
                     ndc = drug.ndc,
                     drugName = drug.drugName ?: "",
-                    bucket = _bucketId.value.orEmpty(),
+                    bucket = currentBucketId.value.orEmpty(),
                     batchNo = lotNo.orEmpty(),
                     expiry = expiry.orEmpty(),
                     pillsPerBottle = packageQty,
@@ -669,7 +669,7 @@ class InventoryScanViewModel @Inject constructor(
                         drugId = drugId,
                         status = CountStatus.COMPLETED,
                         batchId = batchId,
-                        bucketId = _bucketId.value,
+                        bucketId = currentBucketId.value,
                     )
                 )
                 bottleInfoDao.insert(
@@ -787,7 +787,7 @@ class InventoryScanViewModel @Inject constructor(
         return ActiveNdc(
             ndc = drug.ndc,
             drugName = drug.drugName ?: "",
-            bucket = _bucketId.value.orEmpty(),
+            bucket = currentBucketId.value.orEmpty(),
             batchNo = anchor.lotNo.orEmpty(),
             expiry = anchor.expiry.orEmpty(),
             pillsPerBottle = drug.packageQty ?: 0,
