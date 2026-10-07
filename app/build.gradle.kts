@@ -129,6 +129,7 @@ android {
         resources {
             excludes +=
                 setOf(
+                    "META-INF/LICENSE.md",
                     "META-INF/INDEX.LIST",
                     "META-INF/io.netty.versions.properties",
                     "META-INF/*.SF",
