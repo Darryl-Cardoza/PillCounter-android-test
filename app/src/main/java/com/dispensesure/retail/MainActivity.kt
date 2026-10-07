@@ -362,8 +362,10 @@ class MainActivity : ComponentActivity() {
                                                 // end() cancels the running step, but the last step's completion writes run in
                                                 // viewModelScope and may still be landing; sweep again. After the navigation,
                                                 // so the wait can't pull the user back to the Dashboard later.
-                                                delay(1500)
-                                                settingsViewModel.purgeTutorialData()
+                                                launch {
+                                                    delay(1500)
+                                                    settingsViewModel.purgeTutorialData()
+                                                }
                                             }
                                         }
                                     }
