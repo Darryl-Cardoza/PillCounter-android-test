@@ -12,7 +12,7 @@ data class RemoteLogRequest(
     @Json(name = "device_key") val deviceKey: String?,
     @Json(name = "app_name") val appName: String,
     @Json(name = "app_version") val appVersion: String,
-    @Json(name = "build_version") val buildVersion: String? = null,
+    @Json(name = "build_number") val buildNumber: String? = null,
     @Json(name = "platform") val platform: String,
     @Json(name = "os_version") val osVersion: String,
     @Json(name = "device_model") val deviceModel: String,
