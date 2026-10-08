@@ -165,4 +165,5 @@ jobs:
       - name: Upload R8 mapping
         env:
           DD_API_KEY: ${{ secrets.DD_API_KEY }}
-        run: ./gradlew :app:uploadMappingRelease --no-daemon --stacktrace
+        # assembleRelease first: the plugin generates the build id while packaging, and the upload fails without it.
+        run: ./gradlew :app:assembleRelease :app:uploadMappingRelease --no-daemon --stacktrace
