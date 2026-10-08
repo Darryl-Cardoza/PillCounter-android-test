@@ -61,7 +61,9 @@ class VerifiedUserTest {
             "data":{"access_token":"a","refresh_token":"r","expires_in":86400,
             "user":{"user_id":"u1","email":"heth@rite.com","country":"US","state":"NY",
             "is_verified":true,"is_profile_completed":true,"role":"admin"}}}"""
-        val response = com.squareup.moshi.Moshi.Builder().build()
+        val response = com.squareup.moshi.Moshi.Builder()
+            .add(com.squareup.moshi.kotlin.reflect.KotlinJsonAdapterFactory())
+            .build()
             .adapter(VerifyPinResponse::class.java).fromJson(json)
         assertEquals("admin", response?.data?.user?.role)
         assertEquals("a", response?.data?.accessToken)

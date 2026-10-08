@@ -87,7 +87,7 @@ class VerifyPinViewModel @Inject constructor(
 
             val deviceKey = deviceKeyProvider.getDeviceKey()
             if (deviceKey == null) {
-                logger.w("OTP verification aborted: device key unavailable")
+                logger.e("OTP verification aborted: device key unavailable", event = LogEvent.OTP_VERIFICATION_FAILED)
                 _uiState.value = VerifyPinUiState.Error(
                     context.getString(R.string.error_server_unavailable)
                 )
@@ -120,7 +120,7 @@ class VerifyPinViewModel @Inject constructor(
                             sessionHealthController.markLoggedIn()
                             logger.i("Access and refresh tokens saved securely.")
                         } else {
-                            logger.w("Missing access or refresh token in response.")
+                            logger.e("Missing access or refresh token in response.", event = LogEvent.OTP_VERIFICATION_FAILED)
                         }
 
                         prefs.setLoggedInEmail(user?.email ?: email)
