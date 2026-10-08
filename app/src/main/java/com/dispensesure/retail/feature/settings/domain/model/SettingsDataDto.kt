@@ -19,10 +19,5 @@ data class SettingsDataDto(
     @Json(name = "is_maintenance_mode") val isMaintenanceMode: Boolean,
     @Json(name = "settings") val settings: ApplicationSettingsResponse,
     @Json(name = "hl7_config") val hl7Config: ApplicationSettingsHL7Config?,  // nullable now
-    /**
-     * Backend-controlled maximum time (seconds) the user is allowed to operate offline
-     * before being forced back to Login. Nullable so older backends still deserialize;
-     * `SessionHealthController` falls back to the persisted default when this is null.
-     */
-    @Json(name = "offline_session_threshold_seconds") val offlineSessionThresholdSeconds: Long? = null
+
 )

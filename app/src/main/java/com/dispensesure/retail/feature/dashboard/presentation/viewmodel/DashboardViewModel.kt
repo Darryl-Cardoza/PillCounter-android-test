@@ -680,7 +680,7 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         lName = this.profile?.lName,
         phoneNumber = this.profile?.phoneNumber,
         avatarUrl = this.profile?.avatarUrl,
-        role = this.profile?.role?.name,
+        role = this.profile?.role,
         isVerified = this.profile?.isVerified ?: false,
         isProfileCompleted = this.profile?.isProfileCompleted,
         pharmacyName = this.profile?.pharmacyName,

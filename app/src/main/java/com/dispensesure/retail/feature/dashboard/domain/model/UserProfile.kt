@@ -17,7 +17,7 @@ data class UserProfile(
     @Json(name = "pharmacy_name") val pharmacyName: String? = null,
     @Json(name = "pharmacy_id") val pharmacyId: String? = null,
     @Json(name = "user_id") val userId: String? = null,
-    @Json(name = "role") val role: UserRole? = null,
+    @Json(name = "role") val role: String? = null,
     @Json(name = "pharmacy_type") val pharmacyType: String? = null,
     @Json(name = "is_verified") val isVerified: Boolean? = null
 )
