@@ -19,9 +19,13 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
     return try {
         val regex = Regex(template)
 
-        val match = regex.matchEntire(actualValue.trim())
+        val input = actualValue.trim()
+        val match = regex.matchEntire(input)
             ?: run {
-                logger.e("Scan data does not match label format: $actualValue")
+                logger.e(
+                    "Scan data does not match label format ${describeMismatch(regex, input)}, " +
+                        "template=$template"
+                )
                 return ParsedScanData()
             }
 
@@ -42,7 +46,34 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
             rawMap = rawMap
         )
     } catch (e: Exception) {
-        logger.e("Error parsing scan data: ${e.message}")
+        logger.e("Error parsing scan data, template=$template", e)
         ParsedScanData()
     }
+}
+
+/**
+ * Describes where [input] stops fitting [regex], for logging a failed label parse.
+ * "»" marks the break point; control characters show as \xNN.
+ *
+ * Example Usage:
+ * describeMismatch(Regex("""\d+\|\d{11}"""), "12|0071015523") // at index 13 (input ended early): 12|0071015523»
+ */
+internal fun describeMismatch(regex: Regex, input: String): String {
+    val at = failureIndex(regex, input)
+    val reason = if (at >= input.length) "input ended early" else "unexpected '${input[at].toString().visible()}'"
+    return "at index $at ($reason): ${input.substring(0, at).visible()}»${input.substring(at).visible()}"
+}
+
+// Longest prefix that still fits: it matches, or the regex hit its end wanting more input.
+private fun failureIndex(regex: Regex, input: String): Int {
+    val matcher = regex.toPattern().matcher("")
+    for (end in input.length downTo 0) {
+        matcher.reset(input.substring(0, end))
+        if (matcher.matches() || matcher.hitEnd()) return end
+    }
+    return 0
+}
+
+private fun String.visible(): String = buildString {
+    for (c in this@visible) append(if (c.code < 32 || c.code == 127) "\\x%02X".format(c.code) else c)
 }

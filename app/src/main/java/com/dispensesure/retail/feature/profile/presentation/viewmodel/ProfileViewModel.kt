@@ -80,7 +80,7 @@ class ProfileViewModel @Inject constructor(
         private set
     var phoneNumber by mutableStateOf("")
     var email by mutableStateOf("")
-    var npi by mutableStateOf("")
+    var pharmacyId by mutableStateOf("")
     var doNotAskAgain by mutableStateOf(false)
 
     // Terminal selection
@@ -117,7 +117,6 @@ class ProfileViewModel @Inject constructor(
     var pharmacyNameError by mutableStateOf<Int?>(null)
     var phoneError by mutableStateOf<Int?>(null)
     var emailError by mutableStateOf<Int?>(null)
-    var npiError by mutableStateOf<Int?>(null)
     var countryError by mutableStateOf<Int?>(null)
         private set
     var stateError by mutableStateOf<Int?>(null)
@@ -219,7 +218,7 @@ class ProfileViewModel @Inject constructor(
                     pharmacyName = it.pharmacyName.orEmpty()
                     phoneNumber = it.phoneNumber.orEmpty()
                     email = it.email.orEmpty()
-                    npi = it.npiId.orEmpty()
+                    pharmacyId = it.pharmacyId.orEmpty()
                     doNotAskAgain = preferenceHelper.isDoNotAskAgain()
                     userCountryCode = it.country
                     userStateCode = it.state
@@ -341,8 +340,8 @@ class ProfileViewModel @Inject constructor(
         phoneNumber = limited
     }
 
-    fun onNpiChanged(input: String) {
-        npi = input.filter { it in '0'..'9' }.take(10)
+    fun onPharmacyIdChanged(input: String) {
+        pharmacyId = input
     }
 
     fun onFirstNameChanged(input: String) {
@@ -363,7 +362,6 @@ class ProfileViewModel @Inject constructor(
         pharmacyNameError = validator.validatePharmacyName(pharmacyName).errorMessageResId
         phoneError = validator.validatePhone(phoneNumber).errorMessageResId
         emailError = validator.validateEmail(email).errorMessageResId
-        npiError = validator.validateNpi(npi, required = true).errorMessageResId
         countryError = if (selectedCountry?.code.isNullOrBlank()) {
             R.string.please_select_country
         } else {
@@ -377,7 +375,7 @@ class ProfileViewModel @Inject constructor(
 
         return listOf(
             firstNameError, lastNameError, pharmacyNameError,
-            phoneError, emailError, npiError, countryError, stateError
+            phoneError, emailError, countryError, stateError
         ).all { it == null }
     }
 
@@ -400,7 +398,7 @@ class ProfileViewModel @Inject constructor(
                 val request = ProfileUpdateRequest(
                     pharmacyName = pharmacyName.trim(),
                     phoneNumber = phoneNumber,
-                    npiId = npi,
+                    pharmacyId = pharmacyId,
                     isProfileComplete = true,
                     avatarUrl = "",
                     notificationsEnabled = !doNotAskAgain,
@@ -428,7 +426,7 @@ class ProfileViewModel @Inject constructor(
                                 lName = lastName.trim(),
                                 phoneNumber = phoneNumber,
                                 pharmacyName = pharmacyName.trim(),
-                                npiId = npi,
+                                pharmacyId = pharmacyId,
                                 notifications = !doNotAskAgain,
                                 country = selectedCountry?.code,
                                 state = selectedState?.code,

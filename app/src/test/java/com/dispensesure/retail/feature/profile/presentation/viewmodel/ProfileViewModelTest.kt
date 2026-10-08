@@ -74,7 +74,6 @@ class ProfileViewModelTest {
     private lateinit var context: Context
 
     private val deviceKey = "test-device-key"
-    private val validNpi = "1234567890"
     private val activeTerminal =
         Terminal(terminalId = "t1", terminalName = "Front Desk", isActive = true, deviceKey = deviceKey)
     private val otherTerminal =
@@ -145,7 +144,6 @@ class ProfileViewModelTest {
         every { validator.validatePharmacyName(any()) } returns ValidationResult(true, null)
         every { validator.validatePhone(any()) } returns ValidationResult(true, null)
         every { validator.validateEmail(any()) } returns ValidationResult(true, null)
-        every { validator.validateNpi(any(), any()) } returns ValidationResult(true, null)
     }
 
     @After
@@ -171,11 +169,10 @@ class ProfileViewModelTest {
         return HttpException(Response.error<Any>(code, responseBody))
     }
 
-    /** Fills the fields [ProfileViewModel.validateInputs] requires: US/CA plus a 10-digit NPI. */
+    /** Fills the fields [ProfileViewModel.validateInputs] requires: US/CA. */
     private fun fillRequiredInputs(vm: ProfileViewModel) {
         vm.onCountrySelected(testCountries.first { it.code == "US" })
         vm.onStateSelected(vm.states.first { it.code == "CA" })
-        vm.npi = validNpi
     }
 
     private fun userEntity(country: String? = null, state: String? = null) = UserEntity(
@@ -186,7 +183,7 @@ class ProfileViewModelTest {
         lName = "Doe",
         phoneNumber = "1234567890",
         pharmacyName = "Pharma",
-        npiId = "123456",
+        pharmacyId = "123456",
         country = country,
         state = state,
     )
@@ -228,7 +225,7 @@ class ProfileViewModelTest {
         assertEquals("Pharma", vm.pharmacyName)
         assertEquals("1234567890", vm.phoneNumber)
         assertEquals("john@x.com", vm.email)
-        assertEquals("123456", vm.npi)
+        assertEquals("123456", vm.pharmacyId)
     }
 
     @Test
@@ -469,13 +466,13 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `onNpiChanged filters ascii digits and limits to 10`() = runTest(testDispatcher) {
+    fun `onPharmacyIdChanged keeps input as typed`() = runTest(testDispatcher) {
         val vm = createViewModel()
         advanceUntilIdle()
 
-        vm.onNpiChanged("12a3-4567 ٣89012")
+        vm.onPharmacyIdChanged("PH-12a3 4567")
 
-        assertEquals("1234567890", vm.npi)
+        assertEquals("PH-12a3 4567", vm.pharmacyId)
     }
 
     @Test
@@ -548,63 +545,34 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `updateProfile validates npi as required`() = runTest(testDispatcher) {
-        every { validator.validateNpi("", true) } returns
-            ValidationResult(false, R.string.error_npi_required)
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-        fillRequiredInputs(vm)
-        vm.npi = ""
-
-        vm.updateProfile()
-        advanceUntilIdle()
-
-        assertEquals(ProfileUpdateUiState.Idle, vm.updateUiState.value)
-        assertEquals(R.string.error_npi_required, vm.npiError)
-        verify { validator.validateNpi("", true) }
-        coVerify(exactly = 0) { repository.updateProfile(any()) }
-    }
-
-    @Test
-    fun `updateProfile surfaces the validator error for a non-blank npi`() = runTest(testDispatcher) {
-        every { validator.validateNpi(any(), any()) } returns
-            ValidationResult(false, R.string.error_npi_invalid)
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-        fillRequiredInputs(vm)
-        vm.npi = "12345"
-
-        vm.updateProfile()
-        advanceUntilIdle()
-
-        assertEquals(R.string.error_npi_invalid, vm.npiError)
-        coVerify(exactly = 0) { repository.updateProfile(any()) }
-    }
-
-    @Test
-    fun `updateProfile clears the npi error once a valid npi is entered`() = runTest(testDispatcher) {
+    fun `updateProfile does not block on a blank pharmacy id`() = runTest(testDispatcher) {
         coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
-        every { validator.validateNpi(any(), any()) } returnsMany listOf(
-            ValidationResult(false, R.string.error_npi_required),
-            ValidationResult(true, null),
-        )
 
         val vm = createViewModel()
         advanceUntilIdle()
         fillRequiredInputs(vm)
-        vm.npi = ""
-        vm.updateProfile()
-        advanceUntilIdle()
-        assertEquals(R.string.error_npi_required, vm.npiError)
+        vm.pharmacyId = ""
 
-        vm.npi = validNpi
         vm.updateProfile()
         advanceUntilIdle()
 
-        assertNull(vm.npiError)
-        coVerify { repository.updateProfile(match { it.npiId == validNpi }) }
+        coVerify { repository.updateProfile(match { it.pharmacyId == "" }) }
+    }
+
+    @Test
+    fun `updateProfile sends pharmacy id in request and persists it`() = runTest(testDispatcher) {
+        coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+        fillRequiredInputs(vm)
+        vm.onPharmacyIdChanged("PH-123")
+
+        vm.updateProfile()
+        advanceUntilIdle()
+
+        coVerify { repository.updateProfile(match { it.pharmacyId == "PH-123" }) }
+        coVerify { userDao.update(match<UserEntity> { it.pharmacyId == "PH-123" }) }
     }
 
     @Test
@@ -703,7 +671,6 @@ class ProfileViewModelTest {
         val canada = vm.countries.first { it.code == "CA" }
         vm.onCountrySelected(canada)
         vm.onStateSelected(vm.states.first { it.code == "ON" })
-        vm.npi = validNpi
 
         vm.updateProfile()
         advanceUntilIdle()
@@ -722,7 +689,6 @@ class ProfileViewModelTest {
 
         val california = vm.states.first { it.code == "CA" }
         vm.onStateSelected(california)
-        vm.npi = validNpi
 
         vm.updateProfile()
         advanceUntilIdle()

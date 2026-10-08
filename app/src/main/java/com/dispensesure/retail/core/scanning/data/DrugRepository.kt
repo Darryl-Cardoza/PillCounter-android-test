@@ -71,9 +71,9 @@ class DrugRepository @Inject constructor(
             val result = response.data
             if (
                 result == null ||
-                (getNdcRequestModel.target_ndc.isNotEmpty() &&
-                        result.is_ndc_same == false &&
-                        result.is_ndc_equivalent == false)
+                (getNdcRequestModel.target_drug.isNotEmpty() &&
+                        result.is_drug_same == false &&
+                        result.is_drug_equivalent == false)
             ) {
                 logger.w("No result found in API response for NDC: '$getNdcRequestModel'")
                 null
@@ -81,18 +81,18 @@ class DrugRepository @Inject constructor(
                 logger.i("Returning mapped DrugInfo Result -> $response")
                 logger.i("Returning mapped DrugInfo data -> ${response.data}")
                 DrugInfo(
-                    brandName = result.scanned_ndc?.manufacturer ?: "N/A",
-                    genericName = result.scanned_ndc?.lookup_name ?: "N/A",
-                    ndc = result.scanned_ndc?.drug_code ?: "N/A",
-                    is_ndc_equivalent = result.is_ndc_equivalent,
-                    drugType = result.scanned_ndc?.regulatory?.schedule.orEmpty(),
-                    qty = result.scanned_ndc?.`package`?.stock_qty
-                        ?: result.scanned_ndc?.`package`?.levels?.firstOrNull()?.contains?.quantity,
-                    isHazardous = result.scanned_ndc?.is_hazardous,
-                    strength = result.scanned_ndc?.strength_info?.display
-                        ?: result.scanned_ndc?.active_ingredients?.firstOrNull()?.strength,
-                    dosageForm = result.scanned_ndc?.dosage_form?.firstOrNull(),
-                    imageUrl = result.scanned_ndc?.images?.primary,
+                    brandName = result.scanned_drug?.manufacturer ?: "N/A",
+                    genericName = result.scanned_drug?.lookup_name ?: "N/A",
+                    ndc = result.scanned_drug?.drug_code ?: "N/A",
+                    is_ndc_equivalent = result.is_drug_equivalent,
+                    drugType = result.scanned_drug?.regulatory?.schedule.orEmpty(),
+                    qty = result.scanned_drug?.`package`?.stock_qty
+                        ?: result.scanned_drug?.`package`?.levels?.firstOrNull()?.contains?.quantity,
+                    isHazardous = result.scanned_drug?.is_hazardous,
+                    strength = result.scanned_drug?.strength_info?.display
+                        ?: result.scanned_drug?.active_ingredients?.firstOrNull()?.strength,
+                    dosageForm = result.scanned_drug?.dosage_form?.firstOrNull(),
+                    imageUrl = result.scanned_drug?.images?.primary,
                 ).also {
                     logger.i("Returning mapped DrugInfo -> $it")
                 }

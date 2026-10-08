@@ -13,10 +13,10 @@ data class DrugDataResponse(
 
 @Serializable
 data class DrugComparisonData(
-    val is_ndc_same: Boolean? = null,
-    val is_ndc_equivalent: Boolean? = null,
-    val target_ndc: NdcDrugInfo? = null,
-    val scanned_ndc: NdcDrugInfo? = null
+    val is_drug_same: Boolean? = null,
+    val is_drug_equivalent: Boolean? = null,
+    val target_drug: NdcDrugInfo? = null,
+    val scanned_drug: NdcDrugInfo? = null
 )
 
 @Serializable

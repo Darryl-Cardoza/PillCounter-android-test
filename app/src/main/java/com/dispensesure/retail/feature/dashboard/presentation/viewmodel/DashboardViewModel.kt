@@ -652,7 +652,7 @@ private fun UserEntity.toUserDetail(
         avatarUrl = this.avatarUrl,
         isProfileCompleted = this.isProfileCompleted,
         pharmacyName = this.pharmacyName,
-        npiId = this.npiId,
+        pharmacyId = this.pharmacyId,
         userId = this.userId,
         isVerified = this.isVerified,
     )
@@ -684,7 +684,7 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         isVerified = this.profile?.isVerified ?: false,
         isProfileCompleted = this.profile?.isProfileCompleted,
         pharmacyName = this.profile?.pharmacyName,
-        npiId = this.profile?.npiId,
+        pharmacyId = this.profile?.pharmacyId,
         language = this.settings?.language,
         timezone = this.settings?.timezone,
         notifications = this.settings?.notificationsEnabled,

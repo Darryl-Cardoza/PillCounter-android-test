@@ -193,8 +193,6 @@
     <string name="error_name_invalid">Name cannot contain numbers</string>
     <string name="error_name_required">This field is required</string>
     <string name="error_pharmacy_name_invalid">Pharmacy name too short</string>
-    <string name="error_npi_invalid">Invalid NPI number</string>
-    <string name="error_npi_required">NPI number is required</string>
     <string name="error_no_internet">No internet connection. Please check your network and try again.</string>
     <string name="error_timeout">The request took too long. Please try again later.</string>
     <string name="error_server_unavailable">Server is temporarily unavailable. Please try again later.</string>
@@ -258,7 +256,7 @@
     <string name="last_name">Last Name</string>
     <string name="pharmacy_name">Pharmacy Name</string>
     <string name="phone_number">Phone Number</string>
-    <string name="npi_number">NPI No.</string>
+    <string name="pharmacy_id">Pharmacy ID</string>
     <string name="do_not_ask">Do not ask again</string>
     <string name="confirm_delete_profile">Are you sure you want to delete your profile? This action cannot be undone.</string>
     <string name="logging_out">Logging out…</string>

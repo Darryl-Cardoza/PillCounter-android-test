@@ -52,9 +52,9 @@ import androidx.room.PrimaryKey
         @ColumnInfo(name = "pharmacy_name")
         val pharmacyName: String? = null,
 
-        /** NPI (National Provider Identifier) or equivalent ID. */
-        @ColumnInfo(name = "npi_id")
-        val npiId: String? = null,
+        /** Pharmacy ID of the user's pharmacy. */
+        @ColumnInfo(name = "pharmacy_id")
+        val pharmacyId: String? = null,
 
         // ───── Settings fields ─────
 

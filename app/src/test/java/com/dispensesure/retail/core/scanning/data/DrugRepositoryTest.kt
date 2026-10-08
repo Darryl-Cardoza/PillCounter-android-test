@@ -37,7 +37,7 @@ class DrugRepositoryTest {
 
     private lateinit var repository: DrugRepository
 
-    private val request = GetNdcRequestModel(target_ndc = "", scanned_ndc = "12345678901234")
+    private val request = GetNdcRequestModel(target_drug = "", scanned_drug = "12345678901234")
 
     @Before
     fun setup() {
@@ -48,7 +48,7 @@ class DrugRepositoryTest {
     fun tearDown() { unmockkAll() }
 
     private fun successResponse(ndcInfo: NdcDrugInfo? = null): DrugDataResponse = DrugDataResponse(
-        data = DrugComparisonData(is_ndc_same = true, is_ndc_equivalent = null, scanned_ndc = ndcInfo)
+        data = DrugComparisonData(is_drug_same = true, is_drug_equivalent = null, scanned_drug = ndcInfo)
     )
 
     // DRUG_REPO_001
@@ -101,12 +101,12 @@ class DrugRepositoryTest {
 
     // DRUG_REPO_005
     @Test
-    fun `getDrugInfoByNdc returns DrugInfo when is_ndc_equivalent is true even if not same`() = runTest {
+    fun `getDrugInfoByNdc returns DrugInfo when is_drug_equivalent is true even if not same`() = runTest {
         every { preferenceHelper.getAccessToken() } returns "valid-token"
-        val requestWithTarget = GetNdcRequestModel(target_ndc = "00000000000000", scanned_ndc = "12345678901234")
+        val requestWithTarget = GetNdcRequestModel(target_drug = "00000000000000", scanned_drug = "12345678901234")
         val ndcInfo = NdcDrugInfo(drug_code = "12345678901234", lookup_name = "Metoprolol")
         coEvery { api.getDrugInfoByNdc(any(), any()) } returns DrugDataResponse(
-            data = DrugComparisonData(is_ndc_same = false, is_ndc_equivalent = true, scanned_ndc = ndcInfo)
+            data = DrugComparisonData(is_drug_same = false, is_drug_equivalent = true, scanned_drug = ndcInfo)
         )
 
         val result = repository.getDrugInfoByNdc(requestWithTarget)
@@ -117,15 +117,15 @@ class DrugRepositoryTest {
 
     // DRUG_REPO_006
     @Test
-    fun `getDrugInfoByNdc returns null when NDC is neither same nor equivalent and target_ndc is non-empty`() = runTest {
+    fun `getDrugInfoByNdc returns null when NDC is neither same nor equivalent and target_drug is non-empty`() = runTest {
         every { preferenceHelper.getAccessToken() } returns "valid-token"
         val requestWithTarget = GetNdcRequestModel(
-            target_ndc = "00000000000000",
-            scanned_ndc = "12345678901234"
+            target_drug = "00000000000000",
+            scanned_drug = "12345678901234"
         )
         val ndcInfo = NdcDrugInfo(drug_code = "12345678901234")
         coEvery { api.getDrugInfoByNdc(any(), any()) } returns DrugDataResponse(
-            data = DrugComparisonData(is_ndc_same = false, is_ndc_equivalent = false, scanned_ndc = ndcInfo)
+            data = DrugComparisonData(is_drug_same = false, is_drug_equivalent = false, scanned_drug = ndcInfo)
         )
 
         assertNull(repository.getDrugInfoByNdc(requestWithTarget))
@@ -133,15 +133,15 @@ class DrugRepositoryTest {
 
     // DRUG_REPO_007
     @Test
-    fun `getDrugInfoByNdc returns DrugInfo when target_ndc is empty even if NDC flags are false`() = runTest {
+    fun `getDrugInfoByNdc returns DrugInfo when target_drug is empty even if NDC flags are false`() = runTest {
         every { preferenceHelper.getAccessToken() } returns "valid-token"
         val ndcInfo = NdcDrugInfo(drug_code = "12345678901234", lookup_name = "Ibuprofen")
         coEvery { api.getDrugInfoByNdc(any(), any()) } returns DrugDataResponse(
-            data = DrugComparisonData(is_ndc_same = false, is_ndc_equivalent = false, scanned_ndc = ndcInfo)
+            data = DrugComparisonData(is_drug_same = false, is_drug_equivalent = false, scanned_drug = ndcInfo)
         )
 
         val result = repository.getDrugInfoByNdc(
-            GetNdcRequestModel(target_ndc = "", scanned_ndc = "12345678901234")
+            GetNdcRequestModel(target_drug = "", scanned_drug = "12345678901234")
         )
 
         assertNotNull(result)
