@@ -416,12 +416,10 @@ private fun ResponsiveProfileFields(
             readOnly = true
         ), // <— Email read-only
         ProfileField(
-            viewModel.npi,
-            { v -> viewModel.onNpiChanged(v) },
-            R.string.npi_number,
-            viewModel.npiError,
-            keyboardType = KeyboardType.Number,
-            maxLength = 10
+            viewModel.pharmacyId,
+            { v -> viewModel.onPharmacyIdChanged(v) },
+            R.string.pharmacy_id,
+            null
         )
     )
 

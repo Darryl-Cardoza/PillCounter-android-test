@@ -82,10 +82,12 @@ class MainActivityViewModelTest {
     private fun settingsResponse(
         colors: ColorSettings = colorSettings(),
         appLogo: String = "logo_url",
+        offlineSessionThresholdSeconds: Long? = 86400L,
     ) = ApplicationSettingsResponse(
         colors = colors,
         appLogo = appLogo,
         placeholderLogo = "placeholder",
+        offlineSessionThresholdSeconds = offlineSessionThresholdSeconds,
     )
 
     private fun dto(

@@ -48,7 +48,7 @@ class ProfileRepositoryTest {
         lName = "Doe",
         pharmacyName = "Rite Pharmacy",
         phoneNumber = "1234567890",
-        npiId = "npi-1",
+        pharmacyId = "ph-1",
         isProfileComplete = true,
         avatarUrl = "http://avatar",
         notificationsEnabled = true,

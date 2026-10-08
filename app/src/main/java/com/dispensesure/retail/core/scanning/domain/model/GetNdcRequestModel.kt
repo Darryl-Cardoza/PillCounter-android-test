@@ -1,6 +1,6 @@
 ﻿package com.dispensesure.retail.core.scanning.domain.model
 
 data class GetNdcRequestModel(
-    val target_ndc: String,
-    val scanned_ndc: String
+    val target_drug: String,
+    val scanned_drug: String
 )

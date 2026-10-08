@@ -1,6 +1,7 @@
 package com.dispensesure.retail
 
 import com.dispensesure.retail.core.utils.common.ParsedScanData
+import com.dispensesure.retail.core.utils.common.describeMismatch
 import com.dispensesure.retail.core.utils.common.parseScanData
 import org.junit.Assert
 import org.junit.Test
@@ -102,6 +103,44 @@ class ParsedScanDataTest {
 
         Assert.assertEquals("RX500", result.rxNo)
         Assert.assertEquals("2", result.refillNo)
+    }
+
+    // ───────────────────────────── describeMismatch ─────────────────────────────
+
+    private val rxLabel = Regex("""(?<RxNo>\d+)\|(?<NdcNo>\d{11})\|(?<Qty>\d+)""")
+
+    @Test
+    fun describeMismatch_pointsAtCharacterThatBreaksTemplate() {
+        // NDC has 10 digits, so the '|' arrives where the 11th digit was expected.
+        Assert.assertEquals(
+            "at index 15 (unexpected '|'): 1234|0071015523»|30",
+            describeMismatch(rxLabel, "1234|0071015523|30")
+        )
+    }
+
+    @Test
+    fun describeMismatch_reportsInputEndingEarly() {
+        Assert.assertEquals(
+            "at index 16 (input ended early): 1234|00710155231»",
+            describeMismatch(rxLabel, "1234|00710155231")
+        )
+    }
+
+    @Test
+    fun describeMismatch_showsControlCharactersAsHex() {
+        // Scanner-inserted GS (0x1D) where the '|' delimiter should be.
+        Assert.assertEquals(
+            "at index 4 (unexpected '\\x1D'): 1234»\\x1D00710155231|30",
+            describeMismatch(rxLabel, "1234\u001D00710155231|30")
+        )
+    }
+
+    @Test
+    fun describeMismatch_failsAtFirstCharacter() {
+        Assert.assertEquals(
+            "at index 0 (unexpected 'R'): »RX1|00710155231|30",
+            describeMismatch(rxLabel, "RX1|00710155231|30")
+        )
     }
 
     // ───────────────────────────── data class ─────────────────────────────

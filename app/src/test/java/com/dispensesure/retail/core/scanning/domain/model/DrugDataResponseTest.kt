@@ -338,33 +338,33 @@ class DrugDataResponseTest {
 
     // ---------- DrugComparisonData ----------
     private fun comparison() = DrugComparisonData(
-        is_ndc_same = true,
-        is_ndc_equivalent = false,
-        target_ndc = ndcInfo(),
-        scanned_ndc = ndcInfo().copy(drug_code = "DC2")
+        is_drug_same = true,
+        is_drug_equivalent = false,
+        target_drug = ndcInfo(),
+        scanned_drug = ndcInfo().copy(drug_code = "DC2")
     )
 
     @Test
     fun drugComparisonData_defaultsNull() {
         val c = DrugComparisonData()
-        assertNull(c.is_ndc_same)
-        assertNull(c.is_ndc_equivalent)
-        assertNull(c.target_ndc)
-        assertNull(c.scanned_ndc)
+        assertNull(c.is_drug_same)
+        assertNull(c.is_drug_equivalent)
+        assertNull(c.target_drug)
+        assertNull(c.scanned_drug)
     }
 
     @Test
     fun drugComparisonData_fullCoverage() {
         val c = comparison()
-        assertEquals(true, c.is_ndc_same)
-        assertEquals(false, c.is_ndc_equivalent)
-        assertEquals(ndcInfo(), c.target_ndc)
-        assertEquals(ndcInfo().copy(drug_code = "DC2"), c.scanned_ndc)
+        assertEquals(true, c.is_drug_same)
+        assertEquals(false, c.is_drug_equivalent)
+        assertEquals(ndcInfo(), c.target_drug)
+        assertEquals(ndcInfo().copy(drug_code = "DC2"), c.scanned_drug)
         assertEquals(comparison(), c)
         assertEquals(comparison().hashCode(), c.hashCode())
-        assertNotEquals(c, c.copy(is_ndc_same = false))
-        assertTrue(c.toString().contains("is_ndc_same"))
-        assertEquals(false, c.copy(is_ndc_same = false).is_ndc_same)
+        assertNotEquals(c, c.copy(is_drug_same = false))
+        assertTrue(c.toString().contains("is_drug_same"))
+        assertEquals(false, c.copy(is_drug_same = false).is_drug_same)
         assertEquals(true, c.component1())
         assertEquals(false, c.component2())
         assertEquals(ndcInfo(), c.component3())

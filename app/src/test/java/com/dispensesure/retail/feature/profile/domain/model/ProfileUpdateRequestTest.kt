@@ -13,7 +13,7 @@ class ProfileUpdateRequestTest {
         lName = "Doe",
         pharmacyName = "Pharmacy",
         phoneNumber = "1234567890",
-        npiId = "npi1",
+        pharmacyId = "ph1",
         isProfileComplete = true,
         avatarUrl = "http://avatar",
         notificationsEnabled = false,
@@ -29,7 +29,7 @@ class ProfileUpdateRequestTest {
         assertEquals("Doe", r.lName)
         assertEquals("Pharmacy", r.pharmacyName)
         assertEquals("1234567890", r.phoneNumber)
-        assertEquals("npi1", r.npiId)
+        assertEquals("ph1", r.pharmacyId)
         assertTrue(r.isProfileComplete)
         assertEquals("http://avatar", r.avatarUrl)
         assertEquals(false, r.notificationsEnabled)
@@ -45,7 +45,7 @@ class ProfileUpdateRequestTest {
             lName = "Doe",
             pharmacyName = "Pharmacy",
             phoneNumber = "1234567890",
-            npiId = "npi1",
+            pharmacyId = "ph1",
             isProfileComplete = true,
             avatarUrl = "http://avatar",
             notificationsEnabled = false,
@@ -83,7 +83,7 @@ class ProfileUpdateRequestTest {
         assertEquals("Doe", r.component2())
         assertEquals("Pharmacy", r.component3())
         assertEquals("1234567890", r.component4())
-        assertEquals("npi1", r.component5())
+        assertEquals("ph1", r.component5())
         assertEquals(true, r.component6())
         assertEquals("http://avatar", r.component7())
         assertEquals(false, r.component8())
