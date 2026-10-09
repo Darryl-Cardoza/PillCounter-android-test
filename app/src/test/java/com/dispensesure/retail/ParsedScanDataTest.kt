@@ -105,6 +105,28 @@ class ParsedScanDataTest {
         Assert.assertEquals("2", result.refillNo)
     }
 
+    // Server label template for the NDC-with-dashes cases below.
+    private val labelTemplate =
+        """^(?<rxnumber>[^|]{1,32})\|(?<refillno>\d{1,3})\|(?<ndc>\d{8,11})\|(?<qty>[\d.]{1,10})$"""
+
+    @Test
+    fun parseScanData_ndcWithDashes_isAcceptedAndDashesStripped() {
+        val result = parseScanData(labelTemplate, "RX10235|0|72888-008-00|24")
+
+        Assert.assertEquals("RX10235", result.rxNo)
+        Assert.assertEquals("0", result.refillNo)
+        Assert.assertEquals("7288800800", result.ndcNo)
+        Assert.assertEquals("24", result.qty)
+    }
+
+    @Test
+    fun parseScanData_ndcWithDashes_stillRejectsWrongDigitCount() {
+        // 12 digits, even with dashes, is over the 11-digit limit.
+        Assert.assertNull(parseScanData(labelTemplate, "RX1|0|1234-5678-9012|24").ndcNo)
+        // A dash at the start of the NDC is not a digit separator.
+        Assert.assertNull(parseScanData(labelTemplate, "RX1|0|-7288800800|24").ndcNo)
+    }
+
     // ───────────────────────────── describeMismatch ─────────────────────────────
 
     private val rxLabel = Regex("""(?<RxNo>\d+)\|(?<NdcNo>\d{11})\|(?<Qty>\d+)""")

@@ -27,7 +27,7 @@ class SettingsDataDtoTest {
         offlineSessionThresholdSeconds = 86400L
     )
 
-    private fun hl7() = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
+    private fun hl7() = ApplicationSettingsHL7Config(pmsHostName = "_pms._tcp", pillCounterHostName = "_counter._tcp")
 
     private fun sample(hl7Config: ApplicationSettingsHL7Config? = hl7()) = SettingsDataDto(
         minVersion = "1.0.0",
