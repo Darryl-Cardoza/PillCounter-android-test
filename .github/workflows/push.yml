@@ -132,6 +132,8 @@ jobs:
       playstore_track: internal
       playstore_status: draft
 
+      sign_build: true   # false = attach unsigned APK/AAB to the GitHub Release
+
       deploy_to_esper: false
       esper_org_id: ""
       esper_app_id: ""
