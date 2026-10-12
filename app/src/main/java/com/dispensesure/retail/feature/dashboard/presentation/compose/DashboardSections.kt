@@ -17,7 +17,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
@@ -45,7 +44,10 @@ internal fun QuickActionsAndKpiSection(
     ) {
         Text(
             text = stringResource(R.string.quick_actions),
-            fontSize = responsiveSp(if (UserInterfaceUtils.isTablet()) 8.sp else 10.sp, boostOnPhone = false),
+            fontSize = responsiveSp(
+                if (UserInterfaceUtils.isTablet()) DashboardBaseSizes.SectionLabelText else DashboardBaseSizes.SectionLabelTextOnPhone,
+                boostOnPhone = false,
+            ),
             color = extendedColors.textColor,
             fontWeight = FontWeight.SemiBold,
         )

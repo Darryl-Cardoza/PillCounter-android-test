@@ -7,7 +7,8 @@ import androidx.compose.ui.unit.sp
 // responsiveDp — never use these raw, except the "fixed" group at the bottom.
 internal object DashboardBaseSizes {
     // Text (responsiveSp)
-//    val SectionLabelText = 8.sp
+    val SectionLabelText = 8.sp
+    val SectionLabelTextOnPhone = 10.sp
     val QuickActionTitleText = 10.sp
     val QuickActionSubtitleText = 7.sp
     val KpiTitleText = 8.sp

@@ -20,9 +20,12 @@ fun Modifier.sideBorder(
     edgeCoverage: Float = 0.1f,
 ): Modifier = drawWithContent {
     drawContent()
+    // Zero width would divide by zero in the gradient stops below.
+    if (size.width <= 0f) return@drawWithContent
     val strokeWidth = width.toPx()
     val inset = strokeWidth / 2
-    val radius = cornerRadius.toPx()
+    // Capped at half the width so the gradient stops stay in order.
+    val radius = cornerRadius.toPx().coerceIn(0f, size.width / 2)
     // Solid through the corner arc, then fades; kept between the arc and the card's middle.
     val fadeEnd = (size.width * edgeCoverage).coerceAtLeast(radius).coerceAtMost(size.width / 2)
     val solidStop = radius / size.width

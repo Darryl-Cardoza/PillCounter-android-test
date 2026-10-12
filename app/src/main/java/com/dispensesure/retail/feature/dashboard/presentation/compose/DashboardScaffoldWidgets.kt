@@ -70,7 +70,7 @@ import java.util.Locale
 
 internal fun buildTerminalUserLine(
     uiState: DashboardUiState,
-    operatorLabel: String,
+    operatorLine: (String) -> String,
     includeTerminal: Boolean = true,
 ): String {
     val profile = uiState.userDetail?.profile
@@ -83,7 +83,7 @@ internal fun buildTerminalUserLine(
     // HL7 uses for its operator. Falls back to the account only before the first emission.
     val user = (uiState.operatorName?.ifBlank { null }
         ?: listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null })
-        ?.let { "$operatorLabel: $it" }
+        ?.let(operatorLine)
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }
 

@@ -14,7 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalResources
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.feature.dashboard.presentation.compose.DashboardBaseSizes
@@ -86,6 +86,7 @@ private fun DashboardScreenFrame(
     content: @Composable () -> Unit,
 ) {
     val uiState = params.uiState
+    val resources = LocalResources.current
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -99,7 +100,7 @@ private fun DashboardScreenFrame(
                 pharmacyName = uiState.userDetail?.profile?.pharmacyName,
                 terminalAndUserLine = buildTerminalUserLine(
                     uiState,
-                    operatorLabel = stringResource(R.string.photo_label_operator),
+                    operatorLine = { resources.getString(R.string.dashboard_operator_line, it) },
                     includeTerminal = params.isHl7Enabled,
                 ),
                 showPmsDot = params.isHl7Enabled,

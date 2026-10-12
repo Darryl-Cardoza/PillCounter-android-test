@@ -129,8 +129,8 @@ fun DrugCountRow(
                 color = AppTheme.extendedColors.secondaryBackground,
                 shape = RoundedCornerShape(dimens.extraSmall)
             )
-            .padding(end = responsiveDp(8.dp))
             .clickable { if (multiSelectMode) onSelectChange() else onClick() }
+            .padding(end = responsiveDp(8.dp))
     ) {
         Card(
             shape = RoundedCornerShape(dimens.extraSmall),
