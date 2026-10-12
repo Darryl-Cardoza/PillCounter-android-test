@@ -15,16 +15,19 @@ data class ParsedScanData(
 
 private val NAMED_GROUP_NAME = Regex("""\(\?<([a-zA-Z][a-zA-Z0-9]*)>""")
 
-// Finds an NDC digit group such as (?<ndc>\d{8,11}) or (?<ndc>\d{10}).
-private val NDC_DIGITS_GROUP = Regex("""(?i)\(\?<(ndc\w*)>\\d\{(\d+)(?:,(\d+))?\}\)""")
+// Finds an NDC digit group such as (?<ndc>\d{8,11}), (?<ndc>\d{10}) or (?<ndc>\d{8,}).
+private val NDC_DIGITS_GROUP = Regex("""(?i)\(\?<(ndc\w*)>\\d\{(\d+)(,(\d*))?\}\)""")
 
 fun parseScanData(template: String, actualValue: String): ParsedScanData {
     return try {
         // Dashes are allowed between NDC digits (e.g. 72888-008-00); the template's digit count still applies.
         val regex = Regex(NDC_DIGITS_GROUP.replace(template) {
-            val (name, min, max) = it.destructured
-            val maxDigits = max.ifEmpty { min }
-            "(?<$name>\\d(?:-?\\d){${min.toInt() - 1},${maxDigits.toInt() - 1}})"
+            val (name, min, rangePart, max) = it.destructured
+            // A zero-digit minimum has no first digit to anchor on, so the group is left as written.
+            if (min.toInt() == 0) return@replace it.value
+            val maxDigits = if (rangePart.isEmpty()) min else max
+            val maxRepeats = maxDigits.toIntOrNull()?.minus(1)?.toString().orEmpty()
+            "(?<$name>\\d(?:-?\\d){${min.toInt() - 1},$maxRepeats})"
         })
 
         val match = regex.matchEntire(actualValue.trim())
@@ -44,7 +47,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
         ParsedScanData(
             rxNo = rawMap["RXNO"] ?: rawMap["RXNUMBER"],
             refillNo = rawMap["REFILLNO"],
-            ndcNo = (rawMap["NDCNO"] ?: rawMap["NDC"])?.replace("-", ""),
+            ndcNo = (rawMap["NDCNO"] ?: rawMap["NDC"])?.let(::toElevenDigitNdc),
             qty = rawMap["QTY"],
             bucket = rawMap["BUCKET"],
             rawMap = rawMap
@@ -52,5 +55,19 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
     } catch (e: Exception) {
         logger.e("Error parsing scan data, template=$template", e)
         ParsedScanData()
+    }
+}
+
+// Pads a dashed 10-digit NDC (4-4-2, 5-3-2, 5-4-1) to 11 digits (5-4-2).
+// Any other NDC just has its dashes removed.
+private fun toElevenDigitNdc(ndc: String): String {
+    val segments = ndc.split("-")
+    if (segments.size != 3) return ndc.replace("-", "")
+    val (labeler, product, pkg) = segments
+    return when (segments.map { it.length }) {
+        listOf(4, 4, 2) -> "0$labeler$product$pkg"
+        listOf(5, 3, 2) -> "${labeler}0$product$pkg"
+        listOf(5, 4, 1) -> "$labeler${product}0$pkg"
+        else -> segments.joinToString("")
     }
 }
