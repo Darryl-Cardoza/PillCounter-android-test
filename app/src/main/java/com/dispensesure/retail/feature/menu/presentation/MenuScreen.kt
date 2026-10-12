@@ -7,7 +7,6 @@ import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.systemBarsPadding
-import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.HorizontalDivider
@@ -218,7 +217,7 @@ fun MenuScreen(
                                     .fillMaxSize()
                                     .padding(top = 40.dp)
                             ) {
-                                BreathingDotsLoader(Modifier.fillMaxSize().wrapContentSize())
+                                BreathingDotsLoader()
                                 Text(
                                     text = stringResource(R.string.logging_out),
                                     color = MaterialTheme.colorScheme.primary,

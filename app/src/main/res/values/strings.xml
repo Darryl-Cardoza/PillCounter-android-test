@@ -5,6 +5,7 @@
 
     <!--    Common   -->
     <string name="pms">PMS</string>
+    <string name="loading">Loading...</string>
     <string name="open_settings">Open Settings</string>
     <string name="not_now">Not now</string>
     <string name="location_access">Location Access</string>

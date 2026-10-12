@@ -5,6 +5,7 @@
 
     <!--    Common   -->
     <string name="pms">PMS</string>
+    <string name="loading">Chargement...</string>
     <string name="open_settings">Ouvrir les paramètres</string>
     <string name="not_now">Pas maintenant</string>
     <string name="location_access">Accès à la localisation</string>

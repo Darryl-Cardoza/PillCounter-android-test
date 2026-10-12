@@ -8,6 +8,7 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
@@ -21,9 +22,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import com.dispensesure.retail.R
 
 private const val DOT_COUNT = 3
 private const val BREATH_HALF_CYCLE_MS = 600
@@ -40,7 +46,9 @@ fun GlobalLoadingOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
-            .zIndex(1000f),
+            .zIndex(1000f)
+            // Swallow taps so nothing underneath can be pressed while loading.
+            .pointerInput(Unit) { detectTapGestures { } },
         contentAlignment = Alignment.Center,
     ) {
         BreathingDotsLoader()
@@ -54,9 +62,10 @@ fun BreathingDotsLoader(
     color: Color = MaterialTheme.colorScheme.secondary,
 ) {
     val infiniteTransition = rememberInfiniteTransition(label = "breathing_dots")
+    val loadingDescription = stringResource(R.string.loading)
 
     Row(
-        modifier = modifier,
+        modifier = modifier.semantics { contentDescription = loadingDescription },
         horizontalArrangement = Arrangement.spacedBy(dotSize / 2),
         verticalAlignment = Alignment.CenterVertically,
     ) {
