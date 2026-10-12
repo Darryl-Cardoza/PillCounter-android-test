@@ -126,6 +126,17 @@ class ParsedScanDataTest {
         Assert.assertNull(parseScanData(labelTemplate, "RX1|0|-7288800800|24").ndcNo)
     }
 
+    @Test
+    fun parseScanData_ndcWithDashes_exactDigitCountTemplate() {
+        val tenDigits = """^(?<rxnumber>[^|]{1,32})\|(?<ndc>\d{10})$"""
+        val elevenDigits = """^(?<rxnumber>[^|]{1,32})\|(?<ndc>\d{11})$"""
+
+        Assert.assertEquals("7288800800", parseScanData(tenDigits, "RX1|72888-008-00").ndcNo)
+        Assert.assertEquals("72888000800", parseScanData(elevenDigits, "RX1|72888-0008-00").ndcNo)
+        // The exact count still applies: 10 digits do not fit a \d{11} group.
+        Assert.assertNull(parseScanData(elevenDigits, "RX1|72888-008-00").ndcNo)
+    }
+
     // ───────────────────────────── data class ─────────────────────────────
 
     @Test

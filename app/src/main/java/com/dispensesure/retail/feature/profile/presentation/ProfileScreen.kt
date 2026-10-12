@@ -419,7 +419,8 @@ private fun ResponsiveProfileFields(
             viewModel.pharmacyId,
             { v -> viewModel.onPharmacyIdChanged(v) },
             R.string.pharmacy_id,
-            null
+            null,
+            maxLength = 20
         )
     )
 

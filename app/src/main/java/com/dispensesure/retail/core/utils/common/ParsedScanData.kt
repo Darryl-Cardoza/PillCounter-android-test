@@ -15,16 +15,19 @@ data class ParsedScanData(
 
 private val NAMED_GROUP_NAME = Regex("""\(\?<([a-zA-Z][a-zA-Z0-9]*)>""")
 
-// Finds an NDC digit group such as (?<ndc>\d{8,11}).
-private val NDC_DIGITS_GROUP = Regex("""(?i)\(\?<(ndc\w*)>\\d\{8,11\}\)""")
+// Finds an NDC digit group such as (?<ndc>\d{8,11}) or (?<ndc>\d{10}).
+private val NDC_DIGITS_GROUP = Regex("""(?i)\(\?<(ndc\w*)>\\d\{(\d+)(?:,(\d+))?\}\)""")
 
 fun parseScanData(template: String, actualValue: String): ParsedScanData {
     return try {
-        // Dashes are allowed between NDC digits (e.g. 72888-008-00); 8-11 digits still required.
-        val regex = Regex(NDC_DIGITS_GROUP.replace(template) { "(?<${it.groupValues[1]}>\\d(?:-?\\d){7,10})" })
+        // Dashes are allowed between NDC digits (e.g. 72888-008-00); the template's digit count still applies.
+        val regex = Regex(NDC_DIGITS_GROUP.replace(template) {
+            val (name, min, max) = it.destructured
+            val maxDigits = max.ifEmpty { min }
+            "(?<$name>\\d(?:-?\\d){${min.toInt() - 1},${maxDigits.toInt() - 1}})"
+        })
 
-        val input = actualValue.trim()
-        val match = regex.matchEntire(input)
+        val match = regex.matchEntire(actualValue.trim())
             ?: run {
                 logger.e("Scan data does not match label format: $actualValue")
                 return ParsedScanData()
