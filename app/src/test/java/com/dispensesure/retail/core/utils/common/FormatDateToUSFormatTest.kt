@@ -6,19 +6,14 @@ import org.junit.Test
 /**
  * Unit tests for the top-level [formatDateToUSFormat] function.
  *
- * Covers: new MM/dd/yy and legacy MM-dd-yyyy expiry text, unparseable input
+ * Covers: stored MM-dd-yyyy expiry text, unparseable input
  * (returned trimmed), custom output pattern, and the blank-input passthrough.
  */
 class FormatDateToUSFormatTest {
 
     @Test
-    fun legacyExpiry_returnsMmDdYy() {
+    fun storedExpiry_returnsMmDdYy() {
         assertEquals("12/31/27", formatDateToUSFormat("12-31-2027"))
-    }
-
-    @Test
-    fun newExpiry_returnedUnchanged() {
-        assertEquals("12/31/27", formatDateToUSFormat("12/31/27"))
     }
 
     @Test

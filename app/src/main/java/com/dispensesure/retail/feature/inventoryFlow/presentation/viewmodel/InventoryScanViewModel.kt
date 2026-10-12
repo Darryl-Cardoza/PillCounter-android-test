@@ -442,7 +442,7 @@ class InventoryScanViewModel @Inject constructor(
 
                 val lotNo = decoded?.lotNumber
                 val serialNo = decoded?.serialNumber
-                val expiry = decoded?.expirationDate?.format(DateTimeFormatter.ofPattern(DateFormats.MM_DD_YY))
+                val expiry = decoded?.expirationDate?.format(DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED))
                 val packageQty = drug.packageQty ?: 0
                 logger.d("INV_SCAN parsed lotNo=$lotNo serialNo=$serialNo expiry=$expiry packageQty=$packageQty")
 

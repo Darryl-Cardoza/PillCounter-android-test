@@ -4,7 +4,6 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
-import java.util.Date
 import java.util.Locale
 import java.util.TimeZone
 
@@ -18,65 +17,6 @@ object DateUtils {
 
     // Common date format constants
     private const val UTC_TIME_ZONE = "UTC"
-
-    /**
-     * Converts a UTC timestamp string into a formatted local date string.
-     * Expected input format: yyyy-MM-dd'T'HH:mm:ss'Z'
-     *
-     * @param timestamp The UTC timestamp string to convert.
-     * @return A formatted local date string, or empty string if conversion fails.
-     */
-    fun convertUTCTimestampToDate(timestamp: String?): String {
-        if (timestamp.isNullOrBlank()) return ""
-
-        return try {
-            val utcFormat = SimpleDateFormat(DateFormats.ISO_UTC, Locale.getDefault()).apply {
-                timeZone = TimeZone.getTimeZone(UTC_TIME_ZONE)
-            }
-
-            val date: Date? = utcFormat.parse(timestamp)
-            if (date == null) {
-                logger.e("Failed to parse UTC timestamp: $timestamp")
-                return ""
-            }
-
-            val localFormat = SimpleDateFormat(DateFormats.MM_DD_YY, Locale.getDefault()).apply {
-                timeZone = TimeZone.getDefault()
-            }
-
-            val formatted = localFormat.format(date)
-            logger.d("Converted UTC timestamp: $timestamp → $formatted")
-            formatted
-        } catch (e: Exception) {
-            logger.e("Error converting UTC timestamp: $timestamp", e)
-            ""
-        }
-    }
-
-    /**
-     * Converts a GS1-style date string (YYMMDD) to a human-readable date.
-     * Example input: "251006" → Output: "10/06/25"
-     *
-     * @param dateString The date string in YYMMDD format.
-     * @return The formatted date string, or empty string if invalid.
-     */
-    fun convertToDate(dateString: String?): String {
-        if (dateString.isNullOrBlank()) return ""
-
-        return try {
-            val parser = DateTimeFormatter.ofPattern(DateFormats.GS1_YYMMDD)
-            val date = LocalDate.parse(dateString, parser)
-
-            val formatter = DateTimeFormatter.ofPattern(DateFormats.MM_DD_YY, Locale.getDefault())
-            val formattedDate = date.format(formatter)
-
-            logger.d("Formatted GS1 date: $dateString → $formattedDate")
-            formattedDate
-        } catch (e: Exception) {
-            logger.e("Error converting GS1 date: $dateString", e)
-            ""
-        }
-    }
 
     /**
      * Parses an ISO-8601 UTC timestamp into epoch milliseconds.

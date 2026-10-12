@@ -608,7 +608,7 @@ class InventoryScanViewModelTest {
     }
 
     @Test
-    fun `onBarcodeDetected saves expiry as MM-dd-yy`() = runTest(testDispatcher) {
+    fun `onBarcodeDetected saves expiry as MM-dd-yyyy`() = runTest(testDispatcher) {
         stubGs1Decode()
         coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
         coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
@@ -622,8 +622,8 @@ class InventoryScanViewModelTest {
         vm.onBarcodeDetected("raw")
         advanceUntilIdle()
 
-        assertEquals("01/15/30", vm.uiState.value.activeNdc?.expiry)
-        coVerify { bottleInfoDao.findSealedLine(100L, "LOT1", "01/15/30") }
+        assertEquals("01-15-2030", vm.uiState.value.activeNdc?.expiry)
+        coVerify { bottleInfoDao.findSealedLine(100L, "LOT1", "01-15-2030") }
         job.cancel()
     }
 

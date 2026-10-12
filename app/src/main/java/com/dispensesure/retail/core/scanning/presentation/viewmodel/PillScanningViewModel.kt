@@ -2087,7 +2087,7 @@ class PillScanningViewModel @Inject constructor(
 
                 val lotNumber = decoded?.lotNumber
                 val expirationDate = decoded?.expirationDate?.format(
-                    java.time.format.DateTimeFormatter.ofPattern(DateFormats.MM_DD_YY)
+                    java.time.format.DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED)
                 )
                 val serialNumber = decoded?.serialNumber
 

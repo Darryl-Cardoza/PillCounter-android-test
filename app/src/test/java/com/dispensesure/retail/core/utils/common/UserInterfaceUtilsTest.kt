@@ -13,6 +13,7 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.util.Calendar
 import java.util.TimeZone
 
 /**
@@ -132,6 +133,22 @@ class UserInterfaceUtilsTest {
             TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
             // 1609459200000 = 01 Jan 2021 00:00 UTC; AM/PM case is locale-dependent.
             assertEquals("01/01/21 12:00 am", 1609459200000L.toFormattedDate().lowercase())
+        } finally {
+            TimeZone.setDefault(tz)
+        }
+    }
+
+    @Test
+    fun toFormattedDate_sixthOfOctober_isMonthFirstNotDayFirst() {
+        val tz = TimeZone.getDefault()
+        try {
+            TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
+            // 6 Oct 2026 12:00 UTC. Day and month differ, so a day/month swap changes the output.
+            val epoch = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
+                clear()
+                set(2026, Calendar.OCTOBER, 6, 12, 0)
+            }.timeInMillis
+            assertEquals("10/06/26 12:00 pm", epoch.toFormattedDate().lowercase())
         } finally {
             TimeZone.setDefault(tz)
         }

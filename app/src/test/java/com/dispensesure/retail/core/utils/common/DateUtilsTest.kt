@@ -5,7 +5,6 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Test
 import java.time.Month
-import java.util.TimeZone
 
 /**
  * Unit tests for [DateUtils].
@@ -72,74 +71,6 @@ class DateUtilsTest {
     fun `parseBarcodeDate returns null for string with wrong length`() {
         val result = DateUtils.parseBarcodeDate("2412")
         assertNull(result) // yyMMdd requires exactly 6 chars
-    }
-
-    // -------------------------------------------------------------------------
-    // convertToDate  —  format yyMMdd → "MM/dd/yy"
-    // -------------------------------------------------------------------------
-
-    // DATE_008
-    @Test
-    fun `convertToDate returns formatted string for valid yyMMdd input`() {
-        assertEquals("10/06/25", DateUtils.convertToDate("251006"))
-    }
-
-    // DATE_009
-    @Test
-    fun `convertToDate returns empty string for null input`() {
-        assertEquals("", DateUtils.convertToDate(null))
-    }
-
-    // DATE_010
-    @Test
-    fun `convertToDate returns empty string for empty input`() {
-        assertEquals("", DateUtils.convertToDate(""))
-    }
-
-    // DATE_011
-    @Test
-    fun `convertToDate returns empty string for invalid format`() {
-        assertEquals("", DateUtils.convertToDate("not-a-date"))
-    }
-
-    // -------------------------------------------------------------------------
-    // convertUTCTimestampToDate  —  input: "yyyy-MM-dd'T'HH:mm:ss'Z'"
-    // -------------------------------------------------------------------------
-
-    // DATE_012
-    @Test
-    fun `convertUTCTimestampToDate returns non-empty string for valid ISO timestamp`() {
-        val tz = TimeZone.getDefault()
-        try {
-            TimeZone.setDefault(TimeZone.getTimeZone("UTC"))
-            assertEquals("12/31/24", DateUtils.convertUTCTimestampToDate("2024-12-31T10:30:00Z"))
-        } finally {
-            TimeZone.setDefault(tz)
-        }
-    }
-
-    // DATE_013
-    @Test
-    fun `convertUTCTimestampToDate returns empty string for null input`() {
-        assertEquals("", DateUtils.convertUTCTimestampToDate(null))
-    }
-
-    // DATE_014
-    @Test
-    fun `convertUTCTimestampToDate returns empty string for empty input`() {
-        assertEquals("", DateUtils.convertUTCTimestampToDate(""))
-    }
-
-    // DATE_015
-    @Test
-    fun `convertUTCTimestampToDate returns empty string for malformed input`() {
-        assertEquals("", DateUtils.convertUTCTimestampToDate("not-a-timestamp"))
-    }
-
-    // DATE_016
-    @Test
-    fun `convertUTCTimestampToDate returns empty string for blank whitespace input`() {
-        assertEquals("", DateUtils.convertUTCTimestampToDate("   "))
     }
 
     // -------------------------------------------------------------------------

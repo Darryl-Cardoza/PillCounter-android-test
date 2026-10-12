@@ -18,7 +18,7 @@ import androidx.room.PrimaryKey
  * @property batchId    FK to [BatchEntity.batchId]. Null if the batch is deleted. Denormalized
  *                      from the parent [StockTxnEntity] so batch-scoped joins stay cheap.
  * @property lotNo      Lot/batch number from the scanned label.
- * @property expNo      Expiry (stored as a formatted string, e.g. MM/dd/yy).
+ * @property expNo      Expiry (stored as a formatted string, e.g. MM-dd-yyyy).
  * @property serialNo   GS1 serial number (AI 21) of the scanned unit, if present.
  * @property bottleQty  Count of sealed bottles for this line.
  * @property looseQty   Count of loose/open pills counted for this line.

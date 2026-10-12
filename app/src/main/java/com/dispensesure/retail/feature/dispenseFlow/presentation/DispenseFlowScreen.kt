@@ -1627,7 +1627,7 @@ internal fun handleBarcode(
                 val firstBottle = BottleInfo(
                     lotNumber = decoded?.lotNumber,
                     expirationDate = decoded?.expirationDate?.format(
-                        java.time.format.DateTimeFormatter.ofPattern(DateFormats.MM_DD_YY)
+                        java.time.format.DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED)
                     ),
                     serialNumber = decoded?.serialNumber,
                     barcodeImagePath = imagePath,

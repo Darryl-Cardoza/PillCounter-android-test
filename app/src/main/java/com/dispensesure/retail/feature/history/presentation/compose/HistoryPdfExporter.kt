@@ -189,9 +189,8 @@ class HistoryPdfExporter(private val context: Context) {
                 yPosition = margin.toFloat() + 30
             }
 
-            val footerText = "Generated on: ${
+            val footerText = "${context.getString(R.string.generated_on)} " +
                 SimpleDateFormat(DateFormats.MMM_DD_YYYY_HH_MM_A, Locale.getDefault()).format(Date())
-            }"
 
             canvas.drawText(
                 footerText,

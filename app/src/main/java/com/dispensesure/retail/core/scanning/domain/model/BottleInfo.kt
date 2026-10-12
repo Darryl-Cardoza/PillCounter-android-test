@@ -6,7 +6,7 @@ import com.google.gson.Gson
  * One physical bottle scanned against a dispense transaction.
  *
  * @property lotNumber Lot/batch number (GS1 AI 10), null for a non-GS1 scan.
- * @property expirationDate Expiry formatted MM/dd/yy (GS1 AI 17), null for a non-GS1 scan.
+ * @property expirationDate Expiry formatted MM-dd-yyyy (GS1 AI 17), null for a non-GS1 scan.
  * @property serialNumber Serial number (GS1 AI 21), null for a non-GS1 scan.
  * @property txnDetailsIds IDs of the `PillCountTxnDetailsEntity` rows recorded while this bottle
  *   was active. There is no stored pill count: a bottle's true count is always
