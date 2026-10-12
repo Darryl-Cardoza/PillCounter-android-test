@@ -15,12 +15,12 @@ interface IDrugAPI {
      * Fetches drug information based on a National Drug Code (NDC).
      *
      * Example:
-     * GET /drugs/ndc/{ndc}
+     * POST drugs/code
      *
-     * @param ndc National Drug Code.
+     * @param getNdcRequestModel Request body carrying the National Drug Code.
      * @return A [DrugDataResponse] containing the search results.
      */
-    @POST("drugs/ndc")
+    @POST("drugs/code")
     suspend fun getDrugInfoByNdc(
         @Header("Authorization") authorization: String,
         @Body getNdcRequestModel: GetNdcRequestModel,
