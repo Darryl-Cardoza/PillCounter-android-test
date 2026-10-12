@@ -1,5 +1,6 @@
 package com.dispensesure.retail.feature.verifyPin.domain.model
 
+import com.dispensesure.retail.core.di.NetworkModule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -12,7 +13,7 @@ class VerifiedUserTest {
         userId = "u1",
         email = "user@example.com",
         isVerified = true,
-        role = UserRole(id = "r1", name = "admin"),
+        role = "admin",
         authIsLocked = false,
         isHl7Enabled = true
     )
@@ -23,7 +24,7 @@ class VerifiedUserTest {
         assertEquals("u1", u.userId)
         assertEquals("user@example.com", u.email)
         assertEquals(true, u.isVerified)
-        assertEquals(UserRole("r1", "admin"), u.role)
+        assertEquals("admin", u.role)
         assertEquals(false, u.authIsLocked)
         assertEquals(true, u.isHl7Enabled)
     }
@@ -56,6 +57,18 @@ class VerifiedUserTest {
     }
 
     @Test
+    fun parsesBackendOtpResponse_withStringRole() {
+        val json = """{"status":200,"is_success":true,"message":"OTP verified successfully.",
+            "data":{"access_token":"a","refresh_token":"r","expires_in":86400,
+            "user":{"user_id":"u1","email":"heth@rite.com","country":"US","state":"NY",
+            "is_verified":true,"is_profile_completed":true,"role":"admin"}}}"""
+        val response = NetworkModule.provideMoshi()
+            .adapter(VerifyPinResponse::class.java).fromJson(json)
+        assertEquals("admin", response?.data?.user?.role)
+        assertEquals("a", response?.data?.accessToken)
+    }
+
+    @Test
     fun copy_overridesValue() {
         assertEquals("u2", sample().copy(userId = "u2").userId)
     }
@@ -66,7 +79,7 @@ class VerifiedUserTest {
         assertEquals("u1", u.component1())
         assertEquals("user@example.com", u.component2())
         assertEquals(true, u.component3())
-        assertEquals(UserRole("r1", "admin"), u.component4())
+        assertEquals("admin", u.component4())
         assertEquals(false, u.component5())
         assertEquals(true, u.component6())
     }

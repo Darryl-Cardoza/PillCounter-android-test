@@ -7,13 +7,13 @@ import org.junit.Test
 
 class GetNdcRequestModelTest {
 
-    private fun model() = GetNdcRequestModel(target_ndc = "t1", scanned_ndc = "s1")
+    private fun model() = GetNdcRequestModel(target_drug = "t1", scanned_drug = "s1")
 
     @Test
     fun getters_returnValues() {
         val m = model()
-        assertEquals("t1", m.target_ndc)
-        assertEquals("s1", m.scanned_ndc)
+        assertEquals("t1", m.target_drug)
+        assertEquals("s1", m.scanned_drug)
     }
 
     @Test
@@ -24,7 +24,7 @@ class GetNdcRequestModelTest {
 
     @Test
     fun equals_notEqual() {
-        assertNotEquals(model(), model().copy(target_ndc = "x"))
+        assertNotEquals(model(), model().copy(target_drug = "x"))
     }
 
     @Test
@@ -34,7 +34,7 @@ class GetNdcRequestModelTest {
 
     @Test
     fun copy_overrides() {
-        assertEquals("x", model().copy(scanned_ndc = "x").scanned_ndc)
+        assertEquals("x", model().copy(scanned_drug = "x").scanned_drug)
     }
 
     @Test

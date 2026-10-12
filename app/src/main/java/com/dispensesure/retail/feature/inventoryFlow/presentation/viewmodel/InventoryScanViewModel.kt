@@ -366,7 +366,7 @@ class InventoryScanViewModel @Inject constructor(
                 val drug = localDrug ?: run {
                     val drugInfo = try {
                         drugRepository.getDrugInfoByNdc(
-                            GetNdcRequestModel(target_ndc = "", scanned_ndc = scanKey)
+                            GetNdcRequestModel(target_drug = "", scanned_drug = scanKey)
                         )
                     } catch (e: Exception) {
                         logger.e("server drug lookup failed for scanKey=$scanKey", e)

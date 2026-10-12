@@ -65,7 +65,7 @@ class EncryptedDbPerformanceInstrumentedTest {
         isVerified = true,
         isProfileCompleted = true,
         pharmacyName = "Pharmacy $i",
-        npiId = "NPI$i",
+        pharmacyId = "PH$i",
         language = "en",
         timezone = "Asia/Kolkata",
         notifications = true,
