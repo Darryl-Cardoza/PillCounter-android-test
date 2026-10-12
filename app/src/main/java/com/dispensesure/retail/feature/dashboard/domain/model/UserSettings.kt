@@ -25,4 +25,5 @@ data class UserSettings(
     @Json(name = "use_static_pms_connection") val useStaticPmsConnection: Boolean? = null,
     @Json(name = "pms_ip") val pmsIP: String? = null,
     @Json(name = "pms_port") val pmsPort: String? = null,
+    @Json(name = "barcode_format") val barcodeFormat: String? = null,
 )

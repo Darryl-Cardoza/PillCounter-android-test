@@ -446,8 +446,8 @@ class Hl7Repository @Inject constructor(
             logger.i("Drug not found locally for NDC: $hl7Ndc, calling API")
 
             val request = GetNdcRequestModel(
-                target_ndc = hl7Ndc,
-                scanned_ndc = hl7Ndc
+                target_drug = hl7Ndc,
+                scanned_drug = hl7Ndc
             )
 
             val drugInfo = try {
@@ -567,8 +567,8 @@ class Hl7Repository @Inject constructor(
             logger.i("Drug not found locally for NDC: $hl7Ndc, calling API")
 
             val request = GetNdcRequestModel(
-                target_ndc = hl7Ndc,
-                scanned_ndc = hl7Ndc
+                target_drug = hl7Ndc,
+                scanned_drug = hl7Ndc
             )
 
             val drugInfo = try {
@@ -792,7 +792,7 @@ class Hl7Repository @Inject constructor(
             return null
         }
 
-        val request = GetNdcRequestModel(target_ndc = ndc, scanned_ndc = ndc)
+        val request = GetNdcRequestModel(target_drug = ndc, scanned_drug = ndc)
         return try {
             logger.i("Drug not found locally for NDC: $ndc, calling API")
 
@@ -927,7 +927,7 @@ class Hl7Repository @Inject constructor(
             localDrug
         } else {
             logger.i("ORC|XO: drug not found locally for NDC=$hl7Ndc, calling API")
-            val request = GetNdcRequestModel(target_ndc = hl7Ndc, scanned_ndc = hl7Ndc)
+            val request = GetNdcRequestModel(target_drug = hl7Ndc, scanned_drug = hl7Ndc)
             try {
                 val drugInfo = drugRepository.getDrugInfoByNdc(request)
                 val resolvedName = drugInfo?.genericName?.takeIf { it.isNotBlank() }

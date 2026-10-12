@@ -21,9 +21,9 @@ data class VerifiedUser(
     @Json(name = "is_verified")
     val isVerified: Boolean? = null,
 
-    /** Role object containing id and name */
+    /** Role name, e.g., "admin" */
     @Json(name = "role")
-    val role: UserRole? = null,
+    val role: String? = null,
 
     /** Whether the user account is locked */
     @Json(name = "auth_is_locked")

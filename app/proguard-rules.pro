@@ -127,7 +127,7 @@
 
 # GetNdcRequestModel — plain data class, no Moshi annotation.
 # Moshi uses KotlinJsonAdapterFactory (reflection) to serialize it.
-# R8 must not rename fields (target_ndc / scanned_ndc) or the server
+# R8 must not rename fields (target_drug / scanned_drug) or the server
 # receives {"a":"","b":"..."} and returns null → NDC-not-found toast.
 #
 # DrugDataResponse and all nested classes use @Serializable (Kotlinx) but

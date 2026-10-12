@@ -24,7 +24,8 @@ class ApplicationSettingsResponseTest {
     private fun sample() = ApplicationSettingsResponse(
         colors = colors(),
         appLogo = "app_logo.png",
-        placeholderLogo = "placeholder.png"
+        placeholderLogo = "placeholder.png",
+        offlineSessionThresholdSeconds = 86400L
     )
 
     @Test
@@ -33,6 +34,7 @@ class ApplicationSettingsResponseTest {
         assertEquals(colors(), r.colors)
         assertEquals("app_logo.png", r.appLogo)
         assertEquals("placeholder.png", r.placeholderLogo)
+        assertEquals(86400L, r.offlineSessionThresholdSeconds)
     }
 
     @Test
@@ -75,5 +77,20 @@ class ApplicationSettingsResponseTest {
         assertEquals(colors(), r.component1())
         assertEquals("app_logo.png", r.component2())
         assertEquals("placeholder.png", r.component3())
+        assertEquals(86400L, r.component4())
+    }
+
+    @Test
+    fun withOfflineThreshold() {
+        val r = sample().copy(offlineSessionThresholdSeconds = 86400L)
+        assertEquals(86400L, r.offlineSessionThresholdSeconds)
+        assertEquals("app_logo.png", r.appLogo)
+    }
+
+    @Test
+    fun withoutOfflineThreshold() {
+        val r = sample().copy(offlineSessionThresholdSeconds = null)
+        assertEquals(null, r.offlineSessionThresholdSeconds)
+        assertEquals("app_logo.png", r.appLogo)
     }
 }

@@ -261,7 +261,7 @@ class Hl7OrderProcessor @Inject constructor(
         val local = drugMasterDao.getDrugByNdc(ndc)
         if (local != null) return local
 
-        val request = GetNdcRequestModel(target_ndc = ndc, scanned_ndc = ndc)
+        val request = GetNdcRequestModel(target_drug = ndc, scanned_drug = ndc)
         return try {
             val drugInfo = drugRepository.getDrugInfoByNdc(request)
             val resolvedName = drugInfo?.genericName?.takeIf { it.isNotBlank() }

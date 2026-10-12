@@ -12,7 +12,7 @@ class DrugInfoTest {
         brandName = "Brand",
         genericName = "Generic",
         ndc = "12345",
-        is_ndc_equivalent = true,
+        is_drug_equivalent = true,
         drugType = "TABLET",
         qty = 10,
         isHazardous = false
@@ -29,7 +29,7 @@ class DrugInfoTest {
         assertNull(d.brandName)
         assertNull(d.genericName)
         assertEquals("n", d.ndc)
-        assertNull(d.is_ndc_equivalent)
+        assertNull(d.is_drug_equivalent)
         assertEquals("t", d.drugType)
         assertEquals(0, d.qty)
         assertNull(d.isHazardous)
@@ -41,7 +41,7 @@ class DrugInfoTest {
         assertEquals("Brand", d.brandName)
         assertEquals("Generic", d.genericName)
         assertEquals("12345", d.ndc)
-        assertEquals(true, d.is_ndc_equivalent)
+        assertEquals(true, d.is_drug_equivalent)
         assertEquals("TABLET", d.drugType)
         assertEquals(10, d.qty)
         assertEquals(false, d.isHazardous)
