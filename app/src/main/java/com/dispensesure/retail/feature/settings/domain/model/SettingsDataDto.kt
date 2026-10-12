@@ -19,5 +19,4 @@ data class SettingsDataDto(
     @Json(name = "is_maintenance_mode") val isMaintenanceMode: Boolean,
     @Json(name = "settings") val settings: ApplicationSettingsResponse,
     @Json(name = "hl7_config") val hl7Config: ApplicationSettingsHL7Config?,  // nullable now
-
 )

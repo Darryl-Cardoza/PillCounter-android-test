@@ -639,7 +639,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
             coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
                 brandName = null, genericName = "ServerDrug", ndc = "NDC123",
-                is_ndc_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
+                is_drug_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
             )
             coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
             // getDrugByNdc is called twice: once for the initial local miss, once after the
@@ -704,7 +704,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugByGtin("NDC123") } returns null
             coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
                 brandName = null, genericName = "ServerDrug", ndc = "NDC123",
-                is_ndc_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
+                is_drug_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
             )
             coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
             coEvery { drugMasterDao.getDrugByNdc("NDC123") } returnsMany listOf(
@@ -849,7 +849,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
             coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
                 brandName = null, genericName = "Gen", ndc = "OTHER",
-                is_ndc_equivalent = false, drugType = "CII", qty = 1, isHazardous = false
+                is_drug_equivalent = false, drugType = "CII", qty = 1, isHazardous = false
             )
             vm.onNdcBarcodeRead("gtin", null)
             advanceUntilIdle()
@@ -869,7 +869,7 @@ class DispenseFlowViewModelTest {
             coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
             coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
                 brandName = null, genericName = "Gen", ndc = "ALLOWED",
-                is_ndc_equivalent = false, drugType = "CII", qty = 1, isHazardous = false
+                is_drug_equivalent = false, drugType = "CII", qty = 1, isHazardous = false
             )
             vm.onNdcBarcodeRead("gtin", null)
             advanceUntilIdle()
@@ -935,7 +935,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
             brandName = "B", genericName = "Generic", ndc = "SRV1",
-            is_ndc_equivalent = true, drugType = "CII", qty = 3, isHazardous = false
+            is_drug_equivalent = true, drugType = "CII", qty = 3, isHazardous = false
         )
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
@@ -956,7 +956,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
             brandName = null, genericName = "Gen", ndc = "DIFFERENT",
-            is_ndc_equivalent = false, drugType = "CII", qty = 1, isHazardous = null
+            is_drug_equivalent = false, drugType = "CII", qty = 1, isHazardous = null
         )
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
@@ -974,7 +974,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
             brandName = null, genericName = null, ndc = "SRV", // genericName null -> Unknown Drug
-            is_ndc_equivalent = false, drugType = "X", qty = 2, isHazardous = true
+            is_drug_equivalent = false, drugType = "X", qty = 2, isHazardous = true
         )
         coEvery { drugMasterDao.getDrugIdByNdc("SRV") } returns 12L
         vm.onNdcBarcodeRead("gtin", null)
@@ -998,7 +998,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.getDrugByNdc("gtin") } returns null
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
             brandName = null, genericName = "Gen", ndc = "SRV",
-            is_ndc_equivalent = false, drugType = "X", qty = 2, isHazardous = false
+            is_drug_equivalent = false, drugType = "X", qty = 2, isHazardous = false
         )
         vm.onNdcBarcodeRead("gtin", null)
         advanceUntilIdle()
@@ -1348,7 +1348,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 12L
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
             brandName = null, genericName = "Gen", ndc = "SUBNDC",
-            is_ndc_equivalent = true, drugType = "X", qty = 7, isHazardous = false
+            is_drug_equivalent = true, drugType = "X", qty = 7, isHazardous = false
         )
         val vm = createViewModel()
         vm.initializeFromResumedTxn() // txnId 7 (FIXED), PRE_NDC
@@ -1749,7 +1749,7 @@ class DispenseFlowViewModelTest {
         coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 12L
         coEvery { drugRepository.getDrugInfoByNdc(any()) } returns DrugInfo(
             brandName = null, genericName = "Gen", ndc = "SUBNDC",
-            is_ndc_equivalent = true, drugType = "X", qty = 7, isHazardous = false,
+            is_drug_equivalent = true, drugType = "X", qty = 7, isHazardous = false,
         )
         val vm = createViewModel()
         vm.initializeFromResumedTxn() // txnId 7 (FIXED), PRE_NDC

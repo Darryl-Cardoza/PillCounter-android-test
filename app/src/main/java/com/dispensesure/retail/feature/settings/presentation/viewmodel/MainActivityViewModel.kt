@@ -293,7 +293,6 @@ class MainActivityViewModel @Inject constructor(
                 // OFFLINE timer reflects the current backend policy. Null means the backend did
                 // not include the field on this response — controller keeps its persisted value.
                 response.data?.settings?.offlineSessionThresholdSeconds?.let { seconds ->
-                    preferenceHelper.setOfflineSessionThresholdSeconds(seconds)
                     sessionHealthController.updateThreshold(seconds)
                 }
 

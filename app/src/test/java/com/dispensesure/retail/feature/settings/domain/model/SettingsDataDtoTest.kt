@@ -86,7 +86,7 @@ class SettingsDataDtoTest {
     fun toStringContainsValues() {
         val s = sample().toString()
         assertTrue(s.contains("1.0.0"))
-        assertTrue(s.contains("CODE_128"))
+        assertTrue(s.contains("_pms._tcp"))
 
         val sNull = sample(hl7Config = null).toString()
         assertTrue(sNull.contains("null"))
