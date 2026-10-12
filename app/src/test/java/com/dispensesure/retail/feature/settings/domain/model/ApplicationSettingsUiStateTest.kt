@@ -30,7 +30,7 @@ class ApplicationSettingsUiStateTest {
             appLogo = "app_logo.png",
             placeholderLogo = "placeholder.png"
         ),
-        hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
+        hl7Config = ApplicationSettingsHL7Config()
     )
 
     private fun fullSample() = ApplicationSettingsUiState(

@@ -21,7 +21,7 @@ class UserEntityTest {
         isVerified = true,
         isProfileCompleted = true,
         pharmacyName = "Pharm",
-        npiId = "npi",
+        pharmacyId = "ph",
         language = "en",
         timezone = "Asia/Kolkata",
         notifications = true,
@@ -42,7 +42,7 @@ class UserEntityTest {
         assertFalse(e.isVerified)
         assertNull(e.isProfileCompleted)
         assertNull(e.pharmacyName)
-        assertNull(e.npiId)
+        assertNull(e.pharmacyId)
         assertNull(e.language)
         assertNull(e.timezone)
         assertNull(e.notifications)
@@ -63,7 +63,7 @@ class UserEntityTest {
         assertTrue(e.isVerified)
         assertEquals(true, e.isProfileCompleted)
         assertEquals("Pharm", e.pharmacyName)
-        assertEquals("npi", e.npiId)
+        assertEquals("ph", e.pharmacyId)
         assertEquals("en", e.language)
         assertEquals("Asia/Kolkata", e.timezone)
         assertEquals(true, e.notifications)
@@ -101,7 +101,7 @@ class UserEntityTest {
         assertEquals(true, e.component9())
         assertEquals(true, e.component10())
         assertEquals("Pharm", e.component11())
-        assertEquals("npi", e.component12())
+        assertEquals("ph", e.component12())
         assertEquals("en", e.component13())
         assertEquals("Asia/Kolkata", e.component14())
         assertEquals(true, e.component15())
