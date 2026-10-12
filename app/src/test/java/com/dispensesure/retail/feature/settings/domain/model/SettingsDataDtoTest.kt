@@ -23,10 +23,11 @@ class SettingsDataDtoTest {
     private fun settings() = ApplicationSettingsResponse(
         colors = ColorSettings(light = theme("L"), dark = theme("D")),
         appLogo = "app_logo.png",
-        placeholderLogo = "placeholder.png"
+        placeholderLogo = "placeholder.png",
+        offlineSessionThresholdSeconds = 86400L
     )
 
-    private fun hl7() = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
+    private fun hl7() = ApplicationSettingsHL7Config(pmsHostName = "_pms._tcp", pillCounterHostName = "_counter._tcp")
 
     private fun sample(hl7Config: ApplicationSettingsHL7Config? = hl7()) = SettingsDataDto(
         minVersion = "1.0.0",

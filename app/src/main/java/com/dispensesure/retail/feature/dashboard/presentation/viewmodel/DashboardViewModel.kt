@@ -407,6 +407,11 @@ class DashboardViewModel @Inject constructor(
                             detail.settings?.hl7Version
                                 ?.takeIf { it.isNotBlank() }
                                 ?.let { preferenceHelper.saveHl7Version(it) }
+                            // Persist the barcode template so RX scanning works without waiting
+                            // for the settings fetch to succeed.
+                            detail.settings?.barcodeFormat
+                                ?.takeIf { it.isNotBlank() }
+                                ?.let { preferenceHelper.saveBarcodeRegex(it) }
                             // Persist allow_local_storage so the HL7 sync flow knows whether to
                             // delete a dispense txn once it is completed and synced with the PMS.
                             preferenceHelper.setAllowLocalStorage(detail.settings?.allowLocalStorage ?: true)
@@ -680,7 +685,7 @@ private fun UserDetail.toUserEntity(jwtUserId: String?): UserEntity {
         lName = this.profile?.lName,
         phoneNumber = this.profile?.phoneNumber,
         avatarUrl = this.profile?.avatarUrl,
-        role = this.profile?.role?.name,
+        role = this.profile?.role,
         isVerified = this.profile?.isVerified ?: false,
         isProfileCompleted = this.profile?.isProfileCompleted,
         pharmacyName = this.profile?.pharmacyName,

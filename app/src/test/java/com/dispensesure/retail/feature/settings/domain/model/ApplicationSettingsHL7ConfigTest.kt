@@ -1,5 +1,6 @@
 package com.dispensesure.retail.feature.settings.domain.model
 
+import com.dispensesure.retail.core.di.NetworkModule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
@@ -9,14 +10,15 @@ class ApplicationSettingsHL7ConfigTest {
 
     @Test
     fun propertyGetter() {
-        val config = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
-        assertEquals("CODE_128", config.barcodeFormat)
+        val config = ApplicationSettingsHL7Config(pmsHostName = "pms", pillCounterHostName = "counter")
+        assertEquals("pms", config.pmsHostName)
+        assertEquals("counter", config.pillCounterHostName)
     }
 
     @Test
     fun equalsAndHashCode_equal() {
-        val a = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
-        val b = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
+        val a = ApplicationSettingsHL7Config(pmsHostName = "pms")
+        val b = ApplicationSettingsHL7Config(pmsHostName = "pms")
         assertEquals(a, b)
         assertEquals(a.hashCode(), b.hashCode())
         assertEquals(a, a)
@@ -24,8 +26,8 @@ class ApplicationSettingsHL7ConfigTest {
 
     @Test
     fun equalsAndHashCode_notEqual() {
-        val a = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
-        val b = ApplicationSettingsHL7Config(barcodeFormat = "QR_CODE")
+        val a = ApplicationSettingsHL7Config(pmsHostName = "pms")
+        val b = ApplicationSettingsHL7Config(pmsHostName = "other")
         assertNotEquals(a, b)
         assertNotEquals(a, null)
         assertNotEquals(a, "string")
@@ -33,23 +35,31 @@ class ApplicationSettingsHL7ConfigTest {
 
     @Test
     fun toStringContainsValue() {
-        val config = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
-        assertTrue(config.toString().contains("CODE_128"))
+        val config = ApplicationSettingsHL7Config(pmsHostName = "pms")
+        assertTrue(config.toString().contains("pms"))
     }
 
     @Test
     fun copyWorks() {
-        val config = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
-        val copy = config.copy(barcodeFormat = "QR_CODE")
-        assertEquals("QR_CODE", copy.barcodeFormat)
+        val config = ApplicationSettingsHL7Config(pmsHostName = "pms")
+        val copy = config.copy(pmsHostName = "other")
+        assertEquals("other", copy.pmsHostName)
         assertEquals(config, config.copy())
     }
 
     @Test
     fun componentN() {
-        val config = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
-        assertEquals(config.pmsHostName, config.component1())
-        assertEquals(config.pillCounterHostName, config.component2())
-        assertEquals("CODE_128", config.component3())
+        val config = ApplicationSettingsHL7Config(pmsHostName = "pms", pillCounterHostName = "counter")
+        assertEquals("pms", config.component1())
+        assertEquals("counter", config.component2())
+    }
+
+    @Test
+    fun parsesFromJson() {
+        val json = """{"pms_host_name":"pms","pillcounter_host_name":"counter"}"""
+        val config = NetworkModule.provideMoshi()
+            .adapter(ApplicationSettingsHL7Config::class.java).fromJson(json)
+        assertEquals("pms", config?.pmsHostName)
+        assertEquals("counter", config?.pillCounterHostName)
     }
 }

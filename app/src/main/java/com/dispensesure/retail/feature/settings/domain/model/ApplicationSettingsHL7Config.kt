@@ -14,5 +14,5 @@ import com.squareup.moshi.JsonClass
 data class ApplicationSettingsHL7Config(
     @Json(name = "pms_host_name") val pmsHostName: String? = null,
     @Json(name = "pillcounter_host_name") val pillCounterHostName: String? = null,
-    @Json(name = "barcode_format") val barcodeFormat: String,
+
 )

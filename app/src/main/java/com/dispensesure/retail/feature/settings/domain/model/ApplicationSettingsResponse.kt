@@ -13,5 +13,6 @@ import com.squareup.moshi.JsonClass
 data class ApplicationSettingsResponse(
     @Json(name = "colors") val colors: ColorSettings,
     @Json(name = "appLogo") val appLogo: String,
-    @Json(name = "placeholderLogo") val placeholderLogo: String
+    @Json(name = "placeholderLogo") val placeholderLogo: String,
+    @Json(name = "offline_session_threshold_seconds") val offlineSessionThresholdSeconds: Long? = null
 )

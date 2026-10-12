@@ -1,5 +1,6 @@
 package com.dispensesure.retail.feature.verifyPin.domain.model
 
+import com.dispensesure.retail.core.di.NetworkModule
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -61,7 +62,7 @@ class VerifiedUserTest {
             "data":{"access_token":"a","refresh_token":"r","expires_in":86400,
             "user":{"user_id":"u1","email":"heth@rite.com","country":"US","state":"NY",
             "is_verified":true,"is_profile_completed":true,"role":"admin"}}}"""
-        val response = com.squareup.moshi.Moshi.Builder().build()
+        val response = NetworkModule.provideMoshi()
             .adapter(VerifyPinResponse::class.java).fromJson(json)
         assertEquals("admin", response?.data?.user?.role)
         assertEquals("a", response?.data?.accessToken)

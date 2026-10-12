@@ -15,9 +15,13 @@ data class ParsedScanData(
 
 private val NAMED_GROUP_NAME = Regex("""\(\?<([a-zA-Z][a-zA-Z0-9]*)>""")
 
+// Finds an NDC digit group such as (?<ndc>\d{8,11}).
+private val NDC_DIGITS_GROUP = Regex("""(?i)\(\?<(ndc\w*)>\\d\{8,11\}\)""")
+
 fun parseScanData(template: String, actualValue: String): ParsedScanData {
     return try {
-        val regex = Regex(template)
+        // Dashes are allowed between NDC digits (e.g. 72888-008-00); 8-11 digits still required.
+        val regex = Regex(NDC_DIGITS_GROUP.replace(template) { "(?<${it.groupValues[1]}>\\d(?:-?\\d){7,10})" })
 
         val input = actualValue.trim()
         val match = regex.matchEntire(input)
@@ -40,7 +44,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
         ParsedScanData(
             rxNo = rawMap["RXNO"] ?: rawMap["RXNUMBER"],
             refillNo = rawMap["REFILLNO"],
-            ndcNo = rawMap["NDCNO"] ?: rawMap["NDC"],
+            ndcNo = (rawMap["NDCNO"] ?: rawMap["NDC"])?.replace("-", ""),
             qty = rawMap["QTY"],
             bucket = rawMap["BUCKET"],
             rawMap = rawMap
