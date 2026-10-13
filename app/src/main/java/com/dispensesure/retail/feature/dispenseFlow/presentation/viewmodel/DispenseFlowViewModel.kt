@@ -547,7 +547,7 @@ class DispenseFlowViewModel @Inject constructor(
     private suspend fun resolveNdcFromServer(gtin14: String): String? {
         val drugInfo = try {
             drugRepository.getDrugInfoByNdc(
-                GetNdcRequestModel(target_ndc = "", scanned_ndc = gtin14)
+                GetNdcRequestModel(target_drug = "", scanned_drug = gtin14)
             )
         } catch (e: CancellationException) {
             throw e
@@ -582,9 +582,9 @@ class DispenseFlowViewModel @Inject constructor(
      * Validation order, matching the legacy ScanBarcodeViewModel for parity:
      *   1. Local DB lookup. If [DispenseFlowUiState.hl7ExpectedNdc] is set and
      *      the scanned NDC matches it, we use the local entry directly.
-     *   2. Server fallback. The request carries `target_ndc = hl7ExpectedNdc` so
+     *   2. Server fallback. The request carries `target_drug = hl7ExpectedNdc` so
      *      the server can flag substitute (generic-equivalent) drugs via
-     *      `is_ndc_equivalent`.
+     *      `is_drug_equivalent`.
      *   3. If the server reports a substitute, we show the equivalence
      *      confirmation dialog instead of the success popup. The user has to
      *      accept the substitute explicitly via [confirmSubstitute].
@@ -664,11 +664,11 @@ class DispenseFlowViewModel @Inject constructor(
                 }
 
                 // Server lookup with the expected NDC as target so substitutes
-                // get flagged via is_ndc_equivalent.
+                // get flagged via is_drug_equivalent.
                 val drugInfo = drugRepository.getDrugInfoByNdc(
                     GetNdcRequestModel(
-                        target_ndc = expectedNdc.orEmpty(),
-                        scanned_ndc = gtin14
+                        target_drug = expectedNdc.orEmpty(),
+                        scanned_drug = gtin14
                     )
                 )
                 if (drugInfo == null) {
@@ -698,7 +698,7 @@ class DispenseFlowViewModel @Inject constructor(
                     )
                 )
 
-                val isSubstitute = drugInfo.is_ndc_equivalent == true
+                val isSubstitute = drugInfo.is_drug_equivalent == true
                 if (isSubstitute) {
                     _uiState.update {
                         it.copy(

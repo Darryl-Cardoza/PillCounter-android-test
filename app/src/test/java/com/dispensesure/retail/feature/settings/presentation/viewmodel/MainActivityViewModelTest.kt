@@ -82,10 +82,12 @@ class MainActivityViewModelTest {
     private fun settingsResponse(
         colors: ColorSettings = colorSettings(),
         appLogo: String = "logo_url",
+        offlineSessionThresholdSeconds: Long? = 86400L,
     ) = ApplicationSettingsResponse(
         colors = colors,
         appLogo = appLogo,
         placeholderLogo = "placeholder",
+        offlineSessionThresholdSeconds = offlineSessionThresholdSeconds,
     )
 
     private fun dto(
@@ -263,30 +265,6 @@ class MainActivityViewModelTest {
     }
 
     @Test
-    fun `fetch with non-blank barcode format saves regex`() = runTest(testDispatcher) {
-        coEvery { repository.getApplicationSettings() } returns apiResponse(
-            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "REGEX123")),
-        )
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        verify { preferenceHelper.saveBarcodeRegex("REGEX123") }
-    }
-
-    @Test
-    fun `fetch with blank barcode format does not save regex`() = runTest(testDispatcher) {
-        coEvery { repository.getApplicationSettings() } returns apiResponse(
-            dto(hl7Config = ApplicationSettingsHL7Config(barcodeFormat = "   ")),
-        )
-
-        val vm = createViewModel()
-        advanceUntilIdle()
-
-        verify(exactly = 0) { preferenceHelper.saveBarcodeRegex(any()) }
-    }
-
-    @Test
     fun `fetch exception sets errorMessage`() = runTest(testDispatcher) {
         coEvery { repository.getApplicationSettings() } throws RuntimeException("network down")
 
@@ -409,8 +387,7 @@ class MainActivityViewModelTest {
             dto(
                 hl7Config = ApplicationSettingsHL7Config(
                     pmsHostName = "_newpms._tcp",
-                    pillCounterHostName = "_newcounter._tcp",
-                    barcodeFormat = "^(?<rxnumber>[^|]{1,32})$"
+                    pillCounterHostName = "_newcounter._tcp"
                 )
             )
         )
@@ -438,8 +415,7 @@ class MainActivityViewModelTest {
             dto(
                 hl7Config = ApplicationSettingsHL7Config(
                     pmsHostName = null,
-                    pillCounterHostName = null,
-                    barcodeFormat = "^(?<rxnumber>[^|]{1,32})$"
+                    pillCounterHostName = null
                 )
             )
         )
@@ -484,8 +460,7 @@ class MainActivityViewModelTest {
             dto(
                 hl7Config = ApplicationSettingsHL7Config(
                     pmsHostName = "_newpms._tcp",
-                    pillCounterHostName = "_pillcounting._tcp",
-                    barcodeFormat = "^(?<rxnumber>[^|]{1,32})$"
+                    pillCounterHostName = "_pillcounting._tcp"
                 )
             )
         )

@@ -608,6 +608,26 @@ class InventoryScanViewModelTest {
     }
 
     @Test
+    fun `onBarcodeDetected saves expiry as MM-dd-yyyy`() = runTest(testDispatcher) {
+        stubGs1Decode()
+        coEvery { drugMasterDao.getDrugByGtin(any()) } returns drug()
+        coEvery { drugMasterDao.getDrugIdByNdc(any()) } returns 10L
+        coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns stockTxn()
+        coEvery { bottleInfoDao.findSealedLine(any(), any(), any()) } returns null
+
+        val vm = createViewModel(batchId = 7L)
+        val job = launch { vm.uiState.collect {} }
+        advanceUntilIdle()
+
+        vm.onBarcodeDetected("raw")
+        advanceUntilIdle()
+
+        assertEquals("01-15-2030", vm.uiState.value.activeNdc?.expiry)
+        coVerify { bottleInfoDao.findSealedLine(100L, "LOT1", "01-15-2030") }
+        job.cancel()
+    }
+
+    @Test
     fun `onBarcodeDetected scan failed when decoder throws`() = runTest(testDispatcher) {
         every { barcodeDecoder.isGs1Barcode(any()) } throws RuntimeException("boom")
 

@@ -381,10 +381,7 @@ fun DashboardScreen(
         )
     }
 
-    GlobalLoadingOverlay(
-        isVisible = uiState.isLoadingQueue,
-        message = stringResource(R.string.loading_transactions),
-    )
+    GlobalLoadingOverlay(isVisible = uiState.isLoadingQueue)
 }
 
 internal fun shouldShowTourOffer(pending: Boolean, locked: Boolean) = pending && !locked

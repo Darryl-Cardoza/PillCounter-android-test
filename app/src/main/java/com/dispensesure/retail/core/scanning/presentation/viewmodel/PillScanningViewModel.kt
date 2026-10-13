@@ -44,6 +44,7 @@ import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.common.HelperFunctions.saveBitmapToFile
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
+import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.OverlayUtils
 import com.dispensesure.retail.core.utils.common.PhotoInfo
@@ -2158,7 +2159,7 @@ class PillScanningViewModel @Inject constructor(
 
                 val lotNumber = decoded?.lotNumber
                 val expirationDate = decoded?.expirationDate?.format(
-                    java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
+                    java.time.format.DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED)
                 )
                 val serialNumber = decoded?.serialNumber
 

@@ -12,7 +12,7 @@ data class DrugInfo(
     val brandName: String?,
     val genericName: String?,
     val ndc: String,
-    val is_ndc_equivalent: Boolean? = null,
+    val is_drug_equivalent: Boolean? = null,
     val drugType: String,
     val qty: Int? = 0,
     val isHazardous: Boolean? = null,

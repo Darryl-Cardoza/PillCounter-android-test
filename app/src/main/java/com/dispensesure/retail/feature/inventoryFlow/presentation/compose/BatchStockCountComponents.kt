@@ -48,6 +48,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.ActiveNdc
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.RecentBatchRow
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -330,7 +331,7 @@ internal fun ScannedDrugCard(
             )
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_expiry),
-                value = active.expiry,
+                value = formatDateToUSFormat(active.expiry),
                 modifier = Modifier.weight(1f),
             )
         }
@@ -607,7 +608,7 @@ internal fun ScannedDrugDetailsPortrait(
             )
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_expiry),
-                value = active.expiry,
+                value = formatDateToUSFormat(active.expiry),
                 modifier = Modifier.weight(1f),
             )
             DetailField(
@@ -736,7 +737,7 @@ internal fun ScannedDrugDetailsPhone(
             )
             DetailField(
                 label = stringResource(R.string.batch_stock_count_label_expiry),
-                value = active.expiry,
+                value = formatDateToUSFormat(active.expiry),
                 modifier = Modifier.weight(1f),
             )
         }

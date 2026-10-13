@@ -299,7 +299,7 @@ class MainActivityViewModel @Inject constructor(
                 // Forward the server-supplied offline threshold to the health controller so the
                 // OFFLINE timer reflects the current backend policy. Null means the backend did
                 // not include the field on this response — controller keeps its persisted value.
-                response.data?.offlineSessionThresholdSeconds?.let { seconds ->
+                response.data?.settings?.offlineSessionThresholdSeconds?.let { seconds ->
                     sessionHealthController.updateThreshold(seconds)
                 }
 
@@ -339,13 +339,6 @@ class MainActivityViewModel @Inject constructor(
         theme?.let {
             preferenceHelper.saveThemeColors(it) // persist for next launch
             logger.i("Updated cached theme colors in preferences.")
-        }
-
-        // Persist the barcode template so RX scanning can parse the label format
-        // on any subsequent launch without requiring a fresh settings fetch.
-        dto?.hl7Config?.barcodeFormat?.takeIf { it.isNotBlank() }?.let { format ->
-            preferenceHelper.saveBarcodeRegex(format)
-            logger.i("Barcode format saved from settings: $format")
         }
     }
 

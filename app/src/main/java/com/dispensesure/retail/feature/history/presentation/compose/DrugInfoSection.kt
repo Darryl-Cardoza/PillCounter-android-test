@@ -63,7 +63,6 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.dtos.TxnDetailInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -547,8 +546,8 @@ private fun DispensedDrugDetailsPager(
                     stringResource(R.string.dispensed_drug) to record.drugName,
                     stringResource(R.string.ndc).uppercase() to record.ndc,
                     stringResource(R.string.date_and_time) to
-                        "${formatDateToUSFormat(record.date, DateFormats.MM_DD_YYYY)} ${record.time}".trim(),
-                    stringResource(R.string.expiry) to record.expiry,
+                        "${record.date} ${record.time}".trim(),
+                    stringResource(R.string.expiry) to formatDateToUSFormat(record.expiry),
                     stringResource(R.string.lotNo) to record.lotNo,
                     stringResource(R.string.serial_no) to record.serialNo,
                 )

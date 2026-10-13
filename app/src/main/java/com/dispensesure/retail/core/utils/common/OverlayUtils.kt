@@ -114,7 +114,7 @@ object OverlayUtils {
         }
         add(InfoField(res.getString(R.string.lotNo), info.lotNumber.orDash()))
         add(InfoField(res.getString(R.string.serial_no), info.serialNumber.orDash()))
-        add(InfoField(res.getString(R.string.expiry), info.expirationDate.orDash()))
+        add(InfoField(res.getString(R.string.expiry), info.expirationDate?.let(::formatDateToUSFormat).orDash()))
     }
 
     /**
@@ -122,7 +122,7 @@ object OverlayUtils {
      * Location at half width.
      */
     internal fun bottomRows(info: PhotoInfo, res: Resources): List<List<InfoField>> {
-        val date = SimpleDateFormat("MM-dd-yyyy HH:mm", Locale.getDefault()).format(Date(info.timestamp))
+        val date = SimpleDateFormat(DateFormats.MM_DD_YY_HH_MM_A, Locale.getDefault()).format(Date(info.timestamp))
         return listOf(
             listOfNotNull(
                 InfoField(res.getString(R.string.count), info.count.toString()),

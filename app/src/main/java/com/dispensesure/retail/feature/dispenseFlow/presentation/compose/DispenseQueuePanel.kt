@@ -29,17 +29,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.DrugCountRow
 import com.dispensesure.retail.core.utils.compose.DrugCountRowData
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
 import com.dispensesure.retail.ui.theme.AppTheme
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-
-private val DATE_FMT = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
-private fun formatDate(epochMillis: Long): String = DATE_FMT.format(Date(epochMillis))
 
 private data class QueueTab(val filter: KpiFilter, val labelRes: Int)
 
@@ -157,7 +152,7 @@ fun DispenseQueuePanel(
                             ndc = item.txn.ndc,
                             drugType = item.txn.drugType,
                             drugName = item.txn.drugName ?: "—",
-                            date = formatDate(item.txn.createdAt),
+                            date = item.txn.createdAt.toFormattedDate(),
                             bucketId = item.txn.bucketId,
                             pillCount = item.txn.totalPillCount,
                             targetCount = item.txn.targetCount ?: 0,

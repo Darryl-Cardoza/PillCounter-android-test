@@ -21,6 +21,8 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.animation.Crossfade
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.LaunchedEffect
@@ -32,6 +34,7 @@ import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourEvent
 import com.dispensesure.retail.core.tourguide.TourSectionPrompt
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
+import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -56,7 +59,7 @@ import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersive
 import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
 import com.dispensesure.retail.core.utils.common.HelperFunctions.clearSessionIfNotRemembered
 import com.dispensesure.retail.core.utils.common.HelperFunctions.openPlayStore
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.LoadingIndicator
+import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.SecurityErrorDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toColor
@@ -221,7 +224,7 @@ class MainActivity : ComponentActivity() {
                 label = "LoadingOrContent"
             ) { isLoading ->
                 if (isLoading) {
-                    LoadingIndicator()
+                    BreathingDotsLoader(Modifier.fillMaxSize().wrapContentSize())
                 } else {
                     val colorSettings = requireNotNull(settingsState.colorSettings)
 

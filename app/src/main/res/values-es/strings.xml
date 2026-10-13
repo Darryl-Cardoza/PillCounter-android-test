@@ -57,7 +57,6 @@
     <string name="nothing_here_yet">Aún no hay nada aquí</string>
     <string name="all_caught_up">¡Está todo al día!</string>
     <string name="no_pending_tasks">No hay tareas pendientes por ahora</string>
-    <string name="loading_transactions">Cargando transacciones...</string>
     <string name="kpi_disp_short">Dispensar</string>
     <string name="kpi_inv_short">Inventario</string>
 
@@ -84,6 +83,7 @@
     <string name="standalone_kpi_disabled_message">Función no aplicable</string>
     <string name="ndc_value">NDC %1$s</string>
     <string name="rx_value">Rx %1$s</string>
+    <string name="dashboard_operator_line">Operador: %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title">AJUSTES</string>
     <string name="setting_group_general">GENERAL</string>
@@ -130,8 +130,6 @@
     <string name="error_name_invalid">El nombre no puede contener números</string>
     <string name="error_name_required">Este campo es obligatorio</string>
     <string name="error_pharmacy_name_invalid">El nombre de la farmacia es demasiado corto</string>
-    <string name="error_npi_invalid">Número NPI inválido</string>
-    <string name="error_npi_required">El número NPI es obligatorio</string>
     <string name="error_no_internet">Sin conexión a internet. Verifique su red e intente de nuevo.</string>
     <string name="error_timeout">La solicitud tardó demasiado. Inténtelo de nuevo más tarde.</string>
     <string name="error_server_unavailable">El servidor no está disponible temporalmente. Inténtelo de nuevo más tarde.</string>
@@ -195,7 +193,7 @@
     <string name="last_name">Apellido</string>
     <string name="pharmacy_name">Nombre de la Farmacia</string>
     <string name="phone_number">Número de Teléfono</string>
-    <string name="npi_number">NPI No.</string>
+    <string name="pharmacy_id">ID de farmacia</string>
     <string name="do_not_ask">No volver a preguntar</string>
     <string name="confirm_delete_profile">¿Está seguro de que desea eliminar su perfil? Esta acción no se puede deshacer.</string>
     <string name="logging_out">Cerrando sesión…</string>
