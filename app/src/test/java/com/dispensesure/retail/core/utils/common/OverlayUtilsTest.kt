@@ -121,7 +121,7 @@ class OverlayUtilsTest {
     }
 
     @Test
-    fun `legacy expiry shows in US format`() {
+    fun `stored expiry shows in US format`() {
         val top = OverlayUtils.topRowFields(info(), res).associate { it.label to it.value }
         assertEquals("07/31/28", top["Expiry"])
     }
