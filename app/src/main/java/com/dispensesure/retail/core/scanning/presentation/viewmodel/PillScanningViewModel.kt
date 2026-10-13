@@ -1440,8 +1440,15 @@ class PillScanningViewModel @Inject constructor(
             d.toBitmap(300, h.coerceAtLeast(1))
         }
 
+    /** Tutorial txns are marked by the demo Rx prefix or the demo drug, the same markers the purge uses. */
+    private suspend fun isDemoTxn(txnId: Long): Boolean {
+        val txn = pillCountTxnDao.getById(txnId) ?: return false
+        return txn.rxNo?.startsWith(TutorialData.RX_PREFIX) == true ||
+            drugMasterDao.getDrugById(txn.drugId)?.ndc == TutorialData.DEMO_NDC
+    }
+
     private fun handleAddVialImageInTxn(event: PillScanningEvent.AddVialPhotoInTxn) {
-        viewModelScope.launch(Dispatchers.IO) {
+        FtueController.track(viewModelScope.launch(Dispatchers.IO) {
             val txnId = preferenceHelper.getTxnId()
             val bitmap = event.bitmap
             val filePath = try {
@@ -1469,7 +1476,7 @@ class PillScanningViewModel @Inject constructor(
                     type = StepState.VIAL.toString()
                 )
             )
-        }
+        })
     }
 
     /** Hands over the latest analyzed frame; the caller now owns and recycles it. */
@@ -1782,6 +1789,8 @@ class PillScanningViewModel @Inject constructor(
         // what calls it.
         if (!FtueController.state.isActive) return
         FtueController.track(viewModelScope.launch {
+            // The txn pointer is global and an HL7 order may have set it: never write a demo count to a real txn.
+            if (!isDemoTxn(preferenceHelper.getTxnId())) return@launch
             val countingCircleSteps = setOf(
                 StepState.CONTAINER_INITIATE,
                 StepState.TARGET_VERIFICATION,
@@ -2538,6 +2547,7 @@ class PillScanningViewModel @Inject constructor(
     /** Tour: saves a blank demo vial photo (no camera needed); returns once the workflow has left VIAL, else throws. */
     suspend fun captureVialForTour() {
         if (!FtueController.state.isActive) return
+        check(isDemoTxn(preferenceHelper.getTxnId())) { "Tour vial capture on a non-demo txn" }
         confirmDoneStarted = false
         if (_currentStep.value == StepState.VIAL && !captureCommitted) {
             _capturedBitmap.value = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.DKGRAY) }

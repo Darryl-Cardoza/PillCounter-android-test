@@ -5,11 +5,15 @@ import androidx.test.core.app.ApplicationProvider
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
+import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import kotlinx.coroutines.test.runTest
+import java.io.File
 import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Before
@@ -30,7 +34,7 @@ class TutorialDataCleanerTest {
             AppDatabase::class.java,
         ).allowMainThreadQueries().build()
         cleaner = TutorialDataCleaner(
-            db, db.pillCountTxnDao(), db.batchDao(), db.stockTxnDao(), db.bottleInfoDao(), db.drugMasterDao(),
+            ApplicationProvider.getApplicationContext(), db, db.pillCountTxnDao(), db.batchDao(), db.stockTxnDao(), db.bottleInfoDao(), db.drugMasterDao(),
         )
     }
 
@@ -82,5 +86,43 @@ class TutorialDataCleanerTest {
         cleaner.purge()
         cleaner.purge()
         assertNull(db.batchDao().getById(30L))
+    }
+
+    @Test
+    fun `purge deletes the image files of tutorial rows`() = runTest {
+        val file = File.createTempFile("tutorial_img", ".jpg")
+        val txn = db.pillCountTxnDao().insertIgnore(PillCountTxnEntity(drugId = null, rxNo = "${TutorialData.RX_PREFIX}3", isDispense = true, status = CountStatus.PARTIAL))
+        db.pillCountTxnDetailsDao().insert(PillCountTxnDetailsEntity(txnId = txn, pillCount = 1, imagePath = file.absolutePath, type = "VIAL"))
+
+        cleaner.purge()
+
+        assertNull(db.pillCountTxnDao().getById(txn))
+        assertFalse(file.exists())
+    }
+
+    @Test
+    fun `a purge interrupted after the commit has its files deleted by the next purge`() = runTest {
+        val file = File.createTempFile("tutorial_img", ".jpg")
+        val pending = File(ApplicationProvider.getApplicationContext<android.content.Context>().filesDir, "tutorial_pending_delete.txt")
+        pending.writeText(file.absolutePath)
+
+        cleaner.purge()
+
+        assertFalse(file.exists())
+        assertFalse(pending.exists())
+    }
+
+    @Test
+    fun `an order that arrives during a tour is applied when the tour ends`() = runTest {
+        var saved: Long? = null
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, currentTxnId = 5L)
+        FtueController.saveTxnIdOrDefer(99L) { saved = it }
+        assertNull(saved)
+        FtueController.end()
+        FtueController.drainEvents()
+
+        assertEquals(99L, FtueController.takeSavedTxnId())
+        FtueController.saveTxnIdOrDefer(7L) { saved = it }
+        assertEquals(7L, saved)
     }
 }

@@ -338,7 +338,7 @@ fun DashboardScreen(
             onConfirm = {
                 TourGuidePrefs.markSeen(context, localId)
                 showTourOffer = false
-                FtueController.start(TourSection.entries, viewModel.isHl7Enabled(), preferenceHelper.getShowNotesDialogSetting())
+                FtueController.start(TourSection.entries, viewModel.isHl7Enabled(), preferenceHelper.getShowNotesDialogSetting(), preferenceHelper.getTxnId())
             },
             onCancel = {
                 TourGuidePrefs.markSeen(context, localId)

@@ -35,8 +35,36 @@ object FtueController {
         it.onEnded = { _events.trySend(TourEvent.Ended) }
     }
 
-    fun start(sections: List<TourSection>, hl7Enabled: Boolean, notesEnabled: Boolean) =
+    // The user's current txn pointer: the demo flow overwrites it, so it is put back when the tour ends.
+    private var savedTxnId: Long? = null
+    private var deferredOrderTxnId: Long? = null
+
+    fun start(sections: List<TourSection>, hl7Enabled: Boolean, notesEnabled: Boolean, currentTxnId: Long = 0L) {
+        if (!state.isActive) {
+            savedTxnId = currentTxnId
+            deferredOrderTxnId = null
+        }
         state.start(sections, hl7Enabled, notesEnabled)
+    }
+
+    /** An incoming order must not hijack the demo flow's pointer; its id is applied once the tour ends. */
+    fun saveTxnIdOrDefer(txnId: Long, save: (Long) -> Unit) {
+        if (state.isActive) deferredOrderTxnId = txnId else save(txnId)
+    }
+
+    /** The txn pointer to set after the tour, once: a held order wins over the pre-tour pointer; null if neither. */
+    fun takeSavedTxnId(): Long? = (deferredOrderTxnId ?: savedTxnId).also {
+        deferredOrderTxnId = null
+        savedTxnId = null
+    }
+
+    /** Drops queued events, e.g. a stale [TourEvent.Ended] that no collector will see until the next login. */
+    fun drainEvents() {
+        while (_events.tryReceive().isSuccess) { /* discard */ }
+    }
+
+    /** Waits for the registered demo writes (cancelled or not) to finish, so a purge can't race them. */
+    suspend fun awaitTrackedJobs() = state.awaitTracked()
 
     /** The single exit: Skip, End tour, last step, Back, lock and logout all land here. */
     fun end() = state.end()

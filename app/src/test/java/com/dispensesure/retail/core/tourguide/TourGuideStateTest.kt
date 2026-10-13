@@ -9,6 +9,10 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Job
 
 class TourGuideStateTest {
@@ -109,6 +113,33 @@ class TourGuideStateTest {
         state.start(listOf(TourSection.DISPENSE), notesEnabled = false)
         assertEquals(listOf("x1"), state.steps.map { it.id })
         assertTrue(state.isLastStep)
+    }
+
+    @Test
+    fun `awaitTracked waits for a cancelled tracked job to finish`() = runTest {
+        val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+        val state = TestScopeState(scope)
+        state.start(listOf(TourSection.DISPENSE))
+        var finished = false
+        state.track(scope.launch {
+            try { delay(10_000) } finally { finished = true }
+        })
+
+        state.end()
+        state.awaitTracked()
+
+        assertEquals(true, finished)
+    }
+
+    @Test
+    fun `FtueController restores the saved txn id once and drains stale events`() = runTest {
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, currentTxnId = 42L)
+        FtueController.end()
+        FtueController.drainEvents()
+
+        assertEquals(42L, FtueController.takeSavedTxnId())
+        assertEquals(null, FtueController.takeSavedTxnId())
+        assertEquals(null, withTimeoutOrNull(50) { FtueController.events.first() })
     }
 
     @Test

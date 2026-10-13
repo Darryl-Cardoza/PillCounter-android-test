@@ -133,9 +133,9 @@ class Hl7OrderProcessor @Inject constructor(
             txnId = pillCountTxnDao.upsertPreservingId(txn)
         }
 
-        // Tour demo flow owns the active txn id; an incoming order must not hijack it.
+        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
 
-        if (!FtueController.state.isActive) preferenceHelper.saveTxnId(txnId)
+        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         hl7Repository.insertZinContainerDetails(txnId, message)
 
         notifier.show(
@@ -231,9 +231,9 @@ class Hl7OrderProcessor @Inject constructor(
             txnId = pillCountTxnDao.upsertPreservingId(txn)
         }
 
-        // Tour demo flow owns the active txn id; an incoming order must not hijack it.
+        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
 
-        if (!FtueController.state.isActive) preferenceHelper.saveTxnId(txnId)
+        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         hl7Repository.insertZinContainerDetails(txnId, message)
 
         notifier.show(

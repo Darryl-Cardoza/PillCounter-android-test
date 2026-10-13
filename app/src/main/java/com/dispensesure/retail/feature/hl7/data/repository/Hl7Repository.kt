@@ -527,8 +527,8 @@ class Hl7Repository @Inject constructor(
         logger.i("Saving txn (site2) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
-        // Tour demo flow owns the active txn id; an incoming order must not hijack it.
-        if (!FtueController.state.isActive) preferenceHelper.saveTxnId(txnId)
+        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
+        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {
@@ -649,8 +649,8 @@ class Hl7Repository @Inject constructor(
         logger.i("Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
-        // Tour demo flow owns the active txn id; an incoming order must not hijack it.
-        if (!FtueController.state.isActive) preferenceHelper.saveTxnId(txnId)
+        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
+        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {

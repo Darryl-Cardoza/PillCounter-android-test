@@ -200,6 +200,7 @@ fun MenuScreen(
                                 sections,
                                 hl7Enabled = loginViewModel.preferenceHelper.isHl7Enabled(),
                                 notesEnabled = loginViewModel.preferenceHelper.getShowNotesDialogSetting(),
+                                currentTxnId = loginViewModel.preferenceHelper.getTxnId(),
                             )
                             navController.navigate(Screen.Dashboard.route) {
                                 popUpTo(0)

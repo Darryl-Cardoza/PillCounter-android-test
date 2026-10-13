@@ -53,6 +53,7 @@ import com.dispensesure.retail.core.security.RuntimeUnit
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
@@ -352,6 +353,8 @@ class MainActivity : ComponentActivity() {
                                             FtueController.end()
                                             // The Ended event has no collector once logged out; purge now.
                                             settingsViewModel.purgeTutorialDataAsync()
+                                            FtueController.takeSavedTxnId()?.let { preferenceHelper.saveTxnId(it) }
+                                            FtueController.drainEvents()
                                             sessionLockController.setLockPending(false)
                                             settingsViewModel.onUserLoginOrLogOut()
                                         }
@@ -363,8 +366,13 @@ class MainActivity : ComponentActivity() {
                                         FtueController.events.collect { event ->
                                             // After a logout or expiry there is no user to mark or to show a Dashboard to.
                                             val loggedIn = preferenceHelper.isUserLoggedIn()
+                                            // Let in-flight demo writes land (or finish cancelling) before the purge.
+                                            withTimeoutOrNull(3_000L) { FtueController.awaitTrackedJobs() }
                                             // Between sections no step is running, so the finished section's data can go.
                                             settingsViewModel.purgeTutorialData(force = event == TourEvent.ShowDashboard)
+                                            if (event == TourEvent.Ended) {
+                                                FtueController.takeSavedTxnId()?.let { preferenceHelper.saveTxnId(it) }
+                                            }
                                             if (loggedIn) navController.navigateBackToDashboard()
                                             if (event == TourEvent.Ended) {
                                                 // end() cancels the running step, but the last step's completion writes run in

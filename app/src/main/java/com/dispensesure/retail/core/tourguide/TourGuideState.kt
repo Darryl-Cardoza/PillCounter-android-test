@@ -24,6 +24,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.launch
 import java.util.concurrent.CopyOnWriteArraySet
 
@@ -196,6 +197,8 @@ class TourGuideState(
         job.invokeOnCompletion { demoJobs -= job }
         return job
     }
+
+    suspend fun awaitTracked() = demoJobs.toList().joinAll()
 
     fun end() {
         if (!isActive) return
