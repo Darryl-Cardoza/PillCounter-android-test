@@ -560,13 +560,13 @@ class ProfileViewModelTest {
     }
 
     @Test
-    fun `updateProfile sends pharmacy id in request and persists it`() = runTest(testDispatcher) {
+    fun `updateProfile sends trimmed pharmacy id in request and persists it`() = runTest(testDispatcher) {
         coEvery { repository.updateProfile(any()) } returns Result.success(updateResponse)
 
         val vm = createViewModel()
         advanceUntilIdle()
         fillRequiredInputs(vm)
-        vm.onPharmacyIdChanged("PH-123")
+        vm.onPharmacyIdChanged("  PH-123  ")
 
         vm.updateProfile()
         advanceUntilIdle()

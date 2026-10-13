@@ -12,6 +12,7 @@ import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
+import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -906,5 +907,5 @@ object HL7MessageBuilder {
     }
 
     private fun now(): String =
-        SimpleDateFormat("yyyyMMddHHmmss", Locale.US).format(Date())
+        SimpleDateFormat(DateFormats.HL7_TIMESTAMP, Locale.US).format(Date())
 }

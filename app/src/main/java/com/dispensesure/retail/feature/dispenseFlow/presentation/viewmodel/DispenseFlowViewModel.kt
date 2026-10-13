@@ -640,7 +640,7 @@ class DispenseFlowViewModel @Inject constructor(
                 }
 
                 // Server lookup with the expected NDC as target so substitutes
-                // get flagged via is_ndc_equivalent.
+                // get flagged via is_drug_equivalent.
                 val drugInfo = drugRepository.getDrugInfoByNdc(
                     GetNdcRequestModel(
                         target_drug = expectedNdc.orEmpty(),
@@ -674,7 +674,7 @@ class DispenseFlowViewModel @Inject constructor(
                     )
                 )
 
-                val isSubstitute = drugInfo.is_ndc_equivalent == true
+                val isSubstitute = drugInfo.is_drug_equivalent == true
                 if (isSubstitute) {
                     _uiState.update {
                         it.copy(

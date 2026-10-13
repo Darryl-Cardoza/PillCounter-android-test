@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSpForBatchScreen
+import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchLotEntry
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -193,7 +194,7 @@ fun BatchLotSection(label: String, headerQty: Int?, total: Int, lots: List<Batch
                         modifier = Modifier.weight(3f)
                     )
                     Text(
-                        text = lot.expiry ?: "—",
+                        text = lot.expiry?.let(::formatDateToUSFormat) ?: "—",
                         color = AppTheme.extendedColors.textColor.copy(alpha = 0.7f),
                         fontSize = responsiveSpForBatchScreen(12.sp),
                         textAlign = TextAlign.Start,

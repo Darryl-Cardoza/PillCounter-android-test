@@ -52,6 +52,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.MenuButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.DrugCountRow
 import com.dispensesure.retail.core.utils.compose.DrugCountRowData
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
@@ -60,9 +61,6 @@ import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
 import com.dispensesure.retail.feature.dashboard.presentation.model.upNextDispense
 import com.dispensesure.retail.feature.history.presentation.compose.BatchHistoryRow
 import com.dispensesure.retail.ui.theme.AppTheme.extendedColors
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 // Shared scaffold widgets for the new dashboard. DashboardLandscapeLayout and
 // DashboardPortraitLayout consume these so the "same data, different placement"
@@ -70,6 +68,7 @@ import java.util.Locale
 
 internal fun buildTerminalUserLine(
     uiState: DashboardUiState,
+    operatorLine: (String) -> String,
     includeTerminal: Boolean = true,
 ): String {
     val profile = uiState.userDetail?.profile
@@ -80,8 +79,9 @@ internal fun buildTerminalUserLine(
     val terminal = if (includeTerminal) activeTerminalName else null
     // The face user who verified into this session wins over the account name — same rule
     // HL7 uses for its operator. Falls back to the account only before the first emission.
-    val user = uiState.operatorName?.ifBlank { null }
-        ?: listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null }
+    val user = (uiState.operatorName?.ifBlank { null }
+        ?: listOfNotNull(profile?.fName, profile?.lName).joinToString(" ").ifBlank { null })
+        ?.let(operatorLine)
     return listOfNotNull(terminal, user).joinToString(" | ").ifBlank { "—" }
 }
 
@@ -156,7 +156,7 @@ internal fun ScaffoldTopBar(
 private fun PharmacyNameText(pharmacyName: String?) {
     Text(
         text = pharmacyName ?: "—",
-        fontSize = responsiveSp(12.sp, boostOnPhone = true),
+        fontSize = responsiveSp(10.sp, boostOnPhone = true),
         color = extendedColors.textColor,
         fontWeight = FontWeight.SemiBold,
         maxLines = 1,
@@ -323,7 +323,7 @@ private fun ScaffoldTab(
         Spacer(modifier = Modifier.height(2.dp))
         Box(
             modifier = Modifier
-                .height(2.dp)
+                .height(1.dp)
                 .fillMaxWidth()
                 .background(if (isActive) MaterialTheme.colorScheme.secondary else Color.Transparent)
         )
@@ -381,7 +381,7 @@ internal fun ScaffoldQueueList(
     LazyColumn(
         modifier = modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(12.dp),
-        contentPadding = PaddingValues(vertical = 2.dp),
+        contentPadding = PaddingValues(vertical = 8.dp),
     ) {
         if (upNext != null) {
             item(key = "up-next-${upNext.txn.txnId}") {
@@ -405,7 +405,7 @@ internal fun ScaffoldQueueList(
 
                 is QueueItem.Inventory -> BatchHistoryRow(
                     title = item.batch.batchId.toString(),
-                    dateTime = formatDate(item.batch.createdAt),
+                    dateTime = item.batch.createdAt.toFormattedDate(),
                     bucketId = item.batch.bucketId,
                     count = item.batch.uniqueNdcCount.toString(),
                     isPrescription = item.batch.requestIdFromPMS != null,
@@ -422,7 +422,7 @@ internal fun QueueItem.Dispense.toDrugCountRowData() = DrugCountRowData(
     ndc = txn.ndc,
     drugType = txn.drugType,
     drugName = txn.drugName ?: "—",
-    date = formatDate(txn.createdAt),
+    date = txn.createdAt.toFormattedDate(),
     bucketId = txn.bucketId,
     pillCount = txn.totalPillCount,
     targetCount = txn.targetCount ?: 0,
@@ -457,7 +457,3 @@ private fun QuickActionRingIcon(
         )
     }
 }
-
-private val DATE_FMT = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
-
-internal fun formatDate(epochMillis: Long): String = DATE_FMT.format(Date(epochMillis))

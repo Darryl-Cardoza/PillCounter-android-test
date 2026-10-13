@@ -17,7 +17,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -62,11 +61,14 @@ import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
+import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
+import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
+import com.dispensesure.retail.core.utils.compose.GlobalLoadingOverlay
 import com.dispensesure.retail.core.utils.compose.StepTitleWithSpeech
 import com.dispensesure.retail.core.utils.compose.VerifyNdcDetailsInlinePanel
 import com.dispensesure.retail.core.utils.compose.VerifyNdcDetailsSheet
@@ -1438,7 +1440,7 @@ fun DispenseFlowScreen(
         }
 
         if (dispenseState.isLoading) {
-            CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            BreathingDotsLoader(modifier = Modifier.align(Alignment.Center))
         }
 
         // Landscape inline-panel width. Matches the legacy ScanBarCodeScreen
@@ -1559,20 +1561,14 @@ fun DispenseFlowScreen(
         // Loading gate for resume/HL7 entries — drawn last so it sits on top
         // until the real start stage is resolved. Rather than an opaque white
         // cover (which reads as a frozen/blank screen), we keep the live camera
-        // visible underneath and lay a light dark scrim + spinner over it, so it
+        // visible underneath and lay a light dark scrim + loader over it, so it
         // looks like the session is loading over the camera. The wrong-stage
         // PRE_RX overlays are suppressed separately (see showPillPanel /
         // BtScannerInputBar) so nothing incorrect bleeds through the scrim.
-        if (awaitingResume) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.4f)),
-                contentAlignment = Alignment.Center
-            ) {
-                CircularProgressIndicator(color = Color.White)
-            }
-        }
+        GlobalLoadingOverlay(
+            isVisible = awaitingResume,
+            backgroundColor = Color.Black.copy(alpha = 0.4f),
+        )
     }
 }
 
@@ -1635,7 +1631,7 @@ internal fun handleBarcode(
                 val firstBottle = BottleInfo(
                     lotNumber = decoded?.lotNumber,
                     expirationDate = decoded?.expirationDate?.format(
-                        java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
+                        java.time.format.DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED)
                     ),
                     serialNumber = decoded?.serialNumber,
                     barcodeImagePath = imagePath,

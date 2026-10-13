@@ -240,7 +240,7 @@ class PDFHelperExporter(private val context: Context) {
 
             // Draw "Generated On" Text
             val footerText = "${context.getString(R.string.generated_on)} " +
-                    SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault()).format(Date())
+                    SimpleDateFormat(DateFormats.MMM_DD_YYYY_HH_MM_A, Locale.getDefault()).format(Date())
 
             canvas.drawText(footerText, (pageWidth / 2).toFloat(), yPosition, timestampPaint)
 

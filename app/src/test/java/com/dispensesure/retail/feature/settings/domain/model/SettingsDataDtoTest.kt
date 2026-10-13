@@ -27,7 +27,7 @@ class SettingsDataDtoTest {
         offlineSessionThresholdSeconds = 86400L
     )
 
-    private fun hl7() = ApplicationSettingsHL7Config(barcodeFormat = "CODE_128")
+    private fun hl7() = ApplicationSettingsHL7Config(pmsHostName = "_pms._tcp", pillCounterHostName = "_counter._tcp")
 
     private fun sample(hl7Config: ApplicationSettingsHL7Config? = hl7()) = SettingsDataDto(
         minVersion = "1.0.0",
@@ -86,7 +86,7 @@ class SettingsDataDtoTest {
     fun toStringContainsValues() {
         val s = sample().toString()
         assertTrue(s.contains("1.0.0"))
-        assertTrue(s.contains("CODE_128"))
+        assertTrue(s.contains("_pms._tcp"))
 
         val sNull = sample(hl7Config = null).toString()
         assertTrue(sNull.contains("null"))

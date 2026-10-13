@@ -10,6 +10,7 @@ import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.security.ImageCrypto
+import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import dagger.hilt.EntryPoint
@@ -332,7 +333,7 @@ class ImageNanoServer(
                 }
 
                 ZipNaming.PMS_FILE_NAMING -> {
-                    val dateFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
+                    val dateFormat = SimpleDateFormat(DateFormats.IMAGE_FILE_TIMESTAMP, Locale.US)
                     val codeCounters = mutableMapOf<String, Int>()
                     var lastName = ""
 

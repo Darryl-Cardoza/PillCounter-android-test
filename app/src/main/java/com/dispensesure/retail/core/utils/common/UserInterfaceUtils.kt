@@ -44,7 +44,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -198,11 +197,11 @@ object UserInterfaceUtils {
 
     // ───────────────────────────── Date/Time Formatting ─────────────────────────────
 
-    /** Formats a nullable epoch millis timestamp into `dd-MM-yyyy hh:mm a` format. */
+    /** Formats a nullable epoch millis timestamp into `MM/dd/yy hh:mm a` format. */
     fun Long?.toFormattedDate(): String {
         return if (this != null && this > 0) {
             try {
-                val formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy hh:mm a")
+                val formatter = DateTimeFormatter.ofPattern(DateFormats.MM_DD_YY_HH_MM_A)
                     .withLocale(Locale.getDefault())
                     .withZone(ZoneId.systemDefault())
                 formatter.format(Instant.ofEpochMilli(this))
@@ -213,14 +212,14 @@ object UserInterfaceUtils {
         } else "-"
     }
 
-    /** Converts a timestamp to a formatted date string. Default: `"dd MMM yyyy"`. */
-    fun Long.toDateString(pattern: String = "dd MMM yyyy"): String {
+    /** Converts a timestamp to a formatted date string. Default: `"MM/dd/yy"`. */
+    fun Long.toDateString(pattern: String = DateFormats.MM_DD_YY): String {
         val formatter = SimpleDateFormat(pattern, Locale.getDefault())
         return formatter.format(Date(this))
     }
 
     /** Converts a timestamp to a formatted time string. Default: `"hh:mm a"`. */
-    fun Long.toTimeString(pattern: String = "hh:mm a"): String {
+    fun Long.toTimeString(pattern: String = DateFormats.HH_MM_A): String {
         val formatter = SimpleDateFormat(pattern, Locale.getDefault())
         return formatter.format(Date(this))
     }
@@ -794,22 +793,6 @@ object UserInterfaceUtils {
                 overflow = TextOverflow.Ellipsis,
                 fontSize = 13.sp
             )
-        }
-    }
-
-    /**
-     * A simple composable that displays a centered circular progress indicator
-     * with a semi-transparent background, suitable for overlaying content.
-     */
-    @Composable
-    fun LoadingIndicator() {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = MaterialTheme.colorScheme.secondary)
         }
     }
 

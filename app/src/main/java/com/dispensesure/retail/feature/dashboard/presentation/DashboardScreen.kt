@@ -297,8 +297,5 @@ fun DashboardScreen(
         )
     }
 
-    GlobalLoadingOverlay(
-        isVisible = uiState.isLoadingQueue,
-        message = stringResource(R.string.loading_transactions),
-    )
+    GlobalLoadingOverlay(isVisible = uiState.isLoadingQueue)
 }

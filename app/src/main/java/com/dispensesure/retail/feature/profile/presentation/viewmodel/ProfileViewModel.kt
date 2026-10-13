@@ -427,7 +427,7 @@ class ProfileViewModel @Inject constructor(
                 val request = ProfileUpdateRequest(
                     pharmacyName = pharmacyName.trim(),
                     phoneNumber = phoneNumber,
-                    pharmacyId = pharmacyId,
+                    pharmacyId = pharmacyId.trim(),
                     isProfileComplete = true,
                     avatarUrl = "",
                     notificationsEnabled = !doNotAskAgain,
@@ -456,7 +456,7 @@ class ProfileViewModel @Inject constructor(
                                 lName = lastName.trim(),
                                 phoneNumber = phoneNumber,
                                 pharmacyName = pharmacyName.trim(),
-                                pharmacyId = pharmacyId,
+                                pharmacyId = pharmacyId.trim(),
                                 notifications = !doNotAskAgain,
                                 country = selectedCountry?.code,
                                 state = selectedState?.code,

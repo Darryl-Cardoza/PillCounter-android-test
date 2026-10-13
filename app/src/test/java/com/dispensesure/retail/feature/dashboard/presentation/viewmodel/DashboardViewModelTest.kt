@@ -246,6 +246,7 @@ class DashboardViewModelTest {
         email: String? = "a@b.com",
         isProfileCompleted: Boolean? = true,
         terminals: List<Terminal>? = null,
+        barcodeFormat: String? = null,
     ) = UserDetail(
         profile = UserProfile(
             fName = "F",
@@ -266,6 +267,7 @@ class DashboardViewModelTest {
             timezone = "UTC",
             bucket = listOf("b1"),
             terminals = terminals,
+            barcodeFormat = barcodeFormat,
         ),
     )
 
@@ -938,6 +940,30 @@ class DashboardViewModelTest {
         verify(exactly = 0) { preferenceHelper.saveSelectedTerminalId(any()) }
         verify(exactly = 0) { preferenceHelper.saveSelectedTerminalName(any()) }
         assertTrue(vm.terminalInfoLoaded.value)
+    }
+
+    @Test
+    fun `fetchUserDetail with non-blank barcode format saves regex`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail(barcodeFormat = "REGEX123")))
+
+        createViewModel()
+        advanceUntilIdle()
+
+        verify { preferenceHelper.saveBarcodeRegex("REGEX123") }
+    }
+
+    @Test
+    fun `fetchUserDetail with blank barcode format does not save regex`() = runTest(testDispatcher) {
+        every { preferenceHelper.getAccessToken() } returns "tok"
+        coEvery { userDetailRepository.getUserDetail("tok") } returns
+            Result.success(ApiResponse(200, true, "ok", null, userDetail(barcodeFormat = "   ")))
+
+        createViewModel()
+        advanceUntilIdle()
+
+        verify(exactly = 0) { preferenceHelper.saveBarcodeRegex(any()) }
     }
 
     @Test

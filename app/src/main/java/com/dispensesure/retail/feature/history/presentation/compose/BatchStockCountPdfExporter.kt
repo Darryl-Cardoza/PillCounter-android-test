@@ -8,6 +8,8 @@ import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.pdf.PdfDocument
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.utils.common.DateFormats
+import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
@@ -80,10 +82,9 @@ class BatchStockCountPdfExporter(private val context: Context) {
 
         val pdf = PdfDocument()
         return try {
-            val genTime   = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault()).format(Date())
-            val batchDate = startDateTime?.takeIf { it > 0 }
-                ?.let { SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(Date(it)) }
-                ?: genTime.substringBefore(",")
+            val genTime   = SimpleDateFormat(DateFormats.MMM_DD_YYYY_HH_MM_A, Locale.getDefault()).format(Date())
+            val batchDate = SimpleDateFormat(DateFormats.MMM_DD_YYYY, Locale.getDefault())
+                .format(Date(startDateTime?.takeIf { it > 0 } ?: System.currentTimeMillis()))
             val totalPills   = drugGroups.sumOf { it.totalCount }
             val statusLabel  = if (batchStatus == "COMPLETED")
                 context.getString(R.string.pdf_status_completed)
@@ -316,7 +317,7 @@ class BatchStockCountPdfExporter(private val context: Context) {
                     cv.drawText(lot.lotNo?.takeIf(String::isNotBlank) ?: "—", tL + 4f, bl(y, ROW_LOT, it), it)
                 }
                 np(C_TEXT_DARK, 10f, Paint.Align.CENTER).let {
-                    cv.drawText(lot.expiry?.takeIf(String::isNotBlank) ?: "—", tL + c1W + c2W / 2f, bl(y, ROW_LOT, it), it)
+                    cv.drawText(lot.expiry?.takeIf(String::isNotBlank)?.let(::formatDateToUSFormat) ?: "—", tL + c1W + c2W / 2f, bl(y, ROW_LOT, it), it)
                 }
                 np(C_TEXT_DARK, 10f, Paint.Align.RIGHT).let {
                     cv.drawText(lot.count.toString(), tR, bl(y, ROW_LOT, it), it)

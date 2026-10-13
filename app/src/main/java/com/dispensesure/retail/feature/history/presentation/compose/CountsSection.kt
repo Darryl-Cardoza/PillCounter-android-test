@@ -39,11 +39,9 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
-import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.core.utils.compose.DrugCountRow
 import com.dispensesure.retail.core.utils.compose.DrugCountRowData
 import com.dispensesure.retail.core.utils.compose.StatusChip
@@ -216,10 +214,7 @@ fun CountsSection(
                                         ndc = rowData.ndc,
                                         drugType = rowData.drugType,
                                         drugName = rowData.drugName ?: "",
-                                        date = formatDateToUSFormat(
-                                            rowData.createdAt.toFormattedDate(),
-                                            outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
-                                        ),
+                                        date = rowData.createdAt.toFormattedDate(),
                                         bucketId = rowData.bucketId,
                                         pillCount = rowData.pillCount ?: 0,
                                         targetCount = rowData.targetCount ?: 0,
@@ -238,10 +233,7 @@ fun CountsSection(
                             items(batches, key = { it.batchId }) { batch ->
                                 BatchHistoryRow(
                                     title = batch.batchId.toString(),
-                                    dateTime = formatDateToUSFormat(
-                                        batch.createdAt.toFormattedDate(),
-                                        outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
-                                    ),
+                                    dateTime = batch.createdAt.toFormattedDate(),
                                     bucketId = batch.bucketId,
                                     count = batch.uniqueNdcCount.toString(),
                                     isPrescription = batch.requestIdFromPMS != null,
@@ -260,10 +252,7 @@ fun CountsSection(
                                         ndc = rowData.ndc,
                                         drugType = rowData.drugType,
                                         drugName = rowData.drugName ?: "",
-                                        date = formatDateToUSFormat(
-                                            rowData.createdAt.toFormattedDate(),
-                                            outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
-                                        ),
+                                        date = rowData.createdAt.toFormattedDate(),
                                         bucketId = rowData.bucketId,
                                         pillCount = rowData.pillCount ?: 0,
                                         targetCount = rowData.targetCount ?: 0,
@@ -283,10 +272,7 @@ fun CountsSection(
                             items(filteredBatches, key = { it.batchId }) { batch ->
                                 BatchHistoryRow(
                                     title = batch.batchId.toString(),
-                                    dateTime = formatDateToUSFormat(
-                                        batch.createdAt.toFormattedDate(),
-                                        outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
-                                    ),
+                                    dateTime = batch.createdAt.toFormattedDate(),
                                     bucketId = batch.bucketId,
                                     count = batch.uniqueNdcCount.toString(),
                                     isPrescription = batch.requestIdFromPMS != null,

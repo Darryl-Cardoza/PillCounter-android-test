@@ -16,17 +16,24 @@ data class ParsedScanData(
 
 private val NAMED_GROUP_NAME = Regex("""\(\?<([a-zA-Z][a-zA-Z0-9]*)>""")
 
+// Finds an NDC digit group such as (?<ndc>\d{8,11}), (?<ndc>\d{10}) or (?<ndc>\d{8,}).
+private val NDC_DIGITS_GROUP = Regex("""(?i)\(\?<(ndc\w*)>\\d\{(\d+)(,(\d*))?\}\)""")
+
 fun parseScanData(template: String, actualValue: String): ParsedScanData {
     return try {
-        val regex = Regex(template)
+        // Dashes are allowed between NDC digits (e.g. 72888-008-00); the template's digit count still applies.
+        val regex = Regex(NDC_DIGITS_GROUP.replace(template) {
+            val (name, min, rangePart, max) = it.destructured
+            // A zero-digit minimum has no first digit to anchor on, so the group is left as written.
+            if (min.toInt() == 0) return@replace it.value
+            val maxDigits = if (rangePart.isEmpty()) min else max
+            val maxRepeats = maxDigits.toIntOrNull()?.minus(1)?.toString().orEmpty()
+            "(?<$name>\\d(?:-?\\d){${min.toInt() - 1},$maxRepeats})"
+        })
 
-        val input = actualValue.trim()
-        val match = regex.matchEntire(input)
+        val match = regex.matchEntire(actualValue.trim())
             ?: run {
-                logger.e(
-                    "Scan data does not match label format ${describeMismatch(regex, input)}, " +
-                        "template=$template"
-                )
+                logger.e("Scan data does not match label format: $actualValue")
                 return ParsedScanData()
             }
 
@@ -41,7 +48,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
         ParsedScanData(
             rxNo = rawMap["RXNO"] ?: rawMap["RXNUMBER"],
             refillNo = rawMap["REFILLNO"],
-            ndcNo = rawMap["NDCNO"] ?: rawMap["NDC"],
+            ndcNo = (rawMap["NDCNO"] ?: rawMap["NDC"])?.let(::toElevenDigitNdc),
             qty = rawMap["QTY"],
             bucket = rawMap["BUCKET"],
             rawMap = rawMap
@@ -53,29 +60,16 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
     }
 }
 
-/**
- * Describes where [input] stops fitting [regex], for logging a failed label parse.
- * "»" marks the break point; control characters show as \xNN.
- *
- * Example Usage:
- * describeMismatch(Regex("""\d+\|\d{11}"""), "12|0071015523") // at index 13 (input ended early): 12|0071015523»
- */
-internal fun describeMismatch(regex: Regex, input: String): String {
-    val at = failureIndex(regex, input)
-    val reason = if (at >= input.length) "input ended early" else "unexpected '${input[at].toString().visible()}'"
-    return "at index $at ($reason): ${input.substring(0, at).visible()}»${input.substring(at).visible()}"
-}
-
-// Longest prefix that still fits: it matches, or the regex hit its end wanting more input.
-private fun failureIndex(regex: Regex, input: String): Int {
-    val matcher = regex.toPattern().matcher("")
-    for (end in input.length downTo 0) {
-        matcher.reset(input.substring(0, end))
-        if (matcher.matches() || matcher.hitEnd()) return end
+// Pads a dashed 10-digit NDC (4-4-2, 5-3-2, 5-4-1) to 11 digits (5-4-2).
+// Any other NDC just has its dashes removed.
+private fun toElevenDigitNdc(ndc: String): String {
+    val segments = ndc.split("-")
+    if (segments.size != 3) return ndc.replace("-", "")
+    val (labeler, product, pkg) = segments
+    return when (segments.map { it.length }) {
+        listOf(4, 4, 2) -> "0$labeler$product$pkg"
+        listOf(5, 3, 2) -> "${labeler}0$product$pkg"
+        listOf(5, 4, 1) -> "$labeler${product}0$pkg"
+        else -> segments.joinToString("")
     }
-    return 0
-}
-
-private fun String.visible(): String = buildString {
-    for (c in this@visible) append(if (c.code < 32 || c.code == 127) "\\x%02X".format(c.code) else c)
 }
