@@ -155,6 +155,12 @@ class MainActivity : ComponentActivity() {
         requestLocationPermission()
     }
 
+    override fun onDestroy() {
+        // View models survive rotation, so the tour can too; any other destroy rebuilds them.
+        if (!isChangingConfigurations) FtueController.end()
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -344,6 +350,8 @@ class MainActivity : ComponentActivity() {
                                         },
                                         onLogOut         = {
                                             FtueController.end()
+                                            // The Ended event has no collector once logged out; purge now.
+                                            settingsViewModel.purgeTutorialDataAsync()
                                             sessionLockController.setLockPending(false)
                                             settingsViewModel.onUserLoginOrLogOut()
                                         }
@@ -355,9 +363,8 @@ class MainActivity : ComponentActivity() {
                                         FtueController.events.collect { event ->
                                             // After a logout or expiry there is no user to mark or to show a Dashboard to.
                                             val loggedIn = preferenceHelper.isUserLoggedIn()
-                                            if (event == TourEvent.Ended) {
-                                                settingsViewModel.purgeTutorialData()
-                                            }
+                                            // Between sections no step is running, so the finished section's data can go.
+                                            settingsViewModel.purgeTutorialData(force = event == TourEvent.ShowDashboard)
                                             if (loggedIn) navController.navigateBackToDashboard()
                                             if (event == TourEvent.Ended) {
                                                 // end() cancels the running step, but the last step's completion writes run in

@@ -692,6 +692,22 @@ class PillCountTxnDaoTest {
         assertEquals(2, count)
     }
 
+    @Test
+    fun `tutorial txns are excluded from the partial queue, its count and the dashboard counts`() = runTest {
+        val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Demo"))
+        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL).copy(drugId = demoDrugId))
+        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL).copy(rxNo = "${TutorialData.RX_PREFIX}9"))
+        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL))
+
+        assertEquals(1, dao.countPartialByIsDispense(isDispense = true, userLocalId = 1L))
+        dao.observePartialByIsDispense(isDispense = true, userLocalId = 1L, type = StepState.SCAN).test {
+            assertEquals(1, awaitItem().size)
+        }
+        dao.observeDashboardCountsGrouped(1L).test {
+            assertEquals(1, awaitItem().sumOf { it.cnt })
+        }
+    }
+
     // ───────────────────────── Dashboard / join queries ─────────────────────────
 
     @Test

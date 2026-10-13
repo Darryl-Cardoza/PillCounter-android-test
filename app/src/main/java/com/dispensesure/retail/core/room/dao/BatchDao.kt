@@ -337,6 +337,9 @@ interface BatchDao {
     @Query(
         """
         SELECT batchId FROM batch WHERE bucketId = '${TutorialData.BUCKET}'
+        OR (batchId IN (SELECT batchId FROM stock_txn WHERE drugId IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
+            AND batchId NOT IN (SELECT batchId FROM stock_txn
+                                WHERE batchId IS NOT NULL AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))))
         """
     )
     suspend fun getTutorialBatchIds(): List<Long>

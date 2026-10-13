@@ -140,9 +140,12 @@ class TourGuideState(
         isActive = steps.isNotEmpty()
     }
 
+    /** Back only steps within the current section; the overlay shows its button off this. */
+    val canGoBack: Boolean
+        get() = pendingSection == null && steps.getOrNull(currentIndex - 1)?.section == currentStep?.section
+
     fun back() {
-        val prev = steps.getOrNull(currentIndex - 1) ?: return
-        if (!stepBusy && pendingSection == null && prev.section == currentStep?.section) currentIndex--
+        if (!stepBusy && canGoBack) currentIndex--
     }
 
     /** Runs [action] for step [id] once; a repeat tap, or a tap for a stale step, is ignored. */

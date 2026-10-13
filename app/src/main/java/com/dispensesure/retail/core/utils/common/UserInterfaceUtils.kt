@@ -432,7 +432,6 @@ object UserInterfaceUtils {
         distanceBetweenOptions: Dp = 8.dp,
         confirmText: String = stringResource(R.string.ok),
     ) {
-        val dimens = AppTheme.dimens
         var currentSelection by remember { mutableStateOf(selectedIndex) }
 
         AlertDialog(
@@ -442,67 +441,15 @@ object UserInterfaceUtils {
             shape = RoundedCornerShape(12.dp),
             containerColor = AppTheme.extendedColors.primaryBackground,
             text = {
-                Column {
-                    Text(
-                        text = title,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = AppTheme.extendedColors.textColor,
-                        modifier = Modifier.padding(bottom = 16.dp)
-                    )
-                    options.forEachIndexed { index, option ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { currentSelection = index }
-                                .padding(vertical = distanceBetweenOptions)
-                        ) {
-                            RadioButton(
-                                selected = currentSelection == index,
-                                onClick = { currentSelection = index },
-                                colors = RadioButtonDefaults.colors(
-                                    selectedColor = MaterialTheme.colorScheme.primary
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(dimens.small))
-                            Text(
-                                text = option,
-                                fontSize = 16.sp,
-                                color = AppTheme.extendedColors.textColor
-                            )
-                        }
-                    }
-                }
+                SingleSelectOptions(title, options, currentSelection, distanceBetweenOptions) { currentSelection = it }
             },
             confirmButton = {
-                Row(
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    HollowButton(
-                        text = stringResource(R.string.cancel).uppercase(),
-                        onClick = onCancel,
-                        color = MaterialTheme.colorScheme.primary,
-                        fixedWidth = false,
-                        modifier = Modifier.width(dimens.dialogButtonWidth)
-                    )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    ActionButtonPrimary(
-                        text = confirmText.uppercase(),
-                        onClick = { currentSelection?.let { onOk(it) } },
-                        // Disabled until the user makes a deliberate selection.
-                        // Callers that want a preselected option pass selectedIndex.
-                        enabled = currentSelection != null,
-                        fixedWidth = false,
-                        modifier = Modifier.width(dimens.dialogButtonWidth)
-                    )
-                }
+                SingleSelectButtons(confirmText, currentSelection, onCancel, onOk)
             }
         )
     }
 
-    /** Tour copy of [CommonSingleSelectDialog]'s card, hosted directly in the tour's dialog window. */
+    /** [CommonSingleSelectDialog]'s card, hosted directly in the tour's dialog window. */
     @Composable
     fun SingleSelectDialogContent(
         title: String,
@@ -514,7 +461,6 @@ object UserInterfaceUtils {
         confirmText: String = stringResource(R.string.ok),
         modifier: Modifier = Modifier,
     ) {
-        val dimens = AppTheme.dimens
         var currentSelection by remember { mutableStateOf(selectedIndex) }
 
         Surface(
@@ -524,60 +470,84 @@ object UserInterfaceUtils {
             tonalElevation = 6.dp,
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text(
-                    text = title,
-                    fontSize = 18.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = AppTheme.extendedColors.textColor,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
-                options.forEachIndexed { index, option ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { currentSelection = index }
-                            .padding(vertical = distanceBetweenOptions)
-                    ) {
-                        RadioButton(
-                            selected = currentSelection == index,
-                            onClick = { currentSelection = index },
-                            colors = RadioButtonDefaults.colors(
-                                selectedColor = MaterialTheme.colorScheme.primary
-                            )
-                        )
-                        Spacer(modifier = Modifier.width(dimens.small))
-                        Text(
-                            text = option,
-                            fontSize = 16.sp,
-                            color = AppTheme.extendedColors.textColor
-                        )
-                    }
-                }
+                SingleSelectOptions(title, options, currentSelection, distanceBetweenOptions) { currentSelection = it }
                 Spacer(modifier = Modifier.height(24.dp))
+                SingleSelectButtons(confirmText, currentSelection, onCancel, onOk)
+            }
+        }
+    }
+
+    @Composable
+    private fun SingleSelectOptions(
+        title: String,
+        options: List<String>,
+        selected: Int?,
+        distanceBetweenOptions: Dp,
+        onSelect: (Int) -> Unit,
+    ) {
+        Column {
+            Text(
+                text = title,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppTheme.extendedColors.textColor,
+                modifier = Modifier.padding(bottom = 16.dp)
+            )
+            options.forEachIndexed { index, option ->
                 Row(
-                    horizontalArrangement = Arrangement.Center,
-                    modifier = Modifier.fillMaxWidth()
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelect(index) }
+                        .padding(vertical = distanceBetweenOptions)
                 ) {
-                    HollowButton(
-                        text = stringResource(R.string.cancel).uppercase(),
-                        onClick = onCancel,
-                        color = MaterialTheme.colorScheme.primary,
-                        fixedWidth = false,
-                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                    RadioButton(
+                        selected = selected == index,
+                        onClick = { onSelect(index) },
+                        colors = RadioButtonDefaults.colors(
+                            selectedColor = MaterialTheme.colorScheme.primary
+                        )
                     )
-                    Spacer(modifier = Modifier.width(16.dp))
-                    ActionButtonPrimary(
-                        text = confirmText.uppercase(),
-                        onClick = { currentSelection?.let { onOk(it) } },
-                        // Disabled until the user makes a deliberate selection.
-                        // Callers that want a preselected option pass selectedIndex.
-                        enabled = currentSelection != null,
-                        fixedWidth = false,
-                        modifier = Modifier.width(dimens.dialogButtonWidth)
+                    Spacer(modifier = Modifier.width(AppTheme.dimens.small))
+                    Text(
+                        text = option,
+                        fontSize = 16.sp,
+                        color = AppTheme.extendedColors.textColor
                     )
                 }
             }
+        }
+    }
+
+    @Composable
+    private fun SingleSelectButtons(
+        confirmText: String,
+        selected: Int?,
+        onCancel: () -> Unit,
+        onOk: (Int) -> Unit,
+    ) {
+        val dimens = AppTheme.dimens
+        Row(
+            horizontalArrangement = Arrangement.Center,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            HollowButton(
+                text = stringResource(R.string.cancel).uppercase(),
+                onClick = onCancel,
+                color = MaterialTheme.colorScheme.primary,
+                fixedWidth = false,
+                modifier = Modifier.width(dimens.dialogButtonWidth)
+            )
+            Spacer(modifier = Modifier.width(16.dp))
+            ActionButtonPrimary(
+                text = confirmText.uppercase(),
+                onClick = { selected?.let { onOk(it) } },
+                // Disabled until the user makes a deliberate selection.
+                // Callers that want a preselected option pass selectedIndex.
+                enabled = selected != null,
+                fixedWidth = false,
+                modifier = Modifier.width(dimens.dialogButtonWidth)
+            )
         }
     }
 

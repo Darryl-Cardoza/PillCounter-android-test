@@ -112,6 +112,19 @@ class TourGuideStateTest {
     }
 
     @Test
+    fun `canGoBack is false on the first step of a section`() = runTest {
+        val state = TestScopeState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
+        state.start(listOf(TourSection.DISPENSE, TourSection.DASHBOARD))
+        state.advanceIfCurrent("x1")
+        state.advanceIfCurrent("x2")
+        state.continueToNextSection()
+        assertEquals("pms", state.currentStep?.id)
+        assertEquals(false, state.canGoBack)
+        state.advanceIfCurrent("pms")
+        assertEquals(true, state.canGoBack)
+    }
+
+    @Test
     fun `back does nothing while the next-section prompt is showing`() = runTest {
         val state = TestScopeState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
         state.start(listOf(TourSection.DISPENSE, TourSection.STOCK_COUNT))

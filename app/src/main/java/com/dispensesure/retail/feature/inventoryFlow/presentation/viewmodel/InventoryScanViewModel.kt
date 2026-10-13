@@ -745,7 +745,7 @@ class InventoryScanViewModel @Inject constructor(
             logger.w("INV_SCAN onAdd ABORT: no active")
             return
         }
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             try {
                 persistActive(active)
             } finally {
@@ -753,7 +753,7 @@ class InventoryScanViewModel @Inject constructor(
                 _scannerPaused.value = false
                 logger.d("INV_SCAN onAdd DONE — activeNdc cleared")
             }
-        }
+        })
     }
 
     /* ─────────────────────────  Edit Details panel  ───────────────────────── */
@@ -992,7 +992,7 @@ class InventoryScanViewModel @Inject constructor(
     }
 
     fun confirmEndCount(note: String? = null) {
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             try {
                 val batchId = resolvedBatchId.value
                 // Guard: never complete a batch that has no committed NDC. Even if
@@ -1017,7 +1017,7 @@ class InventoryScanViewModel @Inject constructor(
                 _showEndCountDialog.value = false
                 _batchEnded.value = true
             }
-        }
+        })
     }
 }
 

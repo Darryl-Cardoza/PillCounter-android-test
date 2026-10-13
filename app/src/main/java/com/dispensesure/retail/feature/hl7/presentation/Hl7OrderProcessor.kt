@@ -1,5 +1,6 @@
 package com.dispensesure.retail.feature.hl7.presentation
 
+import com.dispensesure.retail.core.tourguide.FtueController
 import android.content.Context
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -132,7 +133,9 @@ class Hl7OrderProcessor @Inject constructor(
             txnId = pillCountTxnDao.upsertPreservingId(txn)
         }
 
-        preferenceHelper.saveTxnId(txnId)
+        // Tour demo flow owns the active txn id; an incoming order must not hijack it.
+
+        if (!FtueController.state.isActive) preferenceHelper.saveTxnId(txnId)
         hl7Repository.insertZinContainerDetails(txnId, message)
 
         notifier.show(
@@ -228,7 +231,9 @@ class Hl7OrderProcessor @Inject constructor(
             txnId = pillCountTxnDao.upsertPreservingId(txn)
         }
 
-        preferenceHelper.saveTxnId(txnId)
+        // Tour demo flow owns the active txn id; an incoming order must not hijack it.
+
+        if (!FtueController.state.isActive) preferenceHelper.saveTxnId(txnId)
         hl7Repository.insertZinContainerDetails(txnId, message)
 
         notifier.show(

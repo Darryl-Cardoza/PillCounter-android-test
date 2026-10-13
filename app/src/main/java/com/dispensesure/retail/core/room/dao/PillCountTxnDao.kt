@@ -174,6 +174,8 @@ interface PillCountTxnDao {
       AND txn.status = :partialStatus
       AND txn.isDispense = :isDispense
       AND txn.localId = :userLocalId
+      AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
+      AND (drug.ndc IS NULL OR drug.ndc != '${TutorialData.DEMO_NDC}')
     GROUP BY txn.txnId
     ORDER BY CASE txn.priority
                  WHEN 'High'   THEN 1
@@ -416,6 +418,8 @@ interface PillCountTxnDao {
     FROM pill_count_txn
     WHERE isDeleted = 0
       AND localId = :userLocalId
+      AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
+      AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
     GROUP BY status, isDispense
     """
     )
@@ -923,6 +927,8 @@ interface PillCountTxnDao {
       AND status = :partialStatus
       AND isDispense = :isDispense
       AND localId = :userLocalId
+      AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
+      AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
     """
     )
     suspend fun countPartialByIsDispense(

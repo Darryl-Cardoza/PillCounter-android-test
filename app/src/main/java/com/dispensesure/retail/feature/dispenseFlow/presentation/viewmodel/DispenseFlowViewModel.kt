@@ -783,7 +783,7 @@ class DispenseFlowViewModel @Inject constructor(
         // so a second tap can't insert a second row.
         state.pendingStandaloneRx?.let { draft ->
             _uiState.update { it.copy(showRxDetails = false, pendingStandaloneRx = null) }
-            viewModelScope.launch {
+            FtueController.track(viewModelScope.launch {
                 try {
                     val txnId = createStandaloneDispenseTxn(draft)
                     preferenceHelper.saveTxnId(txnId)
@@ -794,7 +794,7 @@ class DispenseFlowViewModel @Inject constructor(
                     logger.e("Standalone dispense txn creation failed", e)
                     _uiState.update { it.copy(error = e.message) }
                 }
-            }
+            })
             return
         }
     }

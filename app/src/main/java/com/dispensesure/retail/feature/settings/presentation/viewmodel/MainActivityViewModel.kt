@@ -72,7 +72,11 @@ class MainActivityViewModel @Inject constructor(
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
 
-    suspend fun purgeTutorialData() = tutorialDataCleaner.purge()
+    suspend fun purgeTutorialData(force: Boolean = false) = tutorialDataCleaner.purge(force)
+
+    fun purgeTutorialDataAsync() {
+        viewModelScope.launch(ioDispatcher) { tutorialDataCleaner.purge() }
+    }
 
     // The full config identity HL7 last started with, so a later settings/auth-me fetch
     // that returns different values (e.g. HL7 was preloaded from stale cached prefs on a

@@ -26,8 +26,9 @@ class TutorialDataCleaner @Inject constructor(
 ) {
     private val logger = AppLogger.create<TutorialDataCleaner>()
 
-    suspend fun purge() {
-        if (FtueController.state.isActive) return
+    /** [force]: purge between sections of a running tour (no step is running at the prompt). */
+    suspend fun purge(force: Boolean = false) {
+        if (!force && FtueController.state.isActive) return
         val files = mutableListOf<String>()
         try {
         db.withTransaction {
@@ -46,14 +47,15 @@ class TutorialDataCleaner @Inject constructor(
             stockTxnDao.deleteByDemoDrug()
             // Last: the txn/stock deletes above still match by this drug's NDC.
             drugMasterDao.deleteByNdc(TutorialData.DEMO_NDC)
+            // Before the commit: if the process dies first the rows survive and the next purge
+            // retries, instead of the rows going and the files being orphaned for good.
+            files.forEach { path -> File(path).takeIf { it.exists() }?.delete() }
         }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             // Never crash the app over cleanup; HL7 and the UI already ignore these rows.
             logger.e("Tutorial data purge failed", e)
-            return
         }
-        files.forEach { path -> File(path).takeIf { it.exists() }?.delete() }
     }
 }

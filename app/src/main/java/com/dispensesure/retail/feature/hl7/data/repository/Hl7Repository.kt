@@ -1,5 +1,6 @@
 package com.dispensesure.retail.feature.hl7.data.repository
 
+import com.dispensesure.retail.core.tourguide.FtueController
 import android.annotation.SuppressLint
 import android.content.Context
 import com.dispensesure.retail.R
@@ -526,7 +527,8 @@ class Hl7Repository @Inject constructor(
         logger.i("Saving txn (site2) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
-        preferenceHelper.saveTxnId(txnId)
+        // Tour demo flow owns the active txn id; an incoming order must not hijack it.
+        if (!FtueController.state.isActive) preferenceHelper.saveTxnId(txnId)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {
@@ -647,7 +649,8 @@ class Hl7Repository @Inject constructor(
         logger.i("Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
-        preferenceHelper.saveTxnId(txnId)
+        // Tour demo flow owns the active txn id; an incoming order must not hijack it.
+        if (!FtueController.state.isActive) preferenceHelper.saveTxnId(txnId)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {

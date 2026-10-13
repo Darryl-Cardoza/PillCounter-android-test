@@ -420,14 +420,20 @@ class BatchDaoTest {
     }
 
     @Test
-    fun `getTutorialBatchIds finds only tutorial bucket batches, not real batches holding the demo drug`() = runTest {
+    fun `getTutorialBatchIds finds tutorial bucket and demo-only batches, not real batches`() = runTest {
         val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
+        val realDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = "1234", drugName = "Aspirin"))
         dao.insert(BatchEntity(batchId = 1L, bucketId = TutorialData.BUCKET))
         dao.insert(BatchEntity(batchId = 2L, bucketId = "Normal"))
+        // Real bucket but only the demo drug: a demo batch whose insert raced the tour ending.
         dao.insert(BatchEntity(batchId = 3L, bucketId = "Normal"))
         stockTxnDao.insertIgnore(StockTxnEntity(batchId = 3L, drugId = demoDrugId))
+        // Real batch that also holds a real drug is never tutorial data.
+        dao.insert(BatchEntity(batchId = 4L, bucketId = "Normal"))
+        stockTxnDao.insertIgnore(StockTxnEntity(batchId = 4L, drugId = demoDrugId))
+        stockTxnDao.insertIgnore(StockTxnEntity(batchId = 4L, drugId = realDrugId))
 
-        assertEquals(listOf(1L), dao.getTutorialBatchIds())
+        assertEquals(listOf(1L, 3L), dao.getTutorialBatchIds().sorted())
     }
 
     @Test

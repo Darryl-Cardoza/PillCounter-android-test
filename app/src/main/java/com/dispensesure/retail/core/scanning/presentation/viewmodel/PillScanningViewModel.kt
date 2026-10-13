@@ -1907,7 +1907,7 @@ class PillScanningViewModel @Inject constructor(
 
     private fun handleConfirmDone() {
         confirmDoneStarted = true
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             val txnId = preferenceHelper.getTxnId()
             // Flush staged details to the DB BEFORE reading the total / deciding
             // status, so getTotalPillCountForTxn sees the freshly committed rows
@@ -1951,7 +1951,7 @@ class PillScanningViewModel @Inject constructor(
             _capturedBitmap.value = null
             _navigationEvent.send(NavigationEvent.NavigateToDashboard)
             logger.i("Transaction completed. Status=$status")
-        }
+        })
     }
 
     private fun handleDeleteTransaction(event: PillScanningEvent.TransactionDetailDeleted) {

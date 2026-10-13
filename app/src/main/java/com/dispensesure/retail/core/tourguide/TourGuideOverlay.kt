@@ -317,7 +317,7 @@ fun TourGuideOverlay(
                     }
                     // Only the Dashboard section is pure info and lets the user step back;
                     // later sections run real demo actions that can't be undone.
-                    if (step.section == TourSection.DASHBOARD && state.currentIndex > 0) {
+                    if (step.section == TourSection.DASHBOARD && state.canGoBack) {
                         TextButton(
                             onClick = { state.back() },
                             enabled = !state.stepBusy,
