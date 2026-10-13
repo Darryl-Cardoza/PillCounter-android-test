@@ -478,15 +478,24 @@ class MainActivity : ComponentActivity() {
             return
         }
         try {
-            preferenceHelper.clearTokens()
-            preferenceHelper.setUserLoggedIn(false)
-            sessionHealthController.markLoggedOut()
-            LoggerConfig.newSession()
-            sessionLockController.unlock()
-            if (::navController.isInitialized) {
-                navController.navigate(AUTH_GRAPH_ROUTE) {
-                    popUpTo(0) { inclusive = true }
+            // A cleanup failure must not skip the navigation below, or the user is stuck signed-in.
+            try {
+                preferenceHelper.clearTokens()
+                preferenceHelper.setUserLoggedIn(false)
+                sessionHealthController.markLoggedOut()
+                LoggerConfig.newSession()
+                sessionLockController.unlock()
+            } catch (e: Exception) {
+                logger.e("Session teardown cleanup failed", e, event = LogEvent.SESSION_EXPIRED)
+            }
+            try {
+                if (::navController.isInitialized) {
+                    navController.navigate(AUTH_GRAPH_ROUTE) {
+                        popUpTo(0) { inclusive = true }
+                    }
                 }
+            } catch (e: Exception) {
+                logger.e("Navigation to auth graph failed after session expiry", e, event = LogEvent.SESSION_EXPIRED)
             }
             showToast(this, R.string.session_expired, keepUntilShown = true)
         } finally {

@@ -173,7 +173,8 @@ class AppLogger(private val tag: String) {
         // Only this class itself (instance and companion) — not the whole `logger` package,
         // which also contains real callers such as PerformanceLogger that must still be
         // correctly attributed as the log's origin.
-        private const val INTERNAL_CLASS_NAME = "com.dispensesure.retail.core.utils.logger.AppLogger"
+        // Resolved at runtime, not a string literal: R8 renames AppLogger and would not rewrite a literal.
+        private val INTERNAL_CLASS_NAME: String = AppLogger::class.java.name
 
         @Volatile
         private var destination: LogDestination? = null
@@ -223,6 +224,28 @@ class AppLogger(private val tag: String) {
         /** Test-only: injects a fake destination directly, bypassing [init]'s Context requirement. */
         internal fun setDestinationForTest(destination: LogDestination?) {
             this.destination = destination
+        }
+
+        /** Uncaught-exception hook: queues a fatal ERROR to disk synchronously. Never throws. */
+        fun logFatal(throwable: Throwable) {
+            try {
+                (destination as? RemoteLogDestination)?.writeFatalSync(
+                    LogEntry(
+                        timestampMillis = System.currentTimeMillis(),
+                        level = LogLevel.ERROR,
+                        fileName = "Unknown",
+                        className = "Application",
+                        methodName = "uncaughtException",
+                        message = "Uncaught exception",
+                        humanReadableError = ExceptionTranslator.translate(throwable),
+                        throwable = throwable,
+                        operatorName = LoggerConfig.operatorName?.takeIf { it.isNotBlank() },
+                        event = LogEvent.APP_CRASH
+                    )
+                )
+            } catch (t: Throwable) {
+                Log.w(INTERNAL_TAG, "Crash entry could not be queued", t)
+            }
         }
 
         private fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?, event: LogEvent?) {

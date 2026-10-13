@@ -6,14 +6,20 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.IOException
+import java.net.ConnectException
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 /**
  * Central ERROR log for failed API requests: any non-2xx response or [IOException] on the main
  * client. Logs method + path only (no query string, no bodies) to keep PHI/device keys out of logs.
  *
+ * Levels: 5xx and non-offline IO failures are ERROR; 4xx and offline failures (no host/connection)
+ * are WARN, being mostly expected (wrong OTP, no network).
+ *
  * Skipped on purpose: synthetic offline 599 (the health gate already logs it), 401 (the
- * authenticator logs the refresh outcome), cancelled calls, and `/mobile/logs` itself.
+ * authenticator logs the refresh outcome), cancelled calls, `/mobile/logs` itself, and `/health`
+ * and the token refresh, whose owners (SessionHealthController, TokenAuthenticator) log them.
  */
 class ApiFailureLogInterceptor : Interceptor {
 
@@ -22,20 +28,26 @@ class ApiFailureLogInterceptor : Interceptor {
     override fun intercept(chain: Interceptor.Chain): Response {
         val request = chain.request()
         val path = request.url.encodedPath
-        val skip = path.endsWith(URLConstant.MOBILE_LOGS)
+        val skip = path.endsWith(URLConstant.MOBILE_LOGS) ||
+            path.endsWith(URLConstant.HEALTH) ||
+            path.endsWith(URLConstant.REFRESH_TOKEN)
 
         val response = try {
             chain.proceed(request)
         } catch (e: IOException) {
             if (!skip && !chain.call().isCanceled()) {
                 val event = if (e is SocketTimeoutException) LogEvent.NETWORK_TIMEOUT else LogEvent.NETWORK_ERROR
-                logger.e("${request.method} $path failed: ${e.javaClass.simpleName}", e, event = event)
+                val message = "${request.method} $path failed: ${e.javaClass.simpleName}"
+                if (e is UnknownHostException || e is ConnectException) logger.w(message, e, event = event)
+                else logger.e(message, e, event = event)
             }
             throw e
         }
 
         if (!skip && !response.isSuccessful && response.code != 401 && response.code != 599) {
-            logger.e("${request.method} $path -> HTTP ${response.code}", event = LogEvent.NETWORK_ERROR)
+            val message = "${request.method} $path -> HTTP ${response.code}"
+            if (response.code >= 500) logger.e(message, event = LogEvent.NETWORK_ERROR)
+            else logger.w(message, event = LogEvent.NETWORK_ERROR)
         }
         return response
     }

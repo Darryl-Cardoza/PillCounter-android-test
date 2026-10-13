@@ -115,6 +115,43 @@ class RemoteLogDestinationTest {
         assertFalse("Nothing should be queued while online", pendingFile.exists())
     }
 
+    @Test(timeout = 10_000)
+    fun `an ERROR logged during the network check does not re-enter write`() {
+        lateinit var destination: RemoteLogDestination
+        var calls = 0
+        every { NetworkUtils.isNetworkAvailable(any()) } answers {
+            calls++
+            destination.write(entry(message = "logged-by-network-check"))
+            true
+        }
+        destination = destination()
+
+        destination.write(entry(message = "outer"))
+        destination.awaitIdleForTest()
+
+        assertTrue("network check re-entered write(): $calls calls", calls <= 3)
+    }
+
+    @Test
+    fun `error message carries the exception message, not the translated text`() {
+        online(false)
+        val destination = destination()
+
+        destination.write(entry(throwable = IllegalStateException("txn-marker")).copy(humanReadableError = "Generic text"))
+        destination.awaitIdleForTest()
+
+        assertTrue(pendingFile.readText().contains("\"message\":\"txn-marker\""))
+    }
+
+    @Test
+    fun `writeFatalSync queues a fatal entry synchronously`() {
+        destination().writeFatalSync(entry(message = "crash-marker", throwable = IllegalStateException("boom")))
+
+        val queued = pendingFile.readText()
+        assertTrue(queued.contains("crash-marker"))
+        assertTrue(queued.contains("is_fatal") && queued.contains("true"))
+    }
+
     @Test
     fun `write queues to the pending file instead of sending when offline`() {
         online(false)

@@ -46,6 +46,12 @@ class LogEventClassifierTest {
     }
 
     @Test
+    fun `HL7 disconnect is not classified as a connect failure`() {
+        assertEquals(LogEvent.HL7_CONNECT_FAILED, LogEventClassifier.classify(entry(className = "MllpClient", message = "connect failed")))
+        assertEquals(LogEvent.HL7_SERVICE_STOPPED, LogEventClassifier.classify(entry(className = "MllpClient", message = "client disconnected")))
+    }
+
+    @Test
     fun `file not found maps to file read error`() {
         assertEquals(LogEvent.FILE_READ_ERROR, LogEventClassifier.classify(entry(throwable = FileNotFoundException())))
     }
@@ -116,8 +122,8 @@ class LogEventClassifierTest {
     }
 
     @Test
-    fun `unmapped class with throwable falls back to app crash`() {
-        assertEquals(LogEvent.APP_CRASH, LogEventClassifier.classify(entry(className = "Unmapped", throwable = RuntimeException())))
+    fun `unmapped class with throwable falls back to unknown error, not app crash`() {
+        assertEquals(LogEvent.UNKNOWN_ERROR, LogEventClassifier.classify(entry(className = "Unmapped", throwable = RuntimeException())))
     }
 
     @Test

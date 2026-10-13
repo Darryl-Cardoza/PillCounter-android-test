@@ -50,6 +50,11 @@ class PillCountingApplication : Application() {
         AppLogger.init(this)
         AppLogger.setTokenAuthenticator(tokenAuthenticator)
         AppLogger.setRuntimeUnit(runtimeUnit)
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            AppLogger.logFatal(e)
+            previousHandler?.uncaughtException(thread, e)
+        }
 //        FirebaseApp.initializeApp(this)
 
         // Keeps LoggerConfig.operatorName current so every subsequent log entry can be

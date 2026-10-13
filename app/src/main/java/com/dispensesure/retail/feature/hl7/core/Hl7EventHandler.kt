@@ -129,7 +129,7 @@ class Hl7EventHandler @Inject constructor(
             // ORC|CA — route through parser+processor
             orderControl == "CA" -> {
                 val orders = hl7Parser.map(parsed).getOrElse { e ->
-                    logger.e("HL7 parse/map failed for CA | msgId=$msgId | ${e.message}")
+                    logger.e("HL7 parse/map failed for CA | msgId=$msgId | ${e::class.java.simpleName}")
                     return buildErrorAck(parsed, errorResult("Parse failed for CA: ${e.message}"))
                 }
                 orders.forEach { order -> hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed)) }
@@ -139,7 +139,7 @@ class Hl7EventHandler @Inject constructor(
             // ORC|HD/RL/DC status-only actions — no structural validation needed, no RXE required
             orderControl in setOf("HD", "RL", "DC") -> {
                 val orders = hl7Parser.map(parsed).getOrElse { e ->
-                    logger.e("HL7 parse/map failed for $orderControl | msgId=$msgId | ${e.message}")
+                    logger.e("HL7 parse/map failed for $orderControl | msgId=$msgId | ${e::class.java.simpleName}")
                     return buildErrorAck(parsed, errorResult("Parse failed for $orderControl: ${e.message}"))
                 }
                 orders.forEach { order -> hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed)) }
@@ -156,7 +156,7 @@ class Hl7EventHandler @Inject constructor(
             rxe != null -> {
                 // 1. Parse to domain model
                 val orders = hl7Parser.map(parsed).getOrElse { e ->
-                    logger.e("HL7 parse/map failed | msgId=$msgId | ${e.message}")
+                    logger.e("HL7 parse/map failed | msgId=$msgId | ${e::class.java.simpleName}")
                     return buildErrorAck(parsed, errorResult("Parse failed: ${e.message}"))
                 }
 
@@ -172,7 +172,7 @@ class Hl7EventHandler @Inject constructor(
                 // 2. Structural validation via library
                 val structResult = hl7Validator.validateStructure(parsed)
                 if (!structResult.isValid) {
-                    logger.e("HL7 structural validation failed | msgId=$msgId | ${structResult.issues.firstOrNull()?.errorText}")
+                    logger.e("HL7 structural validation failed | msgId=$msgId")
                     notifier.show(
                         title = context.getString(R.string.hl7_notification_new_rx_title),
                         message = context.getString(R.string.hl7_notification_structural_validation_failed, msgId, structResult.issues.firstOrNull()?.errorText.orEmpty()),
@@ -184,7 +184,7 @@ class Hl7EventHandler @Inject constructor(
                 for (order in orders) {
                     val businessResult = hl7Validator.validateBusinessRules(order)
                     if (!businessResult.isValid) {
-                        logger.e("HL7 business validation failed | msgId=$msgId | orderId=${order.placerOrderNumber} | ${businessResult.reason}")
+                        logger.e("HL7 business validation failed | msgId=$msgId")
                         notifier.show(
                             title = context.getString(R.string.hl7_notification_new_rx_title),
                             message = context.getString(R.string.hl7_notification_business_validation_failed, msgId, businessResult.reason.orEmpty()),
@@ -274,7 +274,9 @@ class Hl7EventHandler @Inject constructor(
     override fun onError(source: String, throwable: Throwable) {
         // HL7_PARSE is already logged, PHI-stripped, by HL7BackgroundService.handleIncomingMessage.
         if (source == "HL7_PARSE") return
-        logger.e("HL7 error | source=$source", throwable, event = LogEvent.HL7_SERVICE_ERROR)
+        // The message can echo HL7 field values, so only the type and stack frames are logged.
+        val scrubbed = Exception(throwable::class.java.name).also { it.stackTrace = throwable.stackTrace }
+        logger.e("HL7 error | source=$source", scrubbed, event = LogEvent.HL7_SERVICE_ERROR)
     }
 
     override fun onPmsCertMismatch() {

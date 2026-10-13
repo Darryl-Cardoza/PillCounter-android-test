@@ -29,7 +29,7 @@ class Hl7OrderHandler @Inject constructor() {
         }
         else -> {
             // Should never reach here — library validator rejects unknown ORC-1 codes
-            logger.e("Unhandled ORC-1 code: ${order.orderControl} for ${order.placerOrderNumber}")
+            logger.e("Unhandled ORC-1 code: ${order.orderControl}")
             Hl7OrderAction.ReplaceTodo
         }
     }

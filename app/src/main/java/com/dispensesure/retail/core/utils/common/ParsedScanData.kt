@@ -33,7 +33,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
 
         val match = regex.matchEntire(actualValue.trim())
             ?: run {
-                logger.e("Scan data does not match label format: $actualValue")
+                logger.w("Scan data does not match label format", event = LogEvent.SCAN_FAILED)
                 return ParsedScanData()
             }
 
@@ -54,8 +54,7 @@ fun parseScanData(template: String, actualValue: String): ParsedScanData {
             rawMap = rawMap
         )
     } catch (e: Exception) {
-        logger.e("Error parsing scan data, template=$template", event = LogEvent.SCAN_FAILED)
-        logger.e("Error parsing scan data, template=$template", e)
+        logger.e("Error parsing scan data", e, event = LogEvent.SCAN_FAILED)
         ParsedScanData()
     }
 }

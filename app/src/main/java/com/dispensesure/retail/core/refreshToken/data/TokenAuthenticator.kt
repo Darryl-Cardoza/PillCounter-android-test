@@ -44,7 +44,10 @@ class TokenAuthenticator @Inject constructor(
         // Avoid infinite retry loops — only retry once per failed chain.
         if (responseCount(response) >= 2) return null
 
-        val currentRefreshToken = prefs.getRefreshToken() ?: return null
+        val currentRefreshToken = prefs.getRefreshToken() ?: run {
+            logger.e("No refresh token available to recover from 401", event = LogEvent.TOKEN_REFRESH_FAILED)
+            return null
+        }
 
         // Perform token refresh synchronously (blocking call). A refresh call that itself
         // returns HTTP 401 is the ONE condition that declares a session truly expired —

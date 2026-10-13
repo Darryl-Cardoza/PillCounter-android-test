@@ -6,6 +6,7 @@ import com.dispensesure.retail.core.utils.logger.LogDestination
 import com.dispensesure.retail.core.utils.logger.LogEntry
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.LogLevel
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkStatic
@@ -22,10 +23,12 @@ import org.junit.Before
 import org.junit.Test
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 class ApiFailureLogInterceptorTest {
 
     private val errors = mutableListOf<LogEntry>()
+    private val warnings = mutableListOf<LogEntry>()
     private val interceptor = ApiFailureLogInterceptor()
 
     @Before
@@ -34,15 +37,18 @@ class ApiFailureLogInterceptorTest {
         every { Log.w(any(), any<String>(), any()) } returns 0
         every { Log.e(any(), any(), any()) } returns 0
         every { Log.getStackTraceString(any()) } returns "stack trace"
+        LoggerConfig.minimumLogLevel = LogLevel.WARN
         AppLogger.setDestinationForTest(object : LogDestination {
             override fun write(entry: LogEntry) {
                 if (entry.level == LogLevel.ERROR) errors += entry
+                if (entry.level == LogLevel.WARN) warnings += entry
             }
         })
     }
 
     @After
     fun tearDown() {
+        LoggerConfig.minimumLogLevel = LogLevel.ERROR
         AppLogger.setDestinationForTest(null)
         unmockkAll()
     }
@@ -84,6 +90,26 @@ class ApiFailureLogInterceptorTest {
         assertThrows(SocketTimeoutException::class.java) { interceptor.intercept(chain("/mobile/users", failure = failure)) }
 
         assertEquals(LogEvent.NETWORK_TIMEOUT, errors.single().event)
+    }
+
+    @Test
+    fun `4xx responses and offline failures are warnings, not errors`() {
+        interceptor.intercept(chain("/mobile/users", code = 404))
+        assertThrows(UnknownHostException::class.java) {
+            interceptor.intercept(chain("/mobile/users", failure = UnknownHostException("offline")))
+        }
+
+        assertTrue(errors.isEmpty())
+        assertEquals(2, warnings.size)
+    }
+
+    @Test
+    fun `health and token refresh failures are not logged`() {
+        interceptor.intercept(chain("/health", code = 500))
+        interceptor.intercept(chain("/auth/refresh", code = 500))
+
+        assertTrue(errors.isEmpty())
+        assertTrue(warnings.isEmpty())
     }
 
     @Test

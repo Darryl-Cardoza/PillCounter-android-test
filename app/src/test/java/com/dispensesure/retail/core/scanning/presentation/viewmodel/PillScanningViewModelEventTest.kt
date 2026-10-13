@@ -157,6 +157,24 @@ class PillScanningViewModelEventTest {
 
     // ─────────────────────────── updateFilteredPills ───────────────────────────
 
+    @Test
+    fun `resetTransaction returns false when the DB reset fails`() = runTest {
+        coEvery { preferenceHelper.getTxnId() } returns 7L
+        coEvery { pillCountTxnDao.resetForRecount(7L, any()) } throws IllegalStateException("boom")
+
+        assertFalse(viewModel.resetTransaction())
+    }
+
+    @Test
+    fun `resetTransaction returns true and deletes rows inside a transaction`() = runTest {
+        coEvery { preferenceHelper.getTxnId() } returns 7L
+        var deletedInTx = false
+        coEvery { pillCountTxnDetailsDao.deleteAllForTxn(7L) } coAnswers { deletedInTx = inTransaction }
+
+        assertTrue(viewModel.resetTransaction())
+        assertTrue(deletedInTx)
+    }
+
     // SCAN_VM_029
     @Test
     fun `updateFilteredPills with a new list updates filteredPills in uiState`() = runTest {

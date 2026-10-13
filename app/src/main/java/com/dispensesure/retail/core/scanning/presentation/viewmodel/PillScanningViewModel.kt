@@ -1319,10 +1319,14 @@ class PillScanningViewModel @Inject constructor(
         val txnId = preferenceHelper.getTxnId()
         if (txnId != 0L) {
             withContext(Dispatchers.IO) {
-                // Files first: once the rows are gone their paths are unrecoverable.
-                deleteFiles(pillCountTxnDetailsDao.getImagePathsForTxn(txnId))
-                pillCountTxnDetailsDao.deleteAllForTxn(txnId)
-                pillCountTxnDao.resetForRecount(txnId)
+                val imagePaths = pillCountTxnDetailsDao.getImagePathsForTxn(txnId)
+                // One transaction: a failure part-way rolls back, so a retry still has the rows and files.
+                appDatabase.withTransaction {
+                    pillCountTxnDetailsDao.deleteAllForTxn(txnId)
+                    pillCountTxnDao.resetForRecount(txnId)
+                }
+                // Files only after the commit; deleteFiles never throws.
+                deleteFiles(imagePaths)
             }
         }
 
@@ -1582,6 +1586,9 @@ class PillScanningViewModel @Inject constructor(
         logger.i("Adding transaction detail. Count=$currentCount")
 
         viewModelScope.launch(Dispatchers.IO) {
+            // Image files written by this attempt, and whether a row (or staged detail) now points at them.
+            val savedPaths = mutableListOf<String>()
+            var committed = false
             try {
                 val userId = preferenceHelper.getUserId().orEmpty()
                 val user = userDao.getByUserId(userId)
@@ -1672,6 +1679,7 @@ class PillScanningViewModel @Inject constructor(
                     logger.e("Failed saving bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
                     null
                 }
+                filePath?.let(savedPaths::add)
                 // TARGET_VERIFICATION also keeps the crop with nothing drawn on it, for PMS.
                 // Stock sessions land on the same step but get no raw image.
                 val rawPath = if (stepType == StepState.TARGET_VERIFICATION && !isStockCountSession) {
@@ -1689,6 +1697,7 @@ class PillScanningViewModel @Inject constructor(
                         null
                     }
                 } else null
+                rawPath?.let(savedPaths::add)
                 // createBitmap can hand back the source itself when the crop is the whole frame.
                 if (photoBitmap !== workingBitmap && !photoBitmap.isRecycled) photoBitmap.recycle()
 
@@ -1712,6 +1721,7 @@ class PillScanningViewModel @Inject constructor(
                     // Bottle linkage (txnDetailsIds) is done in flushStagedDetails, once
                     // real row ids exist — staged rows have no id yet.
                     stagedDetails.add(detail)
+                    committed = true
                     stagingActive = true
 
                     if (!workingBitmap.isRecycled) workingBitmap.recycle()
@@ -1729,6 +1739,7 @@ class PillScanningViewModel @Inject constructor(
                         val newDetailsId = pillCountTxnDetailsDao.insert(detail)
                         linkDetailToActiveBottle(txnId, bottles, newDetailsId)
                     }
+                    committed = true
 
                     if (!workingBitmap.isRecycled) workingBitmap.recycle()
 
@@ -1738,7 +1749,8 @@ class PillScanningViewModel @Inject constructor(
                 throw e
             } catch (e: Exception) {
                 logger.e("Failed to add transaction detail", e, event = LogEvent.PILL_COUNT_FAILED)
-                // Nothing was saved, so the same pills must be addable again on retry.
+                // No row was saved, so drop this attempt's images and let the same pills be added again.
+                if (!committed) deleteFiles(savedPaths)
                 lastAddedScanSignature = null
                 showGenericError()
             } finally {

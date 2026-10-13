@@ -99,11 +99,16 @@ class RemoteLogDestination internal constructor(
     private var keyBlockedUntil = 0L
     // Lazy: AppLogger.init() builds this before the rest of the app is ready.
     private val preferenceHelper by lazy { PreferenceHelper(appContext) }
-    // Set while reading the token: a decrypt failure there logs an ERROR, which must not re-enter write().
-    private val readingToken = ThreadLocal<Boolean>()
+    // Set while this class calls code that may itself log an ERROR (token decrypt, network check):
+    // that ERROR must not re-enter write(), or a persistent failure would loop forever.
+    private val inInternalCall = ThreadLocal<Boolean>()
+    private fun <T> guarded(block: () -> T): T {
+        inInternalCall.set(true)
+        try { return block() } finally { inInternalCall.remove() }
+    }
+    private fun networkUp(): Boolean = guarded { isNetworkAvailable(appContext) }
     private val accessToken: () -> String? = accessTokenOverride ?: {
-        readingToken.set(true)
-        try { preferenceHelper.getAccessToken() } catch (e: Exception) { null } finally { readingToken.remove() }
+        guarded { try { preferenceHelper.getAccessToken() } catch (e: Exception) { null } }
     }
     private val flushMutex = Mutex()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -184,7 +189,7 @@ class RemoteLogDestination internal constructor(
     }
 
     override fun write(entry: LogEntry) {
-        if (entry.level != LogLevel.ERROR || readingToken.get() == true) return
+        if (entry.level != LogLevel.ERROR || inInternalCall.get() == true) return
 
         // Everything heavier than capturing the session id runs off the caller's thread (often main).
         val sessionId = LoggerConfig.sessionId
@@ -192,7 +197,7 @@ class RemoteLogDestination internal constructor(
             val request = buildRequest(entry, sessionId)
             // /mobile/logs needs the user's bearer token, so until login (or while offline) queue
             // to file; the backlog is flushed by connectivity, the next send, or onUserLoggedIn().
-            if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) {
+            if (!networkUp() || accessToken().isNullOrBlank()) {
                 persistNow(request)
                 return@launchTracked
             }
@@ -205,6 +210,14 @@ class RemoteLogDestination internal constructor(
                 }
             }
         }
+    }
+
+    /**
+     * Crash path: the process is about to die, so [write]'s async job would never run. Queues the
+     * entry to the file on the calling thread; it is sent on the next launch (connectivity/login flush).
+     */
+    fun writeFatalSync(entry: LogEntry) {
+        persistNow(buildRequest(entry, LoggerConfig.sessionId, isFatal = true))
     }
 
     private enum class SendResult {
@@ -331,7 +344,7 @@ class RemoteLogDestination internal constructor(
      * mid-send) is always re-appended, so a timeout can't lose entries.
      */
     private suspend fun flushPendingNow(wait: Boolean = false) {
-        if (!isNetworkAvailable(appContext) || accessToken().isNullOrBlank()) return
+        if (!networkUp() || accessToken().isNullOrBlank()) return
         // One flush at a time: a second would re-send the same .flushing batch and duplicate the unsent lines.
         if (wait) flushMutex.lock() else if (!flushMutex.tryLock()) return
         try {
@@ -404,7 +417,7 @@ class RemoteLogDestination internal constructor(
         return if (attempts != null) attempts to line.substring(tab + 1) else 0 to line
     }
 
-    private fun buildRequest(entry: LogEntry, sessionId: String): RemoteLogRequest {
+    private fun buildRequest(entry: LogEntry, sessionId: String, isFatal: Boolean = false): RemoteLogRequest {
         val throwable = entry.throwable
         return RemoteLogRequest(
             deviceKey = deviceKey(),
@@ -430,9 +443,10 @@ class RemoteLogDestination internal constructor(
             error = throwable?.let {
                 RemoteLogError(
                     type = it::class.java.name,
-                    message = PhiRedactor.redact(entry.humanReadableError ?: (it.message ?: it.toString())),
+                    // The raw message (already the first line of stack_trace); the translated text is in `message`.
+                    message = PhiRedactor.redact(it.message ?: entry.humanReadableError ?: it.toString()),
                     stackTrace = PhiRedactor.redact(stackTraceOf(it)),
-                    isFatal = false
+                    isFatal = isFatal
                 )
             },
             network = currentNetworkInfo()

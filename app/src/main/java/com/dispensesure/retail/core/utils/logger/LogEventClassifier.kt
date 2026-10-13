@@ -25,7 +25,8 @@ object LogEventClassifier {
         entry.event?.let { return it }
         exceptionEvent(entry.throwable)?.let { return it }
         domainEvent(entry)?.let { return it }
-        return if (entry.throwable != null) LogEvent.APP_CRASH else LogEvent.UNKNOWN_ERROR
+        // Handled errors only: real crashes reach the logger via AppLogger.logFatal with APP_CRASH set.
+        return LogEvent.UNKNOWN_ERROR
     }
 
     private fun exceptionEvent(throwable: Throwable?): LogEvent? = when {
@@ -98,6 +99,8 @@ object LogEventClassifier {
 
             "Hl7Repository", "Hl7ServiceManager", "Hl7EventHandler", "HL7backgroundService",
             "MllpClient", "MllpConnectionManager", "MllpServer", "NsdHelper" -> when {
+                // Before "connect", which would otherwise match inside "disconnect".
+                "disconnect" in message -> LogEvent.HL7_SERVICE_STOPPED
                 "connect" in message -> LogEvent.HL7_CONNECT_FAILED
                 "resend" in message -> LogEvent.HL7_RESEND_FAILED
                 "receive" in message -> LogEvent.HL7_RECEIVE_FAILED
