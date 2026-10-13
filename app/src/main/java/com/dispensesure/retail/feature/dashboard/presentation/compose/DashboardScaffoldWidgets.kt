@@ -52,6 +52,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.MenuButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.DrugCountRow
 import com.dispensesure.retail.core.utils.compose.DrugCountRowData
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
@@ -60,9 +61,6 @@ import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
 import com.dispensesure.retail.feature.dashboard.presentation.model.upNextDispense
 import com.dispensesure.retail.feature.history.presentation.compose.BatchHistoryRow
 import com.dispensesure.retail.ui.theme.AppTheme.extendedColors
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
 
 // Shared scaffold widgets for the new dashboard. DashboardLandscapeLayout and
 // DashboardPortraitLayout consume these so the "same data, different placement"
@@ -405,7 +403,7 @@ internal fun ScaffoldQueueList(
 
                 is QueueItem.Inventory -> BatchHistoryRow(
                     title = item.batch.batchId.toString(),
-                    dateTime = formatDate(item.batch.createdAt),
+                    dateTime = item.batch.createdAt.toFormattedDate(),
                     bucketId = item.batch.bucketId,
                     count = item.batch.uniqueNdcCount.toString(),
                     isPrescription = item.batch.requestIdFromPMS != null,
@@ -422,7 +420,7 @@ internal fun QueueItem.Dispense.toDrugCountRowData() = DrugCountRowData(
     ndc = txn.ndc,
     drugType = txn.drugType,
     drugName = txn.drugName ?: "—",
-    date = formatDate(txn.createdAt),
+    date = txn.createdAt.toFormattedDate(),
     bucketId = txn.bucketId,
     pillCount = txn.totalPillCount,
     targetCount = txn.targetCount ?: 0,
@@ -457,7 +455,3 @@ private fun QuickActionRingIcon(
         )
     }
 }
-
-private val DATE_FMT = SimpleDateFormat("dd-MM-yyyy HH:mm", Locale.getDefault())
-
-internal fun formatDate(epochMillis: Long): String = DATE_FMT.format(Date(epochMillis))

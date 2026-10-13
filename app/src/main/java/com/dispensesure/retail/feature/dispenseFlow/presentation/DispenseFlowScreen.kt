@@ -62,6 +62,7 @@ import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
+import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
@@ -1626,7 +1627,7 @@ internal fun handleBarcode(
                 val firstBottle = BottleInfo(
                     lotNumber = decoded?.lotNumber,
                     expirationDate = decoded?.expirationDate?.format(
-                        java.time.format.DateTimeFormatter.ofPattern("MM-dd-yyyy")
+                        java.time.format.DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED)
                     ),
                     serialNumber = decoded?.serialNumber,
                     barcodeImagePath = imagePath,

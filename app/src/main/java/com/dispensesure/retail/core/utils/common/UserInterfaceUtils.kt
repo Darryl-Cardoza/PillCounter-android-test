@@ -194,11 +194,11 @@ object UserInterfaceUtils {
 
     // ───────────────────────────── Date/Time Formatting ─────────────────────────────
 
-    /** Formats a nullable epoch millis timestamp into `dd-MM-yyyy hh:mm a` format. */
+    /** Formats a nullable epoch millis timestamp into `MM/dd/yy hh:mm a` format. */
     fun Long?.toFormattedDate(): String {
         return if (this != null && this > 0) {
             try {
-                val formatter = DateTimeFormatter.ofPattern("dd-MM-yyyy hh:mm a")
+                val formatter = DateTimeFormatter.ofPattern(DateFormats.MM_DD_YY_HH_MM_A)
                     .withLocale(Locale.getDefault())
                     .withZone(ZoneId.systemDefault())
                 formatter.format(Instant.ofEpochMilli(this))
@@ -208,14 +208,14 @@ object UserInterfaceUtils {
         } else "-"
     }
 
-    /** Converts a timestamp to a formatted date string. Default: `"dd MMM yyyy"`. */
-    fun Long.toDateString(pattern: String = "dd MMM yyyy"): String {
+    /** Converts a timestamp to a formatted date string. Default: `"MM/dd/yy"`. */
+    fun Long.toDateString(pattern: String = DateFormats.MM_DD_YY): String {
         val formatter = SimpleDateFormat(pattern, Locale.getDefault())
         return formatter.format(Date(this))
     }
 
     /** Converts a timestamp to a formatted time string. Default: `"hh:mm a"`. */
-    fun Long.toTimeString(pattern: String = "hh:mm a"): String {
+    fun Long.toTimeString(pattern: String = DateFormats.HH_MM_A): String {
         val formatter = SimpleDateFormat(pattern, Locale.getDefault())
         return formatter.format(Date(this))
     }

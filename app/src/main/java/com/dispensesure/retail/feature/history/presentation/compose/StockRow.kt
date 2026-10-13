@@ -26,9 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
-import com.dispensesure.retail.core.utils.common.formatDateToUSFormat
 import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
 import com.dispensesure.retail.ui.theme.AppTheme
 
@@ -93,10 +91,7 @@ fun StockRow(
                         color = AppTheme.extendedColors.textColor
                     )
                     Text(
-                        text = formatDateToUSFormat(
-                            date,
-                            outputPattern = DateFormats.MM_DD_YYYY_HH_MM_A
-                        ),
+                        text = date,
                         fontSize = 12.sp,
                         color = AppTheme.extendedColors.textColor
                     )

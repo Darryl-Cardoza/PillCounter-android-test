@@ -14,6 +14,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.dtos.TxnDetailInfo
 import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.utils.common.DateFormats
 import java.io.File
 import java.io.FileOutputStream
 import java.text.SimpleDateFormat
@@ -102,11 +103,11 @@ class DrugHistoryDetailPdfExporter(private val context: Context) {
 
         val pdf = PdfDocument()
         return try {
-            val fmt      = SimpleDateFormat("dd MMM yyyy, HH:mm", Locale.getDefault())
+            val fmt      = SimpleDateFormat(DateFormats.MMM_DD_YYYY_HH_MM_A, Locale.getDefault())
             val genTime  = fmt.format(Date())
             val txnDate  = fmt.format(Date(txn.createdAt))
-            val dateOnly = txnDate.substringBefore(",")
-            val timeOnly = txnDate.substringAfter(", ")
+            val dateOnly = SimpleDateFormat(DateFormats.MMM_DD_YYYY, Locale.getDefault()).format(Date(txn.createdAt))
+            val timeOnly = SimpleDateFormat(DateFormats.HH_MM_A, Locale.getDefault()).format(Date(txn.createdAt))
 
             val ctx = Ctx(pdf)
             ctx.y = drawHeader(ctx.cv, genTime)

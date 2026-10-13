@@ -7,6 +7,7 @@ import android.content.IntentFilter
 import android.os.BatteryManager
 import android.os.Build
 import android.os.Debug
+import com.dispensesure.retail.core.utils.common.DateFormats
 import org.tensorflow.lite.Interpreter
 import java.io.BufferedWriter
 import java.io.File
@@ -42,7 +43,7 @@ class PerformanceLogger @Inject constructor(
         File(logDir, "model_performance_${getCurrentDateForFile()}.log")
     }
 
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+    private val dateFormat = SimpleDateFormat(DateFormats.LOG_TIMESTAMP, Locale.US)
     private val sessionId = UUID.randomUUID().toString().substring(0, 8)
 
     private val activityManager: ActivityManager by lazy {
@@ -298,7 +299,7 @@ class PerformanceLogger @Inject constructor(
     }
 
     private fun getCurrentDateForFile(): String {
-        val fileFormat = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
+        val fileFormat = SimpleDateFormat(DateFormats.FILE_TIMESTAMP, Locale.US)
         return fileFormat.format(Date())
     }
 

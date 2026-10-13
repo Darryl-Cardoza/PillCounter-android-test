@@ -20,6 +20,7 @@ import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
 import com.dispensesure.retail.core.room.models.dtos.RequestedDrugDto
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
+import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
@@ -441,7 +442,7 @@ class InventoryScanViewModel @Inject constructor(
 
                 val lotNo = decoded?.lotNumber
                 val serialNo = decoded?.serialNumber
-                val expiry = decoded?.expirationDate?.format(DateTimeFormatter.ofPattern("MM-dd-yyyy"))
+                val expiry = decoded?.expirationDate?.format(DateTimeFormatter.ofPattern(DateFormats.EXPIRY_STORED))
                 val packageQty = drug.packageQty ?: 0
                 logger.d("INV_SCAN parsed lotNo=$lotNo serialNo=$serialNo expiry=$expiry packageQty=$packageQty")
 
