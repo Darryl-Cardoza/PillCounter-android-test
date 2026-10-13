@@ -11,13 +11,11 @@ import androidx.compose.foundation.layout.displayCutoutPadding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -38,6 +36,7 @@ import com.dispensesure.retail.core.hl7.imageWebService.NetworkUtils
 import com.dispensesure.retail.core.hl7.service.HL7Config
 import com.dispensesure.retail.core.utils.common.NetworkUtils.rememberIsNetworkAvailable
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
+import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.PmsTestConnectionState
 import com.dispensesure.retail.ui.theme.LocalExtendedColors
@@ -174,12 +173,10 @@ fun ConnectionInfoScreen(
                         shape = MaterialTheme.shapes.medium
                     ) {
                         if (isTesting) {
-                            CircularProgressIndicator(
-                                modifier = Modifier
-                                    .padding(end = 8.dp)
-                                    .size(16.dp),
+                            BreathingDotsLoader(
+                                modifier = Modifier.padding(end = 8.dp),
+                                dotSize = 6.dp,
                                 color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp
                             )
                         }
                         Text(

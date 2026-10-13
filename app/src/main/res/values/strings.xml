@@ -59,7 +59,6 @@
     <string name="nothing_here_yet">Nothing here yet</string>
     <string name="all_caught_up">You are all caught up!</string>
     <string name="no_pending_tasks">No pending tasks right now</string>
-    <string name="loading_transactions">Loading transactions...</string>
     <string name="kpi_disp_short">Dispense</string>
     <string name="kpi_inv_short">Inventory</string>
     <string name="kpi_high_priority">High Priority</string>

@@ -1,42 +1,43 @@
 package com.dispensesure.retail.core.utils.compose
 
-import com.dispensesure.retail.R
-import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.StartOffset
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.rotate
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.zIndex
-import kotlin.math.cos
-import kotlin.math.sin
+import com.dispensesure.retail.R
+
+private const val DOT_COUNT = 3
+private const val BREATH_HALF_CYCLE_MS = 600
+private const val DOT_STAGGER_MS = 200
 
 @Composable
 fun GlobalLoadingOverlay(
     isVisible: Boolean,
-    message: String = stringResource(R.string.loading),
     backgroundColor: Color = Color.Black.copy(alpha = 0.3f),
 ) {
     if (!isVisible) return
@@ -45,101 +46,54 @@ fun GlobalLoadingOverlay(
         modifier = Modifier
             .fillMaxSize()
             .background(backgroundColor)
-            .zIndex(1000f),
+            .zIndex(1000f)
+            // Swallow taps so nothing underneath can be pressed while loading.
+            .pointerInput(Unit) { detectTapGestures { } },
         contentAlignment = Alignment.Center,
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            PillCountingLoader()
-            Spacer(modifier = Modifier.height(24.dp))
-            Text(
-                text = message,
-                fontSize = 16.sp,
-                color = Color.White,
-                textAlign = TextAlign.Center,
-                fontWeight = FontWeight.SemiBold,
-            )
-        }
+        BreathingDotsLoader()
     }
 }
 
 @Composable
-fun PillCountingLoader(modifier: Modifier = Modifier) {
-    val infiniteTransition = rememberInfiniteTransition(label = "pill_loader")
+fun BreathingDotsLoader(
+    modifier: Modifier = Modifier,
+    dotSize: Dp = 24.dp,
+    color: Color = MaterialTheme.colorScheme.secondary,
+) {
+    val infiniteTransition = rememberInfiniteTransition(label = "breathing_dots")
+    val loadingDescription = stringResource(R.string.loading)
 
-    val dRotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2000, easing = LinearEasing),
-        ),
-        label = "d_rotation",
-    )
-
-    val pillsRotation by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1500, easing = LinearEasing),
-        ),
-        label = "pills_rotation",
-    )
-
-    val dScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = 1.1f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 1000, easing = LinearEasing),
-        ),
-        label = "d_scale",
-    )
-
-    Box(
-        modifier = modifier.size(120.dp),
-        contentAlignment = Alignment.Center,
+    Row(
+        modifier = modifier.semantics { contentDescription = loadingDescription },
+        horizontalArrangement = Arrangement.spacedBy(dotSize / 2),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(
-            modifier = Modifier
-                .size(120.dp)
-                .rotate(pillsRotation),
-        ) {
-            repeat(8) { index ->
-                val angle = (index * 45f) * (Math.PI / 180.0)
-                val x = (50 * cos(angle)).dp
-                val y = (50 * sin(angle)).dp
-
-                Box(
-                    modifier = Modifier
-                        .offset(x = x, y = y)
-                        .size(12.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primary,
-                            shape = CircleShape,
-                        )
-                        .align(Alignment.Center),
-                )
-            }
-        }
-
-        Box(
-            modifier = Modifier
-                .size(80.dp)
-                .background(
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
-                    shape = CircleShape,
+        repeat(DOT_COUNT) { index ->
+            val breath by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = BREATH_HALF_CYCLE_MS, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse,
+                    initialStartOffset = StartOffset(index * DOT_STAGGER_MS),
                 ),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = "D",
-                fontSize = 56.sp,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.primary,
+                label = "dot_breath_$index",
+            )
+
+            Box(
                 modifier = Modifier
-                    .rotate(dRotation)
-                    .scale(dScale),
-                textAlign = TextAlign.Center,
+                    .size(dotSize)
+                    .graphicsLayer {
+                        val scale = 0.6f + 0.4f * breath
+                        scaleX = scale
+                        scaleY = scale
+                        alpha = 0.3f + 0.7f * breath
+                    }
+                    .background(
+                        color = color,
+                        shape = CircleShape,
+                    ),
             )
         }
     }

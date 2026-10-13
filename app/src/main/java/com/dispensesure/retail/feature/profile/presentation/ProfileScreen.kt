@@ -69,7 +69,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.FloatingLabelTextField
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.LoadingIndicator
+import com.dispensesure.retail.core.utils.compose.GlobalLoadingOverlay
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.feature.profile.domain.model.ProfileDeleteUiState
 import com.dispensesure.retail.feature.profile.domain.model.ProfileField
@@ -120,8 +120,13 @@ fun ProfileScreen(
         }
     }
 
+    val isProfileRequestInFlight = updateUiState is ProfileUpdateUiState.Loading ||
+        deleteUiState is ProfileDeleteUiState.Loading
+
     // Back handling for system back press
     BackHandler {
+        // Ignore Back mid-request; leaving would cancel it in viewModelScope.
+        if (isProfileRequestInFlight) return@BackHandler
         if (cameFromDashboard) {
             navigateToFaceIntro()
         } else {
@@ -199,16 +204,6 @@ fun ProfileScreen(
 
             // -------------------- STATE FEEDBACK --------------------
             when (updateUiState) {
-                is ProfileUpdateUiState.Loading -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bottom = 16.dp)
-                    ) {
-                        LoadingIndicator()
-                    }
-                }
-
                 is ProfileUpdateUiState.Success -> {
                     val profileUpdatedToastText = stringResource(R.string.profile_updated_successfully)
                     LaunchedEffect(updateUiState) {
@@ -240,16 +235,6 @@ fun ProfileScreen(
             }
 
             when (deleteUiState) {
-                is ProfileDeleteUiState.Loading -> {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(bottom = 16.dp)
-                    ) {
-                        LoadingIndicator()
-                    }
-                }
-
                 is ProfileDeleteUiState.Success -> {
                     LaunchedEffect(Unit) {
                         navController.navigate(AUTH_GRAPH_ROUTE) {
@@ -300,6 +285,8 @@ fun ProfileScreen(
 
             Spacer(Modifier.height(20.dp))
         }
+
+        GlobalLoadingOverlay(isVisible = isProfileRequestInFlight)
     }
 
     // -------------------- DELETE CONFIRMATION DIALOG --------------------

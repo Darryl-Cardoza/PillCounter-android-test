@@ -44,7 +44,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CheckboxDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
@@ -789,22 +788,6 @@ object UserInterfaceUtils {
                 overflow = TextOverflow.Ellipsis,
                 fontSize = 13.sp
             )
-        }
-    }
-
-    /**
-     * A simple composable that displays a centered circular progress indicator
-     * with a semi-transparent background, suitable for overlaying content.
-     */
-    @Composable
-    fun LoadingIndicator() {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            CircularProgressIndicator(color = MaterialTheme.colorScheme.secondary)
         }
     }
 

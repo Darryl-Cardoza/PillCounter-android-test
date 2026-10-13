@@ -31,7 +31,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.HistoryRetention
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.BackButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.LoadingIndicator
+import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateSafely
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
@@ -217,7 +217,7 @@ fun MenuScreen(
                                     .fillMaxSize()
                                     .padding(top = 40.dp)
                             ) {
-                                LoadingIndicator()
+                                BreathingDotsLoader()
                                 Text(
                                     text = stringResource(R.string.logging_out),
                                     color = MaterialTheme.colorScheme.primary,
