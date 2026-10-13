@@ -5,6 +5,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.hl7.core.Hl7EventListener
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.withoutMessage
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.parsing.Hl7OrderHandler
@@ -275,8 +276,7 @@ class Hl7EventHandler @Inject constructor(
         // HL7_PARSE is already logged, PHI-stripped, by HL7BackgroundService.handleIncomingMessage.
         if (source == "HL7_PARSE") return
         // The message can echo HL7 field values, so only the type and stack frames are logged.
-        val scrubbed = Exception(throwable::class.java.name).also { it.stackTrace = throwable.stackTrace }
-        logger.e("HL7 error | source=$source", scrubbed, event = LogEvent.HL7_SERVICE_ERROR)
+        logger.e("HL7 error | source=$source", throwable.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
     }
 
     override fun onPmsCertMismatch() {

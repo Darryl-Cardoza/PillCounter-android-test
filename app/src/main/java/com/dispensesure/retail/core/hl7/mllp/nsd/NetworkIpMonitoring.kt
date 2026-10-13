@@ -101,8 +101,9 @@ class NetworkIpMonitor(
     fun stop() {
         try {
             connectivityManager.unregisterNetworkCallback(callback)
-        } catch (_: Exception) {
-            // Ignore
+        } catch (e: Exception) {
+            // Usually "callback was not registered" (stop called twice); not worth failing stop() over.
+            logger.w("stop() — unregisterNetworkCallback failed", e, LogEvent.HL7_CONNECT_FAILED)
         } finally {
             // Without this a stop/start cycle would treat the re-reported network as
             // "already tracked" and never announce Wi-Fi as available again.

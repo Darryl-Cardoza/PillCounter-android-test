@@ -148,7 +148,8 @@ class RemoteLogDestination internal constructor(
             if (System.currentTimeMillis() < refreshBlockedUntil) return@synchronized null
             val delegate = tokenAuthenticator ?: return@synchronized null
             val refreshed = try {
-                delegate.authenticate(route, response)
+                // Guarded: the delegate logs ERROR on failure, which must not re-enter write().
+                guarded { delegate.authenticate(route, response) }
             } catch (e: Exception) {
                 Log.w(TAG, "Token refresh for log send failed", e)
                 null
@@ -238,7 +239,7 @@ class RemoteLogDestination internal constructor(
             when {
                 response.isSuccessful -> SendResult.OK
                 code == 401 -> SendResult.RETRY_FREE
-                code in 400..499 && code != 403 && code != 408 && code != 429 -> SendResult.DROP
+                code in PERMANENT_REJECT_CODES -> SendResult.DROP
                 else -> SendResult.RETRY_COUNTED
             }
         } catch (e: CancellationException) {
@@ -314,6 +315,15 @@ class RemoteLogDestination internal constructor(
         val newest = pendingLogFile.readLines().asReversed()
             .takeWhile { total += it.length + 1; total <= MAX_PENDING_BYTES / 2 }.asReversed()
         pendingLogFile.writeText(newest.joinToString("") { it + System.lineSeparator() })
+    }
+
+    /**
+     * The server key is unavailable until MainActivity clears security, which is after the first
+     * connectivity flush on a cold start; drop that cooldown and retry so queued crashes are not stranded.
+     */
+    fun onSecurityCleared() {
+        keyBlockedUntil = 0L
+        flushPending()
     }
 
     /** Ships anything queued while logged out/offline. Also called right after login succeeds. */
@@ -439,11 +449,12 @@ class RemoteLogDestination internal constructor(
                 put("file", entry.fileName)
                 put("method", entry.methodName)
                 entry.operatorName?.let { put("operator", it) }
+                entry.humanReadableError?.let { put("error_text", PhiRedactor.redact(it)) }
             },
             error = throwable?.let {
                 RemoteLogError(
                     type = it::class.java.name,
-                    // The raw message (already the first line of stack_trace); the translated text is in `message`.
+                    // The raw message (already the first line of stack_trace); the translated text is in `context.error_text`.
                     message = PhiRedactor.redact(it.message ?: entry.humanReadableError ?: it.toString()),
                     stackTrace = PhiRedactor.redact(stackTraceOf(it)),
                     isFatal = isFatal
@@ -526,6 +537,8 @@ class RemoteLogDestination internal constructor(
         private const val PLATFORM = "android"
         private const val MAX_ATTEMPTS = 3
         private const val MAX_QUEUE_ATTEMPTS = 5
+        /** The server will never accept these payloads; any other 4xx (404, 405, 409...) can be a transient gateway/deploy issue. */
+        private val PERMANENT_REJECT_CODES = setOf(400, 413, 422)
         private const val LOGOUT_FLUSH_TIMEOUT_MS = 2_000L
         private const val REFRESH_COOLDOWN_MS = 60_000L
         private const val KEY_COOLDOWN_MS = 30_000L

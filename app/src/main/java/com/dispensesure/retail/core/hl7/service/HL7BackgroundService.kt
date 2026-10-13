@@ -22,6 +22,7 @@ import com.dispensesure.retail.core.hl7.mllp.server.MllpServer
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsSocketFactory
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.withoutMessage
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.settings.domain.model.Hl7ServiceConfig
 import kotlinx.coroutines.CoroutineExceptionHandler
@@ -213,21 +214,23 @@ class HL7Service : Service() {
         staticPmsRetryJob?.cancel()
         peerWatchdogJob?.cancel()
         peerConnectJob?.cancel()
+        // Each step must run even if an earlier one fails, so none can be allowed to throw out of cleanup().
         try {
             server.stop()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("cleanup() — server.stop() failed; the MLLP port may stay bound", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
         try {
             clientManager.shutdown()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("cleanup() — clientManager.shutdown() failed", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
-        try {
-            networkIpMonitor.stop()
-        } catch (_: Exception) {
-        }
+        // stop() handles and logs its own failure.
+        networkIpMonitor.stop()
         try {
             imageServer.stop()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("cleanup() — imageServer.stop() failed", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
     }
 
@@ -816,9 +819,8 @@ class HL7Service : Service() {
 
         } catch (e: Exception) {
             listener?.onError("HL7_PARSE", e)
-            // Keep the type and stack trace but drop e.message, which can echo HL7 field values (PHI).
-            val safe = Exception(e.javaClass.name).also { it.stackTrace = e.stackTrace }
-            logger.e("HL7 processing failed", safe, event = LogEvent.HL7_RECEIVE_FAILED)
+            // No e.message: it can echo HL7 field values (PHI).
+            logger.e("HL7 processing failed", e.withoutMessage(), event = LogEvent.HL7_RECEIVE_FAILED)
             Hl7FallbackAck.build(raw, e.message ?: "Unknown Error")
         }
     }

@@ -216,6 +216,11 @@ class AppLogger(private val tag: String) {
             (destination as? RemoteLogDestination)?.flushBeforeLogout()
         }
 
+        /** Call once MainActivity clears security: queued logs (e.g. a crash from the last run) can only be sent now. */
+        fun onSecurityCleared() {
+            (destination as? RemoteLogDestination)?.onSecurityCleared()
+        }
+
         /** Call after login stores the access token, so logs queued while logged out get shipped. */
         fun onUserLoggedIn() {
             (destination as? RemoteLogDestination)?.flushPending()

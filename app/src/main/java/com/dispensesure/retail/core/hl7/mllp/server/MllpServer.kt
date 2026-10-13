@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.hl7.mllp.server
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsKeystoreUtil
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.withoutMessage
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -113,7 +114,7 @@ class MllpServer(
                         onHl7Message(msg)
                     } catch (e: Exception) {
                         // Last-resort guard — build a minimal AR ACK so PMS doesn't time out.
-                        logger.e("onHl7Message() threw while handling received message — no ACK will be sent", e, event = LogEvent.HL7_RECEIVE_FAILED)
+                        logger.e("onHl7Message() threw while handling received message — no ACK will be sent", e.withoutMessage(), event = LogEvent.HL7_RECEIVE_FAILED)
                         val fallbackAck = Hl7FallbackAck.build(msg, e.message ?: "Unknown Error")
                         runCatching { output.write(Mllp.wrap(fallbackAck)); output.flush() }
                         continue

@@ -198,6 +198,7 @@ class MainActivity : ComponentActivity() {
 //
 //        if (securityViolations.isEmpty()) {
             runtimeUnit.grantClearance()
+            AppLogger.onSecurityCleared()
             try {
                 runtimeUnit.activateIfNeeded()
             } catch (e: Exception) {

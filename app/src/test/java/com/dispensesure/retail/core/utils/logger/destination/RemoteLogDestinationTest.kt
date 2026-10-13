@@ -259,6 +259,33 @@ class RemoteLogDestinationTest {
     }
 
     @Test
+    fun `onSecurityCleared flushes a backlog queued before the server key was available`() {
+        online(false)
+        val destination = destination()
+        destination.write(entry(message = "crash-backlog-marker"))
+        destination.awaitIdleForTest()
+        assertTrue(pendingFile.readText().contains("crash-backlog-marker"))
+
+        online(true)
+        destination.onSecurityCleared()
+        destination.awaitIdleForTest()
+
+        coVerify(exactly = 1) { api.sendLog(match { it.message.contains("crash-backlog-marker") }) }
+        assertFalse(pendingFile.readText().contains("crash-backlog-marker"))
+    }
+
+    @Test
+    fun `the translated error text is sent in context error_text`() {
+        online(false)
+        val destination = destination()
+
+        destination.write(entry(throwable = IllegalStateException("x")).copy(humanReadableError = "translated-marker"))
+        destination.awaitIdleForTest()
+
+        assertTrue(pendingFile.readText().contains("\"error_text\":\"translated-marker\""))
+    }
+
+    @Test
     fun `connectivity being restored flushes the pending queue`() {
         online(false)
         val destination = destination()
@@ -348,6 +375,18 @@ class RemoteLogDestinationTest {
         coVerify(exactly = 1) { api.sendLog(any()) }
         val remaining = pendingFile.readText()
         repeat(3) { assertTrue(remaining.contains("stop-marker-$it")) }
+    }
+
+    @Test
+    fun `a transient-looking 4xx (404) is queued for retry, not dropped`() {
+        online(true)
+        coEvery { api.sendLog(any()) } returns Response.error(404, "".toResponseBody(null))
+        val destination = destination()
+
+        destination.write(entry(message = "gateway-404-marker"))
+        destination.awaitIdleForTest()
+
+        assertTrue(pendingFile.readText().contains("gateway-404-marker"))
     }
 
     @Test
