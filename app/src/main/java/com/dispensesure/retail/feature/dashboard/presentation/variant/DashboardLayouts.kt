@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalResources
+import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.feature.dashboard.presentation.compose.DashboardBaseSizes
 import com.dispensesure.retail.feature.dashboard.presentation.compose.DashboardSafeInsets
@@ -84,6 +86,7 @@ private fun DashboardScreenFrame(
     content: @Composable () -> Unit,
 ) {
     val uiState = params.uiState
+    val resources = LocalResources.current
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -95,7 +98,11 @@ private fun DashboardScreenFrame(
         Column(modifier = Modifier.fillMaxSize()) {
             ScaffoldTopBar(
                 pharmacyName = uiState.userDetail?.profile?.pharmacyName,
-                terminalAndUserLine = buildTerminalUserLine(uiState, includeTerminal = params.isHl7Enabled),
+                terminalAndUserLine = buildTerminalUserLine(
+                    uiState,
+                    operatorLine = { resources.getString(R.string.dashboard_operator_line, it) },
+                    includeTerminal = params.isHl7Enabled,
+                ),
                 showPmsDot = params.isHl7Enabled,
                 isPmsConnected = params.isPmsConnected,
                 navController = params.navController,
