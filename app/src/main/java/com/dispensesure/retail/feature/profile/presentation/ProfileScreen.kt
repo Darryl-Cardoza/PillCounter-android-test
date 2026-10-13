@@ -120,8 +120,13 @@ fun ProfileScreen(
         }
     }
 
+    val isProfileRequestInFlight = updateUiState is ProfileUpdateUiState.Loading ||
+        deleteUiState is ProfileDeleteUiState.Loading
+
     // Back handling for system back press
     BackHandler {
+        // Ignore Back mid-request; leaving would cancel it in viewModelScope.
+        if (isProfileRequestInFlight) return@BackHandler
         if (cameFromDashboard) {
             navigateToFaceIntro()
         } else {
@@ -281,10 +286,7 @@ fun ProfileScreen(
             Spacer(Modifier.height(20.dp))
         }
 
-        GlobalLoadingOverlay(
-            isVisible = updateUiState is ProfileUpdateUiState.Loading ||
-                deleteUiState is ProfileDeleteUiState.Loading,
-        )
+        GlobalLoadingOverlay(isVisible = isProfileRequestInFlight)
     }
 
     // -------------------- DELETE CONFIRMATION DIALOG --------------------
