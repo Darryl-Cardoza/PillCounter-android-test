@@ -28,6 +28,18 @@ class BuildTerminalUserLineTest {
     }
 
     @Test
+    fun hl7OnJoinsTerminalAndOperator() {
+        val state = DashboardUiState(selectedTerminalName = "Terminal 1", userDetail = accountUser)
+        assertEquals("Terminal 1 | Operator: Jane Doe", buildTerminalUserLine(state, operatorLine, includeTerminal = true))
+    }
+
+    @Test
+    fun hl7OffHidesTerminal() {
+        val state = DashboardUiState(selectedTerminalName = "Terminal 1", userDetail = accountUser)
+        assertEquals("Operator: Jane Doe", buildTerminalUserLine(state, operatorLine, includeTerminal = false))
+    }
+
+    @Test
     fun nothingSetGivesDash() {
         assertEquals("—", buildTerminalUserLine(DashboardUiState(), operatorLine))
     }
