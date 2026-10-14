@@ -1,8 +1,7 @@
 <resources>
     <!-- ================== APP INFO ================== -->
     <string name="app_name">DispenseSure</string>
-    <string name="rite_title">RITE TECHNOLOGIES</string>
-    <string name="version">Version</string>
+    <string name="version_label">Version %1$s</string>
 
     <!--    Common   -->
     <string name="pms">PMS</string>
@@ -21,24 +20,34 @@
     <string name="email">Email</string>
     <string name="remember_me">Se souvenir de moi</string>
     <string name="code_sent_to">Le code de sécurité a été envoyé à</string>
-    <string name="pre_resend_code">Renvoyer le code dans %1$d s</string>
+    <string name="pre_resend_code">Renvoyer le code dans %1$ds</string>
     <string name="resend_code">Renvoyer le code</string>
     <string name="verify">Vérifier</string>
+    <string name="welcome_back">Bon retour</string>
+    <string name="sign_in_to_continue_to">Connectez-vous pour continuer vers %1$s</string>
+    <string name="email_address">Adresse e-mail</string>
+    <string name="email_placeholder">vous@exemple.com</string>
+    <string name="log_in">Se connecter</string>
+    <string name="contact_administrator_for_access">Contactez votre administrateur si vous avez besoin d\'un accès</string>
+    <string name="contact_support_for_code">Vous n\'avez pas reçu le code ? Contactez le support</string>
     <string name="login_button_text">CONNEXION</string>
     <string name="update_button_text">METTRE À JOUR</string>
 
     <!-- ================== FORGOT PASSWORD ================== -->
     <!-- ================== DASHBOARD ================== -->
     <string name="dispense">Dispenser</string>
-    <string name="inventory">Inventaire</string>
-    <string name="tap_to_scan_rx_labels">Appuyez pour scanner les étiquettes Rx</string>
-    <string name="stock_count">Comptage de Stock</string>
+    <string name="tap_to_scan_rx_labels">Scanner les étiquettes Rx</string>
+    <string name="stock_count">Inventaire</string>
     <string name="start_a_new_inventory_count">Démarrer un nouveau comptage d\'inventaire</string>
     <string name="start_inventory_count">Démarrer le comptage d\'inventaire</string>
     <string name="completed">Terminé</string>
     <string name="partial">En attente</string>
     <string name="quick_actions">ACTIONS RAPIDES</string>
     <string name="todays_queue">FILE D\'AUJOURD\'HUI</string>
+    <string name="dispense_queue">FILE DE DISPENSATION</string>
+    <string name="inventory_queue">FILE D\'INVENTAIRE</string>
+    <string name="tab_label_with_count">%1$s (%2$d)</string>
+    <string name="up_next">SUIVANT</string>
     <string name="queue_tab_pending">EN ATTENTE</string>
     <string name="queue_tab_priority">PRIORITÉ</string>
     <string name="queue_tab_controlled">CONTRÔLÉ</string>
@@ -48,21 +57,24 @@
     <string name="nothing_here_yet">Rien ici pour le moment</string>
     <string name="all_caught_up">Vous êtes à jour !</string>
     <string name="no_pending_tasks">Aucune tâche en attente pour le moment</string>
-    <string name="loading_transactions">Chargement des transactions...</string>
-    <string name="pms_status_connected">PMS connecté</string>
-    <string name="pms_status_disconnected">PMS déconnecté</string>
-    <string name="kpi_disp_short">Disp.</string>
-    <string name="kpi_inv_short">Inv.</string>
+    <string name="kpi_disp_short">Dispenser</string>
+    <string name="kpi_inv_short">Inventaire</string>
     <string name="kpi_high_priority">Priorité élevée</string>
-    <string name="kpi_pending">En attente</string>
-    <string name="kpi_cont_drugs">Méd. contrôlés</string>
+    <string name="kpi_cont_drugs">Contrôlés</string>
     <string name="kpi_hazardous">Dangereux</string>
     <string name="kpi_cycle_count">Comptage cyclique</string>
-    <string name="kpi_pending_batch">Lot en attente</string>
+    <string name="kpi_pending_batch">Comptage de stock</string>
     <string name="standalone_kpi_disabled_message">Fonctionnalité non applicable</string>
     <string name="ndc_value">NDC %1$s</string>
+    <string name="rx_value">Rx %1$s</string>
+    <string name="dashboard_operator_line">Opérateur\u00A0: %1$s</string>
     <!-- ================== SETTINGS ================== -->
     <string name="settings_title">PARAMÈTRES</string>
+    <string name="setting_group_general">GÉNÉRAL</string>
+    <string name="setting_group_controlled_drug">DISTRIBUTION DE SUBSTANCES CONTRÔLÉES</string>
+    <string name="setting_group_face_detection">DÉTECTION FACIALE</string>
+    <string name="setting_group_voice_haptic">RETOUR VOCAL ET HAPTIQUE</string>
+    <string name="setting_group_hazardous">COMPTAGE DE PILULES DANGEREUSES</string>
     <string name="setting_ask_to_add_notes">Toujours demander d\'ajouter des notes</string>
     <string name="setting_save_history_for">Enregistrer l\'historique pendant</string>
     <string name="pill_counting_sound">Son du comptage de pilules</string>
@@ -96,18 +108,12 @@
     <string name="drug_history_details">Détails de l\'historique du médicament</string>
     <!-- ================== VALIDATION ERRORS ================== -->
     <string name="error_email_invalid">Veuillez entrer une adresse e-mail valide.</string>
-    <string name="error_password_too_short">Le mot de passe doit contenir au moins 8 caractères.</string>
-    <string name="error_password_no_uppercase">Le mot de passe doit contenir au moins une lettre majuscule.</string>
-    <string name="error_password_no_lowercase">Le mot de passe doit contenir au moins une lettre minuscule.</string>
-    <string name="error_password_no_digit">Le mot de passe doit contenir au moins un chiffre.</string>
-    <string name="error_password_no_special">Le mot de passe doit contenir au moins un caractère spécial.</string>
     <string name="error_unknown">Une erreur est survenue.</string>
     <string name="error_invalid_otp">PIN invalide.</string>
     <string name="error_phone_invalid">Numéro de téléphone invalide</string>
     <string name="error_name_invalid">Le nom ne peut pas contenir de chiffres</string>
     <string name="error_name_required">Ce champ est obligatoire</string>
     <string name="error_pharmacy_name_invalid">Nom de la pharmacie trop court</string>
-    <string name="error_npi_invalid">Numéro NPI invalide</string>
     <string name="error_no_internet">Pas de connexion Internet. Vérifiez votre réseau et réessayez.</string>
     <string name="error_timeout">La requête a pris trop de temps. Veuillez réessayer plus tard.</string>
     <string name="error_server_unavailable">Le serveur est temporairement indisponible. Veuillez réessayer plus tard.</string>
@@ -130,7 +136,7 @@
     <string name="rescane">Re-scanner</string>
     <string name="done">Terminé</string>
     <string name="add">Ajouter</string>
-    <string name="count">Compter</string>
+    <string name="count">Comptage</string>
     <string name="ok">OK</string>
     <string name="cancel">Annuler</string>
     <string name="yes">Oui</string>
@@ -161,9 +167,6 @@
     <string name="total_count">Nombre total</string>
     <string name="max_count_reached">Le comptage total de la transaction dépasse l\'objectif.</string>
     <string name="no_transaction_found">Aucune transaction trouvée, veuillez commencer le comptage des pilules</string>
-    <string name="confirm_done">Confirmer la Finalisation</string>
-    <string name="confirm_done_desc_regular">Êtes-vous sûr de vouloir marquer cette transaction comme terminée ?</string>
-    <string name="confirm_done_desc_fixed">Objectif non atteint. Cette transaction sera marquée comme terminée.</string>
     <string name="rx_already_exists_title">La RX existe déjà</string>
     <string name="rx_already_exists_message">Cette RX est déjà présente dans vos transactions. Voulez-vous continuer avec elle ?</string>
     <string name="rx_on_hold_title">Transaction en attente</string>
@@ -174,7 +177,7 @@
     <string name="last_name">Nom</string>
     <string name="pharmacy_name">Nom de la Pharmacie</string>
     <string name="phone_number">Numéro de Téléphone</string>
-    <string name="npi_number">N° NPI</string>
+    <string name="pharmacy_id">ID de pharmacie</string>
     <string name="do_not_ask">Ne plus demander</string>
     <string name="confirm_delete_profile">Êtes-vous sûr de vouloir supprimer votre profil ? Cette action est irréversible.</string>
     <string name="logging_out">Déconnexion…</string>
@@ -184,6 +187,7 @@
     <string name="menu_profile">Profil</string>
     <string name="menu_history">Historique</string>
     <string name="menu_settings">Paramètres</string>
+    <string name="menu_lock_screen">Verrouiller l\'écran</string>
     <string name="menu_logout">Déconnexion</string>
     <string name="menu_completed">%1$d terminés</string>
     <string name="menu_partial">%1$d en attente</string>
@@ -250,6 +254,8 @@
 
     <string name="add_button_wait">Veuillez attendre 2 secondes avant d\'ajouter à nouveau.</string>
     <string name="add_zero_detected">Impossible d\'ajouter — aucune pilule détectée.</string>
+    <string name="add_camera_not_ready">La caméra n\'est pas prête, réessayez.</string>
+    <string name="location_unavailable">Localisation indisponible</string>
     <string name="duplicate_scan_ignored">Scan en double ignoré — aucune nouvelle pilule détectée.</string>
 
     <!-- For multi-select mode text in PartialListPanel -->
@@ -264,6 +270,10 @@
     <string name="pill_scanning_all_done">Tout est fait</string>
     <string name="pill_scanning_add_this">AJOUTER</string>
     <string name="pill_scanning_view_all_counts">Voir tout</string>
+    <string name="reset">Réinitialiser</string>
+    <string name="reset_count_title">Réinitialiser le comptage ?</string>
+    <string name="reset_count_message">Cela supprime tous les comptages et images collectés pour cette ordonnance. Vous scannerez de nouveau le contenant. Cette action est irréversible.</string>
+    <string name="cd_reset_count">Réinitialiser ce comptage</string>
     <string name="detail_label_form">Forme</string>
     <string name="detail_label_strength">Force</string>
     <string name="detail_label_bucket">Bac</string>
@@ -350,16 +360,15 @@
     <string name="voice_add_the_pill_count">Ajoutez le comptage de pilules</string>
     <string name="are_you_sure_you_want_to_end_this_count">Êtes-vous sûr de vouloir terminer ce comptage ?</string>
     <string name="no_items_in_that_batch_yet">Aucun article dans ce lot pour le moment</string>
-    <string name="end_this_batch_it_will_be_mark_as_completed">Terminer ce lot ? Il sera marqué comme terminé.</string>
-    <string name="end_batch">Terminer le lot</string>
-    <string name="no_qty_added_message">Veuillez ajouter au moins une quantité d\'article avant de terminer le lot.</string>
     <string name="sealed_bottles">Flacons scellés</string>
     <string name="opend_bottles">Flacons ouverts</string>
-    <string name="end_count">TERMINER LE COMPTAGE</string>
-    <string name="plus_add">+ AJOUTER</string>
     <string name="bucket">Bac</string>
+    <string name="default_bucket">Normal</string>
     <string name="batch">Lot</string>
+    <string name="batch_number">Lot n° %1$d</string>
     <string name="no_last_batch_available">Aucun dernier lot disponible</string>
+    <string name="skip_step_title">Plus rien à numériser</string>
+    <string name="skip_step_message">Il ne reste aucune unité dans le flacon ; l\'étape de comptage en retour n\'est donc pas nécessaire. Appuyez sur « Passer » pour terminer cette transaction.</string>
 
 <!--count Section-->
     <string name="toggle_with_count">%1$s (%2$d)</string>
@@ -508,6 +517,7 @@
     <string name="face_registration_first_name">Prénom</string>
     <string name="face_registration_last_name">Nom</string>
     <string name="face_registration_continue">Continuer</string>
+    <string name="face_registration_name_taken">Ce nom est déjà enregistré</string>
     <string name="face_registration_scan_front">Placez votre visage dans le cadre</string>
     <string name="face_registration_scan_tilt_left">Inclinez le visage vers votre gauche</string>
     <string name="face_registration_scan_tilt_right">Inclinez le visage vers votre droite</string>
@@ -520,28 +530,32 @@
     <string name="face_guidance_look_straight">regardez droit devant</string>
     <string name="face_guidance_tilt_more_left">inclinez le visage un peu plus vers la gauche</string>
     <string name="face_guidance_tilt_more_right">inclinez le visage un peu plus vers la droite</string>
+    <string name="face_guidance_tilt_further_left">tournez davantage la tête vers votre gauche</string>
+    <string name="face_guidance_tilt_further_right">tournez davantage la tête vers votre droite</string>
+    <string name="face_guidance_same_person_required">gardez la même personne dans le cadre : le scan recommence</string>
+    <string name="face_duplicate_warning_title">Visage déjà enregistré</string>
+    <string name="face_duplicate_warning_message">Ce visage ressemble à %1$s %2$s. Continuer quand même ?</string>
+    <string name="face_duplicate_warning_continue">Continuer</string>
+    <string name="face_registration_save_failed_title">Impossible d\'enregistrer ce visage</string>
+    <string name="face_registration_save_failed_message">Le scan est terminé, mais le profil n\'a pas pu être enregistré. Réessayez ou annulez pour l\'abandonner.</string>
     <string name="face_registration_enrolled_title">Visage enregistré</string>
     <string name="face_registration_enrolled_body">Tout est prêt. Vous pouvez maintenant déverrouiller le comptoir d\'un simple regard.</string>
     <string name="face_registration_add_user">+ Ajouter un utilisateur</string>
-    <string name="face_registration_done">Terminé</string>
     <string name="face_users_title">Utilisateurs de l\'accès rapide</string>
     <string name="face_users_add_user">+ Ajouter un utilisateur</string>
     <string name="face_users_empty">Aucun visage enregistré pour le moment.</string>
     <string name="face_users_delete_title">Supprimer des utilisateurs</string>
     <string name="face_users_last_used">Dernière utilisation : %1$s</string>
     <string name="face_verify_title">Vérifiez votre visage</string>
-    <string name="face_verify_capture_button">Capturer le visage</string>
     <string name="face_verify_not_recognized_title">Nous n\'avons pas pu vous reconnaître</string>
     <string name="face_verify_not_recognized_body">Assurez-vous que votre visage est bien éclairé et\ncentré, puis réessayez.</string>
     <string name="face_verify_try_again">Réessayer</string>
-    <string name="face_verify_cancel">Annuler</string>
     <string name="face_flip_camera">Changer de caméra</string>
     <string name="session_locked_title">Session verrouillée</string>
     <string name="session_locked_subtitle">Vérifiez votre visage pour reprendre\nlà où vous en étiez.</string>
     <string name="session_locked_verify_button">Vérifier avec le visage</string>
     <string name="session_locked_resuming_title">Bon retour, %1$s</string>
     <string name="session_locked_resuming_body">Identité vérifiée.\nReprise de votre session...</string>
-    <string name="setting_face_lock_now">Verrouiller maintenant</string>
     <string name="setting_face_lock_now_disabled_toast">Enregistrez d\'abord un visage dans Reconnaissance faciale</string>
     <string name="setting_face_auto_lock_after">Verrouillage automatique après</string>
     <string name="setting_face_auto_lock_minutes">%1$d min</string>
@@ -566,5 +580,21 @@
     <string name="connection_info_title">INFORMATIONS DE CONNEXION</string>
     <string name="hl7_notification_title">Service d\'arrière-plan HL7</string>
     <string name="rx_already_completed_message">Cette ordonnance a déjà été délivrée.</string>
+
+    <!-- ================== SAVED PHOTO INFO STRIPS ================== -->
+    <string name="photo_label_requested_ndc">NDC demandé</string>
+    <string name="photo_label_dispensed_ndc">NDC délivré</string>
+    <string name="photo_label_rx_refill">N° Rx-Renouvellement</string>
+    <string name="photo_label_step">Étape</string>
+    <string name="photo_label_date_time">Date et heure</string>
+    <string name="photo_label_operator">Opérateur</string>
+    <string name="hl7_notification_new_rx_ndc_missing">Nouvelle commande pour la Rx %1$s ignorée — NDC manquant dans RXE-2</string>
+    <string name="hl7_notification_new_rx_qty_missing">Nouvelle commande pour la Rx %1$s ignorée — quantité à délivrer manquante</string>
+    <string name="hl7_notification_new_rx_qty_invalid">Nouvelle commande pour la Rx %1$s ignorée — quantité non valide %2$d</string>
+    <string name="hl7_notification_refill_exhausted">Renouvellements épuisés pour la Rx %1$s — aucun renouvellement restant (RXE-16=%2$d)</string>
+    <string name="hl7_notification_refill_ndc_or_qty_missing">Renouvellement de la Rx %1$s ignoré — NDC ou quantité manquants ou non valides</string>
+    <string name="hl7_notification_no_processable_orders">Message HL7 %1$s reçu, mais il ne contenait aucune commande traitable</string>
+    <string name="hl7_notification_structural_validation_failed">Message HL7 %1$s rejeté — échec de la validation structurelle : %2$s</string>
+    <string name="hl7_notification_business_validation_failed">Message HL7 %1$s rejeté — %2$s</string>
 
 </resources>

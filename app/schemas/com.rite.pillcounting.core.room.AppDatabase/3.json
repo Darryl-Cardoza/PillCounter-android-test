@@ -2,7 +2,7 @@
   "formatVersion": 1,
   "database": {
     "version": 3,
-    "identityHash": "2ace8320535177addc5deb5e2904ffd3",
+    "identityHash": "329cda6a06155296a7707386f0f1cc0d",
     "entities": [
       {
         "tableName": "users",
@@ -200,7 +200,7 @@
       },
       {
         "tableName": "pill_count_txn",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`txnId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `localId` INTEGER, `drugId` INTEGER, `isDispense` INTEGER NOT NULL, `targetCount` INTEGER, `status` TEXT NOT NULL, `note` TEXT, `isSubstitute` INTEGER NOT NULL, `rxNo` TEXT, `refillNo` TEXT, `patientName` TEXT, `isDeleted` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `isComingFromHL7` INTEGER, `isSynced` INTEGER, `isNdcVerified` INTEGER, `bucketId` TEXT, `substitutedDrugId` INTEGER, `workflowStep` TEXT, `priority` TEXT, `isGlovesPresent` INTEGER NOT NULL, `hazardousTrayDetected` INTEGER, `hl7MessageControlId` TEXT, `hl7SequenceNumber` TEXT, `transactionOrderId` TEXT, `bottleInfoListJson` TEXT, FOREIGN KEY(`localId`) REFERENCES `users`(`localId`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`drugId`) REFERENCES `drug_master`(`drugId`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`substitutedDrugId`) REFERENCES `drug_master`(`drugId`) ON UPDATE NO ACTION ON DELETE SET NULL )",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`txnId` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `localId` INTEGER, `drugId` INTEGER, `isDispense` INTEGER NOT NULL, `targetCount` INTEGER, `status` TEXT NOT NULL, `note` TEXT, `isSubstitute` INTEGER NOT NULL, `rxNo` TEXT, `refillNo` TEXT, `patientName` TEXT, `isDeleted` INTEGER NOT NULL, `createdAt` INTEGER NOT NULL, `updatedAt` INTEGER NOT NULL, `isComingFromHL7` INTEGER, `isSynced` INTEGER, `isNdcVerified` INTEGER, `bucketId` TEXT, `substitutedDrugId` INTEGER, `workflowStep` TEXT, `priority` TEXT, `isGlovesPresent` INTEGER NOT NULL, `hazardousTrayDetected` INTEGER, `hl7MessageControlId` TEXT, `hl7SequenceNumber` TEXT, `transactionOrderId` TEXT, `bottleInfoListJson` TEXT, `operatorFirstName` TEXT, `operatorLastName` TEXT, FOREIGN KEY(`localId`) REFERENCES `users`(`localId`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`drugId`) REFERENCES `drug_master`(`drugId`) ON UPDATE NO ACTION ON DELETE SET NULL , FOREIGN KEY(`substitutedDrugId`) REFERENCES `drug_master`(`drugId`) ON UPDATE NO ACTION ON DELETE SET NULL )",
         "fields": [
           {
             "fieldPath": "txnId",
@@ -343,6 +343,16 @@
           {
             "fieldPath": "bottleInfoListJson",
             "columnName": "bottleInfoListJson",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "operatorFirstName",
+            "columnName": "operatorFirstName",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "operatorLastName",
+            "columnName": "operatorLastName",
             "affinity": "TEXT"
           }
         ],
@@ -922,7 +932,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2ace8320535177addc5deb5e2904ffd3')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '329cda6a06155296a7707386f0f1cc0d')"
     ]
   }
 }

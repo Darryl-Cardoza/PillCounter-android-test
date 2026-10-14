@@ -1,0 +1,251 @@
+package com.dispensesure.retail.core.scanning.logic
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Color
+import android.graphics.Paint
+import android.graphics.Rect
+import androidx.camera.core.ImageProxy
+import io.mockk.every
+import io.mockk.mockk
+import io.mockk.unmockkAll
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
+import kotlin.math.abs
+
+/**
+ * [ImagePreprocessor.prepareFrame] takes an [ImageProxy] and internally calls its
+ * `toBitmap()` member function, which performs a real YUV->RGB conversion backed by
+ * native code. That method cannot be exercised meaningfully on the JVM (Robolectric
+ * does not shadow it, and there is no seam to inject a fake YUV frame), so
+ * [imageProxy] is a plain relaxed mockk whose `toBitmap()` is stubbed directly per
+ * test — it's a real member of the [ImageProxy] interface, not a top-level Kotlin
+ * extension function, so no `mockkStatic`/file-facade interception is needed. This
+ * lets every other real code path in [ImagePreprocessor] (letterboxing, pixel
+ * unpacking, float normalization, buffer reuse) run unmodified against real Android
+ * [Bitmap]s supplied by Robolectric.
+ */
+// GraphicsMode.NATIVE is required (not just Robolectric's nominal default) for
+// Canvas.drawBitmap(Bitmap, Matrix, Paint) to actually blit source pixels — under
+// this project's test setup, without the explicit annotation, drawBitmap with a
+// Matrix silently no-ops and leaves the destination bitmap untouched (still black
+// from drawColor), which breaks every pixel-content assertion below even though
+// dimension/reference/capacity assertions still pass.
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
+class ImagePreprocessorTest {
+
+    private lateinit var imageProxy: ImageProxy
+
+    @Before
+    fun setUp() {
+        imageProxy = mockk(relaxed = true)
+    }
+
+    @After
+    fun tearDown() {
+        unmockkAll()
+    }
+
+    private fun stubOriginal(bitmap: Bitmap) {
+        every { imageProxy.toBitmap() } returns bitmap
+    }
+
+    @Test
+    fun `prepareFrame returns a 640x640 letterbox and leaves the original untouched`() {
+        val src = Bitmap.createBitmap(320, 240, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.RED)
+        stubOriginal(src)
+
+        val frame = ImagePreprocessor.prepareFrame(imageProxy)
+
+        assertEquals(640, frame.letterboxed.width)
+        assertEquals(640, frame.letterboxed.height)
+        assertTrue(frame.original === src)
+        assertEquals(320, frame.original.width)
+        assertEquals(240, frame.original.height)
+    }
+
+    @Test
+    fun `pillInput normalizes rgb channels to 0 to 1 range for pure red image`() {
+        val src = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.RED)
+        stubOriginal(src)
+
+        val frame = ImagePreprocessor.prepareFrame(imageProxy)
+        val floatBuf = ImagePreprocessor.pillInput(frame.letterboxed).asFloatBuffer()
+
+        // Center pixel (no letterbox padding since src already fills 640x640) —
+        // pure red should normalize to (1.0, 0.0, 0.0).
+        val centerPixelIndex = (320 * 640 + 320) * 3
+        val r = floatBuf.get(centerPixelIndex)
+        val g = floatBuf.get(centerPixelIndex + 1)
+        val b = floatBuf.get(centerPixelIndex + 2)
+
+        assertTrue("red channel expected ~1.0 but was $r", abs(r - 1.0f) < 0.01f)
+        assertTrue("green channel expected ~0.0 but was $g", abs(g) < 0.01f)
+        assertTrue("blue channel expected ~0.0 but was $b", abs(b) < 0.01f)
+    }
+
+    @Test
+    fun `pillInput produces black padding pixels for a non-square source`() {
+        // A tall narrow image forces horizontal letterbox padding (black bars).
+        val src = Bitmap.createBitmap(100, 640, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.WHITE)
+        stubOriginal(src)
+
+        val frame = ImagePreprocessor.prepareFrame(imageProxy)
+        val floatBuf = ImagePreprocessor.pillInput(frame.letterboxed).asFloatBuffer()
+
+        // Top-left corner pixel (0,0) must fall in the black letterbox padding
+        // since scale = 640/640=1 for height, width scaled down leaving pad on x.
+        val cornerIndex = 0
+        val r = floatBuf.get(cornerIndex)
+        val g = floatBuf.get(cornerIndex + 1)
+        val b = floatBuf.get(cornerIndex + 2)
+
+        assertTrue("expected black padding at corner, got r=$r g=$g b=$b", r < 0.05f && g < 0.05f && b < 0.05f)
+    }
+
+    @Test
+    fun `pillInput buffer has capacity for exactly 640x640x3 floats`() {
+        val src = Bitmap.createBitmap(50, 50, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.BLUE)
+        stubOriginal(src)
+
+        val frame = ImagePreprocessor.prepareFrame(imageProxy)
+
+        // 640*640*3 floats * 4 bytes = 4,915,200 bytes.
+        assertEquals(640 * 640 * 3 * 4, ImagePreprocessor.pillInput(frame.letterboxed).capacity())
+    }
+
+    @Test
+    fun `pillInput rewinds buffer position to zero for downstream readers`() {
+        val src = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.GREEN)
+        stubOriginal(src)
+
+        val frame = ImagePreprocessor.prepareFrame(imageProxy)
+
+        assertEquals(0, ImagePreprocessor.pillInput(frame.letterboxed).position())
+    }
+
+    @Test
+    fun `pillInput reuses the same scratch buffer instance across frames`() {
+        val src1 = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        src1.eraseColor(Color.RED)
+        stubOriginal(src1)
+        val buf1 = ImagePreprocessor.pillInput(ImagePreprocessor.prepareFrame(imageProxy).letterboxed)
+
+        val src2 = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        src2.eraseColor(Color.BLUE)
+        stubOriginal(src2)
+        val buf2 = ImagePreprocessor.pillInput(ImagePreprocessor.prepareFrame(imageProxy).letterboxed)
+
+        // Documented behavior: scratch ByteBuffer/Bitmap are reused, not
+        // reallocated, across frames.
+        assertTrue(buf1 === buf2)
+    }
+
+    @Test
+    fun `pillInput overwrites previous frame data with new frame values`() {
+        val redSrc = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        redSrc.eraseColor(Color.RED)
+        stubOriginal(redSrc)
+        ImagePreprocessor.pillInput(ImagePreprocessor.prepareFrame(imageProxy).letterboxed)
+
+        val blueSrc = Bitmap.createBitmap(640, 640, Bitmap.Config.ARGB_8888)
+        blueSrc.eraseColor(Color.BLUE)
+        stubOriginal(blueSrc)
+        val frame = ImagePreprocessor.prepareFrame(imageProxy)
+
+        val floatBuf = ImagePreprocessor.pillInput(frame.letterboxed).asFloatBuffer()
+        val centerIndex = (320 * 640 + 320) * 3
+        val r = floatBuf.get(centerIndex)
+        val g = floatBuf.get(centerIndex + 1)
+        val b = floatBuf.get(centerIndex + 2)
+
+        assertTrue("expected blue frame data, got r=$r g=$g b=$b", r < 0.01f && g < 0.01f && abs(b - 1.0f) < 0.01f)
+    }
+
+    @Test
+    fun `prepareFrame handles a 1x1 source bitmap without crashing`() {
+        val src = Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.MAGENTA)
+        stubOriginal(src)
+
+        val frame = ImagePreprocessor.prepareFrame(imageProxy)
+
+        assertEquals(640, frame.letterboxed.width)
+        assertEquals(640, frame.letterboxed.height)
+    }
+
+    // ------------------------------------------------------------------
+    // Tray crop → pill input (Letterbox.preprocess(srcRect) + pillInput)
+    // ------------------------------------------------------------------
+
+    private fun rgbAt(buf: java.nio.FloatBuffer, x: Int, y: Int): Triple<Float, Float, Float> {
+        val i = (y * 640 + x) * 3
+        return Triple(buf.get(i), buf.get(i + 1), buf.get(i + 2))
+    }
+
+    @Test
+    fun `pillInput of a square tray crop holds only the crop, scaled to fill the canvas`() {
+        // 400x400 frame: white "desk" with a red 100x100 "tray" at (200, 100).
+        val src = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.WHITE)
+        Canvas(src).drawRect(200f, 100f, 300f, 200f, Paint().apply { color = Color.RED })
+
+        val letterboxed = Letterbox.preprocess(src, 640, Rect(200, 100, 300, 200))
+
+        val info = Letterbox.currentScaleInfo!!
+        assertEquals(6.4f, info.scale, 0.0001f)
+        assertEquals(0f, info.padX, 0.0001f)
+        assertEquals(0f, info.padY, 0.0001f)
+        assertEquals(200f, info.offsetX, 0.0001f)
+        assertEquals(100f, info.offsetY, 0.0001f)
+
+        val buf = ImagePreprocessor.pillInput(letterboxed).asFloatBuffer()
+        // Centre and a near-corner pixel are both tray-red: the crop fills the
+        // canvas and none of the white desk around the tray leaked in.
+        for ((x, y) in listOf(320 to 320, 4 to 4, 635 to 635)) {
+            val (r, g, b) = rgbAt(buf, x, y)
+            assertTrue("expected red at (" + x + "," + y + ") got r=" + r + " g=" + g + " b=" + b,
+                abs(r - 1f) < 0.02f && g < 0.02f && b < 0.02f)
+        }
+    }
+
+    @Test
+    fun `non-square tray crop is padded with black, not with neighbouring frame pixels`() {
+        val src = Bitmap.createBitmap(400, 400, Bitmap.Config.ARGB_8888)
+        src.eraseColor(Color.WHITE)
+
+        // 400x200 region → scale 1.6, newH 320, padY 160.
+        val letterboxed = Letterbox.preprocess(src, 640, Rect(0, 100, 400, 300))
+
+        val info = Letterbox.currentScaleInfo!!
+        assertEquals(1.6f, info.scale, 0.0001f)
+        assertEquals(160f, info.padY, 0.0001f)
+        assertEquals(100f, info.offsetY, 0.0001f)
+
+        val buf = ImagePreprocessor.pillInput(letterboxed).asFloatBuffer()
+        val (r0, g0, b0) = rgbAt(buf, 320, 10)     // inside the top pad band
+        assertTrue("expected black pad, got r=" + r0 + " g=" + g0 + " b=" + b0, r0 < 0.02f && g0 < 0.02f && b0 < 0.02f)
+        val (r1, g1, b1) = rgbAt(buf, 320, 320)    // crop content
+        assertTrue("expected white crop, got r=" + r1 + " g=" + g1 + " b=" + b1,
+            abs(r1 - 1f) < 0.02f && abs(g1 - 1f) < 0.02f && abs(b1 - 1f) < 0.02f)
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `pillInput rejects a bitmap that is not 640x640`() {
+        ImagePreprocessor.pillInput(Bitmap.createBitmap(320, 320, Bitmap.Config.ARGB_8888))
+    }
+}

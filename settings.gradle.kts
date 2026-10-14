@@ -23,6 +23,5 @@ dependencyResolutionManagement {
 
 
 
-rootProject.name = "PillCountingNewModels"
+rootProject.name = "DispenseSureRetail"
 include(":app")
-include(":hl7Core")

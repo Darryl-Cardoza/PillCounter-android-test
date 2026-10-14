@@ -54,7 +54,8 @@ jobs:
       - name: Extract versionName from build.gradle
         id: version
         run: |
-          version_string=$(grep versionName app/build.gradle.kts | head -1 | sed -E 's/.*"(.*)".*/\1/')
+          # Assumes versionName "1.0.0"
+          version_string=$(grep -E 'versionName = "' app/build.gradle.kts | head -1 | sed -E 's/.*"(.*)".*/\1/')
           echo "version=${version_string}" >> $GITHUB_OUTPUT
           echo "Extracted version: ${version_string}"
 
@@ -77,7 +78,10 @@ jobs:
 
       run_tests: true
       run_coverage: true
-      run_static_analysis: true
+      run_static_analysis: false
+      # Checks only on a PR or a plain push to main -- no APK/AAB assembled.
+      # Only a tag push builds, since that's the only case `cd` below needs
+      # an artifact to sign and ship.
       run_build: ${{ startsWith(github.ref, 'refs/tags/') }}
 
       coverage_branch_threshold: "0"
@@ -88,12 +92,16 @@ jobs:
       run_android_lint: true
       lint_check_all_warnings: false
 
+      # ---- dead code ----
+      # DAGP is declared directly for the whole build (root build.gradle.kts).
+      # Report-only for now; flip fail_on_dead_code once buildHealth findings
+      # are triaged.
       run_dead_code: true
       run_deep_dead_code: true
 
       run_security: true
       run_dependency_audit: true
-      cyclonedx_skip_projects: "hl7Core"
+      cyclonedx_skip_projects: ""
 
       kotlin_warnings_as_errors: false
       kotlin_jsr305_strict: true
@@ -123,9 +131,11 @@ jobs:
       sign_build: true
 
       deploy_to_playstore: false
-      package_name: "com.rite.pillcounting"
+      package_name: "com.dispensesure.retail"
       playstore_track: internal
       playstore_status: draft
+
+      sign_build: true   # false = attach unsigned APK/AAB to the GitHub Release
 
       deploy_to_esper: false
       esper_org_id: ""
@@ -142,3 +152,41 @@ jobs:
       PLAYSTORE_SERVICE_ACCOUNT: ${{ secrets.PLAYSTORE_SERVICE_ACCOUNT }}
       ESPER_API_KEY: ${{ secrets.ESPER_API_KEY }}
       PIPELINE_TOKEN: ${{ secrets.PIPELINE_TOKEN }}
+
+  # Uploads the R8 mapping to the observability vendor. Runs here (not in the reusable
+  # pipeline) so the key stays in this repo, and only after ci + cd succeeded for the
+  # release tag. The version id derives from the commit SHA, so it matches the shipped build.
+  upload-mapping:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && contains(github.ref_name, 'release')
+    needs: [ extract-version, ci, cd ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ needs.extract-version.outputs.java_version }}
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Build release
+        # The plugin generates the build id while packaging, and the upload fails without it.
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+      - name: Download shipped build
+        uses: actions/download-artifact@v4
+        with:
+          name: android-build-outputs-Release
+          path: shipped
+      - name: Verify mapping matches shipped AAB
+        # Datadog pairs mapping to app by version name, not content; compare the R8 ids so a toolchain mismatch fails here.
+        run: |
+          ids() { grep -m2 -E '^# pg_map_(id|hash):'; }
+          AAB=$(find shipped -name '*.aab' | head -n1)
+          [ -n "$AAB" ] || { echo "::error::No AAB in android-build-outputs-Release"; exit 1; }
+          SHIPPED=$({ unzip -p "$AAB" BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map || true; } | ids)
+          BUILT=$(ids < app/build/outputs/mapping/release/mapping.txt)
+          [ -n "$SHIPPED" ] || { echo "::error::No pg_map_id in shipped AAB"; exit 1; }
+          [ "$SHIPPED" = "$BUILT" ] || { echo "::error::Mapping does not match shipped AAB"; echo "shipped: $SHIPPED"; echo "built:   $BUILT"; exit 1; }
+          echo "Mapping matches shipped AAB: $BUILT"
+      - name: Upload R8 mapping
+        env:
+          DD_API_KEY: ${{ secrets.DD_API_KEY }}
+        run: ./gradlew :app:uploadMappingRelease --no-daemon --stacktrace

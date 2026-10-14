@@ -1,21 +1,21 @@
 {
   "project_info": {
-    "project_number": "592736967663",
-    "project_id": "pill-counting-android",
-    "storage_bucket": "pill-counting-android.firebasestorage.app"
+    "project_number": "579158497383",
+    "project_id": "dispensesure",
+    "storage_bucket": "dispensesure.firebasestorage.app"
   },
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:592736967663:android:884a0d633814c71aa9f41a",
+        "mobilesdk_app_id": "1:579158497383:android:fc012842099bb88c4edcc2",
         "android_client_info": {
-          "package_name": "com.rite.pillcounting"
+          "package_name": "com.dispensesure.retail"
         }
       },
       "oauth_client": [],
       "api_key": [
         {
-          "current_key": "AIzaSyBCDHZns9R19kFwPMWwAa1aJhYOQ1-nZsg"
+          "current_key": "AIzaSyAHmuOwde6beVOAdIu_u1uaXLrdvk0pb60"
         }
       ],
       "services": {

@@ -21,8 +21,8 @@ plugins {
     id("com.google.devtools.ksp") version "2.3.8" apply false
 
     // Dependency Analysis (dead-code gate) -- applied for real here (NOT
-    // `apply false`), not injected by the pipeline, because both `app` and
-    // `hl7Core` apply AGP. DAGP coordinates root + every analyzed module
+    // `apply false`), not injected by the pipeline, because `app`
+    // applies AGP. DAGP coordinates root + every analyzed module
     // through one classloader, so once any module needs it declared
     // directly, root must have a real application too, and the pipeline's
     // init script backs off for this whole repo. See ops-rite-android-

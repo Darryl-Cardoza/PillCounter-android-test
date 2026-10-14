@@ -4,7 +4,7 @@
 > stock-counting, using on-device AI (TensorFlow Lite), barcode/NDC scanning
 > (ML Kit), and HL7 v2 (MLLP) integration with pharmacy/PMS systems.
 
-This README reflects the **actual** project state (package `com.rite.pillcounting`).
+This README reflects the **actual** project state (package `com.dispensesure.retail`).
 For deeper design notes see [docs/architecture.md](docs/architecture.md); for
 the audit/cleanup history see [cleanup_report.md](cleanup_report.md) and
 [dependency_cleanup_report.md](dependency_cleanup_report.md).
@@ -37,12 +37,12 @@ system (PMS) over the local network.
 **Architecture.** Single-Activity Jetpack Compose app, **feature-first MVVM**
 with a Clean-ish layering (`presentation` / `domain` / `data` per feature) and a
 shared `core/` infrastructure layer. DI via Hilt. A separate pure-Kotlin
-`:hl7Core` module implements HL7 v2 builders/parsers. See
+HL7 v2 library is shipped as a prebuilt AAR at `app/libs/hl7Core-release.aar` (`org.rite.hl7` namespace). See
 [docs/architecture.md](docs/architecture.md).
 
 **Modules**
-- `:app` — the application (`com.android.application`, namespace `com.rite.pillcounting`)
-- `:hl7Core` — HL7 v2 library (`com.android.library`, namespace `org.rite.hl7`)
+- `:app` — the application (`com.android.application`, namespace `com.dispensesure.retail`)
+- HL7 v2 library: prebuilt AAR at `app/libs/hl7Core-release.aar` (`org.rite.hl7` namespace)
 
 ---
 
@@ -72,7 +72,7 @@ Exact versions live in [libs.versions.toml](libs.versions.toml).
 ## Project Structure
 
 ```
-app/src/main/java/com/rite/pillcounting/
+app/src/main/java/com/dispensesure/retail/
 ├── MainActivity.kt              # single Activity + Compose host
 ├── PillCountingApplication.kt   # @HiltAndroidApp
 ├── core/                        # shared infrastructure
@@ -93,10 +93,7 @@ app/src/main/java/com/rite/pillcounting/
 ├── navigation/                  # AppNavGraph, NavGraphBuilder, Screen (routes)
 └── ui/theme/                    # Compose theme
 
-hl7Core/src/main/kotlin/org/rite/hl7/
-├── builder/  parser/            # HL7 v2 segment builders & parsers
-├── domain/model/                # HL7 domain data
-└── util/                        # constants & helpers
+app/libs/hl7Core-release.aar    # prebuilt HL7 v2 library (org.rite.hl7 namespace)
 ```
 
 Each `feature/<name>/` generally contains:
@@ -152,7 +149,7 @@ UiState/Events), `data/` (repository impls, `remote/I*Api.kt`), and `di/`.
 
 # Install + launch on a connected device
 ./gradlew :app:installDebug
-adb shell am start -n com.rite.pillcounting/.MainActivity
+adb shell am start -n com.dispensesure.retail/.MainActivity
 ```
 
 > The committed `gradle/wrapper/gradle-wrapper.jar` lets `./gradlew` bootstrap on

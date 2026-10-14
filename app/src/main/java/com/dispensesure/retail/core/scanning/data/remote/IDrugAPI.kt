@@ -1,0 +1,28 @@
+﻿package com.dispensesure.retail.core.scanning.data.remote
+
+import com.dispensesure.retail.core.scanning.domain.model.DrugDataResponse
+import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
+import retrofit2.http.Body
+import retrofit2.http.Header
+import retrofit2.http.POST
+
+/**
+ * Defines the API endpoints for fetching drug information from your backend.
+ */
+interface IDrugAPI {
+
+    /**
+     * Fetches drug information based on a National Drug Code (NDC).
+     *
+     * Example:
+     * POST drugs/code
+     *
+     * @param getNdcRequestModel Request body carrying the National Drug Code.
+     * @return A [DrugDataResponse] containing the search results.
+     */
+    @POST("drugs/code")
+    suspend fun getDrugInfoByNdc(
+        @Header("Authorization") authorization: String,
+        @Body getNdcRequestModel: GetNdcRequestModel,
+    ): DrugDataResponse
+}

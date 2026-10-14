@@ -1,0 +1,206 @@
+package com.dispensesure.retail
+
+import com.dispensesure.retail.core.utils.common.ParsedScanData
+import com.dispensesure.retail.core.utils.common.parseScanData
+import org.junit.Assert
+import org.junit.Test
+
+/**
+ * Unit tests for the [parseScanData] function and [ParsedScanData] data class.
+ *
+ * Templates are regexes with named groups (`(?<name>...)`), matched with [Regex.matchEntire]
+ * against the raw scanned value — not the earlier `{Key}`-placeholder format.
+ *
+ * android.util.Log calls inside the logger are silenced by isReturnDefaultValues = true.
+ */
+class ParsedScanDataTest {
+
+    @Test
+    fun parseScanData_mapsAllKnownKeys() {
+        val template = "(?<RxNo>[^|]+)\\|(?<NdcNo>[^|]+)\\|(?<Qty>[^|]+)\\|(?<Bucket>[^|]+)"
+        val raw = "RX123|00123456789|30|A1"
+        val result = parseScanData(template, raw)
+
+        Assert.assertEquals("RX123", result.rxNo)
+        Assert.assertEquals("00123456789", result.ndcNo)
+        Assert.assertEquals("30", result.qty)
+        Assert.assertEquals("A1", result.bucket)
+        Assert.assertEquals(4, result.rawMap.size)
+        Assert.assertEquals("RX123", result.rawMap["RXNO"])
+    }
+
+    @Test
+    fun parseScanData_keysAreUppercasedAndTrimmed() {
+        val template = "(?<rxno>[^|]+)\\s*\\|\\s*(?<qty>[^|]+)"
+        val raw = " RX9 | 12 "
+        val result = parseScanData(template, raw)
+
+        Assert.assertEquals("RX9", result.rxNo)
+        Assert.assertEquals("12", result.qty)
+    }
+
+    @Test
+    fun parseScanData_noMatch_returnsDefault() {
+        // Template requires three pipe-delimited groups; raw has only one value.
+        val template = "(?<RxNo>[^|]+)\\|(?<NdcNo>[^|]+)\\|(?<Qty>[^|]+)"
+        val raw = "RX123" // does not match the full pattern (matchEntire)
+
+        val result = parseScanData(template, raw)
+
+        Assert.assertNull(result.rxNo)
+        Assert.assertNull(result.ndcNo)
+        Assert.assertNull(result.qty)
+        Assert.assertTrue(result.rawMap.isEmpty())
+    }
+
+    @Test
+    fun parseScanData_emptyTemplate_matchesOnlyEmptyActualValue() {
+        // An empty regex matches only the empty string via matchEntire.
+        val result = parseScanData("", "RX|10")
+        Assert.assertNull(result.rxNo)
+        Assert.assertNull(result.ndcNo)
+        Assert.assertTrue(result.rawMap.isEmpty())
+    }
+
+    @Test
+    fun parseScanData_emptyTemplateAndEmptyActualValue_returnsDefaultBecauseNoNamedGroups() {
+        // "" matches "" via matchEntire, but the template has no named groups, so rawMap
+        // stays empty and every known field stays null.
+        val result = parseScanData("", "")
+        Assert.assertNull(result.rxNo)
+        Assert.assertTrue(result.rawMap.isEmpty())
+    }
+
+    @Test
+    fun parseScanData_unknownKeysGoOnlyIntoRawMap() {
+        val template = "(?<Foo>[^|]+)\\|(?<Bar>[^|]+)"
+        val raw = "abc|def"
+        val result = parseScanData(template, raw)
+
+        Assert.assertNull(result.rxNo)
+        Assert.assertNull(result.ndcNo)
+        Assert.assertEquals("abc", result.rawMap["FOO"])
+        Assert.assertEquals("def", result.rawMap["BAR"])
+    }
+
+    @Test
+    fun parseScanData_invalidRegexTemplate_returnsDefault() {
+        // Malformed regex (unbalanced group) throws inside Regex(template) — caught,
+        // falls back to the default ParsedScanData rather than propagating.
+        val template = "(?<RxNo>[^|]+"
+        val result = parseScanData(template, "RX123")
+
+        Assert.assertNull(result.rxNo)
+        Assert.assertTrue(result.rawMap.isEmpty())
+    }
+
+    @Test
+    fun parseScanData_refillNoGroup_isMapped() {
+        val template = "(?<RxNo>[^|]+)-(?<RefillNo>[^|]+)"
+        val raw = "RX500-2"
+        val result = parseScanData(template, raw)
+
+        Assert.assertEquals("RX500", result.rxNo)
+        Assert.assertEquals("2", result.refillNo)
+    }
+
+    // Server label template for the NDC-with-dashes cases below.
+    private val labelTemplate =
+        """^(?<rxnumber>[^|]{1,32})\|(?<refillno>\d{1,3})\|(?<ndc>\d{8,11})\|(?<qty>[\d.]{1,10})$"""
+
+    @Test
+    fun parseScanData_ndcWithDashes_isAcceptedAndPaddedToElevenDigits() {
+        val result = parseScanData(labelTemplate, "RX10235|0|72888-008-00|24")
+
+        Assert.assertEquals("RX10235", result.rxNo)
+        Assert.assertEquals("0", result.refillNo)
+        Assert.assertEquals("72888000800", result.ndcNo)
+        Assert.assertEquals("24", result.qty)
+    }
+
+    @Test
+    fun parseScanData_ndcWithDashes_stillRejectsWrongDigitCount() {
+        // 12 digits, even with dashes, is over the 11-digit limit.
+        Assert.assertNull(parseScanData(labelTemplate, "RX1|0|1234-5678-9012|24").ndcNo)
+        // A dash at the start of the NDC is not a digit separator.
+        Assert.assertNull(parseScanData(labelTemplate, "RX1|0|-7288800800|24").ndcNo)
+    }
+
+    @Test
+    fun parseScanData_ndcWithDashes_exactDigitCountTemplate() {
+        val tenDigits = """^(?<rxnumber>[^|]{1,32})\|(?<ndc>\d{10})$"""
+        val elevenDigits = """^(?<rxnumber>[^|]{1,32})\|(?<ndc>\d{11})$"""
+
+        Assert.assertEquals("72888000800", parseScanData(tenDigits, "RX1|72888-008-00").ndcNo)
+        Assert.assertEquals("72888000800", parseScanData(elevenDigits, "RX1|72888-0008-00").ndcNo)
+        // The exact count still applies: 10 digits do not fit a \d{11} group.
+        Assert.assertNull(parseScanData(elevenDigits, "RX1|72888-008-00").ndcNo)
+    }
+
+    @Test
+    fun parseScanData_dashedTenDigitNdc_isPaddedForEachLayout() {
+        Assert.assertEquals("01234567890", parseScanData(labelTemplate, "RX1|0|1234-5678-90|24").ndcNo)
+        Assert.assertEquals("72888000800", parseScanData(labelTemplate, "RX1|0|72888-008-00|24").ndcNo)
+        Assert.assertEquals("12345678900", parseScanData(labelTemplate, "RX1|0|12345-6789-0|24").ndcNo)
+    }
+
+    @Test
+    fun parseScanData_ndcWithoutStandardDashes_isNotPadded() {
+        Assert.assertEquals("7288800800", parseScanData(labelTemplate, "RX1|0|7288800800|24").ndcNo)
+        Assert.assertEquals("72888000800", parseScanData(labelTemplate, "RX1|0|72888-0008-00|24").ndcNo)
+
+        // A free-text NDC group lets odd layouts through; they are only stripped.
+        val freeText = "(?<RxNo>[^|]+)\\|(?<NdcNo>[^|]+)"
+        Assert.assertEquals("7288800800", parseScanData(freeText, "RX1|72-888-008-00").ndcNo)
+        Assert.assertEquals("1234567890", parseScanData(freeText, "RX1|123456-78-90").ndcNo)
+    }
+
+    @Test
+    fun parseScanData_openEndedNdcGroup_acceptsDashes() {
+        val openEnded = """^(?<rxnumber>[^|]{1,32})\|(?<ndc>\d{8,})$"""
+
+        Assert.assertEquals("72888000800", parseScanData(openEnded, "RX1|72888-008-00").ndcNo)
+        // The minimum still applies.
+        Assert.assertNull(parseScanData(openEnded, "RX1|1234567").ndcNo)
+    }
+
+    @Test
+    fun parseScanData_zeroDigitNdcGroup_doesNotBreakTemplate() {
+        val zeroDigits = """^(?<rxnumber>[^|]+)\|(?<ndc>\d{0})$"""
+
+        Assert.assertEquals("RX1", parseScanData(zeroDigits, "RX1|").rxNo)
+    }
+
+    // ───────────────────────────── data class ─────────────────────────────
+
+    @Test
+    fun parsedScanData_defaults_areNullAndEmptyMap() {
+        val d = ParsedScanData()
+        Assert.assertNull(d.rxNo)
+        Assert.assertNull(d.ndcNo)
+        Assert.assertNull(d.qty)
+        Assert.assertNull(d.bucket)
+        Assert.assertTrue(d.rawMap.isEmpty())
+    }
+
+    @Test
+    fun parsedScanData_equalsHashCodeCopyToString() {
+        val a = ParsedScanData(rxNo = "R", ndcNo = "N", qty = "1", bucket = "B", rawMap = mapOf("X" to "Y"))
+        val b = a.copy()
+        Assert.assertEquals(a, b)
+        Assert.assertEquals(a.hashCode(), b.hashCode())
+        Assert.assertTrue(a.toString().contains("rxNo"))
+
+        val c = a.copy(qty = "2")
+        Assert.assertTrue(a != c)
+        Assert.assertEquals("2", c.qty)
+
+        // component functions
+        Assert.assertEquals("R", a.component1())
+        Assert.assertNull(a.component2()) // refillNo, not set in this fixture
+        Assert.assertEquals("N", a.component3())
+        Assert.assertEquals("1", a.component4())
+        Assert.assertEquals("B", a.component5())
+        Assert.assertEquals(mapOf("X" to "Y"), a.component6())
+    }
+}

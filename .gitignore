@@ -53,12 +53,14 @@ _cleanup_archive/
 local.properties
 .claude/settings.local.json
 keystore.properties
+key.properties
 
 .claude/
 .agents/
 
 # Local planning/working notes, not part of the shipped project
 plans/
+plan/
 
 DrugCatalogStressSeeder.swift
 DrugCatalogSeeder.kt
@@ -76,3 +78,5 @@ logs.txt
 
 # macOS Finder metadata
 .DS_Store
+
+.archify/

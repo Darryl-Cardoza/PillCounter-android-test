@@ -70,7 +70,7 @@ json = "20251224"
 opencv = "4.10.0"
 
 # --- TLS / Local Server ---
-bouncycastle = "1.84"
+bouncycastle = "1.85"
 nanohttpd = "2.3.1"
 
 # --- Testing ---
@@ -289,6 +289,7 @@ test-android = [
 
 
 [plugins]
+datadog = { id = "com.datadoghq.dd-sdk-android-gradle-plugin", version = "1.31.0" }
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }

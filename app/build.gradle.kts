@@ -1,5 +1,6 @@
 @file:OptIn(KspExperimental::class)
 
+import com.datadog.gradle.plugin.SdkCheckLevel
 import com.google.devtools.ksp.KspExperimental
 import java.util.Properties
 
@@ -13,6 +14,7 @@ plugins {
     id("com.google.gms.google-services")
     alias(libs.plugins.androidx.room)
     id("com.autonomousapps.dependency-analysis")
+    alias(libs.plugins.datadog)
 }
 
 val keystorePropsFile = rootProject.file("keystore.properties")
@@ -22,12 +24,19 @@ val keystoreProps =
         if (hasKeystore) keystorePropsFile.inputStream().use { props.load(it) }
     }
 
+// Same commit => same id, so the pipeline's APK/AAB and the mapping uploaded by the
+// upload-mapping job (separate Gradle runs) agree. Local builds get "local0".
+val buildVersionId by lazy {
+    val suffix = (System.getenv("GITHUB_SHA") ?: "local0").take(6)
+    "${android.defaultConfig.versionName}-${android.defaultConfig.versionCode}-$suffix"
+}
+
 android {
-    namespace = "com.rite.pillcounting"
+    namespace = "com.dispensesure.retail"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "com.rite.pillcounting"
+        applicationId = "com.dispensesure.retail"
         minSdk = 29
         targetSdk = 36
         versionCode = 1
@@ -69,6 +78,7 @@ android {
 
     buildTypes {
         release {
+            buildConfigField("String", "BUILD_VERSION_ID", "\"$buildVersionId\"")
             isMinifyEnabled = true
             isShrinkResources = true
             isDebuggable = false
@@ -79,6 +89,7 @@ android {
             )
         }
         debug {
+            buildConfigField("String", "BUILD_VERSION_ID", "\"debug\"")
 //            isMinifyEnabled = true
 //            proguardFiles(
 //                getDefaultProguardFile("proguard-android-optimize.txt"),
@@ -118,6 +129,7 @@ android {
         resources {
             excludes +=
                 setOf(
+                    "META-INF/LICENSE.md",
                     "META-INF/INDEX.LIST",
                     "META-INF/io.netty.versions.properties",
                     "META-INF/*.SF",
@@ -231,5 +243,17 @@ dependencies {
     // OpenCV — tray color detection
     implementation(libs.opencv)
 
-    implementation(project(":hl7Core"))
+    implementation(files("libs/hl7Core-release.aar"))
+}
+
+datadog {
+    site = "US1"
+    serviceName = "dispensesure-mobile"
+    versionName = buildVersionId
+    checkProjectDependencies = SdkCheckLevel.NONE // no Datadog SDK in this app, mapping upload only
+}
+
+// Upload only when the key is set (the upload-mapping CI job runs this task); local builds skip.
+tasks.matching { it.name == "uploadMappingRelease" }.configureEach {
+    onlyIf { !System.getenv("DD_API_KEY").isNullOrBlank() }
 }

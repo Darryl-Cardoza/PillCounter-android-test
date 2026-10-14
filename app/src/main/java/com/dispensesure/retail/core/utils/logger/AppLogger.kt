@@ -1,0 +1,322 @@
+package com.dispensesure.retail.core.utils.logger
+
+import android.content.Context
+import android.util.Log
+import com.dispensesure.retail.BuildConfig
+import com.dispensesure.retail.core.utils.logger.destination.RemoteLogDestination
+
+/**
+ * A standalone logger class to handle logging throughout the application, and the single hub
+ * every log call in the app eventually flows through.
+ *
+ * Each instance is a lightweight, tag-scoped wrapper around Android's Logcat (unchanged
+ * behaviour from before this class also drove the centralized logger below). In addition to
+ * Logcat, every call is forwarded to the companion object's centralized machinery, which:
+ * applies [LoggerConfig]'s level filter, resolves where in the app the call actually came from
+ * (without misattributing it to AppLogger itself), builds a [LogEntry], and hands it to whichever
+ * [LogDestination] is configured (currently [RemoteLogDestination]).
+ *
+ * The centralized side is a plain singleton on the companion object — not Hilt-injected —
+ * because `AppLogger` instances are created via [create]/`AppLogger(tag)` all over the codebase,
+ * including from classes that are never touched by DI (companion objects, plain utilities).
+ * [init] must be called once, as early as possible, from
+ * [com.dispensesure.retail.PillCountingApplication.onCreate]; any log call made before that is a
+ * safe no-op for the file destination (it still reaches Logcat as before).
+ *
+ * @param tag The logging tag to be used for all messages from this logger instance.
+ */
+class AppLogger(private val tag: String) {
+
+    /**
+     * Logs a debug message.
+     * Use this for fine-grained information that is most useful during development.
+     *
+     * @param message The message to be logged.
+     * @param throwable An optional throwable to log with the message.
+     * @param event What the process was doing, for a remote aggregator's `event` field — see [LogEvent].
+     */
+    fun d(message: String, throwable: Throwable? = null, event: LogEvent? = null) {
+        if (BuildConfig.DEBUG) Log.d(tag, message, throwable)
+        log(LogLevel.DEBUG, tag, message, throwable, event)
+    }
+
+    /**
+     * Logs an info message.
+     * Use this for informational messages that highlight the progress of the application.
+     *
+     * @param message The message to be logged.
+     * @param throwable An optional throwable to log with the message.
+     * @param event What the process was doing, for a remote aggregator's `event` field — see [LogEvent].
+     */
+    fun i(message: String, throwable: Throwable? = null, event: LogEvent? = null) {
+        if (BuildConfig.DEBUG) logLong(Log.INFO, message, throwable)
+        log(LogLevel.INFO, tag, message, throwable, event)
+    }
+
+    /**
+     * Logs a warning message.
+     * Use this for potentially harmful situations or events that are not critical errors.
+     *
+     * @param message The message to be logged.
+     * @param throwable An optional throwable to log with the message.
+     * @param event What the process was doing, for a remote aggregator's `event` field — see [LogEvent].
+     */
+    fun w(message: String, throwable: Throwable? = null, event: LogEvent? = null) {
+        Log.w(tag, message, throwable)
+        log(LogLevel.WARN, tag, message, throwable, event)
+    }
+
+    /**
+     * Logs an error message.
+     * Use this for errors that have occurred and should be investigated.
+     *
+     * @param message The message to be logged.
+     * @param throwable An optional throwable to log with the message.
+     * @param event What the process was doing, for a remote aggregator's `event` field — see [LogEvent].
+     */
+    fun e(message: String, throwable: Throwable? = null, event: LogEvent? = null) {
+        if (throwable?.isExpectedFailure() == true) {
+            w(message, throwable, event)
+            return
+        }
+        Log.e(tag, message, throwable)
+        log(LogLevel.ERROR, tag, message, throwable, event)
+    }
+
+    /**
+     * Like [e], but at most one ERROR per call site every [intervalMs]; repeats in between are
+     * logged with [w]. For per-frame or per-retry failures that would otherwise flood the remote log.
+     */
+    fun eThrottled(message: String, throwable: Throwable? = null, event: LogEvent, intervalMs: Long = 60_000L) {
+        // Keyed on the calling line, so two different failures in one class don't hide each other.
+        val site = Throwable().stackTrace.firstOrNull {
+            it.className != INTERNAL_CLASS_NAME && !it.className.startsWith("$INTERNAL_CLASS_NAME$")
+        }
+        val key = "$tag|$event|${site?.className}:${site?.lineNumber}"
+        val now = System.currentTimeMillis()
+        var send = false
+        lastErrorAt.compute(key) { _, last ->
+            if (last == null || now - last >= intervalMs) {
+                send = true
+                now
+            } else {
+                last
+            }
+        }
+        if (send) e(message, throwable, event) else w(message, throwable, event)
+    }
+
+    /**
+     * Runs [block] and logs a failure as an error instead of rethrowing it. For framework callbacks
+     * and other entry points where an uncaught exception would crash the app.
+     */
+    inline fun catching(message: String, event: LogEvent, block: () -> Unit) {
+        try {
+            block()
+        } catch (ex: Exception) {
+            e(message, ex, event = event)
+        }
+    }
+
+    /**
+     * Logs a titled block as one logcat entry, so a multi-line trace stays together instead of
+     * interleaving with other tags. Emitted at warning level like [w], not [i]: the flows this
+     * traces also run in release builds, where [i] is compiled out.
+     */
+    fun block(title: String, vararg lines: Pair<String, Any?>) {
+        try {
+            val rule = "─".repeat(58)
+            Log.w(tag, buildString {
+                append('\n').append('┌').append(rule).append('\n')
+                append("│ ").append(title).append('\n')
+                append('├').append(rule)
+                lines.forEach { (label, value) -> append('\n').append("│ ").append(label).append(": ").append(value) }
+                append('\n').append('└').append(rule)
+            })
+        } catch (t: Throwable) {
+            // A value's toString() threw; the block is diagnostic only.
+            Log.w(tag, "$title (details unavailable)")
+        }
+    }
+
+    /**
+     * Logcat truncates any single log line around 4KB, which silently chops long HL7
+     * messages (chunked inventory batches can run to tens of KB) so only their tail shows up.
+     * Split into ~3500-char slices so the full payload is visible across multiple log lines.
+     */
+    private fun logLong(priority: Int, message: String, throwable: Throwable? = null) {
+        val maxChunkSize = 3500
+        if (message.length <= maxChunkSize) {
+            Log.println(priority, tag, if (throwable != null) message + '\n' + Log.getStackTraceString(throwable) else message)
+            return
+        }
+        var start = 0
+        var part = 1
+        val totalParts = (message.length + maxChunkSize - 1) / maxChunkSize
+        while (start < message.length) {
+            val end = minOf(start + maxChunkSize, message.length)
+            Log.println(priority, tag, "[$part/$totalParts] ${message.substring(start, end)}")
+            start = end
+            part++
+        }
+        if (throwable != null) Log.println(priority, tag, Log.getStackTraceString(throwable))
+    }
+
+    companion object {
+        /**
+         * A factory method to create an [AppLogger] instance using the simple
+         * name of the calling class as the tag.
+         *
+         * @param T The class to be used for the tag.
+         * @return An instance of [AppLogger].
+         */
+        inline fun <reified T> create(): AppLogger {
+            return AppLogger(T::class.java.simpleName)
+        }
+
+        // Only this class itself (instance and companion) — not the whole `logger` package,
+        // which also contains real callers such as PerformanceLogger that must still be
+        // correctly attributed as the log's origin.
+        // Resolved at runtime, not a string literal: R8 renames AppLogger and would not rewrite a literal.
+        private val INTERNAL_CLASS_NAME: String = AppLogger::class.java.name
+
+        @Volatile
+        private var destination: LogDestination? = null
+
+        /** Last ERROR time per tag+event, for [eThrottled]. */
+        private val lastErrorAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+
+        /**
+         * Wires up the [LogDestination]. Call once, as early as possible, from
+         * [com.dispensesure.retail.PillCountingApplication.onCreate].
+         *
+         * [RemoteLogDestination] is the only destination — it ships ERROR logs to the API when
+         * online, and only falls back to on-disk storage while offline, replaying it once
+         * connectivity returns.
+         */
+        @Synchronized
+        fun init(context: Context) {
+            if (destination != null) return
+            // Runs in Application.onCreate: a failure here must leave logging off, not crash startup.
+            try {
+                destination = RemoteLogDestination(context.applicationContext)
+            } catch (t: Throwable) {
+                Log.w(INTERNAL_TAG, "Remote log destination unavailable; logging to Logcat only", t)
+            }
+        }
+
+        /** Hands the log client the app's shared RuntimeUnit (the one MainActivity clears). Call once Hilt is ready. */
+        fun setRuntimeUnit(runtimeUnit: com.dispensesure.retail.core.security.RuntimeUnit) {
+            (destination as? RemoteLogDestination)?.runtimeUnit = runtimeUnit
+        }
+
+        /** Lets the log client refresh an expired access token; call once Hilt is ready. */
+        fun setTokenAuthenticator(authenticator: okhttp3.Authenticator) {
+            (destination as? RemoteLogDestination)?.tokenAuthenticator = authenticator
+        }
+
+        /** Call before logout clears the tokens: tries to ship queued logs under the current user's token. */
+        suspend fun flushBeforeLogout() {
+            (destination as? RemoteLogDestination)?.flushBeforeLogout()
+        }
+
+        /** Call once MainActivity clears security: queued logs (e.g. a crash from the last run) can only be sent now. */
+        fun onSecurityCleared() {
+            (destination as? RemoteLogDestination)?.onSecurityCleared()
+        }
+
+        /** Call after login stores the access token, so logs queued while logged out get shipped. */
+        fun onUserLoggedIn() {
+            (destination as? RemoteLogDestination)?.flushPending()
+        }
+
+        /** Test-only: injects a fake destination directly, bypassing [init]'s Context requirement. */
+        internal fun setDestinationForTest(destination: LogDestination?) {
+            this.destination = destination
+        }
+
+        /** Uncaught-exception hook: queues a fatal ERROR to disk synchronously. Never throws. */
+        fun logFatal(throwable: Throwable) {
+            try {
+                (destination as? RemoteLogDestination)?.writeFatalSync(
+                    LogEntry(
+                        timestampMillis = System.currentTimeMillis(),
+                        level = LogLevel.ERROR,
+                        fileName = "Unknown",
+                        className = "Application",
+                        methodName = "uncaughtException",
+                        message = "Uncaught exception",
+                        humanReadableError = ExceptionTranslator.translate(throwable),
+                        throwable = throwable,
+                        operatorName = LoggerConfig.operatorName?.takeIf { it.isNotBlank() },
+                        event = LogEvent.APP_CRASH
+                    )
+                )
+            } catch (t: Throwable) {
+                Log.w(INTERNAL_TAG, "Crash entry could not be queued", t)
+            }
+        }
+
+        private fun log(level: LogLevel, tag: String, message: String, throwable: Throwable?, event: LogEvent?) {
+            if (level < LoggerConfig.minimumLogLevel) return
+            val dest = destination ?: return
+
+            // Logging must never throw into the caller (often a catch block) — Logcat only.
+            try {
+                val callSite = resolveCallSite()
+                dest.write(
+                    LogEntry(
+                        timestampMillis = System.currentTimeMillis(),
+                        level = level,
+                        fileName = callSite.fileName,
+                        className = tag,
+                        methodName = callSite.methodName,
+                        message = message,
+                        humanReadableError = throwable?.let(ExceptionTranslator::translate),
+                        throwable = throwable,
+                        operatorName = LoggerConfig.operatorName?.takeIf { it.isNotBlank() },
+                        event = event
+                    )
+                )
+            } catch (t: Throwable) {
+                Log.w(INTERNAL_TAG, "Logging failed; entry dropped", t)
+            }
+        }
+
+        private const val INTERNAL_TAG = "AppLogger"
+
+        private data class CallSite(val fileName: String, val methodName: String)
+
+        /**
+         * Walks the current stack to find the first frame outside this class, so the log entry
+         * reports the real caller (e.g. LoginRepository.loginUser) rather than AppLogger itself.
+         */
+        private fun resolveCallSite(): CallSite {
+            val frame = Thread.currentThread().stackTrace.firstOrNull { element ->
+                !isVmInternalClass(element.className) && !isInternalClass(element.className)
+            }
+            return CallSite(
+                fileName = frame?.fileName ?: "Unknown",
+                methodName = frame?.methodName ?: "unknown"
+            )
+        }
+
+        /**
+         * True for AppLogger itself and its nested/companion classes (e.g. `AppLogger$Companion`)
+         * — but not for unrelated classes that merely share the string prefix, such as a
+         * hypothetical `AppLoggerHelper`.
+         */
+        private fun isInternalClass(className: String): Boolean =
+            className == INTERNAL_CLASS_NAME || className.startsWith("$INTERNAL_CLASS_NAME$")
+
+        /**
+         * True for VM/runtime frames that sit above the real caller on some ART builds (e.g.
+         * `dalvik.system.VMStack.getThreadStackTrace`, `java.lang.Thread.getStackTrace`) before
+         * [Thread.getStackTrace] settles into application code.
+         */
+        private fun isVmInternalClass(className: String): Boolean =
+            className == "java.lang.Thread" ||
+                className == "dalvik.system.VMStack" ||
+                className.startsWith("java.lang.VMStack")
+    }
+}
