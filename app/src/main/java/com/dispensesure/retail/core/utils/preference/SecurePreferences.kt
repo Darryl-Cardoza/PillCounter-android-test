@@ -8,6 +8,7 @@ import android.util.Base64
 import androidx.core.content.edit
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.withoutMessage
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -131,7 +132,8 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toInt()
         } catch (e: Exception) {
-            logger.eThrottled("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
+            // A NumberFormatException message would echo the stored value.
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e.withoutMessage(), event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -145,7 +147,8 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toLong()
         } catch (e: Exception) {
-            logger.eThrottled("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
+            // A NumberFormatException message would echo the stored value.
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e.withoutMessage(), event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }

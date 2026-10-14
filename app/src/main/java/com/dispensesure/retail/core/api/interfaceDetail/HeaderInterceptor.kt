@@ -37,7 +37,8 @@ class HeaderInterceptor(
         val serverKey = try {
             runtimeUnit.material()
         } catch (e: Exception) {
-            logger.e("Failed to retrieve server key — request will be sent without X-Server-Key", e, event = LogEvent.NETWORK_ERROR)
+            // Runs on every request while the key is unavailable.
+            logger.eThrottled("Failed to retrieve server key — request will be sent without X-Server-Key", e, event = LogEvent.NETWORK_ERROR)
             ""
         }
         val modifiedRequest = originalRequest.newBuilder()

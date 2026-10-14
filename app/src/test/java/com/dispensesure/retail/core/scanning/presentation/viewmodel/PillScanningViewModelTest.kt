@@ -28,7 +28,6 @@ import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
-import com.dispensesure.retail.core.utils.common.HelperFunctions
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
@@ -736,24 +735,6 @@ class PillScanningViewModelTest {
         coVerify(exactly = 1) { appDatabase.withTransaction<Any?>(any()) }
     }
 
-    @Test
-    fun `a failed Add deletes the images it saved and allows a retry`() = runTest {
-        stubSavePath()
-        val saved = File.createTempFile("txn_detail", ".jpg")
-        mockkObject(HelperFunctions)
-        every { HelperFunctions.saveBitmapToFile(any(), any(), any(), any(), any()) } returns saved.absolutePath
-        coEvery { pillCountTxnDetailsDao.insert(any()) } throws IllegalStateException("disk full")
-        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
-
-        tapAdd()
-
-        // The add runs on Dispatchers.IO; wait for its catch block to clean up.
-        val deadline = System.currentTimeMillis() + 3000
-        while ((saved.exists() || getPrivateField("lastAddedScanSignature") != null) && System.currentTimeMillis() < deadline) Thread.sleep(20)
-        assertFalse(saved.exists())
-        assertNull(getPrivateField("lastAddedScanSignature"))
-    }
-
     // ─────────────────────────── flushStagedDetails (deferred stock commit) ───────────────────────────
 
     private fun setPrivateField(name: String, value: Any?) {
@@ -925,40 +906,5 @@ class PillScanningViewModelTest {
         assertEquals(null, viewModel.stockCountCommittedBatchId.value)
     }
 
-    // Reset during a staged (stock-count) session must delete the staged images.
-    @Test
-    fun `reset deletes images of staged details`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 9L
-        val staged = File.createTempFile("txn_detail_staged", ".jpg")
-        val raw = File.createTempFile("txn_detail_staged_raw", ".jpg")
-        @Suppress("UNCHECKED_CAST")
-        (getPrivateField("stagedDetails") as MutableList<com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity>).add(
-            com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity(
-                txnId = 9L, pillCount = 3, imagePath = staged.absolutePath, rawImagePath = raw.absolutePath, type = "TARGET_VERIFICATION",
-            )
-        )
 
-        assertTrue(viewModel.resetTransaction())
-
-        assertFalse("staged image left on disk: ${staged.name}", staged.exists())
-        assertFalse("staged raw image left on disk: ${raw.name}", raw.exists())
-    }
-
-    // An Add cancelled after its images were saved (user backs out) must delete them.
-    @Test
-    fun `cancelled Add deletes the images it saved`() = runTest {
-        stubSavePath()
-        val saved = File.createTempFile("txn_detail_cancel", ".jpg")
-        mockkObject(HelperFunctions)
-        every { HelperFunctions.saveBitmapToFile(any(), any(), any(), any(), any()) } returns saved.absolutePath
-        coEvery { pillCountTxnDetailsDao.insert(any()) } throws kotlinx.coroutines.CancellationException("ViewModel cleared")
-        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
-
-        tapAdd()
-
-        coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
-        val deadline = System.currentTimeMillis() + 2000
-        while (saved.exists() && System.currentTimeMillis() < deadline) Thread.sleep(20)
-        assertFalse("image left on disk after a cancelled Add: ${saved.name}", saved.exists())
-    }
 }

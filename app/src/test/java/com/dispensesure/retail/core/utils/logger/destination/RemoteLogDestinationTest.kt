@@ -479,4 +479,25 @@ class RemoteLogDestinationTest {
 
         kotlinx.coroutines.runBlocking { destination.flushBeforeLogout(5_000L) }
     }
+
+    @Test
+    fun `a 401 on the retried log request stops further token refreshes`() {
+        val delegate = mockk<okhttp3.Authenticator>()
+        every { delegate.authenticate(any(), any()) } returns null
+        val dest = destination().apply { tokenAuthenticator = delegate }
+        val auth = RemoteLogDestination::class.java.getDeclaredField("logAuthenticator")
+            .apply { isAccessible = true }.get(dest) as okhttp3.Authenticator
+        val request = okhttp3.Request.Builder().url("https://example.com/mobile/logs")
+            .header("Authorization", "Bearer $token").build()
+        fun unauthorized(prior: okhttp3.Response? = null) = okhttp3.Response.Builder()
+            .request(request).protocol(okhttp3.Protocol.HTTP_1_1).code(401).message("Unauthorized")
+            .apply { if (prior != null) priorResponse(prior) }.build()
+
+        // The request retried with a fresh token was still rejected.
+        auth.authenticate(null, unauthorized(prior = unauthorized()))
+        // The next send's 401 must not rotate the user's tokens again.
+        auth.authenticate(null, unauthorized())
+
+        io.mockk.verify(exactly = 0) { delegate.authenticate(any(), any()) }
+    }
 }

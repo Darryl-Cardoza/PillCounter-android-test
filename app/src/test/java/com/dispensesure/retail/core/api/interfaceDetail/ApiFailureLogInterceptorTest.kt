@@ -84,12 +84,13 @@ class ApiFailureLogInterceptorTest {
     }
 
     @Test
-    fun `IOException is logged and rethrown`() {
+    fun `a timeout is logged as a warning and rethrown`() {
         val failure = SocketTimeoutException("timeout")
 
         assertThrows(SocketTimeoutException::class.java) { interceptor.intercept(chain("/mobile/users", failure = failure)) }
 
-        assertEquals(LogEvent.NETWORK_TIMEOUT, errors.single().event)
+        assertTrue(errors.isEmpty())
+        assertEquals(LogEvent.NETWORK_TIMEOUT, warnings.single().event)
     }
 
     @Test

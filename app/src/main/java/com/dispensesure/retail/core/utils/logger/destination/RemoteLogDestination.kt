@@ -137,7 +137,11 @@ class RemoteLogDestination internal constructor(
      * failure is itself logged at ERROR and would otherwise loop send -> 401 -> refresh -> log.
      */
     private val logAuthenticator = Authenticator { route, response ->
-        if (response.priorResponse != null) return@Authenticator null
+        if (response.priorResponse != null) {
+            // Still 401 with a fresh token: refreshing again can't help, so stop rotating the user's tokens.
+            synchronized(refreshLock) { refreshBlockedUntil = System.currentTimeMillis() + REFRESH_COOLDOWN_MS }
+            return@Authenticator null
+        }
         synchronized(refreshLock) {
             val used = response.request.header("Authorization")?.removePrefix("Bearer ")
             val current = accessToken()

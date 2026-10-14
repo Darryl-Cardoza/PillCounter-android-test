@@ -99,14 +99,15 @@ class DrugRepository @Inject constructor(
                 }
             }
         } catch (e: HttpException) {
-            logger.e(
+            // The interceptor already reports 5xx; a 4xx is an unknown or invalid scan.
+            logger.w(
                 "HTTP error while fetching drug info (code=${e.code()}, message=${e.message()})",
                 e,
                 event = LogEvent.DRUG_LOOKUP_FAILED
             )
             null
         } catch (e: IOException) {
-            logger.e("Network error while fetching drug info", e, event = LogEvent.DRUG_LOOKUP_FAILED)
+            logger.w("Network error while fetching drug info", e, event = LogEvent.DRUG_LOOKUP_FAILED)
             null
         } catch (e: Exception) {
             logger.e("Unexpected error while fetching drug info", e, event = LogEvent.DRUG_LOOKUP_FAILED)

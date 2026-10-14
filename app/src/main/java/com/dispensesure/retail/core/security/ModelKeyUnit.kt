@@ -48,7 +48,7 @@ class ModelKeyUnit(private val context: Context) {
             persist(seal(refined))
             destroy(refined)
         } catch (e: Exception) {
-            logger.e("ModelKeyUnit: activateIfNeeded() failed", e, event = LogEvent.MODEL_LOAD_FAILED)
+            logger.w("ModelKeyUnit: activateIfNeeded() failed", e, event = LogEvent.MODEL_LOAD_FAILED)
             throw e
         }
     }
@@ -64,7 +64,7 @@ class ModelKeyUnit(private val context: Context) {
             val hex = open(sealed)
             return hexToBytes(hex)
         } catch (e: Exception) {
-            logger.e("ModelKeyUnit: material() retrieval failed", e, event = LogEvent.MODEL_LOAD_FAILED)
+            logger.w("ModelKeyUnit: material() retrieval failed", e, event = LogEvent.MODEL_LOAD_FAILED)
             throw e
         }
     }

@@ -69,7 +69,8 @@ object DateUtils {
             val parser = DateTimeFormatter.ofPattern(DateFormats.GS1_YYMMDD)
             LocalDate.parse(dateString, parser)
         } catch (e: Exception) {
-            logger.e("Error parsing GS1 date to LocalDate: $dateString", e, event = LogEvent.PARSING_ERROR)
+            // A malformed label is bad input, not an app error.
+            logger.w("Error parsing GS1 date to LocalDate: $dateString", e, event = LogEvent.PARSING_ERROR)
             null
         }
     }

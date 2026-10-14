@@ -6,9 +6,7 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import okhttp3.Interceptor
 import okhttp3.Response
 import java.io.IOException
-import java.net.ConnectException
 import java.net.SocketTimeoutException
-import java.net.UnknownHostException
 
 /**
  * Central ERROR log for failed API requests: any non-2xx response or [IOException] on the main
@@ -38,8 +36,8 @@ class ApiFailureLogInterceptor : Interceptor {
             if (!skip && !chain.call().isCanceled()) {
                 val event = if (e is SocketTimeoutException) LogEvent.NETWORK_TIMEOUT else LogEvent.NETWORK_ERROR
                 val message = "${request.method} $path failed: ${e.javaClass.simpleName}"
-                if (e is UnknownHostException || e is ConnectException) logger.w(message, e, event = event)
-                else logger.e(message, e, event = event)
+                // Offline, timeouts and resets are expected on a pharmacy network.
+                logger.w(message, e, event = event)
             }
             throw e
         }

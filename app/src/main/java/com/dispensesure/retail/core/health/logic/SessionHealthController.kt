@@ -252,7 +252,8 @@ class SessionHealthController @Inject constructor(
                 }
             )
         }
-        logger.e("checkHealth exhausted $MAX_ATTEMPTS attempts, flipping OFFLINE", lastFailure, event = LogEvent.HEALTH_CHECK_FAILED)
+        // Offline is an expected state, not an app error.
+        logger.w("checkHealth exhausted $MAX_ATTEMPTS attempts, flipping OFFLINE", lastFailure, event = LogEvent.HEALTH_CHECK_FAILED)
         if (_state.value != HealthState.EXPIRED) {
             _state.value = HealthState.OFFLINE
         }

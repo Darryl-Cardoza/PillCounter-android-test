@@ -77,7 +77,7 @@ class HL7Service : Service() {
     // Logs a coroutine failure nothing else caught, instead of letting it crash the app.
     private val serviceScope = CoroutineScope(
         SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e ->
-            logger.e("Uncaught error in HL7 service coroutine", e, event = LogEvent.HL7_SERVICE_ERROR)
+            logger.e("Uncaught error in HL7 service coroutine", e.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
         }
     )
 
@@ -732,7 +732,8 @@ class HL7Service : Service() {
         val port = preferenceHelper.getPmsPort()
 
         if (host.isNullOrBlank() || port <= 0) {
-            logger.eThrottled("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry", event = LogEvent.HL7_CONNECT_FAILED)
+            // Expected right after start, before settings sync saves the PMS address.
+            logger.w("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry", event = LogEvent.HL7_CONNECT_FAILED)
             scheduleStaticPmsRetry()
             return
         }

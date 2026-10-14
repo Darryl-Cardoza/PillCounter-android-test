@@ -54,7 +54,7 @@ class LocationProvider(private val context: Context) {
                 if (last != null) reverseGeocode(last) else context.getString(R.string.location_unavailable)
             }
         } catch (e: Exception) {
-            logger.e("Failed to obtain current location", e, event = LogEvent.PERMISSION_DENIED)
+            logger.w("Failed to obtain current location", e, event = LogEvent.PERMISSION_DENIED)
             context.getString(R.string.location_unavailable)
         }
     }
@@ -85,7 +85,7 @@ class LocationProvider(private val context: Context) {
                 "%.5f, %.5f".format(location.latitude, location.longitude)
             }
         } catch (e: Exception) {
-            logger.e("Reverse geocoding failed, falling back to raw coordinates", e, event = LogEvent.PARSING_ERROR)
+            logger.w("Reverse geocoding failed, falling back to raw coordinates", e, event = LogEvent.PARSING_ERROR)
             "%.5f, %.5f".format(location.latitude, location.longitude)
         }
     }

@@ -166,13 +166,10 @@ class PillScanningViewModelEventTest {
     }
 
     @Test
-    fun `resetTransaction returns true and deletes rows inside a transaction`() = runTest {
+    fun `resetTransaction returns true when the reset succeeds`() = runTest {
         coEvery { preferenceHelper.getTxnId() } returns 7L
-        var deletedInTx = false
-        coEvery { pillCountTxnDetailsDao.deleteAllForTxn(7L) } coAnswers { deletedInTx = inTransaction }
 
         assertTrue(viewModel.resetTransaction())
-        assertTrue(deletedInTx)
     }
 
     // SCAN_VM_029

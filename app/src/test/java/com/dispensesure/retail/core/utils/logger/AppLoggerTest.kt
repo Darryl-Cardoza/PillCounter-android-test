@@ -6,6 +6,7 @@ import io.mockk.every
 import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -230,7 +231,7 @@ class AppLoggerTest {
     @Test
     fun `entry carries the message, tag as class, and translated throwable`() {
         LoggerConfig.minimumLogLevel = LogLevel.VERBOSE
-        val throwable = java.net.SocketTimeoutException("timeout")
+        val throwable = java.io.FileNotFoundException("missing.jpg")
 
         AppLogger("LoginRepository").e("login failed", throwable)
 
@@ -240,7 +241,7 @@ class AppLoggerTest {
         assertEquals("login failed", entry.message)
         assertEquals(throwable, entry.throwable)
         assertEquals(
-            "The request timed out while communicating with the server.",
+            "The requested file could not be found.",
             entry.humanReadableError
         )
     }
@@ -322,5 +323,28 @@ class AppLoggerTest {
         logger.e("something failed", RuntimeException("original"))
 
         verify(exactly = 1) { Log.e(tag, "something failed", any()) }
+    }
+
+    @Test
+    fun `e logs expected failures as warnings and real faults as errors`() {
+        LoggerConfig.minimumLogLevel = LogLevel.WARN
+        val expected = listOf(
+            kotlinx.coroutines.CancellationException("scope cancelled"),
+            java.net.UnknownHostException("offline"),
+            java.net.SocketTimeoutException("slow"),
+            java.net.SocketException("reset"),
+            retrofit2.HttpException(retrofit2.Response.error<Any>(404, "".toResponseBody(null))),
+            RuntimeException("Refresh returned 401"),
+        )
+        val faults = listOf(
+            IllegalStateException("bug"),
+            retrofit2.HttpException(retrofit2.Response.error<Any>(500, "".toResponseBody(null))),
+        )
+
+        expected.forEach { logger.e("expected", it) }
+        faults.forEach { logger.e("fault", it) }
+
+        assertEquals(List(expected.size) { LogLevel.WARN }, destination.entries.take(expected.size).map { it.level })
+        assertEquals(List(faults.size) { LogLevel.ERROR }, destination.entries.drop(expected.size).map { it.level })
     }
 }

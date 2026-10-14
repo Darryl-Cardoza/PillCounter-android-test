@@ -38,7 +38,7 @@ object ModelDecryptor {
             return try {
                 cipher.doFinal(cipherText)
             } catch (e: Exception) {
-                logger.e("Failed to decrypt model file ${inFile.name}", e, event = LogEvent.MODEL_LOAD_FAILED)
+                logger.w("Failed to decrypt model file ${inFile.name}", e, event = LogEvent.MODEL_LOAD_FAILED)
                 throw IllegalStateException("Decryption failed: wrong key or corrupted file", e)
             }
         }

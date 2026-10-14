@@ -33,7 +33,7 @@ class FCMService @Inject constructor(
     fun initFCM() {
         FirebaseMessaging.getInstance().token.addOnCompleteListener { task ->
             if (!task.isSuccessful) {
-                logger.e("Failed to fetch FCM token", task.exception, event = LogEvent.NETWORK_ERROR)
+                logger.w("Failed to fetch FCM token", task.exception, event = LogEvent.NETWORK_ERROR)
                 return@addOnCompleteListener
             }
 
@@ -50,7 +50,7 @@ class FCMService @Inject constructor(
             if (task.isSuccessful) {
                 continuation.resume(task.result)
             } else {
-                logger.e("Failed to fetch FCM token", task.exception, event = LogEvent.NETWORK_ERROR)
+                logger.w("Failed to fetch FCM token", task.exception, event = LogEvent.NETWORK_ERROR)
                 continuation.resume(null)
             }
         }

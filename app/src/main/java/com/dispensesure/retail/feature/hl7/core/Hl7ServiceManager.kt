@@ -154,7 +154,8 @@ class Hl7ServiceManager @Inject constructor(
             Result.success(ack)
 
         } catch (e: Exception) {
-            logger.e("Failed sending raw HL7 message", e, event = LogEvent.HL7_SEND_FAILED)
+            if (e is java.io.IOException) logger.w("Failed sending raw HL7 message", e, event = LogEvent.HL7_SEND_FAILED)
+            else logger.e("Failed sending raw HL7 message", e, event = LogEvent.HL7_SEND_FAILED)
             Result.failure(e)
         }
     }

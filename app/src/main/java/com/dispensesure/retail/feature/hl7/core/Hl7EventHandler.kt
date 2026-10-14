@@ -89,14 +89,14 @@ class Hl7EventHandler @Inject constructor(
     private fun buildSuccessAck(parsed: HL7Message): String =
         runCatching { ackBuilder.build(parsed, ValidationResult(emptyList())).encode() }
             .getOrElse { e ->
-                logger.e("AckBuilder.build() failed for AA — falling back to hl7().ack()", e)
+                logger.e("AckBuilder.build() failed for AA — falling back to hl7().ack()", e.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
                 hl7().ack(parsed)
             }
 
     private fun buildErrorAck(parsed: HL7Message, validationResult: ValidationResult): String =
         runCatching { ackBuilder.build(parsed, validationResult).encode() }
             .getOrElse { e ->
-                logger.e("AckBuilder.build() failed — falling back to hl7().ack()", e)
+                logger.e("AckBuilder.build() failed — falling back to hl7().ack()", e.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
                 hl7().ack(parsed)
             }
 

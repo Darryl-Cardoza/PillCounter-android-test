@@ -236,7 +236,8 @@ class MllpConnectionManager(
                     return  // success — exits retryConnect()
                 } catch (e: Exception) {
                     if (e.isCertPinMismatch()) {
-                        logger.e("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.", event = LogEvent.HL7_CONNECT_FAILED)
+                        // One entry per minute: every send retry reaches this until the pin is cleared.
+                        logger.eThrottled("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.", event = LogEvent.HL7_CONNECT_FAILED)
                         certMismatchBlocked = true
                         updateState(ConnectionState.Disconnected)
                         onCertMismatch?.invoke()

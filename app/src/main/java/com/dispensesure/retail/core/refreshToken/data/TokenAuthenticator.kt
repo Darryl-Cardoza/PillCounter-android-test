@@ -66,6 +66,10 @@ class TokenAuthenticator @Inject constructor(
                     logger.e("Token refresh failed with HTTP ${e.code()}", e, event = LogEvent.TOKEN_REFRESH_FAILED)
                 }
                 null
+            } catch (e: java.io.IOException) {
+                // Offline or flaky network: the session may still be valid once it recovers.
+                logger.w("Token refresh failed", e, event = LogEvent.TOKEN_REFRESH_FAILED)
+                null
             } catch (e: Exception) {
                 logger.e("Token refresh failed", e, event = LogEvent.TOKEN_REFRESH_FAILED)
                 null

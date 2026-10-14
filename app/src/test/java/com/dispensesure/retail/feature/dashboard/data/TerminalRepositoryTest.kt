@@ -9,6 +9,7 @@ import com.dispensesure.retail.feature.dashboard.data.remote.ITerminalApi
 import com.dispensesure.retail.feature.dashboard.domain.model.TerminalUpdateRequest
 import com.dispensesure.retail.feature.dashboard.domain.model.TerminalUpdateResponse
 import com.dispensesure.retail.feature.settings.data.remote.IApplicationSettingInterface
+import com.dispensesure.retail.util.shippedErrors
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -219,5 +220,17 @@ class TerminalRepositoryTest {
         assertTrue(result.isFailure)
         assertSame(retryError, result.exceptionOrNull())
         verify(exactly = 1) { preferenceHelper.saveTokens("newToken", "newRefresh") }
+    }
+
+    @Test
+    fun `refresh token rejected is not sent as an ERROR`() = runTest {
+        every { preferenceHelper.getAccessToken() } returns "oldToken"
+        every { preferenceHelper.getRefreshToken() } returns "refresh"
+        coEvery { terminalApi.updateTerminal(any(), any(), any()) } throws httpException(401)
+        coEvery { applicationSettingApi.refreshToken(any()) } returns Response.error(401, "".toResponseBody(null))
+
+        val errors = shippedErrors { repository.updateTerminal(terminalId, request) }
+
+        assertEquals(emptyList<String>(), errors)
     }
 }

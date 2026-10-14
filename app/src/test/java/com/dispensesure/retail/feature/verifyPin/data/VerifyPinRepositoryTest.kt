@@ -5,6 +5,7 @@ import com.dispensesure.retail.core.utils.notification.FCMService
 import com.dispensesure.retail.feature.verifyPin.data.remote.IVerifyPinAPI
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinRequest
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinResponse
+import com.dispensesure.retail.util.shippedErrors
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -144,5 +145,23 @@ class VerifyPinRepositoryTest {
         repository.verifyPin("admin@rite.com", "5678", deviceKey, appVersion)
 
         coVerify { verifyPinApi.verifyPin(match { it.fcmToken == "" }) }
+    }
+
+    @Test
+    fun `a wrong OTP is not sent as an ERROR`() = runTest {
+        coEvery { verifyPinApi.verifyPin(any()) } throws HttpException(Response.error<Any>(400, "".toResponseBody(null)))
+
+        val errors = shippedErrors { repository.verifyPin("user@pharmacy.com", "0000", deviceKey, appVersion) }
+
+        assertEquals(emptyList<String>(), errors)
+    }
+
+    @Test
+    fun `a server error during OTP verification is still sent as an ERROR`() = runTest {
+        coEvery { verifyPinApi.verifyPin(any()) } throws HttpException(Response.error<Any>(500, "".toResponseBody(null)))
+
+        val errors = shippedErrors { repository.verifyPin("user@pharmacy.com", "1234", deviceKey, appVersion) }
+
+        assertEquals(listOf("OTP verification failed"), errors)
     }
 }

@@ -75,6 +75,10 @@ class AppLogger(private val tag: String) {
      * @param event What the process was doing, for a remote aggregator's `event` field — see [LogEvent].
      */
     fun e(message: String, throwable: Throwable? = null, event: LogEvent? = null) {
+        if (throwable?.isExpectedFailure() == true) {
+            w(message, throwable, event)
+            return
+        }
         Log.e(tag, message, throwable)
         log(LogLevel.ERROR, tag, message, throwable, event)
     }

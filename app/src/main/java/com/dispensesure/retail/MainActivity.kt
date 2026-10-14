@@ -480,28 +480,16 @@ class MainActivity : ComponentActivity() {
             return
         }
         try {
-            runLogoutTeardown(
-                cleanup = {
-                    // Its own try: a Keystore fault here must not leave the user flagged as logged in.
-                    try {
-                        preferenceHelper.clearTokens()
-                    } catch (e: Exception) {
-                        logger.e("Clearing tokens failed during teardown", e, event = LogEvent.SESSION_EXPIRED)
-                    }
-                    preferenceHelper.setUserLoggedIn(false)
-                    sessionHealthController.markLoggedOut()
-                    LoggerConfig.newSession()
-                    sessionLockController.unlock()
-                },
-                navigate = {
-                    if (::navController.isInitialized) {
-                        navController.navigate(AUTH_GRAPH_ROUTE) {
-                            popUpTo(0) { inclusive = true }
-                        }
-                    }
-                },
-                onError = { message, e -> logger.e(message, e, event = LogEvent.SESSION_EXPIRED) },
-            )
+            preferenceHelper.clearTokens()
+            preferenceHelper.setUserLoggedIn(false)
+            sessionHealthController.markLoggedOut()
+            LoggerConfig.newSession()
+            sessionLockController.unlock()
+            if (::navController.isInitialized) {
+                navController.navigate(AUTH_GRAPH_ROUTE) {
+                    popUpTo(0) { inclusive = true }
+                }
+            }
             showToast(this, R.string.session_expired, keepUntilShown = true)
         } finally {
             sessionHealthController.endTeardown()
@@ -678,18 +666,4 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPENED_FROM_NOTIFICATION = "opened_from_notification"
     }
 
-}
-
-/** A cleanup failure must not skip the navigation, or the user is stuck signed-in. */
-internal fun runLogoutTeardown(cleanup: () -> Unit, navigate: () -> Unit, onError: (String, Exception) -> Unit) {
-    try {
-        cleanup()
-    } catch (e: Exception) {
-        onError("Session teardown cleanup failed", e)
-    }
-    try {
-        navigate()
-    } catch (e: Exception) {
-        onError("Navigation to auth graph failed after session expiry", e)
-    }
 }

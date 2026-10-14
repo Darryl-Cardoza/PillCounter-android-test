@@ -638,7 +638,7 @@ class ProfileViewModel @Inject constructor(
                         val errorResponse = Gson().fromJson(it, ErrorResponse::class.java)
                         errorResponse.message
                     } catch (e: Exception) {
-                        logger.e("Failed to parse error response", e, event = LogEvent.PARSING_ERROR)
+                        logger.w("Failed to parse error response", e, event = LogEvent.PARSING_ERROR)
                         null
                     }
                 }
