@@ -98,6 +98,8 @@ class MllpConnectionManager(
                 val response = client.send(message)
                 logger.d("send() attempt $attempt — received response")
                 return response
+            } catch (e: CancellationException) {
+                throw e // the caller went away; the connection itself is fine
             } catch (e: Exception) {
                 // Only the final attempt is an ERROR (shipped remotely); earlier ones are retried.
                 if (attempt == SEND_RETRIES - 1) {

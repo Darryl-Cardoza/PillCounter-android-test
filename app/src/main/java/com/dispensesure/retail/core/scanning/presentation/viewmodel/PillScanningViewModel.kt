@@ -1330,6 +1330,8 @@ class PillScanningViewModel @Inject constructor(
             }
         }
 
+        // Staged details have no DB row yet, so their images aren't in imagePaths above.
+        deleteStagedImageFiles()
         stagedDetails.clear()
         stagingActive = false
         stockCountBaseTotal = -1
@@ -1746,6 +1748,8 @@ class PillScanningViewModel @Inject constructor(
                     logger.i("Transaction detail INSERTED (immediate). Count=$currentCount, File=$filePath")
                 }
             } catch (e: CancellationException) {
+                // Backed out mid-add: nothing points at these images either.
+                if (!committed) deleteFiles(savedPaths)
                 throw e
             } catch (e: Exception) {
                 logger.e("Failed to add transaction detail", e, event = LogEvent.PILL_COUNT_FAILED)

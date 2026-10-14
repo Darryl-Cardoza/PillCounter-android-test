@@ -1155,4 +1155,28 @@ class DashboardViewModelTest {
 
         assertNull(vm.uiState.value.pendingStockCountBucketId)
     }
+
+    // A normal session expiry (refresh token rejected -> LOGOUT) must not ship an ERROR.
+    @Test
+    fun `session expiry LOGOUT is not sent as an ERROR`() = runTest(testDispatcher) {
+        val entries = mutableListOf<com.dispensesure.retail.core.utils.logger.LogEntry>()
+        com.dispensesure.retail.core.utils.logger.AppLogger.setDestinationForTest(
+            object : com.dispensesure.retail.core.utils.logger.LogDestination {
+                override fun write(entry: com.dispensesure.retail.core.utils.logger.LogEntry) { entries += entry }
+            }
+        )
+        try {
+            every { preferenceHelper.getAccessToken() } returns "tok"
+            coEvery { userDetailRepository.getUserDetail("tok") } returns Result.failure(RuntimeException("LOGOUT"))
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.logoutUser)
+            val errors = entries.filter { it.level == com.dispensesure.retail.core.utils.logger.LogLevel.ERROR }.map { it.message }
+            assertEquals(emptyList<String>(), errors)
+        } finally {
+            com.dispensesure.retail.core.utils.logger.AppLogger.setDestinationForTest(null)
+        }
+    }
 }

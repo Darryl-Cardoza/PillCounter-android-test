@@ -556,8 +556,9 @@ class DashboardViewModel @Inject constructor(
                     }
                 },
                 onFailure = { error ->
-                    logger.e("Failed to fetch user details.", error, event = LogEvent.USER_FETCH_FAILED)
                     if (error.message == "LOGOUT") {
+                        // A normal session expiry, not an error.
+                        logger.w("Session expired while fetching user details.", error, event = LogEvent.USER_FETCH_FAILED)
                         _uiState.update {
                             it.copy(
                                 logoutUser = true,
@@ -565,6 +566,7 @@ class DashboardViewModel @Inject constructor(
                             )
                         }
                     } else {
+                        logger.e("Failed to fetch user details.", error, event = LogEvent.USER_FETCH_FAILED)
                         // Don't null out userDetail on transient network failures — keep the
                         // cached value hydrated from Room so the top bar stays populated.
                         _uiState.update {

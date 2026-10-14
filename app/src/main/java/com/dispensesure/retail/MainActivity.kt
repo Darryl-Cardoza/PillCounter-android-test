@@ -482,7 +482,12 @@ class MainActivity : ComponentActivity() {
         try {
             runLogoutTeardown(
                 cleanup = {
-                    preferenceHelper.clearTokens()
+                    // Its own try: a Keystore fault here must not leave the user flagged as logged in.
+                    try {
+                        preferenceHelper.clearTokens()
+                    } catch (e: Exception) {
+                        logger.e("Clearing tokens failed during teardown", e, event = LogEvent.SESSION_EXPIRED)
+                    }
                     preferenceHelper.setUserLoggedIn(false)
                     sessionHealthController.markLoggedOut()
                     LoggerConfig.newSession()
