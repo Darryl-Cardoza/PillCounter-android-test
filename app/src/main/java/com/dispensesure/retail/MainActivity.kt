@@ -198,12 +198,13 @@ class MainActivity : ComponentActivity() {
 //
 //        if (securityViolations.isEmpty()) {
             runtimeUnit.grantClearance()
-            AppLogger.onSecurityCleared()
             try {
                 runtimeUnit.activateIfNeeded()
             } catch (e: Exception) {
                 logger.e("runtimeUnit.activateIfNeeded() failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
             }
+            // After activation, so the queued-log flush can read the server key.
+            AppLogger.onSecurityCleared()
 //        } else {
 //            runtimeUnit.revokeClearance()
 //        }
@@ -479,25 +480,23 @@ class MainActivity : ComponentActivity() {
             return
         }
         try {
-            // A cleanup failure must not skip the navigation below, or the user is stuck signed-in.
-            try {
-                preferenceHelper.clearTokens()
-                preferenceHelper.setUserLoggedIn(false)
-                sessionHealthController.markLoggedOut()
-                LoggerConfig.newSession()
-                sessionLockController.unlock()
-            } catch (e: Exception) {
-                logger.e("Session teardown cleanup failed", e, event = LogEvent.SESSION_EXPIRED)
-            }
-            try {
-                if (::navController.isInitialized) {
-                    navController.navigate(AUTH_GRAPH_ROUTE) {
-                        popUpTo(0) { inclusive = true }
+            runLogoutTeardown(
+                cleanup = {
+                    preferenceHelper.clearTokens()
+                    preferenceHelper.setUserLoggedIn(false)
+                    sessionHealthController.markLoggedOut()
+                    LoggerConfig.newSession()
+                    sessionLockController.unlock()
+                },
+                navigate = {
+                    if (::navController.isInitialized) {
+                        navController.navigate(AUTH_GRAPH_ROUTE) {
+                            popUpTo(0) { inclusive = true }
+                        }
                     }
-                }
-            } catch (e: Exception) {
-                logger.e("Navigation to auth graph failed after session expiry", e, event = LogEvent.SESSION_EXPIRED)
-            }
+                },
+                onError = { message, e -> logger.e(message, e, event = LogEvent.SESSION_EXPIRED) },
+            )
             showToast(this, R.string.session_expired, keepUntilShown = true)
         } finally {
             sessionHealthController.endTeardown()
@@ -674,4 +673,18 @@ class MainActivity : ComponentActivity() {
         const val EXTRA_OPENED_FROM_NOTIFICATION = "opened_from_notification"
     }
 
+}
+
+/** A cleanup failure must not skip the navigation, or the user is stuck signed-in. */
+internal fun runLogoutTeardown(cleanup: () -> Unit, navigate: () -> Unit, onError: (String, Exception) -> Unit) {
+    try {
+        cleanup()
+    } catch (e: Exception) {
+        onError("Session teardown cleanup failed", e)
+    }
+    try {
+        navigate()
+    } catch (e: Exception) {
+        onError("Navigation to auth graph failed after session expiry", e)
+    }
 }

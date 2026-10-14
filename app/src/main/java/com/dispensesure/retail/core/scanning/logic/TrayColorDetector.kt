@@ -37,7 +37,8 @@ object TrayColorDetector {
             logger.d("TrayColorDetector.detect(): rect=$trayRect → result=${result.label}")
             result
         } catch (e: Exception) {
-            logger.e("Color detection error", e, event = LogEvent.TRAY_CLASSIFY_FAILED)
+            // Runs per frame.
+            logger.eThrottled("Color detection error", e, event = LogEvent.TRAY_CLASSIFY_FAILED)
             TrayColor.UNKNOWN
         }
     }

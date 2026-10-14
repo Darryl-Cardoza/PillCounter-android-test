@@ -125,14 +125,14 @@ class UserDetailRepository @Inject constructor(
         return try {
             val refreshToken = preferenceHelper.getRefreshToken()
                 ?: return Result.failure<T>(Exception("No refresh token available")).also {
-                    logger.e("Token refresh skipped: no refresh token available", it.exceptionOrNull(), event = LogEvent.TOKEN_REFRESH_FAILED)
+                    logger.w("Token refresh skipped: no refresh token available", it.exceptionOrNull(), event = LogEvent.TOKEN_REFRESH_FAILED)
                 }
 
             val refreshResponse = applicationSettingApi.refreshToken(RefreshTokenRequest(refreshToken))
 
 
             if (refreshResponse.code() == 401) {
-                logger.e("Refresh token expired or invalid — logging out user.", event = LogEvent.TOKEN_REFRESH_FAILED)
+                logger.w("Refresh token expired or invalid — logging out user.", event = LogEvent.TOKEN_REFRESH_FAILED)
                 onLogout()
                 return Result.failure(Exception("LOGOUT"))
             }
@@ -147,11 +147,11 @@ class UserDetailRepository @Inject constructor(
                 // Retry API call with new access token
                 apiCall()
             } else {
-                logger.e("Token refresh failed: ${refreshResponseBody?.message}", event = LogEvent.TOKEN_REFRESH_FAILED)
+                logger.w("Token refresh failed: ${refreshResponseBody?.message}", event = LogEvent.TOKEN_REFRESH_FAILED)
                 Result.failure(Exception("Failed to refresh token: ${refreshResponseBody?.message}"))
             }
         } catch (ex: Exception) {
-            logger.e("Token refresh or retry failed", ex, event = LogEvent.TOKEN_REFRESH_FAILED)
+            logger.w("Token refresh or retry failed", ex, event = LogEvent.TOKEN_REFRESH_FAILED)
             Result.failure(ex)
         }
     }

@@ -19,6 +19,8 @@ class RuntimeUnit(private val context: Context) {
     // ── Security gate ─────────────────────────────────────────────────────────
     // Must be explicitly cleared by MainActivity after passing security checks.
     // Defaults to BLOCKED — no key material is accessible until cleared.
+    // Read from the logger's IO thread as well as main.
+    @Volatile
     private var securityCleared: Boolean = false
 
     /**

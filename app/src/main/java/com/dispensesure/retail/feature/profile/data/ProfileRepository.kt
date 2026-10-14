@@ -154,14 +154,14 @@ class ProfileRepository @Inject constructor(
         return try {
             val refreshToken = preferenceHelper.getRefreshToken()
                 ?: return Result.failure<T>(Exception("No refresh token available")).also {
-                    logger.e("Token refresh skipped: no refresh token available", it.exceptionOrNull(), event = LogEvent.TOKEN_REFRESH_FAILED)
+                    logger.w("Token refresh skipped: no refresh token available", it.exceptionOrNull(), event = LogEvent.TOKEN_REFRESH_FAILED)
                 }
 
             val refreshResponse = applicationSettingApi.refreshToken(RefreshTokenRequest(refreshToken))
             if (refreshResponse.code() == 401) {
                 // Refresh itself was rejected — session is truly expired. Broadcast so
                 // MainActivity performs the standard logout teardown + Login nav.
-                logger.e("Refresh token rejected (401) — publishing SessionExpired", event = LogEvent.TOKEN_REFRESH_FAILED)
+                logger.w("Refresh token rejected (401) — publishing SessionExpired", event = LogEvent.TOKEN_REFRESH_FAILED)
                 authEventBus.tryPublish(AuthEvent.SessionExpired)
                 return Result.failure(Exception("Refresh returned 401"))
             }
@@ -178,11 +178,11 @@ class ProfileRepository @Inject constructor(
                 logger.i("API retried successfully after token refresh.")
                 Result.success(retryResponse)
             } else {
-                logger.e("Token refresh failed: ${refreshResponseBody?.message}", event = LogEvent.TOKEN_REFRESH_FAILED)
+                logger.w("Token refresh failed: ${refreshResponseBody?.message}", event = LogEvent.TOKEN_REFRESH_FAILED)
                 Result.failure(Exception("Failed to refresh token: ${refreshResponseBody?.message}"))
             }
         } catch (ex: Exception) {
-            logger.e("Token refresh or retry failed", ex, event = LogEvent.TOKEN_REFRESH_FAILED)
+            logger.w("Token refresh or retry failed", ex, event = LogEvent.TOKEN_REFRESH_FAILED)
             Result.failure(ex)
         }
     }

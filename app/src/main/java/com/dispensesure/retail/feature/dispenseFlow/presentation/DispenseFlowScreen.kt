@@ -895,11 +895,13 @@ fun DispenseFlowScreen(
                         // it a frame later, by which time the strip has already composed
                         // against the step we just left and spent its announcement on it.
                         // The effect repeating the call after the flip is harmless.
-                        if (ok) pillVm.enterScanStep()
+                        if (ok) {
+                            pillVm.enterScanStep()
+                            // The analyzer self-pauses after every read; re-arm it for the rescan.
+                            barcodeAnalyzer.resume()
+                        }
                     }
                 }
-                // The analyzer self-pauses after every read; re-arm it for the rescan.
-                barcodeAnalyzer.resume()
             },
         )
     }

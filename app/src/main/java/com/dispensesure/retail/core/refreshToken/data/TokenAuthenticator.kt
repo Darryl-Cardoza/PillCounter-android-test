@@ -45,7 +45,8 @@ class TokenAuthenticator @Inject constructor(
         if (responseCount(response) >= 2) return null
 
         val currentRefreshToken = prefs.getRefreshToken() ?: run {
-            logger.e("No refresh token available to recover from 401", event = LogEvent.TOKEN_REFRESH_FAILED)
+            // Expected before login (e.g. a wrong OTP gets a 401 on this shared client).
+            logger.w("No refresh token available to recover from 401", event = LogEvent.TOKEN_REFRESH_FAILED)
             return null
         }
 

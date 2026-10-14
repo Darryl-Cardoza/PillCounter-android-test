@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.hl7.mllp.client
 import com.dispensesure.retail.core.hl7.mllp.tls.isCertPinMismatch
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -119,7 +120,7 @@ class MllpConnectionManager(
             while (!isShutdown) {
                 if (!certMismatchBlocked && state == ConnectionState.Disconnected && ip.isNotEmpty()) {
                     logger.d("reconnect loop — disconnected, attempting retryConnect()")
-                    try { retryConnect() } catch (e: Exception) {
+                    try { retryConnect() } catch (e: CancellationException) { throw e } catch (e: Exception) {
                         logger.eThrottled("reconnect loop — retryConnect() threw: ${e.message}", e, event = LogEvent.HL7_CONNECT_FAILED)
                     }
                 }

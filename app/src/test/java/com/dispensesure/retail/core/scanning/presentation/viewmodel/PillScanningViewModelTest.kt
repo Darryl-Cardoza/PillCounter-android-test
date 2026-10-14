@@ -28,6 +28,7 @@ import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
+import com.dispensesure.retail.core.utils.common.HelperFunctions
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.SoundUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
@@ -733,6 +734,24 @@ class PillScanningViewModelTest {
         assertTrue(insertInTx)
         assertTrue(linkInTx)
         coVerify(exactly = 1) { appDatabase.withTransaction<Any?>(any()) }
+    }
+
+    @Test
+    fun `a failed Add deletes the images it saved and allows a retry`() = runTest {
+        stubSavePath()
+        val saved = File.createTempFile("txn_detail", ".jpg")
+        mockkObject(HelperFunctions)
+        every { HelperFunctions.saveBitmapToFile(any(), any(), any(), any(), any()) } returns saved.absolutePath
+        coEvery { pillCountTxnDetailsDao.insert(any()) } throws IllegalStateException("disk full")
+        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
+
+        tapAdd()
+
+        // The add runs on Dispatchers.IO; wait for its catch block to clean up.
+        val deadline = System.currentTimeMillis() + 3000
+        while ((saved.exists() || getPrivateField("lastAddedScanSignature") != null) && System.currentTimeMillis() < deadline) Thread.sleep(20)
+        assertFalse(saved.exists())
+        assertNull(getPrivateField("lastAddedScanSignature"))
     }
 
     // ─────────────────────────── flushStagedDetails (deferred stock commit) ───────────────────────────

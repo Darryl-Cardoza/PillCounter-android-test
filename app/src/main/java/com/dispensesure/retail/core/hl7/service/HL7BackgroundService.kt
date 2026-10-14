@@ -25,6 +25,7 @@ import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.logger.withoutMessage
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.settings.domain.model.Hl7ServiceConfig
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -635,6 +636,8 @@ class HL7Service : Service() {
         peerConnectJob = serviceScope.launch {
             try {
                 clientManager.connect(host, port)
+            } catch (e: CancellationException) {
+                throw e // failover/cleanup cancels this job; not a connect failure
             } catch (e: Exception) {
                 logger.e("Connect failed for $peer", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
@@ -752,6 +755,8 @@ class HL7Service : Service() {
         serviceScope.launch {
             try {
                 clientManager.connect(host, port)
+            } catch (e: CancellationException) {
+                throw e // failover/cleanup cancels this job; not a connect failure
             } catch (e: Exception) {
                 logger.e("Static PMS connect failed", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
