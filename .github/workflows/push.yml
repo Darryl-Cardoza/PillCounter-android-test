@@ -164,8 +164,26 @@ jobs:
           distribution: temurin
           java-version: ${{ needs.extract-version.outputs.java_version }}
       - uses: gradle/actions/setup-gradle@v4
+      - name: Build release
+        # The plugin generates the build id while packaging, and the upload fails without it.
+        run: ./gradlew :app:assembleRelease --no-daemon --stacktrace
+      - name: Download shipped build
+        uses: actions/download-artifact@v4
+        with:
+          name: android-build-outputs-Release
+          path: shipped
+      - name: Verify mapping matches shipped AAB
+        # Datadog pairs mapping to app by version name, not content; compare the R8 ids so a toolchain mismatch fails here.
+        run: |
+          ids() { grep -m2 -E '^# pg_map_(id|hash):'; }
+          AAB=$(find shipped -name '*.aab' | head -n1)
+          [ -n "$AAB" ] || { echo "::error::No AAB in android-build-outputs-Release"; exit 1; }
+          SHIPPED=$({ unzip -p "$AAB" BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map || true; } | ids)
+          BUILT=$(ids < app/build/outputs/mapping/release/mapping.txt)
+          [ -n "$SHIPPED" ] || { echo "::error::No pg_map_id in shipped AAB"; exit 1; }
+          [ "$SHIPPED" = "$BUILT" ] || { echo "::error::Mapping does not match shipped AAB"; echo "shipped: $SHIPPED"; echo "built:   $BUILT"; exit 1; }
+          echo "Mapping matches shipped AAB: $BUILT"
       - name: Upload R8 mapping
         env:
           DD_API_KEY: ${{ secrets.DD_API_KEY }}
-        # assembleRelease first: the plugin generates the build id while packaging, and the upload fails without it.
-        run: ./gradlew :app:assembleRelease :app:uploadMappingRelease --no-daemon --stacktrace
+        run: ./gradlew :app:uploadMappingRelease --no-daemon --stacktrace
