@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourGuidePrefs
 import com.dispensesure.retail.core.tourguide.TourEvent
 import com.dispensesure.retail.core.tourguide.TourSectionPrompt
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
@@ -164,6 +165,12 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // A local, so the singleton holds the helper rather than this Activity.
+        val helper = preferenceHelper
+        FtueController.bind(TourGuidePrefs.prefs(applicationContext)) { helper.saveTxnId(it) }
+        // A tour cut short by process death left the user's txn pointer on the deleted demo txn.
+        if (!FtueController.state.isActive) FtueController.restoreTxnPointer()
 
         // Re-arm the face lock on every fresh launch, before setContent so the
         // overlay is up on the first frame. Null state only: a config-change or
@@ -353,7 +360,6 @@ class MainActivity : ComponentActivity() {
                                             FtueController.end()
                                             // The Ended event has no collector once logged out; purge now.
                                             settingsViewModel.purgeTutorialDataAsync()
-                                            FtueController.takeSavedTxnId()?.let { preferenceHelper.saveTxnId(it) }
                                             FtueController.drainEvents()
                                             sessionLockController.setLockPending(false)
                                             settingsViewModel.onUserLoginOrLogOut()
@@ -370,10 +376,8 @@ class MainActivity : ComponentActivity() {
                                             withTimeoutOrNull(3_000L) { FtueController.awaitTrackedJobs() }
                                             // Between sections no step is running, so the finished section's data can go.
                                             settingsViewModel.purgeTutorialData(force = event == TourEvent.ShowDashboard)
-                                            if (event == TourEvent.Ended) {
-                                                FtueController.takeSavedTxnId()?.let { preferenceHelper.saveTxnId(it) }
-                                            }
                                             if (loggedIn) navController.navigateBackToDashboard()
+                                            if (event == TourEvent.ShowDashboard) FtueController.enterNextSection()
                                             if (event == TourEvent.Ended) {
                                                 // end() cancels the running step, but the last step's completion writes run in
                                                 // viewModelScope and may still be landing; sweep again. After the navigation,

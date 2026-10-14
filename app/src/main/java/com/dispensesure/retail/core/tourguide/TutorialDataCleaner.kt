@@ -13,6 +13,8 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.io.File
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import javax.inject.Inject
 import javax.inject.Singleton
 
@@ -28,6 +30,9 @@ class TutorialDataCleaner @Inject constructor(
     private val drugMasterDao: DrugMasterDao,
 ) {
     private val logger = AppLogger.create<TutorialDataCleaner>()
+
+    // Logout and the tour-end collector can both purge; overlapping runs would share the pending file.
+    private val purgeLock = Mutex()
 
     // Image paths of an in-flight purge. Written before the commit and removed after the files
     // are gone, so a crash in between can't orphan them: the next purge finishes the delete.
@@ -45,8 +50,8 @@ class TutorialDataCleaner @Inject constructor(
     }
 
     /** [force]: purge between sections of a running tour (no step is running at the prompt). */
-    suspend fun purge(force: Boolean = false) {
-        if (!force && FtueController.state.isActive) return
+    suspend fun purge(force: Boolean = false) = purgeLock.withLock {
+        if (!force && FtueController.state.isActive) return@withLock
         deletePending()
         val files = mutableListOf<String>()
         try {
@@ -75,7 +80,7 @@ class TutorialDataCleaner @Inject constructor(
             logger.e("Tutorial data purge failed", e)
             // Rolled back: the rows stay, so their files must too.
             pendingFile.delete()
-            return
+            return@withLock
         }
         deletePending()
     }

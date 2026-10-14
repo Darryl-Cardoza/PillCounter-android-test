@@ -132,17 +132,6 @@ class TourGuideStateTest {
     }
 
     @Test
-    fun `FtueController restores the saved txn id once and drains stale events`() = runTest {
-        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, currentTxnId = 42L)
-        FtueController.end()
-        FtueController.drainEvents()
-
-        assertEquals(42L, FtueController.takeSavedTxnId())
-        assertEquals(null, FtueController.takeSavedTxnId())
-        assertEquals(null, withTimeoutOrNull(50) { FtueController.events.first() })
-    }
-
-    @Test
     fun `canGoBack is false on the first step of a section`() = runTest {
         val state = TestScopeState(CoroutineScope(UnconfinedTestDispatcher(testScheduler)))
         state.start(listOf(TourSection.DISPENSE, TourSection.DASHBOARD))

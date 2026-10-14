@@ -1451,7 +1451,8 @@ class PillScanningViewModel @Inject constructor(
         FtueController.track(viewModelScope.launch(Dispatchers.IO) {
             val txnId = preferenceHelper.getTxnId()
             val bitmap = event.bitmap
-            val filePath = try {
+            // The tour's grey placeholder isn't worth a file an interruption could orphan.
+            val filePath = if (FtueController.state.isActive) null else try {
                 if (!bitmap.isRecycled) {
                     saveBitmapToFile(
                         getApplication(),

@@ -185,6 +185,8 @@ fun AddNoteDialog(
     }
 
     if (inTour) {
+        // Once the tour ends its buttons must not complete a txn; the shell navigates away anyway.
+        if (!tourState.isActive) return
         // Tour: the card is shown in the tour's own dialog window so its card draws above it.
         TourDialogHost(state = tourState, onNext = { onSkip() }, content = card)
     } else {

@@ -9,6 +9,8 @@ import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.test.runTest
 import java.io.File
 import org.junit.After
@@ -112,17 +114,65 @@ class TutorialDataCleanerTest {
         assertFalse(pending.exists())
     }
 
+    private fun bindTour(): MutableList<Long> {
+        val saved = mutableListOf<Long>()
+        val prefs = TourGuidePrefs.prefs(ApplicationProvider.getApplicationContext())
+        prefs.edit().clear().commit()
+        FtueController.bind(prefs) { saved += it }
+        return saved
+    }
+
+    @Test
+    fun `ending the tour restores the pre-tour txn pointer once`() = runTest {
+        val saved = bindTour()
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, currentTxnId = 42L)
+        FtueController.end()
+        FtueController.drainEvents()
+        FtueController.restoreTxnPointer()
+
+        assertEquals(listOf(42L), saved)
+    }
+
     @Test
     fun `an order that arrives during a tour is applied when the tour ends`() = runTest {
-        var saved: Long? = null
+        val saved = bindTour()
         FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, currentTxnId = 5L)
-        FtueController.saveTxnIdOrDefer(99L) { saved = it }
-        assertNull(saved)
+        FtueController.saveTxnIdOrDefer(99L) { saved += it }
+        assertEquals(emptyList<Long>(), saved)
         FtueController.end()
         FtueController.drainEvents()
 
-        assertEquals(99L, FtueController.takeSavedTxnId())
-        FtueController.saveTxnIdOrDefer(7L) { saved = it }
-        assertEquals(7L, saved)
+        assertEquals(listOf(99L), saved)
+        FtueController.saveTxnIdOrDefer(7L) { saved += it }
+        assertEquals(listOf(99L, 7L), saved)
+    }
+
+    @Test
+    fun `a pointer saved before a process death is restored on the next launch`() = runTest {
+        val saved = bindTour()
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false, currentTxnId = 11L)
+        FtueController.saveTxnIdOrDefer(12L) { saved += it }
+        // Simulates a fresh process: MainActivity re-binds and restores while no tour is running.
+        FtueController.state.end()
+        saved.clear()
+        TourGuidePrefs.prefs(ApplicationProvider.getApplicationContext()).edit()
+            .putLong("tour_held_order_txn_id", 12L).putLong("tour_saved_txn_id", 11L).commit()
+        FtueController.drainEvents()
+        FtueController.restoreTxnPointer()
+
+        assertEquals(listOf(12L), saved)
+    }
+
+    @Test
+    fun `concurrent purges run one at a time and leave no pending file`() = runTest {
+        val file = File.createTempFile("tutorial_img", ".jpg")
+        val txn = db.pillCountTxnDao().insertIgnore(PillCountTxnEntity(drugId = null, rxNo = "${TutorialData.RX_PREFIX}4", isDispense = true, status = CountStatus.PARTIAL))
+        db.pillCountTxnDetailsDao().insert(PillCountTxnDetailsEntity(txnId = txn, pillCount = 1, imagePath = file.absolutePath, type = "VIAL"))
+
+        listOf(async { cleaner.purge() }, async { cleaner.purge() }).awaitAll()
+
+        assertNull(db.pillCountTxnDao().getById(txn))
+        assertFalse(file.exists())
+        assertFalse(File(ApplicationProvider.getApplicationContext<android.content.Context>().filesDir, "tutorial_pending_delete.txt").exists())
     }
 }
