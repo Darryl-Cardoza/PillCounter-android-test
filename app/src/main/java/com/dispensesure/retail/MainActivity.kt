@@ -412,7 +412,7 @@ class MainActivity : ComponentActivity() {
                                     LaunchedEffect(isLocked) {
                                         if (isLocked) {
                                             if (FtueController.state.isActive) {
-                                                Toast.makeText(this@MainActivity, R.string.tour_ended_locked, Toast.LENGTH_LONG).show()
+                                                showToast(this@MainActivity, R.string.tour_ended_locked, Toast.LENGTH_LONG)
                                             }
                                             FtueController.end()
                                         }
@@ -629,6 +629,8 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     .setNegativeButton(R.string.not_now) { _, _ -> finishPermissionChain() }
+                    // Back / outside-tap cancels without a button press; without this the chain never ends.
+                    .setOnCancelListener { finishPermissionChain() }
                     .show()
                 return
             }

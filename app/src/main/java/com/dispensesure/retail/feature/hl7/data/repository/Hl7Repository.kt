@@ -1,6 +1,5 @@
 package com.dispensesure.retail.feature.hl7.data.repository
 
-import com.dispensesure.retail.core.tourguide.FtueController
 import android.annotation.SuppressLint
 import android.content.Context
 import com.dispensesure.retail.R
@@ -28,6 +27,7 @@ import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
 import com.dispensesure.retail.core.scanning.data.DrugRepository
 import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
+import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.util.HL7Config

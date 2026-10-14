@@ -1,6 +1,5 @@
 package com.dispensesure.retail.core.tourguide
 
-import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -51,6 +50,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.ui.theme.AppTheme.extendedColors
 import kotlin.math.roundToInt
 
@@ -122,7 +122,7 @@ fun TourGuideOverlay(
     if (!ownsCurrentStep) return
     LaunchedEffect(state.failureTick) {
         if (state.failureTick != seenFailures) {
-            Toast.makeText(context, R.string.tour_step_failed, Toast.LENGTH_SHORT).show()
+            showToast(context, R.string.tour_step_failed)
         }
     }
 
