@@ -545,7 +545,7 @@ class HL7MessageBuilderTest {
         val batch = StockBatchEntity(batchId = 1L, requestIdFromPMS = "REQ", bucketId = "BUCKET-1")
         val txns = (1..250).map { i ->
             StockBottleInfoDto(
-                txnId = i.toLong(),
+                bottleId = i.toLong(),
                 drugId = i.toLong(),
                 drugName = "Drug$i",
                 ndc = "NDC$i",

@@ -9,7 +9,7 @@ import org.junit.Test
 class StockBottleInfoDtoTest {
 
     private fun sample() = StockBottleInfoDto(
-        txnId = 1L,
+        bottleId = 1L,
         drugId = 2L,
         drugName = "Drug",
         ndc = "111",
@@ -23,7 +23,7 @@ class StockBottleInfoDtoTest {
     @Test
     fun getters() {
         val d = sample()
-        assertEquals(1L, d.txnId)
+        assertEquals(1L, d.bottleId)
         assertEquals(2L, d.drugId)
         assertEquals("Drug", d.drugName)
         assertEquals("111", d.ndc)
@@ -51,12 +51,12 @@ class StockBottleInfoDtoTest {
     fun equalsHashCode() {
         assertEquals(sample(), sample())
         assertEquals(sample().hashCode(), sample().hashCode())
-        assertNotEquals(sample(), sample().copy(txnId = 9L))
+        assertNotEquals(sample(), sample().copy(bottleId = 9L))
     }
 
     @Test
     fun toString_containsField() {
-        assertTrue(sample().toString().contains("txnId=1"))
+        assertTrue(sample().toString().contains("bottleId=1"))
     }
 
     @Test

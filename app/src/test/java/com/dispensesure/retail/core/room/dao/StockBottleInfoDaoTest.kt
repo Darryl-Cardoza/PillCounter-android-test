@@ -275,7 +275,7 @@ class StockBottleInfoDaoTest {
             assertEquals("E2", list[0].expiry)
             assertEquals(4, list[0].bottleQty)
             assertEquals(5, list[0].looseQty)
-            assertEquals(2L, list[0].txnId)
+            assertEquals(2L, list[0].bottleId)
 
             assertEquals("Zeta", list[1].drugName)
         }

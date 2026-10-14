@@ -297,7 +297,7 @@ class InventoryScanViewModelTest {
     @Test
     fun `confirmEndCount with committed rows calls markAsCompleted and sets batchEnded`() = runTest {
         val txnRow = StockBottleInfoDto(
-            txnId = 1L, drugId = 1L, drugName = "Aspirin", ndc = TEST_NDC,
+            bottleId = 1L, drugId = 1L, drugName = "Aspirin", ndc = TEST_NDC,
             lotNo = null, expiry = null, bottleQty = 1, looseQty = 0, packageQty = 10
         )
         every { stockBottleInfoDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
@@ -320,7 +320,7 @@ class InventoryScanViewModelTest {
     @Test
     fun `confirmEndCount with non-blank note calls stockBatchDao updateNote`() = runTest {
         val txnRow = StockBottleInfoDto(
-            txnId = 1L, drugId = 1L, drugName = "Aspirin", ndc = TEST_NDC,
+            bottleId = 1L, drugId = 1L, drugName = "Aspirin", ndc = TEST_NDC,
             lotNo = null, expiry = null, bottleQty = 1, looseQty = 0, packageQty = 10
         )
         every { stockBottleInfoDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
