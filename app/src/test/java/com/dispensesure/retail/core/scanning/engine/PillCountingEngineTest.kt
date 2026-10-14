@@ -4,12 +4,13 @@ import android.content.Context
 import android.graphics.Bitmap
 import androidx.camera.core.ImageProxy
 import androidx.core.content.ContextCompat
+import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.ADD_COOLDOWN_MS
-import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.COUNT_CONFIRM_FRAMES
-import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.IDLE_STEP_MS
-import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.IDLE_TIMEOUT_MS
+import com.dispensesure.retail.core.scanning.engine.CountConfirmer.Companion.COUNT_CONFIRM_FRAMES
+import com.dispensesure.retail.core.scanning.engine.IdleWatchdog.Companion.IDLE_STEP_MS
+import com.dispensesure.retail.core.scanning.engine.IdleWatchdog.Companion.IDLE_TIMEOUT_MS
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.TrayColor
@@ -18,7 +19,6 @@ import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.OverlayUtils
 import com.dispensesure.retail.core.utils.common.PhotoInfo
 import com.dispensesure.retail.core.utils.common.SoundUtils
-import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.util.MainDispatcherRule
@@ -263,8 +263,8 @@ class PillCountingEngineTest {
     @Test
     fun `count flicker that never holds still does not hold off the pause`() = runTest {
         // A still tray whose detector alternates 11 and 12 every frame.
-        repeat(40) { i ->
-            engine.onCountObserved(if (i % 2 == 0) 11 else 12)
+        repeat(40) { frameIndex ->
+            engine.feedCountFrameForTest(if (frameIndex % 2 == 0) 11 else 12)
             advanceTimeBy(2_000)
         }
 
@@ -275,7 +275,7 @@ class PillCountingEngineTest {
     @Test
     fun `a count held for the confirm window counts as activity`() = runTest {
         advanceTimeBy(IDLE_TIMEOUT_MS / 2)
-        repeat(COUNT_CONFIRM_FRAMES) { engine.onCountObserved(11) }
+        repeat(COUNT_CONFIRM_FRAMES) { engine.feedCountFrameForTest(11) }
         advanceTimeBy(IDLE_TIMEOUT_MS)
 
         assertFalse(engine.state.value.showIdleOverlay)
@@ -284,9 +284,9 @@ class PillCountingEngineTest {
     // SCAN_VM_047
     @Test
     fun `a confirmed count that then goes still still pauses`() = runTest {
-        repeat(COUNT_CONFIRM_FRAMES) { engine.onCountObserved(11) }
+        repeat(COUNT_CONFIRM_FRAMES) { engine.feedCountFrameForTest(11) }
         // Same count keeps arriving — confirmed once, so no further activity.
-        repeat(20) { engine.onCountObserved(11) }
+        repeat(20) { engine.feedCountFrameForTest(11) }
         advanceTimeBy(IDLE_TIMEOUT_MS + IDLE_STEP_MS + 1_000)
 
         assertTrue(engine.state.value.showIdleOverlay)
@@ -668,19 +668,43 @@ class PillCountingEngineTest {
     }
 
     @Test
-    fun `a non-hazardous drug on the hazardous tray warns once and reports nothing`() = runTest {
-        mockkObject(UserInterfaceUtils)
-        every { UserInterfaceUtils.showToast(any<String>(), any()) } returns Unit
+    fun `a non-hazardous drug on the hazardous tray sends one warning and saves nothing`() = runTest {
         every { preferenceHelper.getHazardousTrayColor() } returns "RED"
         val reportedEvents = collectEvents()
         engine.configureHazardous(isHazardousDrug = false)
 
         engine.feedTrayFrameForTest(TrayColor.RED)
         engine.feedTrayFrameForTest(TrayColor.RED)
-        runCurrent()
 
-        assertTrue(reportedEvents.isEmpty())
-        verify(exactly = 1) { UserInterfaceUtils.showToast(any<String>(), any()) }
+        assertEquals(listOf<EngineEvent>(EngineEvent.Warning(R.string.hazardous_tray_warning)), reportedEvents)
+    }
+
+    @Test
+    fun `a hazardous drug on another tray sends one swap-tray warning`() = runTest {
+        every { preferenceHelper.isHazardousDrugEnabled() } returns true
+        every { preferenceHelper.getHazardousTrayColor() } returns "RED"
+        val reportedEvents = collectEvents()
+        engine.configureHazardous(isHazardousDrug = true)
+
+        engine.feedTrayFrameForTest(TrayColor.BLUE)
+        engine.feedTrayFrameForTest(TrayColor.BLUE)
+
+        assertEquals(listOf<EngineEvent>(EngineEvent.Warning(R.string.non_hazardous_tray_warning)), reportedEvents)
+    }
+
+    @Test
+    fun `an idle pause closes the tray popup and Resume asks about the colour again`() = runTest {
+        every { preferenceHelper.isHazardousDrugEnabled() } returns true
+        engine.configureHazardous(isHazardousDrug = true)
+        engine.feedTrayFrameForTest(TrayColor.RED)
+        assertEquals(TrayColor.RED, engine.state.value.pendingTrayColor)
+
+        advanceTimeBy(IDLE_TIMEOUT_MS + 1_000)
+        assertNull(engine.state.value.pendingTrayColor)
+
+        engine.resumeFromIdle()
+        engine.feedTrayFrameForTest(TrayColor.RED)
+        assertEquals(TrayColor.RED, engine.state.value.pendingTrayColor)
     }
 
     // ─────────────────────────── pause controls ───────────────────────────

@@ -18,6 +18,7 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
 import com.dispensesure.retail.core.scanning.engine.feedGloveFrameForTest
+import com.dispensesure.retail.core.scanning.engine.feedTrayFrameForTest
 import com.dispensesure.retail.core.scanning.engine.putFrameForTest
 import com.dispensesure.retail.core.scanning.logic.TrayColor
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
@@ -29,6 +30,7 @@ import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.util.MainDispatcherRule
@@ -39,9 +41,11 @@ import io.mockk.coVerify
 import io.mockk.coVerifyOrder
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.mockkObject
 import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkAll
+import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
@@ -226,6 +230,21 @@ class PillScanningViewModelEventTest {
         // The save runs on Dispatchers.IO, as before.
         coVerify(timeout = 3000) { dispenseTxnDao.updateHazardousTrayDetected(42L, true, any()) }
         assertEquals(null, viewModel.uiState.value.pendingTrayColorForClassification)
+    }
+
+    @Test
+    fun `a tray warning from the engine is shown as a toast`() = runTest {
+        mockkObject(UserInterfaceUtils)
+        every { UserInterfaceUtils.showToast(any<String>(), any()) } returns Unit
+        every { preferenceHelper.getHazardousTrayColor() } returns "RED"
+        runCurrent() // starts the view model's event collector
+        viewModel.setHazardousTransaction(isHazardousByDrug = false)
+
+        engineFactory.engine.feedTrayFrameForTest(TrayColor.RED)
+        runCurrent()
+
+        // application.getString returns "test error" for every id in this class.
+        verify(exactly = 1) { UserInterfaceUtils.showToast("test error", any()) }
     }
 
     // ─────────────────────────── TransactionDetailDeleted ───────────────────────────

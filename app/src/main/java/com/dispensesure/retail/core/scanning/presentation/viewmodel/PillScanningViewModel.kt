@@ -294,11 +294,12 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
-    /** Saves the engine's gloves / tray results on the dispense txn; the +N pop goes straight to the screen. */
+    /** Saves the engine's gloves / tray results on the dispense txn and shows its tray warnings; the +N pop goes straight to the screen. */
     private fun onEngineEvent(event: EngineEvent) {
         when (event) {
             EngineEvent.GlovesConfirmed -> saveGlovesPresent()
             is EngineEvent.HazardousTrayResult -> saveHazardousTrayDetected(event.detected)
+            is EngineEvent.Warning -> showToast(context.getString(event.text))
         }
     }
 

@@ -11,7 +11,7 @@ import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.scanning.engine.PillCountingEngine.Companion.IDLE_TIMEOUT_MS
+import com.dispensesure.retail.core.scanning.engine.IdleWatchdog.Companion.IDLE_TIMEOUT_MS
 import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
