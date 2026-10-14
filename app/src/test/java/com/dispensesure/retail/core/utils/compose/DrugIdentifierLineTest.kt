@@ -18,9 +18,7 @@ class DrugIdentifierLineTest {
         drugName = "Drug",
         date = "",
         bucketId = bucketId,
-        pillCount = 0,
         targetCount = 0,
-        isDispense = true,
         rxNo = rxNo,
         refillNo = refillNo,
     )

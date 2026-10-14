@@ -18,7 +18,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.common.FullScreenImageDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toDateString
@@ -68,7 +68,7 @@ fun HistoryDetailScreen(
                 showPdfIcon = false,
             )
             } // if previewImagePath == null
-            val bottleList = BottleInfoJson.decode(uiState.txnInfo?.bottleInfoListJson)
+            val bottleList = DispenseBottleJson.decode(uiState.txnInfo?.bottlesJson)
             DrugInfoSection(
                 ndc = uiState.txnInfo?.ndc ?: "",
                 drugName = uiState.txnInfo?.drugName ?: "",
@@ -82,7 +82,7 @@ fun HistoryDetailScreen(
                 note = uiState.txnInfo?.note ?: "",
                 barcodeImage = bottleList.firstOrNull()?.barcodeImagePath,
                 targetCount = uiState.txnInfo?.targetCount,
-                transactionDetails = uiState.txnInfo?.txnDetails ?: emptyList(),
+                transactionDetails = uiState.txnInfo?.counts ?: emptyList(),
                 drugType = uiState.txnInfo?.drugType,
                 isSubstitute = uiState.txnInfo?.isSubstitute ?: false,
                 requestedDrugName = uiState.txnInfo?.requestedDrugName ?: "",

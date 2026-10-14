@@ -16,8 +16,8 @@ import kotlinx.coroutines.flow.Flow
  * **Stock Transaction Data Access Object**
  *
  * Manages [StockTxnEntity] — the per-drug-in-batch headers of the normalized stock model
- * (`batch` → `stock_txn` → `bottle_info`). Dispense transactions live in `pill_count_txn`
- * and are handled by [PillCountTxnDao]; this DAO never touches that table.
+ * (`stock_batch` → `stock_txn` → `stock_bottle_info`). Dispense transactions live in `dispense_txn`
+ * and are handled by [DispenseTxnDao]; this DAO never touches that table.
  */
 @Dao
 interface StockTxnDao {
@@ -61,7 +61,7 @@ interface StockTxnDao {
 
     /**
      * The stock header for a given drug within a batch. Stock counting reuses one header per
-     * `(drugId, batchId)`; all its lot/expiry variants hang off it as `bottle_info` rows.
+     * `(drugId, batchId)`; all its lot/expiry variants hang off it as `stock_bottle_info` rows.
      */
     @Query(
         """
@@ -80,7 +80,7 @@ interface StockTxnDao {
     /**
      * Distinct NDCs of the drugs requested in a batch, read from the stock-txn headers joined to
      * `drug_master`. A PMS (INR^U04) batch is pre-populated with one header per requested drug and
-     * NO `bottle_info` lines yet, so this — not `bottle_info` — is the source of truth for the
+     * NO `stock_bottle_info` lines yet, so this — not `stock_bottle_info` — is the source of truth for the
      * "expected NDCs" allowlist. Blank/null NDCs are excluded.
      */
     @Query(
@@ -99,7 +99,7 @@ interface StockTxnDao {
      * Observes the drugs requested in a batch, one row per distinct stock-txn header joined to
      * `drug_master`. Powers the Recent Counts list so a PMS batch shows its requested drugs by
      * default (with a zero count) before any bottle is scanned; counted drugs are then rendered
-     * from their `bottle_info` totals instead. Ordered by drug name to match the bottle-line query.
+     * from their `stock_bottle_info` totals instead. Ordered by drug name to match the bottle-line query.
      */
     @Query(
         """
@@ -122,7 +122,7 @@ interface StockTxnDao {
      */
     @Query(
         """
-        UPDATE batch
+        UPDATE stock_batch
         SET totalNdcs = (
             SELECT COUNT(DISTINCT drugId) FROM stock_txn
             WHERE batchId = :batchId AND isDeleted = 0
@@ -133,7 +133,7 @@ interface StockTxnDao {
     suspend fun refreshBatchTotalNdcs(batchId: Long)
 
     /** Persists the display name of the user running the count onto the batch. */
-    @Query("UPDATE batch SET userName = :userName WHERE batchId = :batchId")
+    @Query("UPDATE stock_batch SET userName = :userName WHERE batchId = :batchId")
     suspend fun updateBatchUserName(batchId: Long, userName: String?)
 
     @Query("UPDATE stock_txn SET isDeleted = 1, updatedAt = :now WHERE txnId = :txnId")

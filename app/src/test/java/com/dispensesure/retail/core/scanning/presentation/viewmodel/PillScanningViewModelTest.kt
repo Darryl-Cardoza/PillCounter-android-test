@@ -4,26 +4,26 @@ import android.app.Application
 import android.graphics.Bitmap
 import androidx.core.content.ContextCompat
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.models.BatchEntity
+import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
@@ -75,19 +75,19 @@ class PillScanningViewModelTest {
 
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
+    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
-    private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
+    private val dispenseCountDao: DispenseCountDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val modelLoader: PillDetectionModelLoader = mockk(relaxed = true)
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
-    private val batchDao: BatchDao = mockk(relaxed = true)
+    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var viewModel: PillScanningViewModel
@@ -107,8 +107,8 @@ class PillScanningViewModelTest {
         every { application.applicationContext } returns application
         every { application.getString(any<Int>()) } returns "test error"
         every { application.getString(any<Int>(), any()) } returns "test error"
-        every { pillCountTxnDetailsDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
-        coEvery { pillCountTxnDetailsDao.getLatestType(any()) } returns null
+        every { dispenseCountDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
+        coEvery { dispenseCountDao.getLatestStep(any()) } returns null
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
         every { preferenceHelper.getControlDrugTypes() } returns emptySet()
         every { preferenceHelper.isRequireDoubleCountEnabled() } returns false
@@ -117,13 +117,13 @@ class PillScanningViewModelTest {
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
-            pillCountTxnDao = pillCountTxnDao,
+            dispenseTxnDao = dispenseTxnDao,
             stockTxnDao = stockTxnDao,
-            bottleInfoDao = bottleInfoDao,
-            batchDao = batchDao,
+            stockBottleInfoDao = stockBottleInfoDao,
+            stockBatchDao = stockBatchDao,
             userDao = userDao,
             operatorNameProvider = operatorNameProvider,
-            pillCountTxnDetailsDao = pillCountTxnDetailsDao,
+            dispenseCountDao = dispenseCountDao,
             locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
@@ -294,7 +294,7 @@ class PillScanningViewModelTest {
     fun `enterScanStep publishes the dispense workflow steps`() = runTest {
         viewModel.setScanType(CountType.FIXED.name)
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { pillCountTxnDao.getTxnWithDetails(7L) } returns TxnWithDetails(
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(7L) } returns DispenseTxnDetail(
             txnId = 7L,
             drugName = "Drug",
             drugId = 42L,
@@ -302,11 +302,10 @@ class PillScanningViewModelTest {
             targetCount = 30,
             note = null,
             createdAt = 0L,
-            bottleInfoListJson = null,
+            bottlesJson = null,
             totalPillCount = 0,
-            isDispense = true,
             drugType = "REGULAR",
-            txnDetails = emptyList(),
+            counts = emptyList(),
             isComingFromHL7 = false,
         )
         coEvery { drugMasterDao.getDrugById(42L) } returns DrugMasterEntity(
@@ -326,7 +325,7 @@ class PillScanningViewModelTest {
     fun `enterScanStep makes SCAN the current step without waiting on the steps lookup`() = runTest {
         viewModel.setScanType(CountType.FIXED.name)
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { pillCountTxnDao.getTxnWithDetails(7L) } returns null
+        coEvery { dispenseTxnDao.getDispenseTxnDetail(7L) } returns null
 
         viewModel.enterScanStep()
 
@@ -348,19 +347,19 @@ class PillScanningViewModelTest {
     @Test
     fun `resetTransaction hard-deletes the details and clears the txn fields`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { pillCountTxnDetailsDao.getImagePathsForTxn(7L) } returns emptyList()
+        coEvery { dispenseCountDao.getImagePathsForTxn(7L) } returns emptyList()
 
         viewModel.resetTransaction()
 
-        coVerify(exactly = 1) { pillCountTxnDetailsDao.deleteAllForTxn(7L) }
-        coVerify(exactly = 1) { pillCountTxnDao.resetForRecount(7L, any()) }
+        coVerify(exactly = 1) { dispenseCountDao.deleteAllForTxn(7L) }
+        coVerify(exactly = 1) { dispenseTxnDao.resetForRecount(7L, any()) }
     }
 
     @Test
     fun `resetTransaction deletes the captured image files`() = runTest {
         val image = File.createTempFile("reset", ".jpg").apply { writeBytes(byteArrayOf(1, 2, 3)) }
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { pillCountTxnDetailsDao.getImagePathsForTxn(7L) } returns listOf(image.absolutePath)
+        coEvery { dispenseCountDao.getImagePathsForTxn(7L) } returns listOf(image.absolutePath)
 
         viewModel.resetTransaction()
 
@@ -370,13 +369,13 @@ class PillScanningViewModelTest {
     @Test
     fun `resetTransaction clears the staging buffer`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
-        coEvery { pillCountTxnDetailsDao.getImagePathsForTxn(7L) } returns emptyList()
+        coEvery { dispenseCountDao.getImagePathsForTxn(7L) } returns emptyList()
         stageDetail(pillCount = 5)
 
         viewModel.resetTransaction()
 
         @Suppress("UNCHECKED_CAST")
-        val staged = getPrivateField("stagedDetails") as MutableList<PillCountTxnDetailsEntity>
+        val staged = getPrivateField("stagedDetails") as MutableList<DispenseCountEntity>
         assertTrue(staged.isEmpty())
     }
 
@@ -385,9 +384,9 @@ class PillScanningViewModelTest {
     @Test
     fun `reset is unavailable once the dispense txn has synced`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
-        every { pillCountTxnDao.observeById(7L) } returns flowOf(
-            PillCountTxnEntity(
-                txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = true,
+        every { dispenseTxnDao.observeById(7L) } returns flowOf(
+            DispenseTxnEntity(
+                txnId = 7L, status = CountStatus.PARTIAL, isSynced = true,
             )
         )
 
@@ -400,9 +399,9 @@ class PillScanningViewModelTest {
     @Test
     fun `reset is available while the dispense txn is unsynced`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
-        every { pillCountTxnDao.observeById(7L) } returns flowOf(
-            PillCountTxnEntity(
-                txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = false,
+        every { dispenseTxnDao.observeById(7L) } returns flowOf(
+            DispenseTxnEntity(
+                txnId = 7L, status = CountStatus.PARTIAL, isSynced = false,
             )
         )
 
@@ -415,8 +414,8 @@ class PillScanningViewModelTest {
     @Test
     fun `reset is unavailable once the batch has acked a chunk`() = runTest {
         every { preferenceHelper.getTxnId() } returns 0L
-        every { batchDao.observeById(9L) } returns flowOf(
-            BatchEntity(batchId = 9L, isSynced = false, lastAckedChunkIndex = 2)
+        every { stockBatchDao.observeById(9L) } returns flowOf(
+            StockBatchEntity(batchId = 9L, isSynced = false, lastAckedChunkIndex = 2)
         )
 
         viewModel.observeResetAvailability(batchId = 9L)
@@ -439,11 +438,11 @@ class PillScanningViewModelTest {
     fun `reset goes unavailable when the txn syncs while the screen is up`() = runTest {
         every { preferenceHelper.getTxnId() } returns 7L
         val txn = MutableStateFlow(
-            PillCountTxnEntity(
-                txnId = 7L, isDispense = true, status = CountStatus.PARTIAL, isSynced = false,
+            DispenseTxnEntity(
+                txnId = 7L, status = CountStatus.PARTIAL, isSynced = false,
             )
         )
-        every { pillCountTxnDao.observeById(7L) } returns txn
+        every { dispenseTxnDao.observeById(7L) } returns txn
 
         viewModel.observeResetAvailability(batchId = 0L)
         advanceUntilIdle()
@@ -495,7 +494,7 @@ class PillScanningViewModelTest {
     fun `moveNextStep on last step falls through to handleDone and shows no-transaction when total is zero`() = runTest {
         setSteps(listOf(StepState.TARGET_VERIFICATION))
         setCurrentStep(StepState.TARGET_VERIFICATION)
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 0
 
         viewModel.moveNextStep()
         advanceUntilIdle()
@@ -506,7 +505,7 @@ class PillScanningViewModelTest {
     @Test
     fun `moveNextStep with empty steps list falls through to handleDone`() = runTest {
         setSteps(emptyList())
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 0
 
         viewModel.moveNextStep()
         advanceUntilIdle()
@@ -519,32 +518,32 @@ class PillScanningViewModelTest {
     @Test
     fun `DoneClicked shows the notes dialog for an HL7 txn when the notes setting is on`() = runTest {
         // HL7 txns used to skip the notes prompt; the setting is now the only gate.
-        seedTxnInfoIsDispense(isDispense = true, isComingFromHL7 = true)
+        seedLoadedTxnInfo(isComingFromHL7 = true)
         setCurrentStep(StepState.VIAL)
         every { preferenceHelper.getShowNotesDialogSetting() } returns true
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 30
 
         viewModel.onEvent(PillScanningEvent.DoneClicked)
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.showNotesDialog)
         // getById is only reached by handleConfirmDone, so the notes prompt still gates completion.
-        coVerify(exactly = 0) { pillCountTxnDao.getById(any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.getById(any()) }
     }
 
     @Test
     fun `DoneClicked skips the notes dialog for an HL7 txn when the notes setting is off`() = runTest {
-        seedTxnInfoIsDispense(isDispense = true, isComingFromHL7 = true)
+        seedLoadedTxnInfo(isComingFromHL7 = true)
         setCurrentStep(StepState.VIAL)
         every { preferenceHelper.getShowNotesDialogSetting() } returns false
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 30
 
         viewModel.onEvent(PillScanningEvent.DoneClicked)
         advanceUntilIdle()
 
         assertFalse(viewModel.uiState.value.showNotesDialog)
         // No confirm dialog any more: Done completes the txn straight through.
-        coVerify(exactly = 1) { pillCountTxnDao.getById(any()) }
+        coVerify(exactly = 1) { dispenseTxnDao.getById(any()) }
     }
 
     // ─────────────────────────── onNdcRescannedDuringCount ───────────────────────────
@@ -565,7 +564,7 @@ class PillScanningViewModelTest {
         viewModel.onEvent(PillScanningEvent.ConfirmAddBottle)
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { pillCountTxnDao.updateBottleInfoList(any(), any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.updateBottles(any(), any()) }
     }
 
     @Test
@@ -573,7 +572,7 @@ class PillScanningViewModelTest {
         viewModel.onEvent(PillScanningEvent.ConfirmReplaceBottle)
         advanceUntilIdle()
 
-        coVerify(exactly = 0) { pillCountTxnDao.updateBottleInfoList(any(), any()) }
+        coVerify(exactly = 0) { dispenseTxnDao.updateBottles(any(), any()) }
     }
 
     @Test
@@ -636,7 +635,7 @@ class PillScanningViewModelTest {
         assertFalse(viewModel.uiState.value.isAddCooldown)
         // Signature unset, so the retry isn't rejected as a duplicate.
         assertNull(getPrivateField("lastAddedScanSignature"))
-        coVerify(exactly = 0) { pillCountTxnDetailsDao.insert(any()) }
+        coVerify(exactly = 0) { dispenseCountDao.insert(any()) }
     }
 
     @Test
@@ -652,7 +651,7 @@ class PillScanningViewModelTest {
         val newerFrame = mockk<Bitmap>(relaxed = true)
         setPrivateField("currentFrameBitmap", newerFrame)
 
-        coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
+        coVerify(timeout = 3000) { dispenseCountDao.insert(any()) }
         verify { tapFrame.recycle() }
         verify(exactly = 0) { newerFrame.recycle() }
         assertEquals(newerFrame, getPrivateField("currentFrameBitmap"))
@@ -666,7 +665,7 @@ class PillScanningViewModelTest {
 
         tapAdd()
 
-        coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
+        coVerify(timeout = 3000) { dispenseCountDao.insert(any()) }
     }
 
     @Test
@@ -678,8 +677,8 @@ class PillScanningViewModelTest {
 
     private fun stubTxn(isSubstitute: Boolean) {
         every { preferenceHelper.getTxnId() } returns 9L
-        coEvery { pillCountTxnDao.getById(9L) } returns PillCountTxnEntity(
-            txnId = 9L, drugId = 1L, isDispense = true, status = CountStatus.PARTIAL,
+        coEvery { dispenseTxnDao.getById(9L) } returns DispenseTxnEntity(
+            txnId = 9L, drugId = 1L, status = CountStatus.PARTIAL,
             isSubstitute = isSubstitute, substitutedDrugId = 2L,
         )
     }
@@ -692,7 +691,7 @@ class PillScanningViewModelTest {
 
         tapAdd()
 
-        coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
+        coVerify(timeout = 3000) { dispenseCountDao.insert(any()) }
         coVerify(exactly = 0) { drugMasterDao.getDrugById(2L) }
     }
 
@@ -704,7 +703,7 @@ class PillScanningViewModelTest {
 
         tapAdd()
 
-        coVerify(timeout = 3000) { pillCountTxnDetailsDao.insert(any()) }
+        coVerify(timeout = 3000) { dispenseCountDao.insert(any()) }
         coVerify { drugMasterDao.getDrugById(2L) }
     }
 
@@ -712,19 +711,19 @@ class PillScanningViewModelTest {
     fun `Add inserts the count and links it to the bottle in one transaction`() = runTest {
         stubSavePath()
         every { preferenceHelper.getTxnId() } returns 9L
-        coEvery { pillCountTxnDao.getById(9L) } returns PillCountTxnEntity(
-            txnId = 9L, drugId = 1L, isDispense = true, status = CountStatus.PARTIAL,
-            bottleInfoListJson = BottleInfoJson.encode(listOf(BottleInfo(txnId = 9L, txnDetailsIds = listOf(5L)))),
+        coEvery { dispenseTxnDao.getById(9L) } returns DispenseTxnEntity(
+            txnId = 9L, drugId = 1L, status = CountStatus.PARTIAL,
+            bottlesJson = DispenseBottleJson.encode(listOf(DispenseBottle(txnId = 9L, countIds = listOf(5L)))),
         )
         var insertInTx = false
         var linkInTx = false
-        coEvery { pillCountTxnDetailsDao.insert(any()) } coAnswers { insertInTx = inTransaction; 6L }
-        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers { linkInTx = inTransaction }
+        coEvery { dispenseCountDao.insert(any()) } coAnswers { insertInTx = inTransaction; 6L }
+        coEvery { dispenseTxnDao.updateBottles(9L, any(), any()) } coAnswers { linkInTx = inTransaction }
         setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
 
         tapAdd()
 
-        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) }
+        coVerify(timeout = 3000) { dispenseTxnDao.updateBottles(9L, any(), any()) }
         assertTrue(insertInTx)
         assertTrue(linkInTx)
         coVerify(exactly = 1) { appDatabase.withTransaction<Any?>(any()) }
@@ -745,9 +744,9 @@ class PillScanningViewModelTest {
     }
 
     @Suppress("UNCHECKED_CAST")
-    private fun seedTxnInfoIsDispense(isDispense: Boolean, isComingFromHL7: Boolean = false) {
-        val flow = getPrivateField("_txnInfo") as MutableStateFlow<TxnWithDetails?>
-        flow.value = TxnWithDetails(
+    private fun seedLoadedTxnInfo(isComingFromHL7: Boolean = false) {
+        val txnInfoFlow = getPrivateField("_txnInfo") as MutableStateFlow<DispenseTxnDetail?>
+        txnInfoFlow.value = DispenseTxnDetail(
             txnId = 0L,
             drugName = null,
             drugId = 42L,
@@ -755,22 +754,21 @@ class PillScanningViewModelTest {
             targetCount = null,
             note = null,
             createdAt = 0L,
-            bottleInfoListJson = null,
+            bottlesJson = null,
             totalPillCount = 0,
-            isDispense = isDispense,
             drugType = null,
-            txnDetails = emptyList(),
+            counts = emptyList(),
             isComingFromHL7 = isComingFromHL7,
         )
     }
 
     @Suppress("UNCHECKED_CAST")
     private fun stageDetail(pillCount: Int) {
-        val list = getPrivateField("stagedDetails") as MutableList<PillCountTxnDetailsEntity>
+        val list = getPrivateField("stagedDetails") as MutableList<DispenseCountEntity>
         list.add(
-            PillCountTxnDetailsEntity(
+            DispenseCountEntity(
                 pillCount = pillCount,
-                type = StepState.SCAN.toString(),
+                step = StepState.SCAN.toString(),
             )
         )
     }
@@ -787,7 +785,7 @@ class PillScanningViewModelTest {
         setPrivateField("stockBottleId", 0L)
         setPrivateField("stockTxnId", 0L)
         setPrivateField("stockCountBatchId", 0L)
-        seedTxnInfoIsDispense(isDispense = false)
+        seedLoadedTxnInfo()
     }
 
     @Test
@@ -803,12 +801,12 @@ class PillScanningViewModelTest {
             appDatabase.withTransaction<Pair<Long, Long>>(capture(txBlock))
         } coAnswers { txBlock.captured.invoke() }
 
-        coEvery { batchDao.insert(any()) } returns 111L
+        coEvery { stockBatchDao.insert(any()) } returns 111L
         coEvery { stockTxnDao.findByDrugInBatch(111L, 42L) } returns null
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 222L
-        coEvery { bottleInfoDao.insert(any()) } returns 333L
+        coEvery { stockBottleInfoDao.insert(any()) } returns 333L
         every { preferenceHelper.getTxnId() } returns 5L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(5L) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(5L) } returns 0
 
         seedDeferredStockSession()
         stageDetail(pillCount = 7)
@@ -816,9 +814,9 @@ class PillScanningViewModelTest {
         viewModel.onEvent(PillScanningEvent.DoneClicked)
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { batchDao.insert(any()) }
+        coVerify(exactly = 1) { stockBatchDao.insert(any()) }
         coVerify(exactly = 1) { stockTxnDao.upsertPreservingId(any()) }
-        coVerify(exactly = 1) { bottleInfoDao.insert(any()) }
+        coVerify(exactly = 1) { stockBottleInfoDao.insert(any()) }
         coVerify(exactly = 1) { stockTxnDao.refreshBatchTotalNdcs(111L) }
         assertEquals(111L, viewModel.stockCountCommittedBatchId.value)
     }
@@ -830,12 +828,12 @@ class PillScanningViewModelTest {
         coEvery {
             appDatabase.withTransaction<Pair<Long, Long>>(capture(txBlock))
         } coAnswers { txBlock.captured.invoke() }
-        coEvery { batchDao.insert(any()) } returns 111L
+        coEvery { stockBatchDao.insert(any()) } returns 111L
         coEvery { stockTxnDao.findByDrugInBatch(111L, 42L) } returns null
         coEvery { stockTxnDao.upsertPreservingId(any()) } returns 222L
-        coEvery { bottleInfoDao.insert(any()) } returns 333L
+        coEvery { stockBottleInfoDao.insert(any()) } returns 333L
         every { preferenceHelper.getTxnId() } returns 5L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(5L) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(5L) } returns 0
 
         seedDeferredStockSession()
         setPrivateField("stockLotNo", "10522")
@@ -847,7 +845,7 @@ class PillScanningViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) {
-            bottleInfoDao.insert(match {
+            stockBottleInfoDao.insert(match {
                 it.lotNo == "10522" && it.expNo == "04-30-2028" && it.serialNo == "1000002616" &&
                     it.bottleQty == 0 && it.looseQty == 30
             })
@@ -856,9 +854,9 @@ class PillScanningViewModelTest {
 
     @Test
     fun `flushStagedDetails existing-header path stamps the scanned lot expiry and serial on the loose line`() = runTest {
-        coEvery { bottleInfoDao.insert(any()) } returns 333L
+        coEvery { stockBottleInfoDao.insert(any()) } returns 333L
         every { preferenceHelper.getTxnId() } returns 5L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(5L) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(5L) } returns 0
 
         seedDeferredStockSession()
         setPrivateField("stockTxnId", 9L)
@@ -871,7 +869,7 @@ class PillScanningViewModelTest {
         advanceUntilIdle()
 
         coVerify(exactly = 1) {
-            bottleInfoDao.insert(match {
+            stockBottleInfoDao.insert(match {
                 it.stockTxnId == 9L && it.lotNo == "10522" && it.expNo == "04-30-2028" &&
                     it.serialNo == "1000002616" && it.looseQty == 30
             })
@@ -886,7 +884,7 @@ class PillScanningViewModelTest {
         } throws RuntimeException("db boom")
 
         every { preferenceHelper.getTxnId() } returns 5L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(5L) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(5L) } returns 0
 
         seedDeferredStockSession()
         stageDetail(pillCount = 7)

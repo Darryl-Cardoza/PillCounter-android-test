@@ -28,7 +28,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.DrugCountRow
 import com.dispensesure.retail.core.utils.compose.DrugCountRowData
@@ -148,15 +148,13 @@ fun DispenseQueuePanel(
                 items(filtered, key = { "d-${it.txn.txnId}" }) { item ->
                     DrugCountRow(
                         data = DrugCountRowData(
-                            barcodeImage = BottleInfoJson.decode(item.txn.bottleInfoListJson).firstOrNull()?.barcodeImagePath,
+                            barcodeImage = DispenseBottleJson.decode(item.txn.bottlesJson).firstOrNull()?.barcodeImagePath,
                             ndc = item.txn.ndc,
                             drugType = item.txn.drugType,
                             drugName = item.txn.drugName ?: "—",
                             date = item.txn.createdAt.toFormattedDate(),
                             bucketId = item.txn.bucketId,
-                            pillCount = item.txn.totalPillCount,
                             targetCount = item.txn.targetCount ?: 0,
-                            isDispense = true,
                             strength = item.txn.strength,
                             dosageForm = item.txn.dosageForm,
                             drugImagePath = item.txn.drugImagePath,

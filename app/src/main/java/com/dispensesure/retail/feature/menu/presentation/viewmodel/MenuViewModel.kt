@@ -3,9 +3,9 @@ package com.dispensesure.retail.feature.menu.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.models.BatchEntity
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -28,7 +28,7 @@ import javax.inject.Inject
  * ViewModel for the Menu screen.
  *
  * ### Responsibilities
- * - Listen for dashboard count changes via [PillCountTxnDao].
+ * - Listen for dashboard count changes via [DispenseTxnDao].
  * - Map grouped database rows into [MenuUiState] counts.
  * - Expose reactive [StateFlow] for UI consumption.
  *
@@ -38,8 +38,8 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class MenuViewModel @Inject constructor(
-    private val pillCountTxnDao: PillCountTxnDao,
-    private val batchDao: BatchDao,
+    private val dispenseTxnDao: DispenseTxnDao,
+    private val stockBatchDao: StockBatchDao,
     private val preferenceHelper: PreferenceHelper,
     private val sessionLockController: SessionLockController
 ) : ViewModel() {
@@ -71,7 +71,7 @@ class MenuViewModel @Inject constructor(
      */
     private fun observeDashboardCounts() {
         viewModelScope.launch {
-            pillCountTxnDao.observeDashboardCountsGrouped(preferenceHelper.getLocalId())
+            dispenseTxnDao.observeDashboardCountsGrouped(preferenceHelper.getLocalId())
                 .map { rows -> mapCounts(rows) }
                 .catch { e ->
                     logger.e("Failed to observe dashboard counts", e, event = LogEvent.DASHBOARD_LOAD_FAILED)
@@ -89,7 +89,7 @@ class MenuViewModel @Inject constructor(
 
     private fun observeBatchCount() {
         viewModelScope.launch {
-            batchDao.observeActiveInProgressCount()
+            stockBatchDao.observeActiveInProgressCount()
                 .catch { e -> logger.e("Failed to observe active in-progress batch count", e, event = LogEvent.FUNCTIONALITY_ERROR) }
                 .collect { count ->
                     _uiState.update { current ->
@@ -101,7 +101,7 @@ class MenuViewModel @Inject constructor(
 
     private fun observeCompletedBatchCount() {
         viewModelScope.launch {
-            batchDao.observeCompletedBatchCount()
+            stockBatchDao.observeCompletedBatchCount()
                 .catch { e -> logger.e("Failed to observe completed batch count", e, event = LogEvent.FUNCTIONALITY_ERROR) }
                 .collect { count ->
                     _uiState.update { current ->
@@ -127,11 +127,11 @@ class MenuViewModel @Inject constructor(
      */
     fun lockSessionNow(): Boolean = sessionLockController.lockNow()
 
-    suspend fun getLastInProgressBatch() = batchDao.getLatest()
+    suspend fun getLastInProgressBatch() = stockBatchDao.getLatest()
 
     suspend fun createBatch(bucketId: String): Long? {
         return try {
-            val batch = BatchEntity(
+            val batch = StockBatchEntity(
                 batchId = System.currentTimeMillis(),
                 startDateTime = System.currentTimeMillis(),
                 endDateTime = null,
@@ -140,7 +140,7 @@ class MenuViewModel @Inject constructor(
                 note = null,
                 bucketId = bucketId
             )
-            batchDao.insert(batch)
+            stockBatchDao.insert(batch)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -152,8 +152,8 @@ class MenuViewModel @Inject constructor(
     private fun observeUnsyncedTransactionCount() {
         viewModelScope.launch {
             combine(
-                pillCountTxnDao.getTotalCompletedTransactionCount(),
-                batchDao.getUnsyncedCompletedBatchCount()
+                dispenseTxnDao.getTotalCompletedTransactionCount(),
+                stockBatchDao.getUnsyncedCompletedBatchCount()
             ) { dispenseCount, batchCount -> dispenseCount + batchCount }
                 .catch { e -> logger.e("Failed to observe unsynced transaction count", e, event = LogEvent.FUNCTIONALITY_ERROR) }
                 .collect { count ->

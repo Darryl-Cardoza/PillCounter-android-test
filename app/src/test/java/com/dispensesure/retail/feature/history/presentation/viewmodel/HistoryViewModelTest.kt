@@ -7,9 +7,8 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.history.data.HistoryRepository
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.history.domain.model.HistoryDeleteFilter
-import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.domain.model.ToggleOption
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import com.dispensesure.retail.util.MainDispatcherRule
 import io.mockk.coJustRun
 import io.mockk.coVerify
@@ -50,7 +49,7 @@ class HistoryViewModelTest {
     @Before
     fun setup() {
         every { preferenceHelper.getLocalId() } returns 1L
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(emptyList())
+        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(emptyList())
         every { repository.getBatchSummaries(any(), any(), any()) } returns flowOf(emptyList())
         viewModel = HistoryViewModel(repository, preferenceHelper)
     }
@@ -63,9 +62,9 @@ class HistoryViewModelTest {
         drugName: String? = "Drug",
         ndc: String? = "00000",
         note: String? = null
-    ) = TxnWithDrugDto(
-        txnId = id, isDispense = true, status = CountStatus.COMPLETED,
-        pillCount = 10, drugName = drugName, ndc = ndc, bottleInfoListJson = null,
+    ) = DispenseTxnSummary(
+        txnId = id, status = CountStatus.COMPLETED,
+        pillCount = 10, drugName = drugName, ndc = ndc, bottlesJson = null,
         createdAt = 1000L, targetCount = 10, note = note, bucketId = null, drugType = null
     )
 
@@ -92,7 +91,7 @@ class HistoryViewModelTest {
     @Test
     fun `counts emits list returned by repository`() = runTest {
         val txns = listOf(txnDto(id = 1L, drugName = "Aspirin"))
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(txns)
+        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(txns)
 
         viewModel.counts.test {
             awaitItem() // stateIn initial: emptyList
@@ -108,7 +107,7 @@ class HistoryViewModelTest {
     fun `setSearchQuery filters counts by drug name`() = runTest {
         val aspirin = txnDto(id = 1L, drugName = "Aspirin")
         val ibuprofen = txnDto(id = 2L, drugName = "Ibuprofen")
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(listOf(aspirin, ibuprofen))
+        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(listOf(aspirin, ibuprofen))
 
         viewModel.counts.test {
             awaitItem()
@@ -134,7 +133,7 @@ class HistoryViewModelTest {
     fun `setSearchQuery filters counts by ndc`() = runTest {
         val drug1 = txnDto(id = 1L, ndc = "12345")
         val drug2 = txnDto(id = 2L, ndc = "67890")
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(listOf(drug1, drug2))
+        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(listOf(drug1, drug2))
 
         viewModel.counts.test {
             awaitItem()
@@ -155,7 +154,7 @@ class HistoryViewModelTest {
     fun `setSearchQuery filters counts by note field`() = runTest {
         val withNote = txnDto(id = 1L, note = "urgent dispense")
         val noNote = txnDto(id = 2L, note = null)
-        every { repository.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(listOf(withNote, noNote))
+        every { repository.getTransactionsForDateRange(any(), any(), any(), any()) } returns flowOf(listOf(withNote, noNote))
 
         viewModel.counts.test {
             awaitItem()
@@ -167,52 +166,6 @@ class HistoryViewModelTest {
             val filtered = awaitItem()
             assertEquals(1, filtered.size)
             assertEquals("urgent dispense", filtered[0].note)
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    // HIST_VM_005
-    @Test
-    fun `setHistoryMode DISPENSE queries repository with isDispense true`() = runTest {
-        val normalTxns = listOf(txnDto(id = 1L))
-        val dispenseTxns = listOf(txnDto(id = 2L))
-        every { repository.getTransactionsForDateRange(any(), any(), null, any(), any()) } returns flowOf(normalTxns)
-        every { repository.getTransactionsForDateRange(any(), any(), true, any(), any()) } returns flowOf(dispenseTxns)
-
-        viewModel.counts.test {
-            awaitItem()
-            advanceUntilIdle()
-            awaitItem() // normalTxns
-
-            viewModel.setHistoryMode(HistoryMode.DISPENSE)
-            advanceUntilIdle()
-            val dispense = awaitItem()
-            assertEquals(dispenseTxns, dispense)
-            cancelAndIgnoreRemainingEvents()
-        }
-    }
-
-    // HIST_VM_006
-    @Test
-    fun `setHistoryMode NORMAL queries repository with null type`() = runTest {
-        val dispenseTxns = listOf(txnDto(id = 1L))
-        val normalTxns = listOf(txnDto(id = 2L))
-        every { repository.getTransactionsForDateRange(any(), any(), true, any(), any()) } returns flowOf(dispenseTxns)
-        every { repository.getTransactionsForDateRange(any(), any(), null, any(), any()) } returns flowOf(normalTxns)
-
-        viewModel.counts.test {
-            awaitItem()
-            advanceUntilIdle()
-            awaitItem() // normalTxns (initial NORMAL mode)
-
-            viewModel.setHistoryMode(HistoryMode.DISPENSE)
-            advanceUntilIdle()
-            awaitItem() // dispenseTxns
-
-            viewModel.setHistoryMode(HistoryMode.NORMAL)
-            advanceUntilIdle()
-            val normal = awaitItem()
-            assertEquals(normalTxns, normal)
             cancelAndIgnoreRemainingEvents()
         }
     }
@@ -279,24 +232,12 @@ class HistoryViewModelTest {
     // HIST_VM_012
     @Test
     fun `deleteCountsForSelectedDate DISPENSED ALL calls deleteTransactionsForDate with null isCompleted`() = runTest {
-        coJustRun { repository.deleteTransactionsForDate(any(), any(), any(), any(), any()) }
+        coJustRun { repository.deleteTransactionsForDate(any(), any(), any(), any()) }
 
         viewModel.deleteCountsForSelectedDate(ToggleOption.DISPENSED, HistoryDeleteFilter.ALL)
         advanceUntilIdle()
 
-        coVerify { repository.deleteTransactionsForDate(any(), any(), any(), null, any()) }
-    }
-
-    // HIST_VM_013
-    @Test
-    fun `deleteCountsForSelectedDate DISPENSED in DISPENSE mode passes isDispense true to repository`() = runTest {
-        coJustRun { repository.deleteTransactionsForDate(any(), any(), any(), any(), any()) }
-        viewModel.setHistoryMode(HistoryMode.DISPENSE)
-
-        viewModel.deleteCountsForSelectedDate(ToggleOption.DISPENSED, HistoryDeleteFilter.ALL)
-        advanceUntilIdle()
-
-        coVerify { repository.deleteTransactionsForDate(any(), any(), true, null, any()) }
+        coVerify { repository.deleteTransactionsForDate(any(), any(), null, any()) }
     }
 
     // ─────────────────────────── Transaction selection ───────────────────────────

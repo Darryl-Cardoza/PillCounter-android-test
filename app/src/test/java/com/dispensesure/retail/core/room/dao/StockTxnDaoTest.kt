@@ -4,7 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.cash.turbine.test
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.models.BatchEntity
+import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
@@ -39,8 +39,8 @@ class StockTxnDaoTest {
     }
 
     private suspend fun seedBatchAndDrugs() {
-        db.batchDao().insert(BatchEntity(batchId = 1L))
-        db.batchDao().insert(BatchEntity(batchId = 2L))
+        db.stockBatchDao().insert(StockBatchEntity(batchId = 1L))
+        db.stockBatchDao().insert(StockBatchEntity(batchId = 2L))
         db.drugMasterDao().insertIgnore(DrugMasterEntity(drugId = 100L, drugName = "Zeta", ndc = "111", packageQty = 30))
         db.drugMasterDao().insertIgnore(DrugMasterEntity(drugId = 200L, drugName = "Alpha", ndc = "222", packageQty = 60))
     }
@@ -221,7 +221,7 @@ class StockTxnDaoTest {
 
     @Test
     fun `getNdcsForBatch excludes soft-deleted and blank or null ndc rows`() = runTest {
-        db.batchDao().insert(BatchEntity(batchId = 1L))
+        db.stockBatchDao().insert(StockBatchEntity(batchId = 1L))
         db.drugMasterDao().insertIgnore(DrugMasterEntity(drugId = 100L, drugName = "Blank", ndc = "", packageQty = 30))
         db.drugMasterDao().insertIgnore(DrugMasterEntity(drugId = 200L, drugName = "Deleted", ndc = "999", packageQty = 60))
 
@@ -295,7 +295,7 @@ class StockTxnDaoTest {
 
         dao.refreshBatchTotalNdcs(1L)
 
-        val batch = db.batchDao().getById(1L)
+        val batch = db.stockBatchDao().getById(1L)
         assertEquals(2, batch?.totalNdcs)
     }
 
@@ -303,7 +303,7 @@ class StockTxnDaoTest {
     fun `refreshBatchTotalNdcs for nonexistent batch affects no rows`() = runTest {
         // No batch row exists at all; should be a safe no-op.
         dao.refreshBatchTotalNdcs(999L)
-        assertNull(db.batchDao().getById(999L))
+        assertNull(db.stockBatchDao().getById(999L))
     }
 
     // ───────────────────────── updateBatchUserName ─────────────────────────
@@ -312,7 +312,7 @@ class StockTxnDaoTest {
     fun `updateBatchUserName sets userName on the target batch`() = runTest {
         seedBatchAndDrugs()
         dao.updateBatchUserName(1L, "Alice")
-        assertEquals("Alice", db.batchDao().getById(1L)?.userName)
+        assertEquals("Alice", db.stockBatchDao().getById(1L)?.userName)
     }
 
     @Test
@@ -320,7 +320,7 @@ class StockTxnDaoTest {
         seedBatchAndDrugs()
         dao.updateBatchUserName(1L, "Alice")
         dao.updateBatchUserName(1L, null)
-        assertNull(db.batchDao().getById(1L)?.userName)
+        assertNull(db.stockBatchDao().getById(1L)?.userName)
     }
 
     // ───────────────────────── softDelete ─────────────────────────

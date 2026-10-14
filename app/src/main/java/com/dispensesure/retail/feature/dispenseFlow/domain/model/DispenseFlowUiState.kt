@@ -1,7 +1,7 @@
 ﻿package com.dispensesure.retail.feature.dispenseFlow.domain.model
 
 import com.dispensesure.retail.core.room.models.enums.CountType
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.domain.model.QueueItem
 
@@ -39,7 +39,7 @@ data class DispenseFlowUiState(
     // GS1 lot/exp/serial decoded off the NDC container scan, staged here until the
     // scan resolves (auto-confirm or after the NDC/equivalence sheet), then written
     // once as the txn's first bottle entry in [advanceToCountingStage].
-    val pendingFirstBottle: BottleInfo? = null,
+    val pendingFirstBottle: DispenseBottle? = null,
 
     val ndcScannedValue: String = "",
     val ndcDrugName: String = "",
@@ -57,7 +57,7 @@ data class DispenseFlowUiState(
     // already exists, so Proceed resumes it rather than creating a new one.
     val pendingRxResumeStage: DispenseStage? = null,
     // Rx label staged while the verification sheet is up. Nothing is written to
-    // pill_count_txn until the user taps Proceed, so Cancel / back leaves no row.
+    // dispense_txn until the user taps Proceed, so Cancel / back leaves no row.
     val pendingStandaloneRx: StandaloneRxDraft? = null,
     val showNdcDetails: Boolean = false,
     val showInvalidScanDialog: Boolean = false,
@@ -97,7 +97,7 @@ data class DispenseFlowUiState(
 
     // Stock-count (normalized) session: set when a REGULAR loose-count line is created so
     // the shared PillScanningViewModel can count into the BottleInfo line. Stock counts do
-    // not use pill_count_txn, so [txnId] stays 0 for them.
+    // not use dispense_txn, so [txnId] stays 0 for them.
     val stockTxnId: Long = 0L,
     val stockBottleId: Long = 0L,
     val stockDrugId: Long = 0L,

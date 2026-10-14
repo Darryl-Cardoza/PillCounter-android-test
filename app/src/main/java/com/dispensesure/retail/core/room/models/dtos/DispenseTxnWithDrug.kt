@@ -2,7 +2,7 @@ package com.dispensesure.retail.core.room.models.dtos
 
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 
-data class PillCountWithDrugAndTotal(
+data class DispenseTxnWithDrug(
     val txnId: Long,
     val drugName: String?,
     val ndc: String?,
@@ -10,11 +10,10 @@ data class PillCountWithDrugAndTotal(
     val bucketId: String?,
     val createdAt: Long,
     val targetCount: Int?,
-    val bottleInfoListJson: String?,
+    val bottlesJson: String?,
     val totalPillCount: Int,
     val isComingFromHL7 : Boolean,
     val isNdcVerified: Boolean,
-    val isDispense: Boolean,
     val priority: TxnPriority?,
     val isHazardous: Boolean = false,
     val strength: String? = null,

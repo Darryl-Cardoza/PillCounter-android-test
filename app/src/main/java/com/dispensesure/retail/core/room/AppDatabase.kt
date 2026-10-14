@@ -3,24 +3,24 @@ package com.dispensesure.retail.core.room
 import androidx.room.Database
 import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.FaceEmbeddingDao
 import com.dispensesure.retail.core.room.dao.FaceProfileDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
-import com.dispensesure.retail.core.room.di.BatchConverters
+import com.dispensesure.retail.core.room.di.StockBatchConverters
 import com.dispensesure.retail.core.room.di.StringListConverter
-import com.dispensesure.retail.core.room.models.BatchEntity
-import com.dispensesure.retail.core.room.models.BottleInfoEntity
+import com.dispensesure.retail.core.room.models.StockBatchEntity
+import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.FaceEmbeddingEntity
 import com.dispensesure.retail.core.room.models.FaceProfileEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
 
@@ -33,9 +33,9 @@ import com.dispensesure.retail.core.room.models.UserEntity
  * ### Entities:
  * - [UserEntity] → Represents application users.
  * - [DrugMasterEntity] → Master list of drugs with NDC and metadata.
- * - [PillCountTxnEntity] → Pill count transaction headers (parent records).
- * - [PillCountTxnDetailsEntity] → Pill count transaction details (child records).
- * - [BatchEntity] → Batch headers that group multiple transactions together.
+ * - [DispenseTxnEntity] → Dispense transaction headers (parent records).
+ * - [DispenseCountEntity] → Dispense counts (child records).
+ * - [StockBatchEntity] → Batch headers that group multiple transactions together.
  *
  * ### Usage:
  * Obtain an instance of [AppDatabase] via `Room.databaseBuilder()` and use
@@ -50,19 +50,19 @@ import com.dispensesure.retail.core.room.models.UserEntity
     entities = [
         UserEntity::class,
         DrugMasterEntity::class,
-        PillCountTxnEntity::class,
-        PillCountTxnDetailsEntity::class,
-        BatchEntity::class,
+        DispenseTxnEntity::class,
+        DispenseCountEntity::class,
+        StockBatchEntity::class,
         StockTxnEntity::class,
-        BottleInfoEntity::class,
+        StockBottleInfoEntity::class,
         FaceProfileEntity::class,
         FaceEmbeddingEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = true
 )
 @TypeConverters(
-    BatchConverters::class,
+    StockBatchConverters::class,
     StringListConverter::class
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -73,20 +73,20 @@ abstract class AppDatabase : RoomDatabase() {
     /** DAO for managing [DrugMasterEntity] records. */
     abstract fun drugMasterDao(): DrugMasterDao
 
-    /** DAO for managing [PillCountTxnEntity] transaction headers. */
-    abstract fun pillCountTxnDao(): PillCountTxnDao
+    /** DAO for managing [DispenseTxnEntity] transaction headers. */
+    abstract fun dispenseTxnDao(): DispenseTxnDao
 
-    /** DAO for managing [PillCountTxnDetailsEntity] transaction details. */
-    abstract fun pillCountTxnDetailsDao(): PillCountTxnDetailsDao
+    /** DAO for managing [DispenseCountEntity] transaction details. */
+    abstract fun dispenseCountDao(): DispenseCountDao
 
-    /** DAO for managing [BatchEntity] batch headers. */
-    abstract fun batchDao(): BatchDao
+    /** DAO for managing [StockBatchEntity] batch headers. */
+    abstract fun stockBatchDao(): StockBatchDao
 
     /** DAO for managing [StockTxnEntity] stock transaction headers. */
     abstract fun stockTxnDao(): StockTxnDao
 
-    /** DAO for managing [BottleInfoEntity] stock bottle lines. */
-    abstract fun bottleInfoDao(): BottleInfoDao
+    /** DAO for managing [StockBottleInfoEntity] stock bottle lines. */
+    abstract fun stockBottleInfoDao(): StockBottleInfoDao
 
     /** DAO for managing [FaceProfileEntity] records. */
     abstract fun faceProfileDao(): FaceProfileDao

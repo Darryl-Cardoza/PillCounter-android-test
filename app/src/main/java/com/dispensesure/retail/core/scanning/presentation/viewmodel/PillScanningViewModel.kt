@@ -21,22 +21,22 @@ import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.models.DISPENSED_QUANTITY_STEP
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.dao.BatchDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
 import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
-import com.dispensesure.retail.core.room.models.BottleInfoEntity
+import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.models.ScheduleCode
@@ -57,8 +57,8 @@ import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.NavigationEvent
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.scanning.domain.model.DetectedPill
 import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
@@ -104,13 +104,13 @@ import kotlin.math.min
 class PillScanningViewModel @Inject constructor(
     app: Application,
     private val preferenceHelper: PreferenceHelper,
-    private val pillCountTxnDao: PillCountTxnDao,
+    private val dispenseTxnDao: DispenseTxnDao,
     private val stockTxnDao: StockTxnDao,
-    private val bottleInfoDao: BottleInfoDao,
-    private val batchDao: BatchDao,
+    private val stockBottleInfoDao: StockBottleInfoDao,
+    private val stockBatchDao: StockBatchDao,
     private val userDao: UserDao,
     private val operatorNameProvider: OperatorNameProvider,
-    private val pillCountTxnDetailsDao: PillCountTxnDetailsDao,
+    private val dispenseCountDao: DispenseCountDao,
     private val locationProvider: LocationProvider,
     private val drugMasterDao: DrugMasterDao,
     private val modelLoader: PillDetectionModelLoader,
@@ -180,7 +180,7 @@ class PillScanningViewModel @Inject constructor(
     private var stockCountBatchId = 0L
 
     // --- Stock-count (normalized) session state ---
-    // A stock loose-count session writes NOTHING to pill_count_txn / pill_count_txn_details.
+    // A stock loose-count session writes NOTHING to dispense_txn / dispense_count.
     // ADDs are held in the in-memory staging buffer for the whole session and, on Done, the
     // aggregate is written as looseQty onto the active BottleInfo line ([stockBottleId]).
     private var isStockCountSession = false
@@ -194,7 +194,7 @@ class PillScanningViewModel @Inject constructor(
     private var stockExpNo: String? = null
     private var stockSerialNo: String? = null
     // Deferred DispenseFlow stock session: remembered so [flushStagedDetails] can create
-    // the batch + stock_txn + bottle_info atomically at Done. Zero/null in the pre-existing
+    // the batch + stock_txn + stock_bottle_info atomically at Done. Zero/null in the pre-existing
     // hand-off paths (stockTxnId != 0L), where the rows already exist.
     private var stockDrugId: Long = 0L
     private var stockBucketId: String? = null
@@ -207,18 +207,18 @@ class PillScanningViewModel @Inject constructor(
 
     // --- Dispense-flow bottle tracking (rescan-same-NDC during counting) ---
     // No in-memory cache of the bottle list: every scan re-reads
-    // PillCountTxnEntity.bottleInfoListJson fresh from Room, so a resumed/killed-and-restarted
+    // DispenseTxnEntity.bottlesJson fresh from Room, so a resumed/killed-and-restarted
     // process always compares against the real persisted state. isProcessingBottleScan only
     // guards against the same physical scan firing this handler multiple times in a row
     // (camera frame analyzer re-detecting the same barcode across consecutive frames) while a
     // scan is already being resolved or its confirm dialog is awaiting a user tap.
     @Volatile private var isProcessingBottleScan = false
-    private var pendingBottleScan: BottleInfo? = null
+    private var pendingBottleScan: DispenseBottle? = null
 
     /**
      * Enter a stock loose-count session from the merged DispenseFlow. All three
      * of `bottleId` / `stockTxnId` / `batchId` may be `0L`, in which case this is
-     * a fully deferred session: no batch, stock_txn or bottle_info row exists
+     * a fully deferred session: no batch, stock_txn or stock_bottle_info row exists
      * yet, and [flushStagedDetails] will create them atomically at All Done
      * using [stockDrugId] + [stockBucketId]. Back-out before Done leaves zero
      * DB rows. Loads the drug, then sets up the synthetic txn info and lands on
@@ -274,8 +274,8 @@ class PillScanningViewModel @Inject constructor(
     /** Tour: set once Done goes straight to confirm (notes setting off), so the VIAL wait ends. */
     private var confirmDoneStarted = false
 
-    private val _txnInfo = MutableStateFlow<TxnWithDetails?>(null)
-    val txnInfo: StateFlow<TxnWithDetails?> = _txnInfo
+    private val _txnInfo = MutableStateFlow<DispenseTxnDetail?>(null)
+    val txnInfo: StateFlow<DispenseTxnDetail?> = _txnInfo
 
     // ── Glove detection control: stop running glove model once gloves are detected ──
     private val _glovesDetected = MutableStateFlow(false)
@@ -322,16 +322,16 @@ class PillScanningViewModel @Inject constructor(
     // flushed to the DB when the user confirms Done. On back-out they are
     // discarded. Earlier committed rows (sealed bottles + previously-Done loose
     // pills) live in the DB and are never touched by staging.
-    // Each staged entity has txnDetailsId = 0 (not yet persisted); we assign a
+    // Each staged entity has countId = 0 (not yet persisted); we assign a
     // temporary negative id to the derived TxnDetail UI rows for delete-matching.
-    private val stagedDetails = mutableListOf<PillCountTxnDetailsEntity>()
+    private val stagedDetails = mutableListOf<DispenseCountEntity>()
     private var stagingActive = false
 
     // Staging (defer-to-Done + discard-on-back-out) is ONLY for the inventory
     // SCAN PILLS hand-off (stock loose counting). The regular dispense flow must
     // persist each ADD immediately so a session backed out before Done is still
     // saved and shows up under Pending Items. A stock session stages for its whole
-    // duration — nothing is written to pill_count_txn / pill_count_txn_details;
+    // duration — nothing is written to dispense_txn / dispense_count;
     // the aggregate lands on BottleInfo.looseQty on Done.
     private val stagingEnabled: Boolean
         get() = isStockCountSession
@@ -432,7 +432,7 @@ class PillScanningViewModel @Inject constructor(
         observeTxnDetailsJob?.cancel()
 
         observeTxnDetailsJob = viewModelScope.launch {
-            pillCountTxnDetailsDao.observeAllForTxn(preferenceHelper.getTxnId(), step)
+            dispenseCountDao.observeAllForTxn(preferenceHelper.getTxnId(), step)
                 .catch { e -> logger.e("Failed observing txn details for step=$step", e, event = LogEvent.PILL_COUNT_FAILED) }
                 .collectLatest { entities ->
                     // While a counting session is staging in memory, the DB observer
@@ -441,7 +441,7 @@ class PillScanningViewModel @Inject constructor(
                     if (stagingActive) return@collectLatest
                     val history = entities.map {
                         TxnDetail(
-                            txnDetailId = it.txnDetailsId,
+                            txnDetailId = it.countId,
                             count = it.pillCount ?: 0,
                             image = it.imagePath,
                             createdAt = it.createdAt,
@@ -450,7 +450,7 @@ class PillScanningViewModel @Inject constructor(
                     }
 
                     val currentSum = history.sumOf { it.count }
-                    val isStockCount = _txnInfo.value?.isDispense == false
+                    val isStockCount = isStockCountSession
                     if (isStockCount && stockCountBaseTotal == -1) {
                         stockCountBaseTotal = currentSum
                     }
@@ -465,7 +465,7 @@ class PillScanningViewModel @Inject constructor(
                     }
 
                     if (step == StepState.CONTAINER_PENDING) {
-                        val countedPills = pillCountTxnDetailsDao.observeAllForTxn(
+                        val countedPills = dispenseCountDao.observeAllForTxn(
                             preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE
                         ).first().sumOf { it.pillCount ?: 0 }
 
@@ -491,7 +491,7 @@ class PillScanningViewModel @Inject constructor(
      * key that can never collide with a real (positive) autogen PK.
      */
     private fun refreshStagedHistory(step: StepState) {
-        val staged = stagedDetails.filter { it.type == step.toString() }
+        val staged = stagedDetails.filter { it.step == step.toString() }
         val history = staged.mapIndexed { index, entity ->
             TxnDetail(
                 txnDetailId = -(index + 1).toLong(),
@@ -542,15 +542,15 @@ class PillScanningViewModel @Inject constructor(
                     // DispenseFlow hand-off ([enterStockCountSession]) with a pre-existing bottle:
                     // accumulate this session's loose total onto it. Single atomic UPDATE so a
                     // process death mid-flush can't save the count while dropping the image paths.
-                    bottleInfoDao.incrementLooseQtyAndImages(stockBottleId, stagedSum, controlledPaths)
+                    stockBottleInfoDao.incrementLooseQtyAndImages(stockBottleId, stagedSum, controlledPaths)
                     logger.i("Flushed stock loose count onto existing line. stagedSum=$stagedSum bottleId=$stockBottleId controlledPaths=${controlledPaths?.size ?: 0}")
                 } else if (stockTxnId != 0L) {
                     // "Scan Pills" loose flow: every counting session is its own line so the same
                     // NDC keeps separate loose entries rather than merging onto one line. This line
                     // holds only loose/open pills, so bottleQty stays 0 — it must NOT count as a
                     // sealed bottle.
-                    val newBottleId = bottleInfoDao.insert(
-                        BottleInfoEntity(
+                    val newBottleId = stockBottleInfoDao.insert(
+                        StockBottleInfoEntity(
                             stockTxnId = stockTxnId,
                             batchId = stockCountBatchId,
                             lotNo = stockLotNo,
@@ -565,7 +565,7 @@ class PillScanningViewModel @Inject constructor(
                 } else if (stockDrugId != 0L) {
                     // Deferred DispenseFlow stock session. Two entry paths land here:
                     //  1. Fresh stock count (no batch context) — [stockCountBatchId] == 0L.
-                    //     Mint batch + stock_txn + bottle_info atomically.
+                    //     Mint batch + stock_txn + stock_bottle_info atomically.
                     //  2. Continuing an existing batch from the "Scan Pills" hand-off —
                     //     [stockCountBatchId] != 0L (seeded via [enterStockCountSession]).
                     //     Reuse the existing batchId; if the drug already has a stock_txn
@@ -587,7 +587,7 @@ class PillScanningViewModel @Inject constructor(
                             val effectiveBatchId = if (stockCountBatchId != 0L) {
                                 stockCountBatchId
                             } else {
-                                batchDao.insertNewInProgressBatch(
+                                stockBatchDao.insertNewInProgressBatch(
                                     bucketId = if (FtueController.state.isActive) TutorialData.BUCKET else stockBucketId,
                                 )
                             }
@@ -601,8 +601,8 @@ class PillScanningViewModel @Inject constructor(
                                         bucketId = stockBucketId,
                                     )
                                 )
-                            bottleInfoDao.insert(
-                                BottleInfoEntity(
+                            stockBottleInfoDao.insert(
+                                StockBottleInfoEntity(
                                     stockTxnId = effectiveStockTxnId,
                                     batchId = effectiveBatchId,
                                     lotNo = stockLotNo,
@@ -646,17 +646,17 @@ class PillScanningViewModel @Inject constructor(
                 }
             }
         } else {
-            // Regular dispense flow: each staged detail hits pill_count_txn_details, plus a
+            // Regular dispense flow: each staged detail hits dispense_count, plus a
             // second write to bump the parent txn's bottle-info list (linkDetailToActiveBottle
             // decodes, appends the new detail id to the active bottle, then re-encodes and
             // persists). A process death between those two writes previously left a detail
             // row unreferenced by any bottle. withTransaction wraps the whole flush so either
             // all details + their linkages commit or nothing does.
             appDatabase.withTransaction {
-                val txn = pillCountTxnDao.getById(txnId)
-                val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
+                val txn = dispenseTxnDao.getById(txnId)
+                val bottles = DispenseBottleJson.decode(txn?.bottlesJson)
                 stagedDetails.forEach { entity ->
-                    val newDetailsId = pillCountTxnDetailsDao.insert(entity.copy(txnId = txnId))
+                    val newDetailsId = dispenseCountDao.insert(entity.copy(txnId = txnId))
                     linkDetailToActiveBottle(txnId, bottles, newDetailsId)
                 }
             }
@@ -668,32 +668,32 @@ class PillScanningViewModel @Inject constructor(
     }
 
     /**
-     * Appends [newDetailsId] to the currently active (last) bottle's [BottleInfo.txnDetailsIds]
+     * Appends [newDetailsId] to the currently active (last) bottle's [DispenseBottle.countIds]
      * and persists it. No-op if the txn has no bottle entries yet (no bottle scanned before
      * this pill was counted — legacy/no-GS1-scan txns). [bottles] is the list resolved once by
      * the caller (avoids a redundant decode per staged row when flushing several at once);
      * the write itself re-reads+re-writes fresh each call so concurrent appends don't clobber
      * each other.
      */
-    private suspend fun linkDetailToActiveBottle(txnId: Long, bottles: List<BottleInfo>, newDetailsId: Long) {
+    private suspend fun linkDetailToActiveBottle(txnId: Long, bottles: List<DispenseBottle>, newDetailsId: Long) {
         if (bottles.isEmpty()) return
-        val txn = pillCountTxnDao.getById(txnId) ?: return
-        val current = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
+        val txn = dispenseTxnDao.getById(txnId) ?: return
+        val current = DispenseBottleJson.decode(txn.bottlesJson).toMutableList()
         if (current.isEmpty()) return
         val lastIndex = current.lastIndex
         current[lastIndex] = current[lastIndex].copy(
-            txnDetailsIds = current[lastIndex].txnDetailsIds + newDetailsId
+            countIds = current[lastIndex].countIds + newDetailsId
         )
-        pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(current))
+        dispenseTxnDao.updateBottles(txnId, DispenseBottleJson.encode(current))
     }
 
     /** Removes deleted detail ids from the txn's bottle list so it holds no dead ids. */
     private suspend fun unlinkDetailsFromBottles(txnId: Long, deletedIds: Set<Long>) {
-        val txn = pillCountTxnDao.getById(txnId) ?: return
-        val bottles = BottleInfoJson.decode(txn.bottleInfoListJson)
-        if (bottles.none { bottle -> bottle.txnDetailsIds.any { it in deletedIds } }) return
-        val cleaned = bottles.map { it.copy(txnDetailsIds = it.txnDetailsIds - deletedIds) }
-        pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(cleaned))
+        val txn = dispenseTxnDao.getById(txnId) ?: return
+        val bottles = DispenseBottleJson.decode(txn.bottlesJson)
+        if (bottles.none { bottle -> bottle.countIds.any { it in deletedIds } }) return
+        val cleaned = bottles.map { it.copy(countIds = it.countIds - deletedIds) }
+        dispenseTxnDao.updateBottles(txnId, DispenseBottleJson.encode(cleaned))
     }
 
     /**
@@ -1025,7 +1025,7 @@ class PillScanningViewModel @Inject constructor(
                         unloadGloveAndRebuildAnalyzer()
                         val txnId = preferenceHelper.getTxnId()
                         if (txnId != 0L) {
-                            pillCountTxnDao.updateGlovesPresent(txnId, true)
+                            dispenseTxnDao.updateGlovesPresent(txnId, true)
                             logger.i("isGlovesPresent saved for txn=$txnId")
                         }
                     } catch (e: CancellationException) {
@@ -1282,7 +1282,7 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             val txnId = preferenceHelper.getTxnId()
             if (txnId != 0L) {
-                pillCountTxnDao.updateHazardousTrayDetected(txnId, detected)
+                dispenseTxnDao.updateHazardousTrayDetected(txnId, detected)
                 logger.i("hazardousTrayDetected=$detected saved for txnId=$txnId")
                 logger.d("DB updated: hazardousTrayDetected=$detected txnId=$txnId")
             }
@@ -1324,9 +1324,9 @@ class PillScanningViewModel @Inject constructor(
         if (txnId != 0L) {
             withContext(Dispatchers.IO) {
                 // Files first: once the rows are gone their paths are unrecoverable.
-                deleteFiles(pillCountTxnDetailsDao.getImagePathsForTxn(txnId))
-                pillCountTxnDetailsDao.deleteAllForTxn(txnId)
-                pillCountTxnDao.resetForRecount(txnId)
+                deleteFiles(dispenseCountDao.getImagePathsForTxn(txnId))
+                dispenseCountDao.deleteAllForTxn(txnId)
+                dispenseTxnDao.resetForRecount(txnId)
             }
         }
 
@@ -1354,12 +1354,12 @@ class PillScanningViewModel @Inject constructor(
         resetAvailabilityJob = viewModelScope.launch {
             val txnId = preferenceHelper.getTxnId()
             when {
-                txnId != 0L -> pillCountTxnDao.observeById(txnId)
+                txnId != 0L -> dispenseTxnDao.observeById(txnId)
                     .catch { e -> logger.e("Failed observing txn reset availability. txnId=$txnId", e, event = LogEvent.PILL_COUNT_RESET_FAILED) }
                     .collect { txn ->
                     _uiState.update { it.copy(canReset = txn?.isSynced != true) }
                 }
-                batchId != 0L -> batchDao.observeById(batchId)
+                batchId != 0L -> stockBatchDao.observeById(batchId)
                     .catch { e -> logger.e("Failed observing batch reset availability. batchId=$batchId", e, event = LogEvent.PILL_COUNT_RESET_FAILED) }
                     .collect { batch ->
                     val available =
@@ -1475,7 +1475,7 @@ class PillScanningViewModel @Inject constructor(
 
     /** Tutorial txns are marked by the demo Rx prefix or the demo drug, the same markers the purge uses. */
     private suspend fun isDemoTxn(txnId: Long): Boolean {
-        val txn = pillCountTxnDao.getById(txnId) ?: return false
+        val txn = dispenseTxnDao.getById(txnId) ?: return false
         return txn.rxNo?.startsWith(TutorialData.RX_PREFIX) == true ||
             drugMasterDao.getDrugById(txn.drugId)?.ndc == TutorialData.DEMO_NDC
     }
@@ -1500,15 +1500,15 @@ class PillScanningViewModel @Inject constructor(
                     logger.e("Failed saving bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
                     null
                 }
-                pillCountTxnDetailsDao.deleteVialByTxnId(txnId, StepState.VIAL)
-                pillCountTxnDetailsDao.insert(
-                    PillCountTxnDetailsEntity(
+                dispenseCountDao.deleteVialByTxnId(txnId, StepState.VIAL)
+                dispenseCountDao.insert(
+                    DispenseCountEntity(
                         txnId = txnId,
                         pillCount = 0,
                         imagePath = filePath,
                         createdAt = System.currentTimeMillis(),
                         updatedAt = System.currentTimeMillis(),
-                        type = StepState.VIAL.toString()
+                        step = StepState.VIAL.toString()
                     )
                 )
             } catch (e: CancellationException) {
@@ -1603,17 +1603,17 @@ class PillScanningViewModel @Inject constructor(
                 val workingBitmap = frame
 
                 val txnId = preferenceHelper.getTxnId()
-                val txn = pillCountTxnDao.getById(txnId)
-                // A stock session has no pill_count_txn row: its drug comes from the session instead.
+                val txn = dispenseTxnDao.getById(txnId)
+                // A stock session has no dispense_txn row: its drug comes from the session instead.
                 val drug = drugMasterDao.getDrugById(if (isStockCountSession) stockDrugId else txn?.drugId)
 
                 // Resolve the currently active bottle (last one scanned) once — used both to
                 // watermark this photo with its lot/exp/serial and to tag the detail row below.
-                val bottles = BottleInfoJson.decode(txn?.bottleInfoListJson)
+                val bottles = DispenseBottleJson.decode(txn?.bottlesJson)
                 val activeBottle = bottles.lastOrNull()
                 // Stock lot/serial/expiry come from the line being counted onto; with none yet
                 // (it's created at Done) they are the values scanned for that new line.
-                val stockBottle = if (isStockCountSession && stockBottleId != 0L) bottleInfoDao.getById(stockBottleId) else null
+                val stockBottle = if (isStockCountSession && stockBottleId != 0L) stockBottleInfoDao.getById(stockBottleId) else null
 
                 // Name, image and dispensed NDC follow the substitute when there is one.
                 val dispensedDrug = if (isStockCountSession) drug
@@ -1636,7 +1636,7 @@ class PillScanningViewModel @Inject constructor(
                 val info = PhotoInfo(
                     drugName = dispensedDrug?.drugName,
                     drugImage = drugImage,
-                    isStockCount = isStockCountSession || txn?.isDispense != true,
+                    isStockCount = isStockCountSession || txn == null,
                     requestedNdc = drug?.ndc,
                     dispensedNdc = dispensedDrug?.ndc,
                     lotNumber = if (!isStockCountSession) activeBottle?.lotNumber
@@ -1704,14 +1704,14 @@ class PillScanningViewModel @Inject constructor(
                 // createBitmap can hand back the source itself when the crop is the whole frame.
                 if (photoBitmap !== workingBitmap && !photoBitmap.isRecycled) photoBitmap.recycle()
 
-                val detail = PillCountTxnDetailsEntity(
+                val detail = DispenseCountEntity(
                     txnId = txnId,
                     pillCount = currentCount,
                     imagePath = filePath,
                     rawImagePath = rawPath,
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis(),
-                    type = stepType.toString(),
+                    step = stepType.toString(),
                 )
 
                 if (stagingEnabled) {
@@ -1721,7 +1721,7 @@ class PillScanningViewModel @Inject constructor(
                     // the user confirms Done. looseQty for REGULAR is incremented
                     // once, on flush, for the whole staged sum (see handleConfirmDone
                     // / handleDone flush blocks). On back-out these are discarded.
-                    // Bottle linkage (txnDetailsIds) is done in flushStagedDetails, once
+                    // Bottle linkage (countIds) is done in flushStagedDetails, once
                     // real row ids exist — staged rows have no id yet.
                     stagedDetails.add(detail)
                     stagingActive = true
@@ -1738,7 +1738,7 @@ class PillScanningViewModel @Inject constructor(
                     // per-ADD here to match the per-row insert.
                     // One transaction so a View All delete can't overwrite the bottle list mid-link.
                     appDatabase.withTransaction {
-                        val newDetailsId = pillCountTxnDetailsDao.insert(detail)
+                        val newDetailsId = dispenseCountDao.insert(detail)
                         linkDetailToActiveBottle(txnId, bottles, newDetailsId)
                     }
 
@@ -1773,7 +1773,7 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun handleConfirmDialog(event: PillScanningEvent.FinalDone) {
-        if (_txnInfo.value?.isDispense == false) {
+        if (isStockCountSession) {
             _uiState.update {
                 it.copy(showEndStockCountDialog = true)
             }
@@ -1804,9 +1804,9 @@ class PillScanningViewModel @Inject constructor(
             }
 
             StepState.TARGET_VERIFICATION -> {
-                if (_txnInfo.value?.isDispense == true && _uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }) {
+                if (_txnInfo.value != null && !isStockCountSession && _uiState.value.targetCount == _uiState.value.txnDetailHistory.sumOf { it.count }) {
                     moveNextStep()
-                } else if (_txnInfo.value?.isDispense == false) {
+                } else if (isStockCountSession) {
                     handleDone()
                 } else {
                     _uiState.update { it.copy(showErrorMessage = context.getString(R.string.pills_count_should_be_greater_than_target_count)) }
@@ -1856,14 +1856,14 @@ class PillScanningViewModel @Inject constructor(
                 val shortfall = target - already
                 if (shortfall > 0) {
                     val txnId = preferenceHelper.getTxnId()
-                    val detail = PillCountTxnDetailsEntity(
+                    val detail = DispenseCountEntity(
                         txnId = txnId,
                         pillCount = shortfall,
                         imagePath = null,
-                        type = stepType.toString(),
+                        step = stepType.toString(),
                         isManual = true,
                     )
-                    val newId = pillCountTxnDetailsDao.insert(detail)
+                    val newId = dispenseCountDao.insert(detail)
                     // Update uiState synchronously here rather than waiting on the DB's
                     // reactive Flow observer (observeTxnDetailsForTxn) to catch up — the
                     // FinalDone dispatched right below reads _uiState.value.txnDetailHistory
@@ -1910,15 +1910,15 @@ class PillScanningViewModel @Inject constructor(
                 // Staged rows are not in the DB yet, so include the staged sum in the
                 // total==0 guard, otherwise a session that only staged pills would be
                 // wrongly reported as "no transaction".
-                val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId) +
+                val total = dispenseCountDao.getTotalPillCountForTxn(txnId) +
                         stagedDetails.sumOf { it.pillCount ?: 0 }
                 if (total == 0) {
                     _uiState.update { it.copy(showNoTransaction = true) }
                     return@launch
                 }
-                if (txnInfo.value?.isDispense == false) {
+                if (isStockCountSession) {
                     // Stock: flush the loose count onto the BottleInfo line, complete the stock
-                    // header, and return to the batch screen. Nothing is written to pill_count_txn.
+                    // header, and return to the batch screen. Nothing is written to dispense_txn.
                     // Use the VM's [stockTxnId] field (not _txnInfo.value.txnId): a deferred
                     // DispenseFlow session enters with stockTxnId = 0L, so _txnInfo holds 0L
                     // even after flushStagedDetails mints the real stock_txn row — reading
@@ -1963,7 +1963,7 @@ class PillScanningViewModel @Inject constructor(
         setNoteDialogShown(false)
         viewModelScope.launch {
             try {
-                pillCountTxnDao.updateNote(preferenceHelper.getTxnId(), event.note)
+                dispenseTxnDao.updateNote(preferenceHelper.getTxnId(), event.note)
                 handleConfirmDone()
             } catch (e: CancellationException) {
                 throw e
@@ -1988,17 +1988,17 @@ class PillScanningViewModel @Inject constructor(
                 // status, so getTotalPillCountForTxn sees the freshly committed rows
                 // plus any prior committed rows = the correct grand total.
                 flushStagedDetails(txnId)
-                val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
-                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                val total = dispenseCountDao.getTotalPillCountForTxn(txnId)
+                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
                 if (total == 0) {
                     return@launch
                 }
                 // Only the prescribed-count step decides partial vs complete. The pour-out and
                 // recount steps count other pills and used to push this past the target.
-                val dispensedCount = pillCountTxnDetailsDao
+                val dispensedCount = dispenseCountDao
                     .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
                 val status =
-                    if (txn.isDispense && txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+                    if (txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
 
                 // Stamp who ran this count now, not at send time: an unsynced txn resent later
                 // must still report this operator, not whoever is at the device then.
@@ -2006,12 +2006,12 @@ class PillScanningViewModel @Inject constructor(
                 // observePendingHl7Txn, whose resend sweep reads this row and would build a
                 // message with a blank operator if it got there first.
                 val operator = operatorNameProvider()
-                pillCountTxnDao.updateOperatorName(txnId, operator.firstName, operator.lastName)
+                dispenseTxnDao.updateOperatorName(txnId, operator.firstName, operator.lastName)
 
                 if (txn.isComingFromHL7 == true) {
-                    pillCountTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)
+                    dispenseTxnDao.markCompletedAndUnsynced(txnId = txnId, status = status)
                 } else {
-                    pillCountTxnDao.updateTxnStatus(txnId, status)
+                    dispenseTxnDao.updateTxnStatus(txnId, status)
                 }
 
                 // Send the dispense to the PMS now, not on the next reconnect. Completion used to
@@ -2019,9 +2019,7 @@ class PillScanningViewModel @Inject constructor(
                 // re-established, so a pharmacist finishing a count on a stable connection saw
                 // nothing arrive at the Companion. Failures are fine — the row stays unsynced and
                 // the resend-on-connect sweep retries it.
-                if (txn.isDispense) {
-                    hl7Repository.sendDispenseNow(txnId)
-                }
+                hl7Repository.sendDispenseNow(txnId)
 
                 _capturedBitmap.value = null
                 _navigationEvent.send(NavigationEvent.NavigateToDashboard)
@@ -2042,7 +2040,7 @@ class PillScanningViewModel @Inject constructor(
         // refreshStagedHistory, so a negative id always identifies a staged row.
         if (stagingActive) {
             val step = _currentStep.value
-            val staged = stagedDetails.filter { it.type == step.toString() }
+            val staged = stagedDetails.filter { it.step == step.toString() }
             val index = (-event.txnDetailId - 1).toInt()
             if (index in staged.indices) {
                 val removed = staged[index]
@@ -2059,10 +2057,10 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 // Files first: once the row is gone its paths are unrecoverable.
-                deleteFiles(pillCountTxnDetailsDao.getImagePathsForDetail(event.txnDetailId))
+                deleteFiles(dispenseCountDao.getImagePathsForCount(event.txnDetailId))
                 // One transaction so an Add can't overwrite the bottle list mid-unlink.
                 appDatabase.withTransaction {
-                    pillCountTxnDetailsDao.hardDelete(event.txnDetailId)
+                    dispenseCountDao.hardDelete(event.txnDetailId)
                     unlinkDetailsFromBottles(preferenceHelper.getTxnId(), setOf(event.txnDetailId))
                 }
                 logger.i("Transaction detail deleted. Id=${event.txnDetailId}")
@@ -2079,7 +2077,7 @@ class PillScanningViewModel @Inject constructor(
         // While staging, clear the in-memory buffer instead of soft-deleting DB
         // rows (which would wrongly remove prior committed counts).
         if (stagingActive) {
-            val removed = stagedDetails.filter { it.type == event.stepType.toString() }
+            val removed = stagedDetails.filter { it.step == event.stepType.toString() }
             stagedDetails.removeAll(removed)
             val paths = removed.flatMap { listOfNotNull(it.imagePath, it.rawImagePath) }
             viewModelScope.launch(Dispatchers.IO) { deleteFiles(paths) }
@@ -2091,11 +2089,11 @@ class PillScanningViewModel @Inject constructor(
             try {
                 val txnId = preferenceHelper.getTxnId()
                 // Files first: once the rows are gone their paths are unrecoverable.
-                deleteFiles(pillCountTxnDetailsDao.getImagePathsForStep(txnId, event.stepType))
+                deleteFiles(dispenseCountDao.getImagePathsForStep(txnId, event.stepType))
                 // One transaction so an Add can't overwrite the bottle list mid-unlink.
                 appDatabase.withTransaction {
-                    val deletedIds = pillCountTxnDetailsDao.getIdsForStep(txnId, event.stepType).toSet()
-                    pillCountTxnDetailsDao.hardDeleteAllForStep(txnId, event.stepType)
+                    val deletedIds = dispenseCountDao.getIdsForStep(txnId, event.stepType).toSet()
+                    dispenseCountDao.hardDeleteAllForStep(txnId, event.stepType)
                     unlinkDetailsFromBottles(txnId, deletedIds)
                 }
                 logger.i("All transaction details deleted for txnId=$txnId")
@@ -2132,7 +2130,7 @@ class PillScanningViewModel @Inject constructor(
         _uiState.update { it.copy(targetCount = target) }
         viewModelScope.launch {
             try {
-                pillCountTxnDao.updateTargetCount(preferenceHelper.getTxnId(), target)
+                dispenseTxnDao.updateTargetCount(preferenceHelper.getTxnId(), target)
                 logger.i("Target count updated to $target")
             } catch (e: CancellationException) {
                 throw e
@@ -2145,7 +2143,7 @@ class PillScanningViewModel @Inject constructor(
     fun showTxnInfo(countType: String) {
         viewModelScope.launch {
             try {
-                val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
+                val txnInfo = dispenseTxnDao.getDispenseTxnDetail(preferenceHelper.getTxnId())
                 _txnInfo.value = txnInfo
 
                 val shouldShowDialog =
@@ -2176,7 +2174,7 @@ class PillScanningViewModel @Inject constructor(
     fun getDrugInfo(forceStartStep: StepState? = null) {
         viewModelScope.launch {
             try {
-                val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
+                val txnInfo = dispenseTxnDao.getDispenseTxnDetail(preferenceHelper.getTxnId())
                 _txnInfo.value = txnInfo
                 val drugId = txnInfo?.drugId
                 val drugInfo = drugMasterDao.getDrugById(drugId)
@@ -2194,7 +2192,7 @@ class PillScanningViewModel @Inject constructor(
                     forceStartStep != null -> forceStartStep
                     savedWorkflowStep == null -> {
                         // No saved step yet — fall back to deriving from details history
-                        val latestStep = pillCountTxnDetailsDao.getLatestType(preferenceHelper.getTxnId())
+                        val latestStep = dispenseCountDao.getLatestStep(preferenceHelper.getTxnId())
                         if (drugInfo?.drugType.isNullOrEmpty() || drugInfo?.drugType.equals("null", true)) {
                             latestStep ?: StepState.TARGET_VERIFICATION
                         } else {
@@ -2248,7 +2246,7 @@ class PillScanningViewModel @Inject constructor(
     fun onNdcRescannedDuringCount(rawValue: String, imagePath: String?) {
         val countingSteps = setOf(StepState.TARGET_VERIFICATION, StepState.TARGET_REVERIFICATION)
         if (_currentStep.value !in countingSteps) return
-        if (_txnInfo.value?.isDispense != true) return
+        if (_txnInfo.value == null || isStockCountSession) return
         if (isProcessingBottleScan) return
         isProcessingBottleScan = true
 
@@ -2270,8 +2268,8 @@ class PillScanningViewModel @Inject constructor(
                 val expirationDate = scan.expiry
                 val serialNumber = scan.serial
 
-                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
-                val bottles = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
+                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
+                val bottles = DispenseBottleJson.decode(txn.bottlesJson).toMutableList()
                 val lastBottle = bottles.lastOrNull()
 
                 if (lastBottle != null && scan.isGs1 &&
@@ -2283,8 +2281,8 @@ class PillScanningViewModel @Inject constructor(
                     return@launch
                 }
 
-                val currentCount = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
-                val scannedBottle = BottleInfo(
+                val currentCount = dispenseCountDao.getTotalPillCountForTxn(txnId)
+                val scannedBottle = DispenseBottle(
                     lotNumber = lotNumber,
                     expirationDate = expirationDate,
                     serialNumber = serialNumber,
@@ -2312,10 +2310,10 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val txnId = preferenceHelper.getTxnId()
-                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
-                val bottles = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
+                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
+                val bottles = DispenseBottleJson.decode(txn.bottlesJson).toMutableList()
                 bottles.add(pending)
-                pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(bottles))
+                dispenseTxnDao.updateBottles(txnId, DispenseBottleJson.encode(bottles))
                 pendingBottleScan = null
                 logger.i("BOTTLE_SCAN added new bottle for txnId=$txnId, total bottles=${bottles.size}")
             } catch (e: CancellationException) {
@@ -2333,14 +2331,14 @@ class PillScanningViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val txnId = preferenceHelper.getTxnId()
-                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
-                val bottles = BottleInfoJson.decode(txn.bottleInfoListJson).toMutableList()
+                val txn = dispenseTxnDao.getById(txnId) ?: return@launch
+                val bottles = DispenseBottleJson.decode(txn.bottlesJson).toMutableList()
                 if (bottles.isEmpty()) {
                     bottles.add(pending)
                 } else {
                     bottles[bottles.lastIndex] = pending
                 }
-                pillCountTxnDao.updateBottleInfoList(txnId, BottleInfoJson.encode(bottles))
+                dispenseTxnDao.updateBottles(txnId, DispenseBottleJson.encode(bottles))
                 pendingBottleScan = null
                 logger.i("BOTTLE_SCAN replaced last bottle for txnId=$txnId")
             } catch (e: CancellationException) {
@@ -2359,13 +2357,13 @@ class PillScanningViewModel @Inject constructor(
     }
 
     /**
-     * After an NDC is scanned on the SCAN step, set up a synthetic [TxnWithDetails] for the
-     * stock drug (stock counts have no `pill_count_txn` row) and land on TARGET_VERIFICATION
+     * After an NDC is scanned on the SCAN step, set up a synthetic [DispenseTxnDetail] for the
+     * stock drug (stock counts have no `dispense_txn` row) and land on TARGET_VERIFICATION
      * (the pill-count step). The running total is driven by the in-memory staging buffer, so
      * we prime [stagingActive] and refresh the staged history instead of observing the DB.
      */
     private fun startStockCounting(drug: DrugMasterEntity, stockTxnId: Long) {
-        _txnInfo.value = TxnWithDetails(
+        _txnInfo.value = DispenseTxnDetail(
             txnId = stockTxnId,
             drugName = drug.drugName,
             drugId = drug.drugId,
@@ -2373,14 +2371,13 @@ class PillScanningViewModel @Inject constructor(
             targetCount = null,
             note = null,
             createdAt = System.currentTimeMillis(),
-            bottleInfoListJson = null,
+            bottlesJson = null,
             totalPillCount = 0,
-            isDispense = false,
             drugType = drug.drugType,
             strength = drug.strength,
             dosageForm = drug.dosageForm,
             bucketId = null,
-            txnDetails = emptyList(),
+            counts = emptyList(),
             isComingFromHL7 = false,
         )
         _steps.value = buildWorkflowSteps(
@@ -2389,8 +2386,8 @@ class PillScanningViewModel @Inject constructor(
             drugType = drug.drugType.orEmpty(),
             isDispense = false,
         )
-        // Stock counts have no pill_count_txn row, so showTxnInfo()'s DB lookup
-        // (getTxnWithDetails(txnId=0)) would return null and wipe both the synthetic
+        // Stock counts have no dispense_txn row, so showTxnInfo()'s DB lookup
+        // (getDispenseTxnDetail(txnId=0)) would return null and wipe both the synthetic
         // _txnInfo set above and the header drug fields. Populate the header directly
         // from the resolved drug instead, and keep _txnInfo (countType=REGULAR) intact
         // so FinalDone routes to the end-stock-count dialog rather than the (bogus)
@@ -2417,7 +2414,7 @@ class PillScanningViewModel @Inject constructor(
     private fun loadExistingVialPhoto(txnId: Long) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                val vialDetail = pillCountTxnDetailsDao.observeAllForTxn(txnId, StepState.VIAL).first().firstOrNull()
+                val vialDetail = dispenseCountDao.observeAllForTxn(txnId, StepState.VIAL).first().firstOrNull()
                 val imagePath = vialDetail?.imagePath ?: return@launch
                 val file = java.io.File(imagePath)
                 if (!file.exists()) return@launch
@@ -2521,7 +2518,7 @@ class PillScanningViewModel @Inject constructor(
 
         viewModelScope.launch(Dispatchers.IO) {
             try {
-                pillCountTxnDao.updateWorkflowStep(preferenceHelper.getTxnId(), next.name)
+                dispenseTxnDao.updateWorkflowStep(preferenceHelper.getTxnId(), next.name)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -2535,7 +2532,7 @@ class PillScanningViewModel @Inject constructor(
      * run the full flow; everything else runs the simple one.
      */
     private fun resolveWorkflowSteps(
-        txnInfo: TxnWithDetails?, drugInfo: DrugMasterEntity?
+        txnInfo: DispenseTxnDetail?, drugInfo: DrugMasterEntity?
     ): List<StepState> {
         val isComingFromHL7 = txnInfo?.isComingFromHL7 ?: false
         val controlledSchedules = setOf(
@@ -2553,7 +2550,8 @@ class PillScanningViewModel @Inject constructor(
             isFromHl7 = isComingFromHL7,
             simpleFlow = !(isComingFromHL7 && isControlled),
             drugType = drugInfo?.drugType.orEmpty(),
-            isDispense = txnInfo?.isDispense
+            // Every dispense_txn row is a dispense; null keeps the no-transaction fallback.
+            isDispense = if (txnInfo != null) true else null
         )
     }
 
@@ -2576,7 +2574,7 @@ class PillScanningViewModel @Inject constructor(
                     )
                     return@launch
                 }
-                val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
+                val txnInfo = dispenseTxnDao.getDispenseTxnDetail(preferenceHelper.getTxnId())
                 _steps.value = resolveWorkflowSteps(txnInfo, drugMasterDao.getDrugById(txnInfo?.drugId))
             } catch (e: CancellationException) {
                 throw e
@@ -2710,7 +2708,7 @@ class PillScanningViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                val poured = pillCountTxnDetailsDao
+                val poured = dispenseCountDao
                     .observeAllForTxn(preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE)
                     .first().sumOf { it.pillCount ?: 0 }
                 if (poured == (_txnInfo.value?.targetCount ?: 0)) {

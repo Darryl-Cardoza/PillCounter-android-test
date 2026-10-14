@@ -1,7 +1,7 @@
 package com.dispensesure.retail.core.room.models.dtos
 
-data class BatchTxnDto(
-    val txnId: Long,
+data class StockBottleInfoDto(
+    val bottleId: Long,
     val drugId: Long?,
     val drugName: String?,
     val ndc: String?,

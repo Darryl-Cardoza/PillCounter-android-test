@@ -4,7 +4,7 @@ import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
 import app.cash.turbine.test
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.models.BatchEntity
+import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
@@ -22,10 +22,10 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
-class BatchDaoTest {
+class StockBatchDaoTest {
 
     private lateinit var db: AppDatabase
-    private lateinit var dao: BatchDao
+    private lateinit var stockBatchDao: StockBatchDao
     private lateinit var stockTxnDao: StockTxnDao
     private lateinit var drugDao: DrugMasterDao
 
@@ -35,7 +35,7 @@ class BatchDaoTest {
             ApplicationProvider.getApplicationContext(),
             AppDatabase::class.java
         ).allowMainThreadQueries().build()
-        dao = db.batchDao()
+        stockBatchDao = db.stockBatchDao()
         stockTxnDao = db.stockTxnDao()
         drugDao = db.drugMasterDao()
     }
@@ -49,72 +49,72 @@ class BatchDaoTest {
 
     @Test
     fun `insert returns generated row id for new batch`() = runTest {
-        val id = dao.insert(BatchEntity(batchId = 1L))
+        val id = stockBatchDao.insert(StockBatchEntity(batchId = 1L))
         assertEquals(1L, id)
     }
 
     @Test
     fun `insert ignores conflicting batchId and returns minus one`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, note = "first"))
-        val secondResult = dao.insert(BatchEntity(batchId = 1L, note = "second"))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, note = "first"))
+        val secondResult = stockBatchDao.insert(StockBatchEntity(batchId = 1L, note = "second"))
 
         assertEquals(-1L, secondResult)
-        val stored = dao.getById(1L)
+        val stored = stockBatchDao.getById(1L)
         assertEquals("first", stored?.note)
     }
 
     @Test
     fun `insertAll inserts multiple batches and returns their ids`() = runTest {
-        val ids = dao.insertAll(
+        val ids = stockBatchDao.insertAll(
             listOf(
-                BatchEntity(batchId = 1L),
-                BatchEntity(batchId = 2L),
-                BatchEntity(batchId = 3L)
+                StockBatchEntity(batchId = 1L),
+                StockBatchEntity(batchId = 2L),
+                StockBatchEntity(batchId = 3L)
             )
         )
         assertEquals(3, ids.size)
-        assertEquals(3, dao.getActiveCount())
+        assertEquals(3, stockBatchDao.getActiveCount())
     }
 
     @Test
     fun `insertAll with empty list inserts nothing`() = runTest {
-        val ids = dao.insertAll(emptyList())
+        val ids = stockBatchDao.insertAll(emptyList())
         assertTrue(ids.isEmpty())
-        assertEquals(0L, dao.getActiveCount())
+        assertEquals(0L, stockBatchDao.getActiveCount())
     }
 
     // ───────────────────────── Read ─────────────────────────
 
     @Test
     fun `getById returns null when batch does not exist`() = runTest {
-        assertNull(dao.getById(999L))
+        assertNull(stockBatchDao.getById(999L))
     }
 
     @Test
     fun `getById returns matching batch`() = runTest {
-        dao.insert(BatchEntity(batchId = 5L, note = "hello"))
-        val result = dao.getById(5L)
+        stockBatchDao.insert(StockBatchEntity(batchId = 5L, note = "hello"))
+        val result = stockBatchDao.getById(5L)
         assertEquals(5L, result?.batchId)
         assertEquals("hello", result?.note)
     }
 
     @Test
     fun `observeById emits null then updated entity on change`() = runTest {
-        dao.observeById(10L).test {
+        stockBatchDao.observeById(10L).test {
             assertNull(awaitItem())
-            dao.insert(BatchEntity(batchId = 10L, note = "created"))
+            stockBatchDao.insert(StockBatchEntity(batchId = 10L, note = "created"))
             assertEquals("created", awaitItem()?.note)
         }
     }
 
     @Test
     fun `getAllActive excludes soft deleted batches and orders newest first`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 100L))
-        dao.insert(BatchEntity(batchId = 2L, startDateTime = 200L))
-        dao.insert(BatchEntity(batchId = 3L, startDateTime = 300L))
-        dao.softDelete(2L)
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L))
+        stockBatchDao.insert(StockBatchEntity(batchId = 3L, startDateTime = 300L))
+        stockBatchDao.softDelete(2L)
 
-        dao.getAllActive().test {
+        stockBatchDao.getAllActive().test {
             val list = awaitItem()
             assertEquals(2, list.size)
             assertEquals(listOf(3L, 1L), list.map { it.batchId })
@@ -123,10 +123,10 @@ class BatchDaoTest {
 
     @Test
     fun `getAllByStatus filters by status`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
-        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
 
-        dao.getAllByStatus(BatchStatus.COMPLETED).test {
+        stockBatchDao.getAllByStatus(BatchStatus.COMPLETED).test {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(2L, list.first().batchId)
@@ -135,10 +135,10 @@ class BatchDaoTest {
 
     @Test
     fun `getAllInProgress wrapper returns only in progress batches`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
-        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
 
-        dao.getAllInProgress().test {
+        stockBatchDao.getAllInProgress().test {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(1L, list.first().batchId)
@@ -147,21 +147,21 @@ class BatchDaoTest {
 
     @Test
     fun `getLatestByStatus returns most recent match or null`() = runTest {
-        assertNull(dao.getLatestByStatus(BatchStatus.COMPLETED))
+        assertNull(stockBatchDao.getLatestByStatus(BatchStatus.COMPLETED))
 
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.COMPLETED))
-        dao.insert(BatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
 
-        val latest = dao.getLatestByStatus(BatchStatus.COMPLETED)
+        val latest = stockBatchDao.getLatestByStatus(BatchStatus.COMPLETED)
         assertEquals(2L, latest?.batchId)
     }
 
     @Test
     fun `getLatest wrapper delegates to in progress status`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
-        dao.insert(BatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
 
-        val latest = dao.getLatest()
+        val latest = stockBatchDao.getLatest()
         assertEquals(1L, latest?.batchId)
     }
 
@@ -169,89 +169,89 @@ class BatchDaoTest {
 
     @Test
     fun `softDelete marks batch as deleted and returns affected row count`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L))
-        val affected = dao.softDelete(1L)
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L))
+        val affected = stockBatchDao.softDelete(1L)
 
         assertEquals(1, affected)
-        assertTrue(dao.getById(1L)!!.isDeleted)
+        assertTrue(stockBatchDao.getById(1L)!!.isDeleted)
     }
 
     @Test
     fun `softDelete on nonexistent batchId affects zero rows`() = runTest {
-        val affected = dao.softDelete(404L)
+        val affected = stockBatchDao.softDelete(404L)
         assertEquals(0, affected)
     }
 
     @Test
     fun `markAsCompleted sets status and endDateTime`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
-        val affected = dao.markAsCompleted(1L, endDateTime = 5000L)
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
+        val affected = stockBatchDao.markAsCompleted(1L, endDateTime = 5000L)
 
         assertEquals(1, affected)
-        val updated = dao.getById(1L)!!
+        val updated = stockBatchDao.getById(1L)!!
         assertEquals(BatchStatus.COMPLETED, updated.status)
         assertEquals(5000L, updated.endDateTime)
     }
 
     @Test
     fun `updateNote sets and clears note`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, note = "old"))
-        dao.updateNote(1L, "new")
-        assertEquals("new", dao.getById(1L)?.note)
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, note = "old"))
+        stockBatchDao.updateNote(1L, "new")
+        assertEquals("new", stockBatchDao.getById(1L)?.note)
 
-        dao.updateNote(1L, null)
-        assertNull(dao.getById(1L)?.note)
+        stockBatchDao.updateNote(1L, null)
+        assertNull(stockBatchDao.getById(1L)?.note)
     }
 
     @Test
     fun `deleteAll removes every row from the table`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L))
-        dao.insert(BatchEntity(batchId = 2L))
-        dao.deleteAll()
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L))
+        stockBatchDao.deleteAll()
 
-        assertEquals(0L, dao.getActiveCount())
-        assertNull(dao.getById(1L))
+        assertEquals(0L, stockBatchDao.getActiveCount())
+        assertNull(stockBatchDao.getById(1L))
     }
 
     // ───────────────────────── Utility counts ─────────────────────────
 
     @Test
     fun `getActiveCount excludes soft deleted rows`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L))
-        dao.insert(BatchEntity(batchId = 2L))
-        dao.softDelete(2L)
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L))
+        stockBatchDao.softDelete(2L)
 
-        assertEquals(1L, dao.getActiveCount())
+        assertEquals(1L, stockBatchDao.getActiveCount())
     }
 
     @Test
     fun `observeCountByStatus emits live updates as status changes`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
 
-        dao.observeCountByStatus(BatchStatus.COMPLETED).test {
+        stockBatchDao.observeCountByStatus(BatchStatus.COMPLETED).test {
             assertEquals(0, awaitItem())
-            dao.markAsCompleted(1L)
+            stockBatchDao.markAsCompleted(1L)
             assertEquals(1, awaitItem())
         }
     }
 
     @Test
     fun `observeActiveInProgressCount wrapper reflects in progress rows`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
-        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
 
-        dao.observeActiveInProgressCount().test {
+        stockBatchDao.observeActiveInProgressCount().test {
             assertEquals(1, awaitItem())
         }
     }
 
     @Test
     fun `observeCompletedBatchCount wrapper reflects completed rows`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED))
-        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
-        dao.insert(BatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS))
 
-        dao.observeCompletedBatchCount().test {
+        stockBatchDao.observeCompletedBatchCount().test {
             assertEquals(2, awaitItem())
         }
     }
@@ -260,58 +260,58 @@ class BatchDaoTest {
 
     @Test
     fun `getBatchIdsByDate filters by range and null isCompleted matches any status`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
-        dao.insert(BatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
-        dao.insert(BatchEntity(batchId = 3L, startDateTime = 500L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 3L, startDateTime = 500L, status = BatchStatus.COMPLETED))
 
-        val ids = dao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = null)
+        val ids = stockBatchDao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = null)
         assertEquals(setOf(1L, 2L), ids.toSet())
     }
 
     @Test
     fun `getBatchIdsByDate with isCompleted true only matches completed status`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
-        dao.insert(BatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
 
-        val ids = dao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = true)
+        val ids = stockBatchDao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = true)
         assertEquals(listOf(2L), ids)
     }
 
     @Test
     fun `getBatchIdsByDate with isCompleted false only matches in progress status`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
-        dao.insert(BatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 200L, status = BatchStatus.COMPLETED))
 
-        val ids = dao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = false)
+        val ids = stockBatchDao.getBatchIdsByDate(start = 0L, end = 300L, isCompleted = false)
         assertEquals(listOf(1L), ids)
     }
 
     @Test
     fun `getBatchIdsByDate excludes rows outside the range and already deleted rows`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 50L))
-        dao.insert(BatchEntity(batchId = 2L, startDateTime = 150L))
-        dao.softDelete(2L)
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 50L))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 150L))
+        stockBatchDao.softDelete(2L)
 
-        val ids = dao.getBatchIdsByDate(start = 100L, end = 200L, isCompleted = null)
+        val ids = stockBatchDao.getBatchIdsByDate(start = 100L, end = 200L, isCompleted = null)
         assertTrue(ids.isEmpty())
     }
 
     @Test
     fun `softDeleteBatchesByDate marks only matching rows as deleted`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.COMPLETED))
-        dao.insert(BatchEntity(batchId = 2L, startDateTime = 900L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, startDateTime = 900L, status = BatchStatus.COMPLETED))
 
-        dao.softDeleteBatchesByDate(start = 0L, end = 300L, isCompleted = true)
+        stockBatchDao.softDeleteBatchesByDate(start = 0L, end = 300L, isCompleted = true)
 
-        assertTrue(dao.getById(1L)!!.isDeleted)
-        assertFalse(dao.getById(2L)!!.isDeleted)
+        assertTrue(stockBatchDao.getById(1L)!!.isDeleted)
+        assertFalse(stockBatchDao.getById(2L)!!.isDeleted)
     }
 
     // ───────────────────────── Summary / join queries ─────────────────────────
 
     @Test
     fun `getBatchSummaries counts distinct non deleted drug ids per batch`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS, bucketId = "B1"))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L, status = BatchStatus.INPROGRESS, bucketId = "B1"))
         val drug10 = db.drugMasterDao().insertIgnore(DrugMasterEntity(ndc = "NDC-10"))
         val drug20 = db.drugMasterDao().insertIgnore(DrugMasterEntity(ndc = "NDC-20"))
         val drug30 = db.drugMasterDao().insertIgnore(DrugMasterEntity(ndc = "NDC-30"))
@@ -320,7 +320,7 @@ class BatchDaoTest {
         db.stockTxnDao().insertIgnore(StockTxnEntity(txnId = 3L, drugId = drug20, batchId = 1L, isDeleted = false))
         db.stockTxnDao().insertIgnore(StockTxnEntity(txnId = 4L, drugId = drug30, batchId = 1L, isDeleted = true))
 
-        dao.getBatchSummaries(0L, 200L).test {
+        stockBatchDao.getBatchSummaries(0L, 200L).test {
             val summaries = awaitItem()
             assertEquals(1, summaries.size)
             assertEquals(2, summaries.first().uniqueNdcCount)
@@ -330,9 +330,9 @@ class BatchDaoTest {
 
     @Test
     fun `getBatchSummaries includes batches with no transactions at zero count`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, startDateTime = 100L))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, startDateTime = 100L))
 
-        dao.getBatchSummaries(0L, 200L).test {
+        stockBatchDao.getBatchSummaries(0L, 200L).test {
             val summaries = awaitItem()
             assertEquals(1, summaries.size)
             assertEquals(0, summaries.first().uniqueNdcCount)
@@ -341,11 +341,11 @@ class BatchDaoTest {
 
     @Test
     fun `observeUnsyncedCompletedBatches only returns completed unsynced batches`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
-        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.COMPLETED, isSynced = true))
-        dao.insert(BatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, isSynced = false))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED, isSynced = true))
+        stockBatchDao.insert(StockBatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, isSynced = false))
 
-        dao.observeUnsyncedCompletedBatches().test {
+        stockBatchDao.observeUnsyncedCompletedBatches().test {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(1L, list.first().batchId)
@@ -354,10 +354,10 @@ class BatchDaoTest {
 
     @Test
     fun `observeInProgressBatchSummaries only returns in progress batches`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
-        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED))
 
-        dao.observeInProgressBatchSummaries().test {
+        stockBatchDao.observeInProgressBatchSummaries().test {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(1L, list.first().batchId)
@@ -366,31 +366,31 @@ class BatchDaoTest {
 
     @Test
     fun `observeInProgressBatchKpiCounts splits pms and manual in progress batches`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "pms-1"))
-        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.INPROGRESS, requestIdFromPMS = null))
-        dao.insert(BatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "  "))
-        dao.insert(BatchEntity(batchId = 4L, status = BatchStatus.COMPLETED, requestIdFromPMS = "pms-2"))
-        dao.insert(BatchEntity(batchId = 5L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "pms-3"))
-        dao.softDelete(5L)
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "pms-1"))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.INPROGRESS, requestIdFromPMS = null))
+        stockBatchDao.insert(StockBatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "  "))
+        stockBatchDao.insert(StockBatchEntity(batchId = 4L, status = BatchStatus.COMPLETED, requestIdFromPMS = "pms-2"))
+        stockBatchDao.insert(StockBatchEntity(batchId = 5L, status = BatchStatus.INPROGRESS, requestIdFromPMS = "pms-3"))
+        stockBatchDao.softDelete(5L)
 
-        dao.observeInProgressBatchKpiCounts().test {
+        stockBatchDao.observeInProgressBatchKpiCounts().test {
             assertEquals(InventoryKpiCountsDto(cycleCount = 1, pendingBatchCount = 2), awaitItem())
         }
     }
 
     @Test
     fun `observeInProgressBatchKpiCounts emits zeros when there are no batches`() = runTest {
-        dao.observeInProgressBatchKpiCounts().test {
+        stockBatchDao.observeInProgressBatchKpiCounts().test {
             assertEquals(InventoryKpiCountsDto(cycleCount = 0, pendingBatchCount = 0), awaitItem())
         }
     }
 
     @Test
     fun `getUnsyncedCompletedBatchesOnce returns snapshot without observing`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
-        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.INPROGRESS, isSynced = false))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.INPROGRESS, isSynced = false))
 
-        val result = dao.getUnsyncedCompletedBatchesOnce()
+        val result = stockBatchDao.getUnsyncedCompletedBatchesOnce()
         assertEquals(1, result.size)
         assertEquals(1L, result.first().batchId)
     }
@@ -398,23 +398,23 @@ class BatchDaoTest {
     @Test
     fun `getUnsyncedCompletedBatchesOnce keeps a real batch that holds the demo drug`() = runTest {
         val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
         stockTxnDao.insertIgnore(StockTxnEntity(batchId = 1L, drugId = tutorialDrugId))
 
-        assertEquals(listOf(1L), dao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
+        assertEquals(listOf(1L), stockBatchDao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
     }
 
     @Test
     fun `tutorial bucket batches are hidden from unsynced and in-progress queries`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false, bucketId = TutorialData.BUCKET))
-        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.COMPLETED, isSynced = false, bucketId = "Normal"))
-        dao.insert(BatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, bucketId = TutorialData.BUCKET))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false, bucketId = TutorialData.BUCKET))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, status = BatchStatus.COMPLETED, isSynced = false, bucketId = "Normal"))
+        stockBatchDao.insert(StockBatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, bucketId = TutorialData.BUCKET))
 
-        assertEquals(listOf(2L), dao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
-        dao.observeInProgressBatchSummaries().test {
+        assertEquals(listOf(2L), stockBatchDao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
+        stockBatchDao.observeInProgressBatchSummaries().test {
             assertTrue(awaitItem().isEmpty())
         }
-        dao.observeInProgressBatchKpiCounts().test {
+        stockBatchDao.observeInProgressBatchKpiCounts().test {
             assertEquals(0, awaitItem().pendingBatchCount)
         }
     }
@@ -423,46 +423,46 @@ class BatchDaoTest {
     fun `getTutorialBatchIds finds tutorial bucket and demo-only batches, not real batches`() = runTest {
         val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
         val realDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = "1234", drugName = "Aspirin"))
-        dao.insert(BatchEntity(batchId = 1L, bucketId = TutorialData.BUCKET))
-        dao.insert(BatchEntity(batchId = 2L, bucketId = "Normal"))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, bucketId = TutorialData.BUCKET))
+        stockBatchDao.insert(StockBatchEntity(batchId = 2L, bucketId = "Normal"))
         // Real bucket but only the demo drug: a demo batch whose insert raced the tour ending.
-        dao.insert(BatchEntity(batchId = 3L, bucketId = "Normal"))
+        stockBatchDao.insert(StockBatchEntity(batchId = 3L, bucketId = "Normal"))
         stockTxnDao.insertIgnore(StockTxnEntity(batchId = 3L, drugId = demoDrugId))
         // Real batch that also holds a real drug is never tutorial data.
-        dao.insert(BatchEntity(batchId = 4L, bucketId = "Normal"))
+        stockBatchDao.insert(StockBatchEntity(batchId = 4L, bucketId = "Normal"))
         stockTxnDao.insertIgnore(StockTxnEntity(batchId = 4L, drugId = demoDrugId))
         stockTxnDao.insertIgnore(StockTxnEntity(batchId = 4L, drugId = realDrugId))
 
-        assertEquals(listOf(1L, 3L), dao.getTutorialBatchIds().sorted())
+        assertEquals(listOf(1L, 3L), stockBatchDao.getTutorialBatchIds().sorted())
     }
 
     @Test
     fun `markBatchSynced flips isSynced flag to true`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, isSynced = false))
-        dao.markBatchSynced(1L)
-        assertTrue(dao.getById(1L)!!.isSynced)
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, isSynced = false))
+        stockBatchDao.markBatchSynced(1L)
+        assertTrue(stockBatchDao.getById(1L)!!.isSynced)
     }
 
     // ───────────────────────── Chunked sync progress ─────────────────────────
 
     @Test
     fun `setTotalChunks and markChunkAcked persist chunk progress`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L))
-        dao.setTotalChunks(1L, totalChunks = 5)
-        dao.markChunkAcked(1L, chunkIndex = 2)
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L))
+        stockBatchDao.setTotalChunks(1L, totalChunks = 5)
+        stockBatchDao.markChunkAcked(1L, chunkIndex = 2)
 
-        val updated = dao.getById(1L)!!
+        val updated = stockBatchDao.getById(1L)!!
         assertEquals(5, updated.totalChunks)
         assertEquals(2, updated.lastAckedChunkIndex)
     }
 
     @Test
     fun `getUnsyncedCompletedBatchCount reflects live count of unsynced completed batches`() = runTest {
-        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
+        stockBatchDao.insert(StockBatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
 
-        dao.getUnsyncedCompletedBatchCount().test {
+        stockBatchDao.getUnsyncedCompletedBatchCount().test {
             assertEquals(1, awaitItem())
-            dao.markBatchSynced(1L)
+            stockBatchDao.markBatchSynced(1L)
             assertEquals(0, awaitItem())
         }
     }

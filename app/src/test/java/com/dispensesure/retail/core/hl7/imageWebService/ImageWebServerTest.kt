@@ -3,8 +3,8 @@ package com.dispensesure.retail.core.hl7.imageWebService
 import android.content.Context
 import android.util.Log
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsImageKeystoreUtil
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import dagger.hilt.EntryPoints
 import fi.iki.elonen.NanoHTTPD
@@ -61,8 +61,8 @@ class ImageWebServerTest {
         // real), so the static Dagger accessor must be stubbed to avoid a real lookup crash.
         mockkStatic(EntryPoints::class)
         val entryPoint = mockk<ImageNanoServer.ImageServerDaoEntryPoint>(relaxed = true)
-        every { entryPoint.pillCountTxnDao() } returns mockk<PillCountTxnDao>(relaxed = true)
-        every { entryPoint.pillCountTxnDetailsDao() } returns mockk<PillCountTxnDetailsDao>(relaxed = true)
+        every { entryPoint.dispenseTxnDao() } returns mockk<DispenseTxnDao>(relaxed = true)
+        every { entryPoint.dispenseCountDao() } returns mockk<DispenseCountDao>(relaxed = true)
         every {
             EntryPoints.get(any(), ImageNanoServer.ImageServerDaoEntryPoint::class.java)
         } returns entryPoint

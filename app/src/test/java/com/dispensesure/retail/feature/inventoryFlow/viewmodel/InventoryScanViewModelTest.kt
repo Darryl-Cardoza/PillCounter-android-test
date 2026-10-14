@@ -3,12 +3,12 @@ package com.dispensesure.retail.feature.inventoryFlow.viewmodel
 import app.cash.turbine.ReceiveTurbine
 import app.cash.turbine.test
 import androidx.lifecycle.SavedStateHandle
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
-import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
@@ -56,9 +56,9 @@ class InventoryScanViewModelTest {
     @get:Rule
     val mainDispatcherRule = MainDispatcherRule()
 
-    private val batchDao: BatchDao = mockk(relaxed = true)
+    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
+    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
@@ -79,7 +79,7 @@ class InventoryScanViewModelTest {
     @Before
     fun setup() {
         every { hl7EventHandler.connectionState } returns MutableStateFlow(false)
-        every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
+        every { stockBottleInfoDao.observeByBatchId(any()) } returns flowOf(emptyList())
         every { stockTxnDao.observeRequestedDrugs(any()) } returns flowOf(emptyList())
         viewModel = createViewModel()
     }
@@ -89,9 +89,9 @@ class InventoryScanViewModelTest {
 
     private fun createViewModel(batchId: Long = BATCH_ID) = InventoryScanViewModel(
         savedStateHandle = SavedStateHandle(mapOf("batch_id" to batchId)),
-        batchDao = batchDao,
+        stockBatchDao = stockBatchDao,
         stockTxnDao = stockTxnDao,
-        bottleInfoDao = bottleInfoDao,
+        stockBottleInfoDao = stockBottleInfoDao,
         drugMasterDao = drugMasterDao,
         preferenceHelper = preferenceHelper,
         operatorNameProvider = operatorNameProvider,
@@ -115,7 +115,7 @@ class InventoryScanViewModelTest {
         every { barcodeDecoder.toGtin14(ndc) } returns ndc
         coEvery { drugMasterDao.getDrugByGtin(ndc) } returns drug
         coEvery { stockTxnDao.findByDrugInBatch(any(), any()) } returns null
-        coEvery { bottleInfoDao.findSealedLine(any(), any(), any()) } returns null
+        coEvery { stockBottleInfoDao.findSealedLine(any(), any(), any()) } returns null
         coEvery { drugMasterDao.getDrugIdByNdc(ndc) } returns 1L
     }
 
@@ -290,17 +290,17 @@ class InventoryScanViewModelTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.batchEnded.value)
-        coVerify(exactly = 0) { batchDao.markAsCompleted(any(), any()) }
+        coVerify(exactly = 0) { stockBatchDao.markAsCompleted(any(), any()) }
     }
 
     // INV_VM_010
     @Test
     fun `confirmEndCount with committed rows calls markAsCompleted and sets batchEnded`() = runTest {
-        val txnRow = BatchTxnDto(
+        val txnRow = StockBottleInfoDto(
             txnId = 1L, drugId = 1L, drugName = "Aspirin", ndc = TEST_NDC,
             lotNo = null, expiry = null, bottleQty = 1, looseQty = 0, packageQty = 10
         )
-        every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
+        every { stockBottleInfoDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
 
         viewModel.uiState.test {
             awaitItem()
@@ -313,17 +313,17 @@ class InventoryScanViewModelTest {
 
         assertTrue(viewModel.batchEnded.value)
         // markAsCompleted(batchId, timestamp) — use any() for the auto-generated timestamp
-        coVerify(exactly = 1) { batchDao.markAsCompleted(eq(BATCH_ID), any()) }
+        coVerify(exactly = 1) { stockBatchDao.markAsCompleted(eq(BATCH_ID), any()) }
     }
 
     // INV_VM_011
     @Test
-    fun `confirmEndCount with non-blank note calls batchDao updateNote`() = runTest {
-        val txnRow = BatchTxnDto(
+    fun `confirmEndCount with non-blank note calls stockBatchDao updateNote`() = runTest {
+        val txnRow = StockBottleInfoDto(
             txnId = 1L, drugId = 1L, drugName = "Aspirin", ndc = TEST_NDC,
             lotNo = null, expiry = null, bottleQty = 1, looseQty = 0, packageQty = 10
         )
-        every { bottleInfoDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
+        every { stockBottleInfoDao.observeByBatchId(any()) } returns flowOf(listOf(txnRow))
 
         viewModel.uiState.test {
             awaitItem()
@@ -334,7 +334,7 @@ class InventoryScanViewModelTest {
             cancelAndIgnoreRemainingEvents()
         }
 
-        coVerify { batchDao.updateNote(BATCH_ID, "end of shift") }
+        coVerify { stockBatchDao.updateNote(BATCH_ID, "end of shift") }
     }
 
     // INV_VM_012
@@ -349,7 +349,7 @@ class InventoryScanViewModelTest {
         advanceUntilIdle()
 
         assertTrue(vm.batchEnded.value)
-        coVerify(exactly = 0) { batchDao.markAsCompleted(any(), any()) }
+        coVerify(exactly = 0) { stockBatchDao.markAsCompleted(any(), any()) }
     }
 
     // ─────────────────────────── batch operator name ───────────────────────────

@@ -5,12 +5,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.di.DefaultDispatcher
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.UserEntity
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
@@ -61,7 +61,7 @@ import javax.inject.Inject
  * ViewModel for the Dashboard screen.
  *
  * ### Responsibilities
- * - Observe pill count transaction statistics from [PillCountTxnDao].
+ * - Observe pill count transaction statistics from [DispenseTxnDao].
  * - Map database counts into dashboard-friendly values (Fixed/Regular, Completed/Partial).
  * - Fetch user profile details from [IUserDetailRepository] using an access token.
  * - Persist user details into Room via [UserDao].
@@ -81,8 +81,8 @@ class DashboardViewModel @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
     private val userDao: UserDao,
     private val operatorNameProvider: OperatorNameProvider,
-    private val batchDao: BatchDao,
-    private val pillCountTxnDao: PillCountTxnDao,
+    private val stockBatchDao: StockBatchDao,
+    private val dispenseTxnDao: DispenseTxnDao,
     private val hl7EventHandler: Hl7EventHandler,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val deviceKeyProvider: DeviceKeyProvider,
@@ -240,7 +240,7 @@ class DashboardViewModel @Inject constructor(
         ensureTabObserved(DashboardTab.DISPENSE_QUEUE, localId)
         if (inventoryKpiCountsJob?.isActive != true) {
             inventoryKpiCountsJob = collectSource(
-                source = batchDao.observeInProgressBatchKpiCounts().flowOn(Dispatchers.IO).distinctUntilChanged(),
+                source = stockBatchDao.observeInProgressBatchKpiCounts().flowOn(Dispatchers.IO).distinctUntilChanged(),
             ) { copy(inventoryKpiCounts = it) }
         }
     }
@@ -263,8 +263,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     private fun pendingDispenseFlow(localId: Long) =
-        pillCountTxnDao.observePartialByIsDispense(
-            isDispense = true,
+        dispenseTxnDao.observePartialDispenses(
             partialStatus = CountStatus.PARTIAL,
             userLocalId = localId,
             // totalPillCount sums detail rows of THIS step only. FIXED dispense
@@ -274,26 +273,25 @@ class DashboardViewModel @Inject constructor(
             // queue row show "0/target". TARGET_VERIFICATION is also the step
             // the Partial Counts resume screen (CountsViewModel) reads, so the
             // queue count now matches the resume screen.
-            type = StepState.TARGET_VERIFICATION,
+            step = StepState.TARGET_VERIFICATION,
         ).flowOn(Dispatchers.IO).distinctUntilChanged().map { it.toPendingDispenseItems() }
 
     // Use the summaries query so uniqueNdcCount is populated from the
-    // join. getAllInProgress() returns bare BatchEntity rows with no
+    // join. getAllInProgress() returns bare StockBatchEntity rows with no
     // txn join, which left the card stuck at "0 NDCs" even after scans.
     private fun pendingInventoryFlow() =
-        batchDao.observeInProgressBatchSummaries()
+        stockBatchDao.observeInProgressBatchSummaries()
             .flowOn(Dispatchers.IO).distinctUntilChanged().map { it.toPendingInventoryItems() }
 
     private fun recentActivityFlow(localId: Long): Flow<List<QueueItem>> {
-        val completedDispenses = pillCountTxnDao.getTransactionsForDateRange(
+        val completedDispenses = dispenseTxnDao.getTransactionsForDateRange(
             startDate = 0L,
             endDate = Long.MAX_VALUE,
             stepType = StepState.TARGET_VERIFICATION,
-            isDispense = true,
             status = CountStatus.COMPLETED,
             userLocalId = localId,
         ).flowOn(Dispatchers.IO).distinctUntilChanged()
-        val completedBatches = batchDao.getBatchSummaries(startDate = 0L, endDate = Long.MAX_VALUE)
+        val completedBatches = stockBatchDao.getBatchSummaries(startDate = 0L, endDate = Long.MAX_VALUE)
             .flowOn(Dispatchers.IO).distinctUntilChanged()
         return completedDispenses.combine(completedBatches, ::recentActivityItems)
     }
@@ -603,16 +601,16 @@ class DashboardViewModel @Inject constructor(
             return
         }
         try {
-            val syncedTransactions = pillCountTxnDao.getSyncedTransactions()
+            val syncedTransactions = dispenseTxnDao.getSyncedDispenses()
             logger.d("allowLocalStorage=false — cleaning up ${syncedTransactions.size} synced transactions")
 
             syncedTransactions.forEach { txn ->
                 val filesToDelete = mutableListOf<String>()
-                BottleInfoJson.decode(txn.bottleInfoListJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
-                filesToDelete.addAll(pillCountTxnDao.getTransactionDetailsImages(txn.txnId))
+                DispenseBottleJson.decode(txn.bottlesJson).mapNotNull { it.barcodeImagePath }.forEach { filesToDelete.add(it) }
+                filesToDelete.addAll(dispenseTxnDao.getTransactionDetailsImages(txn.txnId))
 
                 // Delete transaction (cascade deletes details)
-                pillCountTxnDao.deleteTransaction(txn.txnId)
+                dispenseTxnDao.deleteTransaction(txn.txnId)
 
                 filesToDelete.forEach { path ->
                     val file = File(path)
@@ -643,7 +641,7 @@ class DashboardViewModel @Inject constructor(
     }
 
     /**
-     * Stages a stock-count session for the chosen bucket. The BatchEntity is NOT
+     * Stages a stock-count session for the chosen bucket. The StockBatchEntity is NOT
      * inserted here — it's created lazily on the first NDC scan inside
      * InventoryScanViewModel, so a user who enters the inventory screen and leaves
      * without scanning never produces an empty batch row.

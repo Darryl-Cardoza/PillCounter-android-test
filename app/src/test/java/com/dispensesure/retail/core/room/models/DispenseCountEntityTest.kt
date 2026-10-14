@@ -7,15 +7,15 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PillCountTxnDetailsEntityTest {
+class DispenseCountEntityTest {
 
-    private fun sample() = PillCountTxnDetailsEntity(
-        txnDetailsId = 2L,
+    private fun sample() = DispenseCountEntity(
+        countId = 2L,
         txnId = 9L,
         pillCount = 15,
         imagePath = "img.png",
         rawImagePath = "img_raw.png",
-        type = "fixed",
+        step = "fixed",
         isManual = true,
         createdAt = 100L,
         updatedAt = 200L
@@ -23,13 +23,13 @@ class PillCountTxnDetailsEntityTest {
 
     @Test
     fun defaultValues() {
-        val e = PillCountTxnDetailsEntity()
-        assertEquals(0L, e.txnDetailsId)
+        val e = DispenseCountEntity()
+        assertEquals(0L, e.countId)
         assertNull(e.txnId)
         assertNull(e.pillCount)
         assertNull(e.imagePath)
         assertNull(e.rawImagePath)
-        assertNull(e.type)
+        assertNull(e.step)
         assertFalse(e.isManual)
         assertTrue(e.createdAt > 0L)
         assertTrue(e.updatedAt > 0L)
@@ -38,12 +38,12 @@ class PillCountTxnDetailsEntityTest {
     @Test
     fun getters() {
         val e = sample()
-        assertEquals(2L, e.txnDetailsId)
+        assertEquals(2L, e.countId)
         assertEquals(9L, e.txnId)
         assertEquals(15, e.pillCount)
         assertEquals("img.png", e.imagePath)
         assertEquals("img_raw.png", e.rawImagePath)
-        assertEquals("fixed", e.type)
+        assertEquals("fixed", e.step)
         assertTrue(e.isManual)
         assertEquals(100L, e.createdAt)
         assertEquals(200L, e.updatedAt)
@@ -53,12 +53,12 @@ class PillCountTxnDetailsEntityTest {
     fun equalsHashCode() {
         assertEquals(sample(), sample())
         assertEquals(sample().hashCode(), sample().hashCode())
-        assertNotEquals(sample(), sample().copy(txnDetailsId = 99L))
+        assertNotEquals(sample(), sample().copy(countId = 99L))
     }
 
     @Test
     fun toString_containsField() {
-        assertTrue(sample().toString().contains("txnDetailsId=2"))
+        assertTrue(sample().toString().contains("countId=2"))
     }
 
     @Test

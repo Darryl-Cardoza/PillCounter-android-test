@@ -10,7 +10,7 @@ import com.dispensesure.retail.core.room.models.enums.BatchStatus
  * By default, Room cannot store enums directly, so we persist them as
  * their enum constant [name] and reconstruct them during reads.
  */
-object BatchConverters {
+object StockBatchConverters {
 
     /* ────────────────────────────── BatchStatus ────────────────────────────── */
 

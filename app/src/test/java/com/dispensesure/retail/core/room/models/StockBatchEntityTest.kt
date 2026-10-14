@@ -8,9 +8,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class BatchEntityTest {
+class StockBatchEntityTest {
 
-    private fun sample() = BatchEntity(
+    private fun sample() = StockBatchEntity(
         batchId = 5L,
         startDateTime = 1000L,
         endDateTime = 2000L,
@@ -24,7 +24,7 @@ class BatchEntityTest {
 
     @Test
     fun defaultValues() {
-        val e = BatchEntity()
+        val e = StockBatchEntity()
         assertEquals(0L, e.batchId)
         assertTrue(e.startDateTime > 0L)
         assertNull(e.endDateTime)

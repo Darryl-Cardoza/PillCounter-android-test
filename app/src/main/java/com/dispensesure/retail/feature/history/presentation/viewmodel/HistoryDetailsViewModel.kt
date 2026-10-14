@@ -2,7 +2,7 @@ package com.dispensesure.retail.feature.history.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -23,7 +23,7 @@ import javax.inject.Inject
 @HiltViewModel
 class HistoryDetailsViewModel @Inject constructor(
     private val preferenceHelper: PreferenceHelper,
-    private val pillCountTxnDao: PillCountTxnDao
+    private val dispenseTxnDao: DispenseTxnDao
 ) : ViewModel() {
 
     private val logger = AppLogger.create<HistoryDetailsViewModel>()
@@ -38,7 +38,7 @@ class HistoryDetailsViewModel @Inject constructor(
     private fun getTransactionDetails() {
         viewModelScope.launch {
             try {
-                val txnInfo = pillCountTxnDao.getTxnWithDetails(preferenceHelper.getTxnId())
+                val txnInfo = dispenseTxnDao.getDispenseTxnDetail(preferenceHelper.getTxnId())
                 _uiState.update { currentState ->
                     currentState.copy(
                         txnInfo = txnInfo,
@@ -55,7 +55,7 @@ class HistoryDetailsViewModel @Inject constructor(
     fun deleteTransaction() {
         viewModelScope.launch {
             try {
-                pillCountTxnDao.softDelete(preferenceHelper.getTxnId())
+                dispenseTxnDao.softDelete(preferenceHelper.getTxnId())
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

@@ -1,10 +1,10 @@
 package com.dispensesure.retail.feature.dispenseFlow.viewmodel
 
 import android.content.Context
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
@@ -46,10 +46,7 @@ class DispenseFlowViewModelTest {
     private val drugRepository: IDrugRepository = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
-    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
-    private val batchDao: BatchDao = mockk(relaxed = true)
+    private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
     private val drugImageDownloader: DrugImageDownloader = mockk(relaxed = true)
 
     private lateinit var viewModel: DispenseFlowViewModel
@@ -61,7 +58,7 @@ class DispenseFlowViewModelTest {
             drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader),
             drugMasterDao = drugMasterDao,
             preferenceHelper = preferenceHelper,
-            pillCountTxnDao = pillCountTxnDao,
+            dispenseTxnDao = dispenseTxnDao,
         )
     }
 

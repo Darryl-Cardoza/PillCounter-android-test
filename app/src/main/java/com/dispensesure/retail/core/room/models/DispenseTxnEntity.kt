@@ -5,20 +5,19 @@ import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
-import com.dispensesure.retail.core.room.di.PillCountTxnConverters
+import com.dispensesure.retail.core.room.di.CountStatusConverters
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 
 /**
- * Entity representing a pill count transaction (header/master).
+ * Entity representing a dispense transaction (header/master).
  *
  * Each transaction can belong to a user and a drug. Both FKs are nullable
  * because `onDelete = SET_NULL` is used on the foreign keys.
  *
  * @property txnId        Auto-generated primary key.
- * @property localId       FK to [UserEntity.localId]. Null if the user is deleted.
+ * @property userLocalId  FK to [UserEntity.localId]. Null if the user is deleted.
  * @property drugId       FK to [DrugMasterEntity.drugId]. Null if the drug is deleted (type must match parent: Long?).
- * @property countType    How the count is performed (requires a TypeConverter).
  * @property targetCount  Expected/target count for reconciliation.
  * @property status       Transaction status (requires a TypeConverter).
  * @property note         Free-form note for the transaction.
@@ -31,12 +30,12 @@ import com.dispensesure.retail.core.room.models.enums.TxnPriority
  * @property updatedAt    Last update timestamp (epoch millis).
  */
 @Entity(
-    tableName = "pill_count_txn",
+    tableName = "dispense_txn",
     foreignKeys = [
         ForeignKey(
             entity = UserEntity::class,
             parentColumns = ["localId"],
-            childColumns = ["localId"],
+            childColumns = ["userLocalId"],
             onDelete = ForeignKey.SET_NULL
         ),
         ForeignKey(
@@ -53,21 +52,20 @@ import com.dispensesure.retail.core.room.models.enums.TxnPriority
         )
     ],
     indices = [
-        Index(value = ["localId"], name = "idx_txn_localId"),
-        Index(value = ["drugId"], name = "idx_txn_drugId"),
-        Index(value = ["substitutedDrugId"], name = "idx_txn_substitutedDrugId"),
+        Index(value = ["userLocalId"], name = "idx_dispense_txn_userLocalId"),
+        Index(value = ["drugId"], name = "idx_dispense_txn_drugId"),
+        Index(value = ["substitutedDrugId"], name = "idx_dispense_txn_substitutedDrugId"),
     ]
 )
 
-@TypeConverters(PillCountTxnConverters::class)
-data class PillCountTxnEntity(
+@TypeConverters(CountStatusConverters::class)
+data class DispenseTxnEntity(
     @PrimaryKey(autoGenerate = true)
     val txnId: Long = 0L,
 
-    val localId: Long? = null,
+    val userLocalId: Long? = null,
     val drugId: Long? = null,
 
-    val isDispense: Boolean,
     val targetCount: Int? = null,
     val status: CountStatus,
 
@@ -111,11 +109,11 @@ data class PillCountTxnEntity(
     val transactionOrderId: String? = null,
 
     /**
-     * JSON-encoded `List<BottleInfo>` — one entry per physical bottle scanned
+     * JSON-encoded `List<DispenseBottle>` — one entry per physical bottle scanned
      * against this transaction, with its own lot/exp/serial and pill count.
-     * See [com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson].
+     * See [com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson].
      */
-    val bottleInfoListJson: String? = null,
+    val bottlesJson: String? = null,
 
     /**
      * Operator name stamped when the count completes — the registered face user,

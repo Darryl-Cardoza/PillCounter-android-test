@@ -1,6 +1,6 @@
 package com.dispensesure.retail.core.utils.common
 
-import com.dispensesure.retail.core.room.models.dtos.StatusTypeCount
+import com.dispensesure.retail.core.room.models.dtos.DispenseStatusCount
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.navigation.AUTH_GRAPH_ROUTE
@@ -15,7 +15,7 @@ import org.junit.Test
  *  - maskEmail (all branches: null/blank, no/edge @, normal masking)
  *  - resolveStartDestinationAndClearIfExpired (logged-in vs not, threshold branches)
  *  - clearSessionIfNotRemembered (remember on/off, logged out)
- *  - mapCounts (all CountType x CountStatus combinations incl. else branch)
+ *  - mapCounts (every CountStatus incl. else branch)
  *
  * Android-dependent members (exitApp, enableImmersiveFullscreen, openPlayStore,
  * saveBitmapToFile, toGrayscaleBitmap) are NOT tested here — see the report's skip list.
@@ -195,37 +195,26 @@ class HelperFunctionsTest {
         val result = HelperFunctions.mapCounts(emptyList())
         assertEquals(0, result.fixedCompleted)
         assertEquals(0, result.fixedPartial)
-        assertEquals(0, result.regularCompleted)
-        assertEquals(0, result.regularPartial)
     }
 
     @Test
-    fun mapCounts_allCombinations_areMapped() {
+    fun mapCounts_completedAndPartial_areMapped() {
         val rows = listOf(
-            StatusTypeCount(CountStatus.COMPLETED, true, 1),
-            StatusTypeCount(CountStatus.PARTIAL, true, 2),
-            StatusTypeCount(CountStatus.COMPLETED, false, 3),
-            StatusTypeCount(CountStatus.PARTIAL, false, 4)
+            DispenseStatusCount(CountStatus.COMPLETED, 1),
+            DispenseStatusCount(CountStatus.PARTIAL, 2)
         )
         val result = HelperFunctions.mapCounts(rows)
         assertEquals(1, result.fixedCompleted)
         assertEquals(2, result.fixedPartial)
-        assertEquals(3, result.regularCompleted)
-        assertEquals(4, result.regularPartial)
     }
 
     @Test
     fun mapCounts_otherStatus_hitsElseBranch_andIsIgnored() {
-        // FORCE_COMPLETED falls through the inner else -> {} for both count types
-        val rows = listOf(
-            StatusTypeCount(CountStatus.FORCE_COMPLETED, true, 99),
-            StatusTypeCount(CountStatus.FORCE_COMPLETED, false, 88)
-        )
+        // FORCE_COMPLETED falls through the else -> {} branch
+        val rows = listOf(DispenseStatusCount(CountStatus.FORCE_COMPLETED, 99))
         val result = HelperFunctions.mapCounts(rows)
         assertEquals(0, result.fixedCompleted)
         assertEquals(0, result.fixedPartial)
-        assertEquals(0, result.regularCompleted)
-        assertEquals(0, result.regularPartial)
     }
 
 }

@@ -16,7 +16,7 @@ import android.view.View
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import androidx.core.net.toUri
-import com.dispensesure.retail.core.room.models.dtos.StatusTypeCount
+import com.dispensesure.retail.core.room.models.dtos.DispenseStatusCount
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.menu.domain.model.CountBuckets
@@ -129,38 +129,26 @@ object HelperFunctions {
     }
 
     /**
-     * Maps aggregated status and type counts into [CountBuckets] for dashboard visualization.
+     * Maps aggregated status counts into [CountBuckets] for dashboard visualization.
      *
-     * @param rows List of status-type aggregates.
-     * @return Structured [CountBuckets] separating fixed/regular and completed/partial counts.
+     * @param rows List of per-status dispense aggregates.
+     * @return Structured [CountBuckets] separating completed/partial dispense counts.
      */
-    fun mapCounts(rows: List<StatusTypeCount>): CountBuckets {
+    fun mapCounts(rows: List<DispenseStatusCount>): CountBuckets {
         var fixedCompleted = 0
         var fixedPartial = 0
-        var regularCompleted = 0
-        var regularPartial = 0
 
         rows.forEach { row ->
-            if (row.isDispense) {
-                when (row.status) {
-                    CountStatus.COMPLETED -> fixedCompleted = row.cnt
-                    CountStatus.PARTIAL -> fixedPartial = row.cnt
-                    else -> {}
-                }
-            } else {
-                when (row.status) {
-                    CountStatus.COMPLETED -> regularCompleted = row.cnt
-                    CountStatus.PARTIAL -> regularPartial = row.cnt
-                    else -> {}
-                }
+            when (row.status) {
+                CountStatus.COMPLETED -> fixedCompleted = row.cnt
+                CountStatus.PARTIAL -> fixedPartial = row.cnt
+                else -> {}
             }
         }
 
         return CountBuckets(
             fixedCompleted = fixedCompleted,
-            fixedPartial = fixedPartial,
-            regularCompleted = regularCompleted,
-            regularPartial = regularPartial
+            fixedPartial = fixedPartial
         )
     }
 

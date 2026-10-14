@@ -2,9 +2,9 @@ package com.dispensesure.retail.core.room.models.dtos
 
 import androidx.room.Relation
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
 
-data class TxnWithDetails(
+data class DispenseTxnDetail(
     val txnId: Long,
     val drugName: String?,
     val drugId: Long,
@@ -12,9 +12,8 @@ data class TxnWithDetails(
     val targetCount: Int?,
     val note: String?,
     val createdAt: Long,
-    val bottleInfoListJson: String?,
+    val bottlesJson: String?,
     val totalPillCount: Int,
-    val isDispense: Boolean,
     val drugType: String?,
     val strength: String? = null,
     val dosageForm: String? = null,
@@ -22,10 +21,10 @@ data class TxnWithDetails(
     @Relation(
         parentColumn = "txnId",
         entityColumn = "txnId",
-        entity = PillCountTxnDetailsEntity::class,
-        projection = ["txnDetailsId", "txnId", "pillCount", "imagePath", "type"]
+        entity = DispenseCountEntity::class,
+        projection = ["countId", "txnId", "pillCount", "imagePath", "step"]
     )
-    val txnDetails: List<TxnDetailInfo>,
+    val counts: List<DispenseCountInfo>,
     val isComingFromHL7 : Boolean,
     val isSubstitute: Boolean = false,
     val requestedDrugName: String? = null,
@@ -34,10 +33,10 @@ data class TxnWithDetails(
     val drugImage: String? = "",
 )
 
-data class TxnDetailInfo(
-    val txnDetailsId: Long = 0L,
+data class DispenseCountInfo(
+    val countId: Long = 0L,
     val txnId: Long?,
     val pillCount: Int?,
     val imagePath: String?,
-    val type: StepState?,
+    val step: StepState?,
 )

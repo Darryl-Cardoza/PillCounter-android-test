@@ -7,69 +7,69 @@ import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
-import com.dispensesure.retail.core.room.models.dtos.StatusTypeCount
-import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
+import com.dispensesure.retail.core.room.models.dtos.DispenseStatusCount
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.tourguide.TutorialData
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import kotlinx.coroutines.flow.Flow
 
-private val logger = AppLogger("PillCountTxnDao")
+private val logger = AppLogger("DispenseTxnDao")
 
 /**
- * **Pill Count Transaction Data Access Object**
+ * **Dispense Transaction Data Access Object**
  *
- * Provides database operations for managing [PillCountTxnEntity] entries — the transactional
+ * Provides database operations for managing [DispenseTxnEntity] entries — the transactional
  * headers representing each pill counting event.
  *
  * ---
  * ### Key Design Principles
  * - **Txn ID Stability:** Transaction primary keys (`txnId`) must remain persistent
- *   to preserve foreign key relationships in related tables (e.g., `pill_count_txn_details`).
+ *   to preserve foreign key relationships in related tables (e.g., `dispense_count`).
  * - **Safe Upserts:** Avoid destructive operations such as `REPLACE` which delete and recreate rows.
  * - **Reactive Observability:** Queries returning [Flow] provide live updates for dashboards or lists.
  * - **Soft Delete Policy:** Records are not physically deleted unless explicitly required.
  *
  * ---
  * ### Associated Tables
- * - `pill_count_txn` — Main transaction header table.
- * - `pill_count_txn_details` — Line-level pill count details.
+ * - `dispense_txn` — Main transaction header table.
+ * - `dispense_count` — Line-level pill count details.
  * - `drug_master` — Reference table for drug metadata.
  */
 @Dao
-interface PillCountTxnDao {
+interface DispenseTxnDao {
 
     // ────────────────────────────── Create / Update ──────────────────────────────
 
     /**
-     * Inserts a new [PillCountTxnEntity] into the database.
+     * Inserts a new [DispenseTxnEntity] into the database.
      *
      * - Uses [OnConflictStrategy.IGNORE] to prevent overwriting existing transactions.
-     * - If a transaction with the same [PillCountTxnEntity.txnId] already exists,
+     * - If a transaction with the same [DispenseTxnEntity.txnId] already exists,
      *   the operation will be ignored and return `-1`.
      *
      * @param txn The transaction entity to insert.
      * @return The new row ID (txnId) if inserted successfully, or `-1` if a conflict occurred.
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertIgnore(txn: PillCountTxnEntity): Long
+    suspend fun insertIgnore(txn: DispenseTxnEntity): Long
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertAll(txns: List<PillCountTxnEntity>): List<Long>
+    suspend fun insertAll(txns: List<DispenseTxnEntity>): List<Long>
 
     /**
-     * Updates an existing transaction entry matched by its [PillCountTxnEntity.txnId].
+     * Updates an existing transaction entry matched by its [DispenseTxnEntity.txnId].
      *
      * @param txn The modified transaction entity.
      */
     @Update
-    suspend fun update(txn: PillCountTxnEntity)
+    suspend fun update(txn: DispenseTxnEntity)
 
     /**
      * Performs a **safe upsert** (insert or update) while preserving the [txnId].
@@ -78,11 +78,11 @@ interface PillCountTxnDao {
      * Otherwise, a new transaction row is inserted.
      *
      * @param txn The transaction to insert or update.
-     * @return The stable [PillCountTxnEntity.txnId] of the inserted or updated record.
+     * @return The stable [DispenseTxnEntity.txnId] of the inserted or updated record.
      * @throws IllegalStateException if the insert fails unexpectedly.
      */
     @Transaction
-    suspend fun upsertPreservingId(txn: PillCountTxnEntity): Long {
+    suspend fun upsertPreservingId(txn: DispenseTxnEntity): Long {
         return try {
             if (txn.txnId != 0L) {
                 val existing = getById(txn.txnId)
@@ -115,17 +115,17 @@ interface PillCountTxnDao {
      * Fetches a transaction entity by its primary key.
      *
      * @param id The unique transaction ID.
-     * @return The matching [PillCountTxnEntity] if found, or `null` otherwise.
+     * @return The matching [DispenseTxnEntity] if found, or `null` otherwise.
      */
-    @Query("SELECT * FROM pill_count_txn WHERE txnId = :id LIMIT 1")
-    suspend fun getById(id: Long): PillCountTxnEntity?
+    @Query("SELECT * FROM dispense_txn WHERE txnId = :id LIMIT 1")
+    suspend fun getById(id: Long): DispenseTxnEntity?
 
     /**
      * Emits the transaction whenever its row changes. Used to keep reset availability
      * live — a count can sync while the counting screen is still up.
      */
-    @Query("SELECT * FROM pill_count_txn WHERE txnId = :id LIMIT 1")
-    fun observeById(id: Long): Flow<PillCountTxnEntity?>
+    @Query("SELECT * FROM dispense_txn WHERE txnId = :id LIMIT 1")
+    fun observeById(id: Long): Flow<DispenseTxnEntity?>
 
     /**
      * Observes all **partial transactions** for a specific [CountType],
@@ -136,18 +136,17 @@ interface PillCountTxnDao {
      *
      * @param countType The count type (e.g., CYCLE_COUNT, SPOT_COUNT).
      * @param partialStatus Optional filter, defaults to [CountStatus.PARTIAL].
-     * @return A [Flow] emitting a live list of [PillCountWithDrugAndTotal].
+     * @return A [Flow] emitting a live list of [DispenseTxnWithDrug].
      */
     @Query(
         """
     SELECT txn.txnId,
            txn.createdAt,
            txn.targetCount,
-           txn.bottleInfoListJson,
+           txn.bottlesJson,
            txn.isComingFromHL7,
            txn.isNdcVerified,
            txn.bucketId,
-           txn.isDispense,
            txn.rxNo,
            txn.refillNo,
            txn.priority,
@@ -166,18 +165,17 @@ interface PillCountTxnDao {
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
                 THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
-    FROM pill_count_txn AS txn
+    FROM dispense_txn AS txn
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
     LEFT JOIN drug_master AS subDrug
            ON txn.substitutedDrugId = subDrug.drugId
-    LEFT JOIN pill_count_txn_details AS details
+    LEFT JOIN dispense_count AS details
            ON txn.txnId = details.txnId
-          AND details.type = :type
+          AND details.step = :step
     WHERE txn.isDeleted = 0
       AND txn.status = :partialStatus
-      AND txn.isDispense = :isDispense
-      AND txn.localId = :userLocalId
+      AND txn.userLocalId = :userLocalId
       AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
       AND (drug.ndc IS NULL OR drug.ndc != '${TutorialData.DEMO_NDC}')
     GROUP BY txn.txnId
@@ -191,12 +189,11 @@ interface PillCountTxnDao {
     """
     )
 
-    fun observePartialByIsDispense(
-        isDispense: Boolean,
+    fun observePartialDispenses(
         partialStatus: CountStatus = CountStatus.PARTIAL,
         userLocalId: Long,
-        type: StepState
-    ): Flow<List<PillCountWithDrugAndTotal>>
+        step: StepState
+    ): Flow<List<DispenseTxnWithDrug>>
 
     // ───────────────────────────── Field Updates ─────────────────────────────
 
@@ -207,7 +204,7 @@ interface PillCountTxnDao {
      * @param target The new target count, or `null` to clear.
      * @param now Optional timestamp; defaults to [System.currentTimeMillis].
      */
-    @Query("UPDATE pill_count_txn SET targetCount = :target, updatedAt = :now WHERE txnId = :txnId")
+    @Query("UPDATE dispense_txn SET targetCount = :target, updatedAt = :now WHERE txnId = :txnId")
     suspend fun updateTargetCount(
         txnId: Long,
         target: Int?,
@@ -221,7 +218,7 @@ interface PillCountTxnDao {
      * @param note The note text (nullable).
      * @param now Optional timestamp; defaults to [System.currentTimeMillis].
      */
-    @Query("UPDATE pill_count_txn SET note = :note, updatedAt = :now WHERE txnId = :txnId")
+    @Query("UPDATE dispense_txn SET note = :note, updatedAt = :now WHERE txnId = :txnId")
     suspend fun updateNote(
         txnId: Long,
         note: String?,
@@ -232,13 +229,13 @@ interface PillCountTxnDao {
      * Persists the JSON-encoded per-bottle info list for a transaction.
      *
      * @param txnId The transaction ID.
-     * @param bottleInfoListJson JSON-encoded `List<BottleInfo>` (see `BottleInfoJson.encode`).
+     * @param bottlesJson JSON-encoded `List<DispenseBottle>` (see `DispenseBottleJson.encode`).
      * @param now Optional timestamp; defaults to [System.currentTimeMillis].
      */
-    @Query("UPDATE pill_count_txn SET bottleInfoListJson = :bottleInfoListJson, updatedAt = :now WHERE txnId = :txnId")
-    suspend fun updateBottleInfoList(
+    @Query("UPDATE dispense_txn SET bottlesJson = :bottlesJson, updatedAt = :now WHERE txnId = :txnId")
+    suspend fun updateBottles(
         txnId: Long,
-        bottleInfoListJson: String,
+        bottlesJson: String,
         now: Long = System.currentTimeMillis()
     )
 
@@ -249,13 +246,13 @@ interface PillCountTxnDao {
      * @param txnId The transaction ID.
      * @param now Optional timestamp; defaults to [System.currentTimeMillis].
      */
-    @Query("UPDATE pill_count_txn SET isDeleted = 1, updatedAt = :now WHERE txnId = :txnId")
+    @Query("UPDATE dispense_txn SET isDeleted = 1, updatedAt = :now WHERE txnId = :txnId")
     suspend fun softDelete(
         txnId: Long,
         now: Long = System.currentTimeMillis()
     )
 
-    @Query("UPDATE pill_count_txn SET isDeleted = 1, updatedAt = :now WHERE rxNo = :rxNo AND isDeleted = 0")
+    @Query("UPDATE dispense_txn SET isDeleted = 1, updatedAt = :now WHERE rxNo = :rxNo AND isDeleted = 0")
     suspend fun softDeleteByRxNo(
         rxNo: String,
         now: Long = System.currentTimeMillis()
@@ -263,18 +260,18 @@ interface PillCountTxnDao {
 
     @Query(
         """
-        SELECT * FROM pill_count_txn
+        SELECT * FROM dispense_txn
         WHERE rxNo = :rxNo
           AND isDeleted = 1
         ORDER BY updatedAt DESC
         LIMIT 1
         """
     )
-    suspend fun getDeletedByRxNo(rxNo: String): PillCountTxnEntity?
+    suspend fun getDeletedByRxNo(rxNo: String): DispenseTxnEntity?
 
     @Query(
         """
-        UPDATE pill_count_txn
+        UPDATE dispense_txn
         SET isDeleted   = 0,
             status      = 'PARTIAL',
             updatedAt   = :now
@@ -293,11 +290,11 @@ interface PillCountTxnDao {
      * the existing transaction rather than creating a duplicate.
      *
      * @param rxNo The prescription number from the incoming HL7 message.
-     * @return The matching [PillCountTxnEntity] if one exists, or `null`.
+     * @return The matching [DispenseTxnEntity] if one exists, or `null`.
      */
     @Query(
         """
-        SELECT * FROM pill_count_txn
+        SELECT * FROM dispense_txn
         WHERE rxNo    = :rxNo
           AND isDeleted = 0
           AND status  IN ('PARTIAL', 'ON_HOLD')
@@ -305,31 +302,31 @@ interface PillCountTxnDao {
         LIMIT 1
         """
     )
-    suspend fun getActiveByRxNo(rxNo: String): PillCountTxnEntity?
+    suspend fun getActiveByRxNo(rxNo: String): DispenseTxnEntity?
 
     // ─────────────────────────── IMAGE SERVER LOOKUPS ───────────────────────────
     // Backing lookups for ImageNanoServer's getby* endpoints — same underlying
     // transaction/image data, just keyed differently per the caller (Vivid/Eyecon).
 
-    @Query("SELECT * FROM pill_count_txn WHERE hl7MessageControlId = :messageControlId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
-    suspend fun getByMessageControlId(messageControlId: String): PillCountTxnEntity?
+    @Query("SELECT * FROM dispense_txn WHERE hl7MessageControlId = :messageControlId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByMessageControlId(messageControlId: String): DispenseTxnEntity?
 
-    @Query("SELECT * FROM pill_count_txn WHERE hl7SequenceNumber = :sequenceNumber AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
-    suspend fun getBySequenceNumber(sequenceNumber: String): PillCountTxnEntity?
+    @Query("SELECT * FROM dispense_txn WHERE hl7SequenceNumber = :sequenceNumber AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getBySequenceNumber(sequenceNumber: String): DispenseTxnEntity?
 
-    @Query("SELECT * FROM pill_count_txn WHERE transactionOrderId = :transactionOrderId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
-    suspend fun getByTransactionOrderId(transactionOrderId: String): PillCountTxnEntity?
+    @Query("SELECT * FROM dispense_txn WHERE transactionOrderId = :transactionOrderId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByTransactionOrderId(transactionOrderId: String): DispenseTxnEntity?
 
-    @Query("SELECT * FROM pill_count_txn WHERE rxNo = :rxNo AND refillNo = :fillNo AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
-    suspend fun getByRxNoAndFillNo(rxNo: String, fillNo: String): PillCountTxnEntity?
+    @Query("SELECT * FROM dispense_txn WHERE rxNo = :rxNo AND refillNo = :fillNo AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByRxNoAndFillNo(rxNo: String, fillNo: String): DispenseTxnEntity?
 
     // Same Rx from the same HL7 message (MSH-10) — detects a PMS resend.
-    @Query("SELECT * FROM pill_count_txn WHERE rxNo = :rxNo AND hl7MessageControlId = :messageControlId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
-    suspend fun getByRxNoAndMessageControlId(rxNo: String, messageControlId: String): PillCountTxnEntity?
+    @Query("SELECT * FROM dispense_txn WHERE rxNo = :rxNo AND hl7MessageControlId = :messageControlId AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getByRxNoAndMessageControlId(rxNo: String, messageControlId: String): DispenseTxnEntity?
 
     /** Most recent transaction for [rxNo], regardless of fill number — used when no fill number is supplied. */
-    @Query("SELECT * FROM pill_count_txn WHERE rxNo = :rxNo AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
-    suspend fun getMostRecentByRxNo(rxNo: String): PillCountTxnEntity?
+    @Query("SELECT * FROM dispense_txn WHERE rxNo = :rxNo AND isDeleted = 0 ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getMostRecentByRxNo(rxNo: String): DispenseTxnEntity?
 
     /**
      * Applies an HL7 change-order (ORC|XO) edit to an existing transaction:
@@ -344,7 +341,7 @@ interface PillCountTxnDao {
      */
     @Query(
         """
-        UPDATE pill_count_txn
+        UPDATE dispense_txn
         SET drugId      = :drugId,
             targetCount = :targetCount,
             priority    = :priority,
@@ -365,7 +362,7 @@ interface PillCountTxnDao {
 
     @Query(
         """
-        UPDATE pill_count_txn
+        UPDATE dispense_txn
         SET status    = :status,
             updatedAt = :now
         WHERE transactionOrderId = :orderId
@@ -381,7 +378,7 @@ interface PillCountTxnDao {
 
     @Query(
         """
-        UPDATE pill_count_txn
+        UPDATE dispense_txn
         SET status    = :status,
             updatedAt = :now
         WHERE transactionOrderId = :orderId
@@ -395,49 +392,48 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
-    @Query("UPDATE pill_count_txn SET isDeleted = 1, updatedAt = :now WHERE transactionOrderId = :orderId AND isDeleted = 0")
+    @Query("UPDATE dispense_txn SET isDeleted = 1, updatedAt = :now WHERE transactionOrderId = :orderId AND isDeleted = 0")
     suspend fun softDeleteByOrderId(
         orderId: String,
         now: Long = System.currentTimeMillis()
     )
 
-    @Query("DELETE FROM pill_count_txn")
+    @Query("DELETE FROM dispense_txn")
     suspend fun deleteAllTransactions()
 
     // ─────────────────────────────── Relations ───────────────────────────────
 
     /**
-     * Observes a summary count of transactions grouped by [CountStatus] and [CountType].
+     * Observes a summary count of transactions grouped by [CountStatus].
      *
      * Used for real-time dashboard tiles showing how many transactions are
-     * "Pending", "Partial", "Completed", etc., for each counting type.
+     * "Pending", "Partial", "Completed", etc.
      *
-     * @return A [Flow] emitting lists of [StatusTypeCount] aggregates.
+     * @return A [Flow] emitting lists of [DispenseStatusCount] aggregates.
      */
     @Query(
         """
     SELECT status AS status,
-           isDispense AS isDispense,
            COUNT(*) AS cnt
-    FROM pill_count_txn
+    FROM dispense_txn
     WHERE isDeleted = 0
-      AND localId = :userLocalId
+      AND userLocalId = :userLocalId
       AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
       AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
-    GROUP BY status, isDispense
+    GROUP BY status
     """
     )
-    fun observeDashboardCountsGrouped(userLocalId: Long): Flow<List<StatusTypeCount>>
+    fun observeDashboardCountsGrouped(userLocalId: Long): Flow<List<DispenseStatusCount>>
 
     /**
      * Retrieves a detailed transaction with its associated drug and total pill count.
      *
      * Joins data from:
      * - `drug_master` for drug name and NDC.
-     * - `pill_count_txn_details` for individual pill counts.
+     * - `dispense_count` for individual pill counts.
      *
      * @param transactionId The ID of the transaction to fetch.
-     * @return A [TxnWithDetails] DTO containing enriched transaction data, or `null` if not found.
+     * @return A [DispenseTxnDetail] DTO containing enriched transaction data, or `null` if not found.
      */
     @Transaction
     @Query(
@@ -453,9 +449,8 @@ interface PillCountTxnDao {
         pct.targetCount,
         pct.note,
         pct.createdAt,
-        pct.bottleInfoListJson,
+        pct.bottlesJson,
         pct.isComingFromHL7,
-        pct.isDispense,
         CASE WHEN pct.isSubstitute = 1 AND subDrug.drugType IS NOT NULL
              THEN subDrug.drugType ELSE dm.drugType END AS drugType,
         CASE WHEN pct.isSubstitute = 1 AND subDrug.strength IS NOT NULL
@@ -470,20 +465,20 @@ interface PillCountTxnDao {
         pct.workflowStep,
         CASE WHEN pct.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
              THEN subDrug.drugImagePath ELSE dm.drugImagePath END AS drugImage
-    FROM pill_count_txn AS pct
+    FROM dispense_txn AS pct
     LEFT JOIN drug_master AS dm
         ON pct.drugId = dm.drugId
     LEFT JOIN drug_master AS subDrug
         ON pct.substitutedDrugId = subDrug.drugId
-    LEFT JOIN pill_count_txn_details AS pcd
+    LEFT JOIN dispense_count AS pcd
         ON pct.txnId = pcd.txnId
     WHERE pct.txnId = :transactionId AND pct.isDeleted = 0
     GROUP BY pct.txnId
     """
     )
-    suspend fun getTxnWithDetails(transactionId: Long): TxnWithDetails?
+    suspend fun getDispenseTxnDetail(transactionId: Long): DispenseTxnDetail?
 
-    @Query("UPDATE pill_count_txn SET workflowStep = :step, updatedAt = :now WHERE txnId = :txnId")
+    @Query("UPDATE dispense_txn SET workflowStep = :step, updatedAt = :now WHERE txnId = :txnId")
     suspend fun updateWorkflowStep(
         txnId: Long,
         step: String,
@@ -496,10 +491,10 @@ interface PillCountTxnDao {
      */
     @Query(
         """
-    UPDATE pill_count_txn SET
+    UPDATE dispense_txn SET
         isNdcVerified = 0,
         workflowStep = NULL,
-        bottleInfoListJson = NULL,
+        bottlesJson = NULL,
         isSubstitute = 0,
         substitutedDrugId = NULL,
         hazardousTrayDetected = NULL,
@@ -510,7 +505,7 @@ interface PillCountTxnDao {
     )
     suspend fun resetForRecount(txnId: Long, now: Long = System.currentTimeMillis())
 
-    @Query("UPDATE pill_count_txn SET hl7MessageControlId = :messageControlId, updatedAt = :now WHERE txnId = :txnId")
+    @Query("UPDATE dispense_txn SET hl7MessageControlId = :messageControlId, updatedAt = :now WHERE txnId = :txnId")
     suspend fun updateHl7MessageControlId(
         txnId: Long,
         messageControlId: String,
@@ -519,7 +514,7 @@ interface PillCountTxnDao {
 
     @Query(
         """
-        UPDATE pill_count_txn
+        UPDATE dispense_txn
         SET operatorFirstName = :firstName, operatorLastName = :lastName, updatedAt = :now
         WHERE txnId = :txnId
         """
@@ -531,14 +526,14 @@ interface PillCountTxnDao {
         now: Long = System.currentTimeMillis()
     )
 
-    @Query("UPDATE pill_count_txn SET isGlovesPresent = :value, updatedAt = :now WHERE txnId = :txnId")
+    @Query("UPDATE dispense_txn SET isGlovesPresent = :value, updatedAt = :now WHERE txnId = :txnId")
     suspend fun updateGlovesPresent(
         txnId: Long,
         value: Boolean,
         now: Long = System.currentTimeMillis()
     )
 
-    @Query("UPDATE pill_count_txn SET hazardousTrayDetected = :detected, updatedAt = :now WHERE txnId = :txnId")
+    @Query("UPDATE dispense_txn SET hazardousTrayDetected = :detected, updatedAt = :now WHERE txnId = :txnId")
     suspend fun updateHazardousTrayDetected(
         txnId: Long,
         detected: Boolean,
@@ -553,7 +548,7 @@ interface PillCountTxnDao {
      * @param newStatus The new status value.
      * @param updatedAt Optional timestamp; defaults to [System.currentTimeMillis].
      */
-    @Query("UPDATE pill_count_txn SET status = :newStatus, updatedAt = :updatedAt WHERE txnId = :txnId")
+    @Query("UPDATE dispense_txn SET status = :newStatus, updatedAt = :updatedAt WHERE txnId = :txnId")
     suspend fun updateTxnStatus(
         txnId: Long,
         newStatus: CountStatus,
@@ -567,20 +562,19 @@ interface PillCountTxnDao {
      *
      * @param startOfDay Start timestamp (inclusive).
      * @param endOfDay End timestamp (exclusive).
-     * @return A [Flow] emitting a list of [TxnWithDrugDto] for the date window.
+     * @return A [Flow] emitting a list of [DispenseTxnSummary] for the date window.
      */
     @Query(
         """
     SELECT
         txn.txnId,
-        txn.isDispense,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
              THEN subDrug.drugName ELSE drug.drugName END AS drugName,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
              THEN subDrug.ndc ELSE drug.ndc END AS ndc,
-        txn.bottleInfoListJson,
+        txn.bottlesJson,
         txn.createdAt,
         txn.targetCount,
         txn.note,
@@ -595,8 +589,8 @@ interface PillCountTxnDao {
              THEN subDrug.dosageForm ELSE drug.dosageForm END AS dosageForm,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
              THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath
-    FROM pill_count_txn AS txn
-    LEFT JOIN pill_count_txn_details AS details
+    FROM dispense_txn AS txn
+    LEFT JOIN dispense_count AS details
            ON txn.txnId = details.txnId
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
@@ -605,7 +599,6 @@ interface PillCountTxnDao {
     WHERE txn.createdAt >= :startOfDay
       AND txn.createdAt < :endOfDay
       AND txn.isDeleted = 0
-      AND (:isDispense IS NULL OR txn.isDispense = :isDispense)
       AND (:status IS NULL OR txn.status = :status)
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
@@ -614,22 +607,20 @@ interface PillCountTxnDao {
     fun getTransactionsWithDrugByDate(
         startOfDay: Long,
         endOfDay: Long,
-        isDispense: Boolean?,
         status: CountStatus?
-    ): Flow<List<TxnWithDrugDto>>
+    ): Flow<List<DispenseTxnSummary>>
 
     @Query(
         """
     SELECT
         txn.txnId,
-        txn.isDispense,
         txn.status,
         COALESCE(SUM(details.pillCount), 0) AS pillCount,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
              THEN subDrug.drugName ELSE drug.drugName END AS drugName,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.ndc IS NOT NULL
              THEN subDrug.ndc ELSE drug.ndc END AS ndc,
-        txn.bottleInfoListJson,
+        txn.bottlesJson,
         txn.createdAt,
         txn.targetCount,
         txn.note,
@@ -644,18 +635,17 @@ interface PillCountTxnDao {
              THEN subDrug.dosageForm ELSE drug.dosageForm END AS dosageForm,
         CASE WHEN txn.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
              THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath
-    FROM pill_count_txn AS txn
-    LEFT JOIN pill_count_txn_details AS details
+    FROM dispense_txn AS txn
+    LEFT JOIN dispense_count AS details
            ON txn.txnId = details.txnId
-           AND (:stepType IS NULL OR details.type = :stepType)
+           AND (:stepType IS NULL OR details.step = :stepType)
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
     LEFT JOIN drug_master AS subDrug
            ON txn.substitutedDrugId = subDrug.drugId
     WHERE txn.createdAt BETWEEN :startDate AND :endDate
       AND txn.isDeleted = 0
-      AND txn.localId = :userLocalId
-      AND (:isDispense IS NULL OR txn.isDispense = :isDispense)
+      AND txn.userLocalId = :userLocalId
       AND (:status IS NULL OR txn.status = :status)
       AND (drug.ndc IS NULL OR drug.ndc != :excludeNdc)
       AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
@@ -667,11 +657,10 @@ interface PillCountTxnDao {
         startDate: Long,
         endDate: Long,
         stepType: StepState?,
-        isDispense: Boolean?,
         status: CountStatus?,
         userLocalId: Long,
         excludeNdc: String = TutorialData.DEMO_NDC
-    ): Flow<List<TxnWithDrugDto>>
+    ): Flow<List<DispenseTxnSummary>>
 
 
     // ─────────────────────────────── Deletes ───────────────────────────────
@@ -684,11 +673,10 @@ interface PillCountTxnDao {
      */
     @Query(
         """
-    DELETE FROM pill_count_txn
+    DELETE FROM dispense_txn
     WHERE createdAt >= :start
       AND createdAt < :end
-      AND localId = :userLocalId
-      AND (:isDispense IS NULL OR isDispense = :isDispense)
+      AND userLocalId = :userLocalId
       AND (
         :isCompleted IS NULL
         OR (:isCompleted = 1 AND (status = :completedStatus OR status = :forceCompletedStatus))
@@ -699,7 +687,6 @@ interface PillCountTxnDao {
     suspend fun deleteTransactionsByDate(
         start: Long,
         end: Long,
-        isDispense: Boolean?,
         isCompleted: Boolean?,
         userLocalId: Long,
         completedStatus: CountStatus = CountStatus.COMPLETED,
@@ -712,21 +699,20 @@ interface PillCountTxnDao {
      * transactions are excluded from retention-based cleanup.
      *
      * @param cutoff Timestamp before which records will be selected.
-     * @return A list of [PillCountTxnEntity].
+     * @return A list of [DispenseTxnEntity].
      */
-    @Query("SELECT * FROM pill_count_txn WHERE createdAt < :cutoff AND (status = 'COMPLETED' OR status = 'FORCE_COMPLETED')")
-    suspend fun getTransactionsBefore(cutoff: Long): List<PillCountTxnEntity>
+    @Query("SELECT * FROM dispense_txn WHERE createdAt < :cutoff AND (status = 'COMPLETED' OR status = 'FORCE_COMPLETED')")
+    suspend fun getTransactionsBefore(cutoff: Long): List<DispenseTxnEntity>
 
     /**
      * Retrieves all dispense transactions that have already been synced with the PMS.
      * Used by the launch-time cleanup pass to remove synced transactions from local storage
      * when the server's `allow_local_storage` flag is false.
      *
-     * @param countType Restricts to dispense (FIXED) transactions.
-     * @return A list of synced [PillCountTxnEntity].
+     * @return A list of synced [DispenseTxnEntity].
      */
-    @Query("SELECT * FROM pill_count_txn WHERE isSynced = 1 AND isDispense = :isDispense")
-    suspend fun getSyncedTransactions(isDispense: Boolean = true): List<PillCountTxnEntity>
+    @Query("SELECT * FROM dispense_txn WHERE isSynced = 1")
+    suspend fun getSyncedDispenses(): List<DispenseTxnEntity>
 
     /**
      * Retrieves the file paths of images linked to all transaction details under a given transaction.
@@ -736,9 +722,9 @@ interface PillCountTxnDao {
      */
     @Query(
         """
-        SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId AND imagePath IS NOT NULL
+        SELECT imagePath FROM dispense_count WHERE txnId = :txnId AND imagePath IS NOT NULL
         UNION ALL
-        SELECT rawImagePath FROM pill_count_txn_details WHERE txnId = :txnId AND rawImagePath IS NOT NULL
+        SELECT rawImagePath FROM dispense_count WHERE txnId = :txnId AND rawImagePath IS NOT NULL
         """
     )
     suspend fun getTransactionDetailsImages(txnId: Long): List<String>
@@ -750,13 +736,13 @@ interface PillCountTxnDao {
      *
      * @param txnId The transaction ID to delete.
      */
-    @Query("DELETE FROM pill_count_txn WHERE txnId = :txnId")
+    @Query("DELETE FROM dispense_txn WHERE txnId = :txnId")
     suspend fun deleteTransaction(txnId: Long)
 
     /** Tutorial txns by durable marker: demo drug, or Rx prefix (survives the drug row being gone). */
     @Query(
         """
-        SELECT txnId FROM pill_count_txn
+        SELECT txnId FROM dispense_txn
         WHERE rxNo LIKE '${TutorialData.RX_PREFIX}%'
            OR drugId IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}')
         """
@@ -769,9 +755,9 @@ interface PillCountTxnDao {
      * to trigger [Hl7Repository.resendPendingHl7Transactions][com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository.resendPendingHl7Transactions]
      * on emission, so its filter must match that query's [getPendingHl7TxnOnce] exactly.
      *
-     * Selects on isDispense, not isComingFromHL7, for the same reason [getPendingHl7TxnOnce]
-     * does: gating on isComingFromHL7 = 1 made this Flow blind to a locally-scanned dispense
-     * (isComingFromHL7 = 0, isDispense = 1) whose send failed — nothing would ever wake the
+     * Doesn't filter on isComingFromHL7, for the same reason [getPendingHl7TxnOnce]
+     * doesn't: gating on isComingFromHL7 = 1 made this Flow blind to a locally-scanned dispense
+     * (isComingFromHL7 = 0) whose send failed — nothing would ever wake the
      * resend sweep for it, and it stayed unsynced until an unrelated HL7-originated row
      * happened to change and wake the flow instead.
      *
@@ -783,9 +769,8 @@ interface PillCountTxnDao {
     @Query(
         """
     SELECT *
-    FROM pill_count_txn
+    FROM dispense_txn
     WHERE isDeleted = 0
-      AND isDispense = 1
       AND status = :completedStatus
       AND (isSynced IS NULL OR isSynced = 0)
       AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
@@ -794,23 +779,22 @@ interface PillCountTxnDao {
     )
     fun observePendingHl7Txn(
         completedStatus: CountStatus = CountStatus.COMPLETED
-    ): Flow<List<PillCountTxnEntity>>
+    ): Flow<List<DispenseTxnEntity>>
 
 
     /**
      * One-shot fetch (non-reactive) for resend-on-connect logic.
      *
-     * Selects on isDispense, not isComingFromHL7: the consumer only ever sends dispense
-     * messages, and requiring isComingFromHL7 = 1 silently excluded dispenses started by
+     * Doesn't filter on isComingFromHL7: every row here is a dispense, and requiring
+     * isComingFromHL7 = 1 silently excluded dispenses started by
      * scanning an Rx label on the device — those are 0, so they stayed unsynced forever and
      * the PMS never received them.
      */
     @Query(
         """
         SELECT *
-        FROM pill_count_txn
+        FROM dispense_txn
         WHERE isDeleted = 0
-          AND isDispense = 1
           AND status = :completedStatus
           AND (isSynced IS NULL OR isSynced = 0)
           AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = :excludeNdc))
@@ -821,7 +805,7 @@ interface PillCountTxnDao {
     suspend fun getPendingHl7TxnOnce(
         completedStatus: CountStatus = CountStatus.COMPLETED,
         excludeNdc: String = TutorialData.DEMO_NDC
-    ): List<PillCountTxnEntity>
+    ): List<DispenseTxnEntity>
 
 
     /**
@@ -829,7 +813,7 @@ interface PillCountTxnDao {
      */
     @Query(
         """
-        UPDATE pill_count_txn
+        UPDATE dispense_txn
         SET isSynced = 1,
             updatedAt = :now
         WHERE txnId = :txnId
@@ -843,7 +827,7 @@ interface PillCountTxnDao {
 
     @Query(
         """
-    UPDATE pill_count_txn
+    UPDATE dispense_txn
     SET
         status = :status,
         isSynced = 0,
@@ -862,11 +846,10 @@ interface PillCountTxnDao {
     SELECT txn.txnId,
            txn.createdAt,
            txn.targetCount,
-           txn.bottleInfoListJson,
+           txn.bottlesJson,
            txn.isComingFromHL7,
            txn.isNdcVerified,
            txn.bucketId,
-           txn.isDispense,
            txn.rxNo,
            txn.refillNo,
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugName IS NOT NULL
@@ -884,34 +867,32 @@ interface PillCountTxnDao {
            CASE WHEN txn.isSubstitute = 1 AND subDrug.drugImagePath IS NOT NULL
                 THEN subDrug.drugImagePath ELSE drug.drugImagePath END AS drugImagePath,
            IFNULL(SUM(details.pillCount), 0) AS totalPillCount
-    FROM pill_count_txn AS txn
+    FROM dispense_txn AS txn
     LEFT JOIN drug_master AS drug
            ON txn.drugId = drug.drugId
     LEFT JOIN drug_master AS subDrug
            ON txn.substitutedDrugId = subDrug.drugId
-    LEFT JOIN pill_count_txn_details AS details
+    LEFT JOIN dispense_count AS details
            ON txn.txnId = details.txnId
-          AND details.type = :type
+          AND details.step = :step
     WHERE txn.isDeleted = 0
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)
-      AND txn.isDispense = :isDispense
       AND txn.isSynced = 0
       AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
     )
-    fun observeUnsyncedByIsDispense(
-        isDispense: Boolean,
+    fun observeUnsyncedDispenses(
         completeStatus: CountStatus = CountStatus.COMPLETED,
         forceCompleteStatus: CountStatus = CountStatus.FORCE_COMPLETED,
-        type: String
-    ): Flow<List<PillCountWithDrugAndTotal>>
+        step: String
+    ): Flow<List<DispenseTxnWithDrug>>
 
     @Query(
         """
     SELECT COUNT(*)
-    FROM pill_count_txn
+    FROM dispense_txn
     WHERE isDeleted = 0
       AND (status = :completeStatus OR status = :forceCompleteStatus)
       AND isSynced = 0
@@ -926,17 +907,15 @@ interface PillCountTxnDao {
 
     @Query(
         """
-    SELECT COUNT(*) FROM pill_count_txn
+    SELECT COUNT(*) FROM dispense_txn
     WHERE isDeleted = 0
       AND status = :partialStatus
-      AND isDispense = :isDispense
-      AND localId = :userLocalId
+      AND userLocalId = :userLocalId
       AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
       AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
     """
     )
-    suspend fun countPartialByIsDispense(
-        isDispense: Boolean,
+    suspend fun countPartialDispenses(
         partialStatus: CountStatus = CountStatus.PARTIAL,
         userLocalId: Long,
     ): Int

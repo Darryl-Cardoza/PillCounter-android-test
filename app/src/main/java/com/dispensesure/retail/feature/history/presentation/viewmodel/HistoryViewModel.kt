@@ -2,7 +2,6 @@ package com.dispensesure.retail.feature.history.presentation.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -11,7 +10,7 @@ import com.dispensesure.retail.feature.history.domain.model.HistoryDeleteFilter
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.history.domain.model.ToggleOption
-import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
+import com.dispensesure.retail.feature.history.domain.model.DispenseTxnSummary
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -71,22 +70,15 @@ class HistoryViewModel @Inject constructor(
      * RAW DATA FROM DATABASE
      * Only triggered when:
      * - date range changes
-     * - mode changes
      */
     @OptIn(ExperimentalCoroutinesApi::class)
-    private val rawCounts: StateFlow<List<TxnWithDrugDto>> =
-        combine(_startDate, _endDate, _currentMode) { start, end, mode ->
-            Triple(start, end, mode)
-        }
-            .flatMapLatest { (start, end, mode) ->
-
-                val (isDispense, status) = mode.toQueryParams()
-
+    private val rawCounts: StateFlow<List<DispenseTxnSummary>> =
+        combine(_startDate, _endDate) { start, end -> start to end }
+            .flatMapLatest { (start, end) ->
                 repository.getTransactionsForDateRange(
                     startDate = start,
                     endDate = end,
-                    isDispense = isDispense,
-                    status = status,
+                    status = null,
                     userLocalId = preferenceHelper.getLocalId()
                 ).catch { e ->
                     // Caught per query so a later date/mode change still loads.
@@ -106,7 +98,7 @@ class HistoryViewModel @Inject constructor(
      *  FINAL LIST EXPOSED TO UI
      * Search is applied locally in memory.
      */
-    val counts: StateFlow<List<TxnWithDrugDto>> =
+    val counts: StateFlow<List<DispenseTxnSummary>> =
         combine(rawCounts, _searchQuery) { list, query ->
 
             if (query.isBlank()) {
@@ -163,9 +155,6 @@ class HistoryViewModel @Inject constructor(
         _selectedDate.value = date
     }
 
-    private fun HistoryMode.toQueryParams(): Pair<Boolean?, CountStatus?> =
-        if (this == HistoryMode.DISPENSE) true to null else null to null
-
 
     fun deleteCountsForSelectedDate(option: ToggleOption, filter: HistoryDeleteFilter) {
         viewModelScope.launch {
@@ -183,11 +172,9 @@ class HistoryViewModel @Inject constructor(
                         userLocalId = preferenceHelper.getLocalId()
                     )
                 } else {
-                    val (isDispense, _) = currentMode.value.toQueryParams()
                     repository.deleteTransactionsForDate(
                         startDate = _startDate.value,
                         endDate = _endDate.value,
-                        isDispense = isDispense,
                         isCompleted = isCompleted,
                         userLocalId = preferenceHelper.getLocalId()
                     )

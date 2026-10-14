@@ -5,19 +5,19 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
-import com.dispensesure.retail.core.room.dao.BatchDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
-import com.dispensesure.retail.core.room.models.BottleInfoEntity
+import com.dispensesure.retail.core.room.models.StockBottleInfoEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
-import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import com.dispensesure.retail.core.room.models.dtos.RequestedDrugDto
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -53,7 +53,7 @@ import javax.inject.Inject
  *
  * Lifecycle:
  *  - On init: resolves [batchId] from SavedStateHandle and reads the parent
- *    BatchEntity once (for bucket display on the active card).
+ *    StockBatchEntity once (for bucket display on the active card).
  *  - Exposes [uiState] = recent counts (Room-backed Flow, newest first) +
  *    optional active NDC (session-local) + totals.
  *
@@ -74,9 +74,9 @@ import javax.inject.Inject
 @HiltViewModel
 class InventoryScanViewModel @Inject constructor(
     savedStateHandle: SavedStateHandle,
-    private val batchDao: BatchDao,
+    private val stockBatchDao: StockBatchDao,
     private val stockTxnDao: StockTxnDao,
-    private val bottleInfoDao: BottleInfoDao,
+    private val stockBottleInfoDao: StockBottleInfoDao,
     private val drugMasterDao: DrugMasterDao,
     private val preferenceHelper: PreferenceHelper,
     private val operatorNameProvider: OperatorNameProvider,
@@ -108,7 +108,7 @@ class InventoryScanViewModel @Inject constructor(
      * pre-populated with one txn per requested drug (see
      * Hl7Repository.handleInrInventoryRequest), so the set of NDCs already in the
      * batch IS the request's expected list. Non-null only when this batch is
-     * PMS-sourced (BatchEntity.requestIdFromPMS != null); null means "no
+     * PMS-sourced (StockBatchEntity.requestIdFromPMS != null); null means "no
      * restriction" (manually started inventory accepts any valid NDC). Loaded
      * once in init and used by [onBarcodeDetected] to reject off-list scans.
      */
@@ -177,7 +177,7 @@ class InventoryScanViewModel @Inject constructor(
             // still-uncounted requested drugs render as zero placeholders. Manual batches only
             // ever have a header once a bottle line exists, so they're unaffected.
             else combine(
-                bottleInfoDao.observeByBatchId(id),
+                stockBottleInfoDao.observeByBatchId(id),
                 stockTxnDao.observeRequestedDrugs(id),
             ) { lines, requested -> mergeRecentRows(lines.toRecentRows(), requested) }
         }
@@ -209,16 +209,16 @@ class InventoryScanViewModel @Inject constructor(
             try {
                 if (argBatchId != 0L) {
                     resolvedBatchId.value = argBatchId
-                    val batch = batchDao.getById(argBatchId)
+                    val batch = stockBatchDao.getById(argBatchId)
                     _bucketId.value = batch?.bucketId
                     // PMS-requested inventory: lock scanning to the requested NDCs.
                     // The batch was pre-populated with a txn per requested drug, so
                     // those NDCs are the allowed set. Manually started batches
                     // (requestIdFromPMS == null) stay unrestricted.
                     if (!batch?.requestIdFromPMS.isNullOrBlank()) {
-                        // Source the allowlist from the stock-txn headers, NOT bottle_info: a
+                        // Source the allowlist from the stock-txn headers, NOT stock_bottle_info: a
                         // freshly received PMS batch has one header per requested drug but no
-                        // bottle lines yet, so reading bottle_info would yield an empty set and
+                        // bottle lines yet, so reading stock_bottle_info would yield an empty set and
                         // reject every scan — including the requested NDCs.
                         expectedNdcs = stockTxnDao.getNdcsForBatch(argBatchId)
                             .filter { it.isNotBlank() }
@@ -240,7 +240,7 @@ class InventoryScanViewModel @Inject constructor(
     }
 
     /**
-     * Inserts a new BatchEntity for the current bucket and stores its id. Called
+     * Inserts a new StockBatchEntity for the current bucket and stores its id. Called
      * once, on the first successful NDC scan, when the screen was entered via the
      * Inventory quick action (which intentionally defers batch creation so an
      * abandoned session never produces an empty batch row).
@@ -252,7 +252,7 @@ class InventoryScanViewModel @Inject constructor(
         if (existing != 0L) return existing
         return try {
             val bucket = if (FtueController.state.isActive) TutorialData.BUCKET else _bucketId.value
-            val newId = batchDao.insertNewInProgressBatch(bucketId = bucket)
+            val newId = stockBatchDao.insertNewInProgressBatch(bucketId = bucket)
             resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
@@ -269,7 +269,7 @@ class InventoryScanViewModel @Inject constructor(
      * Only takes effect when this VM has no batch bound yet
      * ([resolvedBatchId] == 0L). Setting [resolvedBatchId] re-triggers the
      * `flatMapLatest` in [recentRows], which subscribes to
-     * [bottleInfoDao.observeByBatchId] + [stockTxnDao.observeRequestedDrugs]
+     * [stockBottleInfoDao.observeByBatchId] + [stockTxnDao.observeRequestedDrugs]
      * against the real batch so the just-counted bottle appears in the list.
      * Also hydrates [_bucketId] and (for PMS batches) [expectedNdcs] the same
      * way the `init` block does.
@@ -283,7 +283,7 @@ class InventoryScanViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 resolvedBatchId.value = batchId
-                val batch = batchDao.getById(batchId)
+                val batch = stockBatchDao.getById(batchId)
                 // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
                 // is already authoritative (set from argBucketId at init). Reading it back
                 // from a lazily-created batch would clobber the selection with a stale/null
@@ -395,7 +395,7 @@ class InventoryScanViewModel @Inject constructor(
                 }
 
                 // First valid scan in a fresh stock-count session: create the
-                // BatchEntity now so abandoned sessions leave no DB row.
+                // StockBatchEntity now so abandoned sessions leave no DB row.
                 if (resolvedBatchId.value == 0L) {
                     val newBatchId = ensureBatchCreated()
                     if (newBatchId == 0L) {
@@ -428,7 +428,7 @@ class InventoryScanViewModel @Inject constructor(
                     stockTxnDao.findByDrugInBatch(batchId, drug.drugId)
                 } else null
                 val existing = existingStockTxn?.let {
-                    bottleInfoDao.findSealedLine(it.txnId, lotNo, expiry)
+                    stockBottleInfoDao.findSealedLine(it.txnId, lotNo, expiry)
                 }
 
                 logger.d("INV_SCAN existing-line lookup batchId=$batchId drugId=${drug.drugId} lot=$lotNo expiry=$expiry → existing=${existing?.bottleId} prevBottles=${existing?.bottleQty}")
@@ -651,14 +651,14 @@ class InventoryScanViewModel @Inject constructor(
             val lotNo = active.batchNo.ifBlank { null }
             val expNo = active.expiry.ifBlank { null }
             val stockTxn = stockTxnDao.findByDrugInBatch(batchId, drugId)
-            val existing = stockTxn?.let { bottleInfoDao.findSealedLine(it.txnId, lotNo, expNo) }
+            val existing = stockTxn?.let { stockBottleInfoDao.findSealedLine(it.txnId, lotNo, expNo) }
             logger.d("INV_SCAN persistActive existing-line lookup → existing=${existing?.bottleId} prevBottles=${existing?.bottleQty}")
             if (existing != null && active.bottles <= 0 && (existing.looseQty ?: 0) == 0) {
                 // Card dropped to 0 bottles: an empty line would never be found again, so remove it.
-                bottleInfoDao.delete(existing.bottleId)
+                stockBottleInfoDao.delete(existing.bottleId)
                 logger.d("INV_SCAN persistActive DELETED empty bottleId=${existing.bottleId}")
             } else if (existing != null) {
-                bottleInfoDao.update(
+                stockBottleInfoDao.update(
                     existing.copy(
                         bottleQty = active.bottles,
                         serialNo = active.serialNo ?: existing.serialNo,
@@ -679,8 +679,8 @@ class InventoryScanViewModel @Inject constructor(
                         bucketId = _bucketId.value,
                     )
                 )
-                bottleInfoDao.insert(
-                    BottleInfoEntity(
+                stockBottleInfoDao.insert(
+                    StockBottleInfoEntity(
                         stockTxnId = stockTxnId,
                         batchId = batchId,
                         lotNo = lotNo,
@@ -742,14 +742,14 @@ class InventoryScanViewModel @Inject constructor(
             try {
                 // Flush the in-memory count so the loaded rows include the active edit.
                 persistActive(active)
-                val txns = bottleInfoDao.getByBatchId(batchId)
+                val txns = stockBottleInfoDao.getByBatchId(batchId)
                     .filter { it.ndc == active.ndc }
                 val sealed = txns
                     .filter { (it.bottleQty ?: 0) > 0 }
-                    .map { EditBatchRow(it.txnId, it.lotNo.orEmpty(), it.expiry.orEmpty(), it.bottleQty ?: 0) }
+                    .map { EditBatchRow(it.bottleId, it.lotNo.orEmpty(), it.expiry.orEmpty(), it.bottleQty ?: 0) }
                 val open = txns
                     .filter { (it.looseQty ?: 0) > 0 }
-                    .map { EditBatchRow(it.txnId, it.lotNo.orEmpty(), it.expiry.orEmpty(), it.looseQty ?: 0) }
+                    .map { EditBatchRow(it.bottleId, it.lotNo.orEmpty(), it.expiry.orEmpty(), it.looseQty ?: 0) }
                 _editDetails.value = EditDrugDetails(
                     ndc = active.ndc,
                     drugName = active.drugName,
@@ -771,7 +771,7 @@ class InventoryScanViewModel @Inject constructor(
     /** Sum of loose/open pills committed for [ndc] in [batchId] (0 if none). */
     private suspend fun openPillsTotal(batchId: Long, ndc: String): Int {
         if (batchId == 0L) return 0
-        return bottleInfoDao.getByBatchId(batchId)
+        return stockBottleInfoDao.getByBatchId(batchId)
             .filter { it.ndc == ndc }
             .sumOf { it.looseQty ?: 0 }
     }
@@ -787,7 +787,7 @@ class InventoryScanViewModel @Inject constructor(
     private suspend fun buildActiveTotals(batchId: Long, ndc: String): ActiveNdc? {
         if (batchId == 0L) return null
         val drug = drugMasterDao.getDrugByNdc(ndc) ?: return null
-        val txns = bottleInfoDao.getByBatchId(batchId).filter { it.ndc == ndc }
+        val txns = stockBottleInfoDao.getByBatchId(batchId).filter { it.ndc == ndc }
         if (txns.isEmpty()) return null
         val sealedCount = txns.count { (it.bottleQty ?: 0) > 0 }
         val anchor = txns.firstOrNull { (it.bottleQty ?: 0) > 0 } ?: txns.first()
@@ -853,22 +853,22 @@ class InventoryScanViewModel @Inject constructor(
                     edits[row.txnId] = (prev?.first) to row.qty
                 }
 
-                val originalTxns = bottleInfoDao.getByBatchId(batchId)
+                val originalTxns = stockBottleInfoDao.getByBatchId(batchId)
                     .filter { it.ndc == active.ndc }
                 for (dto in originalTxns) {
-                    val edit = edits[dto.txnId]
+                    val edit = edits[dto.bottleId]
                     if (edit == null) {
                         // Both rows removed — drop the bottle line.
-                        bottleInfoDao.delete(dto.txnId)
+                        stockBottleInfoDao.delete(dto.bottleId)
                         continue
                     }
-                    val entity = bottleInfoDao.getById(dto.txnId) ?: continue
+                    val entity = stockBottleInfoDao.getById(dto.bottleId) ?: continue
                     val newBottle = edit.first
                     val newLoose = edit.second
                     if ((newBottle ?: 0) <= 0 && (newLoose ?: 0) <= 0) {
-                        bottleInfoDao.delete(dto.txnId)
+                        stockBottleInfoDao.delete(dto.bottleId)
                     } else {
-                        bottleInfoDao.update(
+                        stockBottleInfoDao.update(
                             entity.copy(
                                 bottleQty = newBottle,
                                 looseQty = newLoose,
@@ -970,9 +970,9 @@ class InventoryScanViewModel @Inject constructor(
                 // batch row can exist after a scan that was cleared without ADD.
                 val hasCommittedNdc = batchId != 0L && recentRows.value.isNotEmpty()
                 if (hasCommittedNdc) {
-                    batchDao.markAsCompleted(batchId)
+                    stockBatchDao.markAsCompleted(batchId)
                     if (!note.isNullOrBlank()) {
-                        batchDao.updateNote(batchId, note)
+                        stockBatchDao.updateNote(batchId, note)
                     }
                     if (hl7EventHandler.connectionState.value) {
                         hl7Repository.resendPendingHl7BatchTransactions()
@@ -1041,7 +1041,7 @@ private fun mergeRecentRows(
     return counted + placeholders
 }
 
-private fun List<BatchTxnDto>.toRecentRows(): List<RecentBatchRow> {
+private fun List<StockBottleInfoDto>.toRecentRows(): List<RecentBatchRow> {
     if (isEmpty()) return emptyList()
     return groupBy { it.drugId }
         .map { (_, txns) ->

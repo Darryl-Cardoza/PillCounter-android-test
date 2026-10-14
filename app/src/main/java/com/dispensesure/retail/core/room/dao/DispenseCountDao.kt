@@ -5,13 +5,13 @@ import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import kotlinx.coroutines.flow.Flow
 
 /**
- * **Pill Count Transaction Details Data Access Object**
+ * **Dispense Count Data Access Object**
  *
- * Handles persistence and retrieval of [PillCountTxnDetailsEntity] records — the
+ * Handles persistence and retrieval of [DispenseCountEntity] records — the
  * individual detail lines belonging to a pill count transaction.
  *
  * ---
@@ -28,13 +28,13 @@ import kotlinx.coroutines.flow.Flow
  * - Optimized for live data observation and background synchronization.
  */
 @Dao
-interface PillCountTxnDetailsDao {
+interface DispenseCountDao {
 
     // ─────────────────────────────── Create / Update ───────────────────────────────
 
     /**
      * Inserts a new transaction detail or replaces an existing one
-     * with the same primary key ([PillCountTxnDetailsEntity.txnDetailsId]).
+     * with the same primary key ([DispenseCountEntity.countId]).
      *
      * - Useful when details are edited or rescanned within the same transaction.
      *
@@ -42,10 +42,10 @@ interface PillCountTxnDetailsDao {
      * @return The newly inserted row ID.
      */
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(detail: PillCountTxnDetailsEntity): Long
+    suspend fun insert(detail: DispenseCountEntity): Long
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertAll(details: List<PillCountTxnDetailsEntity>): List<Long>
+    suspend fun insertAll(details: List<DispenseCountEntity>): List<Long>
 
     // ──────────────────────────────── Reads ────────────────────────────────
 
@@ -53,73 +53,73 @@ interface PillCountTxnDetailsDao {
      * Observes all detail records associated with a given transaction.
      *
      * - Automatically emits updates whenever records are inserted, updated, or deleted.
-     * - Results are ordered by [PillCountTxnDetailsEntity.createdAt] descending
+     * - Results are ordered by [DispenseCountEntity.createdAt] descending
      *   (newest first).
      *
      * @param txnId The parent transaction ID.
-     * @return A [Flow] emitting the current list of [PillCountTxnDetailsEntity] items.
+     * @return A [Flow] emitting the current list of [DispenseCountEntity] items.
      */
     @Query(
         """
-        SELECT * FROM pill_count_txn_details
-        WHERE txnId = :txnId AND type = :type
+        SELECT * FROM dispense_count
+        WHERE txnId = :txnId AND step = :step
         ORDER BY createdAt DESC
         """
     )
-    fun observeAllForTxn(txnId: Long, type: StepState): Flow<List<PillCountTxnDetailsEntity>>
+    fun observeAllForTxn(txnId: Long, step: StepState): Flow<List<DispenseCountEntity>>
 
     // ─────────────────────────────── Hard Delete ───────────────────────────────
 
     /** Processed and raw image paths of one detail, so its files go before the row. */
     @Query(
         """
-        SELECT imagePath FROM pill_count_txn_details WHERE txnDetailsId = :id AND imagePath IS NOT NULL
+        SELECT imagePath FROM dispense_count WHERE countId = :countId AND imagePath IS NOT NULL
         UNION ALL
-        SELECT rawImagePath FROM pill_count_txn_details WHERE txnDetailsId = :id AND rawImagePath IS NOT NULL
+        SELECT rawImagePath FROM dispense_count WHERE countId = :countId AND rawImagePath IS NOT NULL
         """
     )
-    suspend fun getImagePathsForDetail(id: Long): List<String>
+    suspend fun getImagePathsForCount(countId: Long): List<String>
 
     /** Processed and raw image paths of one step's details, so the files go before the rows. */
     @Query(
         """
-        SELECT imagePath FROM pill_count_txn_details
-        WHERE txnId = :txnId AND type = :type AND imagePath IS NOT NULL
+        SELECT imagePath FROM dispense_count
+        WHERE txnId = :txnId AND step = :step AND imagePath IS NOT NULL
         UNION ALL
-        SELECT rawImagePath FROM pill_count_txn_details
-        WHERE txnId = :txnId AND type = :type AND rawImagePath IS NOT NULL
+        SELECT rawImagePath FROM dispense_count
+        WHERE txnId = :txnId AND step = :step AND rawImagePath IS NOT NULL
         """
     )
-    suspend fun getImagePathsForStep(txnId: Long, type: StepState): List<String>
+    suspend fun getImagePathsForStep(txnId: Long, step: StepState): List<String>
 
     /** Ids of one step's details, so they can be unlinked from bottles after the delete. */
-    @Query("SELECT txnDetailsId FROM pill_count_txn_details WHERE txnId = :txnId AND type = :type")
-    suspend fun getIdsForStep(txnId: Long, type: StepState): List<Long>
+    @Query("SELECT countId FROM dispense_count WHERE txnId = :txnId AND step = :step")
+    suspend fun getIdsForStep(txnId: Long, step: StepState): List<Long>
 
     /** Physical delete of one detail (View All delete). */
-    @Query("DELETE FROM pill_count_txn_details WHERE txnDetailsId = :id")
-    suspend fun hardDelete(id: Long)
+    @Query("DELETE FROM dispense_count WHERE countId = :countId")
+    suspend fun hardDelete(countId: Long)
 
     /** Physical delete of one step's details (View All delete all). */
-    @Query("DELETE FROM pill_count_txn_details WHERE txnId = :txnId AND type = :type")
-    suspend fun hardDeleteAllForStep(txnId: Long, type: StepState)
+    @Query("DELETE FROM dispense_count WHERE txnId = :txnId AND step = :step")
+    suspend fun hardDeleteAllForStep(txnId: Long, step: StepState)
 
     // Delete method to remove existing VIAL records for a specific txnId
-    @Query("DELETE FROM pill_count_txn_details WHERE txnId = :txnId AND type = :type")
-    suspend fun deleteVialByTxnId(txnId: Long, type: StepState)
+    @Query("DELETE FROM dispense_count WHERE txnId = :txnId AND step = :step")
+    suspend fun deleteVialByTxnId(txnId: Long, step: StepState)
 
     /** Image paths for a transaction, so the files can be removed before the rows go. */
     @Query(
         """
-        SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId AND imagePath IS NOT NULL
+        SELECT imagePath FROM dispense_count WHERE txnId = :txnId AND imagePath IS NOT NULL
         UNION ALL
-        SELECT rawImagePath FROM pill_count_txn_details WHERE txnId = :txnId AND rawImagePath IS NOT NULL
+        SELECT rawImagePath FROM dispense_count WHERE txnId = :txnId AND rawImagePath IS NOT NULL
         """
     )
     suspend fun getImagePathsForTxn(txnId: Long): List<String>
 
     /** Physical delete of every detail for a transaction. Used by reset, which keeps nothing. */
-    @Query("DELETE FROM pill_count_txn_details WHERE txnId = :txnId")
+    @Query("DELETE FROM dispense_count WHERE txnId = :txnId")
     suspend fun deleteAllForTxn(txnId: Long)
 
     // ─────────────────────────────── Aggregations ───────────────────────────────
@@ -135,7 +135,7 @@ interface PillCountTxnDetailsDao {
     @Query(
         """
         SELECT COALESCE(SUM(pillCount), 0)
-        FROM pill_count_txn_details
+        FROM dispense_count
         WHERE txnId = :txnId
         """
     )
@@ -147,51 +147,51 @@ interface PillCountTxnDetailsDao {
      * measures several different things.
      *
      * @param txnId The parent transaction ID.
-     * @param type The [com.dispensesure.retail.core.models.StepState] name to sum.
+     * @param step The [com.dispensesure.retail.core.models.StepState] name to sum.
      * @return The step's pill total, or 0 if it has no rows.
      */
     @Query(
         """
         SELECT COALESCE(SUM(pillCount), 0)
-        FROM pill_count_txn_details
-        WHERE txnId = :txnId AND type = :type
+        FROM dispense_count
+        WHERE txnId = :txnId AND step = :step
         """
     )
-    suspend fun getPillCountForStep(txnId: Long, type: String): Int
+    suspend fun getPillCountForStep(txnId: Long, step: String): Int
 
     /**
      * Live pill total for a specific bottle's detail rows, by id. A bottle's true count is
      * always this — never a stored/snapshotted number — so deleting or redoing a count is
-     * automatically reflected. See [com.dispensesure.retail.core.scanning.domain.model.BottleInfo.txnDetailsIds].
+     * automatically reflected. See [com.dispensesure.retail.core.scanning.domain.model.DispenseBottle.countIds].
      *
-     * @return 0 if [txnDetailsIds] is empty or no row matches.
+     * @return 0 if [countIds] is empty or no row matches.
      */
     @Query(
         """
         SELECT COALESCE(SUM(pillCount), 0)
-        FROM pill_count_txn_details
-        WHERE txnDetailsId IN (:txnDetailsIds)
+        FROM dispense_count
+        WHERE countId IN (:countIds)
         """
     )
-    suspend fun getPillCountForDetailIds(txnDetailsIds: List<Long>): Int
+    suspend fun getPillCountForCountIds(countIds: List<Long>): Int
 
     @Query(
         """
-        SELECT * FROM pill_count_txn_details
+        SELECT * FROM dispense_count
         WHERE txnId = :txnId
         ORDER BY createdAt DESC
         """
     )
-    suspend fun getAllForTxn(txnId: String): List<PillCountTxnDetailsEntity>
+    suspend fun getAllForTxn(txnId: String): List<DispenseCountEntity>
 
     @Query(
         """
-    SELECT type
-    FROM pill_count_txn_details
+    SELECT step
+    FROM dispense_count
     WHERE txnId = :txnId
     ORDER BY createdAt DESC
     LIMIT 1
     """
     )
-    suspend fun getLatestType(txnId: Long): StepState?
+    suspend fun getLatestStep(txnId: Long): StepState?
 }

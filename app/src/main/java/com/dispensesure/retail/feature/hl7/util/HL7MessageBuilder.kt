@@ -6,12 +6,12 @@ import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isDispensedQuantityStep
 import com.dispensesure.retail.core.models.toImageLabel
 import com.dispensesure.retail.core.security.ImageCrypto
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
-import com.dispensesure.retail.core.room.models.BatchEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
+import com.dispensesure.retail.core.room.models.StockBatchEntity
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.StockBottleInfoDto
 import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -129,8 +129,8 @@ object HL7MessageBuilder {
     // =========================================================
 
     fun buildDispenseMessage(
-        txn: PillCountTxnEntity,
-        txnDetails: List<PillCountTxnDetailsEntity>,
+        txn: DispenseTxnEntity,
+        txnDetails: List<DispenseCountEntity>,
         drugCode: String,
         scannedDrugCode: String,
         drugName: String,
@@ -142,7 +142,7 @@ object HL7MessageBuilder {
         pharmacistFamilyName: String? = null,
         pharmacistGivenName: String? = null,
         location: String? = null,
-        // Optional fields that may not yet exist on every PillCountTxnEntity build;
+        // Optional fields that may not yet exist on every DispenseTxnEntity build;
         // passed explicitly until Room entities are confirmed to carry them.
         lotNumber: String? = null,
         expirationDate: String? = null,
@@ -159,7 +159,7 @@ object HL7MessageBuilder {
         val now = now()
         // Falls back to the txnId (not a timestamp) so the outbound MSH-10 is deterministic
         // per transaction — the ACK handler correlates back to this exact txn via
-        // PillCountTxnDao.getByMessageControlId, which only works if resends of the same
+        // DispenseTxnDao.getByMessageControlId, which only works if resends of the same
         // txn always carry the same control id.
         val messageId = txn.hl7MessageControlId?.takeIf { it.isNotBlank() }
             ?: txn.txnId.toString()
@@ -167,15 +167,15 @@ object HL7MessageBuilder {
         // Only the prescribed-count step is the dispensed quantity. The pour-out, recount,
         // vial and remainder steps measure other things, and summing them all reported
         // several times the pills actually dispensed.
-        val dispensedDetails = txnDetails.filter { it.type.isDispensedQuantityStep() }
-        // Each bottle's true pill count is live-summed here from its own txnDetailsIds against
+        val dispensedDetails = txnDetails.filter { it.step.isDispensedQuantityStep() }
+        // Each bottle's true pill count is live-summed here from its own countIds against
         // the detail rows — there is no stored pill count on
-        // BottleInfo itself, so this keeps a bottle's reported count correct even if a detail
+        // DispenseBottle itself, so this keeps a bottle's reported count correct even if a detail
         // row was deleted/redone after the bottle was scanned.
-        val pillCountByDetailsId = dispensedDetails.associate { it.txnDetailsId to (it.pillCount ?: 0) }
-        val bottles = BottleInfoJson.decode(txn.bottleInfoListJson)
+        val pillCountByDetailsId = dispensedDetails.associate { it.countId to (it.pillCount ?: 0) }
+        val bottles = DispenseBottleJson.decode(txn.bottlesJson)
         val bottleCounts = bottles.map { bottle ->
-            bottle.txnDetailsIds.sumOf { id -> pillCountByDetailsId[id] ?: 0 }
+            bottle.countIds.sumOf { id -> pillCountByDetailsId[id] ?: 0 }
         }
 
         // Must be > 0, not just "bottles exist": a bottle scanned after its pills were counted
@@ -413,8 +413,8 @@ object HL7MessageBuilder {
     // =========================================================
 
     fun buildInventoryMessage(
-        batch: BatchEntity,
-        txns: List<BatchTxnDto>,
+        batch: StockBatchEntity,
+        txns: List<StockBottleInfoDto>,
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS")
     ): String {
         return buildInventoryMessageChunks(batch, txns, config).single().message
@@ -463,8 +463,8 @@ object HL7MessageBuilder {
      * one only after the previous chunk's ACK — see Hl7Repository.
      */
     fun buildInventoryMessageChunks(
-        batch: BatchEntity,
-        txns: List<BatchTxnDto>,
+        batch: StockBatchEntity,
+        txns: List<StockBottleInfoDto>,
         config: HL7Config = HL7Config.current("PILLCOUNTER", "PMS"),
         maxRowsPerChunk: Int = 200
     ): List<InventoryChunk> {
@@ -660,11 +660,11 @@ object HL7MessageBuilder {
      */
     private fun buildZuiImagePayload(
         txnId: Long,
-        bottles: List<BottleInfo>,
-        details: List<PillCountTxnDetailsEntity>
+        bottles: List<DispenseBottle>,
+        details: List<DispenseCountEntity>
     ): List<List<String>>? {
         val stepImages = details
-            .filter { it.type == StepState.TARGET_VERIFICATION.name || it.type == StepState.VIAL.name }
+            .filter { it.step == StepState.TARGET_VERIFICATION.name || it.step == StepState.VIAL.name }
             .flatMap { listOfNotNull(it.imagePath, it.rawImagePath) }
         val barcodeImages = bottles.mapNotNull { it.barcodeImagePath }
         val imagePaths = stepImages + barcodeImages
@@ -702,13 +702,13 @@ object HL7MessageBuilder {
     }
 
     private fun buildImageOBX(
-        bottles: List<BottleInfo>,
-        details: List<PillCountTxnDetailsEntity>
+        bottles: List<DispenseBottle>,
+        details: List<DispenseCountEntity>
     ): List<ObxRow> {
 
         // Each detail's raw (unannotated) image gets its own row right after it.
         val detailImages = details.flatMap { detail ->
-            val type = detail.type.toImageLabel()
+            val type = detail.step.toImageLabel()
             listOfNotNull(
                 type to (detail.imagePath?.let { "images/${File(it).name}" } ?: ""),
                 detail.rawImagePath?.let { "${type}_raw" to "images/${File(it).name}" }
@@ -793,15 +793,15 @@ object HL7MessageBuilder {
     )
 
     /**
-     * Builds one ZSN row per bottle recorded on the transaction ([BottleInfo] decoded from
-     * [PillCountTxnEntity.bottleInfoListJson]). Falls back to a single row built from the
+     * Builds one ZSN row per bottle recorded on the transaction ([DispenseBottle] decoded from
+     * [DispenseTxnEntity.bottlesJson]). Falls back to a single row built from the
      * caller-supplied [lotNumber]/[expirationDate]/[serialNumber]/[totalCount] when the
      * transaction has no bottle entries (legacy txns predating bottle tracking, or a txn
      * whose pills were all counted before any bottle was ever scanned).
      */
     private fun buildZSN(
         drugCode: String,
-        bottles: List<BottleInfo>,
+        bottles: List<DispenseBottle>,
         bottleCounts: List<Int>,
         lotNumber: String?,
         expirationDate: String?,

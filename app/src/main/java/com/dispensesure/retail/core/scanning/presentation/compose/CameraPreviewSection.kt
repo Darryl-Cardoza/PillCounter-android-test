@@ -355,7 +355,7 @@ fun CameraPreviewSection(
                         pillCount = pills.size,
                         targetCount = uiState.targetCount,
                         alreadyCounted = alreadyCounted,
-                        isDispense = txnInfo?.isDispense,
+                        isDispense = txnInfo != null && uiState.scanType != CountType.REGULAR.toString(),
                         stepType = stepType,
                     )
                     val excessIndices: Set<Int> = if (excessCount <= 0) {

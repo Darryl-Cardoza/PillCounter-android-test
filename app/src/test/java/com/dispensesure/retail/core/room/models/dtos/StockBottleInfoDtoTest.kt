@@ -6,9 +6,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class BatchTxnDtoTest {
+class StockBottleInfoDtoTest {
 
-    private fun sample() = BatchTxnDto(
+    private fun sample() = StockBottleInfoDto(
         txnId = 1L,
         drugId = 2L,
         drugName = "Drug",
@@ -36,7 +36,7 @@ class BatchTxnDtoTest {
 
     @Test
     fun nullableNull() {
-        val d = BatchTxnDto(1L, null, null, null, null, null, null, null, null)
+        val d = StockBottleInfoDto(1L, null, null, null, null, null, null, null, null)
         assertNull(d.drugId)
         assertNull(d.drugName)
         assertNull(d.ndc)

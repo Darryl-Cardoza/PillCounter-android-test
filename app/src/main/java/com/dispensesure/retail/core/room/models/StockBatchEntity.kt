@@ -3,7 +3,7 @@ package com.dispensesure.retail.core.room.models
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import androidx.room.TypeConverters
-import com.dispensesure.retail.core.room.di.BatchConverters
+import com.dispensesure.retail.core.room.di.StockBatchConverters
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
 
 /**
@@ -23,16 +23,16 @@ import com.dispensesure.retail.core.room.models.enums.BatchStatus
  * @property updatedAt Last update timestamp (epoch millis).
  */
 @Entity(
-    tableName = "batch"
+    tableName = "stock_batch"
 )
-data class BatchEntity(
+data class StockBatchEntity(
     @PrimaryKey()
     val batchId: Long = 0,
 
     val startDateTime: Long = System.currentTimeMillis(),
     val endDateTime: Long? = null,
 
-    @TypeConverters(BatchConverters::class)
+    @TypeConverters(StockBatchConverters::class)
     val status: BatchStatus = BatchStatus.INPROGRESS,
 
     val isDeleted: Boolean = false,

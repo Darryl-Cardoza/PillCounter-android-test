@@ -2,14 +2,13 @@ package com.dispensesure.retail.feature.history.domain.model
 
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 
-data class TxnWithDrugDto(
+data class DispenseTxnSummary(
     val txnId: Long,
-    val isDispense: Boolean,
     val status: CountStatus,
     val pillCount: Int?,
     val drugName: String?,
     val ndc: String?,
-    val bottleInfoListJson: String?,
+    val bottlesJson: String?,
     val createdAt: Long,
     val targetCount: Int?,
     val note: String?,

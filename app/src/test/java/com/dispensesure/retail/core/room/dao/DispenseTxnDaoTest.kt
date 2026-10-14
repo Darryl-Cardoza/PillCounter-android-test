@@ -6,8 +6,8 @@ import app.cash.turbine.test
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
@@ -25,12 +25,12 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
-class PillCountTxnDaoTest {
+class DispenseTxnDaoTest {
 
     private lateinit var db: AppDatabase
-    private lateinit var dao: PillCountTxnDao
+    private lateinit var dispenseTxnDao: DispenseTxnDao
     private lateinit var drugDao: DrugMasterDao
-    private lateinit var detailsDao: PillCountTxnDetailsDao
+    private lateinit var dispenseCountDao: DispenseCountDao
 
     @Before
     fun setUp() = runTest {
@@ -38,11 +38,11 @@ class PillCountTxnDaoTest {
             ApplicationProvider.getApplicationContext(),
             AppDatabase::class.java
         ).allowMainThreadQueries().build()
-        dao = db.pillCountTxnDao()
+        dispenseTxnDao = db.dispenseTxnDao()
         drugDao = db.drugMasterDao()
-        detailsDao = db.pillCountTxnDetailsDao()
+        dispenseCountDao = db.dispenseCountDao()
 
-        // baseTxn() defaults localId = 1L, which is FK-enforced against users.localId —
+        // baseTxn() defaults userLocalId = 1L, which is FK-enforced against users.localId —
         // seed the matching user row so inserts don't hit a constraint violation.
         db.userDao().insertIgnore(UserEntity(userId = "test-user"))
     }
@@ -54,9 +54,8 @@ class PillCountTxnDaoTest {
 
     private fun baseTxn(
         txnId: Long = 0L,
-        isDispense: Boolean = false,
         status: CountStatus = CountStatus.PARTIAL,
-        localId: Long? = 1L,
+        userLocalId: Long? = 1L,
         drugId: Long? = null,
         rxNo: String? = null,
         refillNo: String? = null,
@@ -66,11 +65,10 @@ class PillCountTxnDaoTest {
         createdAt: Long = System.currentTimeMillis(),
         isSubstitute: Boolean = false,
         substitutedDrugId: Long? = null,
-    ) = PillCountTxnEntity(
+    ) = DispenseTxnEntity(
         txnId = txnId,
-        isDispense = isDispense,
         status = status,
-        localId = localId,
+        userLocalId = userLocalId,
         drugId = drugId,
         rxNo = rxNo,
         refillNo = refillNo,
@@ -86,63 +84,63 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `insertIgnore returns generated id for new transaction`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
         assertNotEquals(-1L, id)
         assertTrue(id > 0)
     }
 
     @Test
     fun `insertIgnore returns minus one on txnId conflict and keeps original row`() = runTest {
-        val id = dao.insertIgnore(baseTxn(rxNo = "RX1"))
-        val conflictResult = dao.insertIgnore(baseTxn(txnId = id, rxNo = "RX2"))
+        val id = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX1"))
+        val conflictResult = dispenseTxnDao.insertIgnore(baseTxn(txnId = id, rxNo = "RX2"))
 
         assertEquals(-1L, conflictResult)
-        assertEquals("RX1", dao.getById(id)?.rxNo)
+        assertEquals("RX1", dispenseTxnDao.getById(id)?.rxNo)
     }
 
     @Test
     fun `insertAll inserts multiple transactions`() = runTest {
-        val ids = dao.insertAll(listOf(baseTxn(rxNo = "A"), baseTxn(rxNo = "B")))
+        val ids = dispenseTxnDao.insertAll(listOf(baseTxn(rxNo = "A"), baseTxn(rxNo = "B")))
         assertEquals(2, ids.size)
     }
 
     @Test
     fun `insertAll with empty list returns empty result`() = runTest {
-        val ids = dao.insertAll(emptyList())
+        val ids = dispenseTxnDao.insertAll(emptyList())
         assertTrue(ids.isEmpty())
     }
 
     @Test
     fun `update modifies existing row matched by txnId`() = runTest {
-        val id = dao.insertIgnore(baseTxn(rxNo = "OLD"))
-        val stored = dao.getById(id)!!
-        dao.update(stored.copy(rxNo = "NEW"))
+        val id = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "OLD"))
+        val stored = dispenseTxnDao.getById(id)!!
+        dispenseTxnDao.update(stored.copy(rxNo = "NEW"))
 
-        assertEquals("NEW", dao.getById(id)?.rxNo)
+        assertEquals("NEW", dispenseTxnDao.getById(id)?.rxNo)
     }
 
     @Test
     fun `upsertPreservingId inserts new row when txnId is zero`() = runTest {
-        val newId = dao.upsertPreservingId(baseTxn(txnId = 0L, rxNo = "NEWROW"))
+        val newId = dispenseTxnDao.upsertPreservingId(baseTxn(txnId = 0L, rxNo = "NEWROW"))
         assertTrue(newId > 0)
-        assertEquals("NEWROW", dao.getById(newId)?.rxNo)
+        assertEquals("NEWROW", dispenseTxnDao.getById(newId)?.rxNo)
     }
 
     @Test
     fun `upsertPreservingId updates existing row while preserving txnId`() = runTest {
-        val id = dao.insertIgnore(baseTxn(rxNo = "ORIG"))
-        val existing = dao.getById(id)!!
+        val id = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "ORIG"))
+        val existing = dispenseTxnDao.getById(id)!!
 
-        val resultId = dao.upsertPreservingId(existing.copy(rxNo = "UPDATED"))
+        val resultId = dispenseTxnDao.upsertPreservingId(existing.copy(rxNo = "UPDATED"))
 
         assertEquals(id, resultId)
-        assertEquals("UPDATED", dao.getById(id)?.rxNo)
+        assertEquals("UPDATED", dispenseTxnDao.getById(id)?.rxNo)
     }
 
     @Test
     fun `upsertPreservingId with nonexistent txnId falls back to insertIgnore path`() = runTest {
         // txnId != 0 but no row exists yet: getById returns null, insertIgnore creates new row.
-        val resultId = dao.upsertPreservingId(baseTxn(txnId = 999L, rxNo = "GHOST"))
+        val resultId = dispenseTxnDao.upsertPreservingId(baseTxn(txnId = 999L, rxNo = "GHOST"))
         assertTrue(resultId > 0)
     }
 
@@ -151,12 +149,12 @@ class PillCountTxnDaoTest {
         // First insert consumes an autogenerated id; forcing a duplicate insert path with txnId=0
         // cannot conflict under autoGenerate, so instead verify the non-zero conflict branch:
         // insert same non-existent-then-reinserted id twice via insertIgnore returning -1.
-        val id = dao.insertIgnore(baseTxn(rxNo = "X"))
-        dao.softDelete(id) // no-op for this branch check; row still exists with same txnId
+        val id = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "X"))
+        dispenseTxnDao.softDelete(id) // no-op for this branch check; row still exists with same txnId
 
         // Re-attempt upsert for the same non-zero txnId — should hit "existing != null" update branch,
         // not throw.
-        val resultId = dao.upsertPreservingId(baseTxn(txnId = id, rxNo = "Y"))
+        val resultId = dispenseTxnDao.upsertPreservingId(baseTxn(txnId = id, rxNo = "Y"))
         assertEquals(id, resultId)
     }
 
@@ -164,163 +162,163 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `getById returns null for missing transaction`() = runTest {
-        assertNull(dao.getById(12345L))
+        assertNull(dispenseTxnDao.getById(12345L))
     }
 
     @Test
     fun `getById returns matching transaction`() = runTest {
-        val id = dao.insertIgnore(baseTxn(rxNo = "FOUND"))
-        assertEquals("FOUND", dao.getById(id)?.rxNo)
+        val id = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "FOUND"))
+        assertEquals("FOUND", dispenseTxnDao.getById(id)?.rxNo)
     }
 
     // ───────────────────────── Field updates ─────────────────────────
 
     @Test
     fun `updateTargetCount sets value and clears to null`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
-        dao.updateTargetCount(id, 50)
-        assertEquals(50, dao.getById(id)?.targetCount)
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.updateTargetCount(id, 50)
+        assertEquals(50, dispenseTxnDao.getById(id)?.targetCount)
 
-        dao.updateTargetCount(id, null)
-        assertNull(dao.getById(id)?.targetCount)
+        dispenseTxnDao.updateTargetCount(id, null)
+        assertNull(dispenseTxnDao.getById(id)?.targetCount)
     }
 
     @Test
     fun `updateNote sets and clears note`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
-        dao.updateNote(id, "hello")
-        assertEquals("hello", dao.getById(id)?.note)
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.updateNote(id, "hello")
+        assertEquals("hello", dispenseTxnDao.getById(id)?.note)
 
-        dao.updateNote(id, null)
-        assertNull(dao.getById(id)?.note)
+        dispenseTxnDao.updateNote(id, null)
+        assertNull(dispenseTxnDao.getById(id)?.note)
     }
 
     @Test
-    fun `updateBottleInfoList persists json string`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
-        dao.updateBottleInfoList(id, "[{\"a\":1}]")
-        assertEquals("[{\"a\":1}]", dao.getById(id)?.bottleInfoListJson)
+    fun `updateBottles persists json string`() = runTest {
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.updateBottles(id, "[{\"a\":1}]")
+        assertEquals("[{\"a\":1}]", dispenseTxnDao.getById(id)?.bottlesJson)
     }
 
     @Test
     fun `softDelete marks isDeleted true`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
-        dao.softDelete(id)
-        assertTrue(dao.getById(id)!!.isDeleted)
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.softDelete(id)
+        assertTrue(dispenseTxnDao.getById(id)!!.isDeleted)
     }
 
     @Test
     fun `softDeleteByRxNo only marks non deleted rows for rxNo`() = runTest {
-        val id1 = dao.insertIgnore(baseTxn(rxNo = "R1"))
-        val id2 = dao.insertIgnore(baseTxn(rxNo = "R1"))
-        dao.softDelete(id2) // pre-mark one as already deleted
+        val id1 = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "R1"))
+        val id2 = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "R1"))
+        dispenseTxnDao.softDelete(id2) // pre-mark one as already deleted
 
-        dao.softDeleteByRxNo("R1")
+        dispenseTxnDao.softDeleteByRxNo("R1")
 
-        assertTrue(dao.getById(id1)!!.isDeleted)
-        assertTrue(dao.getById(id2)!!.isDeleted)
+        assertTrue(dispenseTxnDao.getById(id1)!!.isDeleted)
+        assertTrue(dispenseTxnDao.getById(id2)!!.isDeleted)
     }
 
     @Test
     fun `getDeletedByRxNo returns most recent deleted row or null`() = runTest {
-        assertNull(dao.getDeletedByRxNo("NONE"))
+        assertNull(dispenseTxnDao.getDeletedByRxNo("NONE"))
 
-        val id1 = dao.insertIgnore(baseTxn(rxNo = "DEL", createdAt = 100L))
-        val id2 = dao.insertIgnore(baseTxn(rxNo = "DEL", createdAt = 200L))
-        dao.softDelete(id1, now = 100L)
-        dao.softDelete(id2, now = 500L)
+        val id1 = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "DEL", createdAt = 100L))
+        val id2 = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "DEL", createdAt = 200L))
+        dispenseTxnDao.softDelete(id1, now = 100L)
+        dispenseTxnDao.softDelete(id2, now = 500L)
 
-        val result = dao.getDeletedByRxNo("DEL")
+        val result = dispenseTxnDao.getDeletedByRxNo("DEL")
         assertEquals(id2, result?.txnId)
     }
 
     @Test
     fun `restoreDeletedTxn clears isDeleted and resets status to PARTIAL`() = runTest {
-        val id = dao.insertIgnore(baseTxn(status = CountStatus.COMPLETED))
-        dao.softDelete(id)
+        val id = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED))
+        dispenseTxnDao.softDelete(id)
 
-        dao.restoreDeletedTxn(id)
+        dispenseTxnDao.restoreDeletedTxn(id)
 
-        val restored = dao.getById(id)!!
+        val restored = dispenseTxnDao.getById(id)!!
         assertFalse(restored.isDeleted)
         assertEquals(CountStatus.PARTIAL, restored.status)
     }
 
     @Test
     fun `getActiveByRxNo returns most recent partial or on hold and ignores others`() = runTest {
-        dao.insertIgnore(baseTxn(rxNo = "ACT", status = CountStatus.COMPLETED, createdAt = 50L))
-        val id2 = dao.insertIgnore(baseTxn(rxNo = "ACT", status = CountStatus.PARTIAL, createdAt = 300L))
+        dispenseTxnDao.insertIgnore(baseTxn(rxNo = "ACT", status = CountStatus.COMPLETED, createdAt = 50L))
+        val id2 = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "ACT", status = CountStatus.PARTIAL, createdAt = 300L))
 
-        val result = dao.getActiveByRxNo("ACT")
+        val result = dispenseTxnDao.getActiveByRxNo("ACT")
         assertEquals(id2, result?.txnId)
     }
 
     @Test
     fun `getActiveByRxNo returns null when only deleted or completed rows exist`() = runTest {
-        val id = dao.insertIgnore(baseTxn(rxNo = "GONE", status = CountStatus.PARTIAL))
-        dao.softDelete(id)
+        val id = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "GONE", status = CountStatus.PARTIAL))
+        dispenseTxnDao.softDelete(id)
 
-        assertNull(dao.getActiveByRxNo("GONE"))
+        assertNull(dispenseTxnDao.getActiveByRxNo("GONE"))
     }
 
     // ───────────────────────── Image server lookups ─────────────────────────
 
     @Test
     fun `getByMessageControlId finds latest matching non deleted row`() = runTest {
-        assertNull(dao.getByMessageControlId("MSG1"))
+        assertNull(dispenseTxnDao.getByMessageControlId("MSG1"))
 
         val old = baseTxn(createdAt = 100L).copy(hl7MessageControlId = "MSG1")
         val newer = baseTxn(createdAt = 200L).copy(hl7MessageControlId = "MSG1")
-        dao.insertIgnore(old)
-        val newerId = dao.insertIgnore(newer)
+        dispenseTxnDao.insertIgnore(old)
+        val newerId = dispenseTxnDao.insertIgnore(newer)
 
-        assertEquals(newerId, dao.getByMessageControlId("MSG1")?.txnId)
+        assertEquals(newerId, dispenseTxnDao.getByMessageControlId("MSG1")?.txnId)
     }
 
     @Test
     fun `getBySequenceNumber returns null when not found`() = runTest {
-        assertNull(dao.getBySequenceNumber("SEQ-404"))
+        assertNull(dispenseTxnDao.getBySequenceNumber("SEQ-404"))
     }
 
     @Test
     fun `getBySequenceNumber finds matching row`() = runTest {
-        val id = dao.insertIgnore(baseTxn().copy(hl7SequenceNumber = "SEQ-1"))
-        assertEquals(id, dao.getBySequenceNumber("SEQ-1")?.txnId)
+        val id = dispenseTxnDao.insertIgnore(baseTxn().copy(hl7SequenceNumber = "SEQ-1"))
+        assertEquals(id, dispenseTxnDao.getBySequenceNumber("SEQ-1")?.txnId)
     }
 
     @Test
     fun `getByTransactionOrderId finds matching row`() = runTest {
-        val id = dao.insertIgnore(baseTxn().copy(transactionOrderId = "ORD-1"))
-        assertEquals(id, dao.getByTransactionOrderId("ORD-1")?.txnId)
+        val id = dispenseTxnDao.insertIgnore(baseTxn().copy(transactionOrderId = "ORD-1"))
+        assertEquals(id, dispenseTxnDao.getByTransactionOrderId("ORD-1")?.txnId)
     }
 
     @Test
     fun `getByRxNoAndFillNo matches both fields`() = runTest {
-        val id = dao.insertIgnore(baseTxn(rxNo = "RX9", refillNo = "1"))
-        dao.insertIgnore(baseTxn(rxNo = "RX9", refillNo = "2"))
+        val id = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX9", refillNo = "1"))
+        dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX9", refillNo = "2"))
 
-        assertEquals(id, dao.getByRxNoAndFillNo("RX9", "1")?.txnId)
-        assertNull(dao.getByRxNoAndFillNo("RX9", "99"))
+        assertEquals(id, dispenseTxnDao.getByRxNoAndFillNo("RX9", "1")?.txnId)
+        assertNull(dispenseTxnDao.getByRxNoAndFillNo("RX9", "99"))
     }
 
     @Test
     fun `getMostRecentByRxNo ignores fill number and returns newest`() = runTest {
-        dao.insertIgnore(baseTxn(rxNo = "RX7", refillNo = "1", createdAt = 100L))
-        val newest = dao.insertIgnore(baseTxn(rxNo = "RX7", refillNo = "2", createdAt = 500L))
+        dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX7", refillNo = "1", createdAt = 100L))
+        val newest = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX7", refillNo = "2", createdAt = 500L))
 
-        assertEquals(newest, dao.getMostRecentByRxNo("RX7")?.txnId)
+        assertEquals(newest, dispenseTxnDao.getMostRecentByRxNo("RX7")?.txnId)
     }
 
     // ───────────────────────── HL7 edit / workflow updates ─────────────────────────
 
     @Test
     fun `updateFromHl7Edit updates drug target priority and resets sync flag`() = runTest {
-        val id = dao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, isSynced = true))
+        val id = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, isSynced = true))
         // updateFromHl7Edit sets drugId via UPDATE, which is FK-enforced against drug_master —
         // seed the drug row referenced by this test's drugId = 42L.
         drugDao.insertIgnore(DrugMasterEntity(drugId = 42L, ndc = "HL7-42"))
 
-        dao.updateFromHl7Edit(
+        dispenseTxnDao.updateFromHl7Edit(
             txnId = id,
             drugId = 42L,
             targetCount = 30,
@@ -328,7 +326,7 @@ class PillCountTxnDaoTest {
             status = CountStatus.ON_HOLD
         )
 
-        val updated = dao.getById(id)!!
+        val updated = dispenseTxnDao.getById(id)!!
         assertEquals(42L, updated.drugId)
         assertEquals(30, updated.targetCount)
         assertEquals(TxnPriority.High, updated.priority)
@@ -338,11 +336,11 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `updateFromHl7Edit with null status leaves status unchanged`() = runTest {
-        val id = dao.insertIgnore(baseTxn(status = CountStatus.PARTIAL))
+        val id = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.PARTIAL))
         // Seed the drug row referenced by this test's drugId = 1L (FK-enforced on UPDATE).
         drugDao.insertIgnore(DrugMasterEntity(drugId = 1L, ndc = "HL7-1"))
 
-        dao.updateFromHl7Edit(
+        dispenseTxnDao.updateFromHl7Edit(
             txnId = id,
             drugId = 1L,
             targetCount = 10,
@@ -350,180 +348,175 @@ class PillCountTxnDaoTest {
             status = null
         )
 
-        assertEquals(CountStatus.PARTIAL, dao.getById(id)?.status)
+        assertEquals(CountStatus.PARTIAL, dispenseTxnDao.getById(id)?.status)
     }
 
     @Test
     fun `deleteAllTransactions removes every row`() = runTest {
-        dao.insertIgnore(baseTxn())
-        dao.insertIgnore(baseTxn())
-        dao.deleteAllTransactions()
+        dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.deleteAllTransactions()
 
-        assertNull(dao.getById(1L))
-        assertNull(dao.getById(2L))
+        assertNull(dispenseTxnDao.getById(1L))
+        assertNull(dispenseTxnDao.getById(2L))
     }
 
     @Test
     fun `updateWorkflowStep sets step value`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
-        dao.updateWorkflowStep(id, "SCAN")
-        assertEquals("SCAN", dao.getById(id)?.workflowStep)
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.updateWorkflowStep(id, "SCAN")
+        assertEquals("SCAN", dispenseTxnDao.getById(id)?.workflowStep)
     }
 
     @Test
     fun `updateGlovesPresent toggles flag`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
-        dao.updateGlovesPresent(id, true)
-        assertTrue(dao.getById(id)!!.isGlovesPresent)
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.updateGlovesPresent(id, true)
+        assertTrue(dispenseTxnDao.getById(id)!!.isGlovesPresent)
 
-        dao.updateGlovesPresent(id, false)
-        assertFalse(dao.getById(id)!!.isGlovesPresent)
+        dispenseTxnDao.updateGlovesPresent(id, false)
+        assertFalse(dispenseTxnDao.getById(id)!!.isGlovesPresent)
     }
 
     @Test
     fun `updateHazardousTrayDetected sets nullable boolean`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
-        dao.updateHazardousTrayDetected(id, true)
-        assertEquals(true, dao.getById(id)?.hazardousTrayDetected)
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.updateHazardousTrayDetected(id, true)
+        assertEquals(true, dispenseTxnDao.getById(id)?.hazardousTrayDetected)
     }
 
     @Test
     fun `updateTxnStatus changes status`() = runTest {
-        val id = dao.insertIgnore(baseTxn(status = CountStatus.PARTIAL))
-        dao.updateTxnStatus(id, CountStatus.COMPLETED)
-        assertEquals(CountStatus.COMPLETED, dao.getById(id)?.status)
+        val id = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.PARTIAL))
+        dispenseTxnDao.updateTxnStatus(id, CountStatus.COMPLETED)
+        assertEquals(CountStatus.COMPLETED, dispenseTxnDao.getById(id)?.status)
     }
 
     // ───────────────────────── Date-range deletes / retention ─────────────────────────
 
     @Test
     fun `deleteTransactionsByDate removes only rows within range matching filters`() = runTest {
-        // localId = 2L (wrongUser) is FK-enforced against users.localId — seed it.
+        // userLocalId = 2L (wrongUser) is FK-enforced against users.localId — seed it.
         db.userDao().insertIgnore(UserEntity(localId = 2L, userId = "user-2"))
 
-        val inRange = dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.COMPLETED, createdAt = 150L)
+        val inRange = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED, createdAt = 150L)
         )
-        val outOfRange = dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.COMPLETED, createdAt = 999L)
+        val outOfRange = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED, createdAt = 999L)
         )
-        val wrongUser = dao.insertIgnore(
-            baseTxn(localId = 2L, isDispense = true, status = CountStatus.COMPLETED, createdAt = 150L)
+        val wrongUser = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 2L, status = CountStatus.COMPLETED, createdAt = 150L)
         )
 
-        dao.deleteTransactionsByDate(
+        dispenseTxnDao.deleteTransactionsByDate(
             start = 100L,
             end = 200L,
-            isDispense = true,
             isCompleted = true,
             userLocalId = 1L
         )
 
-        assertNull(dao.getById(inRange))
-        assertEquals(outOfRange, dao.getById(outOfRange)?.txnId)
-        assertEquals(wrongUser, dao.getById(wrongUser)?.txnId)
+        assertNull(dispenseTxnDao.getById(inRange))
+        assertEquals(outOfRange, dispenseTxnDao.getById(outOfRange)?.txnId)
+        assertEquals(wrongUser, dispenseTxnDao.getById(wrongUser)?.txnId)
     }
 
     @Test
-    fun `deleteTransactionsByDate with null filters matches any dispense and completion state`() = runTest {
-        // localId = 5L is FK-enforced against users.localId — seed it.
+    fun `deleteTransactionsByDate with null isCompleted matches any completion state`() = runTest {
+        // userLocalId = 5L is FK-enforced against users.localId — seed it.
         db.userDao().insertIgnore(UserEntity(localId = 5L, userId = "user-5"))
 
-        val id = dao.insertIgnore(
-            baseTxn(localId = 5L, isDispense = false, status = CountStatus.PARTIAL, createdAt = 150L)
+        val id = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 5L, status = CountStatus.PARTIAL, createdAt = 150L)
         )
 
-        dao.deleteTransactionsByDate(
+        dispenseTxnDao.deleteTransactionsByDate(
             start = 100L,
             end = 200L,
-            isDispense = null,
             isCompleted = null,
             userLocalId = 5L
         )
 
-        assertNull(dao.getById(id))
+        assertNull(dispenseTxnDao.getById(id))
     }
 
     @Test
     fun `deleteTransactionsByDate isCompleted false excludes completed and force completed rows`() = runTest {
-        val partial = dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL, createdAt = 150L)
+        val partial = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL, createdAt = 150L)
         )
-        val completed = dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.COMPLETED, createdAt = 150L)
+        val completed = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED, createdAt = 150L)
         )
 
-        dao.deleteTransactionsByDate(
+        dispenseTxnDao.deleteTransactionsByDate(
             start = 100L,
             end = 200L,
-            isDispense = true,
             isCompleted = false,
             userLocalId = 1L
         )
 
-        assertNull(dao.getById(partial))
-        assertEquals(completed, dao.getById(completed)?.txnId)
+        assertNull(dispenseTxnDao.getById(partial))
+        assertEquals(completed, dispenseTxnDao.getById(completed)?.txnId)
     }
 
     @Test
     fun `getTransactionsBefore returns only completed or force completed rows before cutoff`() = runTest {
-        dao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, createdAt = 100L))
-        dao.insertIgnore(baseTxn(status = CountStatus.FORCE_COMPLETED, createdAt = 150L))
-        dao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, createdAt = 100L))
-        dao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, createdAt = 999L))
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, createdAt = 100L))
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.FORCE_COMPLETED, createdAt = 150L))
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, createdAt = 100L))
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, createdAt = 999L))
 
-        val result = dao.getTransactionsBefore(200L)
+        val result = dispenseTxnDao.getTransactionsBefore(200L)
         assertEquals(2, result.size)
         assertTrue(result.all { it.status == CountStatus.COMPLETED || it.status == CountStatus.FORCE_COMPLETED })
     }
 
     @Test
-    fun `getSyncedTransactions filters by isSynced and isDispense with default true`() = runTest {
-        dao.insertIgnore(baseTxn(isDispense = true, isSynced = true))
-        dao.insertIgnore(baseTxn(isDispense = true, isSynced = false))
-        dao.insertIgnore(baseTxn(isDispense = false, isSynced = true))
+    fun `getSyncedDispenses returns only synced rows`() = runTest {
+        dispenseTxnDao.insertIgnore(baseTxn(isSynced = true))
+        dispenseTxnDao.insertIgnore(baseTxn(isSynced = false))
 
-        val result = dao.getSyncedTransactions()
+        val result = dispenseTxnDao.getSyncedDispenses()
         assertEquals(1, result.size)
-        assertTrue(result.first().isDispense)
         assertEquals(true, result.first().isSynced)
     }
 
     @Test
     fun `getTransactionDetailsImages returns image paths for txn`() = runTest {
-        val txnId = dao.insertIgnore(baseTxn())
-        detailsDao.insert(PillCountTxnDetailsEntity(txnId = txnId, imagePath = "img1.jpg"))
-        detailsDao.insert(
-            PillCountTxnDetailsEntity(txnId = txnId, imagePath = "img2.jpg", rawImagePath = "img2_raw.jpg")
+        val txnId = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseCountDao.insert(DispenseCountEntity(txnId = txnId, imagePath = "img1.jpg"))
+        dispenseCountDao.insert(
+            DispenseCountEntity(txnId = txnId, imagePath = "img2.jpg", rawImagePath = "img2_raw.jpg")
         )
 
-        val images = dao.getTransactionDetailsImages(txnId)
+        val images = dispenseTxnDao.getTransactionDetailsImages(txnId)
         assertEquals(3, images.size)
         assertTrue(images.containsAll(listOf("img1.jpg", "img2.jpg", "img2_raw.jpg")))
     }
 
     @Test
     fun `getTransactionDetailsImages returns empty list when none exist`() = runTest {
-        val txnId = dao.insertIgnore(baseTxn())
-        assertTrue(dao.getTransactionDetailsImages(txnId).isEmpty())
+        val txnId = dispenseTxnDao.insertIgnore(baseTxn())
+        assertTrue(dispenseTxnDao.getTransactionDetailsImages(txnId).isEmpty())
     }
 
     @Test
     fun `deleteTransaction permanently removes the row`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
-        dao.deleteTransaction(id)
-        assertNull(dao.getById(id))
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.deleteTransaction(id)
+        assertNull(dispenseTxnDao.getById(id))
     }
 
     // ───────────────────────── HL7 sync flows ─────────────────────────
 
     @Test
     fun `observePendingHl7Txn emits only completed unsynced dispense rows`() = runTest {
-        dao.observePendingHl7Txn().test {
+        dispenseTxnDao.observePendingHl7Txn().test {
             assertTrue(awaitItem().isEmpty())
 
-            val id = dao.insertIgnore(
-                baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = false)
+            val id = dispenseTxnDao.insertIgnore(
+                baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = false)
             )
             val list = awaitItem()
             assertEquals(1, list.size)
@@ -535,11 +528,11 @@ class PillCountTxnDaoTest {
     fun `observePendingHl7Txn emits a locally-scanned dispense that is not from hl7`() = runTest {
         // isComingFromHL7 = false (locally scanned): the flow that triggers the resend sweep
         // must not be blind to this, since resendPendingHl7Transactions() sends it too.
-        dao.observePendingHl7Txn().test {
+        dispenseTxnDao.observePendingHl7Txn().test {
             assertTrue(awaitItem().isEmpty())
 
-            val id = dao.insertIgnore(
-                baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = false, isSynced = false)
+            val id = dispenseTxnDao.insertIgnore(
+                baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = false, isSynced = false)
             )
             val list = awaitItem()
             assertEquals(1, list.size)
@@ -548,32 +541,31 @@ class PillCountTxnDaoTest {
     }
 
     @Test
-    fun `observePendingHl7Txn excludes synced non dispense or non completed rows`() = runTest {
-        dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = true))
-        dao.insertIgnore(baseTxn(isDispense = false, status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = false))
-        dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.PARTIAL, isComingFromHL7 = true, isSynced = false))
+    fun `observePendingHl7Txn excludes synced or non completed rows`() = runTest {
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = true))
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, isComingFromHL7 = true, isSynced = false))
 
-        dao.observePendingHl7Txn().test {
+        dispenseTxnDao.observePendingHl7Txn().test {
             assertTrue(awaitItem().isEmpty())
         }
     }
 
     @Test
     fun `getPendingHl7TxnOnce returns snapshot of pending rows`() = runTest {
-        val id = dao.insertIgnore(
-            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = null)
+        val id = dispenseTxnDao.insertIgnore(
+            baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = null)
         )
-        val result = dao.getPendingHl7TxnOnce()
+        val result = dispenseTxnDao.getPendingHl7TxnOnce()
         assertEquals(1, result.size)
         assertEquals(id, result.first().txnId)
     }
 
     @Test
     fun `getPendingHl7TxnOnce includes locally-scanned dispense not from hl7`() = runTest {
-        val id = dao.insertIgnore(
-            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isComingFromHL7 = false, isSynced = null)
+        val id = dispenseTxnDao.insertIgnore(
+            baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = false, isSynced = null)
         )
-        val result = dao.getPendingHl7TxnOnce()
+        val result = dispenseTxnDao.getPendingHl7TxnOnce()
         assertEquals(1, result.size)
         assertEquals(id, result.first().txnId)
     }
@@ -581,67 +573,66 @@ class PillCountTxnDaoTest {
     @Test
     fun `getPendingHl7TxnOnce excludes tutorial demo drug transactions`() = runTest {
         val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
-        dao.insertIgnore(
-            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isSynced = null, drugId = tutorialDrugId)
+        dispenseTxnDao.insertIgnore(
+            baseTxn(status = CountStatus.COMPLETED, isSynced = null, drugId = tutorialDrugId)
         )
-        val result = dao.getPendingHl7TxnOnce()
+        val result = dispenseTxnDao.getPendingHl7TxnOnce()
         assertTrue(result.isEmpty())
     }
 
     @Test
     fun `getPendingHl7TxnOnce excludes tutorial Rx numbers even without the demo drug`() = runTest {
-        dao.insertIgnore(
-            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isSynced = null, rxNo = "${TutorialData.RX_PREFIX}123")
+        dispenseTxnDao.insertIgnore(
+            baseTxn(status = CountStatus.COMPLETED, isSynced = null, rxNo = "${TutorialData.RX_PREFIX}123")
         )
-        assertTrue(dao.getPendingHl7TxnOnce().isEmpty())
+        assertTrue(dispenseTxnDao.getPendingHl7TxnOnce().isEmpty())
     }
 
     @Test
     fun `getTutorialTxnIds finds demo drug and Rx prefix txns only`() = runTest {
         val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
-        val byDrug = dao.insertIgnore(baseTxn(drugId = demoDrugId))
-        val byRx = dao.insertIgnore(baseTxn(rxNo = "${TutorialData.RX_PREFIX}9"))
-        dao.insertIgnore(baseTxn(rxNo = "RX100"))
+        val byDrug = dispenseTxnDao.insertIgnore(baseTxn(drugId = demoDrugId))
+        val byRx = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "${TutorialData.RX_PREFIX}9"))
+        dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX100"))
 
-        assertEquals(setOf(byDrug, byRx), dao.getTutorialTxnIds().toSet())
+        assertEquals(setOf(byDrug, byRx), dispenseTxnDao.getTutorialTxnIds().toSet())
     }
 
     @Test
     fun `markTxnSynced sets isSynced true`() = runTest {
-        val id = dao.insertIgnore(baseTxn(isSynced = false))
-        dao.markTxnSynced(id)
-        assertEquals(true, dao.getById(id)?.isSynced)
+        val id = dispenseTxnDao.insertIgnore(baseTxn(isSynced = false))
+        dispenseTxnDao.markTxnSynced(id)
+        assertEquals(true, dispenseTxnDao.getById(id)?.isSynced)
     }
 
     @Test
     fun `markCompletedAndUnsynced sets status and clears sync flag`() = runTest {
-        val id = dao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, isSynced = true))
-        dao.markCompletedAndUnsynced(id, CountStatus.COMPLETED)
+        val id = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, isSynced = true))
+        dispenseTxnDao.markCompletedAndUnsynced(id, CountStatus.COMPLETED)
 
-        val updated = dao.getById(id)!!
+        val updated = dispenseTxnDao.getById(id)!!
         assertEquals(CountStatus.COMPLETED, updated.status)
         assertEquals(false, updated.isSynced)
     }
 
     @Test
-    fun `observeUnsyncedByIsDispense returns completed or force completed unsynced rows with total pill count`() = runTest {
+    fun `observeUnsyncedDispenses returns completed or force completed unsynced rows with total pill count`() = runTest {
         val drugId = drugDao.insertIgnore(DrugMasterEntity(ndc = "0001", drugName = "Aspirin"))
-        val txnId = dao.insertIgnore(
+        val txnId = dispenseTxnDao.insertIgnore(
             baseTxn(
-                isDispense = true,
                 status = CountStatus.COMPLETED,
                 isSynced = false,
                 drugId = drugId
             )
         )
-        detailsDao.insert(
-            PillCountTxnDetailsEntity(txnId = txnId, pillCount = 10, type = StepState.SCAN.name)
+        dispenseCountDao.insert(
+            DispenseCountEntity(txnId = txnId, pillCount = 10, step = StepState.SCAN.name)
         )
-        detailsDao.insert(
-            PillCountTxnDetailsEntity(txnId = txnId, pillCount = 5, type = StepState.SCAN.name)
+        dispenseCountDao.insert(
+            DispenseCountEntity(txnId = txnId, pillCount = 5, step = StepState.SCAN.name)
         )
 
-        dao.observeUnsyncedByIsDispense(isDispense = true, type = StepState.SCAN.name).test {
+        dispenseTxnDao.observeUnsyncedDispenses(step = StepState.SCAN.name).test {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(15, list.first().totalPillCount)
@@ -650,27 +641,26 @@ class PillCountTxnDaoTest {
     }
 
     @Test
-    fun `observeUnsyncedByIsDispense excludes synced rows and wrong dispense flag`() = runTest {
-        dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.COMPLETED, isSynced = true))
-        dao.insertIgnore(baseTxn(isDispense = false, status = CountStatus.COMPLETED, isSynced = false))
+    fun `observeUnsyncedDispenses excludes synced rows`() = runTest {
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, isSynced = true))
 
-        dao.observeUnsyncedByIsDispense(isDispense = true, type = StepState.SCAN.name).test {
+        dispenseTxnDao.observeUnsyncedDispenses(step = StepState.SCAN.name).test {
             assertTrue(awaitItem().isEmpty())
         }
     }
 
     @Test
     fun `getTotalCompletedTransactionCount counts unsynced hl7 completed and force completed rows`() = runTest {
-        dao.observeDashboardCountsGrouped(userLocalId = 0L) // no-op to ensure flow interfaces compile
-        dao.getTotalCompletedTransactionCount().test {
+        dispenseTxnDao.observeDashboardCountsGrouped(userLocalId = 0L) // no-op to ensure flow interfaces compile
+        dispenseTxnDao.getTotalCompletedTransactionCount().test {
             assertEquals(0, awaitItem())
 
-            dao.insertIgnore(
+            dispenseTxnDao.insertIgnore(
                 baseTxn(status = CountStatus.COMPLETED, isComingFromHL7 = true, isSynced = false)
             )
             assertEquals(1, awaitItem())
 
-            dao.insertIgnore(
+            dispenseTxnDao.insertIgnore(
                 baseTxn(status = CountStatus.FORCE_COMPLETED, isComingFromHL7 = true, isSynced = false)
             )
             assertEquals(2, awaitItem())
@@ -678,32 +668,32 @@ class PillCountTxnDaoTest {
     }
 
     @Test
-    fun `countPartialByIsDispense counts matching partial rows for user`() = runTest {
-        // localId = 7L and 8L are FK-enforced against users.localId — seed both.
+    fun `countPartialDispenses counts matching partial rows for user`() = runTest {
+        // userLocalId = 7L and 8L are FK-enforced against users.localId — seed both.
         db.userDao().insertIgnore(UserEntity(localId = 7L, userId = "user-7"))
         db.userDao().insertIgnore(UserEntity(localId = 8L, userId = "user-8"))
 
-        dao.insertIgnore(baseTxn(localId = 7L, isDispense = true, status = CountStatus.PARTIAL))
-        dao.insertIgnore(baseTxn(localId = 7L, isDispense = true, status = CountStatus.PARTIAL))
-        dao.insertIgnore(baseTxn(localId = 7L, isDispense = false, status = CountStatus.PARTIAL))
-        dao.insertIgnore(baseTxn(localId = 8L, isDispense = true, status = CountStatus.PARTIAL))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 7L, status = CountStatus.PARTIAL))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 7L, status = CountStatus.PARTIAL))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 7L, status = CountStatus.COMPLETED))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 8L, status = CountStatus.PARTIAL))
 
-        val count = dao.countPartialByIsDispense(isDispense = true, userLocalId = 7L)
+        val count = dispenseTxnDao.countPartialDispenses(userLocalId = 7L)
         assertEquals(2, count)
     }
 
     @Test
     fun `tutorial txns are excluded from the partial queue, its count and the dashboard counts`() = runTest {
         val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Demo"))
-        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL).copy(drugId = demoDrugId))
-        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL).copy(rxNo = "${TutorialData.RX_PREFIX}9"))
-        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL).copy(drugId = demoDrugId))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL).copy(rxNo = "${TutorialData.RX_PREFIX}9"))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL))
 
-        assertEquals(1, dao.countPartialByIsDispense(isDispense = true, userLocalId = 1L))
-        dao.observePartialByIsDispense(isDispense = true, userLocalId = 1L, type = StepState.SCAN).test {
+        assertEquals(1, dispenseTxnDao.countPartialDispenses(userLocalId = 1L))
+        dispenseTxnDao.observePartialDispenses(userLocalId = 1L, step = StepState.SCAN).test {
             assertEquals(1, awaitItem().size)
         }
-        dao.observeDashboardCountsGrouped(1L).test {
+        dispenseTxnDao.observeDashboardCountsGrouped(1L).test {
             assertEquals(1, awaitItem().sumOf { it.cnt })
         }
     }
@@ -711,16 +701,16 @@ class PillCountTxnDaoTest {
     // ───────────────────────── Dashboard / join queries ─────────────────────────
 
     @Test
-    fun `observeDashboardCountsGrouped groups by status and isDispense for user`() = runTest {
-        // localId = 2L is FK-enforced against users.localId — seed it (localId 1L is seeded in setUp).
+    fun `observeDashboardCountsGrouped groups by status for user`() = runTest {
+        // userLocalId = 2L is FK-enforced against users.localId — seed it (localId 1L is seeded in setUp).
         db.userDao().insertIgnore(UserEntity(localId = 2L, userId = "user-2"))
 
-        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL))
-        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL))
-        dao.insertIgnore(baseTxn(localId = 1L, isDispense = false, status = CountStatus.COMPLETED))
-        dao.insertIgnore(baseTxn(localId = 2L, isDispense = true, status = CountStatus.PARTIAL))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED))
+        dispenseTxnDao.insertIgnore(baseTxn(userLocalId = 2L, status = CountStatus.PARTIAL))
 
-        dao.observeDashboardCountsGrouped(userLocalId = 1L).test {
+        dispenseTxnDao.observeDashboardCountsGrouped(userLocalId = 1L).test {
             val groups = awaitItem()
             assertEquals(2, groups.size)
             val partialGroup = groups.first { it.status == CountStatus.PARTIAL }
@@ -729,35 +719,34 @@ class PillCountTxnDaoTest {
     }
 
     @Test
-    fun `getTxnWithDetails returns null for missing or deleted transaction`() = runTest {
-        assertNull(dao.getTxnWithDetails(555L))
+    fun `getDispenseTxnDetail returns null for missing or deleted transaction`() = runTest {
+        assertNull(dispenseTxnDao.getDispenseTxnDetail(555L))
 
-        val id = dao.insertIgnore(baseTxn())
-        dao.softDelete(id)
-        assertNull(dao.getTxnWithDetails(id))
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
+        dispenseTxnDao.softDelete(id)
+        assertNull(dispenseTxnDao.getDispenseTxnDetail(id))
     }
 
     @Test
-    fun `getTxnWithDetails aggregates drug info and pill count total`() = runTest {
+    fun `getDispenseTxnDetail aggregates drug info and pill count total`() = runTest {
         val drugId = drugDao.insertIgnore(DrugMasterEntity(ndc = "1111", drugName = "Ibuprofen"))
-        val txnId = dao.insertIgnore(baseTxn(drugId = drugId, status = CountStatus.PARTIAL))
-        detailsDao.insert(PillCountTxnDetailsEntity(txnId = txnId, pillCount = 3))
-        detailsDao.insert(PillCountTxnDetailsEntity(txnId = txnId, pillCount = 7))
+        val txnId = dispenseTxnDao.insertIgnore(baseTxn(drugId = drugId, status = CountStatus.PARTIAL))
+        dispenseCountDao.insert(DispenseCountEntity(txnId = txnId, pillCount = 3))
+        dispenseCountDao.insert(DispenseCountEntity(txnId = txnId, pillCount = 7))
 
-        val result = dao.getTxnWithDetails(txnId)!!
+        val result = dispenseTxnDao.getDispenseTxnDetail(txnId)!!
         assertEquals("Ibuprofen", result.drugName)
         assertEquals(10, result.totalPillCount)
     }
 
     @Test
     fun `getTransactionsWithDrugByDate filters by date range and null filters match any`() = runTest {
-        dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.COMPLETED, createdAt = 150L))
-        dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.COMPLETED, createdAt = 999L))
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, createdAt = 150L))
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED, createdAt = 999L))
 
-        dao.getTransactionsWithDrugByDate(
+        dispenseTxnDao.getTransactionsWithDrugByDate(
             startOfDay = 100L,
             endOfDay = 200L,
-            isDispense = null,
             status = null
         ).test {
             val list = awaitItem()
@@ -766,7 +755,7 @@ class PillCountTxnDaoTest {
     }
 
     @Test
-    fun `getTransactionsWithDrugByDate applies non null isDispense and status filters`() = runTest {
+    fun `getTransactionsWithDrugByDate applies a non null status filter`() = runTest {
         val drugId = drugDao.insertIgnore(
             DrugMasterEntity(
                 ndc = "N-IMG",
@@ -776,26 +765,22 @@ class PillCountTxnDaoTest {
                 drugImagePath = "/data/drug/n-img.webp",
             )
         )
-        dao.insertIgnore(
+        dispenseTxnDao.insertIgnore(
             baseTxn(
                 drugId = drugId,
-                isDispense = true,
                 status = CountStatus.COMPLETED,
                 createdAt = 150L
             )
         )
-        dao.insertIgnore(baseTxn(isDispense = false, status = CountStatus.COMPLETED, createdAt = 150L))
-        dao.insertIgnore(baseTxn(isDispense = true, status = CountStatus.PARTIAL, createdAt = 150L))
+        dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.PARTIAL, createdAt = 150L))
 
-        dao.getTransactionsWithDrugByDate(
+        dispenseTxnDao.getTransactionsWithDrugByDate(
             startOfDay = 100L,
             endOfDay = 200L,
-            isDispense = true,
             status = CountStatus.COMPLETED
         ).test {
             val list = awaitItem()
             assertEquals(1, list.size)
-            assertTrue(list.first().isDispense)
             assertEquals(CountStatus.COMPLETED, list.first().status)
             assertEquals("/data/drug/n-img.webp", list.first().drugImagePath)
             assertEquals("35 mg/1", list.first().strength)
@@ -825,10 +810,9 @@ class PillCountTxnDaoTest {
                 drugImagePath = "/data/drug/sub.webp",
             )
         )
-        dao.insertIgnore(
+        dispenseTxnDao.insertIgnore(
             baseTxn(
                 drugId = drugId,
-                isDispense = true,
                 status = CountStatus.COMPLETED,
                 createdAt = 150L,
                 isSubstitute = true,
@@ -836,10 +820,9 @@ class PillCountTxnDaoTest {
             )
         )
 
-        dao.getTransactionsWithDrugByDate(
+        dispenseTxnDao.getTransactionsWithDrugByDate(
             startOfDay = 100L,
             endOfDay = 200L,
-            isDispense = null,
             status = null
         ).test {
             val row = awaitItem().first()
@@ -853,29 +836,28 @@ class PillCountTxnDaoTest {
     }
 
     @Test
-    fun `getTransactionsForDateRange filters by user step type dispense and status`() = runTest {
-        // localId = 3L and 9L are FK-enforced against users.localId — seed both.
+    fun `getTransactionsForDateRange filters by user step type and status`() = runTest {
+        // userLocalId = 3L and 9L are FK-enforced against users.localId — seed both.
         db.userDao().insertIgnore(UserEntity(localId = 3L, userId = "user-3"))
         db.userDao().insertIgnore(UserEntity(localId = 9L, userId = "user-9"))
 
-        val txnId = dao.insertIgnore(
-            baseTxn(localId = 3L, isDispense = true, status = CountStatus.COMPLETED, createdAt = 150L)
+        val txnId = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 3L, status = CountStatus.COMPLETED, createdAt = 150L)
         )
-        detailsDao.insert(
-            PillCountTxnDetailsEntity(txnId = txnId, pillCount = 4, type = StepState.SCAN.name)
+        dispenseCountDao.insert(
+            DispenseCountEntity(txnId = txnId, pillCount = 4, step = StepState.SCAN.name)
         )
-        detailsDao.insert(
-            PillCountTxnDetailsEntity(txnId = txnId, pillCount = 100, type = StepState.VIAL.name)
+        dispenseCountDao.insert(
+            DispenseCountEntity(txnId = txnId, pillCount = 100, step = StepState.VIAL.name)
         )
-        dao.insertIgnore(
-            baseTxn(localId = 9L, isDispense = true, status = CountStatus.COMPLETED, createdAt = 150L)
+        dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 9L, status = CountStatus.COMPLETED, createdAt = 150L)
         )
 
-        dao.getTransactionsForDateRange(
+        dispenseTxnDao.getTransactionsForDateRange(
             startDate = 100L,
             endDate = 200L,
             stepType = StepState.SCAN,
-            isDispense = true,
             status = CountStatus.COMPLETED,
             userLocalId = 3L
         ).test {
@@ -887,24 +869,23 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `getTransactionsForDateRange with null stepType includes all detail types`() = runTest {
-        // localId = 3L is FK-enforced against users.localId — seed it.
+        // userLocalId = 3L is FK-enforced against users.localId — seed it.
         db.userDao().insertIgnore(UserEntity(localId = 3L, userId = "user-3"))
 
-        val txnId = dao.insertIgnore(
-            baseTxn(localId = 3L, isDispense = true, status = CountStatus.COMPLETED, createdAt = 150L)
+        val txnId = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 3L, status = CountStatus.COMPLETED, createdAt = 150L)
         )
-        detailsDao.insert(
-            PillCountTxnDetailsEntity(txnId = txnId, pillCount = 4, type = StepState.SCAN.name)
+        dispenseCountDao.insert(
+            DispenseCountEntity(txnId = txnId, pillCount = 4, step = StepState.SCAN.name)
         )
-        detailsDao.insert(
-            PillCountTxnDetailsEntity(txnId = txnId, pillCount = 6, type = StepState.VIAL.name)
+        dispenseCountDao.insert(
+            DispenseCountEntity(txnId = txnId, pillCount = 6, step = StepState.VIAL.name)
         )
 
-        dao.getTransactionsForDateRange(
+        dispenseTxnDao.getTransactionsForDateRange(
             startDate = 100L,
             endDate = 200L,
             stepType = null,
-            isDispense = null,
             status = null,
             userLocalId = 3L
         ).test {
@@ -917,21 +898,19 @@ class PillCountTxnDaoTest {
     @Test
     fun `getTransactionsForDateRange excludes tutorial demo drug transactions`() = runTest {
         val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
-        dao.insertIgnore(
+        dispenseTxnDao.insertIgnore(
             baseTxn(
-                localId = 1L,
+                userLocalId = 1L,
                 drugId = tutorialDrugId,
-                isDispense = true,
                 status = CountStatus.COMPLETED,
                 createdAt = 150L,
             )
         )
 
-        dao.getTransactionsForDateRange(
+        dispenseTxnDao.getTransactionsForDateRange(
             startDate = 100L,
             endDate = 200L,
             stepType = null,
-            isDispense = null,
             status = null,
             userLocalId = 1L
         ).test {
@@ -950,21 +929,19 @@ class PillCountTxnDaoTest {
                 drugImagePath = "/data/drug/n-img.webp",
             )
         )
-        dao.insertIgnore(
+        dispenseTxnDao.insertIgnore(
             baseTxn(
-                localId = 1L,
+                userLocalId = 1L,
                 drugId = drugId,
-                isDispense = true,
                 status = CountStatus.COMPLETED,
                 createdAt = 150L,
             )
         )
 
-        dao.getTransactionsForDateRange(
+        dispenseTxnDao.getTransactionsForDateRange(
             startDate = 100L,
             endDate = 200L,
             stepType = null,
-            isDispense = null,
             status = null,
             userLocalId = 1L
         ).test {
@@ -977,10 +954,9 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `getTransactionsForDateRange returns the rx and refill numbers`() = runTest {
-        dao.insertIgnore(
+        dispenseTxnDao.insertIgnore(
             baseTxn(
-                localId = 1L,
-                isDispense = true,
+                userLocalId = 1L,
                 status = CountStatus.COMPLETED,
                 createdAt = 150L,
                 rxNo = "7654321",
@@ -988,11 +964,10 @@ class PillCountTxnDaoTest {
             )
         )
 
-        dao.getTransactionsForDateRange(
+        dispenseTxnDao.getTransactionsForDateRange(
             startDate = 100L,
             endDate = 200L,
             stepType = null,
-            isDispense = null,
             status = null,
             userLocalId = 1L
         ).test {
@@ -1002,29 +977,28 @@ class PillCountTxnDaoTest {
         }
     }
 
-    // ───────────────────────── observePartialByIsDispense ─────────────────────────
+    // ───────────────────────── observePartialDispenses ─────────────────────────
 
     @Test
-    fun `observePartialByIsDispense filters by dispense status and user and orders by priority`() = runTest {
+    fun `observePartialDispenses filters by status and user and orders by priority`() = runTest {
         drugDao.insertIgnore(DrugMasterEntity(ndc = "N1", drugName = "DrugLow"))
-        // localId = 2L (wrong user) is FK-enforced against users.localId — seed it.
+        // userLocalId = 2L (wrong user) is FK-enforced against users.localId — seed it.
         db.userDao().insertIgnore(UserEntity(localId = 2L, userId = "user-2"))
 
-        val lowId = dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL, priority = TxnPriority.Low)
+        val lowId = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL, priority = TxnPriority.Low)
         )
-        val highId = dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL, priority = TxnPriority.High)
+        val highId = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL, priority = TxnPriority.High)
         )
         // wrong user, should be excluded
-        dao.insertIgnore(
-            baseTxn(localId = 2L, isDispense = true, status = CountStatus.PARTIAL, priority = TxnPriority.High)
+        dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 2L, status = CountStatus.PARTIAL, priority = TxnPriority.High)
         )
 
-        dao.observePartialByIsDispense(
-            isDispense = true,
+        dispenseTxnDao.observePartialDispenses(
             userLocalId = 1L,
-            type = StepState.SCAN
+            step = StepState.SCAN
         ).test {
             val list = awaitItem()
             assertEquals(2, list.size)
@@ -1035,37 +1009,35 @@ class PillCountTxnDaoTest {
     }
 
     @Test
-    fun `observePartialByIsDispense lists oldest first within a priority, HL7 or not`() = runTest {
-        val newerHl7 = dao.insertIgnore(
-            baseTxn(isDispense = true, priority = TxnPriority.Medium, isComingFromHL7 = true, createdAt = 200L)
+    fun `observePartialDispenses lists oldest first within a priority, HL7 or not`() = runTest {
+        val newerHl7 = dispenseTxnDao.insertIgnore(
+            baseTxn(priority = TxnPriority.Medium, isComingFromHL7 = true, createdAt = 200L)
         )
-        val olderManual = dao.insertIgnore(
-            baseTxn(isDispense = true, priority = TxnPriority.Medium, isComingFromHL7 = false, createdAt = 100L)
+        val olderManual = dispenseTxnDao.insertIgnore(
+            baseTxn(priority = TxnPriority.Medium, isComingFromHL7 = false, createdAt = 100L)
         )
 
-        dao.observePartialByIsDispense(
-            isDispense = true,
+        dispenseTxnDao.observePartialDispenses(
             userLocalId = 1L,
-            type = StepState.SCAN
+            step = StepState.SCAN
         ).test {
             assertEquals(listOf(olderManual, newerHl7), awaitItem().map { it.txnId })
         }
     }
 
     @Test
-    fun `observePartialByIsDispense excludes non partial and deleted rows`() = runTest {
-        val id = dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.COMPLETED)
+    fun `observePartialDispenses excludes non partial and deleted rows`() = runTest {
+        val id = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.COMPLETED)
         )
-        dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL)
+        dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL)
         )
-        dao.softDelete(dao.getById(id)!!.txnId)
+        dispenseTxnDao.softDelete(dispenseTxnDao.getById(id)!!.txnId)
 
-        dao.observePartialByIsDispense(
-            isDispense = true,
+        dispenseTxnDao.observePartialDispenses(
             userLocalId = 1L,
-            type = StepState.SCAN
+            step = StepState.SCAN
         ).test {
             val list = awaitItem()
             assertEquals(1, list.size)
@@ -1073,18 +1045,17 @@ class PillCountTxnDaoTest {
     }
 
     @Test
-    fun `observePartialByIsDispense returns the rx and refill numbers`() = runTest {
-        val withRx = dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL, rxNo = "7654321", refillNo = "2")
+    fun `observePartialDispenses returns the rx and refill numbers`() = runTest {
+        val withRx = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL, rxNo = "7654321", refillNo = "2")
         )
-        val withoutRx = dao.insertIgnore(
-            baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL)
+        val withoutRx = dispenseTxnDao.insertIgnore(
+            baseTxn(userLocalId = 1L, status = CountStatus.PARTIAL)
         )
 
-        dao.observePartialByIsDispense(
-            isDispense = true,
+        dispenseTxnDao.observePartialDispenses(
             userLocalId = 1L,
-            type = StepState.SCAN
+            step = StepState.SCAN
         ).test {
             val byId = awaitItem().associateBy { it.txnId }
             assertEquals("7654321", byId.getValue(withRx).rxNo)
@@ -1103,11 +1074,10 @@ class PillCountTxnDaoTest {
         drugDao.insertIgnore(DrugMasterEntity(drugId = 42L, ndc = "RECOUNT-42"))
         drugDao.insertIgnore(DrugMasterEntity(drugId = 7L, ndc = "RECOUNT-7"))
 
-        val id = dao.insertIgnore(
-            PillCountTxnEntity(
-                localId = 1L,
+        val id = dispenseTxnDao.insertIgnore(
+            DispenseTxnEntity(
+                userLocalId = 1L,
                 drugId = 42L,
-                isDispense = true,
                 targetCount = 30,
                 status = CountStatus.PARTIAL,
                 rxNo = "RX999",
@@ -1115,7 +1085,7 @@ class PillCountTxnDaoTest {
                 bucketId = "B1",
                 isNdcVerified = true,
                 workflowStep = StepState.VIAL.name,
-                bottleInfoListJson = "[{}]",
+                bottlesJson = "[{}]",
                 isSubstitute = true,
                 substitutedDrugId = 7L,
                 hazardousTrayDetected = true,
@@ -1124,12 +1094,12 @@ class PillCountTxnDaoTest {
             )
         )
 
-        dao.resetForRecount(id)
+        dispenseTxnDao.resetForRecount(id)
 
-        val txn = dao.getById(id)!!
+        val txn = dispenseTxnDao.getById(id)!!
         assertEquals(false, txn.isNdcVerified)
         assertNull(txn.workflowStep)
-        assertNull(txn.bottleInfoListJson)
+        assertNull(txn.bottlesJson)
         assertFalse(txn.isSubstitute)
         assertNull(txn.substitutedDrugId)
         assertNull(txn.hazardousTrayDetected)
@@ -1148,23 +1118,23 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `updateOperatorName persists both name parts`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
 
-        dao.updateOperatorName(id, "Bruce", "Wayne")
+        dispenseTxnDao.updateOperatorName(id, "Bruce", "Wayne")
 
-        val saved = dao.getById(id)
+        val saved = dispenseTxnDao.getById(id)
         assertEquals("Bruce", saved?.operatorFirstName)
         assertEquals("Wayne", saved?.operatorLastName)
     }
 
     @Test
     fun `updateOperatorName accepts nulls`() = runTest {
-        val id = dao.insertIgnore(baseTxn())
+        val id = dispenseTxnDao.insertIgnore(baseTxn())
 
-        dao.updateOperatorName(id, "Bruce", "Wayne")
-        dao.updateOperatorName(id, null, null)
+        dispenseTxnDao.updateOperatorName(id, "Bruce", "Wayne")
+        dispenseTxnDao.updateOperatorName(id, null, null)
 
-        val saved = dao.getById(id)
+        val saved = dispenseTxnDao.getById(id)
         assertNull(saved?.operatorFirstName)
         assertNull(saved?.operatorLastName)
     }
@@ -1173,41 +1143,41 @@ class PillCountTxnDaoTest {
 
     @Test
     fun `updateStatusByOrderIdIfPartial holds PARTIAL rows and leaves finished rows alone`() = runTest {
-        val partialId = dao.insertIgnore(baseTxn(status = CountStatus.PARTIAL).copy(transactionOrderId = "ORD1"))
-        val completedId = dao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
-        val forcedId = dao.insertIgnore(baseTxn(status = CountStatus.FORCE_COMPLETED).copy(transactionOrderId = "ORD1"))
+        val partialId = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.PARTIAL).copy(transactionOrderId = "ORD1"))
+        val completedId = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
+        val forcedId = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.FORCE_COMPLETED).copy(transactionOrderId = "ORD1"))
 
-        dao.updateStatusByOrderIdIfPartial("ORD1", CountStatus.ON_HOLD)
+        dispenseTxnDao.updateStatusByOrderIdIfPartial("ORD1", CountStatus.ON_HOLD)
 
-        assertEquals(CountStatus.ON_HOLD, dao.getById(partialId)?.status)
-        assertEquals(CountStatus.COMPLETED, dao.getById(completedId)?.status)
-        assertEquals(CountStatus.FORCE_COMPLETED, dao.getById(forcedId)?.status)
+        assertEquals(CountStatus.ON_HOLD, dispenseTxnDao.getById(partialId)?.status)
+        assertEquals(CountStatus.COMPLETED, dispenseTxnDao.getById(completedId)?.status)
+        assertEquals(CountStatus.FORCE_COMPLETED, dispenseTxnDao.getById(forcedId)?.status)
     }
 
     @Test
     fun `updateStatusByOrderIdIfPartialOrOnHold releases ON_HOLD rows and leaves finished rows alone`() = runTest {
-        val heldId = dao.insertIgnore(baseTxn(status = CountStatus.ON_HOLD).copy(transactionOrderId = "ORD1"))
-        val completedId = dao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
-        val forcedId = dao.insertIgnore(baseTxn(status = CountStatus.FORCE_COMPLETED).copy(transactionOrderId = "ORD1"))
+        val heldId = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.ON_HOLD).copy(transactionOrderId = "ORD1"))
+        val completedId = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.COMPLETED).copy(transactionOrderId = "ORD1"))
+        val forcedId = dispenseTxnDao.insertIgnore(baseTxn(status = CountStatus.FORCE_COMPLETED).copy(transactionOrderId = "ORD1"))
 
-        dao.updateStatusByOrderIdIfPartialOrOnHold("ORD1", CountStatus.PARTIAL)
+        dispenseTxnDao.updateStatusByOrderIdIfPartialOrOnHold("ORD1", CountStatus.PARTIAL)
 
-        assertEquals(CountStatus.PARTIAL, dao.getById(heldId)?.status)
-        assertEquals(CountStatus.COMPLETED, dao.getById(completedId)?.status)
-        assertEquals(CountStatus.FORCE_COMPLETED, dao.getById(forcedId)?.status)
+        assertEquals(CountStatus.PARTIAL, dispenseTxnDao.getById(heldId)?.status)
+        assertEquals(CountStatus.COMPLETED, dispenseTxnDao.getById(completedId)?.status)
+        assertEquals(CountStatus.FORCE_COMPLETED, dispenseTxnDao.getById(forcedId)?.status)
     }
 
     @Test
     fun `getByRxNoAndMessageControlId matches rx and control id and returns newest non deleted row`() = runTest {
-        assertNull(dao.getByRxNoAndMessageControlId("RX1", "MSG1"))
+        assertNull(dispenseTxnDao.getByRxNoAndMessageControlId("RX1", "MSG1"))
 
-        dao.insertIgnore(baseTxn(rxNo = "RX1", createdAt = 100L).copy(hl7MessageControlId = "MSG1"))
-        val newerId = dao.insertIgnore(baseTxn(rxNo = "RX1", createdAt = 200L).copy(hl7MessageControlId = "MSG1"))
+        dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX1", createdAt = 100L).copy(hl7MessageControlId = "MSG1"))
+        val newerId = dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX1", createdAt = 200L).copy(hl7MessageControlId = "MSG1"))
         // Same message, other Rx (multi-ORC) and a deleted row must not win.
-        dao.insertIgnore(baseTxn(rxNo = "RX2", createdAt = 300L).copy(hl7MessageControlId = "MSG1"))
-        dao.insertIgnore(baseTxn(rxNo = "RX1", createdAt = 400L).copy(hl7MessageControlId = "MSG1", isDeleted = true))
+        dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX2", createdAt = 300L).copy(hl7MessageControlId = "MSG1"))
+        dispenseTxnDao.insertIgnore(baseTxn(rxNo = "RX1", createdAt = 400L).copy(hl7MessageControlId = "MSG1", isDeleted = true))
 
-        assertEquals(newerId, dao.getByRxNoAndMessageControlId("RX1", "MSG1")?.txnId)
-        assertNull(dao.getByRxNoAndMessageControlId("RX1", "MSG2"))
+        assertEquals(newerId, dispenseTxnDao.getByRxNoAndMessageControlId("RX1", "MSG1")?.txnId)
+        assertNull(dispenseTxnDao.getByRxNoAndMessageControlId("RX1", "MSG2"))
     }
 }

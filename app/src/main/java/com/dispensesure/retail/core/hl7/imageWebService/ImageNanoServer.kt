@@ -4,11 +4,11 @@ import android.content.Context
 import android.util.Base64
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsImageKeystoreUtil
 import com.dispensesure.retail.core.models.toImageLabel
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -40,14 +40,14 @@ class ImageNanoServer(
     @EntryPoint
     @InstallIn(SingletonComponent::class)
     interface ImageServerDaoEntryPoint {
-        fun pillCountTxnDao(): PillCountTxnDao
-        fun pillCountTxnDetailsDao(): PillCountTxnDetailsDao
+        fun dispenseTxnDao(): DispenseTxnDao
+        fun dispenseCountDao(): DispenseCountDao
     }
 
     private val logger = AppLogger("ImageNanoServer")
 
-    private val txnDao: PillCountTxnDao
-    private val txnDetailsDao: PillCountTxnDetailsDao
+    private val dispenseTxnDao: DispenseTxnDao
+    private val dispenseCountDao: DispenseCountDao
 
     init {
         // Attach the SSL factory — this makes NanoHTTPD use HTTPS.
@@ -59,8 +59,8 @@ class ImageNanoServer(
             context.applicationContext,
             ImageServerDaoEntryPoint::class.java
         )
-        txnDao = entryPoint.pillCountTxnDao()
-        txnDetailsDao = entryPoint.pillCountTxnDetailsDao()
+        dispenseTxnDao = entryPoint.dispenseTxnDao()
+        dispenseCountDao = entryPoint.dispenseCountDao()
     }
 
     override fun serve(session: IHTTPSession): Response {
@@ -89,7 +89,7 @@ class ImageNanoServer(
         val orderId = params["orderid"]
         if (isRootOrImages && params["format"]?.lowercase() == "zip" && !orderId.isNullOrBlank()) {
             return handleTxnLookup(zipFileName = "$orderId.zip", naming = ZipNaming.PMS_FILE_NAMING) {
-                txnDao.getByTransactionOrderId(orderId)
+                dispenseTxnDao.getByTransactionOrderId(orderId)
             }
         }
 
@@ -98,19 +98,19 @@ class ImageNanoServer(
             session.uri == "/fingerprint" -> handleFingerprint()
 
             segments.size == 3 && segments[0] == "images" && segments[1] == "getbymessagecontrolid" ->
-                handleTxnLookup { txnDao.getByMessageControlId(decode(segments[2])) }
+                handleTxnLookup { dispenseTxnDao.getByMessageControlId(decode(segments[2])) }
 
             segments.size == 3 && segments[0] == "images" && segments[1] == "getbysequencenumber" ->
-                handleTxnLookup { txnDao.getBySequenceNumber(decode(segments[2])) }
+                handleTxnLookup { dispenseTxnDao.getBySequenceNumber(decode(segments[2])) }
 
             segments.size == 3 && segments[0] == "images" && segments[1] == "getbytransactionorderid" ->
-                handleTxnLookup { txnDao.getByTransactionOrderId(decode(segments[2])) }
+                handleTxnLookup { dispenseTxnDao.getByTransactionOrderId(decode(segments[2])) }
 
             segments.size == 4 && segments[0] == "images" && segments[1] == "getbyrxnumber" ->
-                handleTxnLookup { txnDao.getByRxNoAndFillNo(decode(segments[2]), decode(segments[3])) }
+                handleTxnLookup { dispenseTxnDao.getByRxNoAndFillNo(decode(segments[2]), decode(segments[3])) }
 
             segments.size == 3 && segments[0] == "images" && segments[1] == "getbyrxnumber" ->
-                handleTxnLookup { txnDao.getMostRecentByRxNo(decode(segments[2])) }
+                handleTxnLookup { dispenseTxnDao.getMostRecentByRxNo(decode(segments[2])) }
 
             session.uri.startsWith("/images/") -> handleImage(
                 session.uri.removePrefix("/images/")
@@ -219,7 +219,7 @@ class ImageNanoServer(
     private fun handleTxnLookup(
         zipFileName: String = "images.zip",
         naming: ZipNaming = ZipNaming.LEGACY,
-        lookup: suspend () -> PillCountTxnEntity?
+        lookup: suspend () -> DispenseTxnEntity?
     ): Response {
         return try {
             val txn = runBlocking { lookup() }
@@ -249,32 +249,32 @@ class ImageNanoServer(
         val type: String, val pillCount: Int, val file: File, val createdAt: Long, val isRaw: Boolean = false
     )
 
-    private suspend fun collectImageEntries(txn: PillCountTxnEntity): List<ImageEntry> {
+    private suspend fun collectImageEntries(txn: DispenseTxnEntity): List<ImageEntry> {
         val entries = mutableListOf<ImageEntry>()
 
-        BottleInfoJson.decode(txn.bottleInfoListJson)
+        DispenseBottleJson.decode(txn.bottlesJson)
             .mapNotNull { it.barcodeImagePath?.takeIf { path -> path.isNotBlank() } }
             .forEach { path ->
                 resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it, txn.createdAt)) }
                     ?: logger.w("Barcode image missing for txnId=${txn.txnId}: ${File(path).name}")
             }
 
-        val details = txnDetailsDao.getAllForTxn(txn.txnId.toString())
+        val details = dispenseCountDao.getAllForTxn(txn.txnId.toString())
             .sortedBy { it.createdAt }
 
-        for (detail: PillCountTxnDetailsEntity in details) {
+        for (detail: DispenseCountEntity in details) {
             val path = detail.imagePath?.takeIf { it.isNotBlank() } ?: continue
             val file = resolveFile(path)
             if (file == null) {
                 logger.w("Detail image missing for txnId=${txn.txnId}: ${File(path).name}")
                 continue
             }
-            entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, file, detail.createdAt))
+            entries.add(ImageEntry(detail.step ?: "IMAGE", detail.pillCount ?: 0, file, detail.createdAt))
             // Raw copy right after its processed image; zipResponse names it from that one.
             detail.rawImagePath?.takeIf { it.isNotBlank() }?.let { rawPath ->
                 val raw = resolveFile(rawPath)
                 if (raw == null) logger.w("Raw image missing for txnId=${txn.txnId}: ${File(rawPath).name}")
-                else entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, raw, detail.createdAt, isRaw = true))
+                else entries.add(ImageEntry(detail.step ?: "IMAGE", detail.pillCount ?: 0, raw, detail.createdAt, isRaw = true))
             }
         }
 

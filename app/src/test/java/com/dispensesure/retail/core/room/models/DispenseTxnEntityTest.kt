@@ -9,13 +9,12 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PillCountTxnEntityTest {
+class DispenseTxnEntityTest {
 
-    private fun sample() = PillCountTxnEntity(
+    private fun sample() = DispenseTxnEntity(
         txnId = 1L,
-        localId = 2L,
+        userLocalId = 2L,
         drugId = 3L,
-        isDispense = true,
         targetCount = 50,
         status = CountStatus.COMPLETED,
         note = "note",
@@ -39,11 +38,10 @@ class PillCountTxnEntityTest {
 
     @Test
     fun defaultValues() {
-        val e = PillCountTxnEntity(isDispense = false, status = CountStatus.PARTIAL)
+        val e = DispenseTxnEntity(status = CountStatus.PARTIAL)
         assertEquals(0L, e.txnId)
-        assertNull(e.localId)
+        assertNull(e.userLocalId)
         assertNull(e.drugId)
-        assertEquals(false, e.isDispense)
         assertNull(e.targetCount)
         assertEquals(CountStatus.PARTIAL, e.status)
         assertNull(e.note)
@@ -69,9 +67,8 @@ class PillCountTxnEntityTest {
     fun getters() {
         val e = sample()
         assertEquals(1L, e.txnId)
-        assertEquals(2L, e.localId)
+        assertEquals(2L, e.userLocalId)
         assertEquals(3L, e.drugId)
-        assertEquals(true, e.isDispense)
         assertEquals(50, e.targetCount)
         assertEquals(CountStatus.COMPLETED, e.status)
         assertEquals("note", e.note)
@@ -107,7 +104,7 @@ class PillCountTxnEntityTest {
 
     @Test
     fun copy() {
-        assertEquals(false, sample().copy(isDispense = false).isDispense)
+        assertEquals(CountStatus.PARTIAL, sample().copy(status = CountStatus.PARTIAL).status)
     }
 
     @Test
@@ -116,27 +113,26 @@ class PillCountTxnEntityTest {
         // normalization refactor, so the destructuring layout shifted accordingly.
         val e = sample()
         assertEquals(1L, e.component1())        // txnId
-        assertEquals(2L, e.component2())        // localId
+        assertEquals(2L, e.component2())        // userLocalId
         assertEquals(3L, e.component3())        // drugId
-        assertEquals(true, e.component4())
-        assertEquals(50, e.component5())        // targetCount
-        assertEquals(CountStatus.COMPLETED, e.component6())
-        assertEquals("note", e.component7())
-        assertEquals(true, e.component8())      // isSubstitute
-        assertEquals("rx1", e.component9())
-        assertEquals("rf1", e.component10())
-        assertEquals("John", e.component11())   // patientName
-        assertEquals(true, e.component12())     // isDeleted
-        assertEquals(100L, e.component13())     // createdAt
-        assertEquals(200L, e.component14())     // updatedAt
-        assertEquals(true, e.component15())     // isComingFromHL7
-        assertEquals(true, e.component16())     // isSynced
-        assertEquals(true, e.component17())     // isNdcVerified
-        assertEquals("bucket", e.component18()) // bucketId
-        assertEquals(7L, e.component19())       // substitutedDrugId
-        assertEquals("step", e.component20())   // workflowStep
-        assertEquals(TxnPriority.High, e.component21())
-        assertEquals(true, e.component22())     // isGlovesPresent
-        assertEquals(true, e.component23())     // hazardousTrayDetected
+        assertEquals(50, e.component4())        // targetCount
+        assertEquals(CountStatus.COMPLETED, e.component5())
+        assertEquals("note", e.component6())
+        assertEquals(true, e.component7())      // isSubstitute
+        assertEquals("rx1", e.component8())
+        assertEquals("rf1", e.component9())
+        assertEquals("John", e.component10())   // patientName
+        assertEquals(true, e.component11())     // isDeleted
+        assertEquals(100L, e.component12())     // createdAt
+        assertEquals(200L, e.component13())     // updatedAt
+        assertEquals(true, e.component14())     // isComingFromHL7
+        assertEquals(true, e.component15())     // isSynced
+        assertEquals(true, e.component16())     // isNdcVerified
+        assertEquals("bucket", e.component17()) // bucketId
+        assertEquals(7L, e.component18())       // substitutedDrugId
+        assertEquals("step", e.component19())   // workflowStep
+        assertEquals(TxnPriority.High, e.component20())
+        assertEquals(true, e.component21())     // isGlovesPresent
+        assertEquals(true, e.component22())     // hazardousTrayDetected
     }
 }

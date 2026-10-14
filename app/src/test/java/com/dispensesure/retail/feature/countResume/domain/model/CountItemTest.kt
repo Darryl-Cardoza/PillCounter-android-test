@@ -18,12 +18,11 @@ class CountItemTest {
         bucketId: String? = "bucket-1",
         pillCount: Int = 30,
         target: Int = 60,
-        bottleInfoListJson: String? = "barcode.png",
+        bottlesJson: String? = "barcode.png",
         date: String = "2026-06-17",
         image: Int = R.drawable.logo,
         isComingFromHL7: Boolean = false,
         isNdcVerified: Boolean = true,
-        isDispense: Boolean = false,
         priority: TxnPriority? = null
     ) = CountItem(
         id = id,
@@ -33,12 +32,11 @@ class CountItemTest {
         bucketId = bucketId,
         pillCount = pillCount,
         target = target,
-        bottleInfoListJson = bottleInfoListJson,
+        bottlesJson = bottlesJson,
         date = date,
         image = image,
         isComingFromHL7 = isComingFromHL7,
         isNdcVerified = isNdcVerified,
-        isDispense = isDispense,
         priority = priority
     )
 
@@ -52,14 +50,13 @@ class CountItemTest {
             bucketId = "bucket-1",
             pillCount = 30,
             target = 60,
-            bottleInfoListJson = "barcode.png",
+            bottlesJson = "barcode.png",
             date = "2026-06-17",
             isComingFromHL7 = false,
             isNdcVerified = true
         )
 
         assertEquals(R.drawable.logo, item.image)
-        assertEquals(false, item.isDispense)
         assertNull(item.priority)
     }
 
@@ -73,12 +70,11 @@ class CountItemTest {
             bucketId = null,
             pillCount = 12,
             target = 24,
-            bottleInfoListJson = null,
+            bottlesJson = null,
             date = "2026-01-01",
             image = R.drawable.logo,
             isComingFromHL7 = true,
             isNdcVerified = false,
-            isDispense = true,
             priority = TxnPriority.High
         )
 
@@ -89,12 +85,11 @@ class CountItemTest {
         assertNull(item.bucketId)
         assertEquals(12, item.pillCount)
         assertEquals(24, item.target)
-        assertNull(item.bottleInfoListJson)
+        assertNull(item.bottlesJson)
         assertEquals("2026-01-01", item.date)
         assertEquals(R.drawable.logo, item.image)
         assertTrue(item.isComingFromHL7)
         assertEquals(false, item.isNdcVerified)
-        assertEquals(true, item.isDispense)
         assertEquals(TxnPriority.High, item.priority)
     }
 
@@ -137,17 +132,16 @@ class CountItemTest {
             bucketId = "bucket",
             pillCount = 7,
             target = 14,
-            bottleInfoListJson = "img",
+            bottlesJson = "img",
             date = "date",
             image = R.drawable.logo,
             isComingFromHL7 = true,
             isNdcVerified = false,
-            isDispense = true,
             priority = TxnPriority.Medium
         )
 
         val (id, name, ndc, drugType, bucketId, pillCount, target, barcodeImage,
-            date, image, isComingFromHL7, isNdcVerified, isDispense, priority) = item
+            date, image, isComingFromHL7, isNdcVerified, priority) = item
 
         assertEquals(5L, id)
         assertEquals("Drug", name)
@@ -161,7 +155,6 @@ class CountItemTest {
         assertEquals(R.drawable.logo, image)
         assertEquals(true, isComingFromHL7)
         assertEquals(false, isNdcVerified)
-        assertEquals(true, isDispense)
         assertEquals(TxnPriority.Medium, priority)
     }
 }

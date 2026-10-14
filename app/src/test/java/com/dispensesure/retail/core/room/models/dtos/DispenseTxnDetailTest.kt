@@ -8,17 +8,17 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class TxnWithDetailsTest {
+class DispenseTxnDetailTest {
 
-    private fun detail() = TxnDetailInfo(
-        txnDetailsId = 5L,
+    private fun detail() = DispenseCountInfo(
+        countId = 5L,
         txnId = 1L,
         pillCount = 10,
         imagePath = "img.png",
-        type = StepState.SCAN
+        step = StepState.SCAN
     )
 
-    private fun sample() = TxnWithDetails(
+    private fun sample() = DispenseTxnDetail(
         txnId = 1L,
         drugName = "Drug",
         drugId = 2L,
@@ -26,11 +26,10 @@ class TxnWithDetailsTest {
         targetCount = 50,
         note = "note",
         createdAt = 100L,
-        bottleInfoListJson = "bc.png",
+        bottlesJson = "bc.png",
         totalPillCount = 30,
-        isDispense = true,
         drugType = "tablet",
-        txnDetails = listOf(detail()),
+        counts = listOf(detail()),
         isComingFromHL7 = true,
         isSubstitute = true,
         requestedDrugName = "ReqDrug",
@@ -38,25 +37,25 @@ class TxnWithDetailsTest {
         workflowStep = "step"
     )
 
-    // ---------- TxnDetailInfo ----------
+    // ---------- DispenseCountInfo ----------
 
     @Test
     fun detail_defaults() {
-        val d = TxnDetailInfo(txnId = null, pillCount = null, imagePath = null, type = null)
+        val d = DispenseCountInfo(txnId = null, pillCount = null, imagePath = null, step = null)
         assertNull(d.txnId)
         assertNull(d.pillCount)
         assertNull(d.imagePath)
-        assertNull(d.type)
+        assertNull(d.step)
     }
 
     @Test
     fun detail_getters() {
         val d = detail()
-        assertEquals(5L, d.txnDetailsId)
+        assertEquals(5L, d.countId)
         assertEquals(1L, d.txnId)
         assertEquals(10, d.pillCount)
         assertEquals("img.png", d.imagePath)
-        assertEquals(StepState.SCAN, d.type)
+        assertEquals(StepState.SCAN, d.step)
     }
 
     @Test
@@ -74,11 +73,11 @@ class TxnWithDetailsTest {
         assertEquals(StepState.SCAN, d.component5())
     }
 
-    // ---------- TxnWithDetails ----------
+    // ---------- DispenseTxnDetail ----------
 
     @Test
     fun txn_defaults() {
-        val t = TxnWithDetails(
+        val t = DispenseTxnDetail(
             txnId = 1L,
             drugName = null,
             drugId = 2L,
@@ -86,18 +85,17 @@ class TxnWithDetailsTest {
             targetCount = null,
             note = null,
             createdAt = 0L,
-            bottleInfoListJson = null,
+            bottlesJson = null,
             totalPillCount = 0,
-            isDispense = false,
             drugType = null,
-            txnDetails = emptyList(),
+            counts = emptyList(),
             isComingFromHL7 = false
         )
         assertFalse(t.isSubstitute)
         assertNull(t.requestedDrugName)
         assertNull(t.requestedNdc)
         assertNull(t.workflowStep)
-        assertTrue(t.txnDetails.isEmpty())
+        assertTrue(t.counts.isEmpty())
     }
 
     @Test
@@ -110,11 +108,10 @@ class TxnWithDetailsTest {
         assertEquals(50, t.targetCount)
         assertEquals("note", t.note)
         assertEquals(100L, t.createdAt)
-        assertEquals("bc.png", t.bottleInfoListJson)
+        assertEquals("bc.png", t.bottlesJson)
         assertEquals(30, t.totalPillCount)
-        assertEquals(true, t.isDispense)
         assertEquals("tablet", t.drugType)
-        assertEquals(listOf(detail()), t.txnDetails)
+        assertEquals(listOf(detail()), t.counts)
         assertTrue(t.isComingFromHL7)
         assertTrue(t.isSubstitute)
         assertEquals("ReqDrug", t.requestedDrugName)
@@ -151,18 +148,17 @@ class TxnWithDetailsTest {
         assertEquals(50, t.component5())        // targetCount
         assertEquals("note", t.component6())    // note
         assertEquals(100L, t.component7())      // createdAt
-        assertEquals("bc.png", t.component8())  // bottleInfoListJson
+        assertEquals("bc.png", t.component8())  // bottlesJson
         assertEquals(30, t.component9())        // totalPillCount
-        assertEquals(true, t.component10())
-        assertEquals("tablet", t.component11()) // drugType
-        assertNull(t.component12())             // strength
-        assertNull(t.component13())             // dosageForm
-        assertNull(t.component14())             // bucketId
-        assertEquals(listOf(detail()), t.component15()) // txnDetails
-        assertEquals(true, t.component16())     // isComingFromHL7
-        assertEquals(true, t.component17())     // isSubstitute
-        assertEquals("ReqDrug", t.component18()) // requestedDrugName
-        assertEquals("222", t.component19())    // requestedNdc
-        assertEquals("step", t.component20())   // workflowStep
+        assertEquals("tablet", t.component10()) // drugType
+        assertNull(t.component11())             // strength
+        assertNull(t.component12())             // dosageForm
+        assertNull(t.component13())             // bucketId
+        assertEquals(listOf(detail()), t.component14()) // counts
+        assertEquals(true, t.component15())     // isComingFromHL7
+        assertEquals(true, t.component16())     // isSubstitute
+        assertEquals("ReqDrug", t.component17()) // requestedDrugName
+        assertEquals("222", t.component18())    // requestedNdc
+        assertEquals("step", t.component19())   // workflowStep
     }
 }

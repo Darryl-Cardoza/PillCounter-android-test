@@ -6,11 +6,10 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class StatusTypeCountTest {
+class DispenseStatusCountTest {
 
-    private fun sample() = StatusTypeCount(
+    private fun sample() = DispenseStatusCount(
         status = CountStatus.COMPLETED,
-        isDispense = true,
         cnt = 7
     )
 
@@ -18,7 +17,6 @@ class StatusTypeCountTest {
     fun getters() {
         val d = sample()
         assertEquals(CountStatus.COMPLETED, d.status)
-        assertEquals(true, d.isDispense)
         assertEquals(7, d.cnt)
     }
 
@@ -36,14 +34,13 @@ class StatusTypeCountTest {
 
     @Test
     fun copy() {
-        assertEquals(false, sample().copy(isDispense = false).isDispense)
+        assertEquals(9, sample().copy(cnt = 9).cnt)
     }
 
     @Test
     fun componentN() {
         val d = sample()
         assertEquals(CountStatus.COMPLETED, d.component1())
-        assertEquals(true, d.component2())
-        assertEquals(7, d.component3())
+        assertEquals(7, d.component2())
     }
 }

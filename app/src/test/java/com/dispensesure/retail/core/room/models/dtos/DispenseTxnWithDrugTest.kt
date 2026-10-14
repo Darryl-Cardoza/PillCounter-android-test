@@ -8,9 +8,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class PillCountWithDrugAndTotalTest {
+class DispenseTxnWithDrugTest {
 
-    private fun sample() = PillCountWithDrugAndTotal(
+    private fun sample() = DispenseTxnWithDrug(
         txnId = 1L,
         drugName = "Drug",
         ndc = "111",
@@ -18,18 +18,17 @@ class PillCountWithDrugAndTotalTest {
         bucketId = "bucket",
         createdAt = 100L,
         targetCount = 50,
-        bottleInfoListJson = "bc.png",
+        bottlesJson = "bc.png",
         totalPillCount = 30,
         isComingFromHL7 = true,
         isNdcVerified = true,
-        isDispense = true,
         priority = TxnPriority.High,
         isHazardous = true
     )
 
     @Test
     fun defaultValue_isHazardous() {
-        val d = PillCountWithDrugAndTotal(
+        val d = DispenseTxnWithDrug(
             txnId = 1L,
             drugName = null,
             ndc = null,
@@ -37,11 +36,10 @@ class PillCountWithDrugAndTotalTest {
             bucketId = null,
             createdAt = 0L,
             targetCount = null,
-            bottleInfoListJson = null,
+            bottlesJson = null,
             totalPillCount = 0,
             isComingFromHL7 = false,
             isNdcVerified = false,
-            isDispense = false,
             priority = null
         )
         assertFalse(d.isHazardous)
@@ -50,7 +48,7 @@ class PillCountWithDrugAndTotalTest {
         assertNull(d.drugType)
         assertNull(d.bucketId)
         assertNull(d.targetCount)
-        assertNull(d.bottleInfoListJson)
+        assertNull(d.bottlesJson)
         assertNull(d.priority)
     }
 
@@ -64,11 +62,10 @@ class PillCountWithDrugAndTotalTest {
         assertEquals("bucket", d.bucketId)
         assertEquals(100L, d.createdAt)
         assertEquals(50, d.targetCount)
-        assertEquals("bc.png", d.bottleInfoListJson)
+        assertEquals("bc.png", d.bottlesJson)
         assertEquals(30, d.totalPillCount)
         assertTrue(d.isComingFromHL7)
         assertTrue(d.isNdcVerified)
-        assertEquals(true, d.isDispense)
         assertEquals(TxnPriority.High, d.priority)
         assertTrue(d.isHazardous)
     }
@@ -104,8 +101,7 @@ class PillCountWithDrugAndTotalTest {
         assertEquals(30, d.component9())
         assertEquals(true, d.component10())
         assertEquals(true, d.component11())
-        assertEquals(true, d.component12())
-        assertEquals(TxnPriority.High, d.component13())
-        assertEquals(true, d.component14())
+        assertEquals(TxnPriority.High, d.component12())
+        assertEquals(true, d.component13())
     }
 }

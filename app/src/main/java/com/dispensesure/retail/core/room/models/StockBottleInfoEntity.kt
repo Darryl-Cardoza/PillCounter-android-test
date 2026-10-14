@@ -9,13 +9,13 @@ import androidx.room.PrimaryKey
  * A single physical bottle/loose line for a stock count — one row per
  * `(stockTxn, lot, expiry)` variant of a drug within a batch.
  *
- * Part of the normalized stock model: `batch` → [StockTxnEntity] → [BottleInfoEntity].
+ * Part of the normalized stock model: `stock_batch` → [StockTxnEntity] → [StockBottleInfoEntity].
  * Replaces the per-`(drug, lot, expiry)` rows that previously lived in
  * `pill_count_txn` with `CountType.REGULAR`.
  *
  * @property bottleId   Auto-generated primary key.
  * @property stockTxnId FK to [StockTxnEntity.txnId]. Bottles cascade-delete with their header.
- * @property batchId    FK to [BatchEntity.batchId]. Null if the batch is deleted. Denormalized
+ * @property batchId    FK to [StockBatchEntity.batchId]. Null if the batch is deleted. Denormalized
  *                      from the parent [StockTxnEntity] so batch-scoped joins stay cheap.
  * @property lotNo      Lot/batch number from the scanned label.
  * @property expNo      Expiry (stored as a formatted string, e.g. MM-dd-yyyy).
@@ -31,7 +31,7 @@ import androidx.room.PrimaryKey
  *                      is scoped to a single session.
  */
 @Entity(
-    tableName = "bottle_info",
+    tableName = "stock_bottle_info",
     foreignKeys = [
         ForeignKey(
             entity = StockTxnEntity::class,
@@ -40,18 +40,18 @@ import androidx.room.PrimaryKey
             onDelete = ForeignKey.CASCADE
         ),
         ForeignKey(
-            entity = BatchEntity::class,
+            entity = StockBatchEntity::class,
             parentColumns = ["batchId"],
             childColumns = ["batchId"],
             onDelete = ForeignKey.SET_NULL
         )
     ],
     indices = [
-        Index(value = ["stockTxnId"], name = "idx_bottle_info_stockTxnId"),
-        Index(value = ["batchId"], name = "idx_bottle_info_batchId"),
+        Index(value = ["stockTxnId"], name = "idx_stock_bottle_info_stockTxnId"),
+        Index(value = ["batchId"], name = "idx_stock_bottle_info_batchId"),
     ]
 )
-data class BottleInfoEntity(
+data class StockBottleInfoEntity(
     @PrimaryKey(autoGenerate = true)
     val bottleId: Long = 0L,
 

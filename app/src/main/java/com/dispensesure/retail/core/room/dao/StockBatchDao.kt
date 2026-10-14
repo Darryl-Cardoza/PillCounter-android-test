@@ -4,7 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
-import com.dispensesure.retail.core.room.models.BatchEntity
+import com.dispensesure.retail.core.room.models.StockBatchEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
@@ -14,7 +14,7 @@ import kotlinx.coroutines.flow.Flow
 /**
  * **Batch Data Access Object**
  *
- * Provides database operations for managing [BatchEntity] entries — representing
+ * Provides database operations for managing [StockBatchEntity] entries — representing
  * batches that group multiple pill count transactions together.
  *
  * ### Key Design Principles
@@ -25,34 +25,34 @@ import kotlinx.coroutines.flow.Flow
  * - **Reactive Observability:** Queries returning [Flow] provide live updates.
  *
  * ### Associated Tables
- * - `batch` — Main batch table.
+ * - `stock_batch` — Main batch table.
  */
 @Dao
-interface BatchDao {
+interface StockBatchDao {
 
     // ────────────────────────────── Create / Insert ──────────────────────────────
 
     /**
-     * Inserts a new [BatchEntity] into the database.
+     * Inserts a new [StockBatchEntity] into the database.
      *
      * - Uses [OnConflictStrategy.IGNORE] to prevent overwriting existing batches.
-     * - If a batch with the same [BatchEntity.batchId] already exists,
+     * - If a batch with the same [StockBatchEntity.batchId] already exists,
      *   the operation will be ignored and return `-1`.
      *
-     * @param batch The [BatchEntity] to insert.
+     * @param batch The [StockBatchEntity] to insert.
      * @return The row ID of the newly inserted batch, or `-1` if conflict.
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insert(batch: BatchEntity): Long
+    suspend fun insert(batch: StockBatchEntity): Long
 
     /**
-     * Inserts multiple [BatchEntity] records.
+     * Inserts multiple [StockBatchEntity] records.
      *
      * @param batches List of batches to insert.
      * @return List of row IDs for inserted batches.
      */
     @Insert(onConflict = OnConflictStrategy.IGNORE)
-    suspend fun insertAll(batches: List<BatchEntity>): List<Long>
+    suspend fun insertAll(batches: List<StockBatchEntity>): List<Long>
 
     // ────────────────────────────── Read / Query ──────────────────────────────
 
@@ -60,21 +60,21 @@ interface BatchDao {
      * Retrieves a batch by its ID.
      *
      * @param batchId The primary key of the batch.
-     * @return The [BatchEntity] with the given ID, or null if not found.
+     * @return The [StockBatchEntity] with the given ID, or null if not found.
      */
-    @Query("SELECT * FROM batch WHERE batchId = :batchId")
-    suspend fun getById(batchId: Long): BatchEntity?
+    @Query("SELECT * FROM stock_batch WHERE batchId = :batchId")
+    suspend fun getById(batchId: Long): StockBatchEntity?
 
-    @Query("SELECT * FROM batch WHERE batchId = :batchId LIMIT 1")
-    fun observeById(batchId: Long): Flow<BatchEntity?>
+    @Query("SELECT * FROM stock_batch WHERE batchId = :batchId LIMIT 1")
+    fun observeById(batchId: Long): Flow<StockBatchEntity?>
 
     /**
      * Retrieves all non-deleted batches ordered by creation date (newest first).
      *
      * @return A [Flow] emitting list of all active batches.
      */
-    @Query("SELECT * FROM batch WHERE isDeleted = 0 ORDER BY startDateTime DESC")
-    fun getAllActive(): Flow<List<BatchEntity>>
+    @Query("SELECT * FROM stock_batch WHERE isDeleted = 0 ORDER BY startDateTime DESC")
+    fun getAllActive(): Flow<List<StockBatchEntity>>
 
     /**
      * Retrieves all non-deleted batches filtered by [status], ordered newest first.
@@ -83,12 +83,12 @@ interface BatchDao {
      * @return A [Flow] emitting the filtered list of batches.
      */
     @Query("""
-        SELECT * FROM batch
+        SELECT * FROM stock_batch
         WHERE isDeleted = 0
         AND status = :status
         ORDER BY startDateTime DESC
     """)
-    fun getAllByStatus(status: BatchStatus): Flow<List<BatchEntity>>
+    fun getAllByStatus(status: BatchStatus): Flow<List<StockBatchEntity>>
 
     /** Convenience wrapper — returns only [BatchStatus.INPROGRESS] batches. */
     fun getAllInProgress() = getAllByStatus(BatchStatus.INPROGRESS)
@@ -97,10 +97,10 @@ interface BatchDao {
      * Retrieves the most recently created batch with the given [status].
      *
      * @param status The [BatchStatus] to filter by.
-     * @return The latest matching [BatchEntity], or null if none exist.
+     * @return The latest matching [StockBatchEntity], or null if none exist.
      */
-    @Query("SELECT * FROM batch WHERE isDeleted = 0 AND status = :status ORDER BY startDateTime DESC LIMIT 1")
-    suspend fun getLatestByStatus(status: BatchStatus): BatchEntity?
+    @Query("SELECT * FROM stock_batch WHERE isDeleted = 0 AND status = :status ORDER BY startDateTime DESC LIMIT 1")
+    suspend fun getLatestByStatus(status: BatchStatus): StockBatchEntity?
 
     /** Convenience wrapper — returns the latest [BatchStatus.INPROGRESS] batch. */
     suspend fun getLatest() = getLatestByStatus(BatchStatus.INPROGRESS)
@@ -113,14 +113,14 @@ interface BatchDao {
      * @param batchId The ID of the batch to soft-delete.
      * @return The number of rows affected.
      */
-    @Query("UPDATE batch SET isDeleted = 1 WHERE batchId = :batchId")
+    @Query("UPDATE stock_batch SET isDeleted = 1 WHERE batchId = :batchId")
     suspend fun softDelete(batchId: Long): Int
 
     /**
-     * Hard-deletes a batch row — tutorial-created batches only. `stock_txn`/`bottle_info` use
+     * Hard-deletes a batch row — tutorial-created batches only. `stock_txn`/`stock_bottle_info` use
      * `onDelete = SET_NULL`, not `CASCADE`, so callers must delete those first or they orphan.
      */
-    @Query("DELETE FROM batch WHERE batchId = :batchId")
+    @Query("DELETE FROM stock_batch WHERE batchId = :batchId")
     suspend fun deleteById(batchId: Long)
 
     /**
@@ -129,10 +129,10 @@ interface BatchDao {
      * @param batchId The ID of the batch to complete.
      * @return The number of rows affected.
      */
-    @Query("UPDATE batch SET status = 'COMPLETED', endDateTime = :endDateTime WHERE batchId = :batchId")
+    @Query("UPDATE stock_batch SET status = 'COMPLETED', endDateTime = :endDateTime WHERE batchId = :batchId")
     suspend fun markAsCompleted(batchId: Long, endDateTime: Long = System.currentTimeMillis()): Int
 
-    @Query("UPDATE batch SET note = :note WHERE batchId = :batchId")
+    @Query("UPDATE stock_batch SET note = :note WHERE batchId = :batchId")
     suspend fun updateNote(batchId: Long, note: String?): Int
 
     // ────────────────────────────── Utility ──────────────────────────────
@@ -142,7 +142,7 @@ interface BatchDao {
      *
      * @return The total number of active batches.
      */
-    @Query("SELECT COUNT(*) FROM batch WHERE isDeleted = 0")
+    @Query("SELECT COUNT(*) FROM stock_batch WHERE isDeleted = 0")
     suspend fun getActiveCount(): Long
 
     /**
@@ -151,7 +151,7 @@ interface BatchDao {
      * @param status The [BatchStatus] to count.
      * @return A [Flow] emitting the live count.
      */
-    @Query("SELECT COUNT(*) FROM batch WHERE isDeleted = 0 AND status = :status")
+    @Query("SELECT COUNT(*) FROM stock_batch WHERE isDeleted = 0 AND status = :status")
     fun observeCountByStatus(status: BatchStatus): Flow<Int>
 
     /** Convenience wrapper — observes count of [BatchStatus.INPROGRESS] batches. */
@@ -160,11 +160,11 @@ interface BatchDao {
     /** Convenience wrapper — observes count of [BatchStatus.COMPLETED] batches. */
     fun observeCompletedBatchCount() = observeCountByStatus(BatchStatus.COMPLETED)
 
-    @Query("DELETE FROM batch")
+    @Query("DELETE FROM stock_batch")
     suspend fun deleteAll()
 
     @Query("""
-        SELECT batchId FROM batch
+        SELECT batchId FROM stock_batch
         WHERE isDeleted = 0
           AND startDateTime BETWEEN :start AND :end
           AND (
@@ -182,7 +182,7 @@ interface BatchDao {
     ): List<Long>
 
     @Query("""
-        UPDATE batch
+        UPDATE stock_batch
         SET isDeleted = 1
         WHERE isDeleted = 0
           AND startDateTime BETWEEN :start AND :end
@@ -201,7 +201,7 @@ interface BatchDao {
     )
 
     /**
-     * Returns all non-deleted batches whose [BatchEntity.startDateTime] falls within the given
+     * Returns all non-deleted batches whose [StockBatchEntity.startDateTime] falls within the given
      * range, LEFT JOINed with their transactions so that empty batches (no txns yet) still appear
      * with [BatchSummaryDto.uniqueNdcCount] = 0.
      *
@@ -217,7 +217,7 @@ interface BatchDao {
         b.bucketId AS bucketId,
         b.requestIdFromPMS AS requestIdFromPMS,
         COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
-    FROM batch b
+    FROM stock_batch b
     LEFT JOIN stock_txn txn
         ON b.batchId = txn.batchId
         AND txn.isDeleted = 0
@@ -242,7 +242,7 @@ interface BatchDao {
         b.bucketId AS bucketId,
         b.requestIdFromPMS AS requestIdFromPMS,
         COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
-    FROM batch b
+    FROM stock_batch b
     LEFT JOIN stock_txn txn
         ON b.batchId = txn.batchId
         AND txn.isDeleted = 0
@@ -273,7 +273,7 @@ interface BatchDao {
         b.bucketId AS bucketId,
         b.requestIdFromPMS AS requestIdFromPMS,
         COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
-    FROM batch b
+    FROM stock_batch b
     LEFT JOIN stock_txn txn
         ON b.batchId = txn.batchId
         AND txn.isDeleted = 0
@@ -299,7 +299,7 @@ interface BatchDao {
     SELECT
         COUNT(CASE WHEN requestIdFromPMS IS NOT NULL AND TRIM(requestIdFromPMS) <> '' THEN 1 END) AS cycleCount,
         COUNT(CASE WHEN requestIdFromPMS IS NULL OR TRIM(requestIdFromPMS) = '' THEN 1 END) AS pendingBatchCount
-    FROM batch
+    FROM stock_batch
     WHERE isDeleted = 0
       AND status = :inProgressStatus
       AND bucketId IS NOT '${TutorialData.BUCKET}'
@@ -318,7 +318,7 @@ interface BatchDao {
         b.bucketId AS bucketId,
         b.requestIdFromPMS AS requestIdFromPMS,
         COUNT(DISTINCT txn.drugId) AS uniqueNdcCount
-    FROM batch b
+    FROM stock_batch b
     LEFT JOIN stock_txn txn
         ON b.batchId = txn.batchId
         AND txn.isDeleted = 0
@@ -336,7 +336,7 @@ interface BatchDao {
 
     @Query(
         """
-        SELECT batchId FROM batch WHERE bucketId = '${TutorialData.BUCKET}'
+        SELECT batchId FROM stock_batch WHERE bucketId = '${TutorialData.BUCKET}'
         OR (batchId IN (SELECT batchId FROM stock_txn WHERE drugId IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
             AND batchId NOT IN (SELECT batchId FROM stock_txn
                                 WHERE batchId IS NOT NULL AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))))
@@ -344,20 +344,20 @@ interface BatchDao {
     )
     suspend fun getTutorialBatchIds(): List<Long>
 
-    @Query("UPDATE batch SET isSynced = 1 WHERE batchId = :batchId")
+    @Query("UPDATE stock_batch SET isSynced = 1 WHERE batchId = :batchId")
     suspend fun markBatchSynced(batchId: Long)
 
     /** Records the total chunk count once a chunked inventory sync starts (idempotent across resumes). */
-    @Query("UPDATE batch SET totalChunks = :totalChunks WHERE batchId = :batchId")
+    @Query("UPDATE stock_batch SET totalChunks = :totalChunks WHERE batchId = :batchId")
     suspend fun setTotalChunks(batchId: Long, totalChunks: Int)
 
     /** Advances progress after a chunk's ACK succeeds — persisted immediately so a resume never resends it. */
-    @Query("UPDATE batch SET lastAckedChunkIndex = :chunkIndex WHERE batchId = :batchId")
+    @Query("UPDATE stock_batch SET lastAckedChunkIndex = :chunkIndex WHERE batchId = :batchId")
     suspend fun markChunkAcked(batchId: Long, chunkIndex: Int)
 
     @Query("""
         SELECT COUNT(*)
-        FROM batch
+        FROM stock_batch
         WHERE isDeleted = 0
           AND status = :completedStatus
           AND isSynced = 0
@@ -379,21 +379,21 @@ interface BatchDao {
  * [com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel.flushStagedDetails]).
  *
  * What it does:
- * - Builds a [BatchEntity] with `batchId = now`, `startDateTime = now`,
+ * - Builds a [StockBatchEntity] with `batchId = now`, `startDateTime = now`,
  *   `endDateTime = null`, `status = INPROGRESS`, `isDeleted = false`, `note = null`.
- * - Delegates to [BatchDao.insert]. Propagates any DAO exception — callers wrap
+ * - Delegates to [StockBatchDao.insert]. Propagates any DAO exception — callers wrap
  *   in try/catch (ensure-variant) or rely on `withTransaction` to roll back.
  *
  * @param bucketId Optional bucket association for the new batch.
- * @return The new batchId returned by [BatchDao.insert].
+ * @return The new batchId returned by [StockBatchDao.insert].
  *
  * Example Usage:
- * val batchId = batchDao.insertNewInProgressBatch(bucketId = "B1")
+ * val batchId = stockBatchDao.insertNewInProgressBatch(bucketId = "B1")
  */
-suspend fun BatchDao.insertNewInProgressBatch(bucketId: String?): Long {
+suspend fun StockBatchDao.insertNewInProgressBatch(bucketId: String?): Long {
     val now = System.currentTimeMillis()
     return insert(
-        BatchEntity(
+        StockBatchEntity(
             batchId = now,
             startDateTime = now,
             endDateTime = null,

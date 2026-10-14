@@ -56,7 +56,7 @@ import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.analyzer.FrameBarcodeAnalyzer
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
@@ -514,13 +514,13 @@ fun DispenseFlowScreen(
         if (dispenseState.stage == DispenseStage.COUNTING) {
             Log.i(HAZARDOUS_TAG, "Stage → COUNTING | countType=$countType | txnId=${dispenseState.txnId} | drug=${dispenseState.drugName} | isHazardous=${dispenseState.isHazardous}")
             pillVm.resumePillDetection()
-            // Stock count (REGULAR): no pill_count_txn — count loose pills into the
+            // Stock count (REGULAR): no dispense_txn — count loose pills into the
             // already-created BottleInfo line via the stock-count session. Dispense (FIXED)
-            // keeps loading its txn from pill_count_txn via getDrugInfo.
+            // keeps loading its txn from dispense_txn via getDrugInfo.
             if (countType == CountType.REGULAR.toString()) {
                 // Stock count: enterStockCountSession → startStockCounting sets up the
                 // synthetic txn info and header fields itself. Calling showTxnInfo() here
-                // would clobber it with a null DB lookup (no pill_count_txn row for stock).
+                // would clobber it with a null DB lookup (no dispense_txn row for stock).
                 pillVm.enterStockCountSession(
                     bottleId = dispenseState.stockBottleId,
                     stockTxnId = dispenseState.stockTxnId,
@@ -1656,7 +1656,7 @@ internal fun handleBarcode(
     stage: DispenseStage,
     countType: String,
     onRx: (String, String?) -> Unit,
-    onNdc: (String, String?, BottleInfo?) -> Unit,
+    onNdc: (String, String?, DispenseBottle?) -> Unit,
     onRxInNdcStage: () -> Unit,
     onRxInStockCount: () -> Unit,
 ): Boolean {
@@ -1691,7 +1691,7 @@ internal fun handleBarcode(
             } else {
                 // First-bottle info for this txn: a plain (non-GS1) barcode carries no
                 // lot/exp/serial, so the bottle entry is count-only in that case.
-                val firstBottle = BottleInfo(
+                val firstBottle = DispenseBottle(
                     lotNumber = scan.lot,
                     expirationDate = scan.expiry,
                     serialNumber = scan.serial,

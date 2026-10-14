@@ -4,17 +4,17 @@ import android.app.Application
 import android.graphics.Bitmap
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.AppDatabase
-import com.dispensesure.retail.core.room.dao.BatchDao
-import com.dispensesure.retail.core.room.dao.BottleInfoDao
+import com.dispensesure.retail.core.room.dao.StockBatchDao
+import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDao
-import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
+import com.dispensesure.retail.core.room.dao.DispenseTxnDao
+import com.dispensesure.retail.core.room.dao.DispenseCountDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
-import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
-import com.dispensesure.retail.core.room.models.PillCountTxnEntity
-import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
+import com.dispensesure.retail.core.room.models.DispenseCountEntity
+import com.dispensesure.retail.core.room.models.DispenseTxnEntity
+import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
@@ -70,19 +70,19 @@ class PillScanningViewModelCaptureTest {
 
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
-    private val pillCountTxnDao: PillCountTxnDao = mockk(relaxed = true)
+    private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
     private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val bottleInfoDao: BottleInfoDao = mockk(relaxed = true)
+    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
-    private val pillCountTxnDetailsDao: PillCountTxnDetailsDao = mockk(relaxed = true)
+    private val dispenseCountDao: DispenseCountDao = mockk(relaxed = true)
     private val locationProvider: LocationProvider = mockk(relaxed = true)
     private val drugMasterDao: DrugMasterDao = mockk(relaxed = true)
     private val modelLoader: PillDetectionModelLoader = mockk(relaxed = true)
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
-    private val batchDao: BatchDao = mockk(relaxed = true)
+    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private val cameraHelper: CameraHelper = mockk(relaxed = true)
@@ -94,8 +94,8 @@ class PillScanningViewModelCaptureTest {
         every { application.applicationContext } returns application
         every { application.getString(any<Int>()) } returns "test error"
         every { application.getString(any<Int>(), any()) } returns "test error"
-        every { pillCountTxnDetailsDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
-        coEvery { pillCountTxnDetailsDao.getLatestType(any()) } returns null
+        every { dispenseCountDao.observeAllForTxn(any(), any()) } returns flowOf(emptyList())
+        coEvery { dispenseCountDao.getLatestStep(any()) } returns null
         coJustRun { performanceLogger.logPerformanceSnapshot(any()) }
         every { preferenceHelper.getControlDrugTypes() } returns emptySet()
         every { preferenceHelper.isRequireDoubleCountEnabled() } returns false
@@ -109,13 +109,13 @@ class PillScanningViewModelCaptureTest {
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
-            pillCountTxnDao = pillCountTxnDao,
+            dispenseTxnDao = dispenseTxnDao,
             stockTxnDao = stockTxnDao,
-            bottleInfoDao = bottleInfoDao,
-            batchDao = batchDao,
+            stockBottleInfoDao = stockBottleInfoDao,
+            stockBatchDao = stockBatchDao,
             userDao = userDao,
             operatorNameProvider = operatorNameProvider,
-            pillCountTxnDetailsDao = pillCountTxnDetailsDao,
+            dispenseCountDao = dispenseCountDao,
             locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
@@ -152,8 +152,8 @@ class PillScanningViewModelCaptureTest {
         val field = PillScanningViewModel::class.java.getDeclaredField("_txnInfo")
         field.isAccessible = true
         @Suppress("UNCHECKED_CAST")
-        val flow = field.get(viewModel) as MutableStateFlow<TxnWithDetails?>
-        flow.value = TxnWithDetails(
+        val flow = field.get(viewModel) as MutableStateFlow<DispenseTxnDetail?>
+        flow.value = DispenseTxnDetail(
             txnId = 42L,
             drugName = null,
             drugId = 1L,
@@ -161,11 +161,10 @@ class PillScanningViewModelCaptureTest {
             targetCount = targetCount,
             note = null,
             createdAt = 0L,
-            bottleInfoListJson = null,
+            bottlesJson = null,
             totalPillCount = 0,
-            isDispense = true,
             drugType = null,
-            txnDetails = emptyList(),
+            counts = emptyList(),
             isComingFromHL7 = false,
         )
     }
@@ -182,8 +181,8 @@ class PillScanningViewModelCaptureTest {
     /** Stub the CONTAINER_INITIATE rows the back-count gate sums; other steps stay empty. */
     private fun seedContainerInitiateTotal(total: Int) {
         every {
-            pillCountTxnDetailsDao.observeAllForTxn(any(), StepState.CONTAINER_INITIATE)
-        } returns flowOf(listOf(PillCountTxnDetailsEntity(pillCount = total, type = StepState.CONTAINER_INITIATE.toString())))
+            dispenseCountDao.observeAllForTxn(any(), StepState.CONTAINER_INITIATE)
+        } returns flowOf(listOf(DispenseCountEntity(pillCount = total, step = StepState.CONTAINER_INITIATE.toString())))
     }
 
     // ─────────────────────────── capture button ───────────────────────────
@@ -194,9 +193,9 @@ class PillScanningViewModelCaptureTest {
         every { Bitmap.createBitmap(any<Int>(), any<Int>(), any<Bitmap.Config>()) } returns mockk(relaxed = true)
         every { preferenceHelper.getTxnId() } returns 42L
         every { preferenceHelper.getShowNotesDialogSetting() } returns false
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 30
         // captureVialForTour is a no-op without an active tour, and refuses a non-demo txn.
-        coEvery { pillCountTxnDao.getById(42L) } returns mockk<PillCountTxnEntity>(relaxed = true) {
+        coEvery { dispenseTxnDao.getById(42L) } returns mockk<DispenseTxnEntity>(relaxed = true) {
             every { rxNo } returns TutorialData.RX_PREFIX + "1"
         }
         FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false)
@@ -304,7 +303,7 @@ class PillScanningViewModelCaptureTest {
         val onCaptured = slot<(Bitmap) -> Unit>()
         every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
         every { preferenceHelper.getTxnId() } returns 42L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 0
         val bitmap: Bitmap = mockk(relaxed = true)
         every { bitmap.isRecycled } returns true // skip the real file write
 
@@ -315,8 +314,8 @@ class PillScanningViewModelCaptureTest {
         advanceUntilIdle()
 
         // Three taps, one commit: one delete+insert pair, not three.
-        coVerify(exactly = 1) { pillCountTxnDetailsDao.deleteVialByTxnId(42L, StepState.VIAL) }
-        coVerify(exactly = 1) { pillCountTxnDetailsDao.insert(any<PillCountTxnDetailsEntity>()) }
+        coVerify(exactly = 1) { dispenseCountDao.deleteVialByTxnId(42L, StepState.VIAL) }
+        coVerify(exactly = 1) { dispenseCountDao.insert(any<DispenseCountEntity>()) }
     }
 
     // ─────────────────────────── done button ───────────────────────────
@@ -326,7 +325,7 @@ class PillScanningViewModelCaptureTest {
         val onCaptured = slot<(Bitmap) -> Unit>()
         every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
         every { preferenceHelper.getTxnId() } returns 42L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 0
         val bitmap: Bitmap = mockk(relaxed = true)
         every { bitmap.isRecycled } returns true
 
@@ -336,7 +335,7 @@ class PillScanningViewModelCaptureTest {
         viewModel.saveCaptureImage()
         advanceUntilIdle()
 
-        coVerify(exactly = 1) { pillCountTxnDetailsDao.insert(any<PillCountTxnDetailsEntity>()) }
+        coVerify(exactly = 1) { dispenseCountDao.insert(any<DispenseCountEntity>()) }
     }
 
     @Test
@@ -345,7 +344,7 @@ class PillScanningViewModelCaptureTest {
         every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
         every { preferenceHelper.getTxnId() } returns 42L
         every { preferenceHelper.getShowNotesDialogSetting() } returns true
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 30
         val bitmap: Bitmap = mockk(relaxed = true)
         every { bitmap.isRecycled } returns true
 
@@ -362,7 +361,7 @@ class PillScanningViewModelCaptureTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.uiState.value.showNotesDialog)
-        coVerify(exactly = 1) { pillCountTxnDetailsDao.insert(any<PillCountTxnDetailsEntity>()) }
+        coVerify(exactly = 1) { dispenseCountDao.insert(any<DispenseCountEntity>()) }
     }
 
     @Test
@@ -370,7 +369,7 @@ class PillScanningViewModelCaptureTest {
         val onCaptured = slot<(Bitmap) -> Unit>()
         every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
         every { preferenceHelper.getTxnId() } returns 42L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 0
         val bitmap: Bitmap = mockk(relaxed = true)
         every { bitmap.isRecycled } returns true
 
@@ -385,7 +384,7 @@ class PillScanningViewModelCaptureTest {
         viewModel.saveCaptureImage()
         advanceUntilIdle()
 
-        coVerify(exactly = 2) { pillCountTxnDetailsDao.insert(any<PillCountTxnDetailsEntity>()) }
+        coVerify(exactly = 2) { dispenseCountDao.insert(any<DispenseCountEntity>()) }
     }
 
     @Test
@@ -393,7 +392,7 @@ class PillScanningViewModelCaptureTest {
         val onCaptured = slot<(Bitmap) -> Unit>()
         every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
         every { preferenceHelper.getTxnId() } returns 42L
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 0
         val bitmap: Bitmap = mockk(relaxed = true)
         every { bitmap.isRecycled } returns true
 
@@ -410,7 +409,7 @@ class PillScanningViewModelCaptureTest {
         viewModel.saveCaptureImage()
         advanceUntilIdle()
 
-        coVerify(exactly = 2) { pillCountTxnDetailsDao.insert(any<PillCountTxnDetailsEntity>()) }
+        coVerify(exactly = 2) { dispenseCountDao.insert(any<DispenseCountEntity>()) }
     }
 
     // ─────────────────────────── back-count skip ───────────────────────────
@@ -462,7 +461,7 @@ class PillScanningViewModelCaptureTest {
         setCurrentStep(StepState.VIAL)
         seedTargetCount(30)
         seedContainerInitiateTotal(30)
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 0
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 0
 
         captureAndDone()
         advanceUntilIdle()
@@ -478,7 +477,7 @@ class PillScanningViewModelCaptureTest {
         seedTargetCount(30)
         every { preferenceHelper.getTxnId() } returns 42L
         every { preferenceHelper.getShowNotesDialogSetting() } returns true
-        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+        coEvery { dispenseCountDao.getTotalPillCountForTxn(any()) } returns 30
         seedSkipDialogShown()
         assertTrue(viewModel.uiState.value.showSkipStepDialog)
 

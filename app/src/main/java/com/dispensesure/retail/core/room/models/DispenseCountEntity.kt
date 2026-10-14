@@ -6,45 +6,45 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * Entity representing the details line of a pill count transaction.
+ * Entity representing one count (one ADD) of a dispense transaction.
  *
- * Each record links to a parent transaction in [PillCountTxnEntity].
+ * Each record links to a parent transaction in [DispenseTxnEntity].
  *
- * @property txnDetailsId Auto-generated primary key for the detail record.
+ * @property countId      Auto-generated primary key of the count.
  * @property txnId        Foreign key referencing the parent transaction ID (nullable due to SET_NULL).
  * @property txnDetailsNo Sequential number for the detail within a transaction.
  * @property pillCount    Number of pills counted in this detail line.
  * @property imagePath    Path/URI to an associated image, if any.
  * @property rawImagePath TARGET_VERIFICATION crop with nothing drawn on it, if any.
- * @property type         Optional category/type (e.g., "fixed", "partial").
+ * @property step         [com.dispensesure.retail.core.models.StepState] name of the workflow step this count belongs to.
  * @property isManual     Whether this detail was entered manually (`true`) or automatically (`false`).
  * @property createdAt    Creation timestamp (epoch millis).
  * @property updatedAt    Last update timestamp (epoch millis).
  */
 @Entity(
-    tableName = "pill_count_txn_details",
+    tableName = "dispense_count",
     foreignKeys = [
         ForeignKey(
-            entity = PillCountTxnEntity::class,
+            entity = DispenseTxnEntity::class,
             parentColumns = ["txnId"],
             childColumns = ["txnId"],
             onDelete = ForeignKey.CASCADE
         )
     ],
     indices = [
-        Index(value = ["txnId"], name = "idx_txn_details_txnId")
+        Index(value = ["txnId"], name = "idx_dispense_count_txnId")
     ]
 )
 
-data class PillCountTxnDetailsEntity(
+data class DispenseCountEntity(
     @PrimaryKey(autoGenerate = true)
-    val txnDetailsId: Long = 0L,
+    val countId: Long = 0L,
 
     val txnId: Long? = null,
     val pillCount: Int? = null,
     val imagePath: String? = null,
     val rawImagePath: String? = null,
-    val type: String? = null,
+    val step: String? = null,
 
     val isManual: Boolean = false,
 

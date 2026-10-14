@@ -33,7 +33,7 @@ import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
+import com.dispensesure.retail.core.scanning.domain.model.DispenseBottleJson
 import com.dispensesure.retail.feature.countResume.domain.model.CountItem
 import com.dispensesure.retail.ui.theme.AppTheme
 import java.io.File
@@ -76,7 +76,7 @@ fun UnsyncedTransactionListCard(
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                val barcodeImage = BottleInfoJson.decode(item.bottleInfoListJson).firstOrNull()?.barcodeImagePath
+                val barcodeImage = DispenseBottleJson.decode(item.bottlesJson).firstOrNull()?.barcodeImagePath
                 val hasImage = !barcodeImage.isNullOrEmpty()
 
                 val painter = if (hasImage) {

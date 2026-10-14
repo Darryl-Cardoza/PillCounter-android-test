@@ -33,12 +33,12 @@ import androidx.compose.ui.unit.dp
 import coil.compose.rememberAsyncImagePainter
 import coil.request.ImageRequest
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.room.models.dtos.TxnDetailInfo
+import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
 import java.io.File
 
 @Composable
 fun TransactionDetailsList(
-    transactionDetails: List<TxnDetailInfo>
+    transactionDetails: List<DispenseCountInfo>
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -58,7 +58,7 @@ fun TransactionDetailsList(
         ) {
             items(
                 items = transactionDetails,
-                key = { detail -> "${detail.txnId}-${detail.imagePath ?: ""}-${detail.type}" }
+                key = { detail -> "${detail.txnId}-${detail.imagePath ?: ""}-${detail.step}" }
             ) { detail ->
                 TransactionDetailItem(detail, itemModifier, circleSize)
             }
@@ -69,7 +69,7 @@ fun TransactionDetailsList(
         ) {
             items(
                 items = transactionDetails,
-                key = { detail -> "${detail.txnId}-${detail.imagePath ?: ""}-${detail.type}" }
+                key = { detail -> "${detail.txnId}-${detail.imagePath ?: ""}-${detail.step}" }
             ) { detail ->
                 TransactionDetailItem(detail, itemModifier, circleSize)
             }
@@ -79,7 +79,7 @@ fun TransactionDetailsList(
 
 @Composable
 private fun TransactionDetailItem(
-    detail: TxnDetailInfo,
+    detail: DispenseCountInfo,
     modifier: Modifier,
     circleSize: Dp
 ) {
