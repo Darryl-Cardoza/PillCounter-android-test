@@ -45,7 +45,7 @@ import kotlin.math.min
  *   0 = gloves
  *   1 = no_gloves   (a hand with no glove on it)
  *
- * Downstream consumers (PillScanningViewModel) keep filtering on
+ * Downstream consumers (PillCountingEngine) keep filtering on
  * `classId == 0 && confidence >= 0.75` for "user is wearing gloves",
  * so the existing 0.75 hysteresis threshold continues to apply.
  * The class-1 (`no_gloves`) detections are surfaced for the on-screen

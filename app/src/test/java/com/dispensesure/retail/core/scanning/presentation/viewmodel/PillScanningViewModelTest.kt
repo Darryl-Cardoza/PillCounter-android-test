@@ -20,6 +20,10 @@ import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
+import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
+import com.dispensesure.retail.core.scanning.engine.frameForTest
+import com.dispensesure.retail.core.scanning.engine.lastAddSignatureForTest
+import com.dispensesure.retail.core.scanning.engine.putFrameForTest
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.DispenseBottle
@@ -28,8 +32,10 @@ import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
+import com.dispensesure.retail.core.utils.common.HelperFunctions
 import com.dispensesure.retail.core.utils.common.LocationProvider
-import com.dispensesure.retail.core.utils.common.SoundUtils
+import com.dispensesure.retail.core.utils.common.OverlayUtils
+import com.dispensesure.retail.core.utils.common.PhotoInfo
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
@@ -55,6 +61,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
@@ -91,6 +98,7 @@ class PillScanningViewModelTest {
     private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
+    private lateinit var engineFactory: TestEngineFactory
     private lateinit var viewModel: PillScanningViewModel
 
     // True while a withTransaction block runs, so tests can check a write happened inside one.
@@ -115,6 +123,14 @@ class PillScanningViewModelTest {
         every { preferenceHelper.isRequireDoubleCountEnabled() } returns false
         every { preferenceHelper.isRequireBackCountEnabled() } returns false
 
+        engineFactory = TestEngineFactory(
+            context = application,
+            modelLoader = modelLoader,
+            performanceLogger = performanceLogger,
+            locationProvider = locationProvider,
+            userDao = userDao,
+            preferenceHelper = preferenceHelper,
+        )
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
@@ -122,47 +138,18 @@ class PillScanningViewModelTest {
             stockTxnDao = stockTxnDao,
             stockBottleInfoDao = stockBottleInfoDao,
             stockBatchDao = stockBatchDao,
-            userDao = userDao,
             operatorNameProvider = operatorNameProvider,
             dispenseCountDao = dispenseCountDao,
-            locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
-            modelLoader = modelLoader,
-            performanceLogger = performanceLogger,
             scanDecoder = ScanDecoder(barcodeDecoder),
             hl7Repository = hl7Repository,
             appDatabase = appDatabase,
+            engineFactory = engineFactory,
         )
     }
 
     @After
     fun tearDown() { unmockkAll() }
-
-    // ─────────────────────────── playCountSoundIfEnabled ───────────────────────────
-
-    @Test
-    fun `playCountSoundIfEnabled routes the count cue through SoundUtils`() {
-        mockkObject(SoundUtils)
-        every { SoundUtils.playCountSound(any()) } returns Unit
-        every { preferenceHelper.isSoundEnabled() } returns true
-        every { preferenceHelper.isHapticEnabled() } returns false
-
-        viewModel.playCountSoundIfEnabled()
-
-        verify(exactly = 1) { SoundUtils.playCountSound(any()) }
-    }
-
-    @Test
-    fun `playCountSoundIfEnabled stays silent when the sound preference is off`() {
-        mockkObject(SoundUtils)
-        every { SoundUtils.playCountSound(any()) } returns Unit
-        every { preferenceHelper.isSoundEnabled() } returns false
-        every { preferenceHelper.isHapticEnabled() } returns false
-
-        viewModel.playCountSoundIfEnabled()
-
-        verify(exactly = 0) { SoundUtils.playCountSound(any()) }
-    }
 
     // ─────────────────────────── buildWorkflowSteps ───────────────────────────
 
@@ -610,10 +597,10 @@ class PillScanningViewModelTest {
 
     // ─────────────────────────── handleAddTransaction: frame at the tap ───────────────────────────
 
-    private fun tapAdd() = viewModel.onEvent(
+    private fun tapAdd(stepType: StepState = StepState.TARGET_VERIFICATION, count: Int = 5) = viewModel.onEvent(
         PillScanningEvent.AddTransactionDetailClicked(
-            filteredCount = 5,
-            stepType = StepState.TARGET_VERIFICATION,
+            filteredCount = count,
+            stepType = stepType,
         )
     )
 
@@ -633,9 +620,9 @@ class PillScanningViewModelTest {
         advanceUntilIdle()
 
         verify(exactly = 1) { UserInterfaceUtils.showToast(any<String>(), any()) }
-        assertFalse(viewModel.uiState.value.isAddCooldown)
+        assertFalse(engineFactory.engine.state.value.isAddCooldown)
         // Signature unset, so the retry isn't rejected as a duplicate.
-        assertNull(getPrivateField("lastAddedScanSignature"))
+        assertNull(engineFactory.engine.lastAddSignatureForTest())
         coVerify(exactly = 0) { dispenseCountDao.insert(any()) }
     }
 
@@ -643,26 +630,26 @@ class PillScanningViewModelTest {
     fun `Add takes the frame at the tap and a newer frame is left alone`() = runTest {
         stubSavePath()
         val tapFrame = mockk<Bitmap>(relaxed = true)
-        setPrivateField("currentFrameBitmap", tapFrame)
+        engineFactory.engine.putFrameForTest(tapFrame)
 
         tapAdd()
         // Taken synchronously on the tap, before the save coroutine runs.
-        assertNull(getPrivateField("currentFrameBitmap"))
+        assertNull(engineFactory.engine.frameForTest())
 
         val newerFrame = mockk<Bitmap>(relaxed = true)
-        setPrivateField("currentFrameBitmap", newerFrame)
+        engineFactory.engine.putFrameForTest(newerFrame)
 
         coVerify(timeout = 3000) { dispenseCountDao.insert(any()) }
         verify { tapFrame.recycle() }
         verify(exactly = 0) { newerFrame.recycle() }
-        assertEquals(newerFrame, getPrivateField("currentFrameBitmap"))
+        assertEquals(newerFrame, engineFactory.engine.frameForTest())
     }
 
     @Test
     fun `Add does not wait for a location lookup`() = runTest {
         stubSavePath()
         coEvery { locationProvider.getCurrentLocationAsString() } coAnswers { awaitCancellation() }
-        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
+        engineFactory.engine.putFrameForTest(mockk<Bitmap>(relaxed = true))
 
         tapAdd()
 
@@ -688,7 +675,7 @@ class PillScanningViewModelTest {
     fun `Add ignores substitutedDrugId when isSubstitute is false`() = runTest {
         stubSavePath()
         stubTxn(isSubstitute = false)
-        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
+        engineFactory.engine.putFrameForTest(mockk<Bitmap>(relaxed = true))
 
         tapAdd()
 
@@ -700,7 +687,7 @@ class PillScanningViewModelTest {
     fun `Add uses the substitute drug when isSubstitute is true`() = runTest {
         stubSavePath()
         stubTxn(isSubstitute = true)
-        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
+        engineFactory.engine.putFrameForTest(mockk<Bitmap>(relaxed = true))
 
         tapAdd()
 
@@ -720,7 +707,7 @@ class PillScanningViewModelTest {
         var linkInTx = false
         coEvery { dispenseCountDao.insert(any()) } coAnswers { insertInTx = inTransaction; 6L }
         coEvery { dispenseTxnDao.updateBottles(9L, any(), any()) } coAnswers { linkInTx = inTransaction }
-        setPrivateField("currentFrameBitmap", mockk<Bitmap>(relaxed = true))
+        engineFactory.engine.putFrameForTest(mockk<Bitmap>(relaxed = true))
 
         tapAdd()
 
@@ -728,6 +715,147 @@ class PillScanningViewModelTest {
         assertTrue(insertInTx)
         assertTrue(linkInTx)
         coVerify(exactly = 1) { appDatabase.withTransaction<Any?>(any()) }
+    }
+
+    /** File writes return "/photos/<name>" and the strip drawing is captured. */
+    private fun stubPhotoWrites(): io.mockk.CapturingSlot<PhotoInfo> {
+        stubSavePath()
+        mockkObject(HelperFunctions)
+        every { HelperFunctions.saveBitmapToFile(any(), any(), any(), any(), any()) } answers {
+            val fileName = thirdArg<String>()
+            "/photos/$fileName"
+        }
+        mockkObject(OverlayUtils)
+        val stampedPhotoInfo = slot<PhotoInfo>()
+        every {
+            OverlayUtils.drawDetectionsOnBitmap(any(), any(), capture(stampedPhotoInfo), any(), any(), any())
+        } answers { firstArg() }
+        return stampedPhotoInfo
+    }
+
+    @Test
+    fun `Add over the target is turned down before the engine takes the frame`() = runTest {
+        viewModel.setScanType(CountType.FIXED.toString())
+        viewModel.updateTargetCount(3)
+        val frame = mockk<Bitmap>(relaxed = true)
+        engineFactory.engine.putFrameForTest(frame)
+
+        tapAdd(count = 5)
+
+        assertTrue(viewModel.uiState.value.restrictAdd)
+        assertSame(frame, engineFactory.engine.frameForTest())
+        assertFalse(engineFactory.engine.state.value.isAddCooldown)
+    }
+
+    @Test
+    fun `Add over the target during the cooldown shows the over-target dialog`() = runTest {
+        // Approved order change: the target cap now runs before the cooldown check.
+        stubSavePath()
+        mockkObject(UserInterfaceUtils)
+        every { UserInterfaceUtils.showToast(any<String>(), any()) } returns Unit
+        viewModel.setScanType(CountType.FIXED.toString())
+        viewModel.updateTargetCount(6)
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
+        tapAdd(count = 5)                       // 5 <= 6: accepted, cooldown starts
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
+
+        tapAdd(count = 7)                       // 7 > 6, inside the cooldown
+
+        assertTrue(viewModel.uiState.value.restrictAdd)
+        verify(exactly = 0) { UserInterfaceUtils.showToast(any<String>(), any()) }
+    }
+
+    @Test
+    fun `Add on TARGET_VERIFICATION saves the raw crop with the count`() = runTest {
+        stubPhotoWrites()
+        every { preferenceHelper.getTxnId() } returns 9L
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
+
+        tapAdd(stepType = StepState.TARGET_VERIFICATION)
+
+        coVerify(timeout = 3000) {
+            dispenseCountDao.insert(match { countRow ->
+                countRow.txnId == 9L && countRow.pillCount == 5 &&
+                    countRow.step == StepState.TARGET_VERIFICATION.toString() &&
+                    countRow.imagePath?.startsWith("/photos/txn_detail_") == true &&
+                    countRow.rawImagePath?.endsWith("_raw.jpg") == true
+            })
+        }
+    }
+
+    @Test
+    fun `Add on another step saves no raw crop`() = runTest {
+        stubPhotoWrites()
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
+
+        tapAdd(stepType = StepState.CONTAINER_INITIATE)
+
+        coVerify(timeout = 3000) {
+            dispenseCountDao.insert(match { countRow -> countRow.imagePath != null && countRow.rawImagePath == null })
+        }
+    }
+
+    @Test
+    fun `Add stamps the active bottle and the Rx on the photo`() = runTest {
+        val stampedPhotoInfo = stubPhotoWrites()
+        every { preferenceHelper.getTxnId() } returns 9L
+        coEvery { dispenseTxnDao.getById(9L) } returns DispenseTxnEntity(
+            txnId = 9L, drugId = 1L, status = CountStatus.PARTIAL,
+            rxNo = "123", refillNo = "2",
+            bottlesJson = DispenseBottleJson.encode(listOf(
+                DispenseBottle(txnId = 9L, lotNumber = "OLD"),
+                DispenseBottle(txnId = 9L, lotNumber = "L1", serialNumber = "S1", expirationDate = "04-30-2028"),
+            )),
+        )
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
+
+        tapAdd(stepType = StepState.TARGET_VERIFICATION, count = 7)
+
+        coVerify(timeout = 3000) { dispenseCountDao.insert(any()) }
+        with(stampedPhotoInfo.captured) {
+            assertEquals("L1", lotNumber)
+            assertEquals("S1", serialNumber)
+            assertEquals("04-30-2028", expirationDate)
+            assertEquals(OverlayUtils.rxRefill("123", "2"), rxRefill)
+            assertEquals("TARGET_VERIFICATION", stepLabel)
+            assertEquals(7, count)
+            assertFalse(isStockCount)
+        }
+    }
+
+    @Test
+    fun `Add in a stock session stamps the scanned lot, no Rx, and keeps no raw crop`() = runTest {
+        val stampedPhotoInfo = stubPhotoWrites()
+        setPrivateField("isStockCountSession", true)
+        setPrivateField("stockDrugId", 42L)
+        setPrivateField("stockBottleId", 0L)
+        setPrivateField("stockLotNo", "10522")
+        setPrivateField("stockExpNo", "04-30-2028")
+        setPrivateField("stockSerialNo", "1000002616")
+        engineFactory.engine.putFrameForTest(mockk(relaxed = true))
+
+        tapAdd(stepType = StepState.TARGET_VERIFICATION)
+        val stagedCountRow = awaitFirstStagedDetail()
+
+        assertNull(stagedCountRow.rawImagePath)
+        with(stampedPhotoInfo.captured) {
+            assertEquals("10522", lotNumber)
+            assertEquals("1000002616", serialNumber)
+            assertEquals("04-30-2028", expirationDate)
+            assertNull(rxRefill)
+            assertTrue(isStockCount)
+        }
+        coVerify(exactly = 0) { dispenseCountDao.insert(any()) }
+    }
+
+    // Staging runs on Dispatchers.IO and writes no DB row to wait on, so poll the buffer.
+    @Suppress("UNCHECKED_CAST")
+    private fun awaitFirstStagedDetail(): DispenseCountEntity {
+        repeat(300) {
+            (getPrivateField("stagedDetails") as List<DispenseCountEntity>).firstOrNull()?.let { firstStagedRow -> return firstStagedRow }
+            Thread.sleep(10)
+        }
+        error("No detail was staged")
     }
 
     // ─────────────────────────── flushStagedDetails (deferred stock commit) ───────────────────────────

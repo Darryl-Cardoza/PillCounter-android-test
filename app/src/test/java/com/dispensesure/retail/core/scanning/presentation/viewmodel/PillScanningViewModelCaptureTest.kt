@@ -15,6 +15,7 @@ import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
+import com.dispensesure.retail.core.scanning.engine.TestEngineFactory
 import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
@@ -87,6 +88,7 @@ class PillScanningViewModelCaptureTest {
 
     private val cameraHelper: CameraHelper = mockk(relaxed = true)
 
+    private lateinit var engineFactory: TestEngineFactory
     private lateinit var viewModel: PillScanningViewModel
 
     @Before
@@ -106,6 +108,14 @@ class PillScanningViewModelCaptureTest {
         mockkObject(SoundUtils)
         every { SoundUtils.playCaptureSound() } returns Unit
 
+        engineFactory = TestEngineFactory(
+            context = application,
+            modelLoader = modelLoader,
+            performanceLogger = performanceLogger,
+            locationProvider = locationProvider,
+            userDao = userDao,
+            preferenceHelper = preferenceHelper,
+        )
         viewModel = PillScanningViewModel(
             app = application,
             preferenceHelper = preferenceHelper,
@@ -113,16 +123,13 @@ class PillScanningViewModelCaptureTest {
             stockTxnDao = stockTxnDao,
             stockBottleInfoDao = stockBottleInfoDao,
             stockBatchDao = stockBatchDao,
-            userDao = userDao,
             operatorNameProvider = operatorNameProvider,
             dispenseCountDao = dispenseCountDao,
-            locationProvider = locationProvider,
             drugMasterDao = drugMasterDao,
-            modelLoader = modelLoader,
-            performanceLogger = performanceLogger,
             scanDecoder = ScanDecoder(barcodeDecoder),
             hl7Repository = hl7Repository,
             appDatabase = appDatabase,
+            engineFactory = engineFactory,
         )
         viewModel.attachCameraHelper(cameraHelper)
         setCurrentStep(StepState.VIAL)
