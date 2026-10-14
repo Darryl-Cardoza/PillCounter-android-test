@@ -19,6 +19,7 @@ import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.COUNT_CONFIRM_FRAMES
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.IDLE_STEP_MS
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel.Companion.IDLE_TIMEOUT_MS
@@ -109,7 +110,7 @@ class PillScanningViewModelFrameTest {
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
-            barcodeDecoder = barcodeDecoder,
+            scanDecoder = ScanDecoder(barcodeDecoder),
             drugRepository = drugRepository,
             drugImageDownloader = drugImageDownloader,
             hl7Repository = hl7Repository,

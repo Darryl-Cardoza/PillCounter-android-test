@@ -20,6 +20,7 @@ import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourSection
 import com.dispensesure.retail.core.tourguide.TutorialData
@@ -123,7 +124,7 @@ class PillScanningViewModelCaptureTest {
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
-            barcodeDecoder = barcodeDecoder,
+            scanDecoder = ScanDecoder(barcodeDecoder),
             drugRepository = drugRepository,
             drugImageDownloader = drugImageDownloader,
             hl7Repository = hl7Repository,

@@ -12,7 +12,6 @@ import com.dispensesure.retail.core.room.dao.PillCountTxnDetailsDao
 import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.room.models.BatchEntity
-import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
@@ -25,9 +24,8 @@ import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
-import com.dispensesure.retail.core.scanning.data.DrugRepository
-import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
-import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
+import com.dispensesure.retail.core.scanning.data.DrugResolver
+import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
@@ -70,9 +68,8 @@ class Hl7Repository @Inject constructor(
     private val operatorNameProvider: OperatorNameProvider,
     private val batchDao: BatchDao,
     private val hl7MessageSender: Hl7MessageSender,
-    private val drugRepository: DrugRepository,
+    private val drugResolver: DrugResolver,
     private val notifier: Hl7Notifier,
-    private val drugImageDownloader: DrugImageDownloader,
 ) {
 
     private val logger = AppLogger.create<Hl7Repository>()
@@ -486,37 +483,16 @@ class Hl7Repository @Inject constructor(
             return
         }
 
-        // Local-first check
-        val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
-
-        val finalDrug = if (localDrug != null) {
-            logger.i("Drug found in local DB for NDC: $hl7Ndc")
-            localDrug
-        } else {
-            logger.i("Drug not found locally for NDC: $hl7Ndc, calling API")
-
-            val request = GetNdcRequestModel(
-                target_drug = hl7Ndc,
-                scanned_drug = hl7Ndc
-            )
-
-            val drugInfo = try {
-                drugRepository.getDrugInfoByNdc(request)
-            } catch (e: Exception) {
-                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
+        val finalDrug = when (val lookup = drugResolver.resolve(hl7Ndc, expectedNdc = hl7Ndc)) {
+            is DrugLookup.Found -> lookup.drug
+            is DrugLookup.Failed -> {
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
                     message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
                 )
                 return
             }
-
-            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() }
-
-            val resolvedDrugName = drugInfo?.genericName
-                ?.takeIf { it.isNotBlank() }
-
-            if (resolvedDrugName.isNullOrBlank()) {
+            DrugLookup.NoName, DrugLookup.NotFound -> {
                 logger.w("No drug name resolved for NDC: $hl7Ndc")
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
@@ -524,20 +500,9 @@ class Hl7Repository @Inject constructor(
                 )
                 return
             }
-
-            resolvedNdc?.let {
-                DrugMasterEntity(
-                    ndc = it,
-                    drugName = resolvedDrugName,
-                    drugType = drugInfo?.drugType,
-                    isHazardous = drugInfo?.isHazardous ?: false,
-                    strength = drugInfo?.strength,
-                    dosageForm = drugInfo?.dosageForm,
-                )
-            }
         }
 
-        val drugId = finalDrug?.let { drugMasterDao.upsertPreservingId(it) }
+        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
 
         // Priority from ZPR segment, if the sender included one alongside the order packet
         val priority = TxnPriority.fromString(
@@ -608,37 +573,16 @@ class Hl7Repository @Inject constructor(
             return
         }
 
-        // Local-first check
-        val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
-
-        val finalDrug = if (localDrug != null) {
-            logger.i("Drug found in local DB for NDC: $hl7Ndc")
-            localDrug
-        } else {
-            logger.i("Drug not found locally for NDC: $hl7Ndc, calling API")
-
-            val request = GetNdcRequestModel(
-                target_drug = hl7Ndc,
-                scanned_drug = hl7Ndc
-            )
-
-            val drugInfo = try {
-                drugRepository.getDrugInfoByNdc(request)
-            } catch (e: Exception) {
-                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
+        val finalDrug = when (val lookup = drugResolver.resolve(hl7Ndc, expectedNdc = hl7Ndc)) {
+            is DrugLookup.Found -> lookup.drug
+            is DrugLookup.Failed -> {
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
                     message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
                 )
                 return
             }
-
-            val resolvedNdc = drugInfo?.ndc?.takeIf { it.isNotBlank() }
-
-            val resolvedDrugName = drugInfo?.genericName
-                ?.takeIf { it.isNotBlank() }
-
-            if (resolvedDrugName.isNullOrBlank()) {
+            DrugLookup.NoName, DrugLookup.NotFound -> {
                 logger.w("No drug name resolved for NDC: $hl7Ndc")
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
@@ -646,20 +590,9 @@ class Hl7Repository @Inject constructor(
                 )
                 return
             }
-
-            resolvedNdc?.let {
-                DrugMasterEntity(
-                    ndc = it,
-                    drugName = resolvedDrugName,
-                    drugType = drugInfo?.drugType,
-                    isHazardous = drugInfo?.isHazardous ?: false,
-                    strength = drugInfo?.strength,
-                    dosageForm = drugInfo?.dosageForm,
-                )
-            }
         }
 
-        val drugId = finalDrug?.let { drugMasterDao.upsertPreservingId(it) }
+        val drugId = drugMasterDao.upsertPreservingId(finalDrug)
 
         // Priority from ZPR segment, if the sender included one alongside the order packet
         val priority = TxnPriority.fromString(
@@ -826,75 +759,28 @@ class Hl7Repository @Inject constructor(
         expiry: String,
         targetCount: Int
     ): ResolvedInventoryItem? {
-        val existingDrug = try {
-            drugMasterDao.getDrugByNdc(ndc)
+        val name = fallbackName.takeIf { it.isNotBlank() }
+        // A local DB error skips this item instead of failing the whole inventory message.
+        val lookup = try {
+            drugResolver.resolve(ndc, expectedNdc = ndc, nameIfMissing = name, nameIfUnknown = name)
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
             logger.e("Failed to look up local drug for NDC: $ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
-            null
-        }
-        if (existingDrug != null) {
-            val localName = existingDrug.drugName
-            if (!localName.isNullOrBlank()) {
-                logger.i("Drug found in local DB for NDC: $ndc")
-                return ResolvedInventoryItem(
-                    ndc = ndc,
-                    drugId = existingDrug.drugId,
-                    resolvedName = localName,
-                    lot = lot,
-                    expiry = expiry,
-                    targetCount = targetCount
-                )
-            }
-            logger.w("Drug found in local DB but drugName is empty for NDC: $ndc")
             return null
         }
-
-        val request = GetNdcRequestModel(target_drug = ndc, scanned_drug = ndc)
-        return try {
-            logger.i("Drug not found locally for NDC: $ndc, calling API")
-
-            val drugInfo = drugRepository.getDrugInfoByNdc(request)
-
-            val resolvedDrugName = drugInfo?.genericName?.takeIf { it.isNotBlank() }
-                ?: fallbackName.takeIf { it.isNotBlank() }
-
-            if (resolvedDrugName.isNullOrBlank()) {
-                logger.w("Skipping inventory item because API returned no usable drug name for NDC: $ndc")
-                return null
-            }
-
-            val imagePath = drugImageDownloader.downloadAndSave(
-                url = drugInfo?.imageUrl,
-                drugName = resolvedDrugName ?: drugInfo?.ndc
-            )
-            val drugEntity = DrugMasterEntity(
-                ndc = drugInfo?.ndc?.takeIf { it.isNotBlank() } ?: ndc,
-                drugName = resolvedDrugName,
-                drugType = drugInfo?.drugType,
-                packageQty = drugInfo?.qty,
-                isHazardous = drugInfo?.isHazardous ?: false,
-                strength = drugInfo?.strength,
-                dosageForm = drugInfo?.dosageForm,
-                drugImagePath = imagePath,
-            )
-
-            val newDrugId = drugMasterDao.upsertPreservingId(drugEntity)
-
-            logger.i("Drug resolved from API and saved locally for NDC: $ndc")
-            ResolvedInventoryItem(
-                ndc = ndc,
-                drugId = newDrugId,
-                resolvedName = resolvedDrugName,
-                lot = lot,
-                expiry = expiry,
-                targetCount = targetCount
-            )
-        } catch (e: Exception) {
-            logger.e("Failed to fetch drug info from API for NDC: $ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
-            null
+        if (lookup !is DrugLookup.Found) {
+            logger.w("Skipping inventory item for NDC: $ndc → $lookup")
+            return null
         }
+        return ResolvedInventoryItem(
+            ndc = ndc,
+            drugId = lookup.drug.drugId,
+            resolvedName = lookup.drug.drugName.orEmpty(),
+            lot = lot,
+            expiry = expiry,
+            targetCount = targetCount
+        )
     }
 
     /**
@@ -979,44 +865,10 @@ class Hl7Repository @Inject constructor(
         val dispenseStr = rxe.dispenseAmount.trim().takeIf { it.isNotBlank() } ?: rxe.giveAmountMinimum.trim()
         val newTargetCount = dispenseStr.toDoubleOrNull()?.toInt()
 
-        val localDrug = drugMasterDao.getDrugByNdc(hl7Ndc)
-
-        val resolvedDrug = if (localDrug != null) {
-            logger.i("ORC|XO: drug found locally for NDC=$hl7Ndc")
-            localDrug
-        } else {
-            logger.i("ORC|XO: drug not found locally for NDC=$hl7Ndc, calling API")
-            val request = GetNdcRequestModel(target_drug = hl7Ndc, scanned_drug = hl7Ndc)
-            try {
-                val drugInfo = drugRepository.getDrugInfoByNdc(request)
-                val resolvedName = drugInfo?.genericName?.takeIf { it.isNotBlank() }
-                if (resolvedName.isNullOrBlank()) {
-                    logger.w("ORC|XO: API returned no drug name for NDC=$hl7Ndc — aborting edit")
-                    notifier.show(
-                        title = context.getString(R.string.hl7_notification_edit_rx_title),
-                        message = context.getString(
-                            R.string.hl7_notification_edit_rx_drug_not_found,
-                            rxNo,
-                            hl7Ndc
-                        )
-                    )
-                    return
-                }
-                val imagePath = drugImageDownloader.downloadAndSave(
-                    url = drugInfo.imageUrl,
-                    drugName = resolvedName
-                )
-                DrugMasterEntity(
-                    ndc = drugInfo.ndc.takeIf { it.isNotBlank() } ?: hl7Ndc,
-                    drugName = resolvedName,
-                    drugType = drugInfo.drugType,
-                    isHazardous = drugInfo.isHazardous ?: false,
-                    strength = drugInfo.strength,
-                    dosageForm = drugInfo.dosageForm,
-                    drugImagePath = imagePath,
-                )
-            } catch (e: Exception) {
-                logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
+        val resolvedDrug = when (val lookup = drugResolver.resolve(hl7Ndc, expectedNdc = hl7Ndc)) {
+            is DrugLookup.Found -> lookup.drug
+            else -> {
+                logger.w("ORC|XO: drug not resolved for NDC=$hl7Ndc → $lookup — aborting edit")
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_edit_rx_title),
                     message = context.getString(
@@ -1029,8 +881,7 @@ class Hl7Repository @Inject constructor(
             }
         }
 
-        val newDrugId = resolvedDrug?.let { drugMasterDao.upsertPreservingId(it) }
-            ?: existingTxn.drugId   // keep the old drugId if resolution somehow returned null
+        val newDrugId = drugMasterDao.upsertPreservingId(resolvedDrug)
 
         // 3. Parse priority from ZPR segment
         val newPriority = TxnPriority.fromString(
@@ -1067,7 +918,7 @@ class Hl7Repository @Inject constructor(
             message = context.getString(
                 R.string.hl7_notification_edit_rx_updated,
                 rxNo,
-                resolvedDrug?.drugName ?: hl7DrugName,
+                resolvedDrug.drugName ?: hl7DrugName,
                 newTargetCount ?: 0
             )
         )

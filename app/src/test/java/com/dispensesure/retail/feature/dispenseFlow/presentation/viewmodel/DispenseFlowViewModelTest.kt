@@ -12,6 +12,7 @@ import com.dispensesure.retail.core.room.models.dtos.PillCountWithDrugAndTotal
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
+import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
@@ -99,8 +100,8 @@ class DispenseFlowViewModelTest {
     }
 
     private fun createViewModel() = DispenseFlowViewModel(
-        appContext, drugRepository, drugMasterDao, preferenceHelper, pillCountTxnDao,
-        drugImageDownloader
+        appContext, DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), drugMasterDao,
+        preferenceHelper, pillCountTxnDao,
     )
 
     private fun validParsed(
@@ -642,8 +643,7 @@ class DispenseFlowViewModelTest {
                 is_drug_equivalent = false, drugType = "CII", qty = 30, isHazardous = false,
             )
             coEvery { drugMasterDao.upsertPreservingId(any<DrugMasterEntity>()) } returns 77L
-            // getDrugByNdc is called twice: once for the initial local miss, once after the
-            // server resolve-and-cache to pick the freshly upserted row back up.
+            // First call is the local miss; the drug id then comes from upsertPreservingId.
             coEvery { drugMasterDao.getDrugByNdc("NDC123") } returnsMany listOf(
                 null,
                 drug(drugId = 77L, ndc = "NDC123", drugName = "ServerDrug"),

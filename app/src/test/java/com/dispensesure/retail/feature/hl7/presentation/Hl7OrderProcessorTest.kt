@@ -9,6 +9,7 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.data.DrugRepository
+import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
@@ -62,7 +63,7 @@ class Hl7OrderProcessorTest {
 
         processor = Hl7OrderProcessor(
             context, pillCountTxnDao, drugMasterDao, preferenceHelper,
-            drugRepository, drugImageDownloader, notifier, hl7Repository,
+            DrugResolver(drugMasterDao, drugRepository, drugImageDownloader), notifier, hl7Repository,
         )
     }
 

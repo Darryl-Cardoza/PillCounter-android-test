@@ -27,6 +27,7 @@ import com.dispensesure.retail.core.scanning.domain.data.PillScanningEvent
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.SoundUtils
@@ -131,7 +132,7 @@ class PillScanningViewModelTest {
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
-            barcodeDecoder = barcodeDecoder,
+            scanDecoder = ScanDecoder(barcodeDecoder),
             drugRepository = drugRepository,
             drugImageDownloader = drugImageDownloader,
             hl7Repository = hl7Repository,

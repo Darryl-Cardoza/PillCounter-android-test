@@ -14,6 +14,7 @@ import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.logger.PerformanceLogger
@@ -97,7 +98,7 @@ class PillScanningViewModelStateTest {
             drugMasterDao = drugMasterDao,
             modelLoader = modelLoader,
             performanceLogger = performanceLogger,
-            barcodeDecoder = barcodeDecoder,
+            scanDecoder = ScanDecoder(barcodeDecoder),
             drugRepository = drugRepository,
             drugImageDownloader = drugImageDownloader,
             hl7Repository = hl7Repository,

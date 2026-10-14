@@ -10,7 +10,9 @@ import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
+import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
+import com.dispensesure.retail.core.scanning.logic.ScanDecoder
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.faceAuth.data.OperatorName
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
@@ -93,11 +95,10 @@ class InventoryScanViewModelTest {
         drugMasterDao = drugMasterDao,
         preferenceHelper = preferenceHelper,
         operatorNameProvider = operatorNameProvider,
-        barcodeDecoder = barcodeDecoder,
-        drugRepository = drugRepository,
+        scanDecoder = ScanDecoder(barcodeDecoder),
+        drugResolver = DrugResolver(drugMasterDao, drugRepository, drugImageDownloader),
         hl7Repository = hl7Repository,
         hl7EventHandler = hl7EventHandler,
-        drugImageDownloader = drugImageDownloader
     )
 
     /**
