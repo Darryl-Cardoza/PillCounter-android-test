@@ -27,6 +27,7 @@ jobs:
   select_runner:
     name: Select Runner
     runs-on: ubuntu-latest
+    permissions: {}
     outputs:
       linux: ${{ steps.pick.outputs.linux }}
     steps:
@@ -203,8 +204,10 @@ jobs:
           ids() { grep -m2 -E '^# pg_map_(id|hash):'; }
           AAB=$(find shipped -name '*.aab' | head -n1)
           [ -n "$AAB" ] || { echo "::error::No AAB in android-build-outputs-Release"; exit 1; }
-          SHIPPED=$({ unzip -p "$AAB" BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map || true; } | ids)
-          BUILT=$(ids < app/build/outputs/mapping/release/mapping.txt)
+          # `|| true`: grep finding nothing must not abort the shell before the error messages below.
+          SHIPPED=$({ unzip -p "$AAB" BUNDLE-METADATA/com.android.tools.build.obfuscation/proguard.map || true; } | ids || true)
+          BUILT=$(ids < app/build/outputs/mapping/release/mapping.txt || true)
+          [ -n "$BUILT" ] || { echo "::error::No pg_map_id in rebuilt mapping.txt"; exit 1; }
           [ -n "$SHIPPED" ] || { echo "::error::No pg_map_id in shipped AAB"; exit 1; }
           [ "$SHIPPED" = "$BUILT" ] || { echo "::error::Mapping does not match shipped AAB"; echo "shipped: $SHIPPED"; echo "built:   $BUILT"; exit 1; }
           echo "Mapping matches shipped AAB: $BUILT"
