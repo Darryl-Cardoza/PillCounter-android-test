@@ -333,12 +333,14 @@ class AppLoggerTest {
             java.net.UnknownHostException("offline"),
             java.net.SocketTimeoutException("slow"),
             java.net.SocketException("reset"),
-            retrofit2.HttpException(retrofit2.Response.error<Any>(404, "".toResponseBody(null))),
+            retrofit2.HttpException(retrofit2.Response.error<Any>(400, "".toResponseBody(null))),
             RuntimeException("Refresh returned 401"),
         )
         val faults = listOf(
             IllegalStateException("bug"),
             retrofit2.HttpException(retrofit2.Response.error<Any>(500, "".toResponseBody(null))),
+            retrofit2.HttpException(retrofit2.Response.error<Any>(403, "".toResponseBody(null))),
+            retrofit2.HttpException(retrofit2.Response.error<Any>(404, "".toResponseBody(null))),
         )
 
         expected.forEach { logger.e("expected", it) }

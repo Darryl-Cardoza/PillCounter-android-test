@@ -21,7 +21,14 @@ fun Throwable.unmasked(): Throwable = (this as? MessagelessException)?.source ?:
 private val SESSION_FAILURE_MESSAGES = setOf("LOGOUT", "Refresh returned 401", "No refresh token available")
 
 /**
- * Not an app fault: a cancelled coroutine, a network failure, a 4xx (or the synthetic offline 599)
+ * 4xx codes that point at a wrong endpoint, missing permission or app/backend mismatch (forbidden,
+ * not found, method not allowed, gone). Unlike a wrong OTP or a validation reject, these are faults
+ * worth an ERROR.
+ */
+internal val ENDPOINT_FAULT_CODES = setOf(403, 404, 405, 410)
+
+/**
+ * Not an app fault: a cancelled coroutine, a network failure, a 4xx other than [ENDPOINT_FAULT_CODES] (or the synthetic offline 599)
  * answer, or an expired session. [AppLogger.e] logs these at WARN so they are not shipped as ERROR.
  */
 fun Throwable.isExpectedFailure(): Boolean = unmasked().let { t ->
@@ -30,6 +37,6 @@ fun Throwable.isExpectedFailure(): Boolean = unmasked().let { t ->
         // A bind failure (port in use) is a local fault, not a network drop.
         (t is java.net.SocketException && t !is java.net.BindException) ||
         t is java.io.InterruptedIOException ||
-        (t is retrofit2.HttpException && (t.code() in 400..499 || t.code() == 599)) ||
+        (t is retrofit2.HttpException && ((t.code() in 400..499 && t.code() !in ENDPOINT_FAULT_CODES) || t.code() == 599)) ||
         t.message in SESSION_FAILURE_MESSAGES
 }

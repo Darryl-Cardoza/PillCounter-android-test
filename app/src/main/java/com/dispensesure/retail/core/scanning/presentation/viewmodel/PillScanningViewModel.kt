@@ -1516,11 +1516,11 @@ class PillScanningViewModel @Inject constructor(
                         type = StepState.VIAL.toString()
                     )
                 )
-                        }  catch (e: CancellationException) {
-                    throw e
-                } catch (e: Exception) {
-                    logger.e("Failed to save vial photo transaction detail", e, event = LogEvent.VIAL_SCAN_FAILED)
-                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to save vial photo transaction detail", e, event = LogEvent.VIAL_SCAN_FAILED)
+            }
         })
     }
 
@@ -1988,22 +1988,22 @@ class PillScanningViewModel @Inject constructor(
         confirmDoneStarted = true
         FtueController.track(viewModelScope.launch {
             try {
-            val txnId = preferenceHelper.getTxnId()
-            // Flush staged details to the DB BEFORE reading the total / deciding
-            // status, so getTotalPillCountForTxn sees the freshly committed rows
-            // plus any prior committed rows = the correct grand total.
-            flushStagedDetails(txnId)
-            val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
-            val txn = pillCountTxnDao.getById(txnId) ?: return@launch
-            if (total == 0) {
-                return@launch
-            }
-            // Only the prescribed-count step decides partial vs complete. The pour-out and
-            // recount steps count other pills and used to push this past the target.
-            val dispensedCount = pillCountTxnDetailsDao
-                .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
-            val status =
-                if (txn.isDispense && txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+                val txnId = preferenceHelper.getTxnId()
+                // Flush staged details to the DB BEFORE reading the total / deciding
+                // status, so getTotalPillCountForTxn sees the freshly committed rows
+                // plus any prior committed rows = the correct grand total.
+                flushStagedDetails(txnId)
+                val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
+                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+                if (total == 0) {
+                    return@launch
+                }
+                // Only the prescribed-count step decides partial vs complete. The pour-out and
+                // recount steps count other pills and used to push this past the target.
+                val dispensedCount = pillCountTxnDetailsDao
+                    .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
+                val status =
+                    if (txn.isDispense && txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
 
                 // Stamp who ran this count now, not at send time: an unsynced txn resent later
                 // must still report this operator, not whoever is at the device then.
@@ -2028,16 +2028,17 @@ class PillScanningViewModel @Inject constructor(
                     hl7Repository.sendDispenseNow(txnId)
                 }
 
-            _capturedBitmap.value = null
-            _navigationEvent.send(NavigationEvent.NavigateToDashboard)
-            logger.i("Transaction completed. Status=$status")
+                _capturedBitmap.value = null
+                _navigationEvent.send(NavigationEvent.NavigateToDashboard)
+                logger.i("Transaction completed. Status=$status")
 
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            logger.e("Failed to confirm/complete transaction", e, event = LogEvent.PILL_COUNT_FAILED)
-            showGenericError()
-        }})
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to confirm/complete transaction", e, event = LogEvent.PILL_COUNT_FAILED)
+                showGenericError()
+            }
+        })
     }
 
     private fun handleDeleteTransaction(event: PillScanningEvent.TransactionDetailDeleted) {
@@ -2745,7 +2746,7 @@ class PillScanningViewModel @Inject constructor(
             } catch (e: Exception) {
                 logger.e("Failed to advance from VIAL step", e, event = LogEvent.VIAL_SCAN_FAILED)
             }
-            }
+        }
     }
 
     /** Single-button "Skip": finish the txn without entering CONTAINER_PENDING. */
