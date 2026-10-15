@@ -1,7 +1,6 @@
 package com.dispensesure.retail.core.room.di
 
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.room.models.enums.CountType
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -13,20 +12,6 @@ import org.junit.Test
  * carry coverable logic so they are exercised here.
  */
 class CountStatusConvertersTest {
-
-    @Test
-    fun `fromCountType maps each enum to its name and null to null`() {
-        assertEquals("FIXED", CountStatusConverters.fromCountType(CountType.FIXED))
-        assertEquals("REGULAR", CountStatusConverters.fromCountType(CountType.REGULAR))
-        assertNull(CountStatusConverters.fromCountType(null))
-    }
-
-    @Test
-    fun `toCountType parses each name and maps null to null`() {
-        assertEquals(CountType.FIXED, CountStatusConverters.toCountType("FIXED"))
-        assertEquals(CountType.REGULAR, CountStatusConverters.toCountType("REGULAR"))
-        assertNull(CountStatusConverters.toCountType(null))
-    }
 
     @Test
     fun `fromCountStatus maps each enum to its name and null to null`() {

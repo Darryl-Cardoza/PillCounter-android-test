@@ -32,6 +32,7 @@ import io.mockk.mockk
 import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkAll
+import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -969,7 +970,7 @@ class InventoryScanViewModelTest {
 
         var readyBatch = -1L
         var readyNdcs: Set<String> = setOf("sentinel")
-        vm.onScanPillsForActive { b, n -> readyBatch = b; readyNdcs = n }
+        vm.onScanPillsForActive { b, _, n -> readyBatch = b; readyNdcs = n }
         advanceUntilIdle()
 
         // A manual batch has no PMS restriction, so the pill-count flow must accept
@@ -999,7 +1000,7 @@ class InventoryScanViewModelTest {
         assertEquals("00093-0058", vm.uiState.value.activeNdc?.ndc)
 
         var readyNdcs: Set<String> = emptySet()
-        vm.onScanPillsForActive { _, n -> readyNdcs = n }
+        vm.onScanPillsForActive { _, _, n -> readyNdcs = n }
         advanceUntilIdle()
 
         // An active NDC must not narrow a PMS batch down to itself — the flow still
@@ -1014,7 +1015,7 @@ class InventoryScanViewModelTest {
         advanceUntilIdle()
 
         var readyNdcs: Set<String> = setOf("x")
-        vm.onScanPillsForActive { _, n -> readyNdcs = n }
+        vm.onScanPillsForActive { _, _, n -> readyNdcs = n }
         advanceUntilIdle()
 
         assertTrue(readyNdcs.isEmpty())
@@ -1030,7 +1031,7 @@ class InventoryScanViewModelTest {
         advanceUntilIdle()
 
         var readyNdcs: Set<String> = emptySet()
-        vm.onScanPillsForActive { _, n -> readyNdcs = n }
+        vm.onScanPillsForActive { _, _, n -> readyNdcs = n }
         advanceUntilIdle()
 
         assertEquals(setOf("PMS-1", "PMS-2"), readyNdcs)
@@ -1043,13 +1044,13 @@ class InventoryScanViewModelTest {
 
         var readyBatch = -1L
         var called = false
-        vm.onScanPillsForActive { b, _ -> readyBatch = b; called = true }
+        vm.onScanPillsForActive { b, _, _ -> readyBatch = b; called = true }
         advanceUntilIdle()
 
         // No batch exists yet — SCAN PILLS must not create one merely by being
         // tapped. batchId=0L is passed through as-is (the same sentinel
-        // onBarcodeDetected treats as "not yet created"); the real batch is
-        // created lazily on the first successful scan in the dispense flow.
+        // onBarcodeDetected treats as "not yet created"); the loose count
+        // creates the real batch when it is saved.
         assertTrue(called)
         assertEquals(0L, readyBatch)
         assertNull(vm.errorMessage.value)
@@ -1061,7 +1062,7 @@ class InventoryScanViewModelTest {
         val vm = createViewModel(batchId = 0L)
         advanceUntilIdle()
 
-        vm.onScanPillsForActive { _, _ -> }
+        vm.onScanPillsForActive { _, _, _ -> }
         advanceUntilIdle()
 
         coVerify(exactly = 0) { stockBatchDao.insert(any()) }
@@ -1073,10 +1074,64 @@ class InventoryScanViewModelTest {
         val vm = createViewModel(batchId = 7L)
         advanceUntilIdle()
 
-        vm.onScanPillsForActive { _, _ -> }
+        vm.onScanPillsForActive { _, _, _ -> }
         advanceUntilIdle()
 
         assertEquals(R.string.batch_stock_count_scan_failed, vm.errorMessage.value?.messageResId)
+    }
+
+    @Test
+    fun `onScanPillsForActive passes the bucket picked for a new batch`() = runTest(testDispatcher) {
+        val vm = createViewModel(batchId = 0L, bucketId = "B2")
+        advanceUntilIdle()
+
+        var readyBucket: String? = null
+        vm.onScanPillsForActive { _, bucket, _ -> readyBucket = bucket }
+        advanceUntilIdle()
+
+        // The loose count creates the batch, so it needs the bucket the user picked.
+        assertEquals("B2", readyBucket)
+    }
+
+    @Test
+    fun `onScanPillsForActive passes the resumed batch's bucket`() = runTest(testDispatcher) {
+        coEvery { stockBatchDao.getById(5L) } returns StockBatchEntity(batchId = 5L, bucketId = "B5")
+        val vm = createViewModel(batchId = 5L)
+        advanceUntilIdle()
+
+        var readyBucket: String? = null
+        vm.onScanPillsForActive { _, bucket, _ -> readyBucket = bucket }
+        advanceUntilIdle()
+
+        assertEquals("B5", readyBucket)
+    }
+
+    // ─────────────────────────  adoptStockCountBatchId  ─────────────────────────
+
+    @Test
+    fun `adoptStockCountBatchId binds Recent Counts to the batch the loose count saved`() = runTest(testDispatcher) {
+        val vm = createViewModel(batchId = 0L, bucketId = "B2")
+        val job = launch { vm.uiState.collect {} }
+        advanceUntilIdle()
+
+        vm.adoptStockCountBatchId(9L)
+        advanceUntilIdle()
+
+        verify { stockBottleInfoDao.observeByBatchId(9L) }
+        job.cancel()
+    }
+
+    @Test
+    fun `adoptStockCountBatchId keeps a batch that is already bound`() = runTest(testDispatcher) {
+        val vm = createViewModel(batchId = 7L)
+        val job = launch { vm.uiState.collect {} }
+        advanceUntilIdle()
+
+        vm.adoptStockCountBatchId(9L)
+        advanceUntilIdle()
+
+        verify(exactly = 0) { stockBottleInfoDao.observeByBatchId(9L) }
+        job.cancel()
     }
 
     // ─────────────────────────  end count  ─────────────────────────

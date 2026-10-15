@@ -154,52 +154,6 @@ class StockBottleInfoDaoTest {
         assertEquals(2L, stockBottleInfoDao.findSealedLine(1L, "L1", "12-2027")?.bottleId)
     }
 
-    // ───────────────────────── incrementLooseQtyAndImages ─────────────────────────
-
-    @Test
-    fun `incrementLooseQtyAndImages adds to existing looseQty and updates timestamp`() = runTest {
-        stockBottleInfoDao.insert(StockBottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = 10, updatedAt = 0L))
-        stockBottleInfoDao.incrementLooseQtyAndImages(1L, 5, paths = null, now = 12345L)
-
-        val updated = stockBottleInfoDao.getById(1L)!!
-        assertEquals(15, updated.looseQty)
-        assertEquals(12345L, updated.updatedAt)
-    }
-
-    @Test
-    fun `incrementLooseQtyAndImages treats null looseQty as zero`() = runTest {
-        stockBottleInfoDao.insert(StockBottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = null))
-        stockBottleInfoDao.incrementLooseQtyAndImages(1L, 7, paths = null, now = 999L)
-
-        assertEquals(7, stockBottleInfoDao.getById(1L)?.looseQty)
-    }
-
-    @Test
-    fun `incrementLooseQtyAndImages on nonexistent bottle affects no rows`() = runTest {
-        stockBottleInfoDao.incrementLooseQtyAndImages(999L, 5, paths = null, now = 1L)
-        assertNull(stockBottleInfoDao.getById(999L))
-    }
-
-    @Test
-    fun `incrementLooseQtyAndImages with paths overwrites controlledImagePaths`() = runTest {
-        stockBottleInfoDao.insert(StockBottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = 0, controlledImagePaths = null))
-        stockBottleInfoDao.incrementLooseQtyAndImages(1L, 3, paths = listOf("/a", "/b"), now = 100L)
-
-        val updated = stockBottleInfoDao.getById(1L)!!
-        assertEquals(3, updated.looseQty)
-        assertEquals(listOf("/a", "/b"), updated.controlledImagePaths)
-    }
-
-    @Test
-    fun `incrementLooseQtyAndImages with null paths preserves existing controlledImagePaths`() = runTest {
-        stockBottleInfoDao.insert(StockBottleInfoEntity(bottleId = 1L, stockTxnId = 1L, looseQty = 0, controlledImagePaths = listOf("/existing")))
-        stockBottleInfoDao.incrementLooseQtyAndImages(1L, 2, paths = null, now = 200L)
-
-        val updated = stockBottleInfoDao.getById(1L)!!
-        assertEquals(2, updated.looseQty)
-        assertEquals(listOf("/existing"), updated.controlledImagePaths)
-    }
-
     // ───────────────────────── Delete ─────────────────────────
 
     @Test

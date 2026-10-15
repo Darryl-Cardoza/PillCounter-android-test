@@ -262,20 +262,19 @@ class InventoryScanViewModel @Inject constructor(
     }
 
     /**
-     * Adopts a batchId created lazily by the SCAN PILLS → DispenseFlow entry
-     * point. Called by [com.dispensesure.retail.feature.inventoryFlow.presentation.shell.InventoryScanHost]
-     * after DispenseFlow publishes the id via NavController's SavedStateHandle.
+     * Adopts the batchId the loose count (SCAN PILLS) saved into. Called by
+     * [com.dispensesure.retail.feature.inventoryFlow.presentation.shell.InventoryScanHost] when
+     * [com.dispensesure.retail.navigation.Screen.LooseCount.RESULT_BATCH_ID] lands on this entry's SavedStateHandle.
      *
      * Only takes effect when this VM has no batch bound yet
      * ([resolvedBatchId] == 0L). Setting [resolvedBatchId] re-triggers the
      * `flatMapLatest` in [recentRows], which subscribes to
      * [stockBottleInfoDao.observeByBatchId] + [stockTxnDao.observeRequestedDrugs]
      * against the real batch so the just-counted bottle appears in the list.
-     * Also hydrates [_bucketId] and (for PMS batches) [expectedNdcs] the same
+     * Also hydrates (for PMS batches) [expectedNdcs] the same
      * way the `init` block does.
      *
-     * @param batchId The batchId minted by
-     *   `DispenseFlowViewModel.advanceToCountingStage`. Ignored when 0.
+     * @param batchId The batchId the loose count saved into. Ignored when 0.
      */
     fun adoptStockCountBatchId(batchId: Long) {
         if (batchId == 0L) return
@@ -284,10 +283,6 @@ class InventoryScanViewModel @Inject constructor(
             try {
                 resolvedBatchId.value = batchId
                 val batch = stockBatchDao.getById(batchId)
-                // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
-                // is already authoritative (set from argBucketId at init). Reading it back
-                // from a lazily-created batch would clobber the selection with a stale/null
-                // value if the commit hadn't populated bucketId at insert time.
                 if (!batch?.requestIdFromPMS.isNullOrBlank()) {
                     expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
                         .filter { it.isNotBlank() }
@@ -900,27 +895,26 @@ class InventoryScanViewModel @Inject constructor(
     /**
      * SCAN PILLS hand-off (Path 1): the user wants to count loose/open pills.
      * We flush the active card's bottle count so it isn't lost, clear the staged
-     * txnId so the dispense flow starts at PRE_NDC, and invoke [onReady] on the
-     * caller so it can navigate.
+     * dispense txnId, and invoke [onReady] on the caller so it can open the loose count.
      *
-     * Works with or without an active NDC. The legacy pill-count flow scans its
-     * own NDC and establishes its own txn, so SCAN PILLS is always available.
+     * Works with or without an active NDC. The loose count scans its own
+     * container, so SCAN PILLS is always available.
      *
      * batchId is passed through as-is — including 0L when no batch has been
      * created yet — rather than creating it here. Tapping SCAN PILLS is not
-     * itself a commitment to count; the batch is created lazily by
-     * PillScanningViewModel on the first successful NDC scan in the dispense
-     * flow, same as [onBarcodeDetected] does for the NDC-scan path, so an
+     * itself a commitment to count; the batch is created when the loose count
+     * is saved, same as [onBarcodeDetected] does for the NDC-scan path, so an
      * abandoned session never leaves an empty batch row.
      *
-     * @param onReady Called with (batchId, allowedNdcs) when ready to navigate.
-     *   allowedNdcs is the set of NDCs the dispense flow is permitted to accept:
+     * @param onReady Called with (batchId, bucketId, allowedNdcs) when ready to navigate.
+     *   bucketId is this batch's bucket; a batch the loose count creates gets it.
+     *   allowedNdcs is the set of NDCs the loose count may accept:
      *   - PMS batch → restrict to the full PMS-requested NDC set.
      *   - Manual batch → empty set (no restriction).
      *   An active NDC does NOT narrow this: its count is already persisted, so the
      *   user may scan a different container to count its loose pills.
      */
-    fun onScanPillsForActive(onReady: (batchId: Long, allowedNdcs: Set<String>) -> Unit) {
+    fun onScanPillsForActive(onReady: (batchId: Long, bucketId: String?, allowedNdcs: Set<String>) -> Unit) {
         val active = _activeNdc.value
         viewModelScope.launch {
             try {
@@ -929,23 +923,21 @@ class InventoryScanViewModel @Inject constructor(
                 if (active != null) persistActive(active)
 
                 // Do NOT create the batch here. SCAN PILLS only stages an intent to
-                // count — the user may still back out of the dispense flow before
-                // scanning a pill. Pass batchId through as-is (0L when no batch
-                // exists yet); PillScanningViewModel lazily creates it on the first
-                // successful NDC scan in that flow, mirroring onBarcodeDetected above.
+                // count — the user may still back out of the loose count before
+                // saving. Pass batchId through as-is (0L when no batch exists yet);
+                // the loose count creates it when saved, mirroring onBarcodeDetected above.
                 val batchId = resolvedBatchId.value
 
-                // Always clear the staged txnId so the dispense flow starts at
-                // PRE_NDC and the user scans the container themselves.
+                // Always clear the staged dispense txnId.
                 preferenceHelper.saveTxnId(0)
 
-                // Build the NDC allowlist for the dispense flow.
+                // Build the NDC allowlist for the loose count.
                 // Only PMS batches restrict which NDCs may be counted. An active card
                 // does not narrow it — its count is already persisted above.
                 val allowedNdcs: Set<String> = expectedNdcs ?: emptySet()
 
-                logger.d("INV_SCAN onScanPillsForActive active=${active?.ndc} batchId=$batchId allowedNdcs=$allowedNdcs")
-                onReady(batchId, allowedNdcs)
+                logger.d("INV_SCAN onScanPillsForActive active=${active?.ndc} batchId=$batchId bucketId=${_bucketId.value} allowedNdcs=$allowedNdcs")
+                onReady(batchId, _bucketId.value, allowedNdcs)
             } catch (e: Exception) {
                 logger.e("INV_SCAN onScanPillsForActive failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)

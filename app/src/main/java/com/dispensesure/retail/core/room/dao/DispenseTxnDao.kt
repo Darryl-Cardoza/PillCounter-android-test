@@ -11,7 +11,6 @@ import com.dispensesure.retail.core.room.models.DispenseTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnWithDrug
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
 import com.dispensesure.retail.core.room.models.enums.CountStatus
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
@@ -127,13 +126,12 @@ interface DispenseTxnDao {
     fun observeById(id: Long): Flow<DispenseTxnEntity?>
 
     /**
-     * Observes all **partial transactions** for a specific [CountType],
+     * Observes all **partial dispense transactions**,
      * along with their associated drug names and total pill counts.
      *
      * - Useful for showing "in-progress" transactions on a dashboard.
      * - Excludes deleted records.
      *
-     * @param countType The count type (e.g., CYCLE_COUNT, SPOT_COUNT).
      * @param partialStatus Optional filter, defaults to [CountStatus.PARTIAL].
      * @return A [Flow] emitting a live list of [DispenseTxnWithDrug].
      */

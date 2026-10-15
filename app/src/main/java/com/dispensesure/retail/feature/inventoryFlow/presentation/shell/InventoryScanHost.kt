@@ -26,7 +26,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
@@ -167,22 +166,22 @@ fun InventoryScanHost(
     }
 
     // When the user tapped SCAN PILLS before any drug scan, the batch is created
-    // lazily inside PillScanningViewModel.flushStagedDetails on Done and published
+    // when the loose count is saved and published
     // back here via SavedStateHandle so the inventory VM can adopt it and the
     // Recent Counts list re-binds to the real batch instead of the initial 0L.
     //
     // Uses currentBackStackEntryAsState() (reactive) instead of currentBackStackEntry
     // (snapshot). The snapshot value is captured once at composition and doesn't
-    // recompose on back-stack changes, so a race between DispenseFlow's pop-back
+    // recompose on back-stack changes, so a race between LooseCount's pop-back
     // and this collect starting could drop the adoption entirely.
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     LaunchedEffect(currentBackStackEntry) {
         val handle = currentBackStackEntry?.savedStateHandle ?: return@LaunchedEffect
-        handle.getStateFlow<Long?>(Screen.DispenseFlow.NAV_KEY_STOCK_COUNT_BATCH_ID, null)
+        handle.getStateFlow<Long?>(Screen.LooseCount.RESULT_BATCH_ID, null)
             .collect { adoptedBatchId ->
                 if (adoptedBatchId != null && adoptedBatchId != 0L) {
                     inventoryVm.adoptStockCountBatchId(adoptedBatchId)
-                    handle[Screen.DispenseFlow.NAV_KEY_STOCK_COUNT_BATCH_ID] = null
+                    handle[Screen.LooseCount.RESULT_BATCH_ID] = null
                 }
             }
     }
@@ -199,15 +198,13 @@ fun InventoryScanHost(
         state = panelState,
         canEndCount = panelState.totalNdcs > 0 || panelState.activeNdc != null,
         onScanPills = {
-            // Persist the active count, clear the staged txn, then hand
-            // off to the merged dispense flow in stock-count mode. fromResume=true so
-            // DispenseFlowScreen skips RX and loads the drug/txn from preferences,
-            // landing at PRE_NDC ready for the container barcode scan.
-            inventoryVm.onScanPillsForActive { batchId, allowedNdcs ->
+            // Persist the active count, then open the loose count for this batch
+            // with its bucket and, for a PMS batch, the requested NDCs.
+            inventoryVm.onScanPillsForActive { batchId, bucketId, allowedNdcs ->
                 navController.navigate(
-                    Screen.DispenseFlow.createRoute(
-                        scanType = CountType.REGULAR.toString(),
+                    Screen.LooseCount.createRoute(
                         batchId = batchId,
+                        bucketId = bucketId,
                         allowedNdcs = allowedNdcs,
                     )
                 )

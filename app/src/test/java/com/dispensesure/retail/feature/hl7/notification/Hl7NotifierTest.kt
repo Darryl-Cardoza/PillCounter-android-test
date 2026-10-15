@@ -145,15 +145,11 @@ class Hl7NotifierTest {
     }
 
     @Test
-    fun `dispense route is built for FIXED count from HL7`() {
+    fun `dispense route is built for an HL7 order`() {
         // Sanity check on the pure-Kotlin route building that show() performs internally.
-        val route = Screen.DispenseFlow.createRoute(
-            scanType = com.dispensesure.retail.core.room.models.enums.CountType.FIXED.toString(),
-            fromHl7 = true,
-        )
+        val route = Screen.DispenseFlow.createRoute(fromHl7 = true)
         assertNotNull(route)
-        assertTrue(route.contains("FIXED"))
-        assertTrue(route.contains("true"))
+        assertTrue(route.contains("from_hl7=true"))
     }
 
     /**

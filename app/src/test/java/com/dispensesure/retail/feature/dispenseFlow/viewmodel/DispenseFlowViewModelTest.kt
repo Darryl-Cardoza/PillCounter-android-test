@@ -1,11 +1,8 @@
 package com.dispensesure.retail.feature.dispenseFlow.viewmodel
 
 import android.content.Context
-import com.dispensesure.retail.core.room.dao.StockBatchDao
-import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
-import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dispenseFlow.domain.model.DispenseStage
@@ -64,39 +61,6 @@ class DispenseFlowViewModelTest {
 
     @After
     fun tearDown() { unmockkAll() }
-
-    // DISP_VM_001
-    @Test
-    fun `setCountType REGULAR sets stage to PRE_NDC`() {
-        viewModel.setCountType("REGULAR")
-
-        assertEquals(DispenseStage.PRE_NDC, viewModel.uiState.value.stage)
-        assertEquals("REGULAR", viewModel.uiState.value.scanType)
-    }
-
-    // DISP_VM_002
-    @Test
-    fun `setCountType FIXED sets stage to PRE_RX`() {
-        viewModel.setCountType("FIXED")
-
-        assertEquals(DispenseStage.PRE_RX, viewModel.uiState.value.stage)
-    }
-
-    // DISP_VM_003
-    @Test
-    fun `setBatchId with non-zero value stores batchId in uiState`() {
-        viewModel.setBatchId(batchId = 5L)
-
-        assertEquals(5L, viewModel.uiState.value.batchId)
-    }
-
-    // DISP_VM_004
-    @Test
-    fun `setBatchId with zero does not change batchId`() {
-        viewModel.setBatchId(0L)
-
-        assertEquals(0L, viewModel.uiState.value.batchId)
-    }
 
     // DISP_VM_005
     @Test
@@ -160,14 +124,6 @@ class DispenseFlowViewModelTest {
         assertFalse(viewModel.uiState.value.showNdcNotFoundDialog)
     }
 
-    // DISP_VM_011
-    @Test
-    fun `setAllowedNdcs stores the provided set in uiState`() {
-        viewModel.setAllowedNdcs(setOf("00000000000001", "00000000000002"))
-
-        assertEquals(setOf("00000000000001", "00000000000002"), viewModel.uiState.value.allowedNdcs)
-    }
-
     // DISP_VM_013
     @Test
     fun `clearError sets error to null`() {
@@ -195,8 +151,9 @@ class DispenseFlowViewModelTest {
 
     // DISP_VM_016
     @Test
-    fun `onRxScannedInNdcStage increments scanNdcToastTick when stage is PRE_NDC`() {
-        viewModel.setCountType("REGULAR") // → PRE_NDC
+    fun `onRxScannedInNdcStage increments scanNdcToastTick when stage is PRE_NDC`() = runTest {
+        viewModel.returnToContainerScan() // → PRE_NDC
+        advanceUntilIdle()
         val before = viewModel.uiState.value.scanNdcToastTick
 
         viewModel.onRxScannedInNdcStage()
@@ -215,28 +172,9 @@ class DispenseFlowViewModelTest {
         assertEquals(before, viewModel.uiState.value.scanNdcToastTick)
     }
 
-    // DISP_VM_018
-    @Test
-    fun `onRxScannedInStockCount shows blocking dialog when stage is PRE_NDC`() {
-        viewModel.setCountType("REGULAR") // → PRE_NDC
-
-        viewModel.onRxScannedInStockCount()
-
-        assertTrue(viewModel.uiState.value.showRxScannedInStockCountDialog)
-    }
-
-    // DISP_VM_019
-    @Test
-    fun `dismissRxScannedInStockCountDialog sets showRxScannedInStockCountDialog to false`() {
-        viewModel.dismissRxScannedInStockCountDialog()
-
-        assertFalse(viewModel.uiState.value.showRxScannedInStockCountDialog)
-    }
-
     // DISP_VM_021
     @Test
-    fun `confirmSubstitute with FIXED countType sets isSubstituteConfirmed and hides equivalence dialog`() = runTest {
-        // Default countType is FIXED → needsSheet = false
+    fun `confirmSubstitute sets isSubstituteConfirmed and hides equivalence dialog`() = runTest {
         viewModel.confirmSubstitute()
         advanceUntilIdle()
 

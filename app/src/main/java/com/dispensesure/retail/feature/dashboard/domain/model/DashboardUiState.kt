@@ -40,9 +40,6 @@ data class DashboardUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
 
-    //set as null because when we set 0 because of observer its consider the Id and redirect to barcode screen
-    val createdBatchId: Long? = null,
-
     /**
      * Bucket selected for a new stock-count session. Set when the user picks a bucket
      * from the Inventory quick-action dialog; consumed by the screen to navigate into

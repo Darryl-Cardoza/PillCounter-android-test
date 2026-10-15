@@ -2,12 +2,9 @@ package com.dispensesure.retail.core.scanning.presentation.viewmodel
 
 import android.app.Application
 import com.dispensesure.retail.core.models.StepState
-import com.dispensesure.retail.core.room.dao.StockBatchDao
-import com.dispensesure.retail.core.room.dao.StockBottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.dao.DispenseCountDao
-import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.AppDatabase
@@ -55,8 +52,6 @@ class PillScanningViewModelFrameTest {
     private val application: Application = mockk(relaxed = true)
     private val preferenceHelper: PreferenceHelper = mockk(relaxed = true)
     private val dispenseTxnDao: DispenseTxnDao = mockk(relaxed = true)
-    private val stockTxnDao: StockTxnDao = mockk(relaxed = true)
-    private val stockBottleInfoDao: StockBottleInfoDao = mockk(relaxed = true)
     private val userDao: UserDao = mockk(relaxed = true)
     private val operatorNameProvider: OperatorNameProvider = mockk(relaxed = true)
     private val dispenseCountDao: DispenseCountDao = mockk(relaxed = true)
@@ -66,7 +61,6 @@ class PillScanningViewModelFrameTest {
     private val performanceLogger: PerformanceLogger = mockk(relaxed = true)
     private val barcodeDecoder: BarcodeDecoder = mockk(relaxed = true)
     private val hl7Repository: Hl7Repository = mockk(relaxed = true)
-    private val stockBatchDao: StockBatchDao = mockk(relaxed = true)
     private val appDatabase: AppDatabase = mockk(relaxed = true)
 
     private lateinit var engineFactory: TestEngineFactory
@@ -94,9 +88,6 @@ class PillScanningViewModelFrameTest {
             app = application,
             preferenceHelper = preferenceHelper,
             dispenseTxnDao = dispenseTxnDao,
-            stockTxnDao = stockTxnDao,
-            stockBottleInfoDao = stockBottleInfoDao,
-            stockBatchDao = stockBatchDao,
             operatorNameProvider = operatorNameProvider,
             dispenseCountDao = dispenseCountDao,
             drugMasterDao = drugMasterDao,

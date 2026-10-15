@@ -19,6 +19,7 @@ import com.dispensesure.retail.feature.history.presentation.HistoryScreen
 import com.dispensesure.retail.feature.menu.presentation.MenuScreen
 import com.dispensesure.retail.feature.profile.presentation.ProfileScreen
 import com.dispensesure.retail.feature.settings.presentation.SettingsScreen
+import com.dispensesure.retail.feature.stockCount.loose.LooseCountScreen
 import com.dispensesure.retail.feature.unsyncedTransaction.presentation.compose.UnsyncedTransactionScreen
 
 // Define constants for nested graph routes for better organization
@@ -81,20 +82,14 @@ fun AppNavGraph(
         composable(
             route = Screen.DispenseFlow.route, arguments = Screen.DispenseFlow.navArguments
         ) { backStackEntry ->
-            val countType = backStackEntry.arguments?.getString(Screen.DispenseFlow.ARG_TYPE) ?: ""
             val fromHl7 = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_HL7) ?: false
             val fromResume = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_RESUME) ?: false
-            val batchId = backStackEntry.arguments?.getLong(Screen.DispenseFlow.ARG_BATCH_ID) ?: 0L
             val fromQueue = backStackEntry.arguments?.getBoolean(Screen.DispenseFlow.ARG_FROM_QUEUE) ?: false
-            val allowedNdcs = backStackEntry.arguments?.getString(Screen.DispenseFlow.ARG_ALLOWED_NDCS) ?: ""
             DispenseFlowScreen(
                 navController = navController,
-                countType = countType,
                 fromHl7 = fromHl7,
                 fromResume = fromResume,
-                batchId = batchId,
                 fromQueue = fromQueue,
-                allowedNdcs = allowedNdcs,
             )
         }
 
@@ -112,6 +107,14 @@ fun AppNavGraph(
             arguments = Screen.InventoryScan.navArguments,
         ) {
             InventoryFlowScreen(navController = navController)
+        }
+
+        // Loose-pill count for a stock batch (SCAN PILLS on the sealed-bottle screen).
+        composable(
+            route = Screen.LooseCount.route,
+            arguments = Screen.LooseCount.navArguments,
+        ) {
+            LooseCountScreen(navController = navController)
         }
 
         composable(
