@@ -88,11 +88,10 @@ class AppLogger(private val tag: String) {
      * logged with [w]. For per-frame or per-retry failures that would otherwise flood the remote log.
      */
     fun eThrottled(message: String, throwable: Throwable? = null, event: LogEvent, intervalMs: Long = 60_000L) {
-        // Keyed on the calling line, so two different failures in one class don't hide each other.
-        val site = Throwable().stackTrace.firstOrNull {
-            it.className != INTERNAL_CLASS_NAME && !it.className.startsWith("$INTERNAL_CLASS_NAME$")
-        }
-        val key = "$tag|$event|${site?.className}:${site?.lineNumber}"
+        // Keyed on the message, so two different failures in one class don't hide each other and
+        // a throttled repeat costs no stack walk (this runs on per-frame paths).
+        if (lastErrorAt.size > MAX_THROTTLE_KEYS) lastErrorAt.clear()
+        val key = "$tag|$event|$message"
         val now = System.currentTimeMillis()
         var send = false
         lastErrorAt.compute(key) { _, last ->
@@ -185,6 +184,8 @@ class AppLogger(private val tag: String) {
 
         /** Last ERROR time per tag+event, for [eThrottled]. */
         private val lastErrorAt = java.util.concurrent.ConcurrentHashMap<String, Long>()
+        // Messages with interpolated values make distinct keys; bound the map rather than let it grow.
+        private const val MAX_THROTTLE_KEYS = 500
 
         /**
          * Wires up the [LogDestination]. Call once, as early as possible, from

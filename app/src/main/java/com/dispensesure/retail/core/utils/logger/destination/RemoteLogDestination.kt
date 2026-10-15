@@ -18,6 +18,7 @@ import com.dispensesure.retail.core.utils.logger.LogFormatter
 import com.dispensesure.retail.core.utils.logger.LogLevel
 import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.logger.PhiRedactor
+import com.dispensesure.retail.core.utils.logger.unmasked
 import com.dispensesure.retail.core.utils.logger.destination.dto.RemoteLogError
 import com.dispensesure.retail.core.utils.logger.destination.dto.RemoteLogNetwork
 import com.dispensesure.retail.core.utils.logger.destination.dto.RemoteLogRequest
@@ -103,8 +104,9 @@ class RemoteLogDestination internal constructor(
     // that ERROR must not re-enter write(), or a persistent failure would loop forever.
     private val inInternalCall = ThreadLocal<Boolean>()
     private fun <T> guarded(block: () -> T): T {
+        val previous = inInternalCall.get()
         inInternalCall.set(true)
-        try { return block() } finally { inInternalCall.remove() }
+        try { return block() } finally { if (previous == true) inInternalCall.set(true) else inInternalCall.remove() }
     }
     private fun networkUp(): Boolean = guarded { isNetworkAvailable(appContext) }
     private val accessToken: () -> String? = accessTokenOverride ?: {
@@ -457,7 +459,7 @@ class RemoteLogDestination internal constructor(
             },
             error = throwable?.let {
                 RemoteLogError(
-                    type = it::class.java.name,
+                    type = it.unmasked()::class.java.name,
                     // The raw message (already the first line of stack_trace); the translated text is in `context.error_text`.
                     message = PhiRedactor.redact(it.message ?: entry.humanReadableError ?: it.toString()),
                     stackTrace = PhiRedactor.redact(stackTraceOf(it)),
