@@ -256,7 +256,7 @@ class InventoryScanViewModel @Inject constructor(
         val existing = resolvedBatchId.value
         if (existing != 0L) return existing
         return try {
-            val bucket = if (FtueController.state.isActive) TutorialData.BUCKET else _bucketId.value
+            val bucket = if (FtueController.state.isActive) TutorialData.BUCKET else currentBucketId.value
             val newId = batchDao.insertNewInProgressBatch(bucketId = bucket)
             resolvedBatchId.value = newId
             newId
@@ -553,7 +553,7 @@ class InventoryScanViewModel @Inject constructor(
                 val newActive = ActiveNdc(
                     ndc = drug.ndc,
                     drugName = drug.drugName ?: "",
-                    bucket = _bucketId.value.orEmpty(),
+                    bucket = currentBucketId.value.orEmpty(),
                     batchNo = "",
                     expiry = "",
                     pillsPerBottle = drug.packageQty ?: 0,

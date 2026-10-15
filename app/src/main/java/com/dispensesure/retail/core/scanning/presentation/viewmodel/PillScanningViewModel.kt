@@ -1488,35 +1488,35 @@ class PillScanningViewModel @Inject constructor(
     private fun handleAddVialImageInTxn(event: PillScanningEvent.AddVialPhotoInTxn) {
         FtueController.track(viewModelScope.launch(Dispatchers.IO) {
             try {
-            val txnId = preferenceHelper.getTxnId()
-            val bitmap = event.bitmap
-            // The tour's grey placeholder isn't worth a file an interruption could orphan.
-            val filePath = if (FtueController.state.isActive) null else try {
-                if (!bitmap.isRecycled) {
-                    saveBitmapToFile(
-                        getApplication(),
-                        bitmap,
-                        "txn_detail_${System.currentTimeMillis()}.jpg",
-                        "transaction_details",
-                        grayscale = isGrayscaleImage(),
+                val txnId = preferenceHelper.getTxnId()
+                val bitmap = event.bitmap
+                // The tour's grey placeholder isn't worth a file an interruption could orphan.
+                val filePath = if (FtueController.state.isActive) null else try {
+                    if (!bitmap.isRecycled) {
+                        saveBitmapToFile(
+                            getApplication(),
+                            bitmap,
+                            "txn_detail_${System.currentTimeMillis()}.jpg",
+                            "transaction_details",
+                            grayscale = isGrayscaleImage(),
+                        )
+                    } else null
+                } catch (e: Exception) {
+                    logger.e("Failed saving bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
+                    null
+                }
+                pillCountTxnDetailsDao.deleteVialByTxnId(txnId, StepState.VIAL)
+                pillCountTxnDetailsDao.insert(
+                    PillCountTxnDetailsEntity(
+                        txnId = txnId,
+                        pillCount = 0,
+                        imagePath = filePath,
+                        createdAt = System.currentTimeMillis(),
+                        updatedAt = System.currentTimeMillis(),
+                        type = StepState.VIAL.toString()
                     )
-                } else null
-            } catch (e: Exception) {
-                logger.e("Failed saving bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
-                null
-            }
-            pillCountTxnDetailsDao.deleteVialByTxnId(txnId, StepState.VIAL)
-            pillCountTxnDetailsDao.insert(
-                PillCountTxnDetailsEntity(
-                    txnId = txnId,
-                    pillCount = 0,
-                    imagePath = filePath,
-                    createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis(),
-                    type = StepState.VIAL.toString()
                 )
-            )
-              }  catch (e: CancellationException) {
+                        }  catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
                     logger.e("Failed to save vial photo transaction detail", e, event = LogEvent.VIAL_SCAN_FAILED)
@@ -2719,27 +2719,27 @@ class PillScanningViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-            val poured = pillCountTxnDetailsDao
-                .observeAllForTxn(preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE)
-                .first().sumOf { it.pillCount ?: 0 }
-            if (poured == (_txnInfo.value?.targetCount ?: 0)) {
-                if (FtueController.state.isActive) {
-                    // Tutorial: this dialog is real business UI the tour doesn't
-                    // gate/explain — an extra manual tap here interrupts the guided
-                    // flow for no reason, since skipping the back-count step is
-                    // already the only sensible outcome (there's nothing left to
-                    // scan). Take it automatically instead, same as tapping SKIP
-                    // would, and let the tour continue uninterrupted.
-                    skipBackCount()
+                val poured = pillCountTxnDetailsDao
+                    .observeAllForTxn(preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE)
+                    .first().sumOf { it.pillCount ?: 0 }
+                if (poured == (_txnInfo.value?.targetCount ?: 0)) {
+                    if (FtueController.state.isActive) {
+                        // Tutorial: this dialog is real business UI the tour doesn't
+                        // gate/explain — an extra manual tap here interrupts the guided
+                        // flow for no reason, since skipping the back-count step is
+                        // already the only sensible outcome (there's nothing left to
+                        // scan). Take it automatically instead, same as tapping SKIP
+                        // would, and let the tour continue uninterrupted.
+                        skipBackCount()
+                    } else {
+                        // No camera frames arrive while the dialog sits on the vial still,
+                        // so the watchdog would fire and drop the idle overlay behind it.
+                        pauseIdleTimer()
+                        _uiState.update { it.copy(showSkipStepDialog = true) }
+                    }
                 } else {
-                    // No camera frames arrive while the dialog sits on the vial still,
-                    // so the watchdog would fire and drop the idle overlay behind it.
-                    pauseIdleTimer()
-                    _uiState.update { it.copy(showSkipStepDialog = true) }
+                    moveNextStep()
                 }
-            } else {
-                moveNextStep()
-            }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
