@@ -154,6 +154,7 @@ class DashboardViewModelTest {
         hl7ServiceManager,
         deviceKeyProvider,
         sessionHealthController,
+        mockk(relaxed = true),
         testDispatcher,
     )
 

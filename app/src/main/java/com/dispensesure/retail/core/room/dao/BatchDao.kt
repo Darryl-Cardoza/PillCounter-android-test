@@ -8,6 +8,7 @@ import com.dispensesure.retail.core.room.models.BatchEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchSummaryDto
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
+import com.dispensesure.retail.core.tourguide.TutorialData
 import kotlinx.coroutines.flow.Flow
 
 /**
@@ -116,6 +117,13 @@ interface BatchDao {
     suspend fun softDelete(batchId: Long): Int
 
     /**
+     * Hard-deletes a batch row — tutorial-created batches only. `stock_txn`/`bottle_info` use
+     * `onDelete = SET_NULL`, not `CASCADE`, so callers must delete those first or they orphan.
+     */
+    @Query("DELETE FROM batch WHERE batchId = :batchId")
+    suspend fun deleteById(batchId: Long)
+
+    /**
      * Marks a batch as completed by setting status to COMPLETED and recording endDateTime.
      *
      * @param batchId The ID of the batch to complete.
@@ -215,6 +223,7 @@ interface BatchDao {
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
       AND b.startDateTime BETWEEN :startDate AND :endDate
+      AND b.bucketId IS NOT '${TutorialData.BUCKET}'
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """
@@ -239,6 +248,7 @@ interface BatchDao {
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
       AND b.status = :completedStatus
+      AND b.bucketId IS NOT '${TutorialData.BUCKET}'
       AND b.isSynced = 0
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
@@ -269,6 +279,7 @@ interface BatchDao {
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
       AND b.status = :inProgressStatus
+      AND b.bucketId IS NOT '${TutorialData.BUCKET}'
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
     """
@@ -291,6 +302,7 @@ interface BatchDao {
     FROM batch
     WHERE isDeleted = 0
       AND status = :inProgressStatus
+      AND bucketId IS NOT '${TutorialData.BUCKET}'
     """
     )
     fun observeInProgressBatchKpiCounts(
@@ -312,6 +324,7 @@ interface BatchDao {
         AND txn.isDeleted = 0
     WHERE b.isDeleted = 0
       AND b.status = :completedStatus
+      AND b.bucketId IS NOT '${TutorialData.BUCKET}'
       AND b.isSynced = 0
     GROUP BY b.batchId
     ORDER BY b.startDateTime DESC
@@ -320,6 +333,16 @@ interface BatchDao {
     suspend fun getUnsyncedCompletedBatchesOnce(
         completedStatus: BatchStatus = BatchStatus.COMPLETED
     ): List<BatchSummaryDto>
+
+    @Query(
+        """
+        SELECT batchId FROM batch WHERE bucketId = '${TutorialData.BUCKET}'
+        OR (batchId IN (SELECT batchId FROM stock_txn WHERE drugId IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
+            AND batchId NOT IN (SELECT batchId FROM stock_txn
+                                WHERE batchId IS NOT NULL AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))))
+        """
+    )
+    suspend fun getTutorialBatchIds(): List<Long>
 
     @Query("UPDATE batch SET isSynced = 1 WHERE batchId = :batchId")
     suspend fun markBatchSynced(batchId: Long)
@@ -338,6 +361,7 @@ interface BatchDao {
         WHERE isDeleted = 0
           AND status = :completedStatus
           AND isSynced = 0
+          AND bucketId IS NOT '${TutorialData.BUCKET}'
     """)
     fun getUnsyncedCompletedBatchCount(
         completedStatus: BatchStatus = BatchStatus.COMPLETED

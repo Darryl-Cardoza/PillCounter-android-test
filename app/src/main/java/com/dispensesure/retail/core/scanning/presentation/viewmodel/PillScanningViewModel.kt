@@ -22,6 +22,9 @@ import com.dispensesure.retail.core.models.DISPENSED_QUANTITY_STEP
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.room.AppDatabase
 import com.dispensesure.retail.core.room.dao.BatchDao
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
 import com.dispensesure.retail.core.room.dao.BottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -87,6 +90,7 @@ import kotlinx.coroutines.flow.receiveAsFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.util.ArrayDeque
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
@@ -271,6 +275,9 @@ class PillScanningViewModel @Inject constructor(
 
     // True once the still on screen has been written, so a Done re-tap cannot write it twice.
     private var captureCommitted = false
+
+    /** Tour: set once Done goes straight to confirm (notes setting off), so the VIAL wait ends. */
+    private var confirmDoneStarted = false
 
     private val _txnInfo = MutableStateFlow<TxnWithDetails?>(null)
     val txnInfo: StateFlow<TxnWithDetails?> = _txnInfo
@@ -585,7 +592,9 @@ class PillScanningViewModel @Inject constructor(
                             val effectiveBatchId = if (stockCountBatchId != 0L) {
                                 stockCountBatchId
                             } else {
-                                batchDao.insertNewInProgressBatch(bucketId = stockBucketId)
+                                batchDao.insertNewInProgressBatch(
+                                    bucketId = if (FtueController.state.isActive) TutorialData.BUCKET else stockBucketId,
+                                )
                             }
                             val existingStockTxn = stockTxnDao.findByDrugInBatch(effectiveBatchId, stockDrugId)
                             val effectiveStockTxnId = existingStockTxn?.txnId
@@ -1469,42 +1478,50 @@ class PillScanningViewModel @Inject constructor(
             d.toBitmap(300, h.coerceAtLeast(1))
         }
 
+    /** Tutorial txns are marked by the demo Rx prefix or the demo drug, the same markers the purge uses. */
+    private suspend fun isDemoTxn(txnId: Long): Boolean {
+        val txn = pillCountTxnDao.getById(txnId) ?: return false
+        return txn.rxNo?.startsWith(TutorialData.RX_PREFIX) == true ||
+            drugMasterDao.getDrugById(txn.drugId)?.ndc == TutorialData.DEMO_NDC
+    }
+
     private fun handleAddVialImageInTxn(event: PillScanningEvent.AddVialPhotoInTxn) {
-        viewModelScope.launch(Dispatchers.IO) {
+        FtueController.track(viewModelScope.launch(Dispatchers.IO) {
             try {
-                val txnId = preferenceHelper.getTxnId()
-                val bitmap = event.bitmap
-                val filePath = try {
-                    if (!bitmap.isRecycled) {
-                        saveBitmapToFile(
-                            getApplication(),
-                            bitmap,
-                            "txn_detail_${System.currentTimeMillis()}.jpg",
-                            "transaction_details",
-                            grayscale = isGrayscaleImage(),
-                        )
-                    } else null
-                } catch (e: Exception) {
-                    logger.e("Failed saving bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
-                    null
-                }
-                pillCountTxnDetailsDao.deleteVialByTxnId(txnId, StepState.VIAL)
-                pillCountTxnDetailsDao.insert(
-                    PillCountTxnDetailsEntity(
-                        txnId = txnId,
-                        pillCount = 0,
-                        imagePath = filePath,
-                        createdAt = System.currentTimeMillis(),
-                        updatedAt = System.currentTimeMillis(),
-                        type = StepState.VIAL.toString()
+            val txnId = preferenceHelper.getTxnId()
+            val bitmap = event.bitmap
+            // The tour's grey placeholder isn't worth a file an interruption could orphan.
+            val filePath = if (FtueController.state.isActive) null else try {
+                if (!bitmap.isRecycled) {
+                    saveBitmapToFile(
+                        getApplication(),
+                        bitmap,
+                        "txn_detail_${System.currentTimeMillis()}.jpg",
+                        "transaction_details",
+                        grayscale = isGrayscaleImage(),
                     )
-                )
-            } catch (e: CancellationException) {
-                throw e
+                } else null
             } catch (e: Exception) {
-                logger.e("Failed to save vial photo transaction detail", e, event = LogEvent.VIAL_SCAN_FAILED)
+                logger.e("Failed saving bitmap", e, event = LogEvent.FILE_WRITE_ERROR)
+                null
             }
-        }
+            pillCountTxnDetailsDao.deleteVialByTxnId(txnId, StepState.VIAL)
+            pillCountTxnDetailsDao.insert(
+                PillCountTxnDetailsEntity(
+                    txnId = txnId,
+                    pillCount = 0,
+                    imagePath = filePath,
+                    createdAt = System.currentTimeMillis(),
+                    updatedAt = System.currentTimeMillis(),
+                    type = StepState.VIAL.toString()
+                )
+            )
+              }  catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("Failed to save vial photo transaction detail", e, event = LogEvent.VIAL_SCAN_FAILED)
+                }
+        })
     }
 
     /** Hands over the latest analyzed frame; the caller now owns and recycles it. */
@@ -1816,6 +1833,70 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Tour-only escape hatch for "count_add_circle"'s dummy "Next": seeds a manual txn-detail
+     * row since [handleConfirmDialog] validates against real DB-backed
+     * [PillScanningUiState.txnDetailHistory], ignoring the event's own totalCount; loops since
+     * one tap must clear every chained [StepState] sharing this circle, not just the current one.
+     */
+    fun dummyCompleteCount() {
+        // Hard guard, not just an unreachable-UI assumption: this seeds fabricated
+        // DB rows, so it must never run outside an active tutorial regardless of
+        // what calls it.
+        if (!FtueController.state.isActive) return
+        FtueController.track(viewModelScope.launch {
+            // The txn pointer is global and an HL7 order may have set it: never write a demo count to a real txn.
+            if (!isDemoTxn(preferenceHelper.getTxnId())) return@launch
+            val countingCircleSteps = setOf(
+                StepState.CONTAINER_INITIATE,
+                StepState.TARGET_VERIFICATION,
+                StepState.TARGET_REVERIFICATION,
+            )
+            var guard = 0
+            while (_currentStep.value in countingCircleSteps && guard < countingCircleSteps.size + 1) {
+                guard++
+                val stepType = _currentStep.value
+                val target = _uiState.value.targetCount
+                val already = _uiState.value.txnDetailHistory.filter { it.type == stepType }.sumOf { it.count }
+                val shortfall = target - already
+                if (shortfall > 0) {
+                    val txnId = preferenceHelper.getTxnId()
+                    val detail = PillCountTxnDetailsEntity(
+                        txnId = txnId,
+                        pillCount = shortfall,
+                        imagePath = null,
+                        type = stepType.toString(),
+                        isManual = true,
+                    )
+                    val newId = pillCountTxnDetailsDao.insert(detail)
+                    // Update uiState synchronously here rather than waiting on the DB's
+                    // reactive Flow observer (observeTxnDetailsForTxn) to catch up — the
+                    // FinalDone dispatched right below reads _uiState.value.txnDetailHistory
+                    // immediately, before that Flow would have had a chance to re-emit.
+                    _uiState.update { state ->
+                        state.copy(
+                            txnDetailHistory = state.txnDetailHistory + TxnDetail(
+                                txnDetailId = newId,
+                                count = shortfall,
+                                createdAt = detail.createdAt,
+                                image = null,
+                                type = stepType,
+                            )
+                        )
+                    }
+                }
+                val totalCount = _uiState.value.txnDetailHistory.filter { it.type == stepType }.sumOf { it.count }
+                val before = _currentStep.value
+                onEvent(PillScanningEvent.FinalDone(stepType = stepType, totalCount = totalCount))
+                // handleConfirmDialog → moveNextStep() assigns _currentStep.value
+                // synchronously (not suspending), so this is already up to date for the
+                // loop condition above — bail out if it somehow didn't move, rather than
+                // spinning on a step our shortfall calc didn't actually satisfy.
+                if (_currentStep.value == before) break
+            }
+        })
+    }
+
     fun clearErrorMessage() {
         _uiState.update { it.copy(showErrorMessage = null) }
     }
@@ -1904,24 +1985,25 @@ class PillScanningViewModel @Inject constructor(
     }
 
     private fun handleConfirmDone() {
-        viewModelScope.launch {
+        confirmDoneStarted = true
+        FtueController.track(viewModelScope.launch {
             try {
-                val txnId = preferenceHelper.getTxnId()
-                // Flush staged details to the DB BEFORE reading the total / deciding
-                // status, so getTotalPillCountForTxn sees the freshly committed rows
-                // plus any prior committed rows = the correct grand total.
-                flushStagedDetails(txnId)
-                val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
-                val txn = pillCountTxnDao.getById(txnId) ?: return@launch
-                if (total == 0) {
-                    return@launch
-                }
-                // Only the prescribed-count step decides partial vs complete. The pour-out and
-                // recount steps count other pills and used to push this past the target.
-                val dispensedCount = pillCountTxnDetailsDao
-                    .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
-                val status =
-                    if (txn.isDispense && txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
+            val txnId = preferenceHelper.getTxnId()
+            // Flush staged details to the DB BEFORE reading the total / deciding
+            // status, so getTotalPillCountForTxn sees the freshly committed rows
+            // plus any prior committed rows = the correct grand total.
+            flushStagedDetails(txnId)
+            val total = pillCountTxnDetailsDao.getTotalPillCountForTxn(txnId)
+            val txn = pillCountTxnDao.getById(txnId) ?: return@launch
+            if (total == 0) {
+                return@launch
+            }
+            // Only the prescribed-count step decides partial vs complete. The pour-out and
+            // recount steps count other pills and used to push this past the target.
+            val dispensedCount = pillCountTxnDetailsDao
+                .getPillCountForStep(txnId, DISPENSED_QUANTITY_STEP.name)
+            val status =
+                if (txn.isDispense && txn.targetCount != null && dispensedCount < txn.targetCount) CountStatus.PARTIAL else CountStatus.COMPLETED
 
                 // Stamp who ran this count now, not at send time: an unsynced txn resent later
                 // must still report this operator, not whoever is at the device then.
@@ -1946,16 +2028,16 @@ class PillScanningViewModel @Inject constructor(
                     hl7Repository.sendDispenseNow(txnId)
                 }
 
-                _capturedBitmap.value = null
-                _navigationEvent.send(NavigationEvent.NavigateToDashboard)
-                logger.i("Transaction completed. Status=$status")
-            } catch (e: CancellationException) {
-                throw e
-            } catch (e: Exception) {
-                logger.e("Failed to confirm/complete transaction", e, event = LogEvent.PILL_COUNT_FAILED)
-                showGenericError()
-            }
-        }
+            _capturedBitmap.value = null
+            _navigationEvent.send(NavigationEvent.NavigateToDashboard)
+            logger.i("Transaction completed. Status=$status")
+
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Failed to confirm/complete transaction", e, event = LogEvent.PILL_COUNT_FAILED)
+            showGenericError()
+        }})
     }
 
     private fun handleDeleteTransaction(event: PillScanningEvent.TransactionDetailDeleted) {
@@ -2595,6 +2677,22 @@ class PillScanningViewModel @Inject constructor(
         }
     }
 
+    /** Tour: saves a blank demo vial photo (no camera needed); returns once the workflow has left VIAL, else throws. */
+    suspend fun captureVialForTour() {
+        if (!FtueController.state.isActive) return
+        check(isDemoTxn(preferenceHelper.getTxnId())) { "Tour vial capture on a non-demo txn" }
+        confirmDoneStarted = false
+        if (_currentStep.value == StepState.VIAL && !captureCommitted) {
+            _capturedBitmap.value = Bitmap.createBitmap(640, 480, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.DKGRAY) }
+            saveCaptureImage()
+        }
+        // VIAL stays the current step until the note is answered (notes on) or the txn is
+        // confirmed (notes off), so either of those is as good as leaving VIAL.
+        withTimeout(TourActionTimeoutMs) {
+            while (_currentStep.value == StepState.VIAL && !_uiState.value.showNotesDialog && !confirmDoneStarted) delay(50)
+        }
+    }
+
     fun redoCaptureImage() {
         _capturedBitmap.value = null
         captureCommitted = false
@@ -2621,23 +2719,33 @@ class PillScanningViewModel @Inject constructor(
         }
         viewModelScope.launch {
             try {
-                val poured = pillCountTxnDetailsDao
-                    .observeAllForTxn(preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE)
-                    .first().sumOf { it.pillCount ?: 0 }
-                if (poured == (_txnInfo.value?.targetCount ?: 0)) {
-                    // No camera frames arrive while the dialog sits on the vial still, so
-                    // the watchdog would fire and drop the idle overlay behind it.
+            val poured = pillCountTxnDetailsDao
+                .observeAllForTxn(preferenceHelper.getTxnId(), StepState.CONTAINER_INITIATE)
+                .first().sumOf { it.pillCount ?: 0 }
+            if (poured == (_txnInfo.value?.targetCount ?: 0)) {
+                if (FtueController.state.isActive) {
+                    // Tutorial: this dialog is real business UI the tour doesn't
+                    // gate/explain — an extra manual tap here interrupts the guided
+                    // flow for no reason, since skipping the back-count step is
+                    // already the only sensible outcome (there's nothing left to
+                    // scan). Take it automatically instead, same as tapping SKIP
+                    // would, and let the tour continue uninterrupted.
+                    skipBackCount()
+                } else {
+                    // No camera frames arrive while the dialog sits on the vial still,
+                    // so the watchdog would fire and drop the idle overlay behind it.
                     pauseIdleTimer()
                     _uiState.update { it.copy(showSkipStepDialog = true) }
-                } else {
-                    moveNextStep()
                 }
+            } else {
+                moveNextStep()
+            }
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
                 logger.e("Failed to advance from VIAL step", e, event = LogEvent.VIAL_SCAN_FAILED)
             }
-        }
+            }
     }
 
     /** Single-button "Skip": finish the txn without entering CONTAINER_PENDING. */

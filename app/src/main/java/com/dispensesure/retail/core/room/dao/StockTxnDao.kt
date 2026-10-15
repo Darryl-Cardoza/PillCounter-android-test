@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.dispensesure.retail.core.tourguide.TutorialData
 import androidx.room.Transaction
 import androidx.room.Update
 import com.dispensesure.retail.core.room.models.StockTxnEntity
@@ -147,6 +148,9 @@ interface StockTxnDao {
 
     @Query("DELETE FROM stock_txn WHERE batchId IN (:batchIds)")
     suspend fun deleteByBatchIds(batchIds: List<Long>)
+
+    @Query("DELETE FROM stock_txn WHERE drugId IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}')")
+    suspend fun deleteByDemoDrug()
 
     @Query("DELETE FROM stock_txn")
     suspend fun deleteAll()

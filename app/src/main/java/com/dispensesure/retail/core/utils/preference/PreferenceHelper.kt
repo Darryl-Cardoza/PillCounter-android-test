@@ -182,11 +182,7 @@ class PreferenceHelper @Inject constructor(
         logger.i("Saved localId")
     }
 
-    fun getLocalId(): Long {
-        val id = prefs.getLong(KEY_LOCAL_ID, 0)
-        logger.d("Retrieved localId")
-        return id
-    }
+    fun getLocalId(): Long = prefs.getLong(KEY_LOCAL_ID, 0)
 
     /**
      * Stores the `allow_local_storage` flag from the auth/me profile. When true, completed +

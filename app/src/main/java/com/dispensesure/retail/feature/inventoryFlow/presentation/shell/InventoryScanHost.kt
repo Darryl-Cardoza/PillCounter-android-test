@@ -3,14 +3,20 @@ package com.dispensesure.retail.feature.inventoryFlow.presentation.shell
 import android.Manifest
 import android.annotation.SuppressLint
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.hilt.navigation.compose.hiltViewModel
@@ -22,6 +28,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
+import com.dispensesure.retail.core.tourguide.TourGuideOverlay
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
@@ -188,6 +197,11 @@ fun InventoryScanHost(
     // System back gesture: same safe behavior as the on-screen back arrow.
     BackHandler { inventoryBack(navController) }
 
+    // Named so the tour's dummy-Next handler below can invoke the exact same real
+    // action a tap would, instead of duplicating it.
+    val onEdit = { inventoryVm.openEditDetails() }
+    val onEndCount = { showNoteDialog = true }
+
     val scope = InventoryScanScope(
         state = panelState,
         canEndCount = panelState.totalNdcs > 0 || panelState.activeNdc != null,
@@ -222,13 +236,13 @@ fun InventoryScanHost(
             inventoryVm.onAdd()
             analyzer.resume()
         },
-        onEndCount = { showNoteDialog = true },
+        onEndCount = onEndCount,
         onRowTapped = { row ->
             inventoryVm.onRecentRowTapped(row)
             analyzer.resume()
         },
         editDetails = editDetails,
-        onEdit = inventoryVm::openEditDetails,
+        onEdit = onEdit,
         onEditDismiss = inventoryVm::dismissEditDetails,
         onEditSave = { sealed, open -> inventoryVm.saveEditDetails(sealed, open) },
         cameraVm = cameraVm,
@@ -239,7 +253,38 @@ fun InventoryScanHost(
         onBtBarcode = inventoryVm::onBtBarcodeDetected,
     )
 
-    scope.content()
+    // InventoryScanHost has no root Box of its own — each of the 4 shells builds a
+    // differently-shaped root (Row/Box/Column/BottomSheetScaffold). Wrapping only
+    // this call is the single, minimal place to hang the screen-root tour overlay
+    // without touching any of the shells.
+    val demoDrugName = stringResource(R.string.tour_demo_drug_name)
+    Box(modifier = Modifier.fillMaxSize()) {
+        scope.content()
+        // s_note is drawn by the Add Note dialog's own window (TourDialogHost).
+        if (FtueController.state.currentStep?.id != "s_note") TourGuideOverlay(
+            state = FtueController.state,
+            modifier = Modifier.fillMaxSize(),
+            onNext = {
+                when (FtueController.state.currentStep?.id) {
+                    "s_scan" -> {
+                        inventoryVm.useDummyNdcData(demoDrugName)
+                        withTimeout(TourActionTimeoutMs) { snapshotFlow { panelState.activeNdc }.first { it != null } }
+                    }
+                    "s_counter" -> inventoryVm.increment()
+                    // END COUNT only shows once the active bottle is committed, as in real use.
+                    "s_scan_pills" -> {
+                        inventoryVm.onAdd()
+                        analyzer.resume()
+                        withTimeout(TourActionTimeoutMs) { snapshotFlow { panelState.activeNdc }.first { it == null } }
+                    }
+                    "s_edit" -> onEdit()
+                    // No real edits to save — dismissing without saving is the same as Cancel.
+                    "s_edit_actions" -> inventoryVm.dismissEditDetails()
+                    "s_end_count" -> onEndCount()
+                }
+            },
+        )
+    }
 
     if (showNoteDialog) {
         AddNoteDialog(
@@ -247,7 +292,12 @@ fun InventoryScanHost(
             onSkip = {
                 showNoteDialog = false
                 pendingNote = null
-                showEndCountConfirmDialog = true
+                if (FtueController.state.isActive) {
+                    // Tour: skip the confirm dialog and finish the demo count directly.
+                    inventoryVm.confirmEndCount(null)
+                } else {
+                    showEndCountConfirmDialog = true
+                }
             },
             onSave = { note ->
                 showNoteDialog = false

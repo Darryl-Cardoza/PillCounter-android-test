@@ -28,6 +28,7 @@ import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
 import com.dispensesure.retail.core.scanning.data.DrugRepository
 import com.dispensesure.retail.core.scanning.domain.model.GetNdcRequestModel
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
+import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.util.HL7Config
@@ -244,6 +245,10 @@ class Hl7Repository @Inject constructor(
      */
     suspend fun buildAndSendInventoryResponse(batchId: Long) {
         try {
+            if (batchId in batchDao.getTutorialBatchIds()) {
+                logger.i("Tutorial batch — never sending to PMS, batchId=$batchId")
+                return
+            }
             logger.i("buildAndSendInventoryResponse started, batchId=$batchId")
 
             val batch = batchDao.getById(batchId)
@@ -326,6 +331,10 @@ class Hl7Repository @Inject constructor(
         if (preferenceHelper.isHl7Enabled()) {
             scope.launch {
                 try {
+                    if (txnId in pillCountTxnDao.getTutorialTxnIds()) {
+                        logger.i("Tutorial entry — never sending to PMS, txnId=$txnId")
+                        return@launch
+                    }
                     logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
                     resendMutex.withLock {
                         buildAndSendSuccessfulDispense(txnId = txnId)
@@ -559,7 +568,8 @@ class Hl7Repository @Inject constructor(
         logger.i("Saving txn (site2) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
-        preferenceHelper.saveTxnId(txnId)
+        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
+        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {
@@ -680,7 +690,8 @@ class Hl7Repository @Inject constructor(
         logger.i("Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'")
 
         val txnId = pillCountTxnDao.upsertPreservingId(txn)
-        preferenceHelper.saveTxnId(txnId)
+        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
+        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {

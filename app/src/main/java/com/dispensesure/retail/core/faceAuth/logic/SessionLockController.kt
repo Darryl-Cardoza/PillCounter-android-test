@@ -67,6 +67,11 @@ class SessionLockController @Inject constructor(
     )
     val isLocked: StateFlow<Boolean> = _isLocked.asStateFlow()
 
+    // True from login until the permission chain ends and the lock is (or isn't) applied.
+    private val _lockPending = MutableStateFlow(false)
+    val lockPending: StateFlow<Boolean> = _lockPending.asStateFlow()
+    fun setLockPending(pending: Boolean) { _lockPending.value = pending }
+
     // Whether the current lock should open straight on the verify camera. Only a
     // fresh login does; idle timeout and cold start keep the idle lock screen.
     private val _startOnScan = MutableStateFlow(false)

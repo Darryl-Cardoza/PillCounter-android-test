@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.models.StepState
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
 import com.dispensesure.retail.core.room.dao.PillCountTxnDao
 import com.dispensesure.retail.core.room.models.DrugMasterEntity
@@ -477,6 +479,46 @@ class DispenseFlowViewModel @Inject constructor(
     }
 
     /**
+     * Tour-only escape hatch for the scan-Rx dummy "Next" button. The RX number is
+     * timestamped so repeat tutorial runs never collide with a prior demo dispense.
+     */
+    fun useDummyRxData() {
+        if (!FtueController.state.isActive) return
+        if (_uiState.value.stage != DispenseStage.PRE_RX && _uiState.value.stage != DispenseStage.QUEUE) return
+        if (_uiState.value.isLoading) return
+        _uiState.update { it.copy(isLoading = true) }
+        FtueController.track(viewModelScope.launch {
+            try {
+                if (_uiState.value.stage == DispenseStage.QUEUE) {
+                    _uiState.update { it.copy(stage = DispenseStage.PRE_RX) }
+                }
+                TutorialData.upsertDemoDrug(drugMasterDao, appContext.getString(R.string.tour_demo_drug_name))
+                showStandaloneRxSheet(
+                    parsedNdc = TutorialData.DEMO_NDC,
+                    rxNo = "${TutorialData.RX_PREFIX}${System.currentTimeMillis()}",
+                    refillNo = null,
+                    bucket = null,
+                    targetCount = TUTORIAL_DUMMY_TARGET_COUNT,
+                )
+            } catch (e: CancellationException) {
+                // The tour ended mid-write: drop the loader this call raised.
+                _uiState.update { it.copy(isLoading = false) }
+                throw e
+            }
+        })
+    }
+
+    /**
+     * Tour-only escape hatch for the scan-container dummy "Next" button: feeds the
+     * demo NDC through the real [onNdcBarcodeRead], which resolves locally with no
+     * server round-trip.
+     */
+    fun useDummyNdcData() {
+        if (!FtueController.state.isActive) return
+        onNdcBarcodeRead(TutorialData.DEMO_NDC, imagePath = null)
+    }
+
+    /**
      * Inserts the PARTIAL dispense txn for a staged standalone Rx label.
      * Called from [onRxConfirmed] only, never from the scan itself.
      *
@@ -527,6 +569,8 @@ class DispenseFlowViewModel @Inject constructor(
             drugRepository.getDrugInfoByNdc(
                 GetNdcRequestModel(target_drug = "", scanned_drug = gtin14)
             )
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             logger.e("allowlist NDC resolve failed for gtin=$gtin14", e, event = LogEvent.NDC_SCAN_FAILED)
             null
@@ -575,7 +619,7 @@ class DispenseFlowViewModel @Inject constructor(
 
         _uiState.update { it.copy(isLoading = true, pendingFirstBottle = firstBottle) }
 
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             try {
                 // Batch PMS restriction: if an NDC allowlist is set, reject any
                 // scan whose drug isn't in the batch's requested set.
@@ -724,11 +768,14 @@ class DispenseFlowViewModel @Inject constructor(
                 }
                 logger.i("[HAZARDOUS] NDC scan → server match: ndc=${drugInfo.ndc} drug=$displayName isHazardous=${drugInfo.isHazardous ?: false}")
                 advanceToCountingStage()
+            } catch (e: CancellationException) {
+                _uiState.update { it.copy(isLoading = false, pendingFirstBottle = null) }
+                throw e
             } catch (e: Exception) {
                 logger.e("NDC barcode processing failed", e, event = LogEvent.NDC_SCAN_FAILED)
                 _uiState.update { it.copy(isLoading = false, error = e.message) }
             }
-        }
+        })
     }
 
     /**
@@ -756,7 +803,7 @@ class DispenseFlowViewModel @Inject constructor(
         // so a second tap can't insert a second row.
         state.pendingStandaloneRx?.let { draft ->
             _uiState.update { it.copy(showRxDetails = false, pendingStandaloneRx = null) }
-            viewModelScope.launch {
+            FtueController.track(viewModelScope.launch {
                 try {
                     val txnId = createStandaloneDispenseTxn(draft)
                     preferenceHelper.saveTxnId(txnId)
@@ -767,7 +814,7 @@ class DispenseFlowViewModel @Inject constructor(
                     logger.e("Standalone dispense txn creation failed", e, event = LogEvent.DISPENSE_FAILED)
                     _uiState.update { it.copy(error = e.message) }
                 }
-            }
+            })
             return
         }
     }
@@ -1236,8 +1283,13 @@ class DispenseFlowViewModel @Inject constructor(
 
     fun resetToQueueOrNavigateDashboard() {
         viewModelScope.launch {
+            // Tutorial: the tour's next step lives on the Dashboard (tap Stock
+            // Count), never the Queue — a pending item (real, or a leftover from
+            // earlier testing) routing here to the Queue instead would silently
+            // strand the tour with nothing on screen to spotlight and no way
+            // forward. Always go to the Dashboard while the tour is active.
             try {
-                if (hasPendingDispenseItems()) {
+                if (!FtueController.state.isActive && hasPendingDispenseItems()) {
                     resetToQueue()
                 } else {
                     _uiState.update { it.copy(navigateToDashboard = true) }
@@ -1324,4 +1376,6 @@ class DispenseFlowViewModel @Inject constructor(
 }
 
 private const val VIAL_MISMATCH_TOAST_COOLDOWN_MS = 2000L
+
+private const val TUTORIAL_DUMMY_TARGET_COUNT = 5
 

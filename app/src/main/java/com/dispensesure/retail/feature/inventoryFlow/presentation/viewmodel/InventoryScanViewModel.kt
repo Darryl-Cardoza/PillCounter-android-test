@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.BatchDao
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.room.dao.insertNewInProgressBatch
 import com.dispensesure.retail.core.room.dao.BottleInfoDao
 import com.dispensesure.retail.core.room.dao.DrugMasterDao
@@ -254,7 +256,8 @@ class InventoryScanViewModel @Inject constructor(
         val existing = resolvedBatchId.value
         if (existing != 0L) return existing
         return try {
-            val newId = batchDao.insertNewInProgressBatch(bucketId = currentBucketId.value)
+            val bucket = if (FtueController.state.isActive) TutorialData.BUCKET else _bucketId.value
+            val newId = batchDao.insertNewInProgressBatch(bucketId = bucket)
             resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
@@ -325,6 +328,8 @@ class InventoryScanViewModel @Inject constructor(
     fun onBarcodeDetected(rawValue: String) = onBarcodeDetected(rawValue, bypassCooldown = false)
 
     private fun onBarcodeDetected(rawValue: String, bypassCooldown: Boolean) {
+        // No real scans during the tour; the demo data comes from the tour card's Next.
+        if (FtueController.state.isActive) return
         logger.d("INV_SCAN onBarcodeDetected raw='$rawValue' bypassCooldown=$bypassCooldown currentActive=${_activeNdc.value?.ndc}")
         _scannerPaused.value = true
         viewModelScope.launch {
@@ -521,6 +526,52 @@ class InventoryScanViewModel @Inject constructor(
         }
     }
 
+    /**
+     * Tour-only escape hatch for the scan-NDC step's dummy "Next" button: when
+     * there's no real bottle to scan, seeds/reuses the same fixed demo drug the
+     * dispense flow's dummy fallback uses and activates it exactly as a real scan
+     * would — skipping barcode decode entirely since there's no real label to decode.
+     */
+    fun useDummyNdcData(demoDrugName: String) {
+        if (!FtueController.state.isActive) return
+        FtueController.track(viewModelScope.launch {
+            try {
+                TutorialData.upsertDemoDrug(drugMasterDao, demoDrugName)
+                val drug = drugMasterDao.getDrugByNdc(TutorialData.DEMO_NDC) ?: return@launch
+
+                if (resolvedBatchId.value == 0L && ensureBatchCreated() == 0L) return@launch
+
+                val currentActive = _activeNdc.value
+                if (currentActive != null && currentActive.ndc != drug.ndc) {
+                    persistActive(currentActive)
+                }
+                val startBottles = if (currentActive != null && currentActive.ndc == drug.ndc) {
+                    currentActive.bottles + 1
+                } else {
+                    1
+                }
+                val newActive = ActiveNdc(
+                    ndc = drug.ndc,
+                    drugName = drug.drugName ?: "",
+                    bucket = _bucketId.value.orEmpty(),
+                    batchNo = "",
+                    expiry = "",
+                    pillsPerBottle = drug.packageQty ?: 0,
+                    bottles = startBottles,
+                    openPills = openPillsTotal(resolvedBatchId.value, drug.ndc),
+                    isHazardous = drug.isHazardous,
+                )
+                _activeNdc.value = newActive
+                persistActive(newActive)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("INV_SCAN useDummyNdcData failed", e)
+                _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
+            }
+        })
+    }
+
     fun clearErrorMessage() {
         _errorMessage.value = null
     }
@@ -557,13 +608,13 @@ class InventoryScanViewModel @Inject constructor(
      */
     private fun schedulePersist(active: ActiveNdc) {
         counterPersistJob?.cancel()
-        counterPersistJob = viewModelScope.launch {
+        counterPersistJob = FtueController.track(viewModelScope.launch {
             delay(COUNTER_PERSIST_DEBOUNCE_MS)
             // Clear the handle BEFORE persisting so persistActive's own
             // counterPersistJob?.cancel() doesn't cancel this still-running job.
             counterPersistJob = null
             persistActive(active)
-        }
+        })
     }
 
     /* ─────────────────────────  Recent-row tap  ───────────────────────── */
@@ -708,7 +759,7 @@ class InventoryScanViewModel @Inject constructor(
             logger.w("INV_SCAN onAdd ABORT: no active")
             return
         }
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             try {
                 persistActive(active)
             } finally {
@@ -716,7 +767,7 @@ class InventoryScanViewModel @Inject constructor(
                 _scannerPaused.value = false
                 logger.d("INV_SCAN onAdd DONE — activeNdc cleared")
             }
-        }
+        })
     }
 
     /* ─────────────────────────  Edit Details panel  ───────────────────────── */
@@ -955,7 +1006,7 @@ class InventoryScanViewModel @Inject constructor(
     }
 
     fun confirmEndCount(note: String? = null) {
-        viewModelScope.launch {
+        FtueController.track(viewModelScope.launch {
             try {
                 val batchId = resolvedBatchId.value
                 // Guard: never complete a batch that has no committed NDC. Even if
@@ -980,7 +1031,7 @@ class InventoryScanViewModel @Inject constructor(
                 _showEndCountDialog.value = false
                 _batchEnded.value = true
             }
-        }
+        })
     }
 }
 

@@ -177,6 +177,7 @@ class MainActivityViewModelTest {
         bottleInfoDao,
         hl7ServiceManager,
         hl7EventHandler,
+        mockk(relaxed = true),
         sessionHealthController,
         testDispatcher,
     )

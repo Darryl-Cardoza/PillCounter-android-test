@@ -2,6 +2,8 @@ package com.dispensesure.retail.feature.dashboard.presentation
 
 import android.app.Activity
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -10,6 +12,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -20,9 +23,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.room.models.enums.CountType
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourGuideOverlay
+import com.dispensesure.retail.core.tourguide.TourDialogHost
+import com.dispensesure.retail.core.tourguide.TourSection
+import com.dispensesure.retail.core.tourguide.tourTarget
+import com.dispensesure.retail.core.tourguide.TourGuidePrefs
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.SingleSelectDialogContent
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.compose.GlobalLoadingOverlay
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -66,6 +77,23 @@ fun DashboardScreen(
     val context = LocalContext.current
     val activity = context as? Activity
     val preferenceHelper = remember { PreferenceHelper(context) }
+
+    // The shared, app-wide FTUE state (not a `remember`ed instance) — it must survive
+    // navigating away to the dispense flow, which disposes this whole composable.
+    val tourState = FtueController.state
+    // The Add Note steps belong to dialogs on other screens; if that screen already closed
+    // there is nothing to show here, so move past the step.
+    LaunchedEffect(tourState.isActive, tourState.currentStep?.id) {
+        val id = tourState.currentStep?.id
+        if (tourState.isActive && (id == "d_note" || id == "s_note")) tourState.advanceIfCurrent(id)
+    }
+    // Read each composition, not remembered: right after login this can still be 0, and a
+    // stale 0 would mark (and look up) the wrong user's flag. 0 means no user yet.
+    val localId = preferenceHelper.getLocalId()
+    // Offer the tour once per user; answering either way counts as seen.
+    var showTourOffer by remember(localId) {
+        mutableStateOf(localId != 0L && !TourGuidePrefs.hasSeen(context, localId) && !tourState.isActive)
+    }
 
     BackHandler(enabled = true) {
         showLogoutDialog = true
@@ -225,9 +253,11 @@ fun DashboardScreen(
         onQueueDispenseClick = onQueueDispenseClick,
         onQueueInventoryClick = onQueueInventoryClick,
         onTabVisible = onTabVisible,
+        tourState = tourState,
     )
 
-    if (showBucketSelectDialog) {
+    val inTourBucketStep = tourState.isActive && tourState.currentStep?.id == "s_bucket"
+    if (showBucketSelectDialog || inTourBucketStep) {
         val bucketList = viewModel.getBucketList()
         // Default the selection to "Normal" (case-insensitive); fall back to the
         // first bucket if there's no Normal. This is the expected default rather
@@ -236,28 +266,85 @@ fun DashboardScreen(
             .indexOfFirst { it.equals("Normal", ignoreCase = true) }
             .let { if (it >= 0) it else if (bucketList.isNotEmpty()) 0 else null }
 
-        CommonSingleSelectDialog(
-            title = stringResource(R.string.select_bucket),
-            options = bucketList,
-            selectedIndex = defaultBucketIndex,
-            onCancel = { showBucketSelectDialog = false },
-            onOk = { index ->
-                if (index in bucketList.indices) {
-                    viewModel.createBatch(bucketList[index])
-                }
-                showBucketSelectDialog = false
-            },
-            distanceBetweenOptions = 2.dp,
-        )
+        if (inTourBucketStep) {
+            // Tour: the dialog is shown but not interactive; Next picks the default bucket.
+            // The batch itself is created on the first demo scan, under the TUTORIAL bucket.
+            TourDialogHost(
+                state = tourState,
+                onNext = {
+                    viewModel.saveTxnId()
+                    viewModel.createBatch(defaultBucketIndex?.let { bucketList[it] } ?: TutorialData.BUCKET)
+                    showBucketSelectDialog = false
+                },
+            ) {
+                SingleSelectDialogContent(
+                    title = stringResource(R.string.select_bucket),
+                    options = bucketList,
+                    selectedIndex = defaultBucketIndex,
+                    onCancel = {},
+                    onOk = {},
+                    distanceBetweenOptions = 2.dp,
+                    modifier = Modifier.tourTarget(tourState, "select_bucket"),
+                )
+            }
+        } else {
+            CommonSingleSelectDialog(
+                title = stringResource(R.string.select_bucket),
+                options = bucketList,
+                selectedIndex = defaultBucketIndex,
+                onCancel = { showBucketSelectDialog = false },
+                onOk = { index ->
+                    if (index in bucketList.indices) {
+                        viewModel.createBatch(bucketList[index])
+                    }
+                    showBucketSelectDialog = false
+                },
+                distanceBetweenOptions = 2.dp,
+            )
+        }
     }
 
     // ── Dispatch to the right layout ──
     val isCompactScreen = !UserInterfaceUtils.isTablet()
 
-    if (UserInterfaceUtils.isLandscape()) {
-        DashboardLandscapeLayout(params, compact = isCompactScreen)
-    } else {
-        DashboardPortraitLayout(params, compact = isCompactScreen)
+    Box(modifier = Modifier.fillMaxSize()) {
+        if (UserInterfaceUtils.isLandscape()) {
+            DashboardLandscapeLayout(params, compact = isCompactScreen)
+        } else {
+            DashboardPortraitLayout(params, compact = isCompactScreen)
+        }
+
+        // The bucket step is drawn by its own dialog window (TourDialogHost).
+        if (tourState.currentStep?.id != "s_bucket") {
+            TourGuideOverlay(
+                state = tourState,
+                modifier = Modifier.fillMaxSize(),
+                onNext = {
+                    when (tourState.currentStep?.id) {
+                        "d_card" -> onDispenseQuickAction()
+                    }
+                },
+            )
+        }
+    }
+
+    val isSessionLocked by viewModel.isSessionLocked.collectAsState()
+    val isLockPending by viewModel.isLockPending.collectAsState()
+    if (shouldShowTourOffer(showTourOffer, isSessionLocked || isLockPending)) {
+        CommonDialog(
+            message = stringResource(R.string.tour_offer_message),
+            confirmText = stringResource(R.string.tour_offer_start),
+            cancelText = stringResource(R.string.tour_offer_not_now),
+            onConfirm = {
+                TourGuidePrefs.markSeen(context, localId)
+                showTourOffer = false
+                FtueController.start(TourSection.entries, viewModel.isHl7Enabled(), preferenceHelper.getShowNotesDialogSetting(), preferenceHelper.getTxnId())
+            },
+            onCancel = {
+                TourGuidePrefs.markSeen(context, localId)
+                showTourOffer = false
+            },
+        )
     }
 
     if (showLogoutDialog) {
@@ -299,3 +386,5 @@ fun DashboardScreen(
 
     GlobalLoadingOverlay(isVisible = uiState.isLoadingQueue)
 }
+
+internal fun shouldShowTourOffer(pending: Boolean, locked: Boolean) = pending && !locked

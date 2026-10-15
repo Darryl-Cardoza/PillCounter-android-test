@@ -42,6 +42,8 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
@@ -119,7 +121,8 @@ private fun ScanPillsPillButton(onClick: () -> Unit) {
             .clip(RoundedCornerShape(50))
             .border(1.dp, color, RoundedCornerShape(50))
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 7.dp),
+            .padding(horizontal = 16.dp, vertical = 7.dp)
+            .tourTarget(FtueController.state, "inv_scan_pills"),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -265,7 +268,8 @@ private fun EditPillButton(onClick: () -> Unit) {
             .clip(RoundedCornerShape(50))
             .border(1.dp, color, RoundedCornerShape(50))
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 7.dp),
+            .padding(horizontal = 16.dp, vertical = 7.dp)
+            .tourTarget(FtueController.state, "inv_edit_button"),
         contentAlignment = Alignment.Center,
     ) {
         Text(
@@ -435,7 +439,10 @@ internal fun CounterRow(
             .fillMaxWidth()
             .height(rowHeight)
             .clip(RoundedCornerShape(12.dp))
-            .border(1.dp, borderColor, RoundedCornerShape(12.dp)),
+            .border(1.dp, borderColor, RoundedCornerShape(12.dp))
+            .tourTarget(FtueController.state, "inv_counter")
+            // Highlighted together with the Scan Pills button on that step.
+            .tourTarget(FtueController.state, "inv_scan_pills_counter"),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -824,7 +831,9 @@ internal fun ScannedSummaryRow(
                 color = MaterialTheme.colorScheme.primary,
                 enabled = endCountEnabled,
                 fixedWidth = false,
-                modifier = Modifier.widthIn(min = 120.dp),
+                modifier = Modifier
+                    .widthIn(min = 120.dp)
+                    .tourTarget(FtueController.state, "inv_end_count"),
             )
         }
     }
@@ -871,7 +880,9 @@ internal fun ScannedSummaryCard(
                     color = MaterialTheme.colorScheme.primary,
                     enabled = endCountEnabled,
                     fixedWidth = false,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tourTarget(FtueController.state, "inv_end_count"),
                 )
             }
         }

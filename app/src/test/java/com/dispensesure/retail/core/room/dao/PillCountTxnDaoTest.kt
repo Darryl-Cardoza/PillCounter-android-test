@@ -11,6 +11,7 @@ import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
+import com.dispensesure.retail.core.tourguide.TutorialData
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -578,6 +579,34 @@ class PillCountTxnDaoTest {
     }
 
     @Test
+    fun `getPendingHl7TxnOnce excludes tutorial demo drug transactions`() = runTest {
+        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
+        dao.insertIgnore(
+            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isSynced = null, drugId = tutorialDrugId)
+        )
+        val result = dao.getPendingHl7TxnOnce()
+        assertTrue(result.isEmpty())
+    }
+
+    @Test
+    fun `getPendingHl7TxnOnce excludes tutorial Rx numbers even without the demo drug`() = runTest {
+        dao.insertIgnore(
+            baseTxn(isDispense = true, status = CountStatus.COMPLETED, isSynced = null, rxNo = "${TutorialData.RX_PREFIX}123")
+        )
+        assertTrue(dao.getPendingHl7TxnOnce().isEmpty())
+    }
+
+    @Test
+    fun `getTutorialTxnIds finds demo drug and Rx prefix txns only`() = runTest {
+        val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
+        val byDrug = dao.insertIgnore(baseTxn(drugId = demoDrugId))
+        val byRx = dao.insertIgnore(baseTxn(rxNo = "${TutorialData.RX_PREFIX}9"))
+        dao.insertIgnore(baseTxn(rxNo = "RX100"))
+
+        assertEquals(setOf(byDrug, byRx), dao.getTutorialTxnIds().toSet())
+    }
+
+    @Test
     fun `markTxnSynced sets isSynced true`() = runTest {
         val id = dao.insertIgnore(baseTxn(isSynced = false))
         dao.markTxnSynced(id)
@@ -661,6 +690,22 @@ class PillCountTxnDaoTest {
 
         val count = dao.countPartialByIsDispense(isDispense = true, userLocalId = 7L)
         assertEquals(2, count)
+    }
+
+    @Test
+    fun `tutorial txns are excluded from the partial queue, its count and the dashboard counts`() = runTest {
+        val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Demo"))
+        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL).copy(drugId = demoDrugId))
+        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL).copy(rxNo = "${TutorialData.RX_PREFIX}9"))
+        dao.insertIgnore(baseTxn(localId = 1L, isDispense = true, status = CountStatus.PARTIAL))
+
+        assertEquals(1, dao.countPartialByIsDispense(isDispense = true, userLocalId = 1L))
+        dao.observePartialByIsDispense(isDispense = true, userLocalId = 1L, type = StepState.SCAN).test {
+            assertEquals(1, awaitItem().size)
+        }
+        dao.observeDashboardCountsGrouped(1L).test {
+            assertEquals(1, awaitItem().sumOf { it.cnt })
+        }
     }
 
     // ───────────────────────── Dashboard / join queries ─────────────────────────
@@ -866,6 +911,31 @@ class PillCountTxnDaoTest {
             val list = awaitItem()
             assertEquals(1, list.size)
             assertEquals(10, list.first().pillCount)
+        }
+    }
+
+    @Test
+    fun `getTransactionsForDateRange excludes tutorial demo drug transactions`() = runTest {
+        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
+        dao.insertIgnore(
+            baseTxn(
+                localId = 1L,
+                drugId = tutorialDrugId,
+                isDispense = true,
+                status = CountStatus.COMPLETED,
+                createdAt = 150L,
+            )
+        )
+
+        dao.getTransactionsForDateRange(
+            startDate = 100L,
+            endDate = 200L,
+            stepType = null,
+            isDispense = null,
+            status = null,
+            userLocalId = 1L
+        ).test {
+            assertTrue(awaitItem().isEmpty())
         }
     }
 

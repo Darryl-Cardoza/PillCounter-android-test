@@ -40,6 +40,9 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourDialogHost
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
@@ -57,17 +60,11 @@ fun AddNoteDialog(
     var noteText by rememberSaveable { mutableStateOf("") }
     var showError by remember { mutableStateOf(false) }
 
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(
-            // Block accidental dismissals — tapping outside the camera viewport
-            // was closing this mid-flow and losing the note. Only the explicit
-            // Close (X), Skip, and Save buttons should dismiss it.
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false,
-            usePlatformDefaultWidth = false
-        )
-    ) {
+    val tourState = FtueController.state
+    // Fixed at first composition: switching windows when the tour ends would rebuild the dialog.
+    val inTour = remember { tourState.isActive }
+
+    val card: @Composable () -> Unit = {
         Card(
             shape = RoundedCornerShape(dimens.medium),
             modifier = Modifier
@@ -160,7 +157,7 @@ fun AddNoteDialog(
 
                 // Buttons Row
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().tourTarget(tourState, "add_note_actions"),
                     horizontalArrangement = Arrangement.spacedBy(dimens.medium)
                 ) {
                     HollowButton(
@@ -185,5 +182,24 @@ fun AddNoteDialog(
                 }
             }
         }
+    }
+
+    if (inTour) {
+        // Once the tour ends its buttons must not complete a txn; the shell navigates away anyway.
+        if (!tourState.isActive) return
+        // Tour: the card is shown in the tour's own dialog window so its card draws above it.
+        TourDialogHost(state = tourState, onNext = { onSkip() }, content = card)
+    } else {
+        Dialog(
+            onDismissRequest = onDismiss,
+            properties = DialogProperties(
+                // Block accidental dismissals — tapping outside the camera viewport
+                // was closing this mid-flow and losing the note. Only the explicit
+                // Close (X), Skip, and Save buttons should dismiss it.
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+                usePlatformDefaultWidth = false
+            ),
+        ) { card() }
     }
 }

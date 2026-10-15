@@ -7,6 +7,7 @@ import android.content.pm.PackageManager
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
+import android.widget.Toast
 import android.view.MotionEvent
 import android.view.WindowManager
 import com.dispensesure.retail.core.utils.permission.isLocationServicesEnabled
@@ -29,6 +30,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourGuidePrefs
+import com.dispensesure.retail.core.tourguide.TourEvent
+import com.dispensesure.retail.core.tourguide.TourSectionPrompt
+import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import androidx.compose.ui.Modifier
 import androidx.core.app.ActivityCompat
 import androidx.core.content.ContextCompat
@@ -49,6 +55,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -156,8 +163,20 @@ class MainActivity : ComponentActivity() {
         requestLocationPermission()
     }
 
+    override fun onDestroy() {
+        // View models survive rotation, so the tour can too; any other destroy rebuilds them.
+        if (!isChangingConfigurations) FtueController.end()
+        super.onDestroy()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // A local, so the singleton holds the helper rather than this Activity.
+        val helper = preferenceHelper
+        FtueController.bind(TourGuidePrefs.prefs(applicationContext)) { helper.saveTxnId(it) }
+        // A tour cut short by process death left the user's txn pointer on the deleted demo txn.
+        if (!FtueController.state.isActive) FtueController.restoreTxnPointer()
 
         // Re-arm the face lock on every fresh launch, before setContent so the
         // overlay is up on the first frame. Null state only: a config-change or
@@ -223,6 +242,9 @@ class MainActivity : ComponentActivity() {
 
 
 
+        // Create the tour's snapshot state outside composition; first touched inside a
+        // composition it is born in an unapplied snapshot and crashes on read.
+        FtueController.state
         setContent {
             LaunchedEffect(Unit) {
                 handleNavigationIntent(intent)
@@ -346,13 +368,46 @@ class MainActivity : ComponentActivity() {
                                             // Enrolled operators verify their face before reaching the
                                             // dashboard, but only after the permission chain finishes.
                                             lockAfterPermissionChain = true
+                                            sessionLockController.setLockPending(true)
                                             if (!permissionChainInProgress) {
                                                 permissionChainInProgress = true
                                                 requestNotificationPermission()
                                             }
                                         },
-                                        onLogOut         = { settingsViewModel.onUserLoginOrLogOut() }
+                                        onLogOut         = {
+                                            FtueController.end()
+                                            // The Ended event has no collector once logged out; purge now.
+                                            settingsViewModel.purgeTutorialDataAsync()
+                                            FtueController.drainEvents()
+                                            sessionLockController.setLockPending(false)
+                                            settingsViewModel.onUserLoginOrLogOut()
+                                        }
                                     )
+
+                                    // The tour ends (done, skipped, locked, logged out) or moves to its next
+                                    // section: purge tutorial data first, then show the Dashboard.
+                                    LaunchedEffect(Unit) {
+                                        FtueController.events.collect { event ->
+                                            // After a logout or expiry there is no user to mark or to show a Dashboard to.
+                                            val loggedIn = preferenceHelper.isUserLoggedIn()
+                                            // Let in-flight demo writes land (or finish cancelling) before the purge.
+                                            withTimeoutOrNull(3_000L) { FtueController.awaitTrackedJobs() }
+                                            // Between sections no step is running, so the finished section's data can go.
+                                            settingsViewModel.purgeTutorialData(force = event == TourEvent.ShowDashboard)
+                                            if (loggedIn) navController.navigateBackToDashboard()
+                                            if (event == TourEvent.ShowDashboard) FtueController.enterNextSection()
+                                            if (event == TourEvent.Ended) {
+                                                // end() cancels the running step, but the last step's completion writes run in
+                                                // viewModelScope and may still be landing; sweep again. After the navigation,
+                                                // so the wait can't pull the user back to the Dashboard later.
+                                                launch {
+                                                    delay(1500)
+                                                    settingsViewModel.purgeTutorialData()
+                                                }
+                                            }
+                                        }
+                                    }
+                                    TourSectionPrompt(FtueController.state)
 
                                     // App-wide offline indicator: thin red border + bottom-left
                                     // analog clock that visualises time remaining before the
@@ -372,6 +427,14 @@ class MainActivity : ComponentActivity() {
 
                                     val isLocked by sessionLockController.isLocked.collectAsStateWithLifecycle()
                                     val startOnScan by sessionLockController.startOnScan.collectAsStateWithLifecycle()
+                                    LaunchedEffect(isLocked) {
+                                        if (isLocked) {
+                                            if (FtueController.state.isActive) {
+                                                showToast(this@MainActivity, R.string.tour_ended_locked, Toast.LENGTH_LONG)
+                                            }
+                                            FtueController.end()
+                                        }
+                                    }
                                     if (isLocked) {
                                         SessionLockOverlayScreen(
                                             startOnScan = startOnScan,
@@ -479,6 +542,7 @@ class MainActivity : ComponentActivity() {
             sessionHealthController.endTeardown()
             return
         }
+        FtueController.end()
         try {
             preferenceHelper.clearTokens()
             preferenceHelper.setUserLoggedIn(false)
@@ -584,6 +648,8 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                     .setNegativeButton(R.string.not_now) { _, _ -> finishPermissionChain() }
+                    // Back / outside-tap cancels without a button press; without this the chain never ends.
+                    .setOnCancelListener { finishPermissionChain() }
                     .show()
                 return
             }
@@ -611,6 +677,7 @@ class MainActivity : ComponentActivity() {
             lockAfterPermissionChain = false
             sessionLockController.lockNow(startOnScan = true)
         }
+        sessionLockController.setLockPending(false)
         if (permanentlyDeniedPermissions.isEmpty()) {
             promptEnableLocationServicesIfNeeded()
             return
