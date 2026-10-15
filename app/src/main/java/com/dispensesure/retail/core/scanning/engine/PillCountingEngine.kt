@@ -275,7 +275,7 @@ class PillCountingEngine @AssistedInject constructor(
     /**
      * Handle each analyzed frame and maintain rolling detection state.
      *
-     * [trayDetections] is forwarded to [EngineState.trayDetections] so [CameraPreviewSection]
+     * [trayDetections] is forwarded to [EngineState.trayDetections] so [com.dispensesure.retail.core.scanning.presentation.compose.CountOverlay]
      * can draw the tray bounding box overlay.
      */
     @VisibleForTesting

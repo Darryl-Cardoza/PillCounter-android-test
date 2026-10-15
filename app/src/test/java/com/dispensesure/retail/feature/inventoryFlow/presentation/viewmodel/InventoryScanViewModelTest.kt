@@ -1172,4 +1172,20 @@ class InventoryScanViewModelTest {
         assertFalse(vm.showEndCountDialog.value)
         job.cancel()
     }
+
+    // ─────────────────────────── grayscale for the barcode analyzer ───────────────────────────
+
+    @Test
+    fun `isGrayscaleImage is true when the colour image setting is off`() = runTest {
+        every { preferenceHelper.getIsColorImageEnabled() } returns false
+
+        assertTrue(createViewModel().isGrayscaleImage())
+    }
+
+    @Test
+    fun `isGrayscaleImage is false when the colour image setting is on`() = runTest {
+        every { preferenceHelper.getIsColorImageEnabled() } returns true
+
+        assertFalse(createViewModel().isGrayscaleImage())
+    }
 }

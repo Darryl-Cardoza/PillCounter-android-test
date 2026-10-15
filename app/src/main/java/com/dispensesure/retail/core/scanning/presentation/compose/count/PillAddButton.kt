@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.feature.dispenseFlow.presentation.compose
+﻿package com.dispensesure.retail.core.scanning.presentation.compose.count
 
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.height

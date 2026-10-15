@@ -41,14 +41,13 @@ import com.dispensesure.retail.feature.inventoryFlow.domain.model.BatchStockCoun
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditBatchRow
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.EditDrugDetails
 import com.dispensesure.retail.feature.inventoryFlow.domain.model.RecentBatchRow
-import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.feature.inventoryFlow.presentation.viewmodel.InventoryScanViewModel
 import com.dispensesure.retail.navigation.Screen
 
 /**
  * Everything a form-factor shell needs to draw itself. The host bakes the
  * analyzer-resume + navigation into the callbacks, so shells only lay out the
- * panel and the [CameraPreview]. [cameraVm]/[analyzer]/[logger] are exposed for
+ * panel and the [CameraPreview]. [analyzer]/[logger] are exposed for
  * the camera extension and are not meant to be touched by the layout directly.
  */
 class InventoryScanScope(
@@ -69,7 +68,6 @@ class InventoryScanScope(
     val onEditDismiss: () -> Unit,
     /** Persist the edited sealed/open rows and close the panel. */
     val onEditSave: (sealed: List<EditBatchRow>, open: List<EditBatchRow>) -> Unit,
-    internal val cameraVm: PillScanningViewModel,
     internal val analyzer: FrameBarcodeAnalyzer,
     internal val logger: AppLogger,
     internal val hasCameraPermission: Boolean,
@@ -95,7 +93,6 @@ fun InventoryScanHost(
     content: @Composable InventoryScanScope.() -> Unit,
 ) {
     val logger = remember { AppLogger("InventoryScreen") }
-    val cameraVm: PillScanningViewModel = hiltViewModel()
     val inventoryVm: InventoryScanViewModel = hiltViewModel()
 
     val panelState by inventoryVm.uiState.collectAsState()
@@ -115,7 +112,7 @@ fun InventoryScanHost(
             // Inventory is barcode-only (no parallel pill detection), so we can
             // run more decode attempts/sec to cut time-to-detect on a steadied label.
             minIntervalMs = 100L,
-            isGrayscale = cameraVm::isGrayscaleImage,
+            isGrayscale = inventoryVm::isGrayscaleImage,
         )
     }
     DisposableEffect(Unit) { onDispose { analyzer.close() } }
@@ -154,10 +151,6 @@ fun InventoryScanHost(
 
     // After END COUNT confirms, leave the screen (pop, or fall back to Dashboard).
     LaunchedEffect(batchEnded) { if (batchEnded) inventoryBack(navController) }
-
-    // Inventory wants continuous scanning, so bypass the legacy idle-pause path:
-    // the shared VM auto-pauses after ~30s (to stop the ML pipeline).
-    LaunchedEffect(Unit) { cameraVm.pauseIdleTimer() }
 
     // Returning from the SCAN PILLS loose-count flow persists open pills onto the
     // active NDC's txn but can't update this screen's in-memory card. Refresh the
@@ -245,7 +238,6 @@ fun InventoryScanHost(
         onEdit = onEdit,
         onEditDismiss = inventoryVm::dismissEditDetails,
         onEditSave = { sealed, open -> inventoryVm.saveEditDetails(sealed, open) },
-        cameraVm = cameraVm,
         analyzer = analyzer,
         logger = logger,
         hasCameraPermission = hasCameraPermission,

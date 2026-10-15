@@ -51,6 +51,7 @@ import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.core.scanning.engine.CaptureResult
 import com.dispensesure.retail.core.scanning.engine.EngineEvent
+import com.dispensesure.retail.core.scanning.engine.EngineState
 import com.dispensesure.retail.core.scanning.engine.PhotoLabel
 import com.dispensesure.retail.core.scanning.engine.PillCountingEngine
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
@@ -123,6 +124,9 @@ class PillScanningViewModel @Inject constructor(
 
     /** Public read-only flow for observing recent detection counts. */
     val lastTenDetections: StateFlow<ArrayDeque<Int>> = engine.lastTenDetections
+
+    /** The engine's live camera state, for the count overlay. */
+    val engineState: StateFlow<EngineState> = engine.state
 
     val addPopEvents: Flow<Int> = engine.addPops
 

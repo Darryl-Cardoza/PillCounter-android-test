@@ -6,8 +6,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -16,7 +14,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.dispensesure.retail.R
-import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
+import com.dispensesure.retail.core.scanning.presentation.compose.CameraFeed
 import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.core.tourguide.tourTarget
 import java.util.concurrent.atomic.AtomicLong
@@ -35,7 +33,6 @@ fun InventoryScanScope.CameraPreview(
     frameTag: String,
     modifier: Modifier = Modifier,
 ) {
-    val cameraUiState by cameraVm.uiState.collectAsState()
     val frameCounter = remember { AtomicLong(0L) }
 
     Box(
@@ -44,12 +41,9 @@ fun InventoryScanScope.CameraPreview(
             .tourTarget(FtueController.state, "inv_camera_preview")
     ) {
         if (hasCameraPermission) {
-            CameraPreviewSection(
-                viewModel = cameraVm,
-                pills = cameraUiState.detectedPills,
+            CameraFeed(
                 isCameraPaused = false,
-                imageFrameWidth = cameraUiState.imageFrameWidth,
-                imageFrameHeight = cameraUiState.imageFrameHeight,
+                isStillShown = false,
                 onFrame = { imageProxy ->
                     val n = frameCounter.incrementAndGet()
                     if (n % 30 == 0L) logger.d("INV_SCAN($frameTag) onFrame tick=$n")
@@ -59,7 +53,6 @@ fun InventoryScanScope.CameraPreview(
                         imageProxy.close()
                     }
                 },
-                onFilteredCountChanged = { /* no-op in inventory mode */ },
                 modifier = Modifier.fillMaxSize(),
             )
         } else {

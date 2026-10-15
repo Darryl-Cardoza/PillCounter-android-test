@@ -531,6 +531,9 @@ class InventoryScanViewModel @Inject constructor(
         _errorMessage.value = null
     }
 
+    /** True when the backend's colour-image setting is off; the barcode analyzer saves its frame grayscale then. */
+    fun isGrayscaleImage(): Boolean = !preferenceHelper.getIsColorImageEnabled()
+
     /* ─────────────────────────  Counter  ───────────────────────── */
 
     fun increment() {

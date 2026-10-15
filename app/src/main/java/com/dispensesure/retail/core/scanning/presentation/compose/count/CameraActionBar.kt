@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.feature.dispenseFlow.presentation.compose
+﻿package com.dispensesure.retail.core.scanning.presentation.compose.count
 
 import android.content.res.Configuration
 import androidx.compose.foundation.background
@@ -18,8 +18,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -33,7 +31,6 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.isTablet
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.constants.Dimens
-import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
 import com.dispensesure.retail.ui.theme.AppTheme
 
 @Composable
@@ -41,7 +38,8 @@ fun CameraActionBar(
     onRedo: () -> Unit,
     onCapture: () -> Unit,
     onDone: () -> Unit,
-    viewModel: PillScanningViewModel
+    hasCapture: Boolean,
+    isCapturing: Boolean,
 ) {
     val configuration = LocalConfiguration.current
     val isLandscape =
@@ -58,7 +56,7 @@ fun CameraActionBar(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
-            ActionButtons(onRedo, onCapture, onDone, viewModel)
+            ActionButtons(onRedo, onCapture, onDone, hasCapture, isCapturing)
 
         }
 
@@ -72,7 +70,7 @@ fun CameraActionBar(
             verticalAlignment = Alignment.CenterVertically
         ) {
 
-            ActionButtons(onRedo, onCapture, onDone, viewModel)
+            ActionButtons(onRedo, onCapture, onDone, hasCapture, isCapturing)
 
         }
     }
@@ -83,11 +81,9 @@ private fun ActionButtons(
     onRedo: () -> Unit,
     onCapture: () -> Unit,
     onDone: () -> Unit,
-    viewModel: PillScanningViewModel
+    hasCapture: Boolean,
+    isCapturing: Boolean,
 ) {
-    val capturedBitmap by viewModel.capturedBitmap.collectAsState()
-    val hasCapture = capturedBitmap != null
-    val isCapturing by viewModel.isCapturing.collectAsState()
     val configuration = LocalConfiguration.current
     val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
     val dimens = AppTheme.dimens
