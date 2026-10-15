@@ -13,6 +13,7 @@ import com.dispensesure.retail.core.room.models.UserEntity
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
+import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
@@ -83,6 +84,7 @@ class DashboardViewModel @Inject constructor(
     private val hl7ServiceManager: Hl7ServiceManager,
     private val deviceKeyProvider: DeviceKeyProvider,
     private val sessionHealthController: SessionHealthController,
+    sessionLockController: SessionLockController,
     @DefaultDispatcher private val defaultDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
 
@@ -207,6 +209,10 @@ class DashboardViewModel @Inject constructor(
             )
         }
     }
+
+    /** The tour offer waits until the session is unlocked; its dialog would sit above the lock overlay. */
+    val isSessionLocked: StateFlow<Boolean> = sessionLockController.isLocked
+    val isLockPending: StateFlow<Boolean> = sessionLockController.lockPending
 
     fun isHl7Enabled(): Boolean {
         return preferenceHelper.isHl7Enabled()

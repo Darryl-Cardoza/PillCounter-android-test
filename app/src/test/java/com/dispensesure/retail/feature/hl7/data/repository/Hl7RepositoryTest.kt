@@ -389,6 +389,31 @@ class Hl7RepositoryTest {
     }
 
     @Test
+    fun `buildAndSendInventoryResponse never sends a tutorial batch`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { batchDao.getTutorialBatchIds() } returns listOf(100L)
+        coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")
+
+        repo.buildAndSendInventoryResponse(100L)
+
+        coVerify(exactly = 0) { hl7MessageSender.sendRaw(any()) }
+        coVerify(exactly = 0) { batchDao.markBatchSynced(any()) }
+    }
+
+    @Test
+    fun `sendDispenseNow never sends a tutorial transaction`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        every { preferenceHelper.isHl7Enabled() } returns true
+        coEvery { pillCountTxnDao.getTutorialTxnIds() } returns listOf(7L)
+
+        repo.sendDispenseNow(7L)
+
+        coVerify(timeout = 1000) { pillCountTxnDao.getTutorialTxnIds() }
+        coVerify(exactly = 0) { pillCountTxnDao.getById(7L) }
+        coVerify(exactly = 0) { hl7MessageSender.sendRaw(any()) }
+    }
+
+    @Test
     fun `buildAndSendInventoryResponse success marks batch synced`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { batchDao.getById(100L) } returns BatchEntity(batchId = 100L, requestIdFromPMS = "REQ")

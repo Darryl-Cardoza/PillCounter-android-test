@@ -34,6 +34,10 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateSafely
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourSection
+import com.dispensesure.retail.core.tourguide.label
+import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonSingleSelectDialog
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.login.domain.model.LogoutUiState
 import com.dispensesure.retail.feature.login.presentation.viewmodel.LoginViewModel
@@ -68,6 +72,7 @@ fun MenuScreen(
     val hasEnabledFaceProfile by viewModel.hasEnabledFaceProfile.collectAsState()
     var showLogoutLoading by remember { mutableStateOf(false) }
     var showLogoutConfirmDialog by remember { mutableStateOf(false) }
+    var showTourPicker by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -169,6 +174,41 @@ fun MenuScreen(
                         else showToast(context, R.string.setting_face_lock_now_disabled_toast)
                     }
                 )
+                HorizontalDivider(color = extendedColors.primaryBackground)
+
+                // Start Tutorial: pick which section to replay; replays never touch the
+                // "seen" flag. Lands on Dashboard, where every section starts.
+                SimpleMenuRow(
+                    navController = navController,
+                    icon = R.drawable.tutorial,
+                    iconTint = MaterialTheme.colorScheme.primary,
+                    title = stringResource(R.string.menu_start_tutorial),
+                    onClick = { showTourPicker = true }
+                )
+                if (showTourPicker) {
+                    val labels = TourSection.entries.map { it.label() }
+                    CommonSingleSelectDialog(
+                        title = stringResource(R.string.tour_picker_title),
+                        options = listOf(stringResource(R.string.tour_picker_full)) + labels,
+                        selectedIndex = 0,
+                        confirmText = stringResource(R.string.tour_picker_start),
+                        onCancel = { showTourPicker = false },
+                        onOk = { index ->
+                            showTourPicker = false
+                            val sections = if (index == 0) TourSection.entries else listOf(TourSection.entries[index - 1])
+                            FtueController.start(
+                                sections,
+                                hl7Enabled = loginViewModel.preferenceHelper.isHl7Enabled(),
+                                notesEnabled = loginViewModel.preferenceHelper.getShowNotesDialogSetting(),
+                                currentTxnId = loginViewModel.preferenceHelper.getTxnId(),
+                            )
+                            navController.navigate(Screen.Dashboard.route) {
+                                popUpTo(0)
+                                launchSingleTop = true
+                            }
+                        },
+                    )
+                }
                 HorizontalDivider(color = extendedColors.primaryBackground)
                 // Logout
                 SimpleMenuRow(

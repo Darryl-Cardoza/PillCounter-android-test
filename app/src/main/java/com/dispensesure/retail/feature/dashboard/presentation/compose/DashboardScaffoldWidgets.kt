@@ -49,6 +49,8 @@ import androidx.navigation.NavController
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
+import com.dispensesure.retail.core.tourguide.TourGuideState
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.MenuButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
@@ -97,6 +99,7 @@ internal fun ScaffoldTopBar(
     isPmsConnected: Boolean,
     navController: NavController,
     compact: Boolean = false,
+    tourState: TourGuideState? = null,
 ) {
     val horizontalPadding = if (compact) 12.dp else 16.dp
     // Phone portrait is too narrow for both lines side by side, so stack them.
@@ -129,7 +132,10 @@ internal fun ScaffoldTopBar(
             }
         }
         if (showPmsDot) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.tourTarget(tourState, "pms"),
+            ) {
                 Box(
                     modifier = Modifier
                         .size(8.dp)
@@ -271,8 +277,9 @@ internal fun ScaffoldTabStrip(
     inventoryCount: Int,
     onSelect: (DashboardTab) -> Unit,
     modifier: Modifier = Modifier,
+    tourState: TourGuideState? = null,
 ) {
-    Row(modifier = modifier.fillMaxWidth()) {
+    Row(modifier = modifier.fillMaxWidth().tourTarget(tourState, "tabs")) {
         ScaffoldTab(
             label = stringResource(R.string.tab_label_with_count, stringResource(R.string.dispense_queue), dispenseCount),
             isActive = activeTab == DashboardTab.DISPENSE_QUEUE,

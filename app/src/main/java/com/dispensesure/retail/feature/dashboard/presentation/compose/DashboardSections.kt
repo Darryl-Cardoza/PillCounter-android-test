@@ -19,6 +19,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
@@ -60,6 +61,7 @@ internal fun QuickActionsAndKpiSection(
             LandscapeKpiList(
                 state = kpiState,
                 compact = compact,
+                tourState = params.tourState,
                 modifier = Modifier.fillMaxWidth().weight(1f - LandscapeQuickActionsHeightShare),
             )
         } else {
@@ -71,6 +73,7 @@ internal fun QuickActionsAndKpiSection(
             PortraitKpiRow(
                 state = kpiState,
                 compact = compact,
+                tourState = params.tourState,
                 modifier = Modifier.fillMaxWidth().weight(1f),
             )
         }
@@ -93,7 +96,7 @@ private fun QuickActionCardsRow(
             innerIconRes = R.drawable.regular_count_inner,
             onClick = params.onDispenseQuickAction,
             centered = ringAboveText,
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1f).fillMaxHeight().tourTarget(params.tourState, "dispense"),
         )
         ScaffoldQuickActionCard(
             title = stringResource(R.string.stock_count),
@@ -101,7 +104,7 @@ private fun QuickActionCardsRow(
             innerIconRes = R.drawable.fixed_count_inner,
             onClick = params.onInventoryQuickAction,
             centered = ringAboveText,
-            modifier = Modifier.weight(1f).fillMaxHeight(),
+            modifier = Modifier.weight(1f).fillMaxHeight().tourTarget(params.tourState, "stock_count"),
         )
     }
 }
@@ -142,6 +145,7 @@ internal fun DispenseAndInventoryQueueSection(
             dispenseCount = uiState.dispenseTabCount,
             inventoryCount = uiState.inventoryTabCount,
             onSelect = params.onTabSelected,
+            tourState = params.tourState,
         )
         HorizontalPager(
             state = pagerState,

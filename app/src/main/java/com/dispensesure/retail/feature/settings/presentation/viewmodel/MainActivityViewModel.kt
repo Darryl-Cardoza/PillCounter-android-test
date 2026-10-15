@@ -26,6 +26,7 @@ import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
+import com.dispensesure.retail.core.tourguide.TutorialDataCleaner
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.channels.awaitClose
@@ -64,11 +65,18 @@ class MainActivityViewModel @Inject constructor(
     private val bottleInfoDao: BottleInfoDao,
     private val hl7ServiceManager: Hl7ServiceManager,
     private val hl7EventHandler: Hl7EventHandler,
+    private val tutorialDataCleaner: TutorialDataCleaner,
     private val sessionHealthController: SessionHealthController,
     private val ioDispatcher: CoroutineDispatcher,
 ) : ViewModel(), IApplicationSettingsViewModel {
 
     private val logger = AppLogger.Companion.create<MainActivityViewModel>()
+
+    suspend fun purgeTutorialData(force: Boolean = false) = tutorialDataCleaner.purge(force)
+
+    fun purgeTutorialDataAsync() {
+        viewModelScope.launch(ioDispatcher) { tutorialDataCleaner.purge() }
+    }
 
     // The full config identity HL7 last started with, so a later settings/auth-me fetch
     // that returns different values (e.g. HL7 was preloaded from stale cached prefs on a
@@ -231,6 +239,9 @@ class MainActivityViewModel @Inject constructor(
     val faceLockTimeoutMinutes: StateFlow<Int> = _faceLockTimeoutMinutes
 
     init {
+        // A tour killed mid-run leaves tutorial rows behind; drop them before HL7 can see them.
+        viewModelScope.launch(ioDispatcher) { tutorialDataCleaner.purge() }
+
         // Load cached/fallback theme instantly
         loadCachedOrFallbackTheme()
 

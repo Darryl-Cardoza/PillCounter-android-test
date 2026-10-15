@@ -16,6 +16,7 @@ import androidx.compose.foundation.gestures.rememberDraggableState
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
@@ -69,6 +70,10 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupProperties
 import coil.compose.rememberAsyncImagePainter
 import com.dispensesure.retail.R
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourGuideOverlay
+import com.dispensesure.retail.core.tourguide.TourGuideState
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.ui.theme.AppTheme
@@ -684,6 +689,9 @@ private fun TabletHorizontalBody(
     onProceed: () -> Unit,
     drugImage: String,
 ) {
+    val tourState = FtueController.state
+
+    Box {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -760,10 +768,25 @@ private fun TabletHorizontalBody(
 
         // Use the local tablet button row so HollowButton & ActionButtonPrimary
         // share identical outer widths in portrait *and* landscape on tablet.
-        TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 14.dp)
+        TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 14.dp, tourState = tourState)
 
         Spacer(modifier = Modifier.height(8.dp))
     }
+    VerifyRxTourOverlay(tourState, onProceed)
+    }
+}
+
+/** The d_verify_rx spotlight, drawn inside each sheet body's own content Box. */
+@Composable
+private fun BoxScope.VerifyRxTourOverlay(tourState: TourGuideState, onProceed: () -> Unit) {
+    // Sheet-local spotlight: sized to the sheet content (not fullscreen), draws only d_verify_rx.
+    TourGuideOverlay(
+        state = tourState,
+        modifier = Modifier.matchParentSize(),
+        isScreenRoot = false,
+        ownedStepIds = setOf("d_verify_rx"),
+        onNext = { if (tourState.currentStep?.id == "d_verify_rx") onProceed() },
+    )
 }
 
 /**
@@ -777,6 +800,7 @@ private fun TabletButtonRow(
     onCancel: () -> Unit,
     onProceed: () -> Unit,
     spacing: Dp,
+    tourState: TourGuideState? = null,
 ) {
     // Use the universal HollowButton (outlined) + ActionButtonPrimary (filled).
     // Give the Row a fixed total width and let each child claim weight(1f) of it
@@ -799,7 +823,9 @@ private fun TabletButtonRow(
             onClick = onProceed,
             color = MaterialTheme.colorScheme.primary,
             fixedWidth = false,
-            modifier = Modifier.weight(1f),
+            modifier = Modifier
+                .weight(1f)
+                .tourTarget(tourState, "verify_rx_proceed"),
         )
     }
 }
@@ -827,6 +853,10 @@ private fun TabletVerticalBody(
     // Spacing between the two cards in a row and between the two rows — the Figma
     // gives the 2x2 grid generous, equal gutters.
     val gridSpacing = 16.dp
+
+    val tourState = FtueController.state
+
+    Box {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -909,10 +939,12 @@ private fun TabletVerticalBody(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.Center,
         ) {
-            TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 12.dp)
+            TabletButtonRow(onCancel = onCancel, onProceed = onProceed, spacing = 12.dp, tourState = tourState)
         }
 
         Spacer(modifier = Modifier.height(8.dp))
+    }
+    VerifyRxTourOverlay(tourState, onProceed)
     }
 }
 
@@ -963,6 +995,10 @@ private fun SheetBody(
     // 3-section layout: fixed title, scrollable middle (gets remaining height),
     // pinned button row. Outer column fills the parent's bounded height so weight() works.
     val extraBottom = if (!isLandscape) (-PORTRAIT_BOTTOM_NUDGE_DP).coerceAtLeast(0.dp) else 0.dp
+
+    val tourState = FtueController.state
+
+    Box {
     // Inline landscape usage gives this Column a bounded height, so fillMaxHeight
     // pushes the buttons to the bottom via weight(1f) on the scroll section.
     // Slightly bigger outer padding in landscape so the panel doesn't feel
@@ -1058,10 +1094,14 @@ private fun SheetBody(
                     onClick = onProceed,
                     color = MaterialTheme.colorScheme.primary,
                     fixedWidth = false,
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .tourTarget(tourState, "verify_rx_proceed")
                 )
             }
         }
+    }
+    VerifyRxTourOverlay(tourState, onProceed)
     }
 }
 

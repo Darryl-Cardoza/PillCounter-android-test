@@ -60,6 +60,10 @@ import com.dispensesure.retail.core.scanning.domain.model.BottleInfo
 import com.dispensesure.retail.core.scanning.presentation.compose.AddNoteDialog
 import com.dispensesure.retail.core.scanning.presentation.compose.CameraPreviewSection
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourActionTimeoutMs
+import com.dispensesure.retail.core.tourguide.TourGuideOverlay
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.ActionButtonPrimary
@@ -92,6 +96,8 @@ import com.dispensesure.retail.ui.theme.AppTheme
 import com.dispensesure.retail.ui.theme.AppTheme.dimens
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeout
 import java.util.Locale
 import kotlin.math.roundToInt
 import com.dispensesure.retail.core.scanning.domain.data.NavigationEvent as PillNavigationEvent
@@ -151,6 +157,8 @@ fun DispenseFlowScreen(
     val isTabletDevice = configuration.smallestScreenWidthDp >= 600
     val isSoundEnabled by pillVm.isSoundEnabled.collectAsState()
     val keyboardController = LocalSoftwareKeyboardController.current
+
+    val ftueState = FtueController.state
 
     // ── BT scanner input ────────────────────────────────────────────────────
     // Tracks the text typed by a Bluetooth HID barcode scanner into the overlay
@@ -989,7 +997,9 @@ fun DispenseFlowScreen(
                         pillVm.onFrameCaptured(imageProxy)
                     },
                     onFilteredCountChanged = { filteredPillCount = it },
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .tourTarget(ftueState, "camera_preview"),
                     imageFrameWidth = pillState.imageFrameWidth,
                     imageFrameHeight = pillState.imageFrameHeight,
                     onPreviewSizeKnown = { w, h ->
@@ -1458,7 +1468,8 @@ fun DispenseFlowScreen(
                     drugImage = dispenseState.drugImage,
                     onCancel = { dispenseVm.onRxCancelled() },
                     onProceed = { dispenseVm.onRxConfirmed() },
-                    dismissible = true,
+                    // The tour only leaves this sheet through its own Next / Skip.
+                    dismissible = !ftueState.isActive,
                 )
             } else {
                 // How far the panel has been dragged toward the right edge.
@@ -1478,7 +1489,7 @@ fun DispenseFlowScreen(
                             val dismissPx = INLINE_PANEL_DISMISS_DRAG.toPx()
                             detectHorizontalDragGestures(
                                 onDragEnd = {
-                                    if (panelDragPx > dismissPx) {
+                                    if (panelDragPx > dismissPx && !ftueState.isActive) {
                                         dispenseVm.onRxCancelled()
                                     } else {
                                         panelDragPx = 0f
@@ -1560,6 +1571,58 @@ fun DispenseFlowScreen(
             isVisible = awaitingResume,
             backgroundColor = Color.Black.copy(alpha = 0.4f),
         )
+
+        // Skip the screen-root overlay while RX/NDC verify is up: in landscape,
+        // VerifyRxDetailsInlinePanel renders inline in this same window with its own
+        // TourGuideOverlay, and both would otherwise render duplicate scrims/tooltips
+        // for the same "verify_rx_proceed" target.
+        // d_note is drawn by the Add Note dialog's own window (TourDialogHost).
+        if (!dispenseState.showRxDetails && !dispenseState.showNdcDetails && ftueState.currentStep?.id != "d_note") {
+            TourGuideOverlay(
+                state = ftueState,
+                modifier = Modifier.fillMaxSize(),
+                onNext = {
+                    when (ftueState.currentStep?.id) {
+                        "d_scan_rx" -> {
+                            // useDummyRxData ignores calls mid-load or in another stage; wait for a state it accepts.
+                            withTimeout(TourActionTimeoutMs) {
+                                dispenseVm.uiState.first {
+                                    it.showRxDetails || (!it.isLoading && (it.stage == DispenseStage.PRE_RX || it.stage == DispenseStage.QUEUE))
+                                }
+                            }
+                            if (!dispenseVm.uiState.value.showRxDetails) dispenseVm.useDummyRxData()
+                            withTimeout(TourActionTimeoutMs) { dispenseVm.uiState.first { it.showRxDetails } }
+                        }
+                        "d_scan_container" -> {
+                            // The Rx sheet's Proceed creates the txn asynchronously.
+                            // A retry may find the previous attempt already past PRE_NDC.
+                            if (dispenseVm.uiState.value.stage != DispenseStage.COUNTING) {
+                                withTimeout(TourActionTimeoutMs) { dispenseVm.uiState.first { it.stage == DispenseStage.PRE_NDC } }
+                                dispenseVm.useDummyNdcData()
+                            }
+                            withTimeout(TourActionTimeoutMs) {
+                                dispenseVm.uiState.first { it.stage == DispenseStage.COUNTING || it.showNdcDetails }
+                            }
+                            if (dispenseVm.uiState.value.showNdcDetails) {
+                                dispenseVm.onNdcConfirmed()
+                                withTimeout(TourActionTimeoutMs) { dispenseVm.uiState.first { it.stage == DispenseStage.COUNTING } }
+                            }
+                            // The count circle only exists once the workflow is on a counting step;
+                            // without this the next step would spotlight nothing.
+                            withTimeout(TourActionTimeoutMs) { pillVm.currentStep.first { it in countingSteps } }
+                        }
+                        "d_count" -> {
+                            pillVm.dummyCompleteCount()
+                            withTimeout(TourActionTimeoutMs) {
+                                pillVm.currentStep.first { it == StepState.VIAL || it !in countingSteps }
+                            }
+                            // The vial photo isn't a tour step; save a demo one so the count can finish.
+                            if (pillVm.currentStep.value == StepState.VIAL) pillVm.captureVialForTour()
+                        }
+                    }
+                },
+            )
+        }
     }
 }
 
@@ -1586,7 +1649,8 @@ internal fun handleBarcode(
     onRxInNdcStage: () -> Unit,
     onRxInStockCount: () -> Unit,
 ): Boolean {
-    if (value.isBlank()) return false
+    // No real scans during the tour: the demo data is fed in by the tour card's Next.
+    if (value.isBlank() || FtueController.state.isActive) return false
     return when (stage) {
         DispenseStage.QUEUE,
         DispenseStage.PRE_RX -> {
@@ -1635,3 +1699,4 @@ internal fun handleBarcode(
     }
 }
 
+private val countingSteps = setOf(StepState.CONTAINER_INITIATE, StepState.TARGET_VERIFICATION, StepState.TARGET_REVERIFICATION)

@@ -14,6 +14,7 @@ import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
 import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.CountType
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.feature.history.domain.model.TxnWithDrugDto
 import kotlinx.coroutines.flow.Flow
 
@@ -173,6 +174,8 @@ interface PillCountTxnDao {
       AND txn.status = :partialStatus
       AND txn.isDispense = :isDispense
       AND txn.localId = :userLocalId
+      AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
+      AND (drug.ndc IS NULL OR drug.ndc != '${TutorialData.DEMO_NDC}')
     GROUP BY txn.txnId
     ORDER BY CASE txn.priority
                  WHEN 'High'   THEN 1
@@ -415,6 +418,8 @@ interface PillCountTxnDao {
     FROM pill_count_txn
     WHERE isDeleted = 0
       AND localId = :userLocalId
+      AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
+      AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
     GROUP BY status, isDispense
     """
     )
@@ -648,6 +653,8 @@ interface PillCountTxnDao {
       AND txn.localId = :userLocalId
       AND (:isDispense IS NULL OR txn.isDispense = :isDispense)
       AND (:status IS NULL OR txn.status = :status)
+      AND (drug.ndc IS NULL OR drug.ndc != :excludeNdc)
+      AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
@@ -658,7 +665,8 @@ interface PillCountTxnDao {
         stepType: StepState?,
         isDispense: Boolean?,
         status: CountStatus?,
-        userLocalId: Long
+        userLocalId: Long,
+        excludeNdc: String = TutorialData.DEMO_NDC
     ): Flow<List<TxnWithDrugDto>>
 
 
@@ -724,7 +732,7 @@ interface PillCountTxnDao {
      */
     @Query(
         """
-        SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId
+        SELECT imagePath FROM pill_count_txn_details WHERE txnId = :txnId AND imagePath IS NOT NULL
         UNION ALL
         SELECT rawImagePath FROM pill_count_txn_details WHERE txnId = :txnId AND rawImagePath IS NOT NULL
         """
@@ -740,6 +748,16 @@ interface PillCountTxnDao {
      */
     @Query("DELETE FROM pill_count_txn WHERE txnId = :txnId")
     suspend fun deleteTransaction(txnId: Long)
+
+    /** Tutorial txns by durable marker: demo drug, or Rx prefix (survives the drug row being gone). */
+    @Query(
+        """
+        SELECT txnId FROM pill_count_txn
+        WHERE rxNo LIKE '${TutorialData.RX_PREFIX}%'
+           OR drugId IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}')
+        """
+    )
+    suspend fun getTutorialTxnIds(): List<Long>
 
 
     /**
@@ -766,6 +784,7 @@ interface PillCountTxnDao {
       AND isDispense = 1
       AND status = :completedStatus
       AND (isSynced IS NULL OR isSynced = 0)
+      AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     ORDER BY updatedAt ASC
     """
     )
@@ -790,11 +809,14 @@ interface PillCountTxnDao {
           AND isDispense = 1
           AND status = :completedStatus
           AND (isSynced IS NULL OR isSynced = 0)
+          AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = :excludeNdc))
+          AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
         ORDER BY updatedAt ASC
         """
     )
     suspend fun getPendingHl7TxnOnce(
-        completedStatus: CountStatus = CountStatus.COMPLETED
+        completedStatus: CountStatus = CountStatus.COMPLETED,
+        excludeNdc: String = TutorialData.DEMO_NDC
     ): List<PillCountTxnEntity>
 
 
@@ -870,6 +892,7 @@ interface PillCountTxnDao {
       AND (txn.status = :completeStatus OR txn.status = :forceCompleteStatus)
       AND txn.isDispense = :isDispense
       AND txn.isSynced = 0
+      AND (txn.rxNo IS NULL OR txn.rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     GROUP BY txn.txnId
     ORDER BY txn.createdAt DESC
     """
@@ -889,6 +912,7 @@ interface PillCountTxnDao {
       AND (status = :completeStatus OR status = :forceCompleteStatus)
       AND isSynced = 0
       AND isComingFromHL7 = 1
+      AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
     """
     )
     fun getTotalCompletedTransactionCount(
@@ -903,6 +927,8 @@ interface PillCountTxnDao {
       AND status = :partialStatus
       AND isDispense = :isDispense
       AND localId = :userLocalId
+      AND (rxNo IS NULL OR rxNo NOT LIKE '${TutorialData.RX_PREFIX}%')
+      AND (drugId IS NULL OR drugId NOT IN (SELECT drugId FROM drug_master WHERE ndc = '${TutorialData.DEMO_NDC}'))
     """
     )
     suspend fun countPartialByIsDispense(

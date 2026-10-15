@@ -1,6 +1,7 @@
 package com.dispensesure.retail.feature.dashboard.presentation.model
 
 import androidx.navigation.NavController
+import com.dispensesure.retail.core.tourguide.TourGuideState
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardUiState
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
@@ -25,6 +26,7 @@ class DashboardVariantParamsTest {
     private val onQueueDispenseClick: (Long) -> Unit = {}
     private val onQueueInventoryClick: (Long) -> Unit = {}
     private val onTabVisible: (DashboardTab) -> Unit = {}
+    private val tourState = TourGuideState()
 
     private fun sample() = DashboardVariantParams(
         uiState = uiState,
@@ -42,6 +44,7 @@ class DashboardVariantParamsTest {
         disabledKpiFilters = emptySet(),
         onDisabledKpiFilterTapped = {},
         onTabVisible = onTabVisible,
+        tourState = tourState,
     )
 
     @Test
@@ -131,6 +134,7 @@ class DashboardVariantParamsTest {
             disabledKpiFilters = emptySet(),
             onDisabledKpiFilterTapped = {},
             onTabVisible = {},
+            tourState = TourGuideState(),
         )
 
         p.onKpiFilterTapped(KpiFilter.DISP_PENDING)

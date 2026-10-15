@@ -9,6 +9,7 @@ import com.dispensesure.retail.core.room.models.DrugMasterEntity
 import com.dispensesure.retail.core.room.models.StockTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.InventoryKpiCountsDto
 import com.dispensesure.retail.core.room.models.enums.BatchStatus
+import com.dispensesure.retail.core.tourguide.TutorialData
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -25,6 +26,8 @@ class BatchDaoTest {
 
     private lateinit var db: AppDatabase
     private lateinit var dao: BatchDao
+    private lateinit var stockTxnDao: StockTxnDao
+    private lateinit var drugDao: DrugMasterDao
 
     @Before
     fun setUp() {
@@ -33,6 +36,8 @@ class BatchDaoTest {
             AppDatabase::class.java
         ).allowMainThreadQueries().build()
         dao = db.batchDao()
+        stockTxnDao = db.stockTxnDao()
+        drugDao = db.drugMasterDao()
     }
 
     @After
@@ -388,6 +393,47 @@ class BatchDaoTest {
         val result = dao.getUnsyncedCompletedBatchesOnce()
         assertEquals(1, result.size)
         assertEquals(1L, result.first().batchId)
+    }
+
+    @Test
+    fun `getUnsyncedCompletedBatchesOnce keeps a real batch that holds the demo drug`() = runTest {
+        val tutorialDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
+        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false))
+        stockTxnDao.insertIgnore(StockTxnEntity(batchId = 1L, drugId = tutorialDrugId))
+
+        assertEquals(listOf(1L), dao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
+    }
+
+    @Test
+    fun `tutorial bucket batches are hidden from unsynced and in-progress queries`() = runTest {
+        dao.insert(BatchEntity(batchId = 1L, status = BatchStatus.COMPLETED, isSynced = false, bucketId = TutorialData.BUCKET))
+        dao.insert(BatchEntity(batchId = 2L, status = BatchStatus.COMPLETED, isSynced = false, bucketId = "Normal"))
+        dao.insert(BatchEntity(batchId = 3L, status = BatchStatus.INPROGRESS, bucketId = TutorialData.BUCKET))
+
+        assertEquals(listOf(2L), dao.getUnsyncedCompletedBatchesOnce().map { it.batchId })
+        dao.observeInProgressBatchSummaries().test {
+            assertTrue(awaitItem().isEmpty())
+        }
+        dao.observeInProgressBatchKpiCounts().test {
+            assertEquals(0, awaitItem().pendingBatchCount)
+        }
+    }
+
+    @Test
+    fun `getTutorialBatchIds finds tutorial bucket and demo-only batches, not real batches`() = runTest {
+        val demoDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = TutorialData.DEMO_NDC, drugName = "Tutorial Demo Drug"))
+        val realDrugId = drugDao.insertIgnore(DrugMasterEntity(ndc = "1234", drugName = "Aspirin"))
+        dao.insert(BatchEntity(batchId = 1L, bucketId = TutorialData.BUCKET))
+        dao.insert(BatchEntity(batchId = 2L, bucketId = "Normal"))
+        // Real bucket but only the demo drug: a demo batch whose insert raced the tour ending.
+        dao.insert(BatchEntity(batchId = 3L, bucketId = "Normal"))
+        stockTxnDao.insertIgnore(StockTxnEntity(batchId = 3L, drugId = demoDrugId))
+        // Real batch that also holds a real drug is never tutorial data.
+        dao.insert(BatchEntity(batchId = 4L, bucketId = "Normal"))
+        stockTxnDao.insertIgnore(StockTxnEntity(batchId = 4L, drugId = demoDrugId))
+        stockTxnDao.insertIgnore(StockTxnEntity(batchId = 4L, drugId = realDrugId))
+
+        assertEquals(listOf(1L, 3L), dao.getTutorialBatchIds().sorted())
     }
 
     @Test

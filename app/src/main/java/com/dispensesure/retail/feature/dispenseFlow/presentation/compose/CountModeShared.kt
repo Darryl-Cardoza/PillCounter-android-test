@@ -59,6 +59,8 @@ import kotlin.math.roundToInt
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.scanning.presentation.viewmodel.PillScanningViewModel
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.core.utils.compose.WorkflowStepper
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDpForCircularCountIndicator
@@ -281,7 +283,8 @@ internal fun BoxWithConstraintsScope.CountModeCenterCircle(
             // (Done) once the target is met. Disabled mid-cooldown.
             .clickable(enabled = !isAddCooldown) {
                 if (isAllDone) onDone() else onAdd()
-            },
+            }
+            .tourTarget(FtueController.state, "count_add_circle"),
         contentAlignment = Alignment.Center
     ) {
         CircularCountIndicator(

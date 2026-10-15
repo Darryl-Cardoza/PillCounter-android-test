@@ -40,9 +40,12 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveSp
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
 import com.dispensesure.retail.core.utils.compose.sideBorder
+import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
 import com.dispensesure.retail.feature.dashboard.presentation.model.KpiCardItem
 import com.dispensesure.retail.feature.dashboard.presentation.model.KpiSectionState
 import com.dispensesure.retail.feature.dashboard.presentation.model.toCardItems
+import com.dispensesure.retail.core.tourguide.TourGuideState
+import com.dispensesure.retail.core.tourguide.tourTarget
 import com.dispensesure.retail.ui.theme.AppTheme.extendedColors
 
 // Landscape: all KPIs stacked in one column; scrolls when the screen is short.
@@ -51,6 +54,7 @@ internal fun LandscapeKpiList(
     state: KpiSectionState,
     compact: Boolean,
     modifier: Modifier = Modifier,
+    tourState: TourGuideState? = null,
 ) {
     val cards = state.toCardItems()
     Column(
@@ -65,6 +69,7 @@ internal fun LandscapeKpiList(
                 modifier = Modifier
                     .fillMaxWidth()
                     .heightIn(min = responsiveDp(DashboardBaseSizes.LandscapeKpiCardMinHeight))
+                    .tourTarget(tourState, kpiTourId(card.filter))
             )
         }
     }
@@ -76,6 +81,7 @@ internal fun PortraitKpiRow(
     state: KpiSectionState,
     compact: Boolean,
     modifier: Modifier = Modifier,
+    tourState: TourGuideState? = null,
 ) {
     val cards = state.toCardItems()
     val cardGap = Arrangement.spacedBy(responsiveDp(DashboardBaseSizes.CardGap))
@@ -86,13 +92,13 @@ internal fun PortraitKpiRow(
             horizontalArrangement = cardGap,
         ) {
             cards.forEach { card ->
-                PortraitKpiCard(card = card, modifier = Modifier.width(tileWidth).fillMaxHeight())
+                PortraitKpiCard(card = card, modifier = Modifier.width(tileWidth).fillMaxHeight().tourTarget(tourState, kpiTourId(card.filter)))
             }
         }
     } else {
         Row(modifier = modifier, horizontalArrangement = cardGap) {
             cards.forEach { card ->
-                PortraitKpiCard(card = card, modifier = Modifier.weight(1f).fillMaxHeight())
+                PortraitKpiCard(card = card, modifier = Modifier.weight(1f).fillMaxHeight().tourTarget(tourState, kpiTourId(card.filter)))
             }
         }
     }
@@ -244,4 +250,14 @@ private fun KpiCount(count: Int) {
         fontWeight = FontWeight.SemiBold,
         maxLines = 1,
     )
+}
+
+/** The tour target id of a KPI card, keyed by its filter. */
+private fun kpiTourId(filter: KpiFilter): String = when (filter) {
+    KpiFilter.DISP_HIGH_PRIORITY -> "kpi_high_priority"
+    KpiFilter.DISP_PENDING -> "kpi_pending"
+    KpiFilter.DISP_CONTROLLED -> "kpi_controlled"
+    KpiFilter.DISP_HAZARDOUS -> "kpi_hazardous"
+    KpiFilter.INV_CYCLE_COUNT -> "kpi_cycle_count"
+    KpiFilter.INV_PENDING_BATCH -> "kpi_pending_batch"
 }

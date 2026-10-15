@@ -13,12 +13,16 @@ import com.dispensesure.retail.core.room.dao.StockTxnDao
 import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
+import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.TxnWithDetails
 import com.dispensesure.retail.core.scanning.data.DrugImageDownloader
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
 import com.dispensesure.retail.core.scanning.domain.model.PillScanningUiState
 import com.dispensesure.retail.core.scanning.logic.CameraHelper
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
+import com.dispensesure.retail.core.tourguide.FtueController
+import com.dispensesure.retail.core.tourguide.TourSection
+import com.dispensesure.retail.core.tourguide.TutorialData
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.common.SoundUtils
@@ -32,6 +36,7 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkObject
+import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
@@ -187,6 +192,27 @@ class PillScanningViewModelCaptureTest {
     }
 
     // ─────────────────────────── capture button ───────────────────────────
+
+    @Test
+    fun `captureVialForTour returns without timing out when the notes setting is off`() = runTest {
+        mockkStatic(Bitmap::class)
+        every { Bitmap.createBitmap(any<Int>(), any<Int>(), any<Bitmap.Config>()) } returns mockk(relaxed = true)
+        every { preferenceHelper.getTxnId() } returns 42L
+        every { preferenceHelper.getShowNotesDialogSetting() } returns false
+        coEvery { pillCountTxnDetailsDao.getTotalPillCountForTxn(any()) } returns 30
+        // captureVialForTour is a no-op without an active tour, and refuses a non-demo txn.
+        coEvery { pillCountTxnDao.getById(42L) } returns mockk<PillCountTxnEntity>(relaxed = true) {
+            every { rxNo } returns TutorialData.RX_PREFIX + "1"
+        }
+        FtueController.start(listOf(TourSection.DISPENSE), hl7Enabled = false, notesEnabled = false)
+
+        try {
+            // Throws TimeoutCancellationException (virtual 8s) if the flow never leaves VIAL.
+            viewModel.captureVialForTour()
+        } finally {
+            FtueController.end() // process-wide singleton: don't leak the tour into other tests
+        }
+    }
 
     @Test
     fun `captureImage ignores a second tap while the first capture is still in flight`() = runTest {

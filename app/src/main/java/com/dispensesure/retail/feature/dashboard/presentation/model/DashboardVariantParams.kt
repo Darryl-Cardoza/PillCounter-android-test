@@ -2,6 +2,7 @@ package com.dispensesure.retail.feature.dashboard.presentation.model
 
 import androidx.compose.runtime.Immutable
 import androidx.navigation.NavController
+import com.dispensesure.retail.core.tourguide.TourGuideState
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardUiState
 import com.dispensesure.retail.feature.dashboard.domain.model.KpiFilter
@@ -48,4 +49,10 @@ data class DashboardVariantParams(
     val onDisabledKpiFilterTapped: (KpiFilter) -> Unit,
     /** Pager drew this tab's page — start loading it. */
     val onTabVisible: (DashboardTab) -> Unit,
+    /**
+     * Hoisted at [com.dispensesure.retail.feature.dashboard.presentation.DashboardScreen] so it
+     * survives the dispatcher swapping between variants — e.g. a portrait/landscape rotation —
+     * instead of restarting the tour from step 1 each time.
+     */
+    val tourState: TourGuideState,
 )

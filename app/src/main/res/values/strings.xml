@@ -61,6 +61,54 @@
     <string name="no_pending_tasks">No pending tasks right now</string>
     <string name="kpi_disp_short">Dispense</string>
     <string name="kpi_inv_short">Inventory</string>
+
+    <!-- Home screen tour guide -->
+    <string name="tour_title_pms">PMS Connected Status</string>
+    <string name="tour_desc_pms">Confirms the Pharmacy Management System integration is live and syncing.</string>
+    <string name="tour_title_dispense">Dispense</string>
+    <string name="tour_desc_dispense">Tap to scan Rx labels and start the dispensing workflow.</string>
+    <string name="tour_title_stock_count">Stock Count</string>
+    <string name="tour_desc_stock_count">Starts a new inventory count session to reconcile stock.</string>
+    <string name="tour_title_tabs">Queue / Activity</string>
+    <string name="tour_desc_tabs">Switch the list below between the Dispense Queue, the Inventory Queue and Recent Activity.</string>
+    <string name="tour_skip">Skip</string>
+    <string name="tour_back">Back</string>
+    <string name="tour_next">Next</string>
+    <string name="tour_done">Done</string>
+    <string name="tour_step_of">Step %1$d of %2$d</string>
+
+    <!-- Dispense flow tour guide -->
+    <string name="tour_title_scan_rx_camera">Scan the Rx label</string>
+    <string name="tour_desc_scan_rx_camera">Point the camera at the prescription label\'s barcode to start dispensing.</string>
+    <string name="tour_title_verify_rx_proceed">Confirm &amp; count</string>
+    <string name="tour_desc_verify_rx_proceed">Tap Proceed to start counting this prescription.</string>
+    <string name="tour_title_scan_container">Scan the container</string>
+    <string name="tour_desc_scan_container">Point the camera at the container\'s QR code or NDC barcode.</string>
+    <string name="tour_title_count_add_circle">Add a count</string>
+    <string name="tour_desc_count_add_circle">Tap to add the detected pills to the running count. Long-press to move it.</string>
+    <string name="tour_title_add_note_actions">Skip or save</string>
+    <string name="tour_desc_add_note_actions">Skip if there\'s nothing to note, or save a note to the record. In this tour it is skipped for you.</string>
+
+    <!-- Stock count (inventory) tour guide -->
+    <string name="tour_title_dispense_tap">Start a dispense</string>
+    <string name="tour_desc_dispense_tap">Tap Dispense to begin scanning a prescription.</string>
+    <string name="tour_title_stock_count_tap">Start a stock count</string>
+    <string name="tour_desc_stock_count_tap">Tap Stock Count to begin counting inventory.</string>
+    <string name="tour_title_select_bucket">Select a bucket</string>
+    <string name="tour_desc_select_bucket">Choose which storage bucket you\'re counting. For this tour the demo count is set up for you.</string>
+    <string name="tour_title_inv_camera_preview">Scan a drug</string>
+    <string name="tour_desc_inv_camera_preview">Point the camera at a bottle\'s NDC barcode to start counting it.</string>
+    <string name="tour_title_inv_counter">Adjust the count</string>
+    <string name="tour_desc_inv_counter">Tap + to count another bottle, or - to correct a mistake.</string>
+    <string name="tour_title_inv_edit_button">Edit the details (optional)</string>
+    <string name="tour_desc_inv_edit_button">If you need to fix a sealed-bottle or open-pill count by lot and expiry, tap here — otherwise, just move on.</string>
+    <string name="tour_title_inv_edit_actions">Cancel or save</string>
+    <string name="tour_desc_inv_edit_actions">Cancel to discard changes, or save to update this NDC\'s counts.</string>
+    <string name="tour_title_inv_scan_pills">Count loose pills (optional)</string>
+    <string name="tour_desc_inv_scan_pills">Optional: scan more bottles and tap ADD to count them, tap here for an already-opened bottle\'s loose pills, or just tap End Count.</string>
+    <string name="tour_title_inv_end_count">Finish the count</string>
+    <string name="tour_desc_inv_end_count">Tap End Count once every NDC in this batch has been counted. Next opens the note screen.</string>
+
     <string name="kpi_high_priority">High Priority</string>
     <string name="kpi_cont_drugs">Controlled</string>
     <string name="kpi_hazardous">Hazardous</string>
@@ -268,6 +316,7 @@
     <string name="menu_settings">Settings</string>
     <string name="menu_lock_screen">Lock Screen</string>
     <string name="menu_logout">Logout</string>
+    <string name="menu_start_tutorial">Start Tutorial</string>
     <string name="menu_completed">%1$d Completed</string>
     <string name="menu_partial">%1$d Pending</string>
     <string name="menu_unsync_transaction">Unsynced Transactions</string>
@@ -605,4 +654,23 @@
     <string name="photo_label_date_time">Date &amp; Time</string>
     <string name="photo_label_operator">Operator</string>
 
+    <string name="tour_title_kpi_dispense">Dispense cards</string>
+    <string name="tour_desc_kpi_dispense">High Priority, Controlled and Hazardous counts for your dispenses. Tap a card to filter the queue.</string>
+    <string name="tour_title_kpi_inventory">Inventory cards</string>
+    <string name="tour_desc_kpi_inventory">Cycle Count and Pending Batch show your inventory work. Tap a card to filter the queue.</string>
+    <string name="tour_step_failed">Couldn\'t continue the tour — tap Next to retry or Skip</string>
+    <string name="tour_section_done_prompt">%1$s tour done. Continue to the %2$s tour?</string>
+    <string name="tour_continue">Continue</string>
+    <string name="tour_end">End tour</string>
+    <string name="tour_section_dashboard">Dashboard</string>
+    <string name="tour_section_dispense">Dispense</string>
+    <string name="tour_section_stock_count">Stock Count</string>
+    <string name="tour_offer_message">Take a quick tour of the app? You can replay it any time from the menu.</string>
+    <string name="tour_offer_start">Start tour</string>
+    <string name="tour_offer_not_now">Not now</string>
+    <string name="tour_picker_title">Which tour?</string>
+    <string name="tour_picker_full">Full tour</string>
+    <string name="tour_picker_start">Start</string>
+    <string name="tour_demo_drug_name">Tutorial Demo Drug</string>
+    <string name="tour_ended_locked">Tour ended because the session locked.</string>
 </resources>
