@@ -4,6 +4,8 @@ import android.content.Context
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.hl7.core.Hl7EventListener
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.withoutMessage
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.parsing.Hl7OrderHandler
@@ -87,14 +89,14 @@ class Hl7EventHandler @Inject constructor(
     private fun buildSuccessAck(parsed: HL7Message): String =
         runCatching { ackBuilder.build(parsed, ValidationResult(emptyList())).encode() }
             .getOrElse { e ->
-                logger.e("AckBuilder.build() failed for AA — falling back to hl7().ack()", e)
+                logger.e("AckBuilder.build() failed for AA — falling back to hl7().ack()", e.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
                 hl7().ack(parsed)
             }
 
     private fun buildErrorAck(parsed: HL7Message, validationResult: ValidationResult): String =
         runCatching { ackBuilder.build(parsed, validationResult).encode() }
             .getOrElse { e ->
-                logger.e("AckBuilder.build() failed — falling back to hl7().ack()", e)
+                logger.e("AckBuilder.build() failed — falling back to hl7().ack()", e.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
                 hl7().ack(parsed)
             }
 
@@ -128,7 +130,7 @@ class Hl7EventHandler @Inject constructor(
             // ORC|CA — route through parser+processor
             orderControl == "CA" -> {
                 val orders = hl7Parser.map(parsed).getOrElse { e ->
-                    logger.e("HL7 parse/map failed for CA | msgId=$msgId | ${e.message}")
+                    logger.e("HL7 parse/map failed for CA | msgId=$msgId | ${e::class.java.simpleName}")
                     return buildErrorAck(parsed, errorResult("Parse failed for CA: ${e.message}"))
                 }
                 orders.forEach { order -> hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed)) }
@@ -138,7 +140,7 @@ class Hl7EventHandler @Inject constructor(
             // ORC|HD/RL/DC status-only actions — no structural validation needed, no RXE required
             orderControl in setOf("HD", "RL", "DC") -> {
                 val orders = hl7Parser.map(parsed).getOrElse { e ->
-                    logger.e("HL7 parse/map failed for $orderControl | msgId=$msgId | ${e.message}")
+                    logger.e("HL7 parse/map failed for $orderControl | msgId=$msgId | ${e::class.java.simpleName}")
                     return buildErrorAck(parsed, errorResult("Parse failed for $orderControl: ${e.message}"))
                 }
                 orders.forEach { order -> hl7OrderProcessor.process(hl7OrderHandler.handle(order, parsed)) }
@@ -155,7 +157,7 @@ class Hl7EventHandler @Inject constructor(
             rxe != null -> {
                 // 1. Parse to domain model
                 val orders = hl7Parser.map(parsed).getOrElse { e ->
-                    logger.e("HL7 parse/map failed | msgId=$msgId | ${e.message}")
+                    logger.e("HL7 parse/map failed | msgId=$msgId | ${e::class.java.simpleName}")
                     return buildErrorAck(parsed, errorResult("Parse failed: ${e.message}"))
                 }
 
@@ -171,7 +173,7 @@ class Hl7EventHandler @Inject constructor(
                 // 2. Structural validation via library
                 val structResult = hl7Validator.validateStructure(parsed)
                 if (!structResult.isValid) {
-                    logger.e("HL7 structural validation failed | msgId=$msgId | ${structResult.issues.firstOrNull()?.errorText}")
+                    logger.e("HL7 structural validation failed | msgId=$msgId")
                     notifier.show(
                         title = context.getString(R.string.hl7_notification_new_rx_title),
                         message = context.getString(R.string.hl7_notification_structural_validation_failed, msgId, structResult.issues.firstOrNull()?.errorText.orEmpty()),
@@ -183,7 +185,7 @@ class Hl7EventHandler @Inject constructor(
                 for (order in orders) {
                     val businessResult = hl7Validator.validateBusinessRules(order)
                     if (!businessResult.isValid) {
-                        logger.e("HL7 business validation failed | msgId=$msgId | orderId=${order.placerOrderNumber} | ${businessResult.reason}")
+                        logger.e("HL7 business validation failed | msgId=$msgId")
                         notifier.show(
                             title = context.getString(R.string.hl7_notification_new_rx_title),
                             message = context.getString(R.string.hl7_notification_business_validation_failed, msgId, businessResult.reason.orEmpty()),
@@ -271,11 +273,14 @@ class Hl7EventHandler @Inject constructor(
     }
 
     override fun onError(source: String, throwable: Throwable) {
-        logger.e("HL7 error | source=$source | message=${throwable.message}")
+        // HL7_PARSE is already logged, PHI-stripped, by HL7BackgroundService.handleIncomingMessage.
+        if (source == "HL7_PARSE") return
+        // The message can echo HL7 field values, so only the type and stack frames are logged.
+        logger.e("HL7 error | source=$source", throwable.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
     }
 
     override fun onPmsCertMismatch() {
-        logger.e("PMS certificate mismatch — blocking reconnects until admin clears the pin")
+        logger.w("PMS certificate mismatch — blocking reconnects until admin clears the pin", event = LogEvent.HL7_CONNECT_FAILED)
         _pmsCertMismatch.value = true
     }
 }

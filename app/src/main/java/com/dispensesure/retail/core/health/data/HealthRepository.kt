@@ -4,6 +4,7 @@ import com.dispensesure.retail.core.health.data.remote.IHealthApi
 import com.dispensesure.retail.core.health.domain.data.IHealthRepository
 import com.dispensesure.retail.core.health.data.remote.dto.HealthCheckData
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
@@ -42,19 +43,25 @@ class HealthRepository @Inject constructor(
             logger.i("Calling /health")
             val response = api.getHealth()
             if (!response.isSuccessful) {
-                logger.w("/health returned HTTP ${response.code()}")
-                return@withContext Result.failure(Exception("HTTP ${response.code()}"))
+                val failure = Exception("HTTP ${response.code()}")
+                logger.w("/health returned HTTP ${response.code()}", failure, event = LogEvent.HEALTH_CHECK_FAILED)
+                return@withContext Result.failure(failure)
             }
             val body = response.body()?.data
-                ?: return@withContext Result.failure(Exception("Empty /health body"))
+            if (body == null) {
+                val failure = Exception("Empty /health body")
+                logger.w("/health returned an empty body", failure, event = LogEvent.HEALTH_CHECK_FAILED)
+                return@withContext Result.failure(failure)
+            }
             if (!body.isHealthy) {
-                logger.w("/health reported is_healthy=false")
-                return@withContext Result.failure(Exception("is_healthy=false"))
+                val failure = Exception("is_healthy=false")
+                logger.w("/health reported is_healthy=false", failure, event = LogEvent.HEALTH_CHECK_FAILED)
+                return@withContext Result.failure(failure)
             }
             logger.i("/health healthy at ${body.checkedAt}")
             Result.success(body)
         } catch (e: Exception) {
-            logger.e("/health call failed", e)
+            logger.w("/health call failed", e, event = LogEvent.HEALTH_CHECK_FAILED)
             Result.failure(e)
         }
     }

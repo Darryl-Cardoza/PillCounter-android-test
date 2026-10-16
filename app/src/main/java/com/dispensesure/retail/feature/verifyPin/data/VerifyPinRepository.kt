@@ -1,6 +1,8 @@
 package com.dispensesure.retail.feature.verifyPin.data
 
 import com.dispensesure.retail.core.utils.constants.AppConstants
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.notification.FCMService
 import com.dispensesure.retail.feature.verifyPin.data.remote.IVerifyPinAPI
 import com.dispensesure.retail.feature.verifyPin.domain.data.IVerifyPinRepository
@@ -25,6 +27,8 @@ class VerifyPinRepository @Inject constructor(
     private val fcmService: FCMService,
     private val ioDispatcher: CoroutineDispatcher
 ) : IVerifyPinRepository {
+
+    private val logger = AppLogger.create<VerifyPinRepository>()
 
     /**
      * Executes the OTP verification request against the remote API on an I/O-optimized thread.
@@ -58,6 +62,7 @@ class VerifyPinRepository @Inject constructor(
 
                 Result.success(response)
             } catch (e: Exception) {
+                logger.e("OTP verification failed", e, event = LogEvent.OTP_VERIFICATION_FAILED)
                 Result.failure(e)
             }
         }

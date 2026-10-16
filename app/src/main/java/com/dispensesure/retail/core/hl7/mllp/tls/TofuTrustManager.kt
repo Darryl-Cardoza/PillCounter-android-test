@@ -6,6 +6,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.cert.CertificateException
@@ -94,7 +95,12 @@ class TofuTrustManager(
 
     private fun getPin(): String? {
         val stored = plainPrefs.getString(pinKey, null) ?: return null
-        return try { decrypt(stored) } catch (e: Exception) { null }
+        return try {
+            decrypt(stored)
+        } catch (e: Exception) {
+            logger.e("Failed to decrypt stored TOFU pin for $pinKey — treating as unpinned", e, event = LogEvent.NETWORK_ERROR)
+            null
+        }
     }
 
     private fun savePin(pin: String) {
@@ -105,7 +111,12 @@ class TofuTrustManager(
     private fun legacyPin(): String? {
         if (pinKey == LEGACY_PIN_KEY) return null
         val stored = plainPrefs.getString(LEGACY_PIN_KEY, null) ?: return null
-        return try { decrypt(stored) } catch (e: Exception) { null }
+        return try {
+            decrypt(stored)
+        } catch (e: Exception) {
+            logger.e("Failed to decrypt legacy TOFU pin — treating as unpinned", e, event = LogEvent.NETWORK_ERROR)
+            null
+        }
     }
 
     // ── X509TrustManager ─────────────────────────────────────────────

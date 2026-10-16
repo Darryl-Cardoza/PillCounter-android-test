@@ -52,11 +52,15 @@ import com.dispensesure.retail.core.health.logic.ExpiryWatcher
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.RuntimeUnit
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 import com.dispensesure.retail.feature.faceAuth.presentation.SessionLockOverlayScreen
 import com.dispensesure.retail.feature.settings.presentation.viewmodel.MainActivityViewModel
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.common.HelperFunctions.enableImmersiveFullscreen
 import com.dispensesure.retail.core.utils.common.HelperFunctions.resolveStartDestinationAndClearIfExpired
 import com.dispensesure.retail.core.utils.common.HelperFunctions.clearSessionIfNotRemembered
@@ -89,6 +93,8 @@ import javax.inject.Inject
  */
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+    private val logger = AppLogger.create<MainActivity>()
+
     private val settingsViewModel: MainActivityViewModel by viewModels()
 
     @Inject
@@ -211,15 +217,27 @@ class MainActivity : ComponentActivity() {
 //
 //        if (securityViolations.isEmpty()) {
             runtimeUnit.grantClearance()
-            runtimeUnit.activateIfNeeded()
+            try {
+                runtimeUnit.activateIfNeeded()
+            } catch (e: Exception) {
+                logger.e("runtimeUnit.activateIfNeeded() failed", e, event = LogEvent.SECURITY_CHECK_FAILED)
+            }
+            // After activation, so the queued-log flush can read the server key.
+            AppLogger.onSecurityCleared()
 //        } else {
 //            runtimeUnit.revokeClearance()
 //        }
 
         lifecycleScope.launch {
-            delay(1500)
-            fcmService.initFCM()
-            fcmService.subscribeToTopic("global_updates")
+            try {
+                delay(1500)
+                fcmService.initFCM()
+                fcmService.subscribeToTopic("global_updates")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("FCM init/subscribe failed", e, event = LogEvent.NETWORK_ERROR)
+            }
         }
 
 
@@ -529,6 +547,7 @@ class MainActivity : ComponentActivity() {
             preferenceHelper.clearTokens()
             preferenceHelper.setUserLoggedIn(false)
             sessionHealthController.markLoggedOut()
+            LoggerConfig.newSession()
             sessionLockController.unlock()
             if (::navController.isInitialized) {
                 navController.navigate(AUTH_GRAPH_ROUTE) {

@@ -4,6 +4,8 @@ import com.dispensesure.retail.core.auth.AuthEvent
 import com.dispensesure.retail.core.auth.AuthEventBus
 import com.dispensesure.retail.core.refreshToken.data.remote.IRefreshTokenAPI
 import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenRequest
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import kotlinx.coroutines.runBlocking
 import okhttp3.Authenticator
@@ -26,6 +28,8 @@ class TokenAuthenticator @Inject constructor(
     private val authEventBus: AuthEventBus
 ) : Authenticator {
 
+    private val logger = AppLogger.create<TokenAuthenticator>()
+
     /**
      * Called automatically by OkHttp when a request receives a `401 Unauthorized` response.
      *
@@ -40,7 +44,11 @@ class TokenAuthenticator @Inject constructor(
         // Avoid infinite retry loops — only retry once per failed chain.
         if (responseCount(response) >= 2) return null
 
-        val currentRefreshToken = prefs.getRefreshToken() ?: return null
+        val currentRefreshToken = prefs.getRefreshToken() ?: run {
+            // Expected before login (e.g. a wrong OTP gets a 401 on this shared client).
+            logger.w("No refresh token available to recover from 401", event = LogEvent.TOKEN_REFRESH_FAILED)
+            return null
+        }
 
         // Perform token refresh synchronously (blocking call). A refresh call that itself
         // returns HTTP 401 is the ONE condition that declares a session truly expired —
@@ -52,10 +60,18 @@ class TokenAuthenticator @Inject constructor(
                 refreshApi.refreshToken(RefreshTokenRequest(currentRefreshToken))
             } catch (e: HttpException) {
                 if (e.code() == 401) {
+                    logger.w("Token refresh got 401 — session expired, publishing SessionExpired")
                     authEventBus.tryPublish(AuthEvent.SessionExpired)
+                } else {
+                    logger.e("Token refresh failed with HTTP ${e.code()}", e, event = LogEvent.TOKEN_REFRESH_FAILED)
                 }
                 null
+            } catch (e: java.io.IOException) {
+                // Offline or flaky network: the session may still be valid once it recovers.
+                logger.w("Token refresh failed", e, event = LogEvent.TOKEN_REFRESH_FAILED)
+                null
             } catch (e: Exception) {
+                logger.e("Token refresh failed", e, event = LogEvent.TOKEN_REFRESH_FAILED)
                 null
             }
         } ?: return null

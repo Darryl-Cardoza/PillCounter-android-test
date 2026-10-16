@@ -3,16 +3,23 @@ package com.dispensesure.retail
 import android.app.Application
 import androidx.camera.lifecycle.ProcessCameraProvider
 import coil.Coil
+import com.dispensesure.retail.core.faceAuth.data.OperatorNameProvider
+import com.dispensesure.retail.core.refreshToken.data.TokenAuthenticator
+import com.dispensesure.retail.core.security.RuntimeUnit
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import coil.ImageLoader
 import com.dispensesure.retail.core.utils.coil.EncryptedImageFetcher
 import com.dispensesure.retail.core.utils.common.AppToast
 import com.dispensesure.retail.core.utils.common.SoundUtils
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.scanning.logic.PillDetectionModelLoader
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import org.opencv.android.OpenCVLoader
 import javax.inject.Inject
@@ -23,16 +30,45 @@ class PillCountingApplication : Application() {
     @Inject
     lateinit var modelLoader: PillDetectionModelLoader
 
+    @Inject
+    lateinit var tokenAuthenticator: TokenAuthenticator
+
+    @Inject
+    lateinit var runtimeUnit: RuntimeUnit
+
+    @Inject
+    lateinit var operatorNameProvider: OperatorNameProvider
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val logger = AppLogger("PillCountingApplication")
 
     override fun onCreate() {
         super.onCreate()
         AppToast.register(this)
+        // Runs right after super.onCreate(), where Hilt injects; anything logged during injection
+        // reaches Logcat only. Must run before any other logging in this method.
+        AppLogger.init(this)
+        AppLogger.setTokenAuthenticator(tokenAuthenticator)
+        AppLogger.setRuntimeUnit(runtimeUnit)
+        val previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, e ->
+            AppLogger.logFatal(e)
+            previousHandler?.uncaughtException(thread, e)
+        }
 //        FirebaseApp.initializeApp(this)
 
+        // Keeps LoggerConfig.operatorName current so every subsequent log entry can be
+        // attributed to whoever is actually operating the device (verified face user, else the
+        // logged-in account — see OperatorNameProvider). A failure here (Room error, etc.) is
+        // caught rather than crashing app start; the operator line just stays absent/stale.
+        applicationScope.launch {
+            operatorNameProvider.observe()
+                .catch { e -> logger.e("Operator name observation failed", e, event = LogEvent.USER_FETCH_FAILED) }
+                .collect { operatorName -> LoggerConfig.operatorName = operatorName.display() }
+        }
+
         if (!OpenCVLoader.initLocal()) {
-            logger.e("OpenCV initialization failed")
+            logger.e("OpenCV initialization failed", event = LogEvent.MODEL_LOAD_FAILED)
         } else {
             logger.i("OpenCV initialized successfully")
         }
@@ -50,8 +86,10 @@ class PillCountingApplication : Application() {
             try {
                 modelLoader.getOrLoadInterpreters()
                 logger.i("App start: both models pre-loaded successfully!")
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                logger.e("App start: model pre-load failed", e)
+                logger.e("App start: model pre-load failed", e, event = LogEvent.MODEL_LOAD_FAILED)
             }
         }
 

@@ -7,6 +7,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.net.Inet4Address
 import java.net.NetworkInterface
 
@@ -47,7 +48,7 @@ class NetworkIpMonitor(
      */
     private val callback = object : ConnectivityManager.NetworkCallback() {
 
-        override fun onAvailable(network: Network) {
+        override fun onAvailable(network: Network): Unit = logger.catching("onAvailable() failed", LogEvent.HL7_CONNECT_FAILED) {
             // registerNetworkCallback replays the already-connected network the moment it is
             // registered, and the framework repeats onAvailable across capability changes.
             // Reporting each one restarted the broadcast on top of the live registration.
@@ -61,7 +62,7 @@ class NetworkIpMonitor(
             checkIp()
         }
 
-        override fun onLost(network: Network) {
+        override fun onLost(network: Network): Unit = logger.catching("onLost() failed", LogEvent.HL7_CONNECT_FAILED) {
             if (currentNetwork != null && currentNetwork != network) {
                 logger.d("Lost a Wi-Fi network other than the tracked one — keeping the broadcast up")
                 return
@@ -75,7 +76,7 @@ class NetworkIpMonitor(
         override fun onCapabilitiesChanged(
             network: Network,
             networkCapabilities: NetworkCapabilities
-        ) {
+        ): Unit = logger.catching("onCapabilitiesChanged() failed", LogEvent.HL7_CONNECT_FAILED) {
             if (networkCapabilities.hasTransport(NetworkCapabilities.TRANSPORT_WIFI)) {
                 checkIp()
             }
@@ -100,8 +101,9 @@ class NetworkIpMonitor(
     fun stop() {
         try {
             connectivityManager.unregisterNetworkCallback(callback)
-        } catch (_: Exception) {
-            // Ignore
+        } catch (e: Exception) {
+            // Usually "callback was not registered" (stop called twice); not worth failing stop() over.
+            logger.w("stop() — unregisterNetworkCallback failed", e, LogEvent.HL7_CONNECT_FAILED)
         } finally {
             // Without this a stop/start cycle would treat the re-reported network as
             // "already tracked" and never announce Wi-Fi as available again.

@@ -277,6 +277,7 @@ class Hl7ServiceManagerTest {
         val eventHandler = mockk<Hl7EventHandler>(relaxed = true)
         val service = mockk<HL7Service>(relaxed = true)
         every { serviceHandler.getService() } returns service
+        every { service.clearPmsCertPin() } returns true
 
         manager.clearPmsCertPin(eventHandler)
 
@@ -285,13 +286,25 @@ class Hl7ServiceManagerTest {
     }
 
     @Test
-    fun `clearPmsCertPin clears mismatch even when service is null`() {
+    fun `clearPmsCertPin keeps mismatch when the service fails to clear the pin`() {
+        val eventHandler = mockk<Hl7EventHandler>(relaxed = true)
+        val service = mockk<HL7Service>(relaxed = true)
+        every { serviceHandler.getService() } returns service
+        every { service.clearPmsCertPin() } returns false
+
+        manager.clearPmsCertPin(eventHandler)
+
+        verify(exactly = 0) { eventHandler.clearCertMismatch() }
+    }
+
+    @Test
+    fun `clearPmsCertPin keeps mismatch when service is null`() {
         val eventHandler = mockk<Hl7EventHandler>(relaxed = true)
         every { serviceHandler.getService() } returns null
 
         manager.clearPmsCertPin(eventHandler)
 
-        verify(exactly = 1) { eventHandler.clearCertMismatch() }
+        verify(exactly = 0) { eventHandler.clearCertMismatch() }
     }
 
     // ──────────────────────────── updateConfigAndRebroadcast ────────────────────────────

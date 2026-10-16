@@ -21,8 +21,12 @@ import com.dispensesure.retail.core.hl7.mllp.server.Hl7FallbackAck
 import com.dispensesure.retail.core.hl7.mllp.server.MllpServer
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsSocketFactory
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.withoutMessage
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.settings.domain.model.Hl7ServiceConfig
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -70,7 +74,12 @@ class HL7Service : Service() {
     private var config: HL7Config = HL7Config()
 
     /** Coroutine scope bound to service lifecycle **/
-    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    // Logs a coroutine failure nothing else caught, instead of letting it crash the app.
+    private val serviceScope = CoroutineScope(
+        SupervisorJob() + Dispatchers.IO + CoroutineExceptionHandler { _, e ->
+            logger.e("Uncaught error in HL7 service coroutine", e.withoutMessage(), event = LogEvent.HL7_SERVICE_ERROR)
+        }
+    )
 
     /** Core components **/
     private lateinit var server: MllpServer
@@ -196,7 +205,7 @@ class HL7Service : Service() {
                 logger.w("onDestroy() — nsdHelper was never initialized; nothing to unregister here")
             }
         } catch (e: Exception) {
-            logger.e("onDestroy() — nsdHelper.shutdown() failed; NSD may stay advertised", e)
+            logger.e("onDestroy() — nsdHelper.shutdown() failed; NSD may stay advertised", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
         serviceScope.launch { cleanup() }
         super.onDestroy()
@@ -206,21 +215,23 @@ class HL7Service : Service() {
         staticPmsRetryJob?.cancel()
         peerWatchdogJob?.cancel()
         peerConnectJob?.cancel()
+        // Each step must run even if an earlier one fails, so none can be allowed to throw out of cleanup().
         try {
             server.stop()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("cleanup() — server.stop() failed; the MLLP port may stay bound", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
         try {
             clientManager.shutdown()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("cleanup() — clientManager.shutdown() failed", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
-        try {
-            networkIpMonitor.stop()
-        } catch (_: Exception) {
-        }
+        // stop() handles and logs its own failure.
+        networkIpMonitor.stop()
         try {
             imageServer.stop()
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("cleanup() — imageServer.stop() failed", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
     }
 
@@ -273,7 +284,7 @@ class HL7Service : Service() {
             prefs.saveNsdBroadcastType(config.nsdBroadcastType)
             prefs.saveNsdDiscoveryType(config.nsdDiscoveryType)
         } catch (e: Exception) {
-            logger.e("Could not persist NSD identity — a restart will fall back to defaults", e)
+            logger.e("Could not persist NSD identity — a restart will fall back to defaults", e, event = LogEvent.HL7_CONNECT_FAILED)
         }
     }
 
@@ -305,7 +316,7 @@ class HL7Service : Service() {
             // A SecurePreferences/keystore failure here must not crash-loop the service on
             // every START_STICKY restart — fall back to an unconfigured default config
             // instead; the next normal app-driven start still rebuilds it properly.
-            logger.e("loadConfigFromPreferences() failed — falling back to default config", e)
+            logger.e("loadConfigFromPreferences() failed — falling back to default config", e, event = LogEvent.HL7_CONNECT_FAILED)
             HL7Config()
         }
     }
@@ -361,7 +372,7 @@ class HL7Service : Service() {
             },
 
             onCertMismatch = {
-                logger.e("PMS certificate mismatch — notifying listener")
+                logger.w("PMS certificate mismatch — notifying listener", event = LogEvent.HL7_CONNECT_FAILED)
                 listener?.onPmsCertMismatch()
             },
         )
@@ -412,7 +423,7 @@ class HL7Service : Service() {
                 // or TLS keystore/context creation failing) previously left the server
                 // looking "started" in the logs while never actually listening — so PMS
                 // could never connect in to send HL7 messages. Surface it loudly instead.
-                logger.e("MLLP server failed to start on port ${config.serverPort} — PMS cannot send HL7 messages until this is fixed", e)
+                logger.e("MLLP server failed to start on port ${config.serverPort} — PMS cannot send HL7 messages until this is fixed", e, event = LogEvent.HL7_CONNECT_FAILED)
                 serverStarted = false
             }
         }
@@ -514,7 +525,7 @@ class HL7Service : Service() {
             try {
                 clientManager.dropForPeerChange()
             } catch (e: Exception) {
-                logger.e("rediscoverPms() — failed to close the previous connection", e)
+                logger.e("rediscoverPms() — failed to close the previous connection", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
             discoverPmsAndConnect()
         }
@@ -523,11 +534,23 @@ class HL7Service : Service() {
     /** Raw MLLP connection state — flips instantly, unlike [Hl7EventHandler.connectionState] which waits for [MllpConnectionManager]'s settle delay. */
     fun isPmsConnected(): Boolean = clientManager.isConnected()
 
-    fun clearPmsCertPin() {
+    /** @return false when the pin could not be cleared, so the caller keeps the mismatch state. */
+    fun clearPmsCertPin(): Boolean {
         logger.i("clearPmsCertPin() — clearing stored TOFU pin and resuming discovery")
-        tlsFactory.clearServerPin()
-        clientManager.unblockCertMismatch()
-        discoverPmsAndConnect()
+        try {
+            tlsFactory.clearServerPin()
+            clientManager.unblockCertMismatch()
+        } catch (e: Exception) {
+            logger.e("clearPmsCertPin() failed", e, event = LogEvent.HL7_CONNECT_FAILED)
+            return false
+        }
+        // The pin is cleared; a discovery failure here doesn't undo that.
+        try {
+            discoverPmsAndConnect()
+        } catch (e: Exception) {
+            logger.e("clearPmsCertPin() — rediscovery failed", e, event = LogEvent.HL7_CONNECT_FAILED)
+        }
+        return true
     }
 
     fun discoverPmsAndConnect() {
@@ -613,8 +636,10 @@ class HL7Service : Service() {
         peerConnectJob = serviceScope.launch {
             try {
                 clientManager.connect(host, port)
+            } catch (e: CancellationException) {
+                throw e // failover/cleanup cancels this job; not a connect failure
             } catch (e: Exception) {
-                logger.e("Connect failed for $peer", e)
+                logger.e("Connect failed for $peer", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
         startPeerWatchdog(peer)
@@ -665,7 +690,7 @@ class HL7Service : Service() {
             try {
                 clientManager.dropForPeerChange()
             } catch (e: Exception) {
-                logger.e("Failover — failed to close the previous connection", e)
+                logger.e("Failover — failed to close the previous connection", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
             connectToPeer(next, discoveredPmsPeers[next] ?: "PMS")
         }
@@ -696,7 +721,7 @@ class HL7Service : Service() {
      * instead of giving up permanently — mirrors NSD discovery, which keeps listening
      * indefinitely rather than failing once and stopping.
      */
-    private fun connectToStaticPms() {
+    private fun connectToStaticPms(): Unit = logger.catching("connectToStaticPms() failed", LogEvent.HL7_CONNECT_FAILED) {
         // Re-read straight from preferences, not config.pmsIp/pmsPort — auth/me can save the
         // real IP to preferences well after this service (and its in-memory config) started,
         // and nothing else pushes that update into config. Without re-reading here, a retry
@@ -707,7 +732,8 @@ class HL7Service : Service() {
         val port = preferenceHelper.getPmsPort()
 
         if (host.isNullOrBlank() || port <= 0) {
-            logger.e("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry")
+            // Expected right after start, before settings sync saves the PMS address.
+            logger.w("Static PMS connection enabled but PMS IP/port not configured (host=$host, port=$port) — will retry", event = LogEvent.HL7_CONNECT_FAILED)
             scheduleStaticPmsRetry()
             return
         }
@@ -730,8 +756,10 @@ class HL7Service : Service() {
         serviceScope.launch {
             try {
                 clientManager.connect(host, port)
+            } catch (e: CancellationException) {
+                throw e // failover/cleanup cancels this job; not a connect failure
             } catch (e: Exception) {
-                logger.e("Static PMS connect failed", e)
+                logger.e("Static PMS connect failed", e, event = LogEvent.HL7_CONNECT_FAILED)
             }
         }
     }
@@ -777,7 +805,7 @@ class HL7Service : Service() {
 
             if (message == null) {
                 val errors = (parseResult as? org.rite.hl7.parser.HL7ParseResult.Failure)?.errors
-                logger.e("HL7 parse failed, no partial message: $errors")
+                logger.e("HL7 parse failed, no partial message (${errors?.size ?: 0} error(s))", event = LogEvent.HL7_RECEIVE_FAILED)
                 return Hl7FallbackAck.build(raw, "Parse Failed")
             }
 
@@ -797,7 +825,8 @@ class HL7Service : Service() {
 
         } catch (e: Exception) {
             listener?.onError("HL7_PARSE", e)
-            logger.e("HL7 processing failed", e)
+            // No e.message: it can echo HL7 field values (PHI).
+            logger.e("HL7 processing failed", e.withoutMessage(), event = LogEvent.HL7_RECEIVE_FAILED)
             Hl7FallbackAck.build(raw, e.message ?: "Unknown Error")
         }
     }
@@ -852,7 +881,7 @@ class HL7Service : Service() {
             getSystemService(NotificationManager::class.java)
                 .notify(NOTIFICATION_ID, buildNotification(contentText))
         } catch (e: Exception) {
-            logger.e("updateNotification() failed — ignoring, does not affect PMS connection", e)
+            logger.e("updateNotification() failed — ignoring, does not affect PMS connection", e, event = LogEvent.HL7_SERVICE_ERROR)
         }
     }
 

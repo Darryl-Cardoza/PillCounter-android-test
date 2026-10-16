@@ -5,6 +5,7 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -147,6 +148,34 @@ class SecurePreferencesTest {
         prefs.putString("key", null)
         assertFalse(prefs.contains("key"))
         assertNull(prefs.getString("key"))
+    }
+
+    // ─────────────────────────── ENCRYPT-FAILURE ON WRITE ───────────────────────────
+    // AndroidKeyStore isn't available under Robolectric (see class doc), so encrypt() genuinely
+    // throws here. put* must propagate that (KEK rotation and login rely on it) and persist nothing.
+
+    @Test
+    fun `putString with non-null value throws and persists nothing when encryption is unavailable`() {
+        assertThrows(Exception::class.java) { prefs.putString("key", "value") }
+        assertFalse("value must not be persisted when encryption failed", prefs.contains("key"))
+    }
+
+    @Test
+    fun `putBoolean throws and persists nothing when encryption is unavailable`() {
+        assertThrows(Exception::class.java) { prefs.putBoolean("flag", true) }
+        assertFalse("value must not be persisted when encryption failed", prefs.contains("flag"))
+    }
+
+    @Test
+    fun `putInt throws and persists nothing when encryption is unavailable`() {
+        assertThrows(Exception::class.java) { prefs.putInt("count", 5) }
+        assertFalse("value must not be persisted when encryption failed", prefs.contains("count"))
+    }
+
+    @Test
+    fun `putLong throws and persists nothing when encryption is unavailable`() {
+        assertThrows(Exception::class.java) { prefs.putLong("id", 5L) }
+        assertFalse("value must not be persisted when encryption failed", prefs.contains("id"))
     }
 
     // ─────────────────────────── CONTAINS / REMOVE / CLEAR ───────────────────────────

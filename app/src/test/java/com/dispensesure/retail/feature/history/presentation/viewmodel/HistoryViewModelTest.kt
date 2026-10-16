@@ -71,6 +71,23 @@ class HistoryViewModelTest {
 
     // ─────────────────────────── Flow emission ───────────────────────────
 
+    @Test
+    fun `a failed query does not stop later date changes from loading`() = runTest {
+        val txns = listOf(txnDto(id = 2L, drugName = "Ibuprofen"))
+        every { repository.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns
+            kotlinx.coroutines.flow.flow { throw IllegalStateException("db down") }
+
+        viewModel.counts.test {
+            awaitItem()
+            advanceUntilIdle()
+            every { repository.getTransactionsForDateRange(any(), any(), any(), any(), any()) } returns flowOf(txns)
+            viewModel.setDateRange(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 1, 2))
+            advanceUntilIdle()
+            assertEquals(txns, expectMostRecentItem())
+            cancelAndIgnoreRemainingEvents()
+        }
+    }
+
     // HIST_VM_001
     @Test
     fun `counts emits list returned by repository`() = runTest {

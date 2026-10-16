@@ -6,6 +6,8 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.nio.ByteBuffer
 import java.security.KeyStore
 import javax.crypto.Cipher
@@ -34,14 +36,21 @@ import javax.crypto.spec.GCMParameterSpec
  */
 class ModelKeyUnit(private val context: Context) {
 
+    private val logger = AppLogger.create<ModelKeyUnit>()
+
     // MARK: - PUBLIC INTERFACE
 
     fun activateIfNeeded() {
-        if (existsInStore()) return
-        val raw = compose()
-        val refined = refine(raw)
-        persist(seal(refined))
-        destroy(refined)
+        try {
+            if (existsInStore()) return
+            val raw = compose()
+            val refined = refine(raw)
+            persist(seal(refined))
+            destroy(refined)
+        } catch (e: Exception) {
+            logger.w("ModelKeyUnit: activateIfNeeded() failed", e, event = LogEvent.MODEL_LOAD_FAILED)
+            throw e
+        }
     }
 
     /**
@@ -50,9 +59,14 @@ class ModelKeyUnit(private val context: Context) {
      */
     @Throws(Exception::class)
     fun material(): ByteArray {
-        val sealed = retrieve()
-        val hex = open(sealed)
-        return hexToBytes(hex)
+        try {
+            val sealed = retrieve()
+            val hex = open(sealed)
+            return hexToBytes(hex)
+        } catch (e: Exception) {
+            logger.w("ModelKeyUnit: material() retrieval failed", e, event = LogEvent.MODEL_LOAD_FAILED)
+            throw e
+        }
     }
 
     // MARK: - ASSEMBLY

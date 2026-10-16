@@ -5,6 +5,7 @@ import com.dispensesure.retail.core.refreshToken.data.remote.IRefreshTokenAPI
 import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenRequest
 import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenResponse
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.util.shippedErrors
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -144,5 +145,15 @@ class TokenAuthenticatorTest {
         assertNull(result)
         verify(exactly = 0) { prefs.getRefreshToken() }
         verify(exactly = 0) { prefs.saveTokens(any(), any()) }
+    }
+
+    @Test
+    fun `a network failure during refresh is not sent as an ERROR`() {
+        every { prefs.getRefreshToken() } returns "refresh"
+        coEvery { refreshApi.refreshToken(any()) } throws java.net.SocketTimeoutException("timeout")
+
+        val errors = shippedErrors { authenticator.authenticate(null, buildResponse()) }
+
+        assertEquals(emptyList<String>(), errors)
     }
 }

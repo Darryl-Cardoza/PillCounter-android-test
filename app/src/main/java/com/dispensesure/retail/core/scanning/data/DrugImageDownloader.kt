@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.scanning.data
 
 import android.content.Context
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -67,7 +68,7 @@ class DrugImageDownloader @Inject constructor(
                 val response = okHttpClient.newCall(request).execute()
 
                 if (!response.isSuccessful) {
-                    logger.w("DrugImage download failed: HTTP ${response.code} for $url")
+                    logger.w("DrugImage download failed: HTTP ${response.code} for ${url.substringBefore('?')}")
                     return@withContext null
                 }
 
@@ -76,14 +77,14 @@ class DrugImageDownloader @Inject constructor(
                         input.copyTo(output)
                     }
                 } ?: run {
-                    logger.w("DrugImage response body was null for $url")
+                    logger.w("DrugImage response body was null for ${url.substringBefore('?')}")
                     return@withContext null
                 }
 
                 logger.i("DrugImage saved: ${targetFile.absolutePath}")
                 targetFile.absolutePath
             } catch (e: Exception) {
-                logger.e("DrugImage download exception for url=$url drugName=$drugName", e)
+                logger.e("DrugImage download exception for url=${url.substringBefore('?')} drugName=$drugName", e, event = LogEvent.DRUG_IMAGE_FAILED)
                 null
             }
         }

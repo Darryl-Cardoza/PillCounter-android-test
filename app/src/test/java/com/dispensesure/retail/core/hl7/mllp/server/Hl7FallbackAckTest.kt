@@ -1,5 +1,12 @@
 package com.dispensesure.retail.core.hl7.mllp.server
 
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogDestination
+import com.dispensesure.retail.core.utils.logger.LogEntry
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LogLevel
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -72,6 +79,30 @@ class Hl7FallbackAckTest {
 
         assertTrue(ack.startsWith("MSH|"))
         assertTrue(ack.contains("MSA|AR"))
+    }
+
+    @After
+    fun tearDown() {
+        LoggerConfig.minimumLogLevel = LogLevel.ERROR
+        AppLogger.setDestinationForTest(null)
+    }
+
+    @Test
+    fun `an unparseable MSH logs one WARN without the exception message or raw input`() {
+        LoggerConfig.minimumLogLevel = LogLevel.WARN
+        val errors = mutableListOf<LogEntry>()
+        AppLogger.setDestinationForTest(object : LogDestination {
+            override fun write(entry: LogEntry) { errors += entry }
+        })
+
+        Hl7FallbackAck.build("PID|secret-field-value", null)
+
+        val entry = errors.single()
+        assertEquals(LogEvent.HL7_RECEIVE_FAILED, entry.event)
+        assertFalse(entry.message.contains("secret-field-value"))
+        assertEquals(LogLevel.WARN, entry.level)
+        // Type and frames kept, original message dropped.
+        assertEquals("java.util.NoSuchElementException", entry.throwable?.message)
     }
 
     @Test

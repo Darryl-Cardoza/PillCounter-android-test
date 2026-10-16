@@ -15,6 +15,8 @@ import com.dispensesure.retail.feature.login.domain.model.LoginUiState
 import com.dispensesure.retail.feature.login.domain.model.LogoutResponse
 import com.dispensesure.retail.feature.login.domain.model.LogoutUiState
 import com.dispensesure.retail.feature.login.presentation.viewmodel.LoginViewModel
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -185,6 +187,7 @@ class LoginViewModelTest {
     fun `login success emits Loading then Success and starts service`() = runTest {
         every { validator.validateEmail(email) } returns ValidationResult(true)
         coEvery { repository.login(email) } returns Result.success(LoginResponse())
+        val sessionBefore = LoggerConfig.sessionId
 
         viewModel.uiState.test {
             assertEquals(LoginUiState.Idle, awaitItem())
@@ -196,6 +199,8 @@ class LoginViewModelTest {
         advanceUntilIdle()
 
         verify(exactly = 1) { serviceManager.startService() }
+        // Requesting the OTP is not a login yet; the session starts after verify.
+        assertEquals(sessionBefore, LoggerConfig.sessionId)
     }
 
     // ───────────────── login failure: getFriendlyErrorMessage branches ─────────────────
@@ -373,6 +378,20 @@ class LoginViewModelTest {
         advanceUntilIdle()
 
         verify(exactly = 1) { preferenceHelper.clearHl7Config() }
+    }
+
+    @Test
+    fun `logout flushes queued logs and starts a new log session`() = runTest {
+        mockkObject(AppLogger)
+        coEvery { AppLogger.flushBeforeLogout() } returns Unit
+        coEvery { repository.logout("refresh") } returns Result.success(LogoutResponse())
+        val before = LoggerConfig.sessionId
+
+        viewModel.logout("refresh")
+        advanceUntilIdle()
+
+        coVerify(exactly = 1) { AppLogger.flushBeforeLogout() }
+        assertTrue(LoggerConfig.sessionId != before)
     }
 
     @Test

@@ -2,6 +2,8 @@ package com.dispensesure.retail.core.hl7.mllp.server
 
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsKeystoreUtil
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.withoutMessage
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -90,7 +92,7 @@ class MllpServer(
                 }
             }catch (e: Exception) {
                 if (running.get()) {
-                    logger.e("acceptLoop() error", e)
+                    logger.eThrottled("acceptLoop() error", e, event = LogEvent.HL7_CONNECT_FAILED)
                 }
             }
         }
@@ -112,7 +114,7 @@ class MllpServer(
                         onHl7Message(msg)
                     } catch (e: Exception) {
                         // Last-resort guard — build a minimal AR ACK so PMS doesn't time out.
-                        logger.e("onHl7Message() threw unexpectedly — sending AR fallback ACK", e)
+                        logger.e("onHl7Message() threw while handling received message — sending an AR ACK", e.withoutMessage(), event = LogEvent.HL7_RECEIVE_FAILED)
                         val fallbackAck = Hl7FallbackAck.build(msg, e.message ?: "Unknown Error")
                         runCatching { output.write(Mllp.wrap(fallbackAck)); output.flush() }
                         continue
@@ -126,7 +128,10 @@ class MllpServer(
         } catch (e: EOFException) {
             logger.d("Client closed connection: ${socket.inetAddress?.hostAddress}")
         } catch (e: Exception) {
-            logger.e("handleClient() error for ${socket.inetAddress?.hostAddress}", e)
+            val message = "handleClient() error for ${socket.inetAddress?.hostAddress}"
+            // A reset, a TLS handshake failure or stop() closing the socket is the peer or shutdown, not a fault.
+            if (e is java.io.IOException) logger.w(message, e, event = LogEvent.HL7_RECEIVE_FAILED)
+            else logger.e(message, e, event = LogEvent.HL7_RECEIVE_FAILED)
         } finally {
             socket.close()
         }

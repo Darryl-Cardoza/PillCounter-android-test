@@ -3,6 +3,7 @@ package com.dispensesure.retail.feature.history.presentation.compose
 import android.content.Context
 import android.graphics.Canvas
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
@@ -97,7 +98,7 @@ class HistoryPdfExporter(private val context: Context) {
                 // If delete fails, it usually means the file is OPEN in another app.
                 // We will try to overwrite it anyway using the stream below,
                 // but sometimes the OS locks it.
-                logger.e("Could not delete existing file. It might be open.")
+                logger.e("Could not delete existing file. It might be open.", event = LogEvent.FILE_WRITE_ERROR)
             }
         }
 
@@ -209,10 +210,11 @@ class HistoryPdfExporter(private val context: Context) {
             return file
 
         } catch (e: Exception) {
-            e.printStackTrace()
+            logger.e("PDF export failed", e, event = LogEvent.FILE_WRITE_ERROR)
             try {
                 pdfDocument.close()
-            } catch (ex: Exception) { /* ignore */
+            } catch (ex: Exception) {
+                logger.w("pdfDocument.close() cleanup after export failure also failed: ${ex.message}")
             }
             return null
         } finally {

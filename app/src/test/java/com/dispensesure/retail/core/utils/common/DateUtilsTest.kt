@@ -121,4 +121,11 @@ class DateUtilsTest {
         // controller's prior behavior so the migration is drift-free.
         assertEquals(1_736_944_245_000L, DateUtils.parseUtcIsoToEpochMs("2025-01-15T12:30:45+05:30"))
     }
+
+    @Test
+    fun `an unparseable label date is not sent as an ERROR`() {
+        val errors = com.dispensesure.retail.util.shippedErrors { DateUtils.parseBarcodeDate("261100") }
+
+        assertEquals(emptyList<String>(), errors)
+    }
 }

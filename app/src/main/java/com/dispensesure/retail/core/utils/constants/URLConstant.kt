@@ -55,6 +55,9 @@ object URLConstant {
     /** API endpoint for fetching the reference list of countries and their states/provinces. */
     const val GET_COUNTRIES = "/reference/countries"
 
+    /** API endpoint for shipping a device log entry to the backend's log/Datadog ingest pipeline. */
+    const val MOBILE_LOGS = "/mobile/logs"
+
     /** Common HTTP Content-Type header value for all JSON-based API calls. */
     const val CONTENT_TYPE = "application/json"
 }

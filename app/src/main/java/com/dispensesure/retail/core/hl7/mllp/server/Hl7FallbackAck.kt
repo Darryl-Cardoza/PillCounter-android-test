@@ -1,7 +1,13 @@
 package com.dispensesure.retail.core.hl7.mllp.server
 
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.withoutMessage
+
 // Shared by HL7Service and MllpServer so every fallback ACK echoes the inbound MSH the same way.
 object Hl7FallbackAck {
+
+    private val logger = AppLogger("Hl7FallbackAck")
 
     /**
      * Builds a minimal ACK from raw MSH fields when the full parse fails, so the sender
@@ -26,7 +32,9 @@ object Hl7FallbackAck {
             val textMessage = if (cleanError.isNotEmpty()) "|$cleanError" else ""
 
             "MSH|^~\\&|$recvApp|$recvFac|$sendingApp|$sendingFac|$ts||ACK^R01|ACK$controlId|$procId|$version\rMSA|$ackCode|$controlId$textMessage"
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            // WARN: the caller already logged the ERROR for this frame. No message: it can echo HL7 field values (PHI).
+            logger.w("Inbound MSH could not be parsed, sending minimal fallback ACK", e.withoutMessage(), event = LogEvent.HL7_RECEIVE_FAILED)
             val ackCode = if (errorMsg != null) "AR" else "AA"
             val cleanError = errorMsg?.replace("|", " ")?.replace("\r", " ")?.replace("\n", " ") ?: ""
             val textMessage = if (cleanError.isNotEmpty()) "|$cleanError" else ""

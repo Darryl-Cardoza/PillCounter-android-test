@@ -79,6 +79,8 @@ data class DispenseFlowUiState(
     // Fired when a scanned RX label's most recent transaction is already COMPLETED /
     // FORCE_COMPLETED — blocks re-dispensing the same fill instead of creating a duplicate.
     val rxAlreadyCompletedToastTick: Int = 0,
+    // Fired when an action fails unexpectedly, so the user isn't left with no feedback.
+    val errorToastTick: Int = 0,
 
     val isLoading: Boolean = false,
     val error: String? = null,

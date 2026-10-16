@@ -23,6 +23,7 @@ import com.dispensesure.retail.feature.settings.domain.model.SettingsDataDto
 import com.dispensesure.retail.feature.settings.domain.model.ThemeColors
 import com.dispensesure.retail.core.models.ScheduleCode
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
@@ -37,6 +38,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.callbackFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.Calendar
@@ -313,7 +315,7 @@ class MainActivityViewModel @Inject constructor(
                 // in-flight/throttle guard. Firing again here would just get swallowed by the
                 // 5s throttle but still adds noise.
             } catch (e: Exception) {
-                logger.e("Failed to fetch settings. Keeping cached/fallback values.", e)
+                logger.e("Failed to fetch settings. Keeping cached/fallback values.", e, event = LogEvent.SETTINGS_FETCH_FAILED)
                 _uiState.update { it.copy(errorMessage = e.message) }
             } finally {
                 logger.d("Settings fetch process finished.")
@@ -395,7 +397,8 @@ class MainActivityViewModel @Inject constructor(
         return try {
             val current = getCurrentAppVersion()
             compareVersions(remoteVersion, current) > 0
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.w("isUpdateRequired() version comparison failed (remoteVersion=$remoteVersion)", e, event = LogEvent.SETTINGS_APPLY_FAILED)
             false
         }
     }
@@ -405,7 +408,8 @@ class MainActivityViewModel @Inject constructor(
         return try {
             val ctx = preferenceHelper.getContext()
             ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "0.0.0"
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.e("getCurrentAppVersion() failed — falling back to 0.0.0", e, event = LogEvent.SETTINGS_APPLY_FAILED)
             "0.0.0"
         }
     }
@@ -479,7 +483,7 @@ class MainActivityViewModel @Inject constructor(
             }
 
         } catch (e: Exception) {
-            logger.e("Error deleting old transactions", e)
+            logger.e("Error deleting old transactions", e, event = LogEvent.TRANSACTION_PURGE_FAILED)
         }
     }
 
@@ -688,10 +692,16 @@ class MainActivityViewModel @Inject constructor(
 
     fun deleteAllTransaction() {
         viewModelScope.launch {
-            txnDao.deleteAllTransactions()
-            bottleInfoDao.deleteAll()
-            stockTxnDao.deleteAll()
-            batchDao.deleteAll()
+            try {
+                txnDao.deleteAllTransactions()
+                bottleInfoDao.deleteAll()
+                stockTxnDao.deleteAll()
+                batchDao.deleteAll()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to delete all transaction data", e, event = LogEvent.TRANSACTION_PURGE_FAILED)
+            }
         }
     }
 

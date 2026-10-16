@@ -24,6 +24,7 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.utils.common.BarcodeDecoder
 import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository
@@ -210,28 +211,35 @@ class InventoryScanViewModel @Inject constructor(
 
     init {
         viewModelScope.launch {
-            if (argBatchId != 0L) {
-                resolvedBatchId.value = argBatchId
-                val batch = batchDao.getById(argBatchId)
-                _bucketId.value = batch?.bucketId
-                // PMS-requested inventory: lock scanning to the requested NDCs.
-                // The batch was pre-populated with a txn per requested drug, so
-                // those NDCs are the allowed set. Manually started batches
-                // (requestIdFromPMS == null) stay unrestricted.
-                if (!batch?.requestIdFromPMS.isNullOrBlank()) {
-                    // Source the allowlist from the stock-txn headers, NOT bottle_info: a
-                    // freshly received PMS batch has one header per requested drug but no
-                    // bottle lines yet, so reading bottle_info would yield an empty set and
-                    // reject every scan — including the requested NDCs.
-                    expectedNdcs = stockTxnDao.getNdcsForBatch(argBatchId)
-                        .filter { it.isNotBlank() }
-                        .toSet()
-                    logger.i("INV_SCAN PMS batch=$argBatchId expectedNdcs=$expectedNdcs")
+            try {
+                if (argBatchId != 0L) {
+                    resolvedBatchId.value = argBatchId
+                    val batch = batchDao.getById(argBatchId)
+                    _bucketId.value = batch?.bucketId
+                    // PMS-requested inventory: lock scanning to the requested NDCs.
+                    // The batch was pre-populated with a txn per requested drug, so
+                    // those NDCs are the allowed set. Manually started batches
+                    // (requestIdFromPMS == null) stay unrestricted.
+                    if (!batch?.requestIdFromPMS.isNullOrBlank()) {
+                        // Source the allowlist from the stock-txn headers, NOT bottle_info: a
+                        // freshly received PMS batch has one header per requested drug but no
+                        // bottle lines yet, so reading bottle_info would yield an empty set and
+                        // reject every scan — including the requested NDCs.
+                        expectedNdcs = stockTxnDao.getNdcsForBatch(argBatchId)
+                            .filter { it.isNotBlank() }
+                            .toSet()
+                        logger.i("INV_SCAN PMS batch=$argBatchId expectedNdcs=$expectedNdcs")
+                    }
+                } else {
+                    // No batch yet — the user selected a bucket on the dashboard but the
+                    // batch row will be created on the first successful NDC scan.
+                    _bucketId.value = argBucketId
                 }
-            } else {
-                // No batch yet — the user selected a bucket on the dashboard but the
-                // batch row will be created on the first successful NDC scan.
-                _bucketId.value = argBucketId
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("INV_SCAN init failed for batchId=$argBatchId", e, event = LogEvent.INVENTORY_SCAN_FAILED)
+                _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
             }
         }
     }
@@ -253,7 +261,7 @@ class InventoryScanViewModel @Inject constructor(
             resolvedBatchId.value = newId
             newId
         } catch (e: Exception) {
-            logger.e("ensureBatchCreated failed", e)
+            logger.e("ensureBatchCreated failed", e, event = LogEvent.BATCH_CREATE_FAILED)
             0L
         }
     }
@@ -278,18 +286,24 @@ class InventoryScanViewModel @Inject constructor(
         if (batchId == 0L) return
         if (resolvedBatchId.value != 0L) return
         viewModelScope.launch {
-            resolvedBatchId.value = batchId
-            val batch = batchDao.getById(batchId)
-            // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
-            // is already authoritative (set from argBucketId at init). Reading it back
-            // from a lazily-created batch would clobber the selection with a stale/null
-            // value if the commit hadn't populated bucketId at insert time.
-            if (!batch?.requestIdFromPMS.isNullOrBlank()) {
-                expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
-                    .filter { it.isNotBlank() }
-                    .toSet()
+            try {
+                resolvedBatchId.value = batchId
+                val batch = batchDao.getById(batchId)
+                // Do NOT overwrite _bucketId from the batch here — the user's chosen bucket
+                // is already authoritative (set from argBucketId at init). Reading it back
+                // from a lazily-created batch would clobber the selection with a stale/null
+                // value if the commit hadn't populated bucketId at insert time.
+                if (!batch?.requestIdFromPMS.isNullOrBlank()) {
+                    expectedNdcs = stockTxnDao.getNdcsForBatch(batchId)
+                        .filter { it.isNotBlank() }
+                        .toSet()
+                }
+                logger.i("INV_SCAN adopted lazily-created batchId=$batchId bucketId=${batch?.bucketId}")
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("INV_SCAN adoptStockCountBatchId failed for batchId=$batchId", e, event = LogEvent.INVENTORY_SCAN_FAILED)
             }
-            logger.i("INV_SCAN adopted lazily-created batchId=$batchId bucketId=${batch?.bucketId}")
         }
     }
 
@@ -375,7 +389,7 @@ class InventoryScanViewModel @Inject constructor(
                             GetNdcRequestModel(target_drug = "", scanned_drug = scanKey)
                         )
                     } catch (e: Exception) {
-                        logger.e("server drug lookup failed for scanKey=$scanKey", e)
+                        logger.e("server drug lookup failed for scanKey=$scanKey", e, event = LogEvent.DRUG_LOOKUP_FAILED)
                         null
                     }
                     logger.d("INV_SCAN server lookup scanKey=$scanKey → drugInfo=${drugInfo?.ndc} (${drugInfo?.genericName}) hazardous=${drugInfo?.isHazardous}")
@@ -505,7 +519,7 @@ class InventoryScanViewModel @Inject constructor(
                 // batch, UPDATEs on subsequent rescans (same-NDC +1 path).
                 persistActive(newActive)
             } catch (e: Exception) {
-                logger.e("INV_SCAN onBarcodeDetected failed", e)
+                logger.e("INV_SCAN onBarcodeDetected failed", e, event = LogEvent.INVENTORY_SCAN_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
                 _scannerPaused.value = false
             }
@@ -630,7 +644,7 @@ class InventoryScanViewModel @Inject constructor(
                 _activeNdc.value = active
                 lastSameNdcIncrementAtMs = System.currentTimeMillis()
             } catch (e: Exception) {
-                logger.e("INV_SCAN onRecentRowTapped failed", e)
+                logger.e("INV_SCAN onRecentRowTapped failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
             }
         }
     }
@@ -726,7 +740,7 @@ class InventoryScanViewModel @Inject constructor(
                 stockTxnDao.updateBatchUserName(batchId, operatorNameProvider().display())
             }
         } catch (e: Exception) {
-            logger.e("INV_SCAN persistActive FAILED", e)
+            logger.e("INV_SCAN persistActive FAILED", e, event = LogEvent.INVENTORY_COUNT_FAILED)
             _errorMessage.value = LocalizedError(R.string.batch_stock_count_save_failed)
         }
     }
@@ -789,7 +803,7 @@ class InventoryScanViewModel @Inject constructor(
                     openPills = open,
                 )
             } catch (e: Exception) {
-                logger.e("INV_SCAN openEditDetails failed", e)
+                logger.e("INV_SCAN openEditDetails failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
             }
         }
@@ -853,7 +867,7 @@ class InventoryScanViewModel @Inject constructor(
                 val open = openPillsTotal(batchId, active.ndc)
                 _activeNdc.update { it?.copy(openPills = open) }
             } catch (e: Exception) {
-                logger.e("INV_SCAN refreshActiveOpenPills failed", e)
+                logger.e("INV_SCAN refreshActiveOpenPills failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
             }
         }
     }
@@ -915,7 +929,7 @@ class InventoryScanViewModel @Inject constructor(
                 _activeNdc.value = buildActiveTotals(batchId, active.ndc)
                     ?.copy(serialNo = active.serialNo)
             } catch (e: Exception) {
-                logger.e("INV_SCAN saveEditDetails failed", e)
+                logger.e("INV_SCAN saveEditDetails failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_save_failed)
             } finally {
                 _editDetails.value = null
@@ -975,7 +989,7 @@ class InventoryScanViewModel @Inject constructor(
                 logger.d("INV_SCAN onScanPillsForActive active=${active?.ndc} batchId=$batchId allowedNdcs=$allowedNdcs")
                 onReady(batchId, allowedNdcs)
             } catch (e: Exception) {
-                logger.e("INV_SCAN onScanPillsForActive failed", e)
+                logger.e("INV_SCAN onScanPillsForActive failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
                 _errorMessage.value = LocalizedError(R.string.batch_stock_count_scan_failed)
             }
         }
@@ -1012,7 +1026,7 @@ class InventoryScanViewModel @Inject constructor(
                     logger.d("INV_SCAN confirmEndCount: no committed NDC — nothing to persist")
                 }
             } catch (e: Exception) {
-                logger.e("confirmEndCount failed", e)
+                logger.e("confirmEndCount failed", e, event = LogEvent.INVENTORY_COUNT_FAILED)
             } finally {
                 _showEndCountDialog.value = false
                 _batchEnded.value = true

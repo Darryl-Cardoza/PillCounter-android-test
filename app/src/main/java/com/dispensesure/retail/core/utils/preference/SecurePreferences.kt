@@ -7,6 +7,8 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import androidx.core.content.edit
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.withoutMessage
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -92,6 +94,7 @@ class SecurePreferences(context: Context,
         if (value == null) {
             prefs.edit(commit) { remove(key) }
         } else {
+            // Throws on encrypt failure: callers (e.g. KEK rotation) rely on it to abort.
             prefs.edit(commit) { putString(key, encrypt(value)) }
         }
     }
@@ -101,7 +104,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored)
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e)
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -115,7 +118,7 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toBoolean()
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e)
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e, event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -129,7 +132,8 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toInt()
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e)
+            // A NumberFormatException message would echo the stored value.
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e.withoutMessage(), event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }
@@ -143,7 +147,8 @@ class SecurePreferences(context: Context,
         return try {
             decrypt(stored).toLong()
         } catch (e: Exception) {
-            logger.e("Failed to decrypt pref '$key', returning default", e)
+            // A NumberFormatException message would echo the stored value.
+            logger.eThrottled("Failed to decrypt pref '$key', returning default", e.withoutMessage(), event = LogEvent.CACHE_READ_FAILED)
             default
         }
     }

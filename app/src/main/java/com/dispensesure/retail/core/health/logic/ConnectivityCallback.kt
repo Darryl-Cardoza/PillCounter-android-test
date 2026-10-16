@@ -6,6 +6,7 @@ import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.inject.Inject
@@ -67,7 +68,7 @@ class ConnectivityCallback @Inject constructor(
             cm.registerNetworkCallback(request, callback)
             logger.i("Registered ConnectivityCallback")
         }.onFailure {
-            logger.e("Failed to register ConnectivityCallback", it)
+            logger.e("Failed to register ConnectivityCallback", it, event = LogEvent.NETWORK_ERROR)
             registered.set(false)
         }
     }
@@ -82,7 +83,7 @@ class ConnectivityCallback @Inject constructor(
             cm.unregisterNetworkCallback(callback)
             logger.i("Unregistered ConnectivityCallback")
         }.onFailure {
-            logger.e("Failed to unregister ConnectivityCallback", it)
+            logger.e("Failed to unregister ConnectivityCallback", it, event = LogEvent.NETWORK_ERROR)
         }
     }
 }

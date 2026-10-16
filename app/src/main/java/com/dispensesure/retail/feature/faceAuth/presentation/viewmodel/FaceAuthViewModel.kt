@@ -16,10 +16,13 @@ import com.dispensesure.retail.core.faceAuth.model.FaceCaptureAngle
 import com.dispensesure.retail.core.faceAuth.model.FaceGuidance
 import com.dispensesure.retail.core.room.dao.UserDao
 import com.dispensesure.retail.core.room.models.FaceProfileEntity
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.faceAuth.domain.model.RegistrationState
 import com.dispensesure.retail.feature.faceAuth.domain.model.VerifyState
 import dagger.hilt.android.lifecycle.HiltViewModel
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +30,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import javax.inject.Inject
@@ -88,6 +92,8 @@ class FaceAuthViewModel @Inject constructor(
     private val trackGate: FaceTrackContinuityGate
 ) : ViewModel() {
 
+    private val logger = AppLogger.create<FaceAuthViewModel>()
+
     /** App-wide session lock state, so flow UI (e.g. the ID-scan sheet) can yield to the overlay. */
     val isSessionLocked: StateFlow<Boolean> = sessionLockController.isLocked
 
@@ -109,6 +115,7 @@ class FaceAuthViewModel @Inject constructor(
     val verifyState: StateFlow<VerifyState> = _verifyState.asStateFlow()
 
     val profiles: StateFlow<List<FaceProfileEntity>> = faceProfileRepository.observeProfiles()
+        .catch { e -> logger.e("Observing face profiles failed", e, event = LogEvent.FACE_VERIFY_FAILED) }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private var pendingFirstName: String = ""
@@ -163,40 +170,47 @@ class FaceAuthViewModel @Inject constructor(
         // the gap is no longer something the next frame can be judged against.
         trackGate.dropLastRect()
         autoCaptureJob = viewModelScope.launch {
-            // Outer loop so a broken track can restart without cancelling this job.
-            scan@ while (true) {
-                for (angle in FaceCaptureAngle.entries) {
-                    if (capturedEmbeddings.containsKey(angle)) continue
-                    autoCaptureController.run(
-                        angle, frames, autoCaptureIsFrontCamera, baselineYaw, trackGate
-                    ).collect { event ->
-                        when (event) {
-                            is AutoCaptureController.CaptureEvent.Guidance ->
-                                _registrationState.value =
-                                    RegistrationState.Capturing(angle, capturedEmbeddings.size, event.guidance)
+            try {
+                // Outer loop so a broken track can restart without cancelling this job.
+                scan@ while (true) {
+                    for (angle in FaceCaptureAngle.entries) {
+                        if (capturedEmbeddings.containsKey(angle)) continue
+                        autoCaptureController.run(
+                            angle, frames, autoCaptureIsFrontCamera, baselineYaw, trackGate
+                        ).collect { event ->
+                            when (event) {
+                                is AutoCaptureController.CaptureEvent.Guidance ->
+                                    _registrationState.value =
+                                        RegistrationState.Capturing(angle, capturedEmbeddings.size, event.guidance)
 
-                            is AutoCaptureController.CaptureEvent.Committed ->
-                                // Advance the shown angle immediately — staying on the finished
-                                // one left its prompt up until the next angle's first Guidance.
-                                onAngleCaptured(angle, event.embedding, event.bitmap, event.steadyYaw)
+                                is AutoCaptureController.CaptureEvent.Committed ->
+                                    // Advance the shown angle immediately — staying on the finished
+                                    // one left its prompt up until the next angle's first Guidance.
+                                    onAngleCaptured(angle, event.embedding, event.bitmap, event.steadyYaw)
 
-                            AutoCaptureController.CaptureEvent.TrackBroken -> Unit // handled below
+                                AutoCaptureController.CaptureEvent.TrackBroken -> Unit // handled below
+                            }
+                        }
+                        // Already enrolled — wait for the user's answer.
+                        if (_registrationState.value is RegistrationState.DuplicateWarning) return@launch
+                        if (trackGate.isBroken) {
+                            clearCaptureProgress()
+                            _registrationState.value = RegistrationState.Capturing(
+                                FaceCaptureAngle.FRONT, 0, FaceGuidance.SAME_PERSON_REQUIRED
+                            )
+                            // The restarted FRONT step's first guidance lands ~150ms later and
+                            // would replace this before anyone could read it — or hear it spoken.
+                            delay(TRACK_BROKEN_NOTICE_MS)
+                            continue@scan
                         }
                     }
-                    // Already enrolled — wait for the user's answer.
-                    if (_registrationState.value is RegistrationState.DuplicateWarning) return@launch
-                    if (trackGate.isBroken) {
-                        clearCaptureProgress()
-                        _registrationState.value = RegistrationState.Capturing(
-                            FaceCaptureAngle.FRONT, 0, FaceGuidance.SAME_PERSON_REQUIRED
-                        )
-                        // The restarted FRONT step's first guidance lands ~150ms later and
-                        // would replace this before anyone could read it — or hear it spoken.
-                        delay(TRACK_BROKEN_NOTICE_MS)
-                        continue@scan
-                    }
+                    return@launch
                 }
-                return@launch
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Auto-capture loop failed", e, event = LogEvent.FACE_CAPTURE_FAILED)
+                _registrationState.value = RegistrationState.Failed
             }
         }
     }
@@ -285,9 +299,12 @@ class FaceAuthViewModel @Inject constructor(
                     faceImagePath = faceImagePath
                 )
                 _registrationState.value = RegistrationState.Enrolled
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 // Persisting is automatic now, so without this a throw would take the app
                 // down with every angle captured and nothing saved.
+                logger.e("Failed to persist face profile registration", e, event = LogEvent.FACE_REGISTER_FAILED)
                 _registrationState.value = RegistrationState.Failed
             } finally {
                 finishInFlight = false
@@ -329,6 +346,7 @@ class FaceAuthViewModel @Inject constructor(
             }
             file.absolutePath
         } catch (e: Exception) {
+            logger.e("saveFaceImage() failed to write face capture to disk", e, event = LogEvent.FACE_CAPTURE_FAILED)
             null
         }
     }
@@ -340,7 +358,15 @@ class FaceAuthViewModel @Inject constructor(
      * @param enabled New enabled state.
      */
     fun setProfileEnabled(profile: FaceProfileEntity, enabled: Boolean) {
-        viewModelScope.launch { faceProfileRepository.setEnabled(profile, enabled) }
+        viewModelScope.launch {
+            try {
+                faceProfileRepository.setEnabled(profile, enabled)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to toggle profile enabled state (profileId=${profile.id})", e, event = LogEvent.FACE_VERIFY_FAILED)
+            }
+        }
     }
 
     /**
@@ -350,8 +376,14 @@ class FaceAuthViewModel @Inject constructor(
      */
     fun deleteProfile(profile: FaceProfileEntity) {
         viewModelScope.launch {
-            profile.faceImagePath?.let { path -> java.io.File(path).delete() }
-            faceProfileRepository.deleteProfile(profile)
+            try {
+                profile.faceImagePath?.let { path -> java.io.File(path).delete() }
+                faceProfileRepository.deleteProfile(profile)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to delete profile (profileId=${profile.id})", e, event = LogEvent.FACE_DELETE_FAILED)
+            }
         }
     }
 
@@ -377,25 +409,43 @@ class FaceAuthViewModel @Inject constructor(
     fun startAutoVerify(frames: Flow<Bitmap>) {
         autoVerifyJob?.cancel()
         autoVerifyJob = viewModelScope.launch {
-            // 0L, not Long.MIN_VALUE: `now - lastProcessedAt` below overflows a signed Long
-            // when lastProcessedAt starts at MIN_VALUE, wrapping to a huge negative number
-            // that's always < the interval — every frame was silently dropped, forever.
-            var lastProcessedAt = 0L
-            frames.collect { bitmap ->
-                // A prior frame in this same loop (or a concurrent manual tap) may have
-                // already landed on a result — stop attempting once we're no longer Scanning,
-                // so this background loop can't flip Matched/NotRecognized back and forth
-                // while the user is looking at a result screen.
-                if (_verifyState.value !is VerifyState.Scanning) return@collect
+            try {
+                // 0L, not Long.MIN_VALUE: `now - lastProcessedAt` below overflows a signed Long
+                // when lastProcessedAt starts at MIN_VALUE, wrapping to a huge negative number
+                // that's always < the interval — every frame was silently dropped, forever.
+                var lastProcessedAt = 0L
+                var frameErrorLogged = false
+                frames.collect { bitmap ->
+                    // A prior frame in this same loop (or a concurrent manual tap) may have
+                    // already landed on a result — stop attempting once we're no longer Scanning,
+                    // so this background loop can't flip Matched/NotRecognized back and forth
+                    // while the user is looking at a result screen.
+                    if (_verifyState.value !is VerifyState.Scanning) return@collect
 
-                val now = System.currentTimeMillis()
-                if (now - lastProcessedAt < AUTO_VERIFY_FRAME_INTERVAL_MS) return@collect
-                lastProcessedAt = now
+                    val now = System.currentTimeMillis()
+                    if (now - lastProcessedAt < AUTO_VERIFY_FRAME_INTERVAL_MS) return@collect
+                    lastProcessedAt = now
 
-                val face = faceEngine.detectPrimary(bitmap) ?: return@collect
-                if (faceQualityGate.evaluate(bitmap, face) != null) return@collect
+                    // One bad frame must not end the loop and leave the lock on Scanning.
+                    try {
+                        val face = faceEngine.detectPrimary(bitmap) ?: return@collect
+                        if (faceQualityGate.evaluate(bitmap, face) != null) return@collect
 
-                runVerify(bitmap) // suspends here, so no two attempts ever overlap
+                        runVerify(bitmap) // suspends here, so no two attempts ever overlap
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        // Logged once per loop: frames arrive every 150ms and would flood the log.
+                        if (!frameErrorLogged) {
+                            frameErrorLogged = true
+                            logger.e("Auto-verify frame failed; continuing with next frame", e, event = LogEvent.FACE_VERIFY_FAILED)
+                        }
+                    }
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Auto-verify loop failed", e, event = LogEvent.FACE_VERIFY_FAILED)
             }
         }
     }

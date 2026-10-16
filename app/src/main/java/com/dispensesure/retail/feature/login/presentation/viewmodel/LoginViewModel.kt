@@ -6,6 +6,8 @@ import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.R
 import com.dispensesure.retail.core.models.ErrorResponse
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.login.data.LoginRepository
@@ -16,6 +18,7 @@ import com.google.gson.Gson
 import com.dispensesure.retail.core.hl7.service.Hl7serviceHandler
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -77,17 +80,22 @@ class LoginViewModel @Inject constructor(
         }
 
         viewModelScope.launch {
-            logger.i("Login attempt for user: $email")
+            logger.i("Login attempt")
             _uiState.value = LoginUiState.Loading
 
             repository.login(email)
                 .onSuccess {
-                    logger.i("Login successful for user: $email.")
+                    logger.i("Login successful.")
                     _uiState.value = LoginUiState.Success
-                    serviceManager.startService()
+                    try {
+                        serviceManager.startService()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to start HL7 service after login", e, event = LogEvent.HL7_CONNECT_FAILED)
+                    }
                 }
                 .onFailure { exception ->
-                    logger.e("Login failed for user: $email", exception)
                     _uiState.value = LoginUiState.Error(getFriendlyErrorMessage(exception))
                 }
         }
@@ -108,14 +116,23 @@ class LoginViewModel @Inject constructor(
         viewModelScope.launch {
             _logoutUiState.value = LogoutUiState.Loading
 
+            // Best effort (2s cap): queued logs go out under this user's token before it is cleared;
+            // anything that doesn't make it stays in the file and ships after the next login.
+            AppLogger.flushBeforeLogout()
             repository.logout(refreshToken)
                 .onSuccess {
+                    LoggerConfig.newSession()
                     logger.i("Logout successful")
                     _logoutUiState.value = LogoutUiState.Success
-                    preferenceHelper.clearHl7Config()
+                    try {
+                        preferenceHelper.clearHl7Config()
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to clear HL7 config after logout", e, event = LogEvent.HL7_SERVICE_STOPPED)
+                    }
                 }
                 .onFailure { exception ->
-                    logger.e("Logout failed", exception)
                     _logoutUiState.value = LogoutUiState.Error(getFriendlyErrorMessage(exception))
                 }
         }
@@ -154,7 +171,7 @@ class LoginViewModel @Inject constructor(
                         val errorResponse = Gson().fromJson(it, ErrorResponse::class.java)
                         errorResponse.message
                     } catch (e: Exception) {
-                        logger.e("Error parsing error response", e)
+                        logger.w("Error parsing error response", e, event = LogEvent.LOGIN_FAILED)
                         null
                     }
                 }

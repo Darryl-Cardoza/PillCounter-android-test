@@ -2,6 +2,8 @@ package com.dispensesure.retail.core.api.interfaceDetail
 
 import com.dispensesure.retail.core.security.RuntimeUnit
 import com.dispensesure.retail.core.utils.constants.URLConstant
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import okhttp3.Interceptor
 import okhttp3.Response
 
@@ -22,6 +24,8 @@ class HeaderInterceptor(
     private val runtimeUnit: RuntimeUnit
 ) : Interceptor {
 
+    private val logger = AppLogger.create<HeaderInterceptor>()
+
     /**
      * Intercepts outgoing HTTP requests and adds the required headers before proceeding.
      *
@@ -33,6 +37,8 @@ class HeaderInterceptor(
         val serverKey = try {
             runtimeUnit.material()
         } catch (e: Exception) {
+            // Runs on every request while the key is unavailable.
+            logger.eThrottled("Failed to retrieve server key — request will be sent without X-Server-Key", e, event = LogEvent.NETWORK_ERROR)
             ""
         }
         val modifiedRequest = originalRequest.newBuilder()

@@ -3,6 +3,7 @@ package com.dispensesure.retail.core.hl7.imageWebService
 import android.content.Context
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsImageKeystoreUtil
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import fi.iki.elonen.NanoHTTPD
 import java.security.SecureRandom
@@ -21,27 +22,33 @@ class ImageWebServer(private val context: Context) {
     fun start() {
         if (server != null) return
 
-        val bypassTls = PreferenceHelper(context).isBypassTlsEnabled()
+        try {
+            val bypassTls = PreferenceHelper(context).isBypassTlsEnabled()
 
-        if (bypassTls) {
-            server = ImageNanoServer(context, PORT, sslFactory = null)
+            if (bypassTls) {
+                server = ImageNanoServer(context, PORT, sslFactory = null)
+                server!!.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
+                logger.i("HTTP Image Server started on port $PORT (TLS bypassed)")
+                return
+            }
+
+            val keyStore = TlsImageKeystoreUtil.ensureKeystore(context)
+            val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
+            kmf.init(keyStore, TlsImageKeystoreUtil.password(context))  // Pass context
+
+            val sslContext = SSLContext.getInstance("TLS")
+            sslContext.init(kmf.keyManagers, null, SecureRandom())
+
+            server = ImageNanoServer(context, PORT, sslContext.serverSocketFactory)
             server!!.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-            logger.i("HTTP Image Server started on port $PORT (TLS bypassed)")
-            return
+
+            logger.i("HTTPS Image Server started on port $PORT")
+            logger.i("Cert fingerprint: ${TlsImageKeystoreUtil.fingerprint(context)}")
+        } catch (e: Exception) {
+            logger.e("ImageWebServer.start() failed", e, event = LogEvent.NETWORK_ERROR)
+            server = null
+            throw e
         }
-
-        val keyStore = TlsImageKeystoreUtil.ensureKeystore(context)
-        val kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm())
-        kmf.init(keyStore, TlsImageKeystoreUtil.password(context))  // Pass context
-
-        val sslContext = SSLContext.getInstance("TLS")
-        sslContext.init(kmf.keyManagers, null, SecureRandom())
-
-        server = ImageNanoServer(context, PORT, sslContext.serverSocketFactory)
-        server!!.start(NanoHTTPD.SOCKET_READ_TIMEOUT, false)
-
-        logger.i("HTTPS Image Server started on port $PORT")
-        logger.i("Cert fingerprint: ${TlsImageKeystoreUtil.fingerprint(context)}")
     }
 
     fun stop() {

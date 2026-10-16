@@ -7,6 +7,7 @@ import com.dispensesure.retail.R
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.verifyPin.data.VerifyPinRepository
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifiedUser
@@ -182,6 +183,20 @@ class VerifyPinViewModelTest {
     }
 
     @Test
+    fun `verifyPin success starts a new log session`() = runTest {
+        val user = VerifiedUser(email = email, isVerified = true)
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
+            Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
+        val before = LoggerConfig.sessionId
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        assertTrue(LoggerConfig.sessionId != before)
+    }
+
+    @Test
     fun `verifyPin success persists the verified email`() = runTest {
         val user = VerifiedUser(email = email, isVerified = true)
         val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
@@ -232,6 +247,25 @@ class VerifyPinViewModelTest {
 
         assertEquals(VerifyPinUiState.Success, viewModel.uiState.value)
         coVerify(exactly = 0) { prefs.saveTokens(any(), any()) }
+    }
+
+    @Test
+    fun `verifyPin success with token persistence failure sets Error instead of crashing`() = runTest {
+        // SecurePreferences.put* throws on encrypt failure (they don't swallow), so a failed token
+        // save must land in Error rather than reaching Success with no token stored.
+        val user = VerifiedUser(email = email, isVerified = true)
+        val data = VerifyPinData(accessToken = "access", refreshToken = "refresh", user = user)
+        coEvery { repository.verifyPin(email, otp, testDeviceKey, any()) } returns
+            Result.success(VerifyPinResponse(status = 200, message = "ok", data = data))
+        every { prefs.saveTokens(any(), any()) } throws RuntimeException("keystore unavailable")
+        every { context.getString(R.string.error_unknown) } returns "unknown"
+
+        viewModel.verifyPin(email, otp)
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue(state is VerifyPinUiState.Error)
+        assertEquals("unknown", (state as VerifyPinUiState.Error).message)
     }
 
     // ───────────────────────────── device key fetch failure ─────────────────────────────

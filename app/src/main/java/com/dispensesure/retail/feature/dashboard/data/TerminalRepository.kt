@@ -6,6 +6,7 @@ import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenReques
 import com.dispensesure.retail.core.refreshToken.domain.model.RefreshTokenResponse
 import com.dispensesure.retail.feature.settings.data.remote.IApplicationSettingInterface
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.data.remote.ITerminalApi
 import com.dispensesure.retail.feature.dashboard.domain.model.TerminalListResponse
@@ -46,7 +47,16 @@ class TerminalRepository @Inject constructor(
     ): Result<TerminalUpdateResponse> = withContext(ioDispatcher) {
         try {
             logger.i("Updating terminal: $terminalId with name: ${request.terminalName}, active: ${request.isActive}")
-            val token = preferenceHelper.getAccessToken().orEmpty()
+            val storedToken = preferenceHelper.getAccessToken()
+            if (storedToken.isNullOrBlank()) {
+                // Deliberately still makes the call below rather than failing fast: the server
+                // rejects it with 401, which falls into the existing refresh-and-retry path —
+                // a still-valid refresh token can recover even though the access token is
+                // currently missing. This log is what makes that case diagnosable instead of
+                // looking like an ordinary 401.
+                logger.w("Updating terminal $terminalId with no access token in preferences")
+            }
+            val token = storedToken.orEmpty()
             val response = terminalApi.updateTerminal("Bearer $token", terminalId, request)
             logger.i("Terminal update successful.")
             Result.success(response)
@@ -60,10 +70,10 @@ class TerminalRepository @Inject constructor(
                     terminalApi.updateTerminal("Bearer $newToken", terminalId, request)
                 }
             }
-            logger.e("Terminal update failed with HttpException", e)
+            logger.w("Terminal update failed with HttpException", e, event = LogEvent.TERMINAL_UPDATE_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Terminal update failed", e)
+            logger.w("Terminal update failed", e, event = LogEvent.TERMINAL_UPDATE_FAILED)
             Result.failure(e)
         }
     }
@@ -81,7 +91,14 @@ class TerminalRepository @Inject constructor(
     ): Result<TerminalListResponse> = withContext(ioDispatcher) {
         try {
             logger.i("Fetching terminals (availableOnly=$availableOnly)")
-            val token = preferenceHelper.getAccessToken().orEmpty()
+            val storedToken = preferenceHelper.getAccessToken()
+            if (storedToken.isNullOrBlank()) {
+                // See the same note in updateTerminal(): still makes the call so a still-valid
+                // refresh token can recover via the existing 401 retry path; this just makes
+                // the missing-access-token case diagnosable rather than an opaque 401.
+                logger.w("Fetching terminals with no access token in preferences")
+            }
+            val token = storedToken.orEmpty()
             val response = terminalApi.getTerminals("Bearer $token", availableOnly, deviceKey)
             Result.success(response)
         } catch (e: HttpException) {
@@ -93,10 +110,10 @@ class TerminalRepository @Inject constructor(
                     terminalApi.getTerminals("Bearer $newToken", availableOnly, deviceKey)
                 }
             }
-            logger.e("Fetching terminals failed with HttpException", e)
+            logger.w("Fetching terminals failed with HttpException", e, event = LogEvent.TERMINAL_LOAD_FAILED)
             Result.failure(e)
         } catch (e: Exception) {
-            logger.e("Fetching terminals failed", e)
+            logger.w("Fetching terminals failed", e, event = LogEvent.TERMINAL_LOAD_FAILED)
             Result.failure(e)
         }
     }
@@ -108,13 +125,15 @@ class TerminalRepository @Inject constructor(
     private suspend fun <T> handleTokenRefreshAndRetry(apiCall: suspend () -> T): Result<T> {
         return try {
             val refreshToken = preferenceHelper.getRefreshToken()
-                ?: return Result.failure(Exception("No refresh token available"))
+                ?: return Result.failure<T>(Exception("No refresh token available")).also {
+                    logger.w("Token refresh skipped: no refresh token available", it.exceptionOrNull(), event = LogEvent.TOKEN_REFRESH_FAILED)
+                }
 
             val refreshResponse = applicationSettingApi.refreshToken(RefreshTokenRequest(refreshToken))
             if (refreshResponse.code() == 401) {
                 // Refresh itself was rejected — session is truly expired. Broadcast so
                 // MainActivity performs the standard logout teardown + Login nav.
-                logger.e("Refresh token rejected (401) — publishing SessionExpired")
+                logger.w("Refresh token rejected (401) — publishing SessionExpired", event = LogEvent.TOKEN_REFRESH_FAILED)
                 authEventBus.tryPublish(AuthEvent.SessionExpired)
                 return Result.failure(Exception("Refresh returned 401"))
             }
@@ -131,11 +150,11 @@ class TerminalRepository @Inject constructor(
                 logger.i("API retried successfully after token refresh.")
                 Result.success(retryResponse)
             } else {
-                logger.e("Token refresh failed: ${refreshResponseBody?.message}")
+                logger.w("Token refresh failed: ${refreshResponseBody?.message}", event = LogEvent.TOKEN_REFRESH_FAILED)
                 Result.failure(Exception("Failed to refresh token: ${refreshResponseBody?.message}"))
             }
         } catch (ex: Exception) {
-            logger.e("Token refresh or retry failed", ex)
+            logger.w("Token refresh or retry failed", ex, event = LogEvent.TOKEN_REFRESH_FAILED)
             Result.failure(ex)
         }
     }

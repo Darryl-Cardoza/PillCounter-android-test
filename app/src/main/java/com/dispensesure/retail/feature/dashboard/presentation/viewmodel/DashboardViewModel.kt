@@ -17,6 +17,7 @@ import com.dispensesure.retail.core.faceAuth.logic.SessionLockController
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.security.DatabaseKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.dashboard.domain.data.IUserDetailRepository
 import com.dispensesure.retail.feature.dashboard.domain.model.DashboardTab
@@ -37,11 +38,13 @@ import com.dispensesure.retail.feature.hl7.core.Hl7ServiceManager
 import com.dispensesure.retail.feature.hl7.util.Hl7Format
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -106,9 +109,11 @@ class DashboardViewModel @Inject constructor(
     val isConnected: StateFlow<Boolean> = hl7EventHandler.connectionState
     val pmsCertMismatch: StateFlow<Boolean> = hl7EventHandler.pmsCertMismatch
 
-    fun clearPmsCertPin() {
-        hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
-    }
+    /** @return false when the pin could not be cleared; the mismatch dialog stays up. */
+    fun clearPmsCertPin(): Boolean = hl7ServiceManager.clearPmsCertPin(hl7EventHandler)
+
+    /** Closes the mismatch dialog even when the pin clear failed (Cancel must always close it). */
+    fun dismissPmsCertMismatch() = hl7EventHandler.clearCertMismatch()
 
     /** StateFlow to signal when terminal info is loaded from auth/me */
     private val _terminalInfoLoaded = MutableStateFlow(false)
@@ -134,9 +139,11 @@ class DashboardViewModel @Inject constructor(
      */
     private fun observeOperatorName() {
         viewModelScope.launch(Dispatchers.IO) {
-            operatorNameProvider.observe().collect { operator ->
-                _uiState.update { it.copy(operatorName = operator.display()) }
-            }
+            operatorNameProvider.observe()
+                .catch { e -> logger.e("Observing operator name failed", e, event = LogEvent.USER_FETCH_FAILED) }
+                .collect { operator ->
+                    _uiState.update { it.copy(operatorName = operator.display()) }
+                }
         }
     }
 
@@ -174,10 +181,12 @@ class DashboardViewModel @Inject constructor(
     private fun observeUserDetail(localId: Long = preferenceHelper.getLocalId()) {
         if (localId == 0L) return
         viewModelScope.launch(Dispatchers.IO) {
-            userDao.observeByLocalId(localId).collect { entity ->
-                val detail = entity?.toUserDetail(preferenceHelper.getTerminals()) ?: return@collect
-                _uiState.update { it.copy(userDetail = detail) }
-            }
+            userDao.observeByLocalId(localId)
+                .catch { e -> logger.e("Observing user detail failed (localId=$localId)", e, event = LogEvent.USER_FETCH_FAILED) }
+                .collect { entity ->
+                    val detail = entity?.toUserDetail(preferenceHelper.getTerminals()) ?: return@collect
+                    _uiState.update { it.copy(userDetail = detail) }
+                }
         }
     }
 
@@ -241,13 +250,13 @@ class DashboardViewModel @Inject constructor(
         if (localId == 0L || tabJobs[tab]?.isActive == true) return
         queueSources.update { it.copy(observedTabs = it.observedTabs + tab) }
         tabJobs[tab] = when (tab) {
-            DashboardTab.DISPENSE_QUEUE -> collectSource(pendingDispenseFlow(localId)) {
+            DashboardTab.DISPENSE_QUEUE -> collectSource(pendingDispenseFlow(localId), tab) {
                 copy(pendingDispense = it, loadedTabs = loadedTabs + tab)
             }
-            DashboardTab.INVENTORY_QUEUE -> collectSource(pendingInventoryFlow()) {
+            DashboardTab.INVENTORY_QUEUE -> collectSource(pendingInventoryFlow(), tab) {
                 copy(pendingInventory = it, loadedTabs = loadedTabs + tab)
             }
-            DashboardTab.RECENT_ACTIVITY -> collectSource(recentActivityFlow(localId)) {
+            DashboardTab.RECENT_ACTIVITY -> collectSource(recentActivityFlow(localId), tab) {
                 copy(recentActivity = it, loadedTabs = loadedTabs + tab)
             }
         }
@@ -289,12 +298,18 @@ class DashboardViewModel @Inject constructor(
         return completedDispenses.combine(completedBatches, ::recentActivityItems)
     }
 
-    /** Collects one source on Default into [queueSources]. */
+    /** Collects one source on Default into [queueSources]. A failed [tab] source still ends its loading state. */
     private fun <T> collectSource(
         source: Flow<T>,
+        tab: DashboardTab? = null,
         updateSources: QueueSources.(T) -> QueueSources,
     ): Job = viewModelScope.launch(defaultDispatcher) {
-        source.collect { value -> queueSources.update { it.updateSources(value) } }
+        source
+            .catch { e ->
+                logger.e("Observing dashboard source failed", e, event = LogEvent.DASHBOARD_LOAD_FAILED)
+                if (tab != null) queueSources.update { it.copy(loadedTabs = it.loadedTabs + tab) }
+            }
+            .collect { value -> queueSources.update { it.updateSources(value) } }
     }
 
     /**
@@ -363,7 +378,7 @@ class DashboardViewModel @Inject constructor(
 
             val token = preferenceHelper.getAccessToken()
             if (token.isNullOrBlank()) {
-                logger.e("Access token not found in preferences.")
+                logger.e("Access token not found in preferences.", event = LogEvent.TOKEN_FETCH_FAILED)
                 _uiState.update {
                     it.copy(
                         isLoadingUserDetail = false,
@@ -534,8 +549,10 @@ class DashboardViewModel @Inject constructor(
                                 navigateToProfile = isProfileIncomplete
                             )
                         }
+                    } catch (dbErr: CancellationException) {
+                        throw dbErr
                     } catch (dbErr: Throwable) {
-                        logger.e("Persisting user detail failed.", dbErr)
+                        logger.e("Persisting user detail failed.", dbErr, event = LogEvent.USER_FETCH_FAILED)
                         _uiState.update {
                             it.copy(
                                 isLoadingUserDetail = false,
@@ -545,8 +562,9 @@ class DashboardViewModel @Inject constructor(
                     }
                 },
                 onFailure = { error ->
-                    logger.e("Failed to fetch user details.", error)
                     if (error.message == "LOGOUT") {
+                        // A normal session expiry, not an error.
+                        logger.w("Session expired while fetching user details.", error, event = LogEvent.USER_FETCH_FAILED)
                         _uiState.update {
                             it.copy(
                                 logoutUser = true,
@@ -554,6 +572,7 @@ class DashboardViewModel @Inject constructor(
                             )
                         }
                     } else {
+                        logger.e("Failed to fetch user details.", error, event = LogEvent.USER_FETCH_FAILED)
                         // Don't null out userDetail on transient network failures — keep the
                         // cached value hydrated from Room so the top bar stays populated.
                         _uiState.update {
@@ -602,8 +621,10 @@ class DashboardViewModel @Inject constructor(
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            logger.e("Error cleaning up synced transactions", e)
+            logger.e("Error cleaning up synced transactions", e, event = LogEvent.TRANSACTION_PURGE_FAILED)
         }
     }
 

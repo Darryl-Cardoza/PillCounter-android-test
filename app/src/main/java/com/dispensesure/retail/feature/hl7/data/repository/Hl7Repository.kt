@@ -20,6 +20,7 @@ import com.dispensesure.retail.core.room.models.enums.CountStatus
 import com.dispensesure.retail.core.room.models.enums.TxnPriority
 import com.dispensesure.retail.core.utils.common.LocationProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.models.isControlledDrugType
@@ -36,9 +37,11 @@ import com.dispensesure.retail.feature.hl7.util.HL7MessageBuilder
 import com.dispensesure.retail.feature.hl7.util.isRejectAck
 import com.dispensesure.retail.feature.hl7.util.isSuccessAck
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -97,8 +100,14 @@ class Hl7Repository @Inject constructor(
 
     init {
         scope.launch {
-            if (preferenceHelper.isHl7Enabled()) {
-                observePendingHl7Transactions()
+            try {
+                if (preferenceHelper.isHl7Enabled()) {
+                    observePendingHl7Transactions()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("Failed to check HL7-enabled preference on startup — pending-txn observer not started", e, event = LogEvent.HL7_RESEND_FAILED)
             }
         }
     }
@@ -131,6 +140,18 @@ class Hl7Repository @Inject constructor(
 
     @SuppressLint("SimpleDateFormat")
     suspend fun buildAndSendSuccessfulDispense(
+        txnId: Long
+    ) {
+        try {
+            buildAndSendSuccessfulDispenseInternal(txnId)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Failed to build/send dispense HL7 for txnId=$txnId — leaving unsynced for retry", e, event = LogEvent.HL7_SEND_FAILED)
+        }
+    }
+
+    private suspend fun buildAndSendSuccessfulDispenseInternal(
         txnId: Long
     ) {
         val txn = txnDao.getById(txnId)
@@ -272,10 +293,14 @@ class Hl7Repository @Inject constructor(
                 } else {
                     // Stop here — do not send later chunks out of order. The batch
                     // stays unsynced and will resume at this exact chunk next time.
-                    logger.e(
-                        "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed/NAKed for batchId=$batchId: " +
-                            "${result.exceptionOrNull()?.message ?: "non-success ACK"}"
-                    )
+                    val chunkMessage = "Chunk ${chunk.chunkIndex}/${chunk.totalChunks} failed/NAKed for batchId=$batchId: " +
+                        "${result.exceptionOrNull()?.message ?: "non-success ACK"}"
+                    // A failed send is already logged by Hl7ServiceManager; only a NAK is new here.
+                    if (result.isFailure) {
+                        logger.w(chunkMessage, event = LogEvent.HL7_SEND_FAILED)
+                    } else {
+                        logger.e(chunkMessage, event = LogEvent.HL7_SEND_FAILED)
+                    }
                     return
                 }
             }
@@ -284,7 +309,7 @@ class Hl7Repository @Inject constructor(
             logger.i("All chunks sent — inventory HL7 sync complete for batchId=$batchId")
 
         } catch (e: Exception) {
-            logger.e("buildAndSendInventoryResponse failed for batchId=$batchId", e)
+            logger.e("buildAndSendInventoryResponse failed for batchId=$batchId", e, event = LogEvent.HL7_SEND_FAILED)
         }
     }
 
@@ -305,13 +330,19 @@ class Hl7Repository @Inject constructor(
     fun sendDispenseNow(txnId: Long) {
         if (preferenceHelper.isHl7Enabled()) {
             scope.launch {
-                if (txnId in pillCountTxnDao.getTutorialTxnIds()) {
-                    logger.i("Tutorial entry — never sending to PMS, txnId=$txnId")
-                    return@launch
-                }
-                logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
-                resendMutex.withLock {
-                    buildAndSendSuccessfulDispense(txnId = txnId)
+                try {
+                    if (txnId in pillCountTxnDao.getTutorialTxnIds()) {
+                        logger.i("Tutorial entry — never sending to PMS, txnId=$txnId")
+                        return@launch
+                    }
+                    logger.i("Dispense completed — sending HL7 now, txnId=$txnId")
+                    resendMutex.withLock {
+                        buildAndSendSuccessfulDispense(txnId = txnId)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    logger.e("sendDispenseNow failed for txnId=$txnId", e, event = LogEvent.HL7_SEND_FAILED)
                 }
             }
         } else {
@@ -345,6 +376,10 @@ class Hl7Repository @Inject constructor(
                         buildAndSendSuccessfulDispense(txnId = txn.txnId)
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("resendPendingHl7Transactions failed", e, event = LogEvent.HL7_RESEND_FAILED)
             } finally {
                 resendMutex.unlock()
             }
@@ -353,14 +388,20 @@ class Hl7Repository @Inject constructor(
 
     fun resendPendingHl7BatchTransactions() {
         scope.launch {
-            val pendingBatches = batchDao.getUnsyncedCompletedBatchesOnce()
-            if (pendingBatches.isEmpty()) {
-                logger.i("No pending HL7 batch transactions to sync")
-                return@launch
-            }
-            logger.i("Resending ${pendingBatches.size} pending HL7 batch transactions")
-            for (batch in pendingBatches) {
-                buildAndSendInventoryResponse(batchId = batch.batchId)
+            try {
+                val pendingBatches = batchDao.getUnsyncedCompletedBatchesOnce()
+                if (pendingBatches.isEmpty()) {
+                    logger.i("No pending HL7 batch transactions to sync")
+                    return@launch
+                }
+                logger.i("Resending ${pendingBatches.size} pending HL7 batch transactions")
+                for (batch in pendingBatches) {
+                    buildAndSendInventoryResponse(batchId = batch.batchId)
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                logger.e("resendPendingHl7BatchTransactions failed", e, event = LogEvent.HL7_RESEND_FAILED)
             }
         }
     }
@@ -414,7 +455,7 @@ class Hl7Repository @Inject constructor(
             }
             logger.i("Deleted synced txn $txnId from local storage (allowLocalStorage=false)")
         } catch (e: Exception) {
-            logger.e("Failed to delete synced txn $txnId", e)
+            logger.e("Failed to delete synced txn $txnId", e, event = LogEvent.DATABASE_ERROR)
         }
     }
 
@@ -462,7 +503,7 @@ class Hl7Repository @Inject constructor(
             val drugInfo = try {
                 drugRepository.getDrugInfoByNdc(request)
             } catch (e: Exception) {
-                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
+                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
                     message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
@@ -584,7 +625,7 @@ class Hl7Repository @Inject constructor(
             val drugInfo = try {
                 drugRepository.getDrugInfoByNdc(request)
             } catch (e: Exception) {
-                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e)
+                logger.e("Failed to fetch drug info from API for NDC: $hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_drug_not_found_title),
                     message = context.getString(R.string.hl7_notification_drug_not_found_api_failed, hl7Ndc)
@@ -785,7 +826,14 @@ class Hl7Repository @Inject constructor(
         expiry: String,
         targetCount: Int
     ): ResolvedInventoryItem? {
-        val existingDrug = drugMasterDao.getDrugByNdc(ndc)
+        val existingDrug = try {
+            drugMasterDao.getDrugByNdc(ndc)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            logger.e("Failed to look up local drug for NDC: $ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
+            null
+        }
         if (existingDrug != null) {
             val localName = existingDrug.drugName
             if (!localName.isNullOrBlank()) {
@@ -844,7 +892,7 @@ class Hl7Repository @Inject constructor(
                 targetCount = targetCount
             )
         } catch (e: Exception) {
-            logger.e("Failed to fetch drug info from API for NDC: $ndc", e)
+            logger.e("Failed to fetch drug info from API for NDC: $ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
             null
         }
     }
@@ -968,7 +1016,7 @@ class Hl7Repository @Inject constructor(
                     drugImagePath = imagePath,
                 )
             } catch (e: Exception) {
-                logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e)
+                logger.e("ORC|XO: API call failed for NDC=$hl7Ndc", e, event = LogEvent.DRUG_LOOKUP_FAILED)
                 notifier.show(
                     title = context.getString(R.string.hl7_notification_edit_rx_title),
                     message = context.getString(
@@ -1046,6 +1094,7 @@ class Hl7Repository @Inject constructor(
     private fun observePendingHl7Transactions() {
         scope.launch {
             pillCountTxnDao.observePendingHl7Txn()
+                .catch { e -> logger.e("Pending HL7 txn observer flow failed", e, event = LogEvent.HL7_RESEND_FAILED) }
                 .collect { pendingTxn ->
                     logger.i("HL7 observer fired, pending=${pendingTxn.size}")
                     resendPendingHl7Transactions()

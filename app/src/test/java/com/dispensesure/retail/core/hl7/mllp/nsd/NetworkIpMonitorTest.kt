@@ -13,6 +13,12 @@ import io.mockk.mockkStatic
 import io.mockk.slot
 import io.mockk.unmockkAll
 import io.mockk.verify
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogDestination
+import com.dispensesure.retail.core.utils.logger.LogEntry
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LogLevel
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Before
@@ -77,6 +83,8 @@ class NetworkIpMonitorTest {
 
     @After
     fun tearDown() {
+        LoggerConfig.minimumLogLevel = LogLevel.ERROR
+        AppLogger.setDestinationForTest(null)
         unmockkAll()
     }
 
@@ -115,6 +123,21 @@ class NetworkIpMonitorTest {
 
         // Should not throw even though the callback was never registered via start().
         monitor.stop()
+    }
+
+    @Test
+    fun `stop logs the failed unregister instead of hiding it`() {
+        // An already-unregistered callback is routine, so it is logged at WARN (never sent off-device).
+        LoggerConfig.minimumLogLevel = LogLevel.WARN
+        val logged = mutableListOf<LogEntry>()
+        AppLogger.setDestinationForTest(object : LogDestination {
+            override fun write(entry: LogEntry) { logged += entry }
+        })
+        every { connectivityManager.unregisterNetworkCallback(any<ConnectivityManager.NetworkCallback>()) } throws IllegalArgumentException("not registered")
+
+        monitor.stop()
+
+        assertEquals(LogEvent.HL7_CONNECT_FAILED, logged.single().event)
     }
 
     @Test

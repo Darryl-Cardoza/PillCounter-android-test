@@ -905,4 +905,6 @@ class PillScanningViewModelTest {
         coVerify(exactly = 0) { stockTxnDao.updateStatus(any(), any()) }
         assertEquals(null, viewModel.stockCountCommittedBatchId.value)
     }
+
+
 }

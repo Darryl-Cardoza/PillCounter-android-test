@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.api.interfaceDetail
 
 import com.dispensesure.retail.core.security.RuntimeUnit
 import com.dispensesure.retail.core.utils.constants.URLConstant
+import com.dispensesure.retail.util.shippedErrors
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
@@ -13,6 +14,7 @@ import okhttp3.Response
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 
@@ -80,5 +82,15 @@ class HeaderInterceptorTest {
         assertEquals("", outgoing.header("X-Server-Key"))
         assertEquals(URLConstant.CONTENT_TYPE, outgoing.header("Content-Type"))
         assertSame(expected, result)
+    }
+
+    @Test
+    fun `a missing server key is sent as an ERROR once, not on every request`() {
+        every { runtimeUnit.material() } throws RuntimeException("blocked")
+        every { chain.proceed(any()) } returns response(incomingRequest)
+
+        val errors = shippedErrors { repeat(5) { interceptor.intercept(chain) } }
+
+        assertTrue("ERRORs for 5 requests: $errors", errors.size <= 1)
     }
 }

@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.utils.common
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -53,7 +54,7 @@ object DateUtils {
             }
             parser.parse(cleaned)?.time
         } catch (e: Exception) {
-            logger.e("Error parsing ISO UTC timestamp: $raw", e)
+            logger.e("Error parsing ISO UTC timestamp: $raw", e, event = LogEvent.PARSING_ERROR)
             null
         }
     }
@@ -68,7 +69,8 @@ object DateUtils {
             val parser = DateTimeFormatter.ofPattern(DateFormats.GS1_YYMMDD)
             LocalDate.parse(dateString, parser)
         } catch (e: Exception) {
-            logger.e("Error parsing GS1 date to LocalDate: $dateString", e)
+            // A malformed label is bad input, not an app error.
+            logger.w("Error parsing GS1 date to LocalDate: $dateString", e, event = LogEvent.PARSING_ERROR)
             null
         }
     }

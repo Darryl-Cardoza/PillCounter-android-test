@@ -4,6 +4,7 @@ package com.dispensesure.retail.feature.hl7.core
 import com.dispensesure.retail.core.hl7.service.HL7Config
 import com.dispensesure.retail.core.hl7.service.Hl7serviceHandler
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import org.rite.hl7.model.HL7Message
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -67,8 +68,8 @@ class Hl7ServiceManager @Inject constructor(
                 serviceManager.bindService()
             }
 
-        } catch (_: Exception) {
-            logger.i("Failed to start HL7 service")
+        } catch (e: Exception) {
+            logger.e("Failed to start HL7 service", e, event = LogEvent.HL7_CONNECT_FAILED)
         }
     }
 
@@ -79,8 +80,8 @@ class Hl7ServiceManager @Inject constructor(
     private fun stopService() {
         try {
             serviceManager.stopService()
-        } catch (_: Exception) {
-            logger.i("Failed to stop HL7 service")
+        } catch (e: Exception) {
+            logger.e("Failed to stop HL7 service", e, event = LogEvent.HL7_SERVICE_STOPPED)
         }
     }
 
@@ -114,7 +115,7 @@ class Hl7ServiceManager @Inject constructor(
             Result.success(Unit)
 
         } catch (e: Exception) {
-            logger.i("Failed sending HL7 message", e)
+            logger.e("Failed sending HL7 message", e, event = LogEvent.HL7_SEND_FAILED)
             Result.failure(e)
         }
     }
@@ -153,7 +154,8 @@ class Hl7ServiceManager @Inject constructor(
             Result.success(ack)
 
         } catch (e: Exception) {
-            logger.i("Failed sending raw HL7 message", e)
+            if (e is java.io.IOException) logger.w("Failed sending raw HL7 message", e, event = LogEvent.HL7_SEND_FAILED)
+            else logger.e("Failed sending raw HL7 message", e, event = LogEvent.HL7_SEND_FAILED)
             Result.failure(e)
         }
     }
@@ -172,9 +174,11 @@ class Hl7ServiceManager @Inject constructor(
      * Clear the stored TOFU certificate pin and resume PMS connection.
      * Call this when the PMS server certificate is legitimately rotated.
      */
-    fun clearPmsCertPin(hl7EventHandler: Hl7EventHandler) {
-        hl7EventHandler.clearCertMismatch()
-        serviceManager.getService()?.clearPmsCertPin()
+    fun clearPmsCertPin(hl7EventHandler: Hl7EventHandler): Boolean {
+        // Only dismiss the mismatch once the pin is really cleared; otherwise the dialog stays for a retry.
+        val cleared = serviceManager.getService()?.clearPmsCertPin() == true
+        if (cleared) hl7EventHandler.clearCertMismatch()
+        return cleared
     }
 
     /**

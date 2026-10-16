@@ -1885,10 +1885,48 @@ class DispenseFlowViewModelTest {
             val vm = createViewModel()
             var stageDuringPrelude: DispenseStage? = null
 
-            vm.returnToContainerScan { stageDuringPrelude = vm.uiState.value.stage }
+            vm.returnToContainerScan { stageDuringPrelude = vm.uiState.value.stage; true }
             advanceUntilIdle()
 
             assertEquals(DispenseStage.PRE_RX, stageDuringPrelude)
             assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
+        }
+
+    @Test
+    fun `returnToContainerScan keeps the stage when the reset fails`() =
+        runTest(testDispatcher) {
+            val vm = createViewModel()
+            val before = vm.uiState.value.stage
+
+            vm.returnToContainerScan { false }
+            advanceUntilIdle()
+
+            assertEquals(before, vm.uiState.value.stage)
+        }
+
+    @Test
+    fun `returnToContainerScan still moves to PRE_NDC when the drug lookup throws`() =
+        runTest(testDispatcher) {
+            // The count is already wiped by then, so a failed display lookup must not strand the stage.
+            val vm = createViewModel()
+            every { preferenceHelper.getTxnId() } returns 7L
+            coEvery { pillCountTxnDao.getById(any()) } throws RuntimeException("db down")
+
+            vm.returnToContainerScan()
+            advanceUntilIdle()
+
+            assertEquals(DispenseStage.PRE_NDC, vm.uiState.value.stage)
+        }
+
+    @Test
+    fun `returnToContainerScan shows an error when the reset prelude throws`() =
+        runTest(testDispatcher) {
+            val vm = createViewModel()
+            every { appContext.getString(any()) } returns "generic error"
+
+            vm.returnToContainerScan { throw RuntimeException("reset failed") }
+            advanceUntilIdle()
+
+            assertEquals("generic error", vm.uiState.value.error)
         }
 }

@@ -12,6 +12,7 @@ import com.dispensesure.retail.core.scanning.domain.model.BottleInfoJson
 import com.dispensesure.retail.core.security.ImageCrypto
 import com.dispensesure.retail.core.utils.common.DateFormats
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import dagger.hilt.EntryPoint
 import dagger.hilt.EntryPoints
 import dagger.hilt.InstallIn
@@ -198,7 +199,7 @@ class ImageNanoServer(
                     .toString()
             )
         } catch (e: Exception) {
-            logger.e("Failed to read image: $fileName", e)
+            logger.e("Failed to read image: $fileName", e, event = LogEvent.FILE_READ_ERROR)
             errorResponse(
                 status = Response.Status.INTERNAL_ERROR,
                 message = "Failed to read image"
@@ -237,7 +238,7 @@ class ImageNanoServer(
                 orderId = txn.transactionOrderId.orEmpty()
             )
         } catch (e: Exception) {
-            logger.e("Transaction image lookup failed", e)
+            logger.e("Transaction image lookup failed", e, event = LogEvent.FILE_READ_ERROR)
             errorResponse(Response.Status.INTERNAL_ERROR, "Failed to build image archive")
         }
     }
@@ -255,6 +256,7 @@ class ImageNanoServer(
             .mapNotNull { it.barcodeImagePath?.takeIf { path -> path.isNotBlank() } }
             .forEach { path ->
                 resolveFile(path)?.let { entries.add(ImageEntry("BARCODE", 0, it, txn.createdAt)) }
+                    ?: logger.w("Barcode image missing for txnId=${txn.txnId}: ${File(path).name}")
             }
 
         val details = txnDetailsDao.getAllForTxn(txn.txnId.toString())
@@ -262,11 +264,17 @@ class ImageNanoServer(
 
         for (detail: PillCountTxnDetailsEntity in details) {
             val path = detail.imagePath?.takeIf { it.isNotBlank() } ?: continue
-            val file = resolveFile(path) ?: continue
+            val file = resolveFile(path)
+            if (file == null) {
+                logger.w("Detail image missing for txnId=${txn.txnId}: ${File(path).name}")
+                continue
+            }
             entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, file, detail.createdAt))
             // Raw copy right after its processed image; zipResponse names it from that one.
-            detail.rawImagePath?.takeIf { it.isNotBlank() }?.let { resolveFile(it) }?.let {
-                entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, it, detail.createdAt, isRaw = true))
+            detail.rawImagePath?.takeIf { it.isNotBlank() }?.let { rawPath ->
+                val raw = resolveFile(rawPath)
+                if (raw == null) logger.w("Raw image missing for txnId=${txn.txnId}: ${File(rawPath).name}")
+                else entries.add(ImageEntry(detail.type ?: "IMAGE", detail.pillCount ?: 0, raw, detail.createdAt, isRaw = true))
             }
         }
 

@@ -51,6 +51,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 /**
  * Unit tests for [PillScanningViewModel] event handling: Rescan, delete
@@ -154,6 +156,21 @@ class PillScanningViewModelEventTest {
     }
 
     // ─────────────────────────── updateFilteredPills ───────────────────────────
+
+    @Test
+    fun `resetTransaction returns false when the DB reset fails`() = runTest {
+        coEvery { preferenceHelper.getTxnId() } returns 7L
+        coEvery { pillCountTxnDao.resetForRecount(7L, any()) } throws IllegalStateException("boom")
+
+        assertFalse(viewModel.resetTransaction())
+    }
+
+    @Test
+    fun `resetTransaction returns true when the reset succeeds`() = runTest {
+        coEvery { preferenceHelper.getTxnId() } returns 7L
+
+        assertTrue(viewModel.resetTransaction())
+    }
 
     // SCAN_VM_029
     @Test
@@ -274,12 +291,17 @@ class PillScanningViewModelEventTest {
         coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L)
         var deleteInTx = false
         var unlinkInTx = false
+        val unlinked = CountDownLatch(1)
         coEvery { pillCountTxnDetailsDao.hardDelete(5L) } coAnswers { deleteInTx = inTransaction }
-        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers { unlinkInTx = inTransaction }
+        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers {
+            unlinkInTx = inTransaction
+            unlinked.countDown()
+        }
 
         viewModel.onEvent(PillScanningEvent.TransactionDetailDeleted(txnDetailId = 5L))
 
-        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) }
+        // Await the answer itself: coVerify(timeout) returns once the call is recorded, before the flag is set.
+        assertTrue(unlinked.await(3, TimeUnit.SECONDS))
         assertTrue(deleteInTx)
         assertTrue(unlinkInTx)
         coVerify(exactly = 1) { appDatabase.withTransaction<Any?>(any()) }
@@ -293,14 +315,19 @@ class PillScanningViewModelEventTest {
         coEvery { pillCountTxnDao.getById(9L) } returns txnWithBottleIds(5L, 6L, 7L)
         var deleteInTx = false
         var unlinkInTx = false
+        val unlinked = CountDownLatch(1)
         coEvery { pillCountTxnDetailsDao.hardDeleteAllForStep(9L, StepState.TARGET_VERIFICATION) } coAnswers {
             deleteInTx = inTransaction
         }
-        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers { unlinkInTx = inTransaction }
+        coEvery { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) } coAnswers {
+            unlinkInTx = inTransaction
+            unlinked.countDown()
+        }
 
         viewModel.onEvent(PillScanningEvent.AllTransactionDetailsDeleted(stepType = StepState.TARGET_VERIFICATION))
 
-        coVerify(timeout = 3000) { pillCountTxnDao.updateBottleInfoList(9L, any(), any()) }
+        // Await the answer itself: coVerify(timeout) returns once the call is recorded, before the flag is set.
+        assertTrue(unlinked.await(3, TimeUnit.SECONDS))
         assertTrue(deleteInTx)
         assertTrue(unlinkInTx)
         coVerify(exactly = 1) { appDatabase.withTransaction<Any?>(any()) }

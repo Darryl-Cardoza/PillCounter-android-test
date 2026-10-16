@@ -67,7 +67,7 @@ class PerformanceLogger @Inject constructor(
         writeLog("CPU Architecture: ${Build.SUPPORTED_ABIS.joinToString()}")
         writeLog("Available Processors: ${Runtime.getRuntime().availableProcessors()}")
         writeLog(LOG_SEPARATOR)
-        logSystemInfo()
+        safely { logSystemInfo() }
     }
 
     /**
@@ -80,7 +80,7 @@ class PerformanceLogger @Inject constructor(
         modelSizeBytes: Long,
         loadTimeMs: Long,
         gpuDelegateEnabled: Boolean = false
-    ) {
+    ) = safely {
         writeLog("\n$SECTION_SEPARATOR")
         writeLog("MODEL LOAD EVENT")
         writeLog(SECTION_SEPARATOR)
@@ -154,7 +154,7 @@ class PerformanceLogger @Inject constructor(
         preprocessTimeMs: Long = 0L,
         postprocessTimeMs: Long = 0L,
         detectionCount: Int = 0
-    ) {
+    ) = safely {
         writeLog("\n$SECTION_SEPARATOR")
         writeLog("INFERENCE EVENT")
         writeLog(SECTION_SEPARATOR)
@@ -180,7 +180,7 @@ class PerformanceLogger @Inject constructor(
     /**
      * Log periodic performance snapshot (call every N seconds during operation)
      */
-    fun logPerformanceSnapshot(tag: String = "SNAPSHOT") {
+    fun logPerformanceSnapshot(tag: String = "SNAPSHOT") = safely {
         writeLog("\n$SECTION_SEPARATOR")
         writeLog("PERFORMANCE SNAPSHOT - $tag")
         writeLog(SECTION_SEPARATOR)
@@ -230,7 +230,7 @@ class PerformanceLogger @Inject constructor(
         modelName: String,
         loadedOn: String,
         estimatedMemoryMB: Double
-    ) {
+    ) = safely {
         writeLog("\n$SECTION_SEPARATOR")
         writeLog("MODEL MEMORY FOOTPRINT")
         writeLog(SECTION_SEPARATOR)
@@ -243,7 +243,14 @@ class PerformanceLogger @Inject constructor(
     /**
      * Generate summary report
      */
-    fun generateSummaryReport(): String {
+    fun generateSummaryReport(): String = try {
+        buildSummaryReport()
+    } catch (e: Exception) {
+        logger.w("Could not generate performance summary", e)
+        ""
+    }
+
+    private fun buildSummaryReport(): String {
         val summary = StringBuilder()
         summary.append("\n")
         summary.append("╔═══════════════════════════════════════════════════════════════════════════════╗\n")
@@ -276,6 +283,15 @@ class PerformanceLogger @Inject constructor(
     // Private Helper Methods
     // ═══════════════════════════════════════════════════════════════════════════════
 
+    // Diagnostics must never take down the caller (model load, monitoring, onCleared).
+    private inline fun safely(block: () -> Unit) {
+        try {
+            block()
+        } catch (e: Exception) {
+            logger.w("Performance logging failed", e)
+        }
+    }
+
     private fun writeLog(message: String) {
         val timestamp = getCurrentTimestamp()
         val logMessage = "[$timestamp] $message"
@@ -287,7 +303,8 @@ class PerformanceLogger @Inject constructor(
                 writer.newLine()
             }
         } catch (e: Exception) {
-            logger.e("Failed to write to log file", e)
+            // Warning, not error: with no external storage every write fails, and errors are sent off the device.
+            logger.w("Failed to write to log file", e, event = LogEvent.FILE_WRITE_ERROR)
         }
 
         // Also log to Logcat for debugging
@@ -566,7 +583,7 @@ class PerformanceLogger @Inject constructor(
                 }
             }
         } catch (e: Exception) {
-            logger.e("Failed to clear old logs", e)
+            logger.e("Failed to clear old logs", e, event = LogEvent.FUNCTIONALITY_ERROR)
         }
     }
 }

@@ -1,6 +1,12 @@
 package com.dispensesure.retail.core.hl7.mllp.client
 
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsSocketFactory
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogDestination
+import com.dispensesure.retail.core.utils.logger.LogEntry
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LogLevel
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.unmockkAll
@@ -26,6 +32,8 @@ class MllpClientTest {
 
     @After
     fun tearDown() {
+        LoggerConfig.minimumLogLevel = LogLevel.ERROR
+        AppLogger.setDestinationForTest(null)
         unmockkAll()
     }
 
@@ -147,6 +155,26 @@ class MllpClientTest {
             assertEquals("Connection closed by server mid-read", e.message)
         }
         assertTrue(threw)
+    }
+
+    @Test
+    fun `close logs a failing socket close and still releases the client`() = runTest {
+        // The close failure is logged at WARN (routine teardown noise, never sent off-device).
+        LoggerConfig.minimumLogLevel = LogLevel.WARN
+        val logged = mutableListOf<LogEntry>()
+        AppLogger.setDestinationForTest(object : LogDestination {
+            override fun write(entry: LogEntry) { logged += entry }
+        })
+        val sock = fakeSocket(ByteArray(0))
+        every { sock.close() } throws IOException("boom")
+        every { socketFactory.createSocket(any(), any()) } returns sock
+
+        val client = MllpClient(socketFactory)
+        client.connect("h", 1)
+        client.close()
+
+        assertTrue(logged.any { it.event == LogEvent.HL7_CONNECT_FAILED && it.message.contains("socket close failed") })
+        assertFalse(client.isConnected())
     }
 
     @Test

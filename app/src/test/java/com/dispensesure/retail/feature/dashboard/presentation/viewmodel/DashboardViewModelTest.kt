@@ -40,6 +40,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
@@ -294,6 +295,25 @@ class DashboardViewModelTest {
     }
 
     @Test
+    fun `clearPmsCertPin reports failure from the service manager`() = runTest(testDispatcher) {
+        every { hl7ServiceManager.clearPmsCertPin(hl7EventHandler) } returns false
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        assertFalse(vm.clearPmsCertPin())
+    }
+
+    @Test
+    fun `dismissPmsCertMismatch clears the mismatch flag`() = runTest(testDispatcher) {
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        vm.dismissPmsCertMismatch()
+
+        verify(exactly = 1) { hl7EventHandler.clearCertMismatch() }
+    }
+
+    @Test
     fun `isHl7Enabled delegates to preference helper`() = runTest(testDispatcher) {
         every { preferenceHelper.isHl7Enabled() } returns true
         val vm = createViewModel()
@@ -335,6 +355,18 @@ class DashboardViewModelTest {
             assertEquals("Jane Doe", vm.uiState.value.operatorName)
         }
 
+    @Test
+    fun `operatorName observation failure is caught and does not crash the ViewModel`() =
+        runTest(testDispatcher) {
+            every { operatorNameProvider.observe() } returns flow { throw RuntimeException("boom") }
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            // Must not propagate — operatorName just stays at its default.
+            assertNull(vm.uiState.value.operatorName)
+        }
+
     // ─────────────────────────────── observeUserDetail / toUserDetail ───────────────────────────────
 
     @Test
@@ -361,6 +393,17 @@ class DashboardViewModelTest {
         advanceUntilIdle()
 
         // fetchUserDetail's token is null so userDetail stays null too.
+        assertNull(vm.uiState.value.userDetail)
+    }
+
+    @Test
+    fun `observeUserDetail failure is caught and does not crash the ViewModel`() = runTest(testDispatcher) {
+        every { userDao.observeByLocalId(1L) } returns flow { throw RuntimeException("db boom") }
+
+        val vm = createViewModel()
+        advanceUntilIdle()
+
+        // Must not propagate — userDetail just stays at its default (no cached entity).
         assertNull(vm.uiState.value.userDetail)
     }
 
@@ -505,6 +548,20 @@ class DashboardViewModelTest {
         assertFalse(vm.uiState.value.isLoadingQueue)
         assertTrue(DashboardTab.INVENTORY_QUEUE in vm.uiState.value.loadedTabs)
     }
+
+    @Test
+    fun `queue source failure is caught, does not crash, and clears the loading flag`() =
+        runTest(testDispatcher) {
+            every { pillCountTxnDao.observePartialByIsDispense(any(), any(), any(), any()) } returns
+                flow { throw RuntimeException("db boom") }
+            every { batchDao.observeInProgressBatchSummaries(any()) } returns flowOf(emptyList())
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            assertFalse(vm.uiState.value.isLoadingQueue)
+            assertTrue(vm.uiState.value.dispenseQueue.isEmpty())
+        }
 
     @Test
     fun `onTabVisible starts the tab load without switching tabs`() = runTest(testDispatcher) {
@@ -665,6 +722,24 @@ class DashboardViewModelTest {
         assertNull(vm.uiState.value.activeKpiFilter)
         assertEquals(2, vm.uiState.value.recentActivity.size)
     }
+
+    @Test
+    fun `loadRecentActivity failure is caught, does not crash, and clears the loading flag`() =
+        runTest(testDispatcher) {
+            every {
+                pillCountTxnDao.getTransactionsForDateRange(any(), any(), any(), any(), any(), any())
+            } returns flow { throw RuntimeException("db boom") }
+            every { batchDao.getBatchSummaries(any(), any()) } returns flowOf(emptyList())
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            vm.onTabSelected(DashboardTab.RECENT_ACTIVITY)
+            advanceUntilIdle()
+
+            assertFalse(vm.uiState.value.isLoadingQueue)
+            assertTrue(vm.uiState.value.recentActivity.isEmpty())
+        }
 
     @Test
     fun `recent activity rows carry drug image strength and dosage form`() = runTest(testDispatcher) {
@@ -1080,5 +1155,29 @@ class DashboardViewModelTest {
         vm.clearPendingStockCountBucketId()
 
         assertNull(vm.uiState.value.pendingStockCountBucketId)
+    }
+
+    // A normal session expiry (refresh token rejected -> LOGOUT) must not ship an ERROR.
+    @Test
+    fun `session expiry LOGOUT is not sent as an ERROR`() = runTest(testDispatcher) {
+        val entries = mutableListOf<com.dispensesure.retail.core.utils.logger.LogEntry>()
+        com.dispensesure.retail.core.utils.logger.AppLogger.setDestinationForTest(
+            object : com.dispensesure.retail.core.utils.logger.LogDestination {
+                override fun write(entry: com.dispensesure.retail.core.utils.logger.LogEntry) { entries += entry }
+            }
+        )
+        try {
+            every { preferenceHelper.getAccessToken() } returns "tok"
+            coEvery { userDetailRepository.getUserDetail("tok") } returns Result.failure(RuntimeException("LOGOUT"))
+
+            val vm = createViewModel()
+            advanceUntilIdle()
+
+            assertTrue(vm.uiState.value.logoutUser)
+            val errors = entries.filter { it.level == com.dispensesure.retail.core.utils.logger.LogLevel.ERROR }.map { it.message }
+            assertEquals(emptyList<String>(), errors)
+        } finally {
+            com.dispensesure.retail.core.utils.logger.AppLogger.setDestinationForTest(null)
+        }
     }
 }

@@ -441,4 +441,20 @@ class MllpConnectionManagerTest {
         assertFalse(manager.isConnected())
         assertEquals(1, disconnectedCalls)
     }
+
+    // A cancelled send must not tear down a healthy connection.
+    @Test
+    fun `cancelled send keeps the healthy connection open`() = scope.runTest {
+        coEvery { client.connect("10.0.0.1", 5000) } returns Unit
+        every { client.isConnected() } returns true
+        manager.connect("10.0.0.1", 5000)
+        advanceUntilIdle()
+        assertTrue(manager.isConnected())
+
+        coEvery { client.send(any()) } throws kotlinx.coroutines.CancellationException("caller scope cancelled")
+        runCatching { manager.send("MSH|...") }
+
+        coVerify(exactly = 0) { client.close() }
+        assertTrue("connection was marked Disconnected by a cancellation", manager.isConnected())
+    }
 }

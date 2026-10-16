@@ -1,6 +1,7 @@
 package com.dispensesure.retail.core.scanning.data
 
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.core.scanning.data.remote.IDrugAPI
 import com.dispensesure.retail.core.scanning.domain.data.IDrugRepository
@@ -54,12 +55,12 @@ class DrugRepository @Inject constructor(
      * @return A [DrugInfo] object if the request is successful, otherwise `null`.
      */
     override suspend fun getDrugInfoByNdc(getNdcRequestModel: GetNdcRequestModel): DrugInfo? {
-        logger.i("Fetching drug info for NDC: '$getNdcRequestModel'")
+        logger.i("Fetching drug info")
 
         return try {
             val token = preferenceHelper.getAccessToken()
             if (token.isNullOrBlank()) {
-                logger.e("No access token found. Aborting API call.")
+                logger.w("No access token found. Aborting API call.", event = LogEvent.DRUG_LOOKUP_FAILED)
                 return null
             }
 
@@ -75,7 +76,7 @@ class DrugRepository @Inject constructor(
                         result.is_drug_same == false &&
                         result.is_drug_equivalent == false)
             ) {
-                logger.w("No result found in API response for NDC: '$getNdcRequestModel'")
+                logger.w("No result found in API response for drug lookup")
                 null
             } else {
                 logger.i("Returning mapped DrugInfo Result -> $response")
@@ -98,16 +99,18 @@ class DrugRepository @Inject constructor(
                 }
             }
         } catch (e: HttpException) {
-            logger.e(
+            // The interceptor already reports 5xx; a 4xx is an unknown or invalid scan.
+            logger.w(
                 "HTTP error while fetching drug info (code=${e.code()}, message=${e.message()})",
-                e
+                e,
+                event = LogEvent.DRUG_LOOKUP_FAILED
             )
             null
         } catch (e: IOException) {
-            logger.e("Network error while fetching drug info", e)
+            logger.w("Network error while fetching drug info", e, event = LogEvent.DRUG_LOOKUP_FAILED)
             null
         } catch (e: Exception) {
-            logger.e("Unexpected error while fetching drug info", e)
+            logger.e("Unexpected error while fetching drug info", e, event = LogEvent.DRUG_LOOKUP_FAILED)
             null
         }
     }

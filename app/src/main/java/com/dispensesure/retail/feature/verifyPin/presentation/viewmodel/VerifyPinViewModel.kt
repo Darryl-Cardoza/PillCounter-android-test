@@ -12,10 +12,13 @@ import com.dispensesure.retail.core.utils.common.NetworkUtils
 import com.dispensesure.retail.core.health.logic.SessionHealthController
 import com.dispensesure.retail.core.utils.device.DeviceKeyProvider
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import com.dispensesure.retail.core.utils.logger.LoggerConfig
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.verifyPin.domain.model.VerifyPinUiState
 import dagger.hilt.android.lifecycle.HiltViewModel
 import dagger.hilt.android.qualifiers.ApplicationContext
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
@@ -79,12 +82,12 @@ class VerifyPinViewModel @Inject constructor(
                 return@launch
             }
 
-            logger.i("Attempting OTP verification for email: $email")
+            logger.i("Attempting OTP verification")
             _uiState.value = VerifyPinUiState.Loading
 
             val deviceKey = deviceKeyProvider.getDeviceKey()
             if (deviceKey == null) {
-                logger.w("OTP verification aborted: device key unavailable")
+                logger.e("OTP verification aborted: device key unavailable", event = LogEvent.OTP_VERIFICATION_FAILED)
                 _uiState.value = VerifyPinUiState.Error(
                     context.getString(R.string.error_server_unavailable)
                 )
@@ -101,29 +104,41 @@ class VerifyPinViewModel @Inject constructor(
 //                    val isHL7Enabled = data?.user?.isHl7Enabled ?:false
                     val user = data?.user
 
-                    if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
-                        prefs.saveTokens(accessToken, refreshToken)
-//                        prefs.setHl7Enabled(isHL7Enabled)
-                        // Anchor the offline-expiry clock at login-success so the first-launch
-                        // scenario (fresh install + immediate network loss) still expires cleanly
-                        // even though /health has not yet succeeded.
-                        sessionHealthController.markLoggedIn()
-                        logger.i("Access and refresh tokens saved securely.")
-                    } else {
-                        logger.w("Missing access or refresh token in response.")
+                    // The API call already succeeded at this point — everything below is local
+                    // persistence (SecurePreferences/AndroidKeyStore). A failure here (e.g. a
+                    // KeyStore error) must not crash past a successful login uncaught; fall back
+                    // to an error state instead so the user can retry rather than see a crash.
+                    try {
+                        if (!accessToken.isNullOrBlank() && !refreshToken.isNullOrBlank()) {
+                            prefs.saveTokens(accessToken, refreshToken)
+                            LoggerConfig.newSession()
+                            AppLogger.onUserLoggedIn()
+//                            prefs.setHl7Enabled(isHL7Enabled)
+                            // Anchor the offline-expiry clock at login-success so the first-launch
+                            // scenario (fresh install + immediate network loss) still expires cleanly
+                            // even though /health has not yet succeeded.
+                            sessionHealthController.markLoggedIn()
+                            logger.i("Access and refresh tokens saved securely.")
+                        } else {
+                            logger.e("Missing access or refresh token in response.", event = LogEvent.OTP_VERIFICATION_FAILED)
+                        }
+
+                        prefs.setLoggedInEmail(user?.email ?: email)
+
+                        // Log user info (safely)
+                        user?.let {
+                            logger.i("User verified: verified=${it.isVerified}, role=${it.role}")
+                        } ?: logger.w("User object is null in response.")
+
+                        _uiState.value = VerifyPinUiState.Success
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (e: Exception) {
+                        logger.e("Failed to persist session after successful OTP verification", e, event = LogEvent.OTP_VERIFICATION_FAILED)
+                        _uiState.value = VerifyPinUiState.Error(context.getString(R.string.error_unknown))
                     }
-
-                    prefs.setLoggedInEmail(user?.email ?: email)
-
-                    // Log user info (safely)
-                    user?.let {
-                        logger.i("User verified: email=${it.email}, verified=${it.isVerified}, role=${it.role}")
-                    } ?: logger.w("User object is null in response.")
-
-                    _uiState.value = VerifyPinUiState.Success
                 }
                 .onFailure { exception ->
-                    logger.e("OTP verification failed for user: $email", exception)
                     val message = mapExceptionToUserMessage(exception)
                     _uiState.value = VerifyPinUiState.Error(message)
                 }
@@ -147,7 +162,7 @@ class VerifyPinViewModel @Inject constructor(
                         val errorResponse = Gson().fromJson(it, ErrorResponse::class.java)
                         errorResponse.message
                     } catch (e: Exception) {
-                        logger.e("Error parsing error response", e)
+                        logger.w("Error parsing error response", e, event = LogEvent.OTP_VERIFICATION_FAILED)
                         null
                     }
                 }

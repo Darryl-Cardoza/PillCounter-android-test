@@ -13,6 +13,8 @@ import com.dispensesure.retail.core.room.models.PillCountTxnDetailsEntity
 import com.dispensesure.retail.core.room.models.PillCountTxnEntity
 import com.dispensesure.retail.core.room.models.dtos.BatchTxnDto
 import com.dispensesure.retail.core.utils.common.DateFormats
+import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import org.rite.hl7.HL7
 import org.rite.hl7.builder.ScanSource
@@ -105,6 +107,8 @@ data class HL7Config(
  * (e.g. RDS^O13 vs RDS^O01) resolve correctly.
  */
 object HL7MessageBuilder {
+
+    private val logger = AppLogger.create<HL7MessageBuilder>()
 
     // Resend attempts (PMS reject, ACK timeout, reconnect) call buildDispenseMessage again
     // for the same txn, which used to re-read, decrypt, and re-base64-encode every ZUI-8
@@ -686,6 +690,7 @@ object HL7MessageBuilder {
 
         val encoded = runCatching { file.readBytes() }
             .mapCatching { bytes -> if (ImageCrypto.isEncrypted(bytes)) ImageCrypto.decrypt(bytes) else bytes }
+            .onFailure { e -> logger.e("Failed to read/decrypt image for HL7 encoding: $path", e, event = LogEvent.FILE_READ_ERROR) }
             .getOrNull()
             ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }
             ?: return null

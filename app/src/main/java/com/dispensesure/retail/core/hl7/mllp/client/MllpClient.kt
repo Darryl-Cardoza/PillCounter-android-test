@@ -2,6 +2,7 @@ package com.dispensesure.retail.core.hl7.mllp.client
 
 import com.dispensesure.retail.core.hl7.mllp.tls.TlsSocketFactory
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -182,9 +183,10 @@ class MllpClient(
 
     private fun closeInternal() {
         logger.d("closeInternal() — releasing streams and socket")
-        try { input?.close() } catch (_: Exception) {}
-        try { output?.close() } catch (_: Exception) {}
-        try { socket?.close() } catch (_: Exception) {}
+        // Closing an already-dead socket often throws and this runs before every reconnect, so WARN only (not sent off-device).
+        try { input?.close() } catch (e: Exception) { logger.w("closeInternal() — input close failed", e, LogEvent.HL7_CONNECT_FAILED) }
+        try { output?.close() } catch (e: Exception) { logger.w("closeInternal() — output close failed", e, LogEvent.HL7_CONNECT_FAILED) }
+        try { socket?.close() } catch (e: Exception) { logger.w("closeInternal() — socket close failed", e, LogEvent.HL7_CONNECT_FAILED) }
         input = null; output = null; socket = null
     }
 }

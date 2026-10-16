@@ -8,6 +8,7 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
 import java.net.Inet4Address
 import java.net.InetAddress
 import java.net.NetworkInterface
@@ -204,7 +205,7 @@ class NsdHelper(context: Context) {
 
             sharedListener = object : NsdManager.RegistrationListener {
 
-                override fun onServiceRegistered(info: NsdServiceInfo) {
+                override fun onServiceRegistered(info: NsdServiceInfo): Unit = logger.catching("onServiceRegistered() failed", LogEvent.HL7_CONNECT_FAILED) {
                     isRegistering.set(false)
                     isRegistered.set(true)
                     registeredServiceName = info.serviceName
@@ -222,7 +223,7 @@ class NsdHelper(context: Context) {
                     registeredCallback?.invoke(info.serviceName)
                 }
 
-                override fun onServiceUnregistered(info: NsdServiceInfo) {
+                override fun onServiceUnregistered(info: NsdServiceInfo): Unit = logger.catching("onServiceUnregistered() failed", LogEvent.HL7_CONNECT_FAILED) {
                     logger.i("Service unregistered: ${info.serviceName} — name released")
                     completeRelease()
                 }
@@ -231,7 +232,7 @@ class NsdHelper(context: Context) {
                     // Clear every trace of the attempt: the listener was never accepted, so
                     // handing it to unregisterService later throws, and leaving activeBroadcast
                     // set would make the retry look like a duplicate and be swallowed.
-                    logger.e("Registration failed: $errorCode")
+                    logger.e("Registration failed: $errorCode", event = LogEvent.HL7_CONNECT_FAILED)
                     isRegistering.set(false)
                     isRegistered.set(false)
                     registeredServiceName = null
@@ -240,10 +241,10 @@ class NsdHelper(context: Context) {
                     registeredCallback = null
                 }
 
-                override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int) {
+                override fun onUnregistrationFailed(info: NsdServiceInfo, errorCode: Int): Unit = logger.catching("onUnregistrationFailed() failed", LogEvent.HL7_CONNECT_FAILED) {
                     // The name may or may not be free. Clearing state anyway is the lesser evil:
                     // staying stuck in "unregistering" would block every future broadcast.
-                    logger.e("Unregister failed: $errorCode — clearing state so re-registration can proceed")
+                    logger.e("Unregister failed: $errorCode — clearing state so re-registration can proceed", event = LogEvent.HL7_CONNECT_FAILED)
                     completeRelease()
                 }
             }
@@ -283,7 +284,7 @@ class NsdHelper(context: Context) {
             try {
                 nsdManager.unregisterService(listener)
             } catch (e: Exception) {
-                logger.e("unregisterService threw — treating the name as released", e)
+                logger.e("unregisterService threw — treating the name as released", e, event = LogEvent.HL7_CONNECT_FAILED)
                 completeRelease()
                 return
             }
@@ -367,7 +368,7 @@ class NsdHelper(context: Context) {
                     logger.w("HL7-NSD · Discovery started for $type")
                 }
 
-                override fun onServiceFound(serviceInfo: NsdServiceInfo) {
+                override fun onServiceFound(serviceInfo: NsdServiceInfo): Unit = logger.catching("onServiceFound() failed", LogEvent.HL7_CONNECT_FAILED) {
                     if (serviceInfo.serviceType != normalizedType) return
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                         resolveWithAddressList(serviceInfo, onResolved)
@@ -376,7 +377,7 @@ class NsdHelper(context: Context) {
                     }
                 }
 
-                override fun onServiceLost(serviceInfo: NsdServiceInfo) {
+                override fun onServiceLost(serviceInfo: NsdServiceInfo): Unit = logger.catching("onServiceLost() failed", LogEvent.HL7_CONNECT_FAILED) {
                     logger.w("Service lost: ${serviceInfo.serviceName}")
                     onLost(serviceInfo)
                 }
@@ -389,12 +390,12 @@ class NsdHelper(context: Context) {
                 override fun onStartDiscoveryFailed(type: String, errorCode: Int) {
                     // The listener was never accepted, so handing it back to stopServiceDiscovery
                     // throws IllegalArgumentException out of this framework callback. Just clear.
-                    logger.e("HL7-NSD · Start discovery FAILED for $type (error $errorCode)")
+                    logger.e("HL7-NSD · Start discovery FAILED for $type (error $errorCode)", event = LogEvent.HL7_CONNECT_FAILED)
                     synchronized(DiscoveryLock) { clearIfCurrent(this) }
                 }
 
                 override fun onStopDiscoveryFailed(type: String, errorCode: Int) {
-                    logger.e("HL7-NSD · Stop discovery FAILED for $type (error $errorCode) — clearing state anyway")
+                    logger.e("HL7-NSD · Stop discovery FAILED for $type (error $errorCode) — clearing state anyway", event = LogEvent.HL7_CONNECT_FAILED)
                     synchronized(DiscoveryLock) { clearIfCurrent(this) }
                 }
             }
@@ -435,12 +436,12 @@ class NsdHelper(context: Context) {
     ) {
         val executor = Executor { it.run() }
         val callback = object : NsdManager.ServiceInfoCallback {
-            override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int) {
-                logger.e("registerServiceInfoCallback failed: $errorCode — falling back to resolveService")
+            override fun onServiceInfoCallbackRegistrationFailed(errorCode: Int): Unit = logger.catching("onServiceInfoCallbackRegistrationFailed() failed", LogEvent.HL7_CONNECT_FAILED) {
+                logger.e("registerServiceInfoCallback failed: $errorCode — falling back to resolveService", event = LogEvent.HL7_CONNECT_FAILED)
                 resolveWithIpv4Preference(serviceInfo, attempt = 1, onResolved)
             }
 
-            override fun onServiceUpdated(resolved: NsdServiceInfo) {
+            override fun onServiceUpdated(resolved: NsdServiceInfo): Unit = logger.catching("onServiceUpdated() failed", LogEvent.HL7_CONNECT_FAILED) {
                 nsdManager.unregisterServiceInfoCallback(this)
 
                 val addresses: List<InetAddress> = resolved.hostAddresses
@@ -464,7 +465,7 @@ class NsdHelper(context: Context) {
                 mainHandler.post { onResolved(patched) }
             }
 
-            override fun onServiceLost() {
+            override fun onServiceLost(): Unit = logger.catching("onServiceLost() failed", LogEvent.HL7_CONNECT_FAILED) {
                 logger.w("Resolve — service lost mid-resolution")
                 nsdManager.unregisterServiceInfoCallback(this)
             }
@@ -495,7 +496,7 @@ class NsdHelper(context: Context) {
             serviceInfo,
             object : NsdManager.ResolveListener {
 
-                override fun onServiceResolved(resolved: NsdServiceInfo) {
+                override fun onServiceResolved(resolved: NsdServiceInfo): Unit = logger.catching("onServiceResolved() failed", LogEvent.HL7_CONNECT_FAILED) {
                     val host = resolved.host
                     val sameSubnet = host is Inet4Address && isOnLocalWifiSubnet(host)
                     if (!sameSubnet && attempt < maxAttempts) {
@@ -515,7 +516,7 @@ class NsdHelper(context: Context) {
                     serviceInfo: NsdServiceInfo,
                     errorCode: Int
                 ) {
-                    logger.e("Resolve failed: $errorCode")
+                    logger.e("Resolve failed: $errorCode", event = LogEvent.HL7_CONNECT_FAILED)
                 }
             }
         )

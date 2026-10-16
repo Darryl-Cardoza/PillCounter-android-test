@@ -1,6 +1,9 @@
 package com.dispensesure.retail.core.hl7.mllp.client
 
+import com.dispensesure.retail.core.hl7.mllp.tls.isCertPinMismatch
 import com.dispensesure.retail.core.utils.logger.AppLogger
+import com.dispensesure.retail.core.utils.logger.LogEvent
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -8,7 +11,6 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.IOException
-import java.security.cert.CertificateException
 
 /**
  * High-level MLLP connection manager.
@@ -96,8 +98,15 @@ class MllpConnectionManager(
                 val response = client.send(message)
                 logger.d("send() attempt $attempt — received response")
                 return response
+            } catch (e: CancellationException) {
+                throw e // the caller went away; the connection itself is fine
             } catch (e: Exception) {
-                logger.e("send() attempt $attempt failed: ${e.message}", e)
+                // Only the final attempt is an ERROR (shipped remotely); earlier ones are retried.
+                if (attempt == SEND_RETRIES - 1) {
+                    logger.w("send() failed after $SEND_RETRIES attempts: ${e.message}", e, event = LogEvent.HL7_SEND_FAILED)
+                } else {
+                    logger.w("send() attempt $attempt failed: ${e.message}", e)
+                }
                 handleSendFailure()
                 if (attempt == SEND_RETRIES - 1) throw e
                 retryConnect()
@@ -113,8 +122,8 @@ class MllpConnectionManager(
             while (!isShutdown) {
                 if (!certMismatchBlocked && state == ConnectionState.Disconnected && ip.isNotEmpty()) {
                     logger.d("reconnect loop — disconnected, attempting retryConnect()")
-                    try { retryConnect() } catch (e: Exception) {
-                        logger.e("reconnect loop — retryConnect() threw: ${e.message}", e)
+                    try { retryConnect() } catch (e: CancellationException) { throw e } catch (e: Exception) {
+                        logger.eThrottled("reconnect loop — retryConnect() threw: ${e.message}", e, event = LogEvent.HL7_CONNECT_FAILED)
                     }
                 }
                 delay(RECONNECT_CHECK_MS)
@@ -226,8 +235,9 @@ class MllpConnectionManager(
                     onConnectionEstablished()
                     return  // success — exits retryConnect()
                 } catch (e: Exception) {
-                    if (isCertMismatch(e)) {
-                        logger.e("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.")
+                    if (e.isCertPinMismatch()) {
+                        // One entry per minute: every send retry reaches this until the pin is cleared.
+                        logger.eThrottled("retryConnect() — PMS certificate mismatch. Blocking reconnects until pin is cleared.", event = LogEvent.HL7_CONNECT_FAILED)
                         certMismatchBlocked = true
                         updateState(ConnectionState.Disconnected)
                         onCertMismatch?.invoke()
@@ -243,10 +253,6 @@ class MllpConnectionManager(
             delay(delayMs)  // delay OUTSIDE the mutex — lock is free during backoff
         }
     }
-
-    private fun isCertMismatch(e: Exception): Boolean =
-        generateSequence<Throwable>(e) { it.cause }
-            .any { it is CertificateException && it.message?.contains("fingerprint mismatch") == true }
 
     private fun onConnectionEstablished() {
         updateState(ConnectionState.Connected)
