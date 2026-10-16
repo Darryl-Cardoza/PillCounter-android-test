@@ -80,29 +80,9 @@ interface DispenseCountDao {
     )
     suspend fun getImagePathsForCount(countId: Long): List<String>
 
-    /** Processed and raw image paths of one step's details, so the files go before the rows. */
-    @Query(
-        """
-        SELECT imagePath FROM dispense_count
-        WHERE txnId = :txnId AND step = :step AND imagePath IS NOT NULL
-        UNION ALL
-        SELECT rawImagePath FROM dispense_count
-        WHERE txnId = :txnId AND step = :step AND rawImagePath IS NOT NULL
-        """
-    )
-    suspend fun getImagePathsForStep(txnId: Long, step: StepState): List<String>
-
-    /** Ids of one step's details, so they can be unlinked from bottles after the delete. */
-    @Query("SELECT countId FROM dispense_count WHERE txnId = :txnId AND step = :step")
-    suspend fun getIdsForStep(txnId: Long, step: StepState): List<Long>
-
     /** Physical delete of one detail (View All delete). */
     @Query("DELETE FROM dispense_count WHERE countId = :countId")
     suspend fun hardDelete(countId: Long)
-
-    /** Physical delete of one step's details (View All delete all). */
-    @Query("DELETE FROM dispense_count WHERE txnId = :txnId AND step = :step")
-    suspend fun hardDeleteAllForStep(txnId: Long, step: StepState)
 
     // Delete method to remove existing VIAL records for a specific txnId
     @Query("DELETE FROM dispense_count WHERE txnId = :txnId AND step = :step")

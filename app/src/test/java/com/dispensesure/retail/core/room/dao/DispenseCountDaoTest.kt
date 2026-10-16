@@ -159,22 +159,6 @@ class DispenseCountDaoTest {
         assertEquals(3, dispenseCountDao.getTotalPillCountForTxn(1L))
     }
 
-    // ───────────────────────── hardDeleteAllForStep ─────────────────────────
-
-    @Test
-    fun `hardDeleteAllForStep removes only that txn and step`() = runTest {
-        dispenseCountDao.insert(DispenseCountEntity(txnId = 1L, pillCount = 5, step = StepState.VIAL.name))
-        dispenseCountDao.insert(DispenseCountEntity(txnId = 1L, pillCount = 5, step = StepState.VIAL.name))
-        dispenseCountDao.insert(DispenseCountEntity(txnId = 1L, pillCount = 5, step = StepState.SCAN.name))
-        dispenseCountDao.insert(DispenseCountEntity(txnId = 2L, pillCount = 5, step = StepState.VIAL.name))
-
-        dispenseCountDao.hardDeleteAllForStep(txnId = 1L, step = StepState.VIAL)
-
-        val txn1 = dispenseCountDao.getAllForTxn("1")
-        assertEquals(listOf(StepState.SCAN.name), txn1.map { it.step })
-        assertEquals(1, dispenseCountDao.getAllForTxn("2").size)
-    }
-
     // ───────────────────────── image paths ─────────────────────────
 
     @Test
@@ -185,32 +169,6 @@ class DispenseCountDaoTest {
         dispenseCountDao.insert(DispenseCountEntity(txnId = 1L, imagePath = "/b.jpg"))
 
         assertEquals(listOf("/a.jpg", "/a_raw.jpg"), dispenseCountDao.getImagePathsForCount(id).sorted())
-    }
-
-    @Test
-    fun `getImagePathsForStep returns processed and raw paths of that step only`() = runTest {
-        dispenseCountDao.insert(
-            DispenseCountEntity(
-                txnId = 1L, imagePath = "/t.jpg", rawImagePath = "/t_raw.jpg",
-                step = StepState.TARGET_VERIFICATION.name
-            )
-        )
-        dispenseCountDao.insert(DispenseCountEntity(txnId = 1L, imagePath = "/v.jpg", step = StepState.VIAL.name))
-
-        assertEquals(
-            listOf("/t.jpg", "/t_raw.jpg"),
-            dispenseCountDao.getImagePathsForStep(1L, StepState.TARGET_VERIFICATION).sorted()
-        )
-    }
-
-    @Test
-    fun `getIdsForStep returns only that step's ids`() = runTest {
-        val id1 = dispenseCountDao.insert(DispenseCountEntity(txnId = 1L, step = StepState.TARGET_VERIFICATION.name))
-        val id2 = dispenseCountDao.insert(DispenseCountEntity(txnId = 1L, step = StepState.TARGET_VERIFICATION.name))
-        dispenseCountDao.insert(DispenseCountEntity(txnId = 1L, step = StepState.VIAL.name))
-        dispenseCountDao.insert(DispenseCountEntity(txnId = 2L, step = StepState.TARGET_VERIFICATION.name))
-
-        assertEquals(setOf(id1, id2), dispenseCountDao.getIdsForStep(1L, StepState.TARGET_VERIFICATION).toSet())
     }
 
     // ───────────────────────── deleteVialByTxnId ─────────────────────────

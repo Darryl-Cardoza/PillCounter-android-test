@@ -64,7 +64,7 @@ and `stockCount` sit on. Lives in [`../core/scanning/`](../../core/scanning/).
   Also entered from the dashboard queue and to resume a partial count.
 - **Key classes.** `DispenseFlowScreen`, `DispenseFlowViewModel` (RX/NDC steps),
   `DispenseCountViewModel` (pill count, `onAction(DispenseCountAction)`, one-off
-  `DispenseCountNavigation`), `DispenseFlowUiState`, `DispenseCountUiState`,
+  `DispenseCountEffect`), `DispenseFlowUiState`, `DispenseCountUiState`,
   `TargetPillsCountDialog`. The count-mode UI
   (`InformationPanelSection`, `CountModePhone*`/`CountModeTablet*`, `CameraActionBar`,
   `HistoryMode*`, …) is in `core/scanning/presentation/compose/count/`. Shared engine via
