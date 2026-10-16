@@ -41,7 +41,7 @@ data class DashboardVariantParams(
     val onRecentBatchClick: (batchId: Long) -> Unit,
     /** Tap on a partial dispense row in Today's Queue — resumes the DispenseFlow to continue counting. */
     val onQueueDispenseClick: (txnId: Long) -> Unit,
-    /** Tap on an in-progress inventory batch in Today's Queue — resumes the new InventoryScan. */
+    /** Tap on an in-progress inventory batch in Today's Queue — resumes the new StockCount screen. */
     val onQueueInventoryClick: (batchId: Long) -> Unit,
     /** KPI cards not available in standalone mode (Disp. High Priority, Inv. Cycle Count). */
     val disabledKpiFilters: Set<KpiFilter>,

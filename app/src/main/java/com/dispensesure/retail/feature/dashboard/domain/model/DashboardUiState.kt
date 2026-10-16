@@ -44,7 +44,7 @@ data class DashboardUiState(
      * Bucket selected for a new stock-count session. Set when the user picks a bucket
      * from the Inventory quick-action dialog; consumed by the screen to navigate into
      * the inventory scan flow. The StockBatchEntity is created lazily on the first NDC scan
-     * inside InventoryScanViewModel, not here — so an abandoned session leaves no row.
+     * inside StockCountViewModel, not here — so an abandoned session leaves no row.
      */
     val pendingStockCountBucketId: String? = null,
 

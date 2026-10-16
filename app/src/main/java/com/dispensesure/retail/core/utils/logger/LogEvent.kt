@@ -35,14 +35,14 @@ enum class LogEvent {
     DASHBOARD_LOAD_FAILED,
     KEK_ROTATE_FAILED,
 
-    // ── Dispense flow (feature.dispenseFlow) ────────────────────────────────
+    // ── Dispense flow (feature.dispense) ────────────────────────────────
     RX_SCAN_FAILED,
     NDC_SCAN_FAILED,
     VIAL_SCAN_FAILED,
     DISPENSE_RESUME_FAILED,
     DISPENSE_FAILED,
 
-    // ── Batch count / inventory flow (feature.batchCount, feature.inventoryFlow) ─
+    // ── Batch count / inventory flow (feature.stockCount.batch, feature.stockCount.sealed) ─
     BATCH_CREATE_FAILED,
     BATCH_PROCESS_FAILED,
     BATCH_DELETE_FAILED,

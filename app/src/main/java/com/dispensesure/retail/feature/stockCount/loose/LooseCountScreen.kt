@@ -52,7 +52,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.showToast
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
 import com.dispensesure.retail.core.utils.compose.BreathingDotsLoader
 import com.dispensesure.retail.core.utils.permission.rememberPermissionStateDetailed
-import com.dispensesure.retail.feature.dispenseFlow.presentation.compose.BtScannerInputBar
+import com.dispensesure.retail.core.scanning.presentation.compose.BtScannerInputBar
 import com.dispensesure.retail.navigation.Screen
 import kotlinx.coroutines.delay
 

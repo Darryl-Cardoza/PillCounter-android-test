@@ -25,30 +25,30 @@ class ScreenTest {
         Assert.assertEquals("unsynced_transaction_screen", Screen.UnsyncedTransactionScreen.route)
     }
 
-    // ─────────────────────────── InventoryScan ───────────────────────────
+    // ─────────────────────────── StockCount ───────────────────────────
 
     @Test
-    fun `InventoryScan route createRoute and args`() {
+    fun `StockCount route createRoute and args`() {
         Assert.assertEquals(
-            "inventory_scan?batch_id={batch_id}&bucket_id={bucket_id}",
-            Screen.InventoryScan.route
+            "stock_count?batch_id={batch_id}&bucket_id={bucket_id}",
+            Screen.StockCount.route
         )
-        Assert.assertEquals("batch_id", Screen.InventoryScan.ARG_BATCH_ID)
-        Assert.assertEquals("bucket_id", Screen.InventoryScan.ARG_BUCKET_ID)
+        Assert.assertEquals("batch_id", Screen.StockCount.ARG_BATCH_ID)
+        Assert.assertEquals("bucket_id", Screen.StockCount.ARG_BUCKET_ID)
         Assert.assertEquals(
-            "inventory_scan?batch_id=0&bucket_id=",
-            Screen.InventoryScan.createRoute()
+            "stock_count?batch_id=0&bucket_id=",
+            Screen.StockCount.createRoute()
         )
         Assert.assertEquals(
-            "inventory_scan?batch_id=7&bucket_id=B1",
-            Screen.InventoryScan.createRoute(batchId = 7L, bucketId = "B1")
+            "stock_count?batch_id=7&bucket_id=B1",
+            Screen.StockCount.createRoute(batchId = 7L, bucketId = "B1")
         )
         // null bucketId coerces to empty
         Assert.assertEquals(
-            "inventory_scan?batch_id=7&bucket_id=",
-            Screen.InventoryScan.createRoute(batchId = 7L, bucketId = null)
+            "stock_count?batch_id=7&bucket_id=",
+            Screen.StockCount.createRoute(batchId = 7L, bucketId = null)
         )
-        Assert.assertEquals(2, Screen.InventoryScan.navArguments.size)
+        Assert.assertEquals(2, Screen.StockCount.navArguments.size)
     }
 
     // ─────────────────────────── BatchHistoryDetail ───────────────────────────

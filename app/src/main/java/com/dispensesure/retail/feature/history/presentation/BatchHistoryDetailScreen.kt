@@ -50,9 +50,9 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.CommonDialog
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toDateString
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toTimeString
-import com.dispensesure.retail.feature.batchCount.presentation.compose.BatchNdcCard
-import com.dispensesure.retail.feature.batchCount.presentation.viewmodel.BatchViewModel
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.feature.stockCount.batch.presentation.compose.BatchNdcCard
+import com.dispensesure.retail.feature.stockCount.batch.presentation.viewmodel.StockBatchDetailViewModel
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 import com.dispensesure.retail.feature.history.presentation.compose.BatchStockCountPdfExporter
 import com.dispensesure.retail.ui.theme.AppTheme
 import java.io.File
@@ -60,7 +60,7 @@ import java.io.File
 @Composable
 fun BatchHistoryDetailScreen(
     navController: NavController,
-    viewModel: BatchViewModel = hiltViewModel()
+    viewModel: StockBatchDetailViewModel = hiltViewModel()
 ) {
     val context = LocalContext.current
     val displayBatchId by viewModel.displayBatchId.collectAsStateWithLifecycle()

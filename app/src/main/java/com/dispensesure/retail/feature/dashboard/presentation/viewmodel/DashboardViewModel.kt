@@ -643,7 +643,7 @@ class DashboardViewModel @Inject constructor(
     /**
      * Stages a stock-count session for the chosen bucket. The StockBatchEntity is NOT
      * inserted here — it's created lazily on the first NDC scan inside
-     * InventoryScanViewModel, so a user who enters the inventory screen and leaves
+     * StockCountViewModel, so a user who enters the inventory screen and leaves
      * without scanning never produces an empty batch row.
      */
     fun createBatch(bucketId: String) {

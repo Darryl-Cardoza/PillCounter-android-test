@@ -50,7 +50,7 @@ import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.HollowButton
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.responsiveDp
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.compose.cardSelectionShadow
-import com.dispensesure.retail.feature.countResume.presentation.compose.HeadlineBar
+import com.dispensesure.retail.core.utils.compose.HeadlineBar
 import com.dispensesure.retail.feature.faceAuth.presentation.viewmodel.FaceAuthViewModel
 import com.dispensesure.retail.navigation.Screen
 import com.dispensesure.retail.ui.theme.AppTheme

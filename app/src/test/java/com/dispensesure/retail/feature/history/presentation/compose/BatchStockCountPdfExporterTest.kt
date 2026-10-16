@@ -1,8 +1,8 @@
 package com.dispensesure.retail.feature.history.presentation.compose
 
 import androidx.test.core.app.ApplicationProvider
-import com.dispensesure.retail.feature.batchCount.domain.model.BatchDrugGroup
-import com.dispensesure.retail.feature.batchCount.domain.model.BatchLotEntry
+import com.dispensesure.retail.feature.stockCount.batch.domain.model.BatchDrugGroup
+import com.dispensesure.retail.feature.stockCount.batch.domain.model.BatchLotEntry
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse

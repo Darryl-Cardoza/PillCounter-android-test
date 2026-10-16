@@ -7,11 +7,11 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.dispensesure.retail.feature.dashboard.presentation.DashboardScreen
-import com.dispensesure.retail.feature.dispenseFlow.presentation.DispenseFlowScreen
+import com.dispensesure.retail.feature.dispense.presentation.DispenseFlowScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceIntroScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceRegistrationScreen
 import com.dispensesure.retail.feature.faceAuth.presentation.FaceUsersListScreen
-import com.dispensesure.retail.feature.inventoryFlow.presentation.InventoryFlowScreen
+import com.dispensesure.retail.feature.stockCount.sealed.presentation.StockCountScreen
 import com.dispensesure.retail.feature.history.domain.model.HistoryMode
 import com.dispensesure.retail.feature.history.presentation.BatchHistoryDetailScreen
 import com.dispensesure.retail.feature.history.presentation.HistoryDetailScreen
@@ -103,10 +103,10 @@ fun AppNavGraph(
         }
 
         composable(
-            route = Screen.InventoryScan.route,
-            arguments = Screen.InventoryScan.navArguments,
+            route = Screen.StockCount.route,
+            arguments = Screen.StockCount.navArguments,
         ) {
-            InventoryFlowScreen(navController = navController)
+            StockCountScreen(navController = navController)
         }
 
         // Loose-pill count for a stock batch (SCAN PILLS on the sealed-bottle screen).

@@ -10,7 +10,7 @@ import com.dispensesure.retail.core.room.models.enums.BatchStatus
 import com.dispensesure.retail.core.utils.common.UserInterfaceUtils.toFormattedDate
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.feature.countResume.domain.model.CountItem
+import com.dispensesure.retail.feature.unsyncedTransaction.domain.model.CountItem
 import com.dispensesure.retail.feature.history.domain.model.BatchSummary
 import com.dispensesure.retail.feature.hl7.core.Hl7EventHandler
 import com.dispensesure.retail.feature.hl7.data.repository.Hl7Repository

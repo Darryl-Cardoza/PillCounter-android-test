@@ -31,8 +31,8 @@ sealed interface Screen {
         override val route: String = "settings"
     }
 
-    data object InventoryScan : Screen {
-        private const val ROUTE_PREFIX = "inventory_scan"
+    data object StockCount : Screen {
+        private const val ROUTE_PREFIX = "stock_count"
         const val ARG_BATCH_ID = "batch_id"
         const val ARG_BUCKET_ID = "bucket_id"
 
@@ -55,7 +55,7 @@ sealed interface Screen {
          * Entry-point route. Supply either:
          *  - [batchId] to resume an existing batch, OR
          *  - [bucketId] from the Inventory quick-action; the batch is created
-         *    lazily on the first NDC scan inside `InventoryScanViewModel`.
+         *    lazily on the first NDC scan inside `StockCountViewModel`.
          */
         fun createRoute(batchId: Long = 0L, bucketId: String? = null): String =
             "$ROUTE_PREFIX?$ARG_BATCH_ID=$batchId&$ARG_BUCKET_ID=${bucketId.orEmpty()}"
