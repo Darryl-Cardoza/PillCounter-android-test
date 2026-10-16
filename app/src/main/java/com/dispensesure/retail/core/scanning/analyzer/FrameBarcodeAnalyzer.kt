@@ -402,7 +402,7 @@ class FrameBarcodeAnalyzer(
                 }
             }
             .addOnFailureListener { ex ->
-                logger.eThrottled("INV_SCAN MLKit failure token=$token", ex, event = LogEvent.SCAN_FAILED)
+                logger.eThrottled("INV_SCAN MLKit failure", ex, event = LogEvent.SCAN_FAILED)
                 bitmapCopy.recycle()
             }
             .addOnCompleteListener {
