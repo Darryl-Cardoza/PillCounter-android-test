@@ -358,7 +358,6 @@
     <string name="enable_hl7_from_portal_toast">Habilitar HL7 desde el Portal</string>
     <string name="scan_correct_label">Escanee la etiqueta correcta</string>
 <!--    StockCount-->
-    <string name="scan_stock_bottle">Escanear frasco de stock</string>
     <string name="scan_open_pills">Escanear pastillas sueltas</string>
     <string name="camera_permission_required">Se requiere permiso de cámara para escanear. Permita el acceso a la cámara.</string>
     <string name="scan_ndc_to_count">Escanee el NDC para contar pastillas</string>

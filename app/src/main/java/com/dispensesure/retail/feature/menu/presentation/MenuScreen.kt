@@ -1,4 +1,4 @@
-﻿package com.dispensesure.retail.feature.menu.presentation
+package com.dispensesure.retail.feature.menu.presentation
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -200,7 +200,6 @@ fun MenuScreen(
                                 sections,
                                 hl7Enabled = loginViewModel.preferenceHelper.isHl7Enabled(),
                                 notesEnabled = loginViewModel.preferenceHelper.getShowNotesDialogSetting(),
-                                currentTxnId = loginViewModel.preferenceHelper.getTxnId(),
                             )
                             navController.navigate(Screen.Dashboard.route) {
                                 popUpTo(0)

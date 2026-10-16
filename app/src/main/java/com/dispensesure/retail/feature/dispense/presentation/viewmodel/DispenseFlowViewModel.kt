@@ -57,9 +57,8 @@ import javax.inject.Inject
  * HL7-expected NDC with the same substitute-drug / mismatch dialogs the legacy
  * ScanBarCodeScreen flow had.
  *
- * PMS batch validation (for inventory batches with `requestIdFromPMS`) is NOT
- * handled here — that lives in the inventory flow and the loose count
- * (feature/stockCount).
+ * Stock counts never come here: they run on StockCountScreen and LooseCountScreen.
+ * The txn on screen is [DispenseFlowUiState.txnId]; the screen hands it to the count view model.
  */
 @HiltViewModel
 class DispenseFlowViewModel @Inject constructor(
@@ -72,13 +71,13 @@ class DispenseFlowViewModel @Inject constructor(
 
     private val logger = AppLogger("DispenseFlowVM")
 
-    // How the screen was opened: the route's flags.
+    // How the screen was opened: the route's txn and flags.
+    private val routeTxnId: Long = savedStateHandle.get<Long>(Screen.DispenseFlow.ARG_TXN_ID) ?: 0L
     private val isFromHl7: Boolean = savedStateHandle.get<Boolean>(Screen.DispenseFlow.ARG_FROM_HL7) ?: false
-    private val isFromResume: Boolean = savedStateHandle.get<Boolean>(Screen.DispenseFlow.ARG_FROM_RESUME) ?: false
 
     private val _uiState = MutableStateFlow(
         DispenseFlowUiState(
-            isResolvingEntry = isFromResume || isFromHl7,
+            isResolvingEntry = routeTxnId != 0L || isFromHl7,
             isFromQueue = savedStateHandle.get<Boolean>(Screen.DispenseFlow.ARG_FROM_QUEUE) ?: false,
         )
     )
@@ -97,14 +96,17 @@ class DispenseFlowViewModel @Inject constructor(
         // Queue mode: initialize the QUEUE stage and start observing dispense transactions.
         // Skip when resuming a specific transaction to avoid the QUEUE stage flash
         // before initializeFromResumedTxn() advances the stage.
-        if (_uiState.value.isFromQueue && !isFromResume) enterQueueMode()
-        // PMS/HL7 entry: hydrate from the pre-existing transaction and skip RX.
-        // Only runs once — the VM internally early-outs if no txn is found, so we
-        // safely fall back to the manual PRE_RX flow.
-        if (isFromHl7) initializeFromHl7Txn()
-        // Resume entry: partial transaction already exists, NDC not yet verified.
-        // Skip RX scan and go straight to PRE_NDC so the user only scans the container.
-        if (isFromResume) initializeFromResumedTxn()
+        if (_uiState.value.isFromQueue && routeTxnId == 0L) enterQueueMode()
+        if (isFromHl7) {
+            // PMS/HL7 entry: hydrate from the pre-existing transaction and skip RX.
+            // Only runs once — the VM internally early-outs if no txn is found, so we
+            // safely fall back to the manual PRE_RX flow.
+            initializeFromHl7Txn(routeTxnId)
+        } else if (routeTxnId != 0L) {
+            // Resume entry: partial transaction already exists, NDC not yet verified.
+            // Skip RX scan and go straight to PRE_NDC so the user only scans the container.
+            initializeFromResumedTxn(routeTxnId)
+        }
     }
 
     fun onAction(action: DispenseFlowAction) {
@@ -140,12 +142,11 @@ class DispenseFlowViewModel @Inject constructor(
      * If the txn isn't found (e.g. it was cleared between notification post and
      * tap), the screen falls back to the manual PRE_RX flow.
      */
-    private fun initializeFromHl7Txn() {
+    private fun initializeFromHl7Txn(txnId: Long) {
         viewModelScope.launch {
             try {
-                val txnId = preferenceHelper.getTxnId()
                 if (txnId == 0L) {
-                    logger.w("HL7 init requested but no txnId in preferences — falling back to PRE_RX")
+                    logger.w("HL7 init requested but no txnId in the route — falling back to PRE_RX")
                     _uiState.update { it.copy(isResolvingEntry = false) }
                     return@launch
                 }
@@ -171,19 +172,13 @@ class DispenseFlowViewModel @Inject constructor(
 
     /**
      * Hydrate the screen when resuming an existing partial transaction that has
-     * not yet had its NDC verified. Reads the saved txnId from preferences, loads
-     * the drug info, and jumps straight to [DispenseStage.PRE_NDC] so the user
+     * not yet had its NDC verified. Loads [txnId] (from the route) and
+     * its drug info, and jumps straight to [DispenseStage.PRE_NDC] so the user
      * only needs to scan the container — the RX stage is skipped entirely.
      */
-    private fun initializeFromResumedTxn() {
+    private fun initializeFromResumedTxn(txnId: Long) {
         viewModelScope.launch {
             try {
-                val txnId = preferenceHelper.getTxnId()
-                if (txnId == 0L) {
-                    logger.w("Resume init requested but no txnId in preferences — falling back to PRE_RX")
-                    _uiState.update { it.copy(isResolvingEntry = false) }
-                    return@launch
-                }
                 val txn = dispenseFlowRepository.loadTxn(txnId)
                 if (txn == null) {
                     logger.w("Resume init: txn $txnId not found in DB — falling back to PRE_RX")
@@ -281,7 +276,7 @@ class DispenseFlowViewModel @Inject constructor(
         val drug = outcome.drug
         val scannedLabel = outcome.scannedLabel
         // RX found in local DB. The transaction already exists, so
-        // we only prep it here (gloves reset, save txnId).
+        // we only prep it here (gloves reset, txnId into state).
         //
         // If the container/NDC scan is already done
         // (isNdcVerified), skip the RX verification sheet and land
@@ -290,7 +285,6 @@ class DispenseFlowViewModel @Inject constructor(
         // advance to PRE_NDC until the user taps Proceed.
         val txnId = existingTxn.txnId
         dispenseFlowRepository.clearGlovesPresent(txnId)
-        preferenceHelper.saveTxnId(txnId)
         val ndcAlreadyVerified = existingTxn.isNdcVerified == true
         val targetStage = if (ndcAlreadyVerified) DispenseStage.COUNTING else DispenseStage.PRE_NDC
         _uiState.update {
@@ -407,7 +401,6 @@ class DispenseFlowViewModel @Inject constructor(
             FtueController.track(viewModelScope.launch {
                 try {
                     val txnId = dispenseFlowRepository.createStandaloneTxn(draft, preferenceHelper.getLocalId())
-                    preferenceHelper.saveTxnId(txnId)
                     _uiState.update { it.copy(stage = DispenseStage.PRE_NDC, txnId = txnId) }
                     logger.i("[HAZARDOUS] Standalone RX confirmed: rx=${draft.rxNo} drugId=${draft.drugId} isHazardous=${state.isHazardous} txn=$txnId → PRE_NDC")
                 } catch (e: CancellationException) {
@@ -664,7 +657,7 @@ class DispenseFlowViewModel @Inject constructor(
                 // the same value the counting header reads.
                 // Same txn id resetForRecount works from, so both halves of a reset
                 // agree on which transaction they are restarting.
-                val txnId = _uiState.value.txnId.takeIf { it != 0L } ?: preferenceHelper.getTxnId()
+                val txnId = _uiState.value.txnId
                 // The count is already wiped: a failed lookup only loses the display fallbacks, so still move the stage.
                 val drug = try {
                     txnId.takeIf { it != 0L }?.let { dispenseFlowRepository.loadOrderedDrug(it) }
@@ -808,7 +801,6 @@ class DispenseFlowViewModel @Inject constructor(
         viewModelScope.launch {
             try {
                 val txn = dispenseFlowRepository.loadTxn(txnId) ?: return@launch
-                preferenceHelper.saveTxnId(txnId)
                 dispenseFlowRepository.clearGlovesPresent(txnId)
                 val drug = dispenseFlowRepository.loadDrug(txn.drugId)
                 val targetStage = if (txn.isNdcVerified == true) DispenseStage.COUNTING else DispenseStage.PRE_NDC

@@ -31,7 +31,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.dispensesure.retail.core.tourguide.FtueController
-import com.dispensesure.retail.core.tourguide.TourGuidePrefs
 import com.dispensesure.retail.core.tourguide.TourEvent
 import com.dispensesure.retail.core.tourguide.TourSectionPrompt
 import com.dispensesure.retail.core.utils.common.navigateBackToDashboard
@@ -171,12 +170,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
-        // A local, so the singleton holds the helper rather than this Activity.
-        val helper = preferenceHelper
-        FtueController.bind(TourGuidePrefs.prefs(applicationContext)) { helper.saveTxnId(it) }
-        // A tour cut short by process death left the user's txn pointer on the deleted demo txn.
-        if (!FtueController.state.isActive) FtueController.restoreTxnPointer()
 
         // Re-arm the face lock on every fresh launch, before setContent so the
         // overlay is up on the first frame. Null state only: a config-change or

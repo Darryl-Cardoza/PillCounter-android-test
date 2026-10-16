@@ -1,12 +1,13 @@
 package com.dispensesure.retail.feature.history.presentation.viewmodel
 
+import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.utils.logger.AppLogger
 import com.dispensesure.retail.core.utils.logger.LogEvent
-import com.dispensesure.retail.core.utils.preference.PreferenceHelper
 import com.dispensesure.retail.feature.history.domain.model.HistoryDetailsUiState
+import com.dispensesure.retail.navigation.Screen
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -22,11 +23,14 @@ import javax.inject.Inject
 
 @HiltViewModel
 class HistoryDetailsViewModel @Inject constructor(
-    private val preferenceHelper: PreferenceHelper,
+    savedStateHandle: SavedStateHandle,
     private val dispenseTxnDao: DispenseTxnDao
 ) : ViewModel() {
 
     private val logger = AppLogger.create<HistoryDetailsViewModel>()
+
+    // The dispense txn the screen shows, from the route.
+    private val txnId: Long = savedStateHandle.get<Long>(Screen.HistoryDetail.ARG_TXN_ID) ?: 0L
 
     private val _uiState = MutableStateFlow(HistoryDetailsUiState())
     val uiState = _uiState.asStateFlow()
@@ -38,7 +42,7 @@ class HistoryDetailsViewModel @Inject constructor(
     private fun getTransactionDetails() {
         viewModelScope.launch {
             try {
-                val txnInfo = dispenseTxnDao.getDispenseTxnDetail(preferenceHelper.getTxnId())
+                val txnInfo = dispenseTxnDao.getDispenseTxnDetail(txnId)
                 _uiState.update { currentState ->
                     currentState.copy(
                         txnInfo = txnInfo,
@@ -55,7 +59,7 @@ class HistoryDetailsViewModel @Inject constructor(
     fun deleteTransaction() {
         viewModelScope.launch {
             try {
-                dispenseTxnDao.softDelete(preferenceHelper.getTxnId())
+                dispenseTxnDao.softDelete(txnId)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -65,8 +69,3 @@ class HistoryDetailsViewModel @Inject constructor(
     }
 
 }
-
-
-
-
-

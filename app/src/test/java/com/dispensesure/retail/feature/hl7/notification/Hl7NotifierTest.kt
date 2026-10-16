@@ -1,13 +1,13 @@
 package com.dispensesure.retail.feature.hl7.notification
 
 import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
-import com.dispensesure.retail.navigation.Screen
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.mockkConstructor
@@ -15,8 +15,8 @@ import io.mockk.mockkStatic
 import io.mockk.unmockkAll
 import io.mockk.verify
 import org.junit.After
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
 import java.lang.reflect.Field
@@ -48,6 +48,7 @@ import java.lang.reflect.Field
  *   (a) show() builds + posts a notification when the permission check passes
  *       (TIRAMISU+ with POST_NOTIFICATIONS granted) -> NotificationManagerCompat.notify(...).
  *   (b) show() on TIRAMISU+ WITHOUT POST_NOTIFICATIONS returns early -> notify() NOT called.
+ *   (c) show() gives each order its own PendingIntent request code.
  *   - constructor -> createChannelIfNeeded() runs without throwing.
  *   - The pure-Kotlin route building used inside show().
  */
@@ -145,11 +146,34 @@ class Hl7NotifierTest {
     }
 
     @Test
-    fun `dispense route is built for an HL7 order`() {
-        // Sanity check on the pure-Kotlin route building that show() performs internally.
-        val route = Screen.DispenseFlow.createRoute(fromHl7 = true)
-        assertNotNull(route)
-        assertTrue(route.contains("from_hl7=true"))
+    fun `an order notification opens its order`() {
+        assertEquals(
+            "dispense_flow?txn_id=42&from_hl7=true&from_queue=false",
+            notificationRoute(dispenseTxnId = 42L),
+        )
+    }
+
+    @Test
+    fun `any other notification opens the dispense screen with no order`() {
+        assertEquals(
+            "dispense_flow?txn_id=0&from_hl7=true&from_queue=false",
+            notificationRoute(dispenseTxnId = null),
+        )
+    }
+
+    @Test
+    fun `each order gets its own pending intent`() {
+        mockkStatic(PendingIntent::class)
+        every { PendingIntent.getActivity(any(), any(), any(), any()) } returns mockk(relaxed = true)
+        val notifier = Hl7Notifier(context)
+
+        notifier.show("Title", "Body", dispenseTxnId = 7L)
+        notifier.show("Title", "Body", dispenseTxnId = 8L)
+        notifier.show("Title", "Body")
+
+        verify { PendingIntent.getActivity(any(), 7, any(), any()) }
+        verify { PendingIntent.getActivity(any(), 8, any(), any()) }
+        verify { PendingIntent.getActivity(any(), 0, any(), any()) }
     }
 
     /**

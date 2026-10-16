@@ -4,7 +4,6 @@ import com.dispensesure.retail.core.models.StepState
 import com.dispensesure.retail.core.scanning.domain.model.TxnDetail
 import com.dispensesure.retail.feature.dispense.domain.model.DispenseCountAction
 import io.mockk.coVerify
-import io.mockk.every
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
@@ -47,7 +46,7 @@ class DispenseCountViewModelStateTest : DispenseCountViewModelTestBase() {
     // SCAN_VM_010
     @Test
     fun `TargetCountEntered stores the target, saves it and closes the dialog`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 42L
+        selectTxn(42L)
         setState { it.copy(showTargetCountDialog = true) }
 
         viewModel.onAction(DispenseCountAction.TargetCountEntered(42))

@@ -25,7 +25,7 @@ class DispenseCountViewModelFrameTest : DispenseCountViewModelTestBase() {
     @Test
     fun `counting with no txn starts on TARGET_VERIFICATION`() = runTest {
         // No txn, so no drug: a drug with no type starts on the prescribed count.
-        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.COUNTING, isHazardousDrug = false))
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.COUNTING, txnId = 0L, isHazardousDrug = false))
         advanceUntilIdle()
 
         assertEquals(StepState.TARGET_VERIFICATION, viewModel.uiState.value.currentStep)

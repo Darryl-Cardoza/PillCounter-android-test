@@ -15,7 +15,6 @@ import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.unmockkAll
-import io.mockk.verify
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -238,16 +237,6 @@ class HistoryViewModelTest {
         advanceUntilIdle()
 
         coVerify { repository.deleteTransactionsForDate(any(), any(), null, any()) }
-    }
-
-    // ─────────────────────────── Transaction selection ───────────────────────────
-
-    // HIST_VM_014
-    @Test
-    fun `selectCurrentTransaction delegates txnId to preferenceHelper`() = runTest {
-        viewModel.selectCurrentTransaction(77L)
-
-        verify { preferenceHelper.saveTxnId(77L) }
     }
 
     // ─────────────────────────── batchGroups flow ───────────────────────────

@@ -175,24 +175,21 @@ fun DashboardScreen(
     }
     val onTabSelected = remember(viewModel) { viewModel::onTabSelected }
     val onTabVisible = remember(viewModel) { viewModel::onTabVisible }
-    val onDispenseQuickAction = remember(viewModel, navController) {
+    val onDispenseQuickAction = remember(navController) {
         {
-            viewModel.saveTxnId()
             navController.navigate(
                 Screen.DispenseFlow.createRoute()
             )
         }
     }
-    val onInventoryQuickAction = remember(viewModel) {
+    val onInventoryQuickAction = remember {
         {
-            viewModel.saveTxnId()
             showBucketSelectDialog = true
         }
     }
-    val onRecentDispenseClick = remember(viewModel, navController) {
+    val onRecentDispenseClick = remember(navController) {
         { txnId: Long ->
-            viewModel.selectCurrentTransaction(txnId)
-            navController.navigate(Screen.HistoryDetail.route)
+            navController.navigate(Screen.HistoryDetail.createRoute(txnId))
         }
     }
     val onRecentBatchClick = remember(navController) {
@@ -205,10 +202,9 @@ fun DashboardScreen(
             if (!viewModel.isHl7Enabled()) {
                 showEnableHl7Dialog = true
             } else {
-                viewModel.selectCurrentTransaction(txnId)
                 navController.navigate(
                     Screen.DispenseFlow.createRoute(
-                        fromResume = true,
+                        txnId = txnId,
                         fromQueue = true,
                     )
                 )
@@ -256,7 +252,6 @@ fun DashboardScreen(
             TourDialogHost(
                 state = tourState,
                 onNext = {
-                    viewModel.saveTxnId()
                     viewModel.createBatch(defaultBucketIndex?.let { bucketList[it] } ?: TutorialData.BUCKET)
                     showBucketSelectDialog = false
                 },
@@ -322,7 +317,7 @@ fun DashboardScreen(
             onConfirm = {
                 TourGuidePrefs.markSeen(context, localId)
                 showTourOffer = false
-                FtueController.start(TourSection.entries, viewModel.isHl7Enabled(), preferenceHelper.getShowNotesDialogSetting(), preferenceHelper.getTxnId())
+                FtueController.start(TourSection.entries, viewModel.isHl7Enabled(), preferenceHelper.getShowNotesDialogSetting())
             },
             onCancel = {
                 TourGuidePrefs.markSeen(context, localId)

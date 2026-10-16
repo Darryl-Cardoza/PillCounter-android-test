@@ -631,15 +631,6 @@ class DashboardViewModel @Inject constructor(
         _uiState.update { it.copy(navigateToProfile = false) }
     }
 
-    fun saveTxnId() {
-        preferenceHelper.saveTxnId(0)
-    }
-
-    /** Persists the tapped txnId so HistoryDetail can pick it up (mirrors HistoryViewModel.selectCurrentTransaction). */
-    fun selectCurrentTransaction(txnId: Long) {
-        preferenceHelper.saveTxnId(txnId)
-    }
-
     /**
      * Stages a stock-count session for the chosen bucket. The StockBatchEntity is NOT
      * inserted here — it's created lazily on the first NDC scan inside

@@ -8,7 +8,7 @@ import com.dispensesure.retail.core.scanning.logic.TrayColor
 /** Everything the dispense screen tells the count view model. */
 sealed interface DispenseCountAction {
     // ── Stage and camera ──
-    data class StageChanged(val stage: DispenseStage, val isHazardousDrug: Boolean) : DispenseCountAction
+    data class StageChanged(val stage: DispenseStage, val txnId: Long, val isHazardousDrug: Boolean) : DispenseCountAction
     // A verification sheet, dialog or loader of the flow is over the camera.
     data class FlowOverlayChanged(val isShown: Boolean) : DispenseCountAction
     data class HistoryVisibilityChanged(val isShown: Boolean) : DispenseCountAction

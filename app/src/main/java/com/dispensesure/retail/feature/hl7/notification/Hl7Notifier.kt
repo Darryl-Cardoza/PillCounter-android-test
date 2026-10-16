@@ -46,13 +46,12 @@ class Hl7Notifier @Inject constructor(
 
     fun show(
         title: String,
-        message: String
+        message: String,
+        // The dispense order the tap opens. Null opens the dispense screen on the Rx step.
+        dispenseTxnId: Long? = null,
     ) {
         print("notification show")
-        // PMS-originated dispense: deep-link into the merged DispenseFlowScreen
-        // with fromHl7=true so it hydrates from the pre-created txn and starts
-        // at the NDC scan step (the RX info is already in the HL7 payload).
-        val route = Screen.DispenseFlow.createRoute(fromHl7 = true)
+        val route = notificationRoute(dispenseTxnId)
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
@@ -60,9 +59,11 @@ class Hl7Notifier @Inject constructor(
             putExtra(MainActivity.EXTRA_OPENED_FROM_NOTIFICATION, true)
         }
 
+        // One PendingIntent per order. With a shared request code, FLAG_UPDATE_CURRENT
+        // points every earlier notification at the newest order.
         val pendingIntent = PendingIntent.getActivity(
             context,
-            0,
+            dispenseTxnId?.toInt() ?: 0,
             intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
@@ -104,5 +105,11 @@ class Hl7Notifier @Inject constructor(
             .notify(System.currentTimeMillis().toInt(), notification)
     }
 }
+
+// PMS-originated dispense: deep-link into the merged DispenseFlowScreen
+// with fromHl7=true so it hydrates from the pre-created txn and starts
+// at the NDC scan step (the RX info is already in the HL7 payload).
+internal fun notificationRoute(dispenseTxnId: Long?): String =
+    Screen.DispenseFlow.createRoute(txnId = dispenseTxnId ?: 0L, fromHl7 = true)
 
 

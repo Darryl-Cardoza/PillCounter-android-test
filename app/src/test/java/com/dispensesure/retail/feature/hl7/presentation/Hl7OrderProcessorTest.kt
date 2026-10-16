@@ -103,6 +103,22 @@ class Hl7OrderProcessorTest {
     }
 
     @Test
+    fun `NW notification opens the order it saved`() = runTest {
+        processor.process(newOrder(order("NW"))).join()
+
+        verify(exactly = 1) { notifier.show(any(), any(), NEW_TXN_ID) }
+    }
+
+    @Test
+    fun `NW updating a saved row notifies with that row`() = runTest {
+        coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.PARTIAL, "0")
+
+        processor.process(newOrder(order("NW"))).join()
+
+        verify(exactly = 1) { notifier.show(any(), any(), SAVED_TXN_ID) }
+    }
+
+    @Test
     fun `NW with a saved COMPLETED row from another message inserts a new transaction`() = runTest {
         coEvery { dispenseTxnDao.getByRxNoAndFillNo(RX, "0") } returns savedRow(CountStatus.COMPLETED, "0")
 
@@ -173,6 +189,13 @@ class Hl7OrderProcessorTest {
         processor.process(refill(order("RF", pendingRefills = 1, refillNumber = 2))).join()
 
         assertEquals("2", insertedRow().refillNo)
+    }
+
+    @Test
+    fun `RF notification opens the refill it saved`() = runTest {
+        processor.process(refill(order("RF", pendingRefills = 1, refillNumber = 2))).join()
+
+        verify(exactly = 1) { notifier.show(any(), any(), NEW_TXN_ID) }
     }
 
     @Test

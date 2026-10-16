@@ -28,9 +28,6 @@ private const val KEY_LOCAL_ID = "local_id"
 private const val KEY_ALLOW_LOCAL_STORAGE = "allow_local_storage"
 private const val KEY_REMEMBER_ME = "remember_me"
 
-// Transactions
-private const val KEY_TXN_ID = "txn_id"
-
 // UI Theme
 private const val KEY_THEME_COLORS = "theme_colors"
 
@@ -202,19 +199,6 @@ class PreferenceHelper @Inject constructor(
         val allow = prefs.getBoolean(KEY_ALLOW_LOCAL_STORAGE, true)
         logger.d("Retrieved allowLocalStorage: $allow")
         return allow
-    }
-
-    // ─────────────────────────── TRANSACTIONS ───────────────────────────
-
-    fun saveTxnId(txnId: Long) {
-        prefs.putLong(KEY_TXN_ID, txnId)
-        logger.i("Saved transaction ID")
-    }
-
-    fun getTxnId(): Long {
-        val id = prefs.getLong(KEY_TXN_ID, 0)
-        logger.d("Retrieved transaction ID")
-        return id
     }
 
     // ─────────────────────────── THEME CACHING ───────────────────────────

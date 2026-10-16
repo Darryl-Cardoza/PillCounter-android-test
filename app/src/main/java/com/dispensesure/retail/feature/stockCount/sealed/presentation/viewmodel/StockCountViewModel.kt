@@ -928,9 +928,6 @@ class StockCountViewModel @Inject constructor(
                 // the loose count creates it when saved, mirroring onBarcodeDetected above.
                 val batchId = resolvedBatchId.value
 
-                // Always clear the staged dispense txnId.
-                preferenceHelper.saveTxnId(0)
-
                 // Build the NDC allowlist for the loose count.
                 // Only PMS batches restrict which NDCs may be counted. An active card
                 // does not narrow it — its count is already persisted above.

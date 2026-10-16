@@ -26,7 +26,6 @@ import com.dispensesure.retail.core.models.isControlledDrugType
 import com.dispensesure.retail.core.room.models.DispenseCountEntity
 import com.dispensesure.retail.core.scanning.data.DrugResolver
 import com.dispensesure.retail.core.scanning.domain.model.DrugLookup
-import com.dispensesure.retail.core.tourguide.FtueController
 import com.dispensesure.retail.feature.hl7.core.Hl7MessageSender
 import com.dispensesure.retail.feature.hl7.notification.Hl7Notifier
 import com.dispensesure.retail.feature.hl7.util.HL7Config
@@ -529,8 +528,6 @@ class Hl7Repository @Inject constructor(
         logger.i("Saving txn (site2) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}'")
 
         val txnId = dispenseTxnDao.upsertPreservingId(txn)
-        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
-        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {
@@ -540,7 +537,8 @@ class Hl7Repository @Inject constructor(
         }
         notifier.show(
             title = context.getString(R.string.hl7_notification_new_rx_title),
-            message = notifBody
+            message = notifBody,
+            dispenseTxnId = txnId,
         )
     }
 
@@ -618,8 +616,6 @@ class Hl7Repository @Inject constructor(
         logger.i("Saving txn (site3) hl7MessageControlId='${txn.hl7MessageControlId}' hl7SequenceNumber='${txn.hl7SequenceNumber}' transactionOrderId='${txn.transactionOrderId}'")
 
         val txnId = dispenseTxnDao.upsertPreservingId(txn)
-        // Tour demo flow owns the active txn id: the order's id is applied when the tour ends.
-        FtueController.saveTxnIdOrDefer(txnId, preferenceHelper::saveTxnId)
         insertZinContainerDetails(txnId, message)
 
         val notifBody = if (targetCount != null && targetCount > 0) {
@@ -629,7 +625,8 @@ class Hl7Repository @Inject constructor(
         }
         notifier.show(
             title = context.getString(R.string.hl7_notification_new_rx_title),
-            message = notifBody
+            message = notifBody,
+            dispenseTxnId = txnId,
         )
     }
 
@@ -908,6 +905,8 @@ class Hl7Repository @Inject constructor(
             return
         }
 
+        // The tap opens the edited order, unless the edit left it held or finished.
+        val statusAfterEdit = newStatus ?: existingTxn.status
         notifier.show(
             title = context.getString(R.string.hl7_notification_edit_rx_title),
             message = context.getString(
@@ -915,7 +914,8 @@ class Hl7Repository @Inject constructor(
                 rxNo,
                 resolvedDrug.drugName ?: hl7DrugName,
                 newTargetCount ?: 0
-            )
+            ),
+            dispenseTxnId = existingTxn.txnId.takeIf { statusAfterEdit == CountStatus.PARTIAL },
         )
     }
 

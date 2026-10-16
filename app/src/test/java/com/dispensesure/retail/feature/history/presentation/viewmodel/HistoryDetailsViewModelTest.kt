@@ -1,11 +1,12 @@
 package com.dispensesure.retail.feature.history.presentation.viewmodel
 
 import android.util.Log
+import androidx.lifecycle.SavedStateHandle
 import app.cash.turbine.test
 import com.dispensesure.retail.core.room.dao.DispenseTxnDao
 import com.dispensesure.retail.core.room.models.dtos.DispenseCountInfo
 import com.dispensesure.retail.core.room.models.dtos.DispenseTxnDetail
-import com.dispensesure.retail.core.utils.preference.PreferenceHelper
+import com.dispensesure.retail.navigation.Screen
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.every
@@ -31,7 +32,6 @@ class HistoryDetailsViewModelTest {
     private val testDispatcher = StandardTestDispatcher()
 
     private lateinit var dispenseTxnDao: DispenseTxnDao
-    private lateinit var preferenceHelper: PreferenceHelper
 
     @Before
     fun setup() {
@@ -45,10 +45,8 @@ class HistoryDetailsViewModelTest {
         every { Log.e(any(), any(), any()) } returns 0
 
         dispenseTxnDao = mockk(relaxed = true)
-        preferenceHelper = mockk(relaxed = true)
 
         // Sensible defaults so the init block does not blow up.
-        every { preferenceHelper.getTxnId() } returns 1L
         coEvery { dispenseTxnDao.getDispenseTxnDetail(any()) } returns null
     }
 
@@ -58,8 +56,11 @@ class HistoryDetailsViewModelTest {
         unmockkAll()
     }
 
-    private fun createViewModel(): HistoryDetailsViewModel =
-        HistoryDetailsViewModel(preferenceHelper, dispenseTxnDao)
+    private fun createViewModel(txnId: Long = 1L): HistoryDetailsViewModel =
+        HistoryDetailsViewModel(
+            savedStateHandle = SavedStateHandle(mapOf(Screen.HistoryDetail.ARG_TXN_ID to txnId)),
+            dispenseTxnDao = dispenseTxnDao,
+        )
 
     private fun detail(
         txnId: Long = 1L,
@@ -101,10 +102,9 @@ class HistoryDetailsViewModelTest {
                 detail(txnId = 3L)
             )
         )
-        every { preferenceHelper.getTxnId() } returns 1L
         coEvery { dispenseTxnDao.getDispenseTxnDetail(1L) } returns txn
 
-        val vm = createViewModel()
+        val vm = createViewModel(txnId = 1L)
         advanceUntilIdle()
 
         vm.uiState.test {
@@ -119,10 +119,9 @@ class HistoryDetailsViewModelTest {
 
     @Test
     fun `init sets null txnInfo when no transaction found`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 99L
         coEvery { dispenseTxnDao.getDispenseTxnDetail(99L) } returns null
 
-        val vm = createViewModel()
+        val vm = createViewModel(txnId = 99L)
         advanceUntilIdle()
 
         vm.uiState.test {
@@ -134,9 +133,7 @@ class HistoryDetailsViewModelTest {
 
     @Test
     fun `deleteTransaction calls softDelete with current txn id`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 7L
-
-        val vm = createViewModel()
+        val vm = createViewModel(txnId = 7L)
         advanceUntilIdle()
 
         vm.deleteTransaction()
@@ -147,10 +144,9 @@ class HistoryDetailsViewModelTest {
 
     @Test
     fun `deleteTransaction swallows exception from dao`() = runTest(testDispatcher) {
-        every { preferenceHelper.getTxnId() } returns 7L
         coEvery { dispenseTxnDao.softDelete(eq(7L), any()) } throws RuntimeException("db error")
 
-        val vm = createViewModel()
+        val vm = createViewModel(txnId = 7L)
         advanceUntilIdle()
 
         // Should not throw.

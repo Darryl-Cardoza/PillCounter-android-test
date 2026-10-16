@@ -236,19 +236,6 @@ class PreferenceHelperTest {
         assertFalse(helper.isAllowLocalStorage())
     }
 
-    // ─────────────────────────── TRANSACTIONS ───────────────────────────
-
-    @Test
-    fun `saveTxnId then getTxnId returns value`() {
-        helper.saveTxnId(999L)
-        assertEquals(999L, helper.getTxnId())
-    }
-
-    @Test
-    fun `getTxnId defaults to zero`() {
-        assertEquals(0L, helper.getTxnId())
-    }
-
     // ─────────────────────────── THEME CACHING ───────────────────────────
 
     private fun sampleTheme() = ColorSettings(

@@ -39,7 +39,7 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `resetForRecount returns false when the DB reset fails`() = runTest {
-        coEvery { preferenceHelper.getTxnId() } returns 7L
+        selectTxn(7L)
         coEvery { dispenseCountRepository.reset(7L) } throws IllegalStateException("boom")
 
         assertFalse(viewModel.resetForRecount())
@@ -47,7 +47,7 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `resetForRecount returns true when the reset succeeds`() = runTest {
-        coEvery { preferenceHelper.getTxnId() } returns 7L
+        selectTxn(7L)
 
         assertTrue(viewModel.resetForRecount())
     }
@@ -76,7 +76,7 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `gloves confirmed by the engine are saved on the dispense txn`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 42L
+        selectTxn(42L)
         runCurrent() // starts the view model's event collector
 
         repeat(3) { engineFactory.engine.feedGloveFrameForTest(confidence = 0.9f) }
@@ -88,7 +88,7 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `a tray classification is saved on the dispense txn`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 42L
+        selectTxn(42L)
         runCurrent()
 
         viewModel.onAction(DispenseCountAction.TrayClassified(TrayColor.RED, isHazardous = true))
@@ -100,7 +100,7 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `a failed tray save does not crash`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 42L
+        selectTxn(42L)
         coEvery {
             dispenseCountRepository.saveHazardousTrayDetected(
                 any(),
@@ -116,11 +116,25 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
     }
 
     @Test
+    fun `gloves confirmed after leaving for the queue are saved on no txn`() = runTest {
+        selectTxn(42L)
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.QUEUE, txnId = 0L, isHazardousDrug = false))
+        runCurrent() // starts the view model's event collector
+
+        repeat(3) { engineFactory.engine.feedGloveFrameForTest(confidence = 0.9f) }
+        advanceUntilIdle()
+
+        // The gloves did lock in; they just have no txn to be saved on.
+        assertTrue(viewModel.engineState.value.glovesDetected)
+        coVerify(exactly = 0) { dispenseCountRepository.saveGlovesPresent(any()) }
+    }
+
+    @Test
     fun `a tray warning from the engine is shown as a toast`() = runTest {
         every { preferenceHelper.getHazardousTrayColor() } returns "RED"
         val effects = collectEffects()
         runCurrent() // starts the view model's event collector
-        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.COUNTING, isHazardousDrug = false))
+        viewModel.onAction(DispenseCountAction.StageChanged(DispenseStage.COUNTING, txnId = 0L, isHazardousDrug = false))
         // runCurrent, not advanceUntilIdle: moving the clock would fire the 60 s idle pause,
         // which turns tray checks off.
         runCurrent()
@@ -171,7 +185,7 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
     // SCAN_VM_031
     @Test
     fun `CountDeleted deletes the count through the repository`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 9L
+        selectTxn(9L)
 
         viewModel.onAction(DispenseCountAction.CountDeleted(countId = 5L))
         advanceUntilIdle()
@@ -184,7 +198,7 @@ class DispenseCountViewModelActionTest : DispenseCountViewModelTestBase() {
     // SCAN_VM_033
     @Test
     fun `NoteSaved hides the notes dialog, saves the note and completes`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 42L
+        selectTxn(42L)
         setState { it.copy(showNotesDialog = true) }
 
         viewModel.onAction(DispenseCountAction.NoteSaved(note = "test note"))

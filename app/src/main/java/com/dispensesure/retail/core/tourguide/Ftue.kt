@@ -1,7 +1,5 @@
 package com.dispensesure.retail.core.tourguide
 
-import android.content.SharedPreferences
-import androidx.core.content.edit
 import com.dispensesure.retail.R
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -36,56 +34,15 @@ object FtueController {
     val state: TourGuideState = TourGuideState().also {
         it.onEnded = {
             continuing = false
-            // Synchronously, so a real order arriving right after the tour isn't overwritten later.
-            restoreTxnPointer()
             _events.trySend(TourEvent.Ended)
         }
     }
 
-    private const val KEY_SAVED_TXN = "tour_saved_txn_id"
-    private const val KEY_HELD_ORDER_TXN = "tour_held_order_txn_id"
-
-    // The demo flow overwrites the user's txn pointer. The pre-tour value, and any HL7 order that
-    // arrived meanwhile, are kept on disk so a process death mid-tour can't lose them.
-    private var store: SharedPreferences? = null
-    private var savePointer: ((Long) -> Unit)? = null
     private var continuing = false
 
-    /** Wired once by MainActivity before any tour can start. */
-    fun bind(prefs: SharedPreferences, save: (Long) -> Unit) {
-        store = prefs
-        savePointer = save
-    }
-
-    fun start(sections: List<TourSection>, hl7Enabled: Boolean, notesEnabled: Boolean, currentTxnId: Long = 0L) {
-        if (!state.isActive) {
-            continuing = false
-            store?.edit(commit = true) {
-                putLong(KEY_SAVED_TXN, currentTxnId)
-                remove(KEY_HELD_ORDER_TXN)
-            }
-        }
+    fun start(sections: List<TourSection>, hl7Enabled: Boolean, notesEnabled: Boolean) {
+        if (!state.isActive) continuing = false
         state.start(sections, hl7Enabled, notesEnabled)
-    }
-
-    /** An incoming order must not hijack the demo flow's pointer; its id is applied once the tour ends. */
-    fun saveTxnIdOrDefer(txnId: Long, save: (Long) -> Unit) {
-        if (state.isActive) store?.edit(commit = true) { putLong(KEY_HELD_ORDER_TXN, txnId) } else save(txnId)
-    }
-
-    /** Puts back the pointer once: a held order wins over the pre-tour value. No-op if nothing is stored. */
-    fun restoreTxnPointer() {
-        val prefs = store ?: return
-        val id = when {
-            prefs.contains(KEY_HELD_ORDER_TXN) -> prefs.getLong(KEY_HELD_ORDER_TXN, 0L)
-            prefs.contains(KEY_SAVED_TXN) -> prefs.getLong(KEY_SAVED_TXN, 0L)
-            else -> return
-        }
-        prefs.edit(commit = true) {
-            remove(KEY_HELD_ORDER_TXN)
-            remove(KEY_SAVED_TXN)
-        }
-        savePointer?.invoke(id)
     }
 
     /** Drops queued events, e.g. a stale [TourEvent.Ended] that no collector will see until the next login. */

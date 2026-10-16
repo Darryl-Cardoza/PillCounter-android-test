@@ -18,10 +18,11 @@ class DispenseCountActionTest {
     }
 
     @Test
-    fun stageChanged_carriesTheStageAndTheHazardFlag() {
-        val stageChanged = DispenseCountAction.StageChanged(DispenseStage.COUNTING, isHazardousDrug = true)
+    fun stageChanged_carriesTheStageTheTxnAndTheHazardFlag() {
+        val stageChanged = DispenseCountAction.StageChanged(DispenseStage.COUNTING, txnId = 7L, isHazardousDrug = true)
 
         assertEquals(DispenseStage.COUNTING, stageChanged.stage)
+        assertEquals(7L, stageChanged.txnId)
         assertTrue(stageChanged.isHazardousDrug)
     }
 

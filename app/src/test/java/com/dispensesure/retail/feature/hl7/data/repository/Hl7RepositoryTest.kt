@@ -837,7 +837,7 @@ class Hl7RepositoryTest {
         )
 
         coVerify(timeout = 3000) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
-        verify(timeout = 3000) { notifier.show(any(), any()) }
+        verify(timeout = 3000) { notifier.show(any(), any(), 1L) }
     }
 
     @Test
@@ -853,6 +853,7 @@ class Hl7RepositoryTest {
 
         coVerify(timeout = 3000) { dispenseTxnDao.restoreDeletedTxn(8L, any()) }
         coVerify(timeout = 3000) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), any(), any()) }
+        verify(timeout = 3000) { notifier.show(any(), any(), 8L) }
     }
 
     @Test
@@ -970,6 +971,21 @@ class Hl7RepositoryTest {
     }
 
     @Test
+    fun `handleOrderEdit to a held or completed order opens no order`() = runTest(testDispatcher) {
+        val repo = createRepo()
+        coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
+        coEvery { drugMasterDao.getDrugByNdc("12345") } returns
+            DrugMasterEntity(drugId = 5L, drugName = "Aspirin", ndc = "12345")
+        coEvery { drugMasterDao.upsertPreservingId(any()) } returns 5L
+
+        repo.handleOrderEdit(editMessage(orderStatus = "HD"))
+        repo.handleOrderEdit(editMessage(orderStatus = "CM"))
+
+        verify(exactly = 2, timeout = 3000) { notifier.show(any(), any(), null) }
+        verify(exactly = 0) { notifier.show(any(), any(), 1L) }
+    }
+
+    @Test
     fun `handleOrderEdit unknown status maps null`() = runTest(testDispatcher) {
         val repo = createRepo()
         coEvery { dispenseTxnDao.getActiveByRxNo("RX1") } returns txnEntity()
@@ -980,6 +996,6 @@ class Hl7RepositoryTest {
         repo.handleOrderEdit(editMessage(orderStatus = "ZZ"))
 
         coVerify(timeout = 3000) { dispenseTxnDao.updateFromHl7Edit(any(), any(), any(), any(), isNull(), any()) }
-        verify(timeout = 3000) { notifier.show(any(), any()) }
+        verify(timeout = 3000) { notifier.show(any(), any(), 1L) }
     }
 }

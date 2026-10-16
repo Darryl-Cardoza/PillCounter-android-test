@@ -65,7 +65,7 @@ class DispenseCountViewModelCaptureTest : DispenseCountViewModelTestBase() {
     fun `captureVialForTour returns without timing out when the notes setting is off`() = runTest {
         mockkStatic(Bitmap::class)
         every { Bitmap.createBitmap(any<Int>(), any<Int>(), any<Bitmap.Config>()) } returns mockk(relaxed = true)
-        every { preferenceHelper.getTxnId() } returns 42L
+        selectTxn(42L)
         every { preferenceHelper.getShowNotesDialogSetting() } returns false
         coEvery { dispenseCountRepository.totalPillCount(any()) } returns 30
         // captureVialForTour is a no-op without an active tour, and refuses a non-demo txn.
@@ -174,7 +174,7 @@ class DispenseCountViewModelCaptureTest : DispenseCountViewModelTestBase() {
     fun `rapid matched vial labels write the vial photo exactly once`() = runTest {
         val onCaptured = slot<(Bitmap) -> Unit>()
         every { cameraHelper.captureImage(capture(onCaptured), any()) } returns true
-        every { preferenceHelper.getTxnId() } returns 42L
+        selectTxn(42L)
         setState { it.copy(steps = listOf(StepState.TARGET_VERIFICATION, StepState.VIAL)) }
         val bitmap: Bitmap = mockk(relaxed = true)
 
@@ -230,7 +230,7 @@ class DispenseCountViewModelCaptureTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `the vial photo is saved once even when Done is tapped twice`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 42L
+        selectTxn(42L)
 
         captureStill()
         viewModel.onAction(DispenseCountAction.VialSaveTapped)
@@ -242,7 +242,7 @@ class DispenseCountViewModelCaptureTest : DispenseCountViewModelTestBase() {
 
     @Test
     fun `Done keeps working after the notes dialog is dismissed`() = runTest {
-        every { preferenceHelper.getTxnId() } returns 42L
+        selectTxn(42L)
         every { preferenceHelper.getShowNotesDialogSetting() } returns true
         coEvery { dispenseCountRepository.totalPillCount(any()) } returns 30
 
